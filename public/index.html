@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Codex Usage</title>
+    <title>Agent Usage</title>
     <script>
       (() => {
         try {
@@ -11,6 +11,21 @@
           document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
         } catch {
           document.documentElement.dataset.theme = "light";
+        }
+        let locale;
+        try {
+          locale = localStorage.getItem("codexUsageLocale");
+        } catch {
+          // A local snapshot may not have access to browser storage.
+        }
+        if (locale !== "zh-CN" && locale !== "en-US") {
+          locale = (navigator.languages?.[0] || navigator.language || "").toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
+        }
+        document.documentElement.lang = locale;
+        document.documentElement.dataset.locale = locale;
+        if (locale === "en-US") {
+          document.documentElement.dataset.i18nPending = "";
+          window.setTimeout(() => document.documentElement.removeAttribute("data-i18n-pending"), 3000);
         }
       })();
     </script>
@@ -20,15 +35,18 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <h1>Codex Usage</h1>
+          <h1>Agent Usage</h1>
           <p id="autoRefreshStatus" class="auto-refresh-status" aria-live="polite"><span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span></span><button id="autoRefreshToggle" type="button" aria-pressed="true">开</button><span id="lastSuccessfulCheck">上次：尚无</span><span id="autoRefreshError" class="auto-refresh-error"></span></p>
         </div>
         <div class="topbar-actions">
+          <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
+            <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
+          </button>
           <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题" aria-pressed="false">
             <svg viewBox="0 0 44 24" aria-hidden="true" focusable="false">
-              <circle cx="11" cy="12" r="4" />
-              <path d="M11 1.8v2.1m0 16.2v2.1M.8 12h2.1m16.2 0h2.1M4.3 5.3l1.5 1.5m10.4 10.4 1.5 1.5M4.3 18.7l1.5-1.5M16.2 6.8l1.5-1.5" />
-              <g transform="translate(21.4 2.4) scale(0.8)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
+              <circle class="theme-sun" cx="11" cy="12" r="4" />
+              <path class="theme-sun" d="M11 1.8v2.1m0 16.2v2.1M.8 12h2.1m16.2 0h2.1M4.3 5.3l1.5 1.5m10.4 10.4 1.5 1.5M4.3 18.7l1.5-1.5M16.2 6.8l1.5-1.5" />
+              <g class="theme-moon" transform="translate(21.4 2.4) scale(0.8)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
             </svg>
           </button>
           <button id="importButton" type="button">导入目录</button>
@@ -39,6 +57,18 @@
         <div class="control-group">
           <span>范围</span>
           <div class="segmented" id="presetButtons">
+            <button
+              type="button"
+              id="quotaPresetToggle"
+              class="quota-preset-toggle"
+              aria-label="当前范围为今日；点击切换到 5 小时限额"
+              aria-pressed="false"
+              title="点击切换到 5 小时限额"
+            >
+              <span class="quota-preset-mode" data-quota-mode="quota_5h">5h</span>
+              <span class="quota-preset-divider" aria-hidden="true">/</span>
+              <span class="quota-preset-mode" data-quota-mode="quota_week">Week</span>
+            </button>
             <button type="button" data-preset="today" class="active">今日</button>
             <button type="button" data-preset="week">本周</button>
             <button type="button" data-preset="month">本月</button>
@@ -50,7 +80,8 @@
                   id="recentValue"
                   class="recent-segment-input"
                   type="text"
-                  value="1个月"
+                  value="上个月"
+                  readonly
                   autocomplete="off"
                   aria-label="最近范围"
                   aria-controls="recentRangeMenu"
@@ -68,13 +99,10 @@
                 </button>
               </span>
               <div id="recentRangeMenu" class="recent-range-menu" role="listbox" hidden>
-                <button type="button" role="option" data-recent-option="1天" aria-selected="false">1天</button>
-                <button type="button" role="option" data-recent-option="1周" aria-selected="false">1周</button>
-                <button type="button" role="option" data-recent-option="1个月" aria-selected="true">1个月</button>
-                <button type="button" role="option" data-recent-option="2个月" aria-selected="false">2个月</button>
-                <button type="button" role="option" data-recent-option="3个月" aria-selected="false">3个月</button>
-                <button type="button" role="option" data-recent-option="半年" aria-selected="false">半年</button>
-                <button type="button" role="option" data-recent-option="一年" aria-selected="false">一年</button>
+                <button type="button" role="option" data-recent-option="上一个5h" aria-selected="false">上一个5h</button>
+                <button type="button" role="option" data-recent-option="上周" aria-selected="false">上周</button>
+                <button type="button" role="option" data-recent-option="上个月" aria-selected="true">上个月</button>
+                <button type="button" role="option" data-recent-option="今年" aria-selected="false">今年</button>
               </div>
             </div>
             <button type="button" data-preset="custom">自定义</button>
@@ -112,42 +140,36 @@
             </span>
           </label>
         </div>
-        <div class="control-group">
-          <label>
-            粒度
-            <select id="bucketSelect">
-              <!-- 小时粒度用于今日视图展示日内用量变化。 -->
-              <option value="hour" selected>按小时</option>
-              <option value="day">按天</option>
-              <option value="week">按周</option>
-              <option value="month">按月</option>
-            </select>
-          </label>
-        </div>
       </section>
 
       <section class="metrics" aria-label="总览">
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>总 tokens</span>
           <strong id="totalTokens">-</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>总输入</span>
           <strong id="inputTokens">-</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>缓存读取</span>
           <strong id="cachedTokens">-</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>输出</span>
           <strong id="outputTokens">-</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>推理输出</span>
           <strong id="reasoningTokens">-</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>会话</span>
           <strong id="sessionCount">-</strong>
         </article>
@@ -155,26 +177,32 @@
 
       <section class="metrics price-metrics" aria-label="API 费用估算">
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>总花销</span>
           <strong id="totalCost">—</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>普通输入</span>
           <strong id="inputCost">—</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>缓存读取</span>
           <strong id="cachedInputCost">—</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>输出</span>
           <strong id="outputCost">—</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>缓存命中</span>
           <strong id="cacheHitRate">—</strong>
         </article>
         <article class="metric">
+          <span class="metric-new" hidden>New</span>
           <span>模型数量</span>
           <strong id="priceModelCount">—</strong>
         </article>
@@ -235,34 +263,40 @@
         </section>
       </section>
 
-      <section class="panel homes-panel">
-        <div class="panel-heading">
-          <h2>扫描目录</h2>
-          <button id="addImportButton" class="panel-action" type="button">添加</button>
-        </div>
-        <div id="homeList" class="home-list"></div>
-      </section>
+      <section class="bottom-grid">
+        <section class="panel homes-panel">
+          <div class="panel-heading">
+            <h2>扫描目录</h2>
+            <button id="addImportButton" class="panel-action" type="button">编辑</button>
+          </div>
+          <div id="homeList" class="home-list"></div>
+        </section>
 
-      <section class="panel pricing-note-panel" aria-label="费用估算说明">
-        <div class="cost-estimate-tools">
-          <details id="costEstimateDetails" class="cost-estimate-details">
-            <summary>费用估算说明 <span id="costEstimateDate"></span></summary>
-            <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
-          </details>
-          <button id="updatePricingButton" class="panel-action" type="button">更新计价标准</button>
-        </div>
+        <section class="panel pricing-note-panel" aria-label="费用估算说明">
+          <div class="cost-estimate-tools">
+            <details id="costEstimateDetails" class="cost-estimate-details">
+              <summary>费用估算说明 <span id="costEstimateDate"></span></summary>
+              <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
+            </details>
+            <button id="updatePricingButton" class="panel-action" type="button">计价标准</button>
+          </div>
+        </section>
       </section>
     </main>
+    <span id="quotaPresetStatus" class="quota-preset-status" role="status" aria-live="polite" hidden></span>
     <div id="importDialog" class="dialog-backdrop" hidden>
       <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="importDialogTitle">
         <form id="importForm">
           <div class="dialog-heading">
-            <h2 id="importDialogTitle">导入目录</h2>
-            <button id="closeImportDialogButton" class="icon-button" type="button" aria-label="关闭">×</button>
+            <h2 id="importDialogTitle">数据来源</h2>
           </div>
-          <p class="dialog-copy">支持 Codex home，或包含 .codex-usage/usage.jsonl 的项目目录。</p>
+          <p class="dialog-copy">勾选要统计的来源，取消勾选的来源不计入用量、费用和时间线，修改立即生效。</p>
+          <fieldset class="source-picker-field">
+            <legend>统计来源</legend>
+            <div id="sourcePicker" class="source-picker"></div>
+          </fieldset>
           <label>
-            目录路径
+            添加目录
             <div class="path-picker">
               <input id="importPath" type="text" autocomplete="off" placeholder="/Users/you/project/openai_codex" />
               <button id="pickImportDirectoryButton" type="button">选择文件夹</button>
@@ -270,7 +304,7 @@
           </label>
           <p id="importMessage" class="dialog-message" role="status"></p>
           <div class="dialog-actions">
-            <button id="cancelImportButton" type="button">取消</button>
+            <button id="cancelImportButton" type="button">关闭</button>
             <button id="submitImportButton" type="submit">导入</button>
           </div>
         </form>
@@ -281,17 +315,39 @@
         <form id="pricingForm">
           <div class="dialog-heading">
             <h2 id="pricingDialogTitle">更新计价标准</h2>
-            <button id="closePricingDialogButton" class="icon-button" type="button" aria-label="关闭">×</button>
           </div>
-          <p class="dialog-copy">单价单位为美元 / 100 万 tokens。请对照 <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">OpenAI API Standard 价格表</a>填写。保存后会用新单价重算历史估算。</p>
-          <label>价格核对日期 <input id="pricingCheckedAt" type="date" required /></label>
-          <div id="pricingRows" class="pricing-rows"></div>
+          <p class="dialog-copy">单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。点击模型名编辑费率（含官方单独声明的快速模式价）；汇率只用于混合币种的排序与图表比例，不改变各币种金额。保存后按当天日期记为核对日期并重算历史估算。</p>
+          <div class="pricing-toolbar">
+            <input id="pricingSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型" />
+            <label class="pricing-rate-label">1 美元 =
+              <input id="usdToCnyRate" type="number" min="0.01" step="0.01" required />
+              人民币
+            </label>
+          </div>
+          <div class="segmented pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
+            <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
+            <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>
+          </div>
+          <div id="pricingModelList" class="pricing-model-list"></div>
           <p id="pricingMessage" class="dialog-message" role="status"></p>
           <div class="dialog-actions">
             <button id="cancelPricingButton" type="button">取消</button>
             <button id="savePricingButton" type="submit">保存并重算</button>
           </div>
         </form>
+      </section>
+    </div>
+    <div id="modelPricingDialog" class="dialog-backdrop" hidden>
+      <section class="dialog model-pricing-dialog" role="dialog" aria-modal="true" aria-labelledby="modelPricingTitle">
+        <div class="dialog-heading">
+          <h2 id="modelPricingTitle">模型计价</h2>
+        </div>
+        <p id="modelPricingNote" class="pricing-model-note"></p>
+        <div id="modelPricingFields" class="pricing-contexts"></div>
+        <div class="dialog-actions">
+          <button id="cancelModelPricingButton" type="button">取消</button>
+          <button id="applyModelPricingButton" type="button">应用</button>
+        </div>
       </section>
     </div>
     <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>

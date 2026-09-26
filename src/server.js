@@ -13,8 +13,11 @@ import {
   buildUsageFingerprint,
   buildUsageReport,
   classifyImportDirectory,
+  isQuotaPreset,
+  selectQuotaWindows,
   summarizePeriodComparison,
   summarizeUsage,
+  USAGE_PRESETS,
 } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
 import { getPricingCatalog, pricingVersionForTimestamp, setPricingCatalog, validatePricingCatalog } from "./pricing.js";
@@ -60,23 +63,47 @@ function isValidDateOnly(value) {
 
 function requestFilters(url) {
   const preset = url.searchParams.get("preset") || "all";
-  const bucket = url.searchParams.get("bucket") || "day";
+  const requestedBucket = url.searchParams.get("bucket") || "day";
+  const recentValue = url.searchParams.get("recentValue") || "";
+  const recentBucket = preset === "recent" ? { "上一个5h": "quota_30m", "上周": "quota_24h", "上个月": "day", "今年": "month" }[recentValue] : null;
+  if (!USAGE_PRESETS.includes(preset)) {
+    throw httpError(400, `Invalid preset: ${preset}.`, "INVALID_PRESET");
+  }
+  const bucket = isQuotaPreset(preset)
+    ? preset === "quota_5h" ? "quota_30m" : "quota_24h"
+    : recentBucket || requestedBucket;
   const startDate = url.searchParams.get("startDate") || "";
   const endDate = url.searchParams.get("endDate") || "";
-  const recentValue = url.searchParams.get("recentValue") || "";
+  const excludeHomes = (url.searchParams.get("exclude") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 200);
 
-  if (!["hour", "day", "week", "month"].includes(bucket)) {
-    throw httpError(400, "Invalid bucket.");
+  if (!isQuotaPreset(preset) && !recentBucket && !["hour", "day", "week", "month"].includes(bucket)) {
+    throw httpError(400, "Invalid bucket.", "INVALID_BUCKET");
   }
   if (preset === "custom") {
     if ((startDate && !isValidDateOnly(startDate)) || (endDate && !isValidDateOnly(endDate))) {
-      throw httpError(400, "Invalid custom date.");
+      throw httpError(400, "Invalid custom date.", "INVALID_DATE");
     }
     if (startDate && endDate && startDate > endDate) {
-      throw httpError(400, "Start date must not be after end date.");
+      throw httpError(400, "Start date must not be after end date.", "INVALID_DATE_RANGE");
     }
   }
-  return { preset, bucket, startDate, endDate, recentValue };
+  return { preset, bucket, startDate, endDate, recentValue, excludeHomes };
+}
+
+function withoutExcludedHomes(report, excludeHomes = []) {
+  const excluded = new Set(excludeHomes.map(String));
+  if (!excluded.size) {
+    return report;
+  }
+  return {
+    ...report,
+    events: report.events.filter((event) => !excluded.has(String(event.homeId))),
+    sessions: report.sessions.filter((session) => !excluded.has(String(session.homeId))),
+  };
 }
 
 export function isFullDetailHeapAvailable(heapSizeLimitBytes = v8.getHeapStatistics().heap_size_limit) {
@@ -145,8 +172,11 @@ async function describeImportEntry(importPath) {
     label:
       classified.type === "project-log"
         ? `Project ${path.basename(classified.path) || classified.path}`
-        : `Imported ${path.basename(classified.path) || classified.path}`,
+        : classified.type === "zcode-home"
+          ? `ZCode ${path.basename(classified.path) || classified.path}`
+          : `Imported ${path.basename(classified.path) || classified.path}`,
     ...(classified.usageLogPath ? { usageLogPath: classified.usageLogPath } : {}),
+    ...(classified.dbFile ? { dbFile: classified.dbFile } : {}),
   };
 }
 
@@ -169,9 +199,10 @@ function clientFingerprint(sourceFingerprint) {
   return createHash("sha256").update(sourceFingerprint).update("\0").update(pricingVersionForTimestamp()).digest("hex");
 }
 
-function httpError(statusCode, message) {
+function httpError(statusCode, message, code) {
   const error = new Error(message);
   error.statusCode = statusCode;
+  if (code) error.code = code;
   return error;
 }
 
@@ -209,7 +240,7 @@ async function pickDirectoryWithSystemDialog() {
   try {
     const { stdout } = await execFileAsync("osascript", [
       "-e",
-      'POSIX path of (choose folder with prompt "选择要导入的 Codex Usage 目录")',
+      'POSIX path of (choose folder with prompt "选择要导入的 Agent Usage 目录")',
     ]);
     return stdout.trim();
   } catch (error) {
@@ -338,7 +369,7 @@ export function createUsageServer(options = {}) {
           try {
             catalog = validatePricingCatalog(await readJsonBody(request, { maxBytes: 128 * 1024 }));
           } catch (error) {
-            throw httpError(error.statusCode || 400, error.message);
+            throw httpError(error.statusCode || 400, error.message, "INVALID_PRICING");
           }
           await savePricingFile(options, catalog);
           sendJson(response, 200, setPricingCatalog(catalog));
@@ -368,12 +399,12 @@ export function createUsageServer(options = {}) {
         if (request.method === "POST") {
           const body = await readJsonBody(request);
           if (!body.path) {
-            sendJson(response, 400, { error: "Missing import directory path." });
+            sendJson(response, 400, { code: "MISSING_IMPORT_PATH", error: "Missing import directory path." });
             return;
           }
           const entry = await describeImportEntry(body.path);
           if (entry.type === "unsupported") {
-            sendJson(response, 400, { error: entry.reason, path: entry.path });
+            sendJson(response, 400, { code: "INVALID_IMPORT_DIRECTORY", error: entry.reason, path: entry.path });
             return;
           }
           const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
@@ -425,43 +456,49 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/usage") {
-
+        const filters = requestFilters(url);
         const detail = url.searchParams.get("detail");
-        if (detail === "full") {
+        if (detail === "full" && !isQuotaPreset(filters.preset)) {
           if (!isFullDetailHeapAvailable()) {
+            await loadUsageStore();
+            const summary = usageStore.summarize({ ...filters, now: new Date() });
             sendJson(response, 413, {
+              code: "FULL_DETAIL_UNAVAILABLE",
               error:
                 "Full detail report is disabled in low-memory gateway mode. Restart with codex-usage gateway --memory-mb 512, or use npm run export for a static snapshot.",
+              quota: summary.quota,
             });
             return;
           }
 
-          const filters = requestFilters(url);
           const currentUsageOptions = await usageOptions(options);
           const status = await buildUsageFingerprint(currentUsageOptions);
-          const report = await buildUsageReport(currentUsageOptions);
+          const fullReport = await buildUsageReport(currentUsageOptions);
+          const report = withoutExcludedHomes(fullReport, filters.excludeHomes);
           const asOf = new Date();
-          Object.assign(filters, { now: asOf });
+          const quota = selectQuotaWindows(fullReport.rateLimitObservations || [], asOf);
+          Object.assign(filters, { now: asOf, quota });
+          const summary = summarizeUsage(report, filters);
           sendJson(response, 200, {
             fingerprint: clientFingerprint(status.fingerprint),
             checkedAt: status.checkedAt,
             metadata: {
-              generatedAt: report.generatedAt,
-              eventCount: report.events.length,
-              sessionCount: report.sessions.length,
-              homeCount: report.homes.length,
-              homes: report.homes,
+              generatedAt: fullReport.generatedAt,
+              eventCount: fullReport.events.length,
+              sessionCount: fullReport.sessions.length,
+              homeCount: fullReport.homes.length,
+              homes: fullReport.homes,
               imports: await listImportEntries(options),
-              warnings: report.warnings,
+              warnings: fullReport.warnings,
             },
             report,
-            summary: summarizeUsage(report, filters),
+            summary,
+            quota: summary.quota,
             periodComparison: summarizePeriodComparison(report.events, { now: asOf }),
           });
           return;
         }
 
-        const filters = requestFilters(url);
         const check = url.searchParams.get("skipCheck") !== "1";
         const requestedSnapshotId = url.searchParams.get("snapshot");
         const frozen = requestedSnapshotId
@@ -469,18 +506,20 @@ export function createUsageServer(options = {}) {
           : url.searchParams.get("freeze") === "1"
             ? await createSnapshot({ check })
             : null;
-        if (requestedSnapshotId && !frozen) throw httpError(410, "Snapshot is no longer available.");
+        if (requestedSnapshotId && !frozen) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
         const usage = frozen?.status || await loadUsageStore({ check });
         const store = frozen?.store || usageStore;
         const asOf = frozen?.asOf || new Date();
         Object.assign(filters, { now: asOf });
+        const summary = store.summarize(filters, { includeDetails: url.searchParams.get("view") !== "dashboard" });
         sendJson(response, 200, {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
           snapshotId: frozen?.id || requestedSnapshotId || null,
           metadata: frozen?.metadata || await metadataForStore(),
-          summary: store.summarize(filters, { includeDetails: url.searchParams.get("view") !== "dashboard" }),
-          periodComparison: store.periodComparison({ now: asOf }),
+          summary,
+          quota: summary.quota,
+          periodComparison: store.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes }),
         });
         return;
       }
@@ -490,20 +529,25 @@ export function createUsageServer(options = {}) {
         const usage = await loadUsageStore();
         const asOf = new Date();
         Object.assign(filters, { now: asOf });
+        const summary = usageStore.summarize(filters);
         sendJson(response, 200, {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
           metadata: await metadataForStore(),
-          summary: usageStore.summarize(filters),
-          periodComparison: usageStore.periodComparison({ now: asOf }),
+          summary,
+          quota: summary.quota,
+          periodComparison: usageStore.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes }),
         });
         return;
       }
 
       await serveStatic(url.pathname, response);
     } catch (error) {
-      sendJson(response, error.statusCode || 500, {
+      const statusCode = error.statusCode || (error.code === "QUOTA_WINDOW_UNAVAILABLE" ? 409 : error.code === "INVALID_PRESET" ? 400 : 500);
+      sendJson(response, statusCode, {
+        ...(error.code ? { code: error.code } : {}),
         error: error.message,
+        ...(error.quota ? { quota: error.quota } : {}),
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
       });
     }
@@ -526,6 +570,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   server.listen(port, host, () => {
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : port;
-    console.log(`Codex Usage dashboard: http://${host}:${actualPort}`);
+    console.log(`Agent Usage dashboard: http://${host}:${actualPort}`);
   });
 }

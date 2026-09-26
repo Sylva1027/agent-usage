@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,7 +27,7 @@ test("renderStaticDashboardHtml embeds usage data and app assets", () => {
     warnings: [],
   });
 
-  assert.match(html, /Codex Usage/);
+  assert.match(html, /Agent Usage/);
   assert.match(html, /window.__CODEX_USAGE_REPORT__/);
   assert.ok(html.includes('"cwd":"$&"'));
   assert.match(html, /CLI/);
@@ -61,7 +61,49 @@ test("renderStaticDashboardHtml bundles shared timeline logic and has no unresol
   assert.match(html, /function buildTimelineRows/);
   assert.match(html, /id="autoRefreshToggle"/);
   assert.match(html, /id="timelineModes"/);
+  assert.match(html, /id="languageToggle"/);
+  assert.match(html, /codexUsageLocale/);
   assert.doesNotMatch(html, /import \{ buildTimelineRows \} from/);
+  assert.doesNotMatch(html, /from "\.\/i18n\.js"/);
+  const moduleSource = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
+  assert.ok(moduleSource);
+  const syntax = spawnSync(process.execPath, ["--check", "--input-type=module"], { input: moduleSource, encoding: "utf8" });
+  assert.equal(syntax.status, 0, syntax.stderr);
+});
+
+test("static export freezes quota observations and capability at the export asOf", () => {
+  const asOf = "2026-09-25T12:00:00.000Z";
+  const report = {
+    generatedAt: asOf,
+    homes: [],
+    sessions: [],
+    events: [],
+    rateLimitObservations: [{
+      sourcePath: "codex.jsonl",
+      lineNumber: 4,
+      role: "primary",
+      observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
+      limitId: "codex",
+      limitName: null,
+      planType: null,
+      windowMinutes: 300,
+      resetsAtMs: Date.parse("2026-09-25T14:37:00.000Z"),
+      usedPercent: null,
+    }],
+    warnings: [],
+  };
+  const html = renderStaticDashboardHtml(report);
+  const embedded = html.match(/window\.__CODEX_USAGE_REPORT__ = (.*?); window\.__CODEX_USAGE_PERIOD_COMPARISON__/s)?.[1];
+  assert.ok(embedded);
+  const snapshot = JSON.parse(embedded);
+
+  assert.equal(snapshot.asOf, asOf);
+  assert.equal(snapshot.generatedAt, asOf);
+  assert.equal(snapshot.quota.asOf, asOf);
+  assert.equal(snapshot.quota.windows.quota_5h.state, "available");
+  assert.equal(snapshot.quota.windows.quota_5h.usedPercent, null);
+  assert.equal(snapshot.quota.windows.quota_week.state, "missing");
+  assert.equal(snapshot.rateLimitObservations.length, 1);
 });
 
 test("static export runs directly from a path containing spaces", async () => {

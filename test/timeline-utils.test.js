@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 
-import { buildTimelineRows } from "../public/timeline-utils.js";
+import { buildTimelineRows, generateQuotaTimelineSlots } from "../public/timeline-utils.js";
 import { estimateCostForEvents, estimateEventCost } from "../src/pricing.js";
 
 const dateAt = (year, month, day, hour = 0) => new Date(year, month - 1, day, hour);
@@ -103,4 +103,67 @@ test("each slot preserves channel/model token totals and aggregates event-level 
   assert.equal(row.minimumEstimatedTokens, 10);
   assert.equal(row.pricingStatus, "minimum-estimate");
   assert.equal(row.costByModel["custom-model"].pricingStatus, "minimum-estimate");
+});
+
+test("quota_30m uses ten fixed half-hour slots and excludes future and boundary events", () => {
+  const startMs = Date.parse("2026-09-25T23:37:00.000Z");
+  const asOfMs = Date.parse("2026-09-26T00:20:00.000Z");
+  const endMs = startMs + 5 * 60 * 60 * 1000;
+  const range = {
+    preset: "quota_5h",
+    start: new Date(startMs),
+    end: new Date(asOfMs - 1),
+    windowStart: new Date(startMs),
+    windowEndExclusive: new Date(endMs),
+    asOf: new Date(asOfMs),
+  };
+  const rows = buildTimelineRows([
+    event(new Date(startMs).toISOString(), { total: 5 }),
+    event(new Date(startMs + 30 * 60 * 1000).toISOString(), { total: 7 }),
+    event(new Date(asOfMs).toISOString(), { total: 11 }),
+    event(new Date(endMs).toISOString(), { total: 13 }),
+    event(new Date(startMs - 1).toISOString(), { total: 17 }),
+  ], range, "quota_30m", { estimateCost: (item) => ({ totalUsd: item.total.total / 10, currency: "USD" }) });
+
+  assert.equal(rows.length, 10);
+  assert.deepEqual(rows.slice(0, 2).map((row) => [row.slotStartMs, row.total.total]), [
+    [startMs, 5], [startMs + 30 * 60 * 1000, 7],
+  ]);
+  assert.equal(rows[0].slotEndExclusiveMs, startMs + 30 * 60 * 1000);
+  assert.equal(rows[2].future, true);
+  assert.equal(rows[2].total.total, 0);
+  assert.deepEqual(rows[2].channels, []);
+  assert.deepEqual(rows[2].models, []);
+  assert.deepEqual(rows[2].costByModel, {});
+  assert.equal(rows.reduce((sum, row) => sum + row.total.total, 0), 12);
+});
+
+test("quota_24h uses seven Unix-time days across a daylight-saving transition", () => {
+  const startMs = Date.parse("2025-03-08T19:20:00.000Z");
+  const asOfMs = startMs + 24 * 60 * 60 * 1000 + 1_000;
+  const slots = generateQuotaTimelineSlots({
+    preset: "quota_week",
+    start: new Date(startMs),
+    windowStart: new Date(startMs),
+    windowEndExclusive: new Date(startMs + 7 * 24 * 60 * 60 * 1000),
+    asOf: new Date(asOfMs),
+  }, "quota_24h");
+  const rows = buildTimelineRows([
+    event(new Date(startMs + 24 * 60 * 60 * 1000 - 1).toISOString(), { total: 10 }),
+    event(new Date(startMs + 24 * 60 * 60 * 1000).toISOString(), { total: 20 }),
+    event(new Date(asOfMs).toISOString(), { total: 30 }),
+  ], {
+    preset: "quota_week",
+    start: new Date(startMs),
+    end: new Date(asOfMs - 1),
+    windowStart: new Date(startMs),
+    windowEndExclusive: new Date(startMs + 7 * 24 * 60 * 60 * 1000),
+    asOf: new Date(asOfMs),
+  }, "quota_24h");
+
+  assert.equal(slots.length, 7);
+  assert.ok(slots.every((slot, index) => slot.slotStartMs === startMs + index * 24 * 60 * 60 * 1000));
+  assert.equal(rows[0].total.total, 10);
+  assert.equal(rows[1].total.total, 20);
+  assert.equal(rows[2].future, true);
 });

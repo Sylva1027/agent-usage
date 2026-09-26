@@ -313,7 +313,7 @@ function runServer(args) {
         nodeExecArgv: process.execArgv,
         startedAt: new Date().toISOString(),
       });
-      console.log(`Codex Usage dashboard: ${url}`);
+      console.log(`Agent Usage dashboard: ${url}`);
     } catch (error) {
       console.error(error.stack || error.message);
       server.close(() => {
@@ -366,7 +366,7 @@ async function startGateway(args, { announce = true } = {}) {
 
   const service = await waitForRegisteredService(stateFile, child.pid);
   if (announce) {
-    console.log(`Codex Usage gateway started: ${service.url} (pid ${service.pid})`);
+    console.log(`Agent Usage gateway started: ${service.url} (pid ${service.pid})`);
   }
   return service;
 }
@@ -396,7 +396,7 @@ async function openDashboard(args) {
   if (!hasFlag(args, "--no-open") && process.env.CODEX_USAGE_OPEN !== "0") {
     openUrl(service.url);
   }
-  console.log(`Codex Usage dashboard: ${service.url}`);
+  console.log(`Agent Usage dashboard: ${service.url}`);
 }
 
 async function requestServiceShutdown(service) {
@@ -430,7 +430,7 @@ async function stopRunningServices(args, { announce = true } = {}) {
   if (runningServices.length === 0) {
     await writeServices(stateFile, []);
     if (announce) {
-      console.log("No running Codex Usage services found.");
+      console.log("No running Agent Usage services found.");
     }
     return { stoppedServices: [], stillRunningServices: [] };
   }
@@ -463,14 +463,14 @@ async function stopRunningServices(args, { announce = true } = {}) {
   if (stillRunningServices.length > 0) {
     if (announce) {
       console.error(
-        `Stopped ${stoppedServices.length} Codex Usage service(s), ${stillRunningServices.length} still running.`,
+        `Stopped ${stoppedServices.length} Agent Usage service(s), ${stillRunningServices.length} still running.`,
       );
     }
     return { stoppedServices, stillRunningServices };
   }
 
   if (announce) {
-    console.log(`Stopped ${stoppedServices.length} Codex Usage service(s).`);
+    console.log(`Stopped ${stoppedServices.length} Agent Usage service(s).`);
   }
   return { stoppedServices, stillRunningServices };
 }
@@ -490,7 +490,7 @@ async function restartGateway(args) {
   }
 
   const service = await startGateway(args, { announce: false });
-  console.log(`Codex Usage gateway restarted: ${service.url} (pid ${service.pid})`);
+  console.log(`Agent Usage gateway restarted: ${service.url} (pid ${service.pid})`);
 }
 
 async function main() {

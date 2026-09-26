@@ -1,62 +1,57 @@
-# Codex Usage
+# Agent Usage
 
-Codex Usage 是一个在自己电脑上运行的 Codex 用量看板。它读取本机的 Codex 会话日志，让你按时间、渠道、模型和仓库查看 Token 消耗、会话数与费用估算，无需上传用量日志。
+简体中文 · [English](README.en.md)
+
+Agent Usage 是在本机运行的 Codex 与 ZCode 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
 
 本项目基于 [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage) 继续开发。
 
 ## 快速开始
 
-需要 **Node.js 22.13 或更新版本**。运行 `node -v` 可查看当前版本。
-
-在 GitHub 页面选择 **Code → Download ZIP** 并解压，或使用 Git：
+需要 **Node.js 22.13 或更新版本**，可用 `node -v` 检查。下载仓库 ZIP 并解压，或运行：
 
 ```bash
 git clone https://github.com/Sylva1027/codex-usage.git
 cd codex-usage
-```
-
-在项目目录启动本地看板：
-
-```bash
 node src/cli.js run
 ```
 
-然后打开 [http://127.0.0.1:3765/](http://127.0.0.1:3765/)。服务默认只监听本机地址；结束使用时在终端按 `Ctrl+C`。
+打开 [http://127.0.0.1:3765/](http://127.0.0.1:3765/)。服务默认只监听 `127.0.0.1`；在终端按 `Ctrl+C` 停止。无需安装 npm 依赖。在 Windows PowerShell 中，直接使用上述 `node` 命令即可避开 `npm.ps1` 执行策略限制。
 
-### Windows PowerShell 提示
+## 看板功能
 
-如果输入 `npm run serve` 时出现 `npm.ps1` 被禁止运行，直接使用上面的 `node src/cli.js run`。需要使用 npm 脚本时，可显式输入 `npm.cmd run serve`；汇总和导出同理使用 `npm.cmd run summary`、`npm.cmd run export`。这些命令不需要修改 PowerShell 执行策略。
+- **时间与趋势：** 支持今日、本周、本月、全部、自定义日期，以及按小时、天、周、月查看时间分布。“本周”按自然周计算。
+- **最近范围：** “上一个 5h”和“上周”分别指上一个已结束的 Codex 5 小时限额窗口和每周限额窗口；“上个月”是上一个完整自然月；“今年”从本年 1 月 1 日统计至今。这里的“上周”是限额周，不是自然周。
+- **Codex 限额：** `5h / Week` 在当前 5 小时与每周限额窗口之间切换。窗口边界取自本机 Codex 限额观察值，5 小时图按半小时、每周图按连续 24 小时显示；没有可靠记录时不会推测边界。未选中 Codex 数据来源时，限额按钮及“上一个 5h”“上周”选项会置灰。
+- **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。缓存命中输入与未命中输入分开计价。
+- **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
+- **来源与刷新：** 自动发现本机 Codex 和 ZCode 数据，也可导入其他 Codex / ZCode 目录，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。页面默认每 60 秒检查新记录；暂停自动刷新后，切换范围仍使用冻结的数据快照。
+- **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。
 
-## 看板能做什么
+## 数据来源与隐私
 
-- **查看用量趋势：** 在“今日 / 本周 / 本月 / 全部”、最近一段时间和自定义日期之间切换，按小时、天、周或月查看 Token、渠道、模型与估算费用。
-- **比较模型和仓库：** 并排查看今日、本周、本月及全部用量，支持搜索、排序，以及输入、缓存读取、输出等明细。
-- **管理数据来源：** 自动读取本机 Codex 日志，也可从页面导入其他 Codex 目录，或导入含 `.codex-usage/usage.jsonl` 的项目目录。
-- **控制刷新：** 页面默认每 60 秒检查新记录；关闭自动刷新后，切换时间范围仍使用同一份数据快照。
-- **节省重复扫描：** SQLite 索引仅重新处理发生变化的日志文件。看板支持浅色和深色主题。
+Codex 用量来自 `~/.codex` 等 Codex home 下的会话日志。ZCode 用量默认来自 `~/.zcode/cli/db/db.sqlite`，以只读方式打开，不修改 ZCode 数据库。未写入这些记录、也未通过项目日志导入的请求不会出现在统计中。
 
-## 数据与费用
+- `CODEX_USAGE_ZCODE_HOMES`：追加 ZCode 数据目录；多个路径用系统路径分隔符分隔（Windows 为 `;`，macOS/Linux 为 `:`）。
+- `CODEX_USAGE_ZCODE=0`：关闭 ZCode 数据源。
 
-看板会将已扫描日志中的 CLI、Codex Desktop、Codex Exec、JetBrains/PyCharm 等来源归类展示。没有写入这些日志、也没有被导入的 API 请求不会出现在统计中。
+扫描结果保存在本机 SQLite 增量索引中，默认路径为 `~/.codex-usage/usage-index.sqlite`；重复扫描只处理变化的文件。
 
-费用按公开的 [OpenAI API 定价](https://developers.openai.com/api/docs/pricing)估算，可在看板中更新计价标准。已知的 token 明细按对应费率计算；Fast 模式优先根据响应记录识别，缺少响应字段时从本机运行日志读取该轮设置；长上下文按单次请求的输入 token 数判断。缺少缓存写入明细、模型专用单价或其他必要字段时，按当前价目表中适用的最低费率估算，并在页面标明这部分 token。**估算值不是 Codex 套餐的实际账单**。
+## 费用估算
 
-用量日志和 SQLite 索引保留在本机。默认索引位于 `~/.codex-usage/usage-index.sqlite`。
+看板按模型和 Token 类别估算 **API 等价费用，并非实际账单或订阅限额费用**。价目可在看板中查看和编辑；支持输入未命中（Cache Miss）、缓存命中（Cache Hit）、缓存写入、输出，以及适用模型的长上下文和 Fast/Priority 费率。记录缺少必要明细时，页面会标明按最低适用费率估算的部分和无法计价的部分。
 
-## 其他命令
+内置价目参考各厂商公开资料：[OpenAI](https://developers.openai.com/api/docs/pricing)、[StepFun](https://platform.stepfun.com/docs/zh/guides/pricing/details)、[MiMo](https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go)、[DeepSeek](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)、[Kimi](https://platform.kimi.com/docs/pricing/chat)、[GLM](https://bigmodel.cn/pricing)、[xAI](https://docs.x.ai/developers/pricing)、[Qwen](https://www.qwencloud.com/pricing/api)、[Gemini](https://ai.google.dev/gemini-api/docs/pricing)、[MiniMax](https://platform.minimax.io/docs/guides/pricing-paygo)、[Meta](https://dev.meta.ai/docs/pricing-rate-limits)。各模型保留原价目币种（USD 或 CNY）；同时出现两种币种时并列显示，跨币种图表比较使用可调整汇率。价目和优惠规则可能变化，请在据此决策前核对厂商公告。
 
-在终端查看汇总：
-
-```bash
-node src/cli.js summary
-```
-
-导出可单独打开的静态网页快照：
+## 命令与静态快照
 
 ```bash
-node src/static-export.js
+node src/cli.js summary       # 终端汇总
+node src/cli.js summary --json
+node src/static-export.js     # 导出独立 HTML
+node --test                   # 运行测试
 ```
 
-导出文件位于 `dist/codex-usage.html`。静态快照不会自动刷新，需要重新导出才能包含新记录。文件内嵌用量数据及可能的本机路径，分享前请先检查内容。
+静态快照写入 `dist/codex-usage.html`，可直接打开并切换语言。它固定在导出时的数据与限额观察值，不会自动刷新；更新数据需要重新导出。HTML 内嵌用量数据，可能包含本机路径，分享前请检查。
 
 项目采用 [MIT License](LICENSE)。

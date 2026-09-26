@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  formatTimelineTooltip,
+  nextQuotaPresetState,
   nextPresetState,
   nextRecentState,
   normalizeRecentValue,
@@ -11,6 +13,7 @@ import {
   timelineChannelSegments,
 } from "../public/app.js";
 import { API_PRICING_CHECKED_AT, API_PRICING_MODE, estimateEventCost } from "../src/pricing.js";
+import { selectQuotaWindows } from "../src/usage-core.js";
 
 test("summarize includes channel breakdowns for timeline buckets", () => {
   setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "" });
@@ -104,6 +107,42 @@ test("summarize fills a single local day with 24 hourly timeline rows", () => {
   }
 });
 
+test("static quota summary stays at export asOf and applies source exclusions to embedded events", () => {
+  const asOf = "2026-09-25T12:00:00.000Z";
+  const start = "2026-09-25T09:37:00.000Z";
+  const end = "2026-09-25T14:37:00.000Z";
+  const quota = selectQuotaWindows([{
+    sourcePath: "codex.jsonl",
+    lineNumber: 4,
+    role: "primary",
+    observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
+    limitId: "codex",
+    windowMinutes: 300,
+    resetsAtMs: Date.parse(end),
+    usedPercent: null,
+  }], asOf);
+  const events = [
+    { timestamp: start, sessionId: "included", homeId: "keep", channel: "CLI", total: { total: 5 } },
+    { timestamp: "2026-09-25T10:07:00.000Z", sessionId: "excluded", homeId: "drop", channel: "ZCode", total: { total: 7 } },
+    { timestamp: asOf, sessionId: "at-as-of", homeId: "keep", channel: "CLI", total: { total: 11 } },
+  ];
+
+  setSummaryFilters({ preset: "quota_5h", bucket: "month", now: asOf, excludedHomes: ["drop"] });
+  try {
+    const summary = summarize({ asOf, generatedAt: asOf, quota, events });
+    assert.equal(summary.range.bucket, "quota_30m");
+    assert.equal(summary.range.windowStart.toISOString(), start);
+    assert.equal(summary.range.windowEndExclusive.toISOString(), end);
+    assert.equal(summary.totals.total, 5);
+    assert.equal(summary.comparison, null);
+    assert.equal(summary.timeline.length, 10);
+    assert.equal(summary.timeline[0].total.total, 5);
+    assert.ok(summary.timeline.slice(5).every((row) => row.future));
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [], startDate: "", endDate: "" });
+  }
+});
+
 test("static summarize totals embedded API cost estimates for the selected events", () => {
   const costEvent = {
     timestamp: "2026-05-26T01:00:00.000Z",
@@ -146,6 +185,96 @@ test("today preset defaults the next dashboard bucket to hour", () => {
   assert.deepEqual(nextPresetState({ bucket: "hour" }, "month"), { preset: "month", bucket: "day" });
   assert.deepEqual(nextPresetState({ bucket: "hour" }, "all"), { preset: "all", bucket: "day" });
   assert.deepEqual(nextPresetState({ bucket: "hour" }, "custom"), { preset: "custom", bucket: "day" });
+});
+
+test("quota preset toggle remembers the last mode independently of availability", () => {
+  const bothAvailable = {
+    windows: {
+      quota_5h: { state: "available" },
+      quota_week: { state: "available" },
+    },
+  };
+  const onlyWeekAvailable = {
+    windows: {
+      quota_5h: { state: "waiting", reason: "等待新的限额记录" },
+      quota_week: { state: "available" },
+    },
+  };
+  const restored = nextQuotaPresetState({ preset: "today", lastQuotaPreset: "quota_week" }, bothAvailable);
+  assert.equal(restored.preset, "quota_week");
+  assert.equal(restored.bucket, "quota_24h");
+
+  const retained = nextQuotaPresetState({ preset: "today", lastQuotaPreset: "quota_5h" }, onlyWeekAvailable);
+  assert.equal(retained.preset, "quota_5h");
+  assert.equal(nextQuotaPresetState({ preset: "quota_5h" }, onlyWeekAvailable).preset, "quota_week");
+  assert.equal(nextQuotaPresetState({ preset: "quota_week" }, onlyWeekAvailable).preset, "quota_5h");
+
+  const bothUnavailable = nextQuotaPresetState({ preset: "today", lastQuotaPreset: "quota_5h" }, {
+    windows: {
+      quota_5h: { state: "missing", reason: "无 5h 快照" },
+      quota_week: { state: "missing", reason: "无 Week 快照" },
+    },
+  });
+  assert.equal(bothUnavailable.changed, true);
+  assert.equal(bothUnavailable.preset, "quota_5h");
+  assert.equal(bothUnavailable.reason, "");
+  assert.deepEqual(nextPresetState({ preset: "quota_week", bucket: "quota_24h" }, "today"), {
+    preset: "today",
+    bucket: "hour",
+    lastQuotaPreset: "quota_week",
+  });
+});
+
+test("quota headings show local window boundaries and tooltip intervals include timezone", () => {
+  const start = new Date(2026, 8, 25, 22, 0, 0);
+  const fiveHourEnd = new Date(2026, 8, 26, 3, 0, 0);
+  const fiveHour = {
+    range: {
+      preset: "quota_5h",
+      quotaState: "available",
+      windowStart: start,
+      windowEndExclusive: fiveHourEnd,
+      asOf: new Date(2026, 8, 25, 22, 15, 0),
+    },
+  };
+  assert.equal(rangeLabel(fiveHour), "09-25 22:00–09-26 03:00");
+  const sameDayFiveHour = {
+    range: {
+      ...fiveHour.range,
+      windowStart: new Date(2026, 8, 25, 10, 0, 0),
+      windowEndExclusive: new Date(2026, 8, 25, 15, 0, 0),
+    },
+  };
+  assert.equal(rangeLabel(sameDayFiveHour), "09-25 10:00–15:00");
+
+  const weekStart = new Date(2026, 8, 21, 10, 0, 0);
+  const weekEnd = new Date(2026, 8, 28, 10, 0, 0);
+  assert.equal(rangeLabel({ range: {
+    preset: "quota_week",
+    quotaState: "available",
+    windowStart: weekStart,
+    windowEndExclusive: weekEnd,
+  } }), `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")} 至 ${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`);
+
+  const partialAsOf = new Date(weekStart.getTime() + 30 * 60 * 1000);
+  setSummaryFilters({ preset: "quota_week", quotaSnapshot: { asOf: partialAsOf.toISOString() }, summary: null, report: null });
+  try {
+    const startMs = weekStart.getTime();
+    const tooltip = formatTimelineTooltip({
+      key: String(startMs),
+      slotStartMs: startMs,
+      slotEndExclusiveMs: startMs + 24 * 60 * 60 * 1000,
+      name: weekStart.toISOString(),
+      total: { total: 1 },
+      channels: [],
+    }, "channel");
+    assert.match(tooltip, /时间槽区间 \[2026-/);
+    assert.match(tooltip, /Asia|UTC/);
+    assert.match(tooltip, /连续 24 小时/);
+    assert.match(tooltip, /当前时间槽仅统计至/);
+  } finally {
+    setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "", quotaSnapshot: null, summary: null, report: null });
+  }
 });
 
 test("recent one-day range defaults to hour and longer recent ranges default to day", () => {

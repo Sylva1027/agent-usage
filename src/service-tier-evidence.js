@@ -49,7 +49,7 @@ function readTierLog(filePath) {
 }
 
 export function loadServiceTierEvidence(homes = []) {
-  const filePaths = [...new Set(homes.filter((home) => home.kind !== "project-log")
+  const filePaths = [...new Set(homes.filter((home) => home.kind !== "project-log" && home.kind !== "zcode")
     .map((home) => path.join(home.path, "logs_2.sqlite")))];
   const byThread = new Map();
   for (const filePath of filePaths) {

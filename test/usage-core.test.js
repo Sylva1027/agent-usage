@@ -12,6 +12,7 @@ import {
   discoverCodexHomes,
   discoverUsageSources,
   parseSessionFile,
+  selectQuotaWindows,
   streamUsageFileEvents,
   summarizePeriodComparison,
   summarizeUsage,
@@ -834,4 +835,137 @@ test("parseSessionFile correlates last-token usage to request context and preser
   assert.equal(session.events[1].cacheWriteKnown, true);
   assert.equal(session.events[1].serviceTier, "default");
   assert.equal(session.events[0].serviceTier, "priority");
+});
+
+test("parseSessionFile records zero-token Codex quota observations with physical JSONL line numbers", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-quota-lines-"));
+  const file = path.join(root, "rollout.jsonl");
+  const row = tokenRow("2026-09-25T11:59:00.000Z", 0, 0, 0, 0);
+  row.payload.info.total_token_usage.reasoning_output_tokens = 0;
+  row.payload.info.last_token_usage.reasoning_output_tokens = 0;
+  row.payload.rate_limits = {
+    limit_id: "codex",
+    primary: {
+      window_minutes: 300,
+      resets_at: Date.parse("2026-09-25T14:37:00.000Z") / 1000,
+      used_percent: null,
+    },
+  };
+  await writeFile(file, [
+    JSON.stringify({ type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-zero" } }),
+    "",
+    "{ interrupted write",
+    JSON.stringify(row),
+  ].join("\n"));
+
+  const parsed = await parseSessionFile(file, { id: "home", label: "Codex", path: root });
+
+  assert.equal(parsed.session, null);
+  assert.equal(parsed.events.length, 0);
+  assert.equal(parsed.rateLimitObservations.length, 1);
+  assert.equal(parsed.rateLimitObservations[0].lineNumber, 4);
+  assert.equal(parsed.rateLimitObservations[0].usedPercent, null);
+});
+
+test("selectQuotaWindows resolves each window independently and reports waiting, ambiguity, and ignored buckets", () => {
+  const asOf = Date.parse("2026-09-25T12:00:00.000Z");
+  const observedAtMs = asOf - 60_000;
+  const observation = (overrides = {}) => ({
+    sourcePath: "codex.jsonl",
+    lineNumber: 1,
+    role: "primary",
+    observedAtMs,
+    limitId: "codex",
+    limitName: null,
+    planType: null,
+    windowMinutes: 300,
+    resetsAtMs: Date.parse("2026-09-25T14:37:00.000Z"),
+    usedPercent: null,
+    ...overrides,
+  });
+
+  const onlyFiveHours = selectQuotaWindows([observation()], asOf);
+  assert.equal(onlyFiveHours.windows.quota_5h.state, "available");
+  assert.equal(onlyFiveHours.windows.quota_5h.usedPercent, null);
+  assert.equal(onlyFiveHours.windows.quota_week.state, "missing");
+
+  const expired = selectQuotaWindows([observation({ resetsAtMs: asOf })], asOf);
+  assert.equal(expired.windows.quota_5h.state, "waiting");
+
+  const tiedBuckets = selectQuotaWindows([
+    observation({ limitId: "first" }),
+    observation({ sourcePath: "other.jsonl", limitId: "second" }),
+  ], asOf);
+  assert.equal(tiedBuckets.limitId, null);
+  assert.equal(tiedBuckets.windows.quota_5h.state, "ambiguous");
+
+  const mainBucket = selectQuotaWindows([
+    observation(),
+    observation({ sourcePath: "codex.jsonl", lineNumber: 2, role: "secondary", windowMinutes: 10080, resetsAtMs: Date.parse("2026-10-02T14:37:00.000Z") }),
+    observation({ sourcePath: "other.jsonl", limitId: "orphan" }),
+  ], asOf);
+  assert.equal(mainBucket.limitId, "codex");
+  assert.equal(mainBucket.ignoredBucketCount, 1);
+
+  const conflict = selectQuotaWindows([
+    observation({ lineNumber: 1 }),
+    observation({ lineNumber: 2, resetsAtMs: Date.parse("2026-09-25T14:38:00.000Z") }),
+  ], asOf);
+  assert.equal(conflict.windows.quota_5h.state, "ambiguous");
+});
+
+test("unknown usage presets are rejected rather than falling back to all", () => {
+  assert.throws(
+    () => summarizeUsage({ generatedAt: "2026-09-25T12:00:00.000Z", events: [] }, { preset: "unknown" }),
+    (error) => error.code === "INVALID_PRESET",
+  );
+});
+
+test("report and memory-index summaries share fixed quota slots and half-open event boundaries", () => {
+  const startMs = Date.parse("2026-09-25T12:37:00.000Z");
+  const asOfMs = Date.parse("2026-09-25T13:20:00.000Z");
+  const endMs = Date.parse("2026-09-25T17:37:00.000Z");
+  const events = [
+    usageEvent(new Date(startMs - 1).toISOString(), 3),
+    usageEvent(new Date(startMs).toISOString(), 5),
+    usageEvent(new Date(startMs + 30 * 60 * 1000).toISOString(), 6),
+    usageEvent(new Date(asOfMs).toISOString(), 11),
+    usageEvent(new Date(endMs).toISOString(), 13),
+  ];
+  const rateLimitObservations = [{
+    sourcePath: "codex.jsonl",
+    lineNumber: 2,
+    role: "primary",
+    observedAtMs: asOfMs - 60_000,
+    limitId: "codex",
+    limitName: null,
+    planType: null,
+    windowMinutes: 300,
+    resetsAtMs: endMs,
+    usedPercent: 42.5,
+  }];
+  const report = { generatedAt: new Date(asOfMs).toISOString(), events, rateLimitObservations };
+  const index = usageIndex(events);
+  index.generatedAt = report.generatedAt;
+  index.rateLimitObservations = rateLimitObservations;
+  const filters = { preset: "quota_5h", bucket: "month", now: report.generatedAt };
+  const reportSummary = summarizeUsage(report, filters);
+  const indexSummary = summarizeUsageIndex(index, filters);
+
+  assert.equal(reportSummary.range.bucket, "quota_30m");
+  assert.equal(reportSummary.range.quotaState, "available");
+  assert.equal(indexSummary.range.quotaState, "available");
+  assert.equal(reportSummary.range.windowStart, new Date(startMs).toISOString());
+  assert.equal(reportSummary.range.windowEndExclusive, new Date(endMs).toISOString());
+  assert.equal(reportSummary.totals.total, 11);
+  assert.equal(reportSummary.comparison, null);
+  assert.equal(reportSummary.timeline.length, 10);
+  assert.equal(reportSummary.timeline[0].total.total, 5);
+  assert.equal(reportSummary.timeline[1].total.total, 6);
+  assert.ok(reportSummary.timeline.slice(2).every((row) => row.future));
+  assert.deepEqual(
+    indexSummary.timeline.map((row) => [row.key, row.total.total, row.future]),
+    reportSummary.timeline.map((row) => [row.key, row.total.total, row.future]),
+  );
+  assert.deepEqual(indexSummary.quota, reportSummary.quota);
 });

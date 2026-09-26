@@ -8,26 +8,45 @@ import { createInterface } from "node:readline";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { createCostEstimateAccumulator, estimateCostForEvents, estimateEventCost, LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
-import { buildTimelineRows } from "../public/timeline-utils.js";
+import { USAGE_DETAIL_INCONSISTENT, USAGE_DETAIL_MASK, USAGE_FIELDS, emptyUsage, isZeroUsage, validateUsageDetails } from "./usage-fields.js";
+import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
+import { buildTimelineRows, resolveNamedRecentRange } from "../public/timeline-utils.js";
 
 const SESSION_DIRS = ["sessions", "archived_sessions"];
 const PROJECT_USAGE_DIR = ".codex-usage";
 const PROJECT_USAGE_FILE = "usage.jsonl";
 const PROJECT_LOG_SCHEMA_VERSION = "codex-usage.project-log.v1";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const USAGE_FIELDS = [
-  "total",
-  "input",
-  "cached",
-  "output",
-  "reasoning",
-];
-export const USAGE_DETAIL_MASK = Object.freeze({ input: 1, cached: 2, output: 4, reasoning: 8, complete: 15, cacheWrite: 32 });
-const USAGE_DETAIL_INCONSISTENT = 16;
+const MS_PER_MINUTE = 60 * 1000;
+const QUOTA_WINDOW_MINUTES = Object.freeze({ quota_5h: 300, quota_week: 10080 });
+const QUOTA_PERCENT_STALE_AFTER_MS = 10 * 60 * 1000;
+export const USAGE_PRESETS = Object.freeze(["today", "week", "month", "all", "recent", "custom", "quota_5h", "quota_week"]);
 const USAGE_DETAIL_KEYS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"];
 
-export function emptyUsage() {
-  return { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
+export { emptyUsage, USAGE_DETAIL_MASK };
+
+export function isQuotaPreset(preset) {
+  return Object.hasOwn(QUOTA_WINDOW_MINUTES, preset);
+}
+
+export class InvalidPresetError extends Error {
+  constructor(preset) {
+    super(`无效的时间范围：${String(preset)}`);
+    this.name = "InvalidPresetError";
+    this.code = "INVALID_PRESET";
+  }
+}
+
+export class QuotaWindowUnavailableError extends Error {
+  constructor(preset, quota) {
+    const window = quota?.windows?.[preset];
+    super(window?.reason || "当前没有可用的 Codex 限额窗口。");
+    this.name = "QuotaWindowUnavailableError";
+    this.code = "QUOTA_WINDOW_UNAVAILABLE";
+    this.preset = preset;
+    this.quota = quota || null;
+    this.state = window?.state || "missing";
+  }
 }
 
 function usageFromRaw(raw = {}) {
@@ -114,36 +133,6 @@ function projectLogDetailMask(raw = {}) {
   );
 }
 
-function validateUsageDetails(usage, detailMask) {
-  let gap = 0;
-  let mask = detailMask;
-  const inputKnown = Boolean(mask & USAGE_DETAIL_MASK.input);
-  const cachedKnown = Boolean(mask & USAGE_DETAIL_MASK.cached);
-  const outputKnown = Boolean(mask & USAGE_DETAIL_MASK.output);
-  const reasoningKnown = Boolean(mask & USAGE_DETAIL_MASK.reasoning);
-  if (usage.total > 0 && inputKnown && outputKnown && usage.input === 0 && usage.output === 0) {
-    return {
-      detailMask: (mask & ~USAGE_DETAIL_MASK.complete) | USAGE_DETAIL_INCONSISTENT,
-      reconciliationGap: usage.total,
-    };
-  }
-  if (inputKnown && cachedKnown && usage.cached > usage.input) {
-    gap += usage.cached - usage.input;
-    mask &= ~USAGE_DETAIL_MASK.cached;
-  }
-  if (inputKnown && outputKnown && usage.total !== usage.input + usage.output) {
-    gap += Math.abs(usage.total - usage.input - usage.output);
-  }
-  if (outputKnown && reasoningKnown && usage.reasoning > usage.output) {
-    gap += usage.reasoning - usage.output;
-    mask &= ~USAGE_DETAIL_MASK.reasoning;
-  }
-  if (gap > 0) {
-    mask |= USAGE_DETAIL_INCONSISTENT;
-  }
-  return { detailMask: mask, reconciliationGap: gap };
-}
-
 function addUsage(target, usage) {
   for (const field of USAGE_FIELDS) {
     target[field] += usage[field] || 0;
@@ -180,10 +169,6 @@ function rememberSessionUsage(baselines, sessionId, usage, detailMask, cacheWrit
   baseline.cacheWrite.tokens += cacheWriteTokens || 0;
   baseline.cacheWrite.known &&= Boolean(cacheWriteKnown);
   baselines.set(sessionId, baseline);
-}
-
-function isZeroUsage(usage) {
-  return USAGE_FIELDS.every((field) => !usage[field]);
 }
 
 async function exists(filePath) {
@@ -248,6 +233,15 @@ export async function classifyImportDirectory(importPath) {
     };
   }
 
+  const zcodeDbFile = await zcodeDatabaseFile(resolved);
+  if (zcodeDbFile) {
+    return {
+      type: "zcode-home",
+      path: resolved,
+      dbFile: zcodeDbFile,
+    };
+  }
+
   const directUsageLogPath = path.join(resolved, PROJECT_USAGE_FILE);
   if (path.basename(resolved) === PROJECT_USAGE_DIR && (await exists(directUsageLogPath))) {
     return {
@@ -269,7 +263,7 @@ export async function classifyImportDirectory(importPath) {
   return {
     type: "unsupported",
     path: resolved,
-    reason: `目录需要是 Codex home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
+    reason: `目录需要是 Codex home、ZCode home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
   };
 }
 
@@ -336,10 +330,57 @@ export async function discoverCodexHomes(options = {}) {
   return homes;
 }
 
+export async function discoverZcodeHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const envHomes = options.extraZcodeHomes || env.CODEX_USAGE_ZCODE_HOMES || "";
+  const homes = [];
+  const seen = new Set();
+
+  if (env.CODEX_USAGE_ZCODE === "0") {
+    return homes;
+  }
+
+  async function addHome(label, homePath) {
+    const resolved = path.resolve(homePath);
+    if (seen.has(resolved)) {
+      return;
+    }
+    const dbFile = await zcodeDatabaseFile(resolved);
+    if (!dbFile) {
+      return;
+    }
+    seen.add(resolved);
+    homes.push({
+      id: sourceId("zcode", resolved),
+      label,
+      path: resolved,
+      kind: "zcode",
+      usageLogPath: dbFile,
+    });
+  }
+
+  await addHome("Main ZCode", path.join(homeDir, ".zcode"));
+
+  for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
+    await addHome(`ZCode ${path.basename(extraHome) || extraHome}`, extraHome);
+  }
+
+  return homes;
+}
+
 export async function discoverUsageSources(options = {}) {
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
   const seenProjectLogs = new Set();
+
+  for (const zcodeHome of await discoverZcodeHomes(options)) {
+    if (seenPaths.has(zcodeHome.path)) {
+      continue;
+    }
+    seenPaths.add(zcodeHome.path);
+    sources.push(zcodeHome);
+  }
 
   for (const importDir of optionImportDirs(options)) {
     const classified = await classifyImportDirectory(importDir);
@@ -353,6 +394,22 @@ export async function discoverUsageSources(options = {}) {
         label: `Imported ${path.basename(classified.path) || classified.path}`,
         path: classified.path,
         kind: "extra",
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "zcode-home") {
+      if (seenPaths.has(classified.path)) {
+        continue;
+      }
+      seenPaths.add(classified.path);
+      sources.push({
+        id: sourceId("zcode", classified.path),
+        label: `ZCode ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "zcode",
+        usageLogPath: classified.dbFile,
         imported: true,
       });
       continue;
@@ -437,6 +494,14 @@ export async function buildUsageFingerprint(options = {}) {
       await addFile(home.usageLogPath);
       continue;
     }
+    if (home.kind === "zcode" && home.usageLogPath) {
+      try {
+        await addFile(home.usageLogPath, await zcodeSourceStat(home.usageLogPath));
+      } catch (error) {
+        hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+      }
+      continue;
+    }
     let files;
     try {
       files = await discoverSessionFiles(home.path);
@@ -499,6 +564,229 @@ function readTokenUsage(payload, row = {}) {
   };
 }
 
+function invalidRateLimitWarning(sourcePath, lineNumber, role, reason) {
+  return `无法索引 Codex 限额观察值 ${sourcePath}:${lineNumber} (${role})：${reason}`;
+}
+
+export function parseRateLimitObservations(row, { sourcePath = "", lineNumber = 0, onWarning } = {}) {
+  if (row?.type !== "event_msg" || row?.payload?.type !== "token_count" || !Object.hasOwn(row.payload, "rate_limits")) {
+    return [];
+  }
+  const rateLimits = row.payload.rate_limits;
+  if (rateLimits === null || rateLimits === undefined) return [];
+  if (typeof rateLimits !== "object" || Array.isArray(rateLimits)) {
+    onWarning?.(invalidRateLimitWarning(sourcePath, lineNumber, "primary/secondary", "rate_limits 格式无效"));
+    return [];
+  }
+  const observedAtMs = Date.parse(row.timestamp || "");
+  const observations = [];
+  for (const role of ["primary", "secondary"]) {
+    if (!Object.hasOwn(rateLimits, role) || rateLimits[role] === null || rateLimits[role] === undefined) continue;
+    const raw = rateLimits[role];
+    let reason = "";
+    const rootLimitId = typeof rateLimits.limit_id === "string" ? rateLimits.limit_id.trim() : "";
+    const windowLimitId = typeof raw?.limit_id === "string" ? raw.limit_id.trim() : "";
+    const limitId = rootLimitId || windowLimitId;
+    const windowMinutes = raw?.window_minutes === "" || raw?.window_minutes === null ? NaN : Number(raw?.window_minutes);
+    const resetSeconds = raw?.resets_at === "" || raw?.resets_at === null ? NaN : Number(raw?.resets_at);
+    const resetsAtMs = resetSeconds * 1000;
+    const hasPercent = raw && Object.hasOwn(raw, "used_percent") && raw.used_percent !== null && raw.used_percent !== "";
+    const usedPercent = hasPercent ? Number(raw.used_percent) : null;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) reason = "窗口数据格式无效";
+    else if (!Number.isFinite(observedAtMs)) reason = "观察时间无效";
+    else if (rootLimitId && windowLimitId && rootLimitId !== windowLimitId) reason = "顶层与窗口 limit_id 冲突";
+    else if (!limitId) reason = "limit_id 为空";
+    else if (!Number.isFinite(windowMinutes) || windowMinutes <= 0) reason = "window_minutes 必须是正数";
+    else if (!Number.isFinite(resetSeconds) || resetSeconds <= 0 || !Number.isFinite(resetsAtMs) || Number.isNaN(new Date(resetsAtMs).getTime())) reason = "resets_at 无效";
+    else if (hasPercent && (!Number.isFinite(usedPercent) || usedPercent < 0 || usedPercent > 100)) reason = "used_percent 必须在 0 到 100 之间";
+    if (reason) {
+      onWarning?.(invalidRateLimitWarning(sourcePath, lineNumber, role, reason));
+      continue;
+    }
+    observations.push({
+      sourcePath,
+      lineNumber,
+      role,
+      observedAtMs,
+      limitId,
+      limitName: typeof rateLimits.limit_name === "string" ? rateLimits.limit_name :
+        typeof raw.limit_name === "string" ? raw.limit_name : null,
+      planType: typeof rateLimits.plan_type === "string" ? rateLimits.plan_type :
+        typeof raw.plan_type === "string" ? raw.plan_type : null,
+      windowMinutes,
+      resetsAtMs,
+      usedPercent,
+    });
+  }
+  return observations;
+}
+
+function observationKey(observation, index) {
+  const sourcePath = observation.sourcePath ?? observation.source_path;
+  const lineNumber = observation.lineNumber ?? observation.line_number;
+  const role = observation.role;
+  return sourcePath !== undefined && lineNumber !== undefined && role
+    ? `${sourcePath}\u0000${lineNumber}\u0000${role}`
+    : `unkeyed\u0000${index}`;
+}
+
+function observationValue(observation, camelName, snakeName) {
+  return observation?.[camelName] ?? observation?.[snakeName];
+}
+
+function unavailableQuotaWindow(state, reason) {
+  const reasonCode = new Map([
+    ["存在多个无法区分的 Codex 限额桶。", "multiple-buckets"],
+    ["尚未发现 Codex 限额记录。", "no-records"],
+    ["同一观察时刻存在相互冲突的限额重置时间。", "conflicting-reset"],
+    ["等待新的限额记录", "waiting"],
+    ["尚未发现当前限额窗口的 Codex 记录。", "missing-window"],
+    ["限额窗口边界无效。", "invalid-boundaries"],
+  ]).get(reason) || state;
+  return {
+    state,
+    reason,
+    reasonCode,
+    windowStart: null,
+    windowEndExclusive: null,
+    observedAt: null,
+    usedPercent: null,
+    percentStale: null,
+  };
+}
+
+export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
+  const asOfMs = asOfValue instanceof Date
+    ? asOfValue.getTime()
+    : typeof asOfValue === "number" ? asOfValue : Date.parse(asOfValue);
+  if (!Number.isFinite(asOfMs)) throw new RangeError("asOf must be a valid date.");
+  const asOf = new Date(asOfMs).toISOString();
+  const unique = new Map();
+  observations.forEach((observation, index) => {
+    const key = observationKey(observation, index);
+    if (!unique.has(key)) unique.set(key, observation);
+  });
+  const valid = [...unique.values()].filter((observation) => {
+    const id = observationValue(observation, "limitId", "limit_id");
+    const observedAt = Number(observationValue(observation, "observedAtMs", "observed_at_ms"));
+    const windowMinutes = Number(observation.windowMinutes ?? observation.window_minutes);
+    const resetsAtMs = Number(observationValue(observation, "resetsAtMs", "resets_at_ms"));
+    return typeof id === "string" && id.trim() && Number.isFinite(observedAt) && Number.isFinite(windowMinutes) && windowMinutes > 0 && Number.isFinite(resetsAtMs);
+  });
+  const buckets = new Map();
+  for (const observation of valid) {
+    const id = observationValue(observation, "limitId", "limit_id");
+    const observedAtMs = Number(observationValue(observation, "observedAtMs", "observed_at_ms"));
+    const bucket = buckets.get(id) || { count: 0, latestObservedAtMs: -Infinity, observations: [] };
+    bucket.count += 1;
+    bucket.latestObservedAtMs = Math.max(bucket.latestObservedAtMs, observedAtMs);
+    bucket.observations.push(observation);
+    buckets.set(id, bucket);
+  }
+
+  let limitId = null;
+  let ignoredBucketCount = 0;
+  let bucketAmbiguous = false;
+  if (buckets.size === 1) {
+    limitId = buckets.keys().next().value;
+  } else if (buckets.size > 1) {
+    const repeated = [...buckets].filter(([, bucket]) => bucket.count > 1);
+    if (!repeated.length) {
+      bucketAmbiguous = true;
+    } else {
+      const candidates = repeated.sort((left, right) =>
+        right[1].count - left[1].count || right[1].latestObservedAtMs - left[1].latestObservedAtMs,
+      );
+      ignoredBucketCount = buckets.size - candidates.length;
+      if (candidates.length > 1 && candidates[0][1].count === candidates[1][1].count && candidates[0][1].latestObservedAtMs === candidates[1][1].latestObservedAtMs) {
+        bucketAmbiguous = true;
+      } else {
+        limitId = candidates[0][0];
+      }
+    }
+  }
+
+  const windows = {};
+  for (const [preset, windowMinutes] of Object.entries(QUOTA_WINDOW_MINUTES)) {
+    if (bucketAmbiguous) {
+      windows[preset] = unavailableQuotaWindow("ambiguous", "存在多个无法区分的 Codex 限额桶。");
+      continue;
+    }
+    if (!limitId) {
+      windows[preset] = unavailableQuotaWindow("missing", "尚未发现 Codex 限额记录。");
+      continue;
+    }
+    const bucketObservations = buckets.get(limitId).observations.filter((observation) =>
+      Number(observation.windowMinutes ?? observation.window_minutes) === windowMinutes,
+    );
+    const observedBeforeAsOf = bucketObservations.filter((observation) =>
+      Number(observationValue(observation, "observedAtMs", "observed_at_ms")) <= asOfMs,
+    );
+    const current = observedBeforeAsOf.filter((observation) => {
+      const endMs = Number(observationValue(observation, "resetsAtMs", "resets_at_ms"));
+      const startMs = endMs - windowMinutes * MS_PER_MINUTE;
+      return startMs <= asOfMs && asOfMs < endMs;
+    });
+    if (current.length) {
+      const latestObservedAtMs = Math.max(...current.map((observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms"))));
+      const latest = current.filter((observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms")) === latestObservedAtMs);
+      const endPoints = new Set(latest.map((observation) => Number(observationValue(observation, "resetsAtMs", "resets_at_ms"))));
+      if (endPoints.size > 1) {
+        windows[preset] = unavailableQuotaWindow("ambiguous", "同一观察时刻存在相互冲突的限额重置时间。");
+        continue;
+      }
+      const windowEndMs = endPoints.values().next().value;
+      const percents = new Set(latest.map((observation) => {
+        const value = observationValue(observation, "usedPercent", "used_percent");
+        return value === null || value === undefined ? null : Number(value);
+      }));
+      const usedPercent = percents.size === 1 ? percents.values().next().value : null;
+      const windowStartMs = windowEndMs - windowMinutes * MS_PER_MINUTE;
+      windows[preset] = {
+        state: "available",
+        reason: null,
+        windowStart: new Date(windowStartMs).toISOString(),
+        windowEndExclusive: new Date(windowEndMs).toISOString(),
+        observedAt: new Date(latestObservedAtMs).toISOString(),
+        usedPercent: Number.isFinite(usedPercent) ? usedPercent : null,
+        percentStale: asOfMs - latestObservedAtMs > QUOTA_PERCENT_STALE_AFTER_MS,
+      };
+      continue;
+    }
+    const hasExpiredObservation = observedBeforeAsOf.some((observation) =>
+      Number(observationValue(observation, "resetsAtMs", "resets_at_ms")) <= asOfMs,
+    );
+    windows[preset] = hasExpiredObservation
+      ? unavailableQuotaWindow("waiting", "等待新的限额记录")
+      : unavailableQuotaWindow("missing", "尚未发现当前限额窗口的 Codex 记录。");
+  }
+  const previousWindows = {};
+  for (const [preset, minutes] of Object.entries(QUOTA_WINDOW_MINUTES)) {
+    const cutoff = windows[preset]?.state === "available" ? Date.parse(windows[preset].windowStart) : asOfMs;
+    const candidates = (buckets.get(limitId)?.observations || []).filter(row => {
+      const observed = Number(observationValue(row, "observedAtMs", "observed_at_ms"));
+      const end = Number(observationValue(row, "resetsAtMs", "resets_at_ms"));
+      return Number(row.windowMinutes ?? row.window_minutes) === minutes && observed <= asOfMs && observed < end && end <= cutoff;
+    });
+    if (!candidates.length || bucketAmbiguous || windows[preset]?.state === "ambiguous") {
+      previousWindows[preset] = unavailableQuotaWindow("missing", "尚未发现上一限额窗口的 Codex 记录。");
+      continue;
+    }
+    const latestTime = candidates.reduce((max, row) => Math.max(max, Number(observationValue(row, "observedAtMs", "observed_at_ms"))), -Infinity);
+    const latest = candidates.filter(row => Number(observationValue(row, "observedAtMs", "observed_at_ms")) === latestTime);
+    const ends = new Set(latest.map(row => Number(observationValue(row, "resetsAtMs", "resets_at_ms"))));
+    if (ends.size !== 1) {
+      previousWindows[preset] = unavailableQuotaWindow("ambiguous", "同一观察时刻存在相互冲突的限额重置时间。");
+      continue;
+    }
+    const end = [...ends][0];
+    previousWindows[preset] = { state: "available", reason: null,
+      windowStart: new Date(end - minutes * MS_PER_MINUTE).toISOString(),
+      windowEndExclusive: new Date(end).toISOString(), observedAt: new Date(latestTime).toISOString() };
+  }
+  return { asOf, limitId, ignoredBucketCount, windows, previousWindows };
+}
+
 export async function parseSessionFile(filePath, home, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   const threadNames = options.threadNames || new Map();
@@ -520,9 +808,10 @@ export async function parseSessionFile(filePath, home, options = {}) {
   let finalUsage = emptyUsage();
   let tokenEventCount = 0;
   const events = [];
+  const rateLimitObservations = [];
 
   // Stream JSONL rows so full-detail reports do not read large session files at once.
-  for await (const row of readJsonlRows(filePath)) {
+  for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
     if (row.timestamp) {
       firstAt ||= row.timestamp;
       lastAt = row.timestamp;
@@ -545,6 +834,16 @@ export async function parseSessionFile(filePath, home, options = {}) {
 
     if (row.type !== "event_msg" || row.payload?.type !== "token_count") {
       continue;
+    }
+
+    const observations = parseRateLimitObservations(row, {
+      sourcePath: filePath,
+      lineNumber,
+      onWarning: options.onWarning,
+    });
+    rateLimitObservations.push(...observations);
+    for (const observation of observations) {
+      await options.onRateLimit?.(observation);
     }
 
     if (!baselineLoaded && options.previousCumulativeForSession) {
@@ -625,7 +924,7 @@ export async function parseSessionFile(filePath, home, options = {}) {
     });
   }
 
-  if (!events.length) {
+  if (!events.length && !rateLimitObservations.length) {
     return null;
   }
 
@@ -636,7 +935,7 @@ export async function parseSessionFile(filePath, home, options = {}) {
   });
 
   return {
-    session: {
+    session: events.length ? {
       id: meta.id,
       filePath,
       firstAt,
@@ -654,23 +953,27 @@ export async function parseSessionFile(filePath, home, options = {}) {
       modelProvider: meta.modelProvider,
       eventCount: events.length,
       total: finalUsage,
-    },
+    } : null,
     events,
+    rateLimitObservations,
   };
 }
 
-async function* readJsonlRows(filePath) {
+async function* readJsonlRows(filePath, { withLineNumbers = false } = {}) {
   const lines = createInterface({
     input: createReadStream(filePath, { encoding: "utf8" }),
     crlfDelay: Infinity,
   });
 
+  let lineNumber = 0;
   for await (const line of lines) {
+    lineNumber += 1;
     if (!line.trim()) {
       continue;
     }
     try {
-      yield JSON.parse(line);
+      const row = JSON.parse(line);
+      yield withLineNumbers ? { row, lineNumber } : row;
     } catch {
       // Ignore malformed JSONL rows from interrupted writes.
     }
@@ -865,7 +1168,7 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
   let previousCumulativeCacheWrite = { tokens: 0, known: false };
   let baselineLoaded = false;
 
-  for await (const row of readJsonlRows(filePath)) {
+  for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
     if (row.timestamp) {
       firstAt ||= row.timestamp;
       lastAt = row.timestamp;
@@ -886,6 +1189,14 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
 
     if (row.type !== "event_msg" || row.payload?.type !== "token_count") {
       continue;
+    }
+
+    for (const observation of parseRateLimitObservations(row, {
+      sourcePath: filePath,
+      lineNumber,
+      onWarning: options.onWarning,
+    })) {
+      await options.onRateLimit?.(observation);
     }
 
     if (!baselineLoaded && options.previousCumulativeForSession) {
@@ -1015,10 +1326,14 @@ export async function streamUsageFileEvents(filePath, source, onEvent, options =
     await streamProjectUsageFileEvents(filePath, source, onEvent, options);
     return;
   }
+  if (source.kind === "zcode") {
+    await streamZcodeDbEvents(filePath, source, onEvent, options);
+    return;
+  }
   await streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
-async function parseSessionFileForIndex(filePath, home, intern, resolveRepository, previousCumulativeForSession) {
+async function parseSessionFileForIndex(filePath, home, intern, resolveRepository, previousCumulativeForSession, onRateLimit, onWarning) {
   const events = [];
   await streamSessionUsageFileEvents(filePath, home, (event) => {
     events.push({
@@ -1046,7 +1361,7 @@ async function parseSessionFileForIndex(filePath, home, intern, resolveRepositor
       serviceTier: intern(event.serviceTier),
       priceVersion: intern(event.priceVersion),
     });
-  }, { repositoryResolver: resolveRepository, previousCumulativeForSession });
+  }, { repositoryResolver: resolveRepository, previousCumulativeForSession, onRateLimit, onWarning });
   return events;
 }
 
@@ -1082,17 +1397,61 @@ async function parseProjectUsageLogFileForIndex(filePath, source, intern, resolv
   return events;
 }
 
+async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
+  const events = [];
+  await streamZcodeDbEvents(dbFile, source, (event) => {
+    events.push({
+      t: event.timestampMs,
+      s: intern(event.sessionId),
+      h: intern(event.homeId),
+      l: intern(event.homeLabel),
+      c: intern(event.channel),
+      p: intern(event.project),
+      rk: intern(event.repositoryKey),
+      rp: intern(event.repositoryPath),
+      rt: intern(event.repositoryKind),
+      m: intern(event.model),
+      total: event.usage.total,
+      input: event.usage.input,
+      cached: event.usage.cached,
+      output: event.usage.output,
+      reasoning: event.usage.reasoning,
+      detailMask: event.detailMask,
+      reconciliationGap: event.reconciliationGap,
+      cacheWriteTokens: event.cacheWriteTokens,
+      cacheWriteKnown: event.cacheWriteKnown,
+      requestInputTokens: event.requestInputTokens,
+      contextLevel: intern(event.contextLevel),
+      serviceTier: intern(event.serviceTier),
+      priceVersion: intern(event.priceVersion),
+    });
+  }, { repositoryResolver: resolveRepository });
+  return events;
+}
+
 export async function buildUsageReport(options = {}) {
   const homes = options.homes || (await discoverUsageSources(options));
   const repositoryResolver = createRepositoryResolver();
   const sessions = [];
   const events = [];
+  const rateLimitObservations = [];
   const warnings = [];
 
   for (const home of homes) {
     if (home.kind === "project-log" && home.usageLogPath) {
       try {
         const parsed = await parseProjectUsageLogFile(home.usageLogPath, home, { repositoryResolver });
+        sessions.push(...parsed.sessions);
+        events.push(...parsed.events);
+      } catch (error) {
+        warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
+      }
+      continue;
+    }
+
+    if (home.kind === "zcode" && home.usageLogPath) {
+      try {
+        const parsed = await parseZcodeDb(home.usageLogPath, home, { repositoryResolver });
         sessions.push(...parsed.sessions);
         events.push(...parsed.events);
       } catch (error) {
@@ -1113,12 +1472,18 @@ export async function buildUsageReport(options = {}) {
 
     for (const file of files) {
       try {
-        const parsed = await parseSessionFile(file, home, { repositoryResolver, threadNames, previousCumulativeForSession: (sessionId) => previousBySession.get(sessionId) });
+        const parsed = await parseSessionFile(file, home, {
+          repositoryResolver,
+          threadNames,
+          previousCumulativeForSession: (sessionId) => previousBySession.get(sessionId),
+          onWarning: (warning) => warnings.push(warning),
+        });
         if (!parsed) {
           continue;
         }
-        sessions.push(parsed.session);
+        if (parsed.session) sessions.push(parsed.session);
         events.push(...parsed.events);
+        rateLimitObservations.push(...parsed.rateLimitObservations);
         for (const event of parsed.events) {
           rememberSessionUsage(previousBySession, event.sessionId, event.total, event.detailMask, event.cacheWriteTokens, event.cacheWriteKnown);
         }
@@ -1140,6 +1505,7 @@ export async function buildUsageReport(options = {}) {
     homes,
     sessions,
     events,
+    rateLimitObservations,
     warnings,
   };
 }
@@ -1149,12 +1515,22 @@ export async function buildUsageIndex(options = {}) {
   const repositoryResolver = createRepositoryResolver();
   const warnings = [];
   const events = [];
+  const rateLimitObservations = [];
   const interner = createStringInterner();
 
   for (const home of homes) {
     if (home.kind === "project-log" && home.usageLogPath) {
       try {
         events.push(...(await parseProjectUsageLogFileForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)));
+      } catch (error) {
+        warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
+      }
+      continue;
+    }
+
+    if (home.kind === "zcode" && home.usageLogPath) {
+      try {
+        events.push(...(await parseZcodeDbForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)));
       } catch (error) {
         warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
       }
@@ -1172,8 +1548,10 @@ export async function buildUsageIndex(options = {}) {
 
     for (const file of files) {
       try {
-        const parsed = await parseSessionFileForIndex(file, home, interner.intern, repositoryResolver,
-          (sessionId) => previousBySession.get(sessionId));
+      const parsed = await parseSessionFileForIndex(file, home, interner.intern, repositoryResolver,
+          (sessionId) => previousBySession.get(sessionId),
+          (observation) => rateLimitObservations.push(observation),
+          (warning) => warnings.push(warning));
         events.push(...parsed);
         for (const event of parsed) {
           rememberSessionUsage(previousBySession, interner.values[event.s], event, event.detailMask, event.cacheWriteTokens, event.cacheWriteKnown);
@@ -1197,6 +1575,7 @@ export async function buildUsageIndex(options = {}) {
     warnings,
     strings: interner.values,
     events,
+    rateLimitObservations,
     sessionCount: new Set(events.map((event) => event.s)).size,
   };
 }
@@ -1316,6 +1695,46 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
   // Report and index summaries share this resolver to avoid date-range drift.
   const now = filters.now ? new Date(filters.now) : new Date();
   const preset = filters.preset || "all";
+  if (!USAGE_PRESETS.includes(preset)) {
+    throw new InvalidPresetError(preset);
+  }
+  if (isQuotaPreset(preset)) {
+    const quota = filters.quota;
+    const quotaWindow = quota?.windows?.[preset];
+    if (quotaWindow?.state !== "available") {
+      throw new QuotaWindowUnavailableError(preset, quota);
+    }
+    const windowStartMs = Date.parse(quotaWindow.windowStart || "");
+    const windowEndExclusiveMs = Date.parse(quotaWindow.windowEndExclusive || "");
+    const asOfMs = Date.parse(quota?.asOf || "");
+    const expectedDuration = QUOTA_WINDOW_MINUTES[preset] * MS_PER_MINUTE;
+    if (!Number.isFinite(windowStartMs) || !Number.isFinite(windowEndExclusiveMs) || !Number.isFinite(asOfMs) ||
+        windowEndExclusiveMs - windowStartMs !== expectedDuration || windowStartMs > asOfMs || asOfMs >= windowEndExclusiveMs) {
+      throw new QuotaWindowUnavailableError(preset, {
+        ...quota,
+        windows: { ...quota?.windows, [preset]: unavailableQuotaWindow("ambiguous", "限额窗口边界无效。") },
+      });
+    }
+    const effectiveEndExclusiveMs = Math.min(asOfMs, windowEndExclusiveMs);
+    return {
+      start: new Date(windowStartMs),
+      // Existing event queries use inclusive ends. Subtracting one millisecond
+      // preserves the required [start, effectiveEndExclusive) window.
+      end: new Date(effectiveEndExclusiveMs - 1),
+      endExclusive: new Date(effectiveEndExclusiveMs),
+      windowEndExclusive: new Date(windowEndExclusiveMs),
+      asOf: new Date(asOfMs),
+      observedAt: quotaWindow.observedAt ? new Date(quotaWindow.observedAt) : null,
+      usedPercent: quotaWindow.usedPercent ?? null,
+      percentStale: Boolean(quotaWindow.percentStale),
+      limitId: quota.limitId || null,
+      quotaState: "available",
+      quotaReason: null,
+      quotaWindow: true,
+      preset,
+      rolling: false,
+    };
+  }
   if (preset === "today") {
     return { start: startOfLocalDay(now), end: endOfLocalDay(now), preset };
   }
@@ -1337,6 +1756,11 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
     };
   }
   if (preset === "recent") {
+    const named = resolveNamedRecentRange(filters.recentValue, now, filters.quota);
+    if (named) {
+      if (named.quotaState === "missing") throw new QuotaWindowUnavailableError(named.quotaPreset, filters.quota);
+      return named;
+    }
     const range = recentDateRange(filters.recentValue, now);
     if (range) {
       return range;
@@ -1901,11 +2325,41 @@ function buildTimelineRowsWithLimit(events, range, bucket, options = {}) {
   }
 }
 
+function summaryQuotaContext(observations, filters) {
+  const initialAsOf = filters.quota?.asOf || filters.now || new Date();
+  const quota = filters.quota || selectQuotaWindows(observations || [], initialAsOf);
+  return { quota, asOf: new Date(quota.asOf) };
+}
+
+function summaryRangeFields(range, bucket) {
+  return {
+    preset: range.preset,
+    start: range.start ? range.start.toISOString() : null,
+    end: range.end ? range.end.toISOString() : null,
+    bucket,
+    rolling: Boolean(range.rolling),
+    ...(range.quotaWindow ? {
+      quotaWindow: true, recentValue: range.recentValue, quotaPreset: range.quotaPreset,
+      asOf: range.asOf.toISOString(),
+      windowStart: range.start.toISOString(),
+      windowEndExclusive: range.windowEndExclusive.toISOString(),
+      observedAt: range.observedAt?.toISOString() || null,
+      usedPercent: range.usedPercent,
+      percentStale: range.percentStale,
+      limitId: range.limitId,
+      quotaState: range.quotaState,
+      quotaReason: range.quotaReason,
+    } : {}),
+  };
+}
+
 export function summarizeUsageIndex(index, filters = {}) {
-  const bucket = filters.bucket || "day";
   const strings = index.strings;
-  const range = indexDateRange(filters, index.events);
-  const now = filters.now ? new Date(filters.now) : new Date();
+  const { quota, asOf } = summaryQuotaContext(index.rateLimitObservations, filters);
+  const range = indexDateRange({ ...filters, quota, now: asOf }, index.events);
+  const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
+  const bucket = range.bucket || (quotaPreset ? range.preset === "quota_5h" ? "quota_30m" : "quota_24h" : filters.bucket || "day");
+  const now = range.asOf || asOf;
   const events = index.events.filter((event) => {
     if (!Number.isFinite(event.t)) {
       return false;
@@ -1921,7 +2375,7 @@ export function summarizeUsageIndex(index, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.s));
   const totals = events.reduce((sum, event) => addIndexedUsage(sum, event), emptyUsage());
-  const comparison = usageComparison({
+  const comparison = quotaPreset ? null : usageComparison({
     range,
     allEvents: index.events,
     eventTime: (event) => event.t,
@@ -1964,15 +2418,10 @@ export function summarizeUsageIndex(index, filters = {}) {
 
   return {
     generatedAt: index.generatedAt,
-    range: {
-      preset: range.preset,
-      start: range.start ? range.start.toISOString() : null,
-      end: range.end ? range.end.toISOString() : null,
-      bucket,
-      rolling: Boolean(range.rolling),
-    },
+    range: summaryRangeFields(range, bucket),
     totals,
     comparison,
+    quota,
     costEstimate,
     eventCount: events.length,
     sessionCount: sessionIds.size,
@@ -1988,9 +2437,11 @@ export function summarizeUsageIndex(index, filters = {}) {
 }
 
 export function summarizeUsage(report, filters = {}) {
-  const bucket = filters.bucket || "day";
-  const range = resolveDateRange(filters, report.events);
-  const now = filters.now ? new Date(filters.now) : new Date();
+  const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
+  const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);
+  const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
+  const bucket = range.bucket || (quotaPreset ? range.preset === "quota_5h" ? "quota_30m" : "quota_24h" : filters.bucket || "day");
+  const now = range.asOf || asOf;
   const events = report.events.filter((event) => {
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
@@ -2007,7 +2458,7 @@ export function summarizeUsage(report, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.sessionId));
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
-  const comparison = usageComparison({
+  const comparison = quotaPreset ? null : usageComparison({
     range,
     allEvents: report.events,
     eventTime: (event) => Date.parse(event.timestamp),
@@ -2030,15 +2481,10 @@ export function summarizeUsage(report, filters = {}) {
 
   return {
     generatedAt: report.generatedAt,
-    range: {
-      preset: range.preset,
-      start: range.start ? range.start.toISOString() : null,
-      end: range.end ? range.end.toISOString() : null,
-      bucket,
-      rolling: Boolean(range.rolling),
-    },
+    range: summaryRangeFields(range, bucket),
     totals,
     comparison,
+    quota,
     costEstimate,
     eventCount: events.length,
     sessionCount: sessionIds.size,

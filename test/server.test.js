@@ -21,6 +21,25 @@ function localHourKey(value) {
   return `${year}-${month}-${day} ${hour}:00`;
 }
 
+function quotaTokenRow(timestamp, { resetsAtMs, windowMinutes = 300, limitId = "codex", usedPercent = 42 } = {}) {
+  return {
+    timestamp,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: { total_token_usage: { total_tokens: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 } },
+      rate_limits: {
+        limit_id: limitId,
+        primary: {
+          window_minutes: windowMinutes,
+          resets_at: resetsAtMs / 1000,
+          used_percent: usedPercent,
+        },
+      },
+    },
+  };
+}
+
 async function makeFixtureHome() {
   const fakeHome = await mkdtemp(path.join(tmpdir(), "codex-server-"));
   const sessionDir = path.join(fakeHome, ".codex", "sessions", "2026", "05", "01");
@@ -78,9 +97,11 @@ test("server serves the dashboard and usage API", async () => {
     const hourlyJson = await hourly.json();
 
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /Codex Usage/);
+    assert.match(await page.text(), /Agent Usage/);
     assert.equal(api.status, 200);
     assert.equal(json.summary.totals.total, 123);
+    assert.equal(json.quota.asOf, json.summary.quota.asOf);
+    assert.equal(json.quota.windows.quota_5h.state, "missing");
     assert.equal(recent.status, 200);
     assert.equal(recentJson.summary.range.preset, "recent");
     assert.equal(recentJson.summary.totals.total, 0);
@@ -114,15 +135,52 @@ test("server serves the dashboard and usage API", async () => {
 
     const invalidDate = await fetch(baseUrl + "/api/summary?preset=custom&startDate=2026-02-30");
     const invalidBucket = await fetch(baseUrl + "/api/summary?bucket=fortnight");
+    const invalidPreset = await fetch(baseUrl + "/api/summary?preset=quarter");
+    const unavailableQuota = await fetch(baseUrl + "/api/usage?preset=quota_5h");
     const malformedPath = await fetch(baseUrl + "/%E0%A4%A");
     assert.equal(invalidDate.status, 400);
     assert.equal(invalidBucket.status, 400);
+    assert.equal(invalidPreset.status, 400);
+    assert.equal((await invalidPreset.json()).code, "INVALID_PRESET");
+    assert.equal(unavailableQuota.status, 409);
+    const unavailableQuotaBody = await unavailableQuota.json();
+    assert.equal(unavailableQuotaBody.code, "QUOTA_WINDOW_UNAVAILABLE");
+    assert.equal(unavailableQuotaBody.quota.windows.quota_5h.state, "missing");
+    assert.equal(unavailableQuotaBody.summary, undefined);
     assert.equal(malformedPath.status, 400);
 
     const detailed = await fetch(`${baseUrl}/api/usage?detail=full`).then((response) => response.json());
     assert.equal(detailed.report.events[0].channel, "CLI");
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("server accepts named recent reset windows and calendar ranges", async () => {
+  const fixture = await makeFixtureHome();
+  const end = Date.now() - 60_000;
+  const observed = new Date(end - 60_000).toISOString();
+  await appendFile(fixture.sessionFile, jsonl([
+    quotaTokenRow(observed, { resetsAtMs: end }),
+    quotaTokenRow(observed, { resetsAtMs: end, windowMinutes: 10080 }),
+  ]));
+  const server = createUsageServer(fixture);
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    for (const [value, bucket, slots] of [["上一个5h", "quota_30m", 10], ["上周", "quota_24h", 7], ["上个月", "day", null], ["今年", "month", null]]) {
+      const query = new URLSearchParams({ preset: "recent", recentValue: value, bucket });
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/api/usage?${query}`);
+      const body = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(body));
+      assert.equal(body.summary.range.bucket, bucket);
+      if (slots) {
+        assert.equal(body.summary.timeline.length, slots);
+        assert.deepEqual(body.summary.records, {});
+      }
+    }
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
   }
 });
 
@@ -239,6 +297,80 @@ test("paused usage keeps the same indexed data across range changes", async () =
       assert.equal(frozen.snapshotId, paused.snapshotId);
       assert.equal(frozen.periodComparison.asOf, paused.periodComparison.asOf);
     }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("quota API forces its server bucket, returns capability state, and keeps snapshots frozen", async () => {
+  const { homeDir, importStoreFile, databaseFile, sessionFile } = await makeFixtureHome();
+  const quotaFile = path.join(path.dirname(sessionFile), "quota.jsonl");
+  const liveUsageFile = path.join(path.dirname(sessionFile), "live-usage.jsonl");
+  const estimateNow = Date.now();
+  const observedAtMs = estimateNow - 30_000;
+  const resetsAtMs = estimateNow + 300 * 60_000 - 60_000;
+  const quotaRow = quotaTokenRow(new Date(observedAtMs).toISOString(), { resetsAtMs });
+  quotaRow.payload.rate_limits.secondary = {
+    window_minutes: 10080,
+    resets_at: (estimateNow + (10080 - 60) * 60_000) / 1000,
+    used_percent: 5,
+  };
+  await writeFile(quotaFile, jsonl([
+    { type: "session_meta", timestamp: new Date(observedAtMs - 1_000).toISOString(), payload: { id: "quota-window" } },
+    quotaRow,
+  ]));
+  const liveUsageAt = new Date(estimateNow - 10_000).toISOString();
+  await writeFile(liveUsageFile, jsonl([
+    { type: "session_meta", timestamp: liveUsageAt, payload: { id: "quota-usage", source: "cli", originator: "codex-tui", cwd: "/work/quota" } },
+    {
+      timestamp: liveUsageAt,
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: { total_token_usage: { total_tokens: 50, input_tokens: 40, cached_input_tokens: 5, output_tokens: 10, reasoning_output_tokens: 0 } },
+      },
+    },
+  ]));
+  const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const liveResponse = await fetch(`${baseUrl}/api/usage?preset=quota_5h&bucket=month&detail=full`);
+    const live = await liveResponse.json();
+    assert.equal(liveResponse.status, 200);
+    assert.equal(live.summary.range.bucket, "quota_30m");
+    assert.equal(live.summary.range.quotaState, "available");
+    assert.equal(live.summary.range.quotaReason, null);
+    assert.equal(live.summary.range.asOf, live.quota.asOf);
+    assert.equal(live.quota.windows.quota_5h.state, "available");
+    assert.equal(live.summary.timeline.length, 10);
+    assert.equal(live.summary.totals.total, 50);
+    assert.equal(live.summary.comparison, null);
+    assert.deepEqual(live.summary.records, {});
+    assert.equal(live.report, undefined);
+
+    const liveWeekResponse = await fetch(`${baseUrl}/api/usage?preset=quota_week&bucket=month&view=dashboard`);
+    const liveWeek = await liveWeekResponse.json();
+    assert.equal(liveWeekResponse.status, 200);
+    assert.equal(liveWeek.summary.range.bucket, "quota_24h");
+    assert.equal(liveWeek.summary.range.quotaState, "available");
+    assert.equal(liveWeek.summary.range.quotaReason, null);
+    assert.equal(liveWeek.summary.timeline.length, 7);
+    assert.equal(liveWeek.summary.totals.total, 50);
+
+    const paused = await fetch(`${baseUrl}/api/usage?preset=quota_5h&freeze=1`).then((response) => response.json());
+    assert.ok(paused.snapshotId);
+    const frozen = await fetch(`${baseUrl}/api/usage?preset=quota_5h&snapshot=${paused.snapshotId}&bucket=month`).then((response) => response.json());
+    assert.equal(frozen.quota.asOf, paused.quota.asOf);
+    assert.deepEqual(frozen.quota, paused.quota);
+    assert.equal(frozen.summary.range.bucket, "quota_30m");
+    assert.equal(frozen.summary.range.quotaState, "available");
+
+    const excluded = await fetch(`${baseUrl}/api/summary?preset=quota_5h&exclude=${encodeURIComponent(live.metadata.homes[0].id)}`).then((response) => response.json());
+    assert.equal(excluded.quota.windows.quota_5h.state, "available");
+    assert.equal(excluded.summary.totals.total, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(homeDir, { recursive: true, force: true });
@@ -388,7 +520,7 @@ test("server starts directly when its script path contains spaces", async () => 
       const timer = setTimeout(() => reject(new Error("Timed out waiting for server startup: " + text)), 5_000);
       child.stdout.on("data", (chunk) => {
         text += chunk.toString();
-        if (text.includes("Codex Usage dashboard:")) {
+        if (text.includes("Agent Usage dashboard:")) {
           clearTimeout(timer);
           resolve(text);
         }
@@ -477,5 +609,32 @@ test("pricing API validates, persists, and reprices indexed history", async () =
   } finally {
     if (server.listening) await close();
     await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
+test("usage API 按 exclude 参数过滤数据来源", async () => {
+  const { homeDir, importStoreFile, databaseFile } = await makeFixtureHome();
+  const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const base = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(base.summary.totals.total, 123);
+    const homeId = base.metadata.homes[0].id;
+
+    const filtered = await fetch(`${baseUrl}/api/usage?exclude=${encodeURIComponent(homeId)}`).then((response) => response.json());
+    assert.equal(filtered.summary.totals.total, 0);
+    assert.equal(filtered.summary.eventCount, 0);
+    assert.equal(filtered.periodComparison.models.length, 0);
+    // 过滤只影响统计口径，来源列表要保持完整。
+    assert.equal(filtered.metadata.homes[0].eventCount, 1);
+
+    const summary = await fetch(`${baseUrl}/api/summary?exclude=${encodeURIComponent(homeId)}`).then((response) => response.json());
+    assert.equal(summary.summary.totals.total, 0);
+    assert.equal(summary.periodComparison.models.length, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 });

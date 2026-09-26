@@ -27,6 +27,7 @@ test("auto refresh preference gates polling, preserves manual refresh, and disab
   assert.match(check, /state\.autoRefreshCheckInFlight/);
   assert.match(check, /runId !== state\.autoRefreshRunId/);
   assert.match(check, /await loadUsage\(\)/);
+  assert.match(check, /status\.changed \|\| isQuotaPreset\(state\.preset\)/);
   assert.match(start, /state\.autoRefreshTimer/);
   assert.match(stop, /window\.clearInterval/);
   assert.match(toggle, /stopAutoRefresh\(\)/);
@@ -36,5 +37,8 @@ test("auto refresh preference gates polling, preserves manual refresh, and disab
   assert.match(visibility, /!document\.hidden && state\.autoRefreshEnabled/);
   assert.match(source, /params\.set\("snapshot", state\.snapshotId\)/);
   assert.match(source, /params\.set\("freeze", "1"\)/);
+  assert.match(source, /if \(error\.body\?\.quota\) state\.quotaSnapshot = error\.body\.quota/);
+  assert.match(source, /renderUnavailableQuota\(reason\)/);
+  assert.match(source, /state\.summary = null/);
   assert.doesNotMatch(source, /force: true/);
 });

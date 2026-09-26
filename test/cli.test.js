@@ -249,8 +249,8 @@ test("cli restart stops existing services and starts a new gateway", async () =>
       "--state-file",
       stateFile,
     ], isolatedEnv(homeDir));
-    assert.match(restartOutput, /Stopped 1 Codex Usage service/);
-    const restartMatch = restartOutput.match(/Codex Usage gateway restarted: (http:\/\/127\.0\.0\.1:\d+) \(pid (\d+)\)/);
+    assert.match(restartOutput, /Stopped 1 Agent Usage service/);
+    const restartMatch = restartOutput.match(/Agent Usage gateway restarted: (http:\/\/127\.0\.0\.1:\d+) \(pid (\d+)\)/);
     assert.ok(restartMatch, restartOutput);
     const restartUrl = restartMatch[1];
     const restartPid = Number(restartMatch[2]);
@@ -355,7 +355,7 @@ test("codex-usage -d opens the dashboard", async () => {
       "--state-file",
       stateFile,
     ], isolatedEnv(homeDir));
-    assert.match(output, /Codex Usage dashboard/);
+    assert.match(output, /Agent Usage dashboard/);
     assert.match(output, /http:\/\/127\.0\.0\.1:(\d+)/);
   } finally {
     await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));
@@ -414,7 +414,7 @@ test("cli stop terminates all running usage services from the state file", async
       });
     });
 
-    assert.match(stopOutput, /Stopped 2 Codex Usage service/);
+    assert.match(stopOutput, /Stopped 2 Agent Usage service/);
     const exitCodes = await Promise.all(children.map((child) => waitForExit(child)));
     assert.deepEqual(exitCodes, [0, 0]);
   } finally {

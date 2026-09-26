@@ -1,17 +1,34 @@
-import { buildTimelineRows, MAX_TIMELINE_SLOTS } from "./timeline-utils.js";
+import { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource } from "./timeline-utils.js";
+import {
+  canonicalRecentValue,
+  displayRecentValue,
+  formatLocalDateTime,
+  getLocale,
+  initializeLocale,
+  localizeQuotaReason,
+  localizeServerError,
+  localizeText,
+  setLocale,
+  translatePage,
+} from "./i18n.js";
+
+if (typeof document !== "undefined" && document.body) initializeLocale();
 
 const state = {
   report: null,
   metadata: null,
   summary: null,
+  quotaSnapshot: null,
+  quotaNotice: "",
   periodComparison: null,
   fingerprint: "",
   snapshotId: null,
   preset: "today",
+  lastQuotaPreset: "quota_5h",
   bucket: "hour",
   startDate: "",
   endDate: "",
-  recentValue: "1个月",
+  recentValue: "上个月",
   now: null,
   autoRefreshTimer: null,
   usageLoadId: 0,
@@ -21,6 +38,7 @@ const state = {
   lastSuccessfulCheck: null,
   timelineMode: "channel",
   theme: "light",
+  locale: getLocale(),
   repositoryComparisonQuery: "",
   modelComparisonQuery: "",
   modelComparisonSort: { period: "today", direction: "desc", showIndicator: false },
@@ -28,16 +46,37 @@ const state = {
   expandedPeriodCell: null,
   datePickerField: "",
   pricingCatalog: null,
+  excludedHomes: [],
+  usdToCnyRate: 6.72,
+  costScaleTarget: "USD",
+  pricingSearch: "",
+  pricingScope: "used",
+  modelPricingDraft: null,
   datePickerViews: {
     start: null,
     end: null,
   },
 };
+let quotaNoticeTimer = null;
 
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const QUOTA_PRESETS = ["quota_5h", "quota_week"];
+const QUOTA_MODE_LABELS = Object.freeze({ quota_5h: "5 小时限额", quota_week: "本周限额" });
+const QUOTA_UI_COPY = Object.freeze({
+  unavailable: "此限额窗口当前不可用。",
+  missingSnapshot: "尚无限额快照，请等待 Codex 写入限额记录。",
+  staticMissingSnapshot: "此静态快照未包含限额元数据，请重新导出。",
+  waiting: "等待新的限额记录。",
+  invalidBoundaries: "导出中的限额窗口边界无效。",
+  halfHourSlot: "每个图表时间槽是半小时。",
+  weekSlot: "每个图表时间槽是连续 24 小时，不按本地自然日或夏令时拆分。",
+  asOf: "统计数据截至",
+  partialSlot: "当前时间槽仅统计至",
+});
 const THEME_STORAGE_KEY = "codexUsageTheme";
 const AUTO_REFRESH_STORAGE_KEY = "codexUsageAutoRefresh";
+const EXCLUDED_HOMES_STORAGE_KEY = "codexUsageExcludedHomes";
 const formatter = new Intl.NumberFormat("en-US");
 const millionTokenFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -46,6 +85,12 @@ const millionTokenFormatter = new Intl.NumberFormat("en-US", {
 const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const cnyFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "currency",
+  currency: "CNY",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
@@ -78,6 +123,30 @@ function updateThemeButtons() {
   button.classList.toggle("active", isDark);
   button.setAttribute("aria-pressed", String(isDark));
   button.setAttribute("aria-label", isDark ? "当前深色主题，点击切换到浅色主题" : "当前浅色主题，点击切换到深色主题");
+}
+
+function updateLanguageButton() {
+  const button = $("#languageToggle");
+  if (!button) return;
+  const english = getLocale() === "en-US";
+  button.classList.toggle("active", english);
+  button.setAttribute("aria-pressed", String(english));
+  button.setAttribute("aria-label", english ? "English interface. Switch to Chinese" : "当前中文界面，点击切换到英文");
+  button.title = english ? "Switch to Chinese" : "切换到 English";
+  button.querySelector("[data-language='zh-CN']")?.classList.toggle("is-selected", !english);
+  button.querySelector("[data-language='en-US']")?.classList.toggle("is-selected", english);
+}
+
+function setLanguage(locale) {
+  state.locale = setLocale(locale);
+  updateLanguageButton();
+  updateThemeButtons();
+  updateRecentControls();
+  renderAutoRefreshControls();
+  if (state.datePickerField) renderDatePicker(state.datePickerField);
+  if (!$("#pricingDialog")?.hidden) renderPricingModelList();
+  render();
+  translatePage();
 }
 
 function setTheme(theme, { persist = true } = {}) {
@@ -121,13 +190,45 @@ function setTokenMetric(selector, value) {
   element.title = formatTokens(value);
 }
 
-function setCurrencyMetric(selector, value) {
+const MIN_METRIC_FONT_PX = 11;
+
+// 只缩不涨的字号适配：文本超出容器宽度时逐级缩小，直到放下或触及下限。
+// 不设下限以上的目标字号，保证最大字号就是 CSS 里的默认值（与 tokens 行一致）。
+export function fitTextToWidth(element, { minFontSize = MIN_METRIC_FONT_PX } = {}) {
+  if (!element || typeof element.clientWidth !== "number") return;
+  element.style.fontSize = "";
+  const available = element.clientWidth;
+  if (!available || element.scrollWidth <= available) return;
+  const baseSize = parseFloat(getComputedStyle(element).fontSize) || 22;
+  let size = baseSize;
+  while (size > minFontSize) {
+    size = Math.max(minFontSize, size - 1);
+    element.style.fontSize = `${size}px`;
+    if (element.scrollWidth <= available) return;
+  }
+}
+
+function setCurrencyMetric(selector, usd, cny = null) {
   const element = $(selector);
   if (!element) return;
-  const amount = Number(value || 0);
-  const formatted = usdFormatter.format(Number.isFinite(amount) ? amount : 0);
+  const hasUsd = usd !== null && usd !== undefined && Number.isFinite(Number(usd));
+  const hasCny = cny !== null && cny !== undefined && Number.isFinite(Number(cny));
+  if (!hasUsd && !hasCny) {
+    element.textContent = "—";
+    element.title = "";
+    return;
+  }
+  // 费用卡片统一以美元计价展示：人民币金额按汇率折算后并入，明细仍按原币种展示。
+  const rate = Number(state.usdToCnyRate) > 0 ? Number(state.usdToCnyRate) : 1;
+  const usdValue = hasUsd ? Number(usd) : 0;
+  const cnyValue = hasCny ? Number(cny) : 0;
+  const total = usdValue + cnyValue / rate;
+  const formatted = formatCostAmount(total, "USD");
   element.textContent = formatted;
-  element.title = formatted;
+  element.title = hasUsd && hasCny
+    ? `美元 ${formatPreciseCost(usdValue, "USD")} + 人民币 ${formatPreciseCost(cnyValue, "CNY")}（按汇率 ${rate} 折算）`
+    : formatted;
+  fitTextToWidth(element);
 }
 
 export function formatTokenMillions(value) {
@@ -162,7 +263,7 @@ function usageRowAriaLabel(row) {
   return `${usageRowName(row)}：${formatTokens(usageValue(row?.total, "total"))} tokens`;
 }
 
-export function formatUsageTooltip(row) {
+export function formatUsageTooltip(row, titleOverride = null) {
   const total = row?.total || emptyUsage();
   const details = [
     ["总 tokens", usageValue(total, "total")],
@@ -175,7 +276,7 @@ export function formatUsageTooltip(row) {
   ];
   const channels = row?.channels || [];
   return `
-    <div class="usage-tooltip-title">${escapeHtml(row?.name || row?.key || "未知")}</div>
+    <div class="usage-tooltip-title">${escapeHtml(titleOverride || row?.name || row?.key || "未知")}</div>
     <div class="usage-tooltip-grid">
       ${details
         .map(
@@ -253,14 +354,21 @@ function showUsageTooltip(row, anchor) {
 }
 
 function timelineAccessibleLabel(row, mode) {
-  const key = String(row?.key || row?.name || "未知时间");
+  const quotaInfo = quotaTimelineSlotInfo(row);
+  const english = getLocale() === "en-US";
+  const key = quotaInfo
+    ? english ? `${quotaInfo.title}. Interval ${quotaInfo.interval}. ${quotaInfo.note}` : `${quotaInfo.title}，时间槽区间 ${quotaInfo.interval}。${quotaInfo.note}`
+    : String(row?.key || row?.name || localizeText("未知时间"));
   if (mode === "cost") {
-    const amount = Number(row?.pricedTokens || 0) > 0 ? formatPreciseUsd(timelineValue(row, "cost")) : "无可计价费用";
+    const pair = costPairFromSlots(row?.costByModel);
+    const amount = Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : localizeText("无可计价费用");
+    if (english) return `${key}. Estimated cost ${amount}; ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens use fallback rates; ${formatTokens(row?.unpricedTokens || 0)} tokens are unpriced.`;
     return `${key}，费用估算 ${amount}，其中 ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens 按最低费率估算，未计价 ${formatTokens(row?.unpricedTokens || 0)} tokens`;
   }
   const details = mode === "model" ? (row?.models || []) : (row?.channels || []);
   const kind = mode === "model" ? "模型" : "渠道";
-  const breakdown = details.map((item) => `${item.name} ${formatTokens(usageValue(item.total, "total"))} tokens`).join("，");
+  const breakdown = details.map((item) => `${item.name} ${formatTokens(usageValue(item.total, "total"))} tokens`).join(english ? ", " : "，");
+  if (english) return `${key}. Total ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `; ${mode === "model" ? "models" : "sources"}: ${breakdown}` : ""}.`;
   return `${key}，总计 ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `，${kind}：${breakdown}` : ""}`;
 }
 
@@ -274,7 +382,7 @@ function showTimelineTooltip(row, anchor) {
   tooltip.hidden = false;
   positionUsageTooltip(anchor);
   const chart = document.querySelector("#timelineChart");
-  if (chart && document.activeElement === chart) chart.setAttribute("aria-label", timelineAccessibleLabel(row, state.timelineMode));
+  if (chart && document.activeElement === chart) chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode)));
 }
 
 function bindUsageRows(container, selector, rows) {
@@ -337,6 +445,80 @@ function dateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
+function isQuotaPreset(preset = state.preset) {
+  return QUOTA_PRESETS.includes(preset);
+}
+
+function quotaWindowAvailability(quotaSnapshot, preset) {
+  const window = quotaSnapshot?.windows?.[preset];
+  if (window?.state === "available") return { available: true, reason: "" };
+  return {
+    available: false,
+    reason: (window?.reason ? localizeQuotaReason(window) : "") || (quotaSnapshot
+      ? QUOTA_UI_COPY.unavailable
+      : state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.missingSnapshot),
+  };
+}
+
+function formatLocalClock(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatLocalDateTimeWithZone(value) {
+  const date = asDate(value);
+  if (!date || Number.isNaN(date.getTime())) return "未知时间";
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offset = `UTC${sign}${String(Math.floor(absoluteOffset / 60)).padStart(2, "0")}:${String(absoluteOffset % 60).padStart(2, "0")}`;
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "本地时区";
+  const timestamp = getLocale() === "en-US" ? formatLocalDateTime(date) : `${dateKey(date)} ${formatLocalClock(date)}:${seconds}`;
+  return `${timestamp} (${timeZone}, ${offset})`;
+}
+
+function quotaWindowBounds(range) {
+  return {
+    start: asDate(range?.windowStart || range?.start),
+    end: asDate(range?.windowEndExclusive || range?.end),
+  };
+}
+
+function quotaRangeAccessibleLabel(range) {
+  const { start, end } = quotaWindowBounds(range);
+  const mode = range?.quotaPreset || range?.preset;
+  const name = range?.recentValue || QUOTA_MODE_LABELS[mode] || "限额窗口";
+  const interval = start && end
+    ? `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`
+    : localizeText("限额窗口边界不可用");
+  if (getLocale() === "en-US") {
+    const asOf = range?.asOf ? `; data as of ${formatLocalDateTimeWithZone(range.asOf)}` : "";
+    const weekNote = mode === "quota_week" ? `; ${localizeText(QUOTA_UI_COPY.weekSlot)}` : "";
+    return `${localizeText(name)} ${interval}${asOf}${weekNote}`;
+  }
+  const asOf = range?.asOf ? `；${QUOTA_UI_COPY.asOf} ${formatLocalDateTimeWithZone(range.asOf)}` : "";
+  const weekNote = mode === "quota_week" ? `；${QUOTA_UI_COPY.weekSlot}` : "";
+  return `${name} ${interval}${asOf}${weekNote}`;
+}
+
+function quotaTimelineSlotInfo(row) {
+  if (!isQuotaPreset() && !(state.preset === "recent" && ["上一个5h", "上周"].includes(state.recentValue))) return null;
+  const startMs = Number(row?.slotStartMs ?? row?.key);
+  const endMs = Number(row?.slotEndExclusiveMs);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+  const interval = `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`;
+  const title = `${formatLocalDateTimeWithZone(start)} – ${formatLocalDateTimeWithZone(end)}`;
+  const baseNote = localizeText(state.preset === "quota_week" || (state.preset === "recent" && state.recentValue === "上周") ? QUOTA_UI_COPY.weekSlot : QUOTA_UI_COPY.halfHourSlot);
+  const asOf = asDate(state.summary?.range?.asOf || state.report?.asOf || state.report?.quota?.asOf || state.quotaSnapshot?.asOf);
+  const partialNote = asOf && asOf.getTime() > startMs && asOf.getTime() < endMs
+    ? getLocale() === "en-US" ? `${localizeText(QUOTA_UI_COPY.partialSlot)} ${formatLocalDateTimeWithZone(asOf)}.` : `${QUOTA_UI_COPY.partialSlot} ${formatLocalDateTimeWithZone(asOf)}。`
+    : "";
+  const note = [baseNote, partialNote].filter(Boolean).join(" ");
+  return { title, interval, note };
+}
+
 const datePickerWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
 
 function parseLocalDate(value) {
@@ -387,7 +569,7 @@ export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") 
   return {
     year: visibleMonth.getFullYear(),
     month: visibleMonth.getMonth() + 1,
-    weekdays: datePickerWeekdays,
+    weekdays: getLocale() === "en-US" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : datePickerWeekdays,
     cells,
   };
 }
@@ -395,11 +577,14 @@ export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") 
 export function renderDatePickerHtml({ field = "start", viewDate = new Date(), selectedValue = "" } = {}) {
   const model = datePickerMonthModel(viewDate, selectedValue);
   const escapedField = escapeHtml(field);
+  const monthTitle = getLocale() === "en-US"
+    ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(model.year, model.month - 1, 1)))
+    : `${model.year}年${String(model.month).padStart(2, "0")}月`;
   return `
     <div class="date-picker-heading">
-      <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="上个月">‹</button>
-      <div class="date-picker-title">${model.year}年${String(model.month).padStart(2, "0")}月</div>
-      <button class="date-picker-nav" type="button" data-date-picker-action="next" data-date-picker-field="${escapedField}" aria-label="下个月">›</button>
+      <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="${localizeText("上个月")}">‹</button>
+      <div class="date-picker-title">${monthTitle}</div>
+      <button class="date-picker-nav" type="button" data-date-picker-action="next" data-date-picker-field="${escapedField}" aria-label="${localizeText("下个月")}">›</button>
     </div>
     <div class="date-picker-grid">
       ${model.weekdays.map((weekday) => `<div class="date-picker-weekday">${weekday}</div>`).join("")}
@@ -454,14 +639,12 @@ function subtractMonthsClamped(date, months) {
 
 export function normalizeRecentValue(value) {
   const normalized = String(value || "").trim().replace(/\s+/g, "");
-  if (/^[1-9]\d*$/.test(normalized)) {
-    return `${normalized}天`;
-  }
-  return normalized;
+  return canonicalRecentValue(value) || normalized;
 }
 
 function parseRecentValue(value) {
   const normalized = normalizeRecentValue(value);
+  if (RECENT_SELECTIONS.includes(normalized)) return { named: normalized };
   if (normalized === "半年") {
     return { months: 6 };
   }
@@ -523,8 +706,53 @@ function addDays(date, days) {
   return next;
 }
 
-export function getRange(events) {
-  const now = state.now ? new Date(state.now) : new Date();
+export function getRange(events, quotaSnapshot = state.report?.quota) {
+  const now = state.now ? new Date(state.now) : quotaSnapshot?.asOf ? new Date(quotaSnapshot.asOf) : new Date();
+  if (state.preset === "quota_5h" || state.preset === "quota_week") {
+    const quota = quotaSnapshot || null;
+    const quotaWindow = quota?.windows?.[state.preset];
+    if (quotaWindow?.state !== "available") {
+      return {
+        start: null,
+        end: null,
+        asOf: quota?.asOf ? new Date(quota.asOf) : now,
+        quotaState: quotaWindow?.state || "missing",
+        quotaReason: quotaWindow?.reason || (state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.unavailable),
+        preset: state.preset,
+        bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+      };
+    }
+    const asOfMs = Date.parse(quota.asOf);
+    const startMs = Date.parse(quotaWindow.windowStart);
+    const endExclusiveMs = Date.parse(quotaWindow.windowEndExclusive);
+    if (![asOfMs, startMs, endExclusiveMs].every(Number.isFinite) || startMs > asOfMs || asOfMs >= endExclusiveMs) {
+      return {
+        start: null,
+        end: null,
+        asOf: Number.isFinite(asOfMs) ? new Date(asOfMs) : now,
+        quotaState: "ambiguous",
+        quotaReason: QUOTA_UI_COPY.invalidBoundaries,
+        preset: state.preset,
+        bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+      };
+    }
+    return {
+      start: new Date(startMs),
+      end: new Date(Math.min(asOfMs, endExclusiveMs) - 1),
+      asOf: new Date(asOfMs),
+      windowStart: new Date(startMs),
+      windowEndExclusive: new Date(endExclusiveMs),
+      observedAt: quotaWindow.observedAt ? new Date(quotaWindow.observedAt) : null,
+      usedPercent: quotaWindow.usedPercent ?? null,
+      percentStale: Boolean(quotaWindow.percentStale),
+      limitId: quota.limitId || null,
+      quotaState: "available",
+      quotaReason: null,
+      quotaWindow: true,
+      preset: state.preset,
+      bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+    };
+  }
   if (state.preset === "today") {
     return { start: startOfDay(now), end: endOfDay(now), preset: state.preset };
   }
@@ -542,6 +770,8 @@ export function getRange(events) {
     };
   }
   if (state.preset === "recent") {
+    const named = resolveNamedRecentRange(state.recentValue, now, quotaSnapshot);
+    if (named) return named;
     const range = recentDateRange(state.recentValue, now);
     if (range) {
       return range;
@@ -564,13 +794,31 @@ export function getRange(events) {
 
 export function nextPresetState(currentState = {}, preset = "today") {
   const selected = ["today", "week", "month", "all", "custom", "recent"].includes(preset) ? preset : "today";
-  return { preset: selected, bucket: selected === "today" ? "hour" : "day" };
+  const next = { preset: selected, bucket: selected === "today" ? "hour" : "day" };
+  if (isQuotaPreset(currentState.preset)) next.lastQuotaPreset = currentState.preset;
+  return next;
+}
+
+export function nextQuotaPresetState(currentState = {}) {
+  const currentPreset = currentState.preset || "today";
+  const preferred = QUOTA_PRESETS.includes(currentState.lastQuotaPreset) ? currentState.lastQuotaPreset : "quota_5h";
+  const target = isQuotaPreset(currentPreset)
+    ? currentPreset === "quota_5h" ? "quota_week" : "quota_5h"
+    : preferred;
+  return {
+    changed: true,
+    preset: target,
+    bucket: target === "quota_5h" ? "quota_30m" : "quota_24h",
+    lastQuotaPreset: target,
+    reason: "",
+  };
 }
 
 export function nextRecentState(currentState = {}, value = "") {
   const recentValue = normalizeRecentValue(value);
   const parsed = parseRecentValue(recentValue);
-  return { preset: "recent", recentValue, bucket: parsed?.days === 1 ? "hour" : "day" };
+  const namedBucket = { "上一个5h": "quota_30m", "上周": "quota_24h", "上个月": "day", "今年": "month" }[recentValue];
+  return { preset: "recent", recentValue, bucket: namedBucket || (parsed?.days === 1 ? "hour" : "day") };
 }
 
 export function setSummaryFilters(filters = {}) {
@@ -671,7 +919,7 @@ function groupRepositoryEvents(events) {
 }
 
 function previousPeriodRange(range) {
-  if (!range.start || !range.end || state.preset === "all") {
+  if (!range.start || !range.end || state.preset === "all" || state.preset === "quota_5h" || state.preset === "quota_week") {
     return null;
   }
   if (state.preset === "today") {
@@ -791,8 +1039,14 @@ function summarizeComparison(allEvents, range, currentTotals) {
 }
 
 export function summarize(report) {
-  const range = getRange(report.events);
-  const events = report.events.filter((event) => {
+  const excluded = new Set((state.excludedHomes || []).map(String));
+  const sourceEvents = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
+  const range = getRange(sourceEvents, report.quota);
+  const quotaPreset = isQuotaPreset(state.preset) || Boolean(range.quotaWindow);
+  const quotaAvailable = !quotaPreset || range.quotaState === "available";
+  const bucket = range.bucket || state.bucket;
+  const events = sourceEvents.filter((event) => {
+    if (!quotaAvailable) return false;
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -806,10 +1060,11 @@ export function summarize(report) {
     return true;
   });
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
+  range.bucket = bucket;
   let timeline = [];
   let timelineError = null;
   try {
-    timeline = buildTimelineRows(events, range, state.bucket);
+    if (quotaAvailable) timeline = buildTimelineRows(events, range, bucket);
   } catch (error) {
     if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
     timelineError = error.message;
@@ -822,7 +1077,8 @@ export function summarize(report) {
     range,
     totals,
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
-    comparison: summarizeComparison(report.events, range, totals),
+    comparison: quotaPreset ? null : summarizeComparison(sourceEvents, range, totals),
+    quota: report.quota || null,
     timeline,
     timelineError,
     channels,
@@ -857,18 +1113,30 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
     cacheWriteUnknownTokens: 0,
     cacheWriteUnknownRecords: 0,
   };
+  const byCurrency = {
+    USD: { inputUsd: 0, cachedInputUsd: 0, cacheWriteInputUsd: 0, outputUsd: 0, totalUsd: 0, records: 0 },
+    CNY: { inputUsd: 0, cachedInputUsd: 0, cacheWriteInputUsd: 0, outputUsd: 0, totalUsd: 0, records: 0 },
+  };
   const models = new Set();
   const unpricedModels = new Set();
   const minimumRateModels = new Set();
   const unpricedReasons = new Set();
   const priceVersions = new Set();
+  const priceSources = new Set();
   for (const event of events) {
     const estimate = event.costEstimate;
     for (const field of [
-      "inputUsd", "cachedInputUsd", "cacheWriteInputUsd", "outputUsd", "totalUsd", "pricedTokens", "unpricedTokens", "minimumEstimatedTokens",
+      "pricedTokens", "unpricedTokens", "minimumEstimatedTokens",
       "serviceTierUnknownTokens", "contextUnknownTokens", "cacheWriteUnknownTokens",
     ]) totals[field] += Number(estimate[field] || 0);
-    if (Number(estimate.pricedTokens || 0) > 0) totals.pricedRecords += 1;
+    const bucket = byCurrency[estimate.currency === "CNY" ? "CNY" : "USD"];
+    for (const field of ["inputUsd", "cachedInputUsd", "cacheWriteInputUsd", "outputUsd", "totalUsd"]) {
+      bucket[field] += Number(estimate[field] || 0);
+    }
+    if (Number(estimate.pricedTokens || 0) > 0) {
+      totals.pricedRecords += 1;
+      bucket.records += 1;
+    }
     if (Number(estimate.minimumEstimatedTokens || 0) > 0) totals.minimumEstimatedRecords += 1;
     if (Number(estimate.unpricedTokens || 0) > 0) totals.unpricedRecords += 1;
     if (Number(estimate.serviceTierUnknownTokens || 0) > 0) totals.serviceTierUnknownRecords += 1;
@@ -880,6 +1148,7 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
     for (const model of estimate.minimumRateModels || []) minimumRateModels.add(model);
     for (const reason of estimate.unpricedReasons || []) unpricedReasons.add(reason);
     if (estimate.priceVersion) priceVersions.add(estimate.priceVersion);
+    if (estimate.priceSource) priceSources.add(estimate.priceSource);
     const usage = event.total || {};
     const mask = Number(event.detailMask || 0);
     if ((mask & 3) === 3 && Number(usage.input || 0) > 0) {
@@ -887,13 +1156,20 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
       totals.cacheRateCached += Number(usage.cached || 0);
     }
   }
-  const hasPricedRecords = totals.pricedRecords > 0;
+  const usd = byCurrency.USD;
+  const cny = byCurrency.CNY;
   return {
-    totalUsd: hasPricedRecords ? totals.totalUsd : null,
-    inputUsd: hasPricedRecords ? totals.inputUsd : null,
-    cachedInputUsd: hasPricedRecords ? totals.cachedInputUsd : null,
-    cacheWriteInputUsd: hasPricedRecords ? totals.cacheWriteInputUsd : null,
-    outputUsd: hasPricedRecords ? totals.outputUsd : null,
+    totalUsd: usd.records > 0 ? usd.totalUsd : null,
+    inputUsd: usd.records > 0 ? usd.inputUsd : null,
+    cachedInputUsd: usd.records > 0 ? usd.cachedInputUsd : null,
+    cacheWriteInputUsd: usd.records > 0 ? usd.cacheWriteInputUsd : null,
+    outputUsd: usd.records > 0 ? usd.outputUsd : null,
+    totalCny: cny.records > 0 ? cny.totalUsd : null,
+    inputCny: cny.records > 0 ? cny.inputUsd : null,
+    cachedInputCny: cny.records > 0 ? cny.cachedInputUsd : null,
+    cacheWriteInputCny: cny.records > 0 ? cny.cacheWriteInputUsd : null,
+    outputCny: cny.records > 0 ? cny.outputUsd : null,
+    currencies: [...(usd.records > 0 ? ["USD"] : []), ...(cny.records > 0 ? ["CNY"] : [])],
     cacheHitRate: totals.cacheRateInput > 0 ? totals.cacheRateCached / totals.cacheRateInput : null,
     modelCount: models.size,
     pricedTokens: totals.pricedTokens,
@@ -912,6 +1188,7 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
     cacheWriteUnknownTokens: totals.cacheWriteUnknownTokens,
     cacheWriteUnknownRecords: totals.cacheWriteUnknownRecords,
     priceVersions: [...priceVersions].sort(),
+    priceSources: [...priceSources].sort(),
     priceCheckedAt: pricing.checkedAt || "",
     priceMode: pricing.mode || "",
     priceSource: pricing.source || "",
@@ -932,10 +1209,10 @@ function renderCostMetrics(summary) {
     return;
   }
 
-  setCurrencyMetric("#totalCost", estimate.totalUsd);
-  setCurrencyMetric("#inputCost", estimate.inputUsd);
-  setCurrencyMetric("#cachedInputCost", estimate.cachedInputUsd);
-  setCurrencyMetric("#outputCost", estimate.outputUsd);
+  setCurrencyMetric("#totalCost", estimate.totalUsd, estimate.totalCny);
+  setCurrencyMetric("#inputCost", estimate.inputUsd, estimate.inputCny);
+  setCurrencyMetric("#cachedInputCost", estimate.cachedInputUsd, estimate.cachedInputCny);
+  setCurrencyMetric("#outputCost", estimate.outputUsd, estimate.outputCny);
   $("#cacheHitRate").textContent = estimate.cacheHitRate === null ? "—" : `${(estimate.cacheHitRate * 100).toFixed(2)}%`;
   $("#cacheHitRate").title = $("#cacheHitRate").textContent;
   setMetric("#priceModelCount", estimate.modelCount);
@@ -950,8 +1227,25 @@ function renderCostMetrics(summary) {
   if (estimate.minimumEstimatedTokens > 0) caveats.push(`${formatTokens(estimate.minimumEstimatedTokens)} / ${totalTokens} tokens 使用最低费率估算`);
   if (estimate.minimumRateModels?.length) caveats.push(`模型 ${estimate.minimumRateModels.join("、")} 缺少专用单价，按价目表最低费率估算`);
   if (estimate.unpricedTokens > 0) caveats.push(`仍有 ${formatTokens(estimate.unpricedTokens)} tokens 无法估算`);
+  const sourceLabels = [
+    ["developers.openai.com", "OpenAI 价格表"],
+    ["stepfun.com", "StepFun 定价"],
+    ["mimo.mi.com", "MiMo 定价"],
+    ["deepseek.com", "DeepSeek 定价"],
+    ["kimi.com", "Kimi 定价"],
+    ["bigmodel.cn", "GLM 定价"],
+  ];
+  const currencies = estimate.currencies || [];
+  const sources = [...new Set([estimate.priceSource, ...(estimate.priceSources || [])].filter((url) => {
+    if (!url) return false;
+    return currencies.includes("USD") || !url.includes("developers.openai.com");
+  }))];
+  const sourceLinks = sources.map((url) => {
+    const label = sourceLabels.find(([host]) => url.includes(host))?.[1] || "价格来源";
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+  }).join("、");
   note.innerHTML = `
-    <p>按当前价目表估算 · ${escapeHtml(checkedAt)} · <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">默认价格来源</a></p>
+    <p>按当前价目表估算 · ${escapeHtml(checkedAt)} · ${sourceLinks || "默认价格来源"}</p>
     <p>金额按已知明细及最低费率情景折算 API 等价费用，不代表实际账单，也不含工具调用等非 token 费用。</p>
     ${caveats.length
       ? `<ul aria-label="估算限制">${caveats.map((caveat) => `<li>${escapeHtml(caveat)}。</li>`).join("")}</ul>`
@@ -962,6 +1256,44 @@ function renderCostMetrics(summary) {
     : "更新计价标准后，所有已索引的历史用量会按新单价重算。";
 }
 
+// New Record：所选范围内的纪录期点亮对应指标卡右上角的 New 小字。
+const RECORD_CARD_METRICS = Object.freeze({
+  totalTokens: "#totalTokens",
+  inputTokens: "#inputTokens",
+  cachedTokens: "#cachedTokens",
+  outputTokens: "#outputTokens",
+  reasoningTokens: "#reasoningTokens",
+  sessionCount: "#sessionCount",
+  totalCost: "#totalCost",
+  inputCost: "#inputCost",
+  cachedCost: "#cachedInputCost",
+  outputCost: "#outputCost",
+  cacheHitRate: "#cacheHitRate",
+  modelCount: "#priceModelCount",
+});
+
+function renderRecordBadges(records = {}) {
+  const englishRecordNames = {
+    totalTokens: "Total tokens", inputTokens: "Input tokens", cachedTokens: "Cache hit tokens",
+    outputTokens: "Output tokens", reasoningTokens: "Reasoning tokens", sessionCount: "Sessions",
+    totalCost: "Estimated cost", inputCost: "Cache miss cost", cachedCost: "Cache hit cost",
+    outputCost: "Output cost", cacheHitRate: "Cache hit rate", modelCount: "Model count",
+  };
+  for (const [metric, selector] of Object.entries(RECORD_CARD_METRICS)) {
+    const valueNode = $(selector);
+    const card = valueNode?.closest(".metric");
+    const badge = card?.querySelector(".metric-new");
+    if (!badge) continue;
+    const record = state.preset === "all" ? null : records?.[metric];
+    badge.hidden = !record;
+    card.title = record
+      ? getLocale() === "en-US"
+        ? `Highest ${englishRecordNames[metric]?.toLowerCase() || "usage"} in a ${record.unit || "period"}: ${record.period}`
+        : `${record.title}：${record.period}`
+      : "";
+  }
+}
+
 function renderMetrics(summary) {
   setTokenMetric("#totalTokens", summary.totals.total);
   setTokenMetric("#inputTokens", summary.totals.input);
@@ -970,9 +1302,28 @@ function renderMetrics(summary) {
   setTokenMetric("#reasoningTokens", summary.totals.reasoning);
   setMetric("#sessionCount", summary.sessionCount);
   renderCostMetrics(summary);
+  renderRecordBadges(summary.records);
 }
 
 export function rangeLabel(summary) {
+  const range = summary?.range || {};
+  if (isQuotaPreset(range.preset) || range.quotaWindow) {
+    const mode = range.quotaPreset || range.preset;
+    const label = range.recentValue || QUOTA_MODE_LABELS[mode];
+    if (range.quotaState !== "available") return `等待${label}数据`;
+    const { start, end } = quotaWindowBounds(range);
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return `等待${label}数据`;
+    }
+    if (mode === "quota_week") return `${dateKey(start)} 至 ${dateKey(end)}`;
+    const shortStart = dateKey(start).slice(5);
+    const shortEnd = dateKey(end).slice(5);
+    const startLabel = `${shortStart} ${formatLocalClock(start)}`;
+    const endLabel = `${shortEnd} ${formatLocalClock(end)}`;
+    return dateKey(start) === dateKey(end)
+      ? `${startLabel}–${formatLocalClock(end)}`
+      : `${startLabel}–${endLabel}`;
+  }
   const start = summary.range.start ? dateKey(asDate(summary.range.start)) : "开始";
   const end = summary.range.end ? dateKey(asDate(summary.range.end)) : "现在";
   return start + " 至 " + end;
@@ -1037,21 +1388,25 @@ export function timelineDetailRows(summary, mode) {
     for (const [name, cost] of Object.entries(slot.costByModel || {})) {
       const amount = Number(cost?.totalUsd || 0);
       if (!Number.isFinite(amount) || amount <= 0) continue;
-      byModel.set(name, (byModel.get(name) || 0) + amount);
+      const entry = byModel.get(name) || { name, totalUsd: 0, currency: cost?.currency || "USD" };
+      entry.totalUsd += amount;
+      byModel.set(name, entry);
     }
   }
-  return [...byModel].map(([name, totalUsd]) => ({ name, totalUsd }))
-    .sort((left, right) => right.totalUsd - left.totalUsd || left.name.localeCompare(right.name));
+  return [...byModel.values()]
+    .map((entry) => ({ ...entry, scaleValue: scaledCost(entry.totalUsd, entry.currency) }))
+    .sort((left, right) => right.scaleValue - left.scaleValue || left.name.localeCompare(right.name));
 }
 
 export function renderCostDetailHtml(rows, colorMap = null) {
   if (!rows.length) return '<div class="empty">没有可计价的费用记录</div>';
-  const max = rows[0].totalUsd || 1;
-  return rows.map((row) => {
+  const values = rows.map((row) => row.scaleValue ?? scaledCost(row.totalUsd, row.currency));
+  const max = values[0] || 1;
+  return rows.map((row, index) => {
     const name = escapeHtml(row.name);
-    const amount = formatPreciseUsd(row.totalUsd);
+    const amount = formatPreciseCost(row.totalUsd, row.currency);
     const color = colorMap?.get(row.name) || getModelColor(row.name);
-    const width = Math.max(2, (row.totalUsd / max) * 100);
+    const width = Math.max(2, (values[index] / max) * 100);
     return `
       <div class="bar-row" tabindex="0" aria-label="${name}，费用估算 ${amount}">
         <div class="bar-label">
@@ -1199,19 +1554,22 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
     }).join("")}</tr></tfoot>`
     : "";
   return `
-    <div class="comparison-table-scroll">
-      <table class="comparison-table">
-        <thead><tr><th scope="col">${kind === "repository" ? "仓库" : "模型"}</th>${periodKeys.map((period) => {
-          const isSorted = sort.showIndicator && sort.period === period;
-          const direction = isSorted ? sort.direction : "desc";
-          const indicator = isSorted ? (direction === "asc" ? "▲" : "▼") : "";
-          const ariaSort = isSorted ? (direction === "asc" ? "ascending" : "descending") : "none";
-          const label = COMPARISON_PERIOD_LABELS[period];
-          const sortLabel = isSorted ? `${label}，${direction === "asc" ? "正序" : "倒序"}` : `按${label}用量排序`;
-          return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="按${label}用量排序"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
-        }).join("")}</tr></thead>
-        <tbody>${body}</tbody>${totalsRow}
-      </table>
+    <div class="comparison-table-frame">
+      <div class="comparison-table-scroll">
+        <table class="comparison-table">
+          <thead><tr><th scope="col">${kind === "repository" ? "仓库" : "模型"}</th>${periodKeys.map((period) => {
+            const isSorted = sort.showIndicator && sort.period === period;
+            const direction = isSorted ? sort.direction : "desc";
+            const indicator = isSorted ? (direction === "asc" ? "▲" : "▼") : "";
+            const ariaSort = isSorted ? (direction === "asc" ? "ascending" : "descending") : "none";
+            const label = COMPARISON_PERIOD_LABELS[period];
+            const sortLabel = isSorted ? `${label}，${direction === "asc" ? "正序" : "倒序"}` : `按${label}用量排序`;
+            return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="按${label}用量排序"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
+          }).join("")}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      ${totalsRow ? `<table class="comparison-table comparison-table-foot">${totalsRow}</table>` : ""}
     </div>
   `;
 }
@@ -1234,7 +1592,7 @@ function renderPeriodComparisons(comparison) {
     totals: comparison?.totals,
     sort: state.repositoryComparisonSort,
   });
-  const asOf = comparison?.asOf ? new Date(comparison.asOf).toLocaleString() : "";
+  const asOf = comparison?.asOf ? new Date(comparison.asOf).toLocaleString(getLocale()) : "";
   for (const node of document.querySelectorAll("[data-comparison-as-of]")) {
     node.textContent = asOf ? `统计截至 ${asOf}` : "";
   }
@@ -1242,6 +1600,17 @@ function renderPeriodComparisons(comparison) {
 
 function shortTimelineLabel(key, bucket, range) {
   const text = String(key || "");
+  if (bucket === "quota_30m" || bucket === "quota_24h") {
+    const timestampMs = Number(text);
+    if (!Number.isFinite(timestampMs)) return text;
+    const date = new Date(timestampMs);
+    if (bucket === "quota_30m") {
+      return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    }
+    return getLocale() === "en-US"
+      ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()]
+      : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+  }
   if (bucket === "hour") {
     const match = text.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):00$/);
     if (!match) return text;
@@ -1255,7 +1624,9 @@ function shortTimelineLabel(key, bucket, range) {
     const end = asDate(range?.end);
     if (bucket === "day" && range?.preset === "week") {
       const date = new Date(text + "T12:00:00");
-      return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+      return getLocale() === "en-US"
+        ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()]
+        : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
     }
     if (bucket === "day" && range?.preset === "month") return text.slice(8, 10);
     if (start && end && start.getFullYear() !== end.getFullYear()) return text;
@@ -1328,7 +1699,7 @@ export function renderComparisonHtml(comparison) {
       ? "全部范围没有可比较的上一周期"
       : "当前范围没有可比较的上一周期";
     return `
-      <article class="comparison-item flat">
+      <article class="comparison-item comparison-unavailable flat">
         <span>趋势变化</span>
         <strong>暂无对比</strong>
         <small>${message}</small>
@@ -1409,13 +1780,13 @@ function timelineCostSegments(row, modelRows = []) {
   }
   return orderedNames
     .filter((name) => costByModel[name])
-    .map((name) => ({ name, value: Number(costByModel[name].totalUsd || 0) }))
+    .map((name) => ({ name, value: scaledCost(costByModel[name].totalUsd, costByModel[name].currency) }))
     .filter((segment) => segment.value > 0);
 }
 
 function timelineValue(row, mode) {
   if (mode === "cost") {
-    return Object.values(row?.costByModel || {}).reduce((total, cost) => total + Number(cost.totalUsd || 0), 0);
+    return Object.values(row?.costByModel || {}).reduce((total, cost) => total + scaledCost(cost.totalUsd, cost.currency), 0);
   }
   return usageValue(row?.total, "total");
 }
@@ -1427,34 +1798,107 @@ const preciseUsdFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const preciseCnyFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "currency",
+  currency: "CNY",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 function formatPreciseUsd(value) {
   const amount = Number(value || 0);
   return preciseUsdFormatter.format(Number.isFinite(amount) ? amount : 0);
 }
 
+// 金额符号随模型标价货币切换：美元模型显示 $，人民币模型显示 ¥。
+export function formatCostAmount(value, currency = "USD") {
+  const amount = Number(value || 0);
+  const safe = Number.isFinite(amount) ? amount : 0;
+  return currency === "CNY" ? cnyFormatter.format(safe) : usdFormatter.format(safe);
+}
+
+function formatPreciseCost(value, currency = "USD") {
+  const amount = Number(value || 0);
+  const safe = Number.isFinite(amount) ? amount : 0;
+  return currency === "CNY" ? preciseCnyFormatter.format(safe) : preciseUsdFormatter.format(safe);
+}
+
+// 混合币种并列展示（如 $1.23 + ¥4.56）；某币种没有计价记录时用 null 表示。
+export function formatCostPair(usd, cny) {
+  const parts = [];
+  const usdValue = Number(usd);
+  const cnyValue = Number(cny);
+  if (usd !== null && usd !== undefined && Number.isFinite(usdValue)) parts.push(formatPreciseCost(usdValue, "USD"));
+  if (cny !== null && cny !== undefined && Number.isFinite(cnyValue)) parts.push(formatPreciseCost(cnyValue, "CNY"));
+  return parts.length ? parts.join(" + ") : "—";
+}
+
+export function costPairFromSlots(costByModel = {}) {
+  let usd = 0;
+  let cny = 0;
+  let hasUsd = false;
+  let hasCny = false;
+  for (const cost of Object.values(costByModel || {})) {
+    const amount = Number(cost?.totalUsd || 0);
+    if (!(amount > 0)) continue;
+    if (cost?.currency === "CNY") {
+      cny += amount;
+      hasCny = true;
+    } else {
+      usd += amount;
+      hasUsd = true;
+    }
+  }
+  return { usd: hasUsd ? usd : null, cny: hasCny ? cny : null };
+}
+
+// 混合币种的排序与图表比例按汇率折算到同一标尺（含人民币时统一折人民币），
+// 展示金额始终保留各模型的原币种。
+export function costScaleValue(amount, currency, rate, targetCurrency) {
+  const value = Number(amount || 0);
+  const safeRate = Number(rate) > 0 ? Number(rate) : 1;
+  const target = targetCurrency === "CNY" ? "CNY" : "USD";
+  if ((currency === "CNY") === (target === "CNY")) return value;
+  return currency === "CNY" ? value / safeRate : value * safeRate;
+}
+
+function scaledCost(amount, currency) {
+  return costScaleValue(amount, currency, state.usdToCnyRate, state.costScaleTarget);
+}
+
 export function formatTimelineTooltip(row, mode = "channel") {
-  if (mode === "channel") return formatUsageTooltip(row);
-  const title = escapeHtml(row?.name || row?.key || "未知时间");
+  const quotaInfo = quotaTimelineSlotInfo(row);
+  const quotaNote = quotaInfo
+    ? `<div class="usage-tooltip-note">${getLocale() === "en-US" ? "Interval" : "时间槽区间"} ${escapeHtml(quotaInfo.interval)}${getLocale() === "en-US" ? "; " : "；"}${escapeHtml(quotaInfo.note)}</div>`
+    : "";
+  if (mode === "channel") return `${formatUsageTooltip(row, quotaInfo?.title || null)}${quotaNote}`;
+  const title = escapeHtml(quotaInfo?.title || row?.name || row?.key || "未知时间");
   if (mode === "model") {
     const models = (row?.models || []).map((model) =>
       `<span class="usage-tooltip-label">${escapeHtml(model.name)}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
     ).join("");
-    return `<div class="usage-tooltip-title">${title}</div><div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokens(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
+    return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokens(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
   }
   const costs = Object.entries(row?.costByModel || {})
     .filter(([, cost]) => Number(cost.totalUsd || 0) > 0)
-    .sort((left, right) => Number(right[1].totalUsd || 0) - Number(left[1].totalUsd || 0))
-    .map(([name, cost]) => `<span class="usage-tooltip-label">${escapeHtml(name)}</span><span class="usage-tooltip-value">${formatPreciseUsd(cost.totalUsd)}</span>`)
+    .sort((left, right) => scaledCost(right[1].totalUsd, right[1].currency) - scaledCost(left[1].totalUsd, left[1].currency))
+    .map(([name, cost]) => {
+      const native = formatPreciseCost(cost.totalUsd, cost.currency);
+      const converted = cost.currency === state.costScaleTarget
+        ? ""
+        : `（≈${formatPreciseCost(scaledCost(cost.totalUsd, cost.currency), state.costScaleTarget)}）`;
+      return `<span class="usage-tooltip-label">${escapeHtml(name)}</span><span class="usage-tooltip-value">${native}${converted}</span>`;
+    })
     .join("");
-  const total = timelineValue(row, "cost");
-  const amountLabel = Number(row?.pricedTokens || 0) > 0 ? formatPreciseUsd(total) : "无可计价费用";
+  const pair = costPairFromSlots(row?.costByModel);
+  const amountLabel = Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : "无可计价费用";
   const caveats = [];
   if (Number(row?.unpricedTokens || 0) > 0) caveats.push(`未计价 ${formatTokens(row.unpricedTokens)} tokens`);
   if (Number(row?.serviceTierUnknownTokens || 0) > 0) caveats.push("服务等级未知，金额按 Standard 情景估算");
   if (Number(row?.contextUnknownTokens || 0) > 0) caveats.push("请求上下文未知，按可用的较低上下文费率估算");
   if (Number(row?.minimumEstimatedTokens || 0) > 0) caveats.push(`其中 ${formatTokens(row.minimumEstimatedTokens)} tokens 按最低费率估算`);
   if (Number(row?.cacheWriteUnknownTokens || 0) > 0) caveats.push("缓存写入明细未知，相关未知部分按最低费率估算");
-  return `<div class="usage-tooltip-title">${title}</div><div class="usage-tooltip-subtitle">费用估算</div><div class="usage-tooltip-grid"><span class="usage-tooltip-label">估算金额</span><span class="usage-tooltip-value">${amountLabel}</span><span class="usage-tooltip-label">已纳入估算 tokens</span><span class="usage-tooltip-value">${formatTokens(row?.pricedTokens || 0)}</span></div>${costs ? `<div class="usage-tooltip-subtitle">按模型</div><div class="usage-tooltip-grid">${costs}</div>` : ""}${caveats.length ? `<div class="usage-tooltip-note">${caveats.map(escapeHtml).join("；")}</div>` : ""}`;
+  return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-subtitle">费用估算</div><div class="usage-tooltip-grid"><span class="usage-tooltip-label">估算金额</span><span class="usage-tooltip-value">${amountLabel}</span><span class="usage-tooltip-label">已纳入估算 tokens</span><span class="usage-tooltip-value">${formatTokens(row?.pricedTokens || 0)}</span></div>${costs ? `<div class="usage-tooltip-subtitle">按模型</div><div class="usage-tooltip-grid">${costs}</div>` : ""}${caveats.length ? `<div class="usage-tooltip-note">${caveats.map(escapeHtml).join("；")}</div>` : ""}`;
 }
 
 function updateTimelineModeButtons() {
@@ -1487,9 +1931,7 @@ export function renderTimelineLegendHtml(summary, mode, channelColors, modelColo
       totalsByName.set(segment.name, (totalsByName.get(segment.name) || 0) + value);
     }
   }
-  const ordered = [...totalsByName.keys()].sort((a, b) =>
-    totalsByName.get(b) - totalsByName.get(a) || a.localeCompare(b),
-  );
+  const ordered = [...totalsByName.keys()].sort((a, b) => a.localeCompare(b));
   const colorFor = (name) => isChannel
     ? channelColors.get(name) || "var(--green)"
     : modelColors.get(name) || getModelColor(name);
@@ -1518,11 +1960,13 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   const startLabel = range?.start ? dateKey(asDate(range.start)) : "";
   const endLabel = range?.end ? dateKey(asDate(range.end)) : "";
   const rangeLabelText = startLabel && endLabel ? `，统计范围 ${startLabel} 至 ${endLabel}` : "";
-  const baseAriaLabel = mode === "cost"
-    ? `时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期、模型费用和最低费率估算部分`
-    : `时间分布，${modeLabel}堆叠 tokens${rangeLabelText}；每个时间槽可查看完整日期和明细`;
-  canvas.dataset.chartAriaLabel = baseAriaLabel;
-  canvas.setAttribute?.("aria-label", baseAriaLabel);
+  const baseAriaLabel = getLocale() === "en-US"
+    ? `Usage over time, ${mode === "cost" ? "estimated API-equivalent cost by model, with USD on the vertical axis" : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates, model costs, and fallback estimates" : "dates and details"}.`
+    : mode === "cost"
+      ? `时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期、模型费用和最低费率估算部分`
+      : `时间分布，${modeLabel}堆叠 tokens${rangeLabelText}；每个时间槽可查看完整日期和明细`;
+  canvas.dataset.chartAriaLabel = localizeText(baseAriaLabel);
+  canvas.setAttribute?.("aria-label", localizeText(baseAriaLabel));
   timelineBars.set(canvas, []);
   const ratio = window.devicePixelRatio || 1;
   const styles = getComputedStyle(document.documentElement);
@@ -1551,9 +1995,16 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   context.stroke();
 
   if (!rows.length) {
+    const emptyMessage = isQuotaPreset(range?.preset) && range?.quotaState !== "available"
+      ? range?.quotaReason || QUOTA_UI_COPY.waiting
+      : "没有匹配的用量记录";
     context.fillStyle = chartText;
     context.font = "13px system-ui";
-    context.fillText("没有匹配的用量记录", padding.left + 12, padding.top + 28);
+    context.fillText(localizeText(emptyMessage), padding.left + 12, padding.top + 28);
+    if (isQuotaPreset(range?.preset) && range?.quotaState !== "available") {
+      canvas.dataset.chartAriaLabel = localizeText(emptyMessage);
+      canvas.setAttribute?.("aria-label", localizeText(emptyMessage));
+    }
     timelineBars.set(canvas, []);
     return;
   }
@@ -1564,9 +2015,9 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
     const message = (mode === "model" ? "模型" : "费用") + "明细不可用，" + action;
     context.fillStyle = chartText;
     context.font = "13px system-ui";
-    context.fillText(message, padding.left + 12, padding.top + 28);
-    canvas.dataset.chartAriaLabel = message;
-    canvas.setAttribute?.("aria-label", message);
+    context.fillText(localizeText(message), padding.left + 12, padding.top + 28);
+    canvas.dataset.chartAriaLabel = localizeText(message);
+    canvas.setAttribute?.("aria-label", localizeText(message));
     timelineBars.set(canvas, []);
     return;
   }
@@ -1578,6 +2029,7 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   const barWidth = Math.min(slotWidth, Math.max(Math.min(1, slotWidth), Math.min(30, slotWidth * 0.72)));
   const bars = [];
   rows.forEach((row, index) => {
+    if (row.future) return;
     const value = values[index];
     const barHeight = value > 0 ? Math.max(2, (value / scaleMax) * chartHeight) : 0;
     const slotX = padding.left + index * slotWidth;
@@ -1620,20 +2072,28 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
 
   context.fillStyle = chartText;
   context.font = "12px system-ui";
+  // 纵轴数值右对齐贴住坐标轴，各模式保持一致（含按花销的金额标签）。
+  context.textAlign = "right";
+  const axisLabelX = padding.left - 10;
   if (mode === "cost") {
-    context.fillText(formatPreciseUsd(max), 2, padding.top + 8);
-    context.fillText(formatPreciseUsd(0), 2, padding.top + chartHeight);
+    // 柱高按统一标尺折算（见 scaledCost），轴标签用同一标尺的币种。
+    context.fillText(formatPreciseCost(max, state.costScaleTarget), axisLabelX, padding.top + 8);
+    context.fillText(formatPreciseCost(0, state.costScaleTarget), axisLabelX, padding.top + chartHeight);
   } else {
-    context.fillText(formatCompact(max), 8, padding.top + 8);
-    context.fillText("0", 34, padding.top + chartHeight);
+    context.fillText(formatCompact(max), axisLabelX, padding.top + 8);
+    context.fillText("0", axisLabelX, padding.top + chartHeight);
   }
+  context.textAlign = "left";
 
-  const labels = timelineAxisLabels(rows, { bucket: state.bucket, range, chartWidth });
+  const bucket = range?.bucket || state.bucket;
+  const labels = timelineAxisLabels(rows, { bucket, range, chartWidth });
   for (const label of labels) {
     const centerX = padding.left + label.index * slotWidth + slotWidth / 2;
     context.save();
     context.translate(centerX, padding.top + chartHeight + 18);
     context.rotate(-Math.PI / 8);
+    // 刻度文字以槽位中心（柱心）为对齐原点，否则左对齐绘制会整体偏右。
+    context.textAlign = "center";
     context.fillText(label.label, 0, 0);
     context.restore();
   }
@@ -1745,11 +2205,41 @@ function homeRowsFromMetadata(metadata) {
   return homes;
 }
 
-export function renderHomesHtml(homes, { canModify = false } = {}) {
+export function renderSourceOptionsHtml(homes, excludedIds = []) {
+  // 数据来源多选：取消勾选的来源不计入用量统计。文本与路径转义后渲染。
+  const excluded = new Set(excludedIds || []);
+  const sources = (homes || []).filter((home) => home.id);
+  if (!sources.length) {
+    return `<div class="empty">没有可统计的来源</div>`;
+  }
+  return sources
+    .map((home) => {
+      const id = escapeHtml(home.id);
+      const label = escapeHtml(home.label || home.path || home.id);
+      const kind = escapeHtml(home.kind || home.type || "");
+      const pathText = escapeHtml(home.path || "");
+      const counts = `${formatTokens(home.eventCount || 0)} 条事件`;
+      const checked = excluded.has(home.id) ? "" : " checked";
+      return `
+        <label class="source-option">
+          <input type="checkbox" data-source-id="${id}"${checked} />
+          <span class="source-option-text">
+            <span class="source-option-label">${label}<span class="home-kind">${kind}</span></span>
+            <span class="source-option-path" title="${pathText}">${pathText}</span>
+          </span>
+          <span class="source-option-count">${counts}</span>
+        </label>
+      `;
+    })
+    .join("");
+}
+
+export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } = {}) {
   // Render paths and labels as escaped text because they may come from imported logs.
   if (!homes.length) {
-    return `<div class="empty">没有发现 Codex 目录</div>`;
+    return `<div class="empty">没有发现 Codex 或 ZCode 目录</div>`;
   }
+  const excluded = new Set(excludedIds || []);
   return homes
     .map((home) => {
       const label = escapeHtml(home.label);
@@ -1762,8 +2252,10 @@ export function renderHomesHtml(homes, { canModify = false } = {}) {
         canModify && home.imported
           ? `<button class="home-remove" type="button" data-import-action="remove" data-import-path="${pathText}" aria-label="移除 ${label}">移除</button>`
           : "";
+      const isExcluded = Boolean(home.id) && excluded.has(home.id);
+      const excludedBadge = isExcluded ? `<span class="home-excluded">不计入统计</span>` : "";
       return `
-        <div class="home-row">
+        <div class="home-row${isExcluded ? " excluded" : ""}">
           <div class="home-label">
             <strong>${label}</strong>
             <span class="home-kind">${kind}</span>
@@ -1771,6 +2263,7 @@ export function renderHomesHtml(homes, { canModify = false } = {}) {
           <div class="home-meta">
             <span class="home-status">${status}</span>
             <span>${counts}</span>
+            ${excludedBadge}
             ${removeButton}
           </div>
           <div class="home-path" title="${pathText}">${pathText}</div>
@@ -1788,6 +2281,7 @@ function renderHomes(homes, options = {}) {
 
 function metadataFromReport(report) {
   const homeStats = new Map();
+  const harnessModels = { Codex: new Set(), ZCode: new Set() };
   for (const event of report.events) {
     const current = homeStats.get(event.homeId) || {
       eventCount: 0,
@@ -1796,11 +2290,20 @@ function metadataFromReport(report) {
     current.eventCount += 1;
     current.sessions.add(event.sessionId);
     homeStats.set(event.homeId, current);
+    const model = String(event.model || "").trim();
+    if (model && model.toLocaleLowerCase() !== "unknown model") {
+      const bucket = String(event.channel || "").toLowerCase().startsWith("zcode") ? "ZCode" : "Codex";
+      harnessModels[bucket].add(model);
+    }
   }
   return {
     generatedAt: report.generatedAt,
     eventCount: report.events.length,
     sessionCount: report.sessions.length,
+    harnessModels: {
+      Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
+      ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
+    },
     homes: report.homes.map((home) => {
       const stats = homeStats.get(home.id) || { eventCount: 0, sessions: new Set() };
       return {
@@ -1819,7 +2322,8 @@ let staticSummaryCache = null;
 function currentSummary() {
   if (state.report) {
     const nowKey = state.now ? new Date(state.now).getTime() : Math.floor(Date.now() / 60_000);
-    const key = [state.preset, state.bucket, state.startDate, state.endDate, state.recentValue, nowKey].join("|");
+    const excludedKey = [...(state.excludedHomes || [])].map(String).sort().join(",");
+    const key = [state.preset, state.bucket, state.startDate, state.endDate, state.recentValue, excludedKey, nowKey].join("|");
     if (staticSummaryCache?.report === state.report && staticSummaryCache.key === key) return staticSummaryCache.summary;
     const summary = summarize(state.report);
     staticSummaryCache = { report: state.report, key, summary };
@@ -1832,26 +2336,98 @@ function currentMetadata() {
   return state.metadata;
 }
 
+function renderUnavailableQuota(reason, range = null) {
+  hideUsageTooltip();
+  const message = reason || QUOTA_UI_COPY.waiting;
+  const unavailableRange = range || {
+    preset: state.preset,
+    quotaState: "waiting",
+    quotaReason: message,
+    asOf: state.quotaSnapshot?.asOf || state.now,
+    bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+  };
+  unavailableRange.quotaReason = message;
+  const rangeNode = $("#rangeLabel");
+  if (rangeNode) {
+    rangeNode.textContent = rangeLabel({ range: unavailableRange });
+    rangeNode.title = quotaRangeAccessibleLabel(unavailableRange);
+  }
+  for (const selector of [
+    "#totalTokens", "#inputTokens", "#cachedTokens", "#outputTokens", "#reasoningTokens", "#sessionCount",
+    "#totalCost", "#inputCost", "#cachedInputCost", "#outputCost", "#cacheHitRate", "#priceModelCount",
+  ]) {
+    const node = $(selector);
+    if (node) {
+      node.textContent = "—";
+      node.title = "";
+    }
+  }
+  for (const card of document.querySelectorAll(".metric")) {
+    card.title = "";
+    const badge = card.querySelector(".metric-new");
+    if (badge) badge.hidden = true;
+  }
+  const comparison = $("#comparisonSummary");
+  if (comparison) {
+    comparison.hidden = true;
+    comparison.innerHTML = "";
+  }
+  const warning = $("#timelineRangeWarning");
+  if (warning) {
+    warning.hidden = true;
+    warning.textContent = "";
+  }
+  const legend = $("#timelineLegend");
+  if (legend) legend.innerHTML = "";
+  const detailList = $("#detailList");
+  if (detailList) detailList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+  drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
+  updateTimelineModeButtons();
+  updateQuotaPresetButton();
+}
+
 function render() {
   const summary = currentSummary();
   const metadata = currentMetadata();
   if (!summary || !metadata) {
     return;
   }
+  const quotaWindow = summary.quota?.windows?.[state.preset];
+  const quotaState = summary.range?.quotaState ?? quotaWindow?.state;
+  const quotaReason = quotaWindow?.reason && getLocale() === "en-US"
+    ? localizeQuotaReason(quotaWindow)
+    : summary.range?.quotaReason ?? quotaWindow?.reason;
+  if (isQuotaPreset(state.preset) && quotaState !== "available") {
+    renderUnavailableQuota(quotaReason || QUOTA_UI_COPY.waiting, {
+      ...summary.range,
+      quotaState: quotaState || "missing",
+      quotaReason: quotaReason || QUOTA_UI_COPY.waiting,
+    });
+    renderPeriodComparisons(state.periodComparison);
+    renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot(), excludedIds: state.excludedHomes });
+    translatePage();
+    return;
+  }
   hideUsageTooltip();
   renderMetrics(summary);
-  renderComparison(summary);
+  const quotaMode = isQuotaPreset(summary.range?.preset || state.preset) || Boolean(summary.range?.quotaWindow);
+  const comparisonStrip = $("#comparisonSummary");
+  if (comparisonStrip) comparisonStrip.hidden = quotaMode;
+  if (quotaMode) comparisonStrip.innerHTML = "";
+  else renderComparison(summary);
   renderPeriodComparisons(state.periodComparison);
   const rangeNode = $("#rangeLabel");
   rangeNode.textContent = rangeLabel(summary);
   const rangeStart = asDate(summary.range.start);
   const rangeEnd = asDate(summary.range.end);
-  rangeNode.title = rangeStart && rangeEnd ? `${rangeStart.toLocaleString()} 至 ${rangeEnd.toLocaleString()}` : rangeNode.textContent;
+  rangeNode.title = quotaMode
+    ? quotaRangeAccessibleLabel(summary.range)
+    : rangeStart && rangeEnd ? `${rangeStart.toLocaleString(getLocale())} 至 ${rangeEnd.toLocaleString(getLocale())}` : rangeNode.textContent;
   const timelineWarning = $("#timelineRangeWarning");
   if (timelineWarning) {
     timelineWarning.hidden = !summary.timelineError;
     timelineWarning.textContent = summary.timelineError
-      ? `此范围超过 ${MAX_TIMELINE_SLOTS.toLocaleString()} 个时间槽。请缩短日期范围或选择更大的时间粒度。`
+      ? `此范围超过 ${MAX_TIMELINE_SLOTS.toLocaleString(getLocale())} 个时间槽。请缩短日期范围或选择更大的时间粒度。`
       : "";
   }
   const channelColors = getChannelColors(summary.channels);
@@ -1860,8 +2436,14 @@ function render() {
   renderTimelineDetails(summary, channelColors, modelColors);
   renderTimelineLegend(summary, channelColors, modelColors);
   updateTimelineModeButtons();
-  renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot() });
+  renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot(), excludedIds: state.excludedHomes });
+  if (!$("#importDialog")?.hidden) {
+    // 数据先于弹窗就绪时，让弹窗里的来源多选同步最新列表。
+    renderSourceOptions();
+  }
   drawTimeline($("#timelineChart"), summary.timeline, summary.channels, channelColors, summary.range, state.timelineMode, summary.models, modelColors);
+  updateQuotaPresetButton();
+  translatePage();
 }
 
 function setAutoRefreshStatus(message, { error = false } = {}) {
@@ -1898,7 +2480,7 @@ function renderAutoRefreshControls() {
   document.querySelector("#autoRefreshInterval").textContent = staticSnapshot ? "静态快照，不轮询" : `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
   const checked = state.lastSuccessfulCheck ? new Date(state.lastSuccessfulCheck) : null;
   document.querySelector("#lastSuccessfulCheck").textContent = checked && !Number.isNaN(checked.getTime())
-    ? `上次：${checked.toLocaleString()}`
+    ? `上次：${checked.toLocaleString(getLocale())}`
     : "上次：尚无";
 }
 
@@ -1945,24 +2527,179 @@ function setPricingMessage(message, isError = false) {
   element.classList.toggle("error", isError);
 }
 
-function renderPricingRows(catalog) {
-  $("#pricingRows").innerHTML = Object.entries(catalog.models).map(([model, contexts]) => `
-    <fieldset class="pricing-model">
-      <legend>${escapeHtml(model)}</legend>
-      <div class="pricing-contexts">
-        ${["short", "long"].map((context) => `
-          <div class="pricing-context">
-            <strong>${context === "short" ? "短上下文" : "长上下文"}</strong>
-            ${PRICING_FIELDS.map(([field, label]) => `
-              <label>${label}<input type="number" min="0" step="any" required
-                data-model="${escapeHtml(model)}" data-context="${context}" data-field="${field}"
-                value="${contexts[context][field]}" /></label>
-            `).join("")}
-          </div>
+function pricingModelNoteParts(contexts) {
+  const parts = [];
+  if (Number.isInteger(contexts.longContextThreshold)) parts.push(`单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`);
+  if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`);
+  if (contexts.offPeakMultiplier) parts.push(`谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`);
+  return parts;
+}
+
+function pricingModelNote(contexts) {
+  const parts = pricingModelNoteParts(contexts);
+  return parts.length ? `<p class="pricing-model-note">${escapeHtml(parts.join("；"))}</p>` : "";
+}
+
+function pricingModelHint(contexts) {
+  const short = contexts.short || {};
+  const parts = [`${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}（入/缓/出）`];
+  if (Number.isInteger(contexts.longContextThreshold)) parts.push(`上下文 ${formatTokens(contexts.longContextThreshold)} 分档`);
+  if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出 ${formatTokens(contexts.outputThreshold)} 分档`);
+  if (contexts.offPeakMultiplier) parts.push(`谷时 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折`);
+  if (contexts.fast) parts.push("快速模式价");
+  return parts.join(" · ");
+}
+
+function pricingContextsHtml(model, contexts) {
+  const contextBlock = (context, label, source) => `
+      <div class="pricing-context">
+        <strong>${label}</strong>
+        ${PRICING_FIELDS.map(([field, fieldLabel]) => `
+          <label>${fieldLabel}<input type="number" min="0" step="any" required
+            data-model="${escapeHtml(model)}" data-context="${context}" data-field="${field}"
+            value="${source[field]}" /></label>
         `).join("")}
       </div>
-    </fieldset>
-  `).join("");
+    `;
+  const standard = ["short", "shortLongOutput", "long"]
+    .filter((context) => contexts[context])
+    .map((context) => contextBlock(context, { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context], contexts[context]))
+    .join("");
+  const fast = contexts.fast
+    ? `<div class="pricing-fast-block"><strong>快速模式</strong><div class="pricing-contexts">${
+        ["short", "shortLongOutput", "long"]
+          .filter((context) => contexts.fast[context])
+          .map((context) => contextBlock(`fast.${context}`, { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context], contexts.fast[context]))
+          .join("")
+      }</div></div>`
+    : "";
+  return standard + fast;
+}
+
+// 计价字段写回工作副本；fast.* 指向官方声明的快速模式费率。
+function writePricingField(entry, context, field, value) {
+  if (context.startsWith("fast.")) {
+    const sub = context.slice(5);
+    if (entry.fast?.[sub]) entry.fast[sub][field] = value;
+    return;
+  }
+  if (entry[context]) entry[context][field] = value;
+}
+
+// 把使用记录里的模型名称匹配到计价条目（精确优先，其次前缀）。
+function catalogKeysForNames(names, catalog) {
+  const keys = Object.keys(catalog);
+  const lowerNames = [...names]
+    .map((name) => String(name || "").trim().toLocaleLowerCase())
+    .filter((name) => name && name !== "unknown model");
+  const matched = new Set(lowerNames.filter((name) => catalog[name]));
+  for (const lower of lowerNames.filter((name) => !catalog[name])) {
+    const match = keys.find((key) => lower.startsWith(`${key}-`));
+    if (match) matched.add(match);
+  }
+  return matched;
+}
+
+// 计价条目的 harness 归属：OpenAI 价目（Codex 常用的 gpt 系）归 Codex，其余厂商归 ZCode。
+function isCodexPricingModel(entry) {
+  return !entry?.source || entry.source.includes("developers.openai.com");
+}
+
+// 一级：在用 / 全部；在用模型下再按 Codex / ZCode 分组。
+// 在用模型优先按使用记录的实际渠道归属（metadata.harnessModels），
+// 服务端尚未提供该数据时按价目来源兜底分组，保证弹窗始终可用。
+function pricingHarnessGroups() {
+  const catalog = state.pricingCatalog?.models || {};
+  const groups = { Codex: new Set(), ZCode: new Set() };
+  const harnessModels = state.metadata?.harnessModels;
+  const hasHarnessData = (harnessModels?.Codex?.length || harnessModels?.ZCode?.length) > 0;
+
+  if (hasHarnessData) {
+    groups.Codex = catalogKeysForNames(harnessModels.Codex || [], catalog);
+    groups.ZCode = catalogKeysForNames(harnessModels.ZCode || [], catalog);
+    return groups;
+  }
+  const names = new Set();
+  for (const row of state.summary?.models || []) names.add(row.name || row.key);
+  for (const row of state.periodComparison?.models || []) names.add(row.key || row.name);
+  for (const key of catalogKeysForNames(names, catalog)) {
+    groups[isCodexPricingModel(catalog[key]) ? "Codex" : "ZCode"].add(key);
+  }
+  return groups;
+}
+
+function renderPricingModelList() {
+  const container = $("#pricingModelList");
+  const catalog = state.pricingCatalog;
+  if (!container || !catalog) return;
+  const search = state.pricingSearch.trim().toLocaleLowerCase();
+  const matches = (model) => !search || model.toLocaleLowerCase().includes(search);
+  const row = (model) => {
+    const contexts = catalog.models[model];
+    return `
+      <button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(model)}" title="点击编辑该模型费率">
+        <span class="pricing-model-name">${escapeHtml(model)}<span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span></span>
+        <span class="pricing-model-hint">${escapeHtml(pricingModelHint(contexts))}</span>
+      </button>`;
+  };
+
+  if (state.pricingScope === "all") {
+    // 全部模型：平铺展示，不做 Codex / ZCode 划分。
+    const rows = Object.keys(catalog.models)
+      .sort((a, b) => a.localeCompare(b))
+      .filter(matches)
+      .map(row)
+      .join("");
+    container.innerHTML = rows || `<div class="empty">${search ? "没有匹配的模型" : "暂无模型"}</div>`;
+    return;
+  }
+
+  const groups = pricingHarnessGroups();
+  const sections = ["Codex", "ZCode"].map((harness) => {
+    const rows = [...groups[harness]]
+      .sort((a, b) => a.localeCompare(b))
+      .filter(matches)
+      .map(row)
+      .join("");
+    return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
+  }).join("");
+  container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
+}
+
+function updatePricingScopeButtons() {
+  for (const button of document.querySelectorAll("[data-pricing-scope]")) {
+    const selected = button.dataset.pricingScope === state.pricingScope;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+}
+
+function openModelPricing(model) {
+  const entry = state.pricingCatalog?.models?.[model];
+  if (!entry) return;
+  state.modelPricingDraft = model;
+  $("#modelPricingTitle").innerHTML = `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
+  $("#modelPricingNote").textContent = pricingModelNoteParts(entry).join("；");
+  $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
+  $("#modelPricingDialog").hidden = false;
+  window.requestAnimationFrame(() => $("#modelPricingFields input")?.focus());
+}
+
+function closeModelPricing() {
+  $("#modelPricingDialog").hidden = true;
+  state.modelPricingDraft = null;
+}
+
+function applyModelPricing() {
+  const model = state.modelPricingDraft;
+  const entry = state.pricingCatalog?.models?.[model];
+  if (model && entry) {
+    for (const input of $("#modelPricingFields").querySelectorAll("input[data-model]")) {
+      writePricingField(entry, input.dataset.context, input.dataset.field, Number(input.value));
+    }
+  }
+  closeModelPricing();
+  renderPricingModelList();
 }
 
 async function openPricingDialog() {
@@ -1972,13 +2709,17 @@ async function openPricingDialog() {
   try {
     const response = await fetch("/api/pricing");
     const catalog = await response.json();
-    if (!response.ok) throw new Error(catalog.error || `API ${response.status}`);
+    if (!response.ok) throw new Error(localizeServerError(catalog, response.status));
     state.pricingCatalog = catalog;
-    $("#pricingCheckedAt").value = catalog.checkedAt;
-    renderPricingRows(catalog);
+    state.pricingSearch = "";
+    state.pricingScope = "used";
+    $("#pricingSearch").value = "";
+    $("#usdToCnyRate").value = String(catalog.usdToCnyRate ?? 6.72);
+    updatePricingScopeButtons();
+    renderPricingModelList();
     setPricingMessage("");
     $("#pricingDialog").hidden = false;
-    window.requestAnimationFrame(() => $("#pricingCheckedAt").focus());
+    window.requestAnimationFrame(() => $("#pricingSearch").focus());
   } catch (error) {
     setAutoRefreshStatus(`读取计价标准失败：${error.message}`, { error: true });
   } finally {
@@ -1987,8 +2728,10 @@ async function openPricingDialog() {
 }
 
 function closePricingDialog() {
+  closeModelPricing();
   $("#pricingDialog").hidden = true;
   state.pricingCatalog = null;
+  state.pricingSearch = "";
   setPricingMessage("");
   $("#updatePricingButton").focus();
 }
@@ -1996,10 +2739,14 @@ function closePricingDialog() {
 async function submitPricing(event) {
   event.preventDefault();
   if (!state.pricingCatalog) return;
-  const models = structuredClone(state.pricingCatalog.models);
-  for (const input of $("#pricingRows").querySelectorAll("input[data-model]")) {
-    models[input.dataset.model][input.dataset.context][input.dataset.field] = Number(input.value);
+  const usdToCnyRate = Number($("#usdToCnyRate").value);
+  if (!(usdToCnyRate > 0)) {
+    setPricingMessage("请填写大于 0 的美元兑人民币汇率。", true);
+    return;
   }
+  // 价格核对日期自动取保存当天，无需用户填写。
+  const now = new Date();
+  const checkedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const button = $("#savePricingButton");
   button.disabled = true;
   setPricingMessage("正在保存并重算…");
@@ -2007,10 +2754,10 @@ async function submitPricing(event) {
     const response = await fetch("/api/pricing", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ checkedAt: $("#pricingCheckedAt").value, models }),
+      body: JSON.stringify({ checkedAt, usdToCnyRate, models: structuredClone(state.pricingCatalog.models) }),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `API ${response.status}`);
+    if (!response.ok) throw new Error(localizeServerError(data, response.status));
     await loadUsage({ skipCheck: true });
     closePricingDialog();
   } catch (error) {
@@ -2027,7 +2774,7 @@ function setImportControlsDisabled(disabled) {
       continue;
     }
     button.disabled = disabled;
-    button.title = disabled ? "静态快照不能导入目录" : "";
+    button.title = disabled ? "静态快照不能编辑数据来源" : "";
   }
 }
 
@@ -2044,7 +2791,7 @@ async function pickImportDirectory() {
     const response = await fetch("/api/pick-directory", { method: "POST" });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || `API ${response.status}`);
+      throw new Error(localizeServerError(data, response.status));
     }
     if (data.path) {
       $("#importPath").value = data.path;
@@ -2065,16 +2812,59 @@ function setImportMessage(message, isError = false) {
   element.classList.toggle("error", isError);
 }
 
+function readExcludedHomes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXCLUDED_HOMES_STORAGE_KEY) || "[]");
+    if (Array.isArray(saved)) {
+      return saved.filter((id) => typeof id === "string" && id);
+    }
+  } catch {
+    // Ignore storage failures in restricted contexts.
+  }
+  return [];
+}
+
+function saveExcludedHomes() {
+  try {
+    localStorage.setItem(EXCLUDED_HOMES_STORAGE_KEY, JSON.stringify(state.excludedHomes));
+  } catch {
+    // Ignore storage failures in restricted contexts.
+  }
+}
+
 function openImportDialog() {
   if (isStaticSnapshot()) {
-    setAutoRefreshStatus("静态快照不能导入目录，请启动本地服务后再导入");
+    setAutoRefreshStatus("静态快照不能编辑数据来源，请启动本地服务后再操作");
     return;
   }
   const dialog = $("#importDialog");
   dialog.hidden = false;
   $("#importPath").value = "";
   setImportMessage("");
+  renderSourceOptions();
   window.requestAnimationFrame(() => $("#importPath").focus());
+}
+
+function renderSourceOptions() {
+  const container = $("#sourcePicker");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = renderSourceOptionsHtml(homeRowsFromMetadata(currentMetadata() || {}), state.excludedHomes);
+}
+
+function setSourceOption(id, checked) {
+  const excluded = new Set(state.excludedHomes);
+  if (checked) {
+    excluded.delete(id);
+  } else {
+    excluded.add(id);
+  }
+  state.excludedHomes = [...excluded];
+  saveExcludedHomes();
+  reconcileQuotaSourceSelection();
+  // 勾选变化立即生效：跳过同步直接按新筛选刷新汇总。
+  void loadUsage({ skipCheck: true });
 }
 
 function closeImportDialog() {
@@ -2101,7 +2891,7 @@ async function submitImportDirectory(event) {
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || `API ${response.status}`);
+      throw new Error(localizeServerError(data, response.status));
     }
     closeImportDialog();
     setAutoRefreshStatus(`已导入 ${data.import.label}，正在刷新...`);
@@ -2125,33 +2915,99 @@ async function removeImportDirectory(importPath) {
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || `API ${response.status}`);
+    throw new Error(localizeServerError(data, response.status));
   }
   setAutoRefreshStatus("已移除导入目录，正在刷新...");
   await loadUsage();
 }
 
 function updatePresetButtons() {
+  if (state.preset === "all") renderRecordBadges();
   for (const button of document.querySelectorAll("[data-preset]")) {
     button.classList.toggle("active", button.dataset.preset === state.preset);
   }
+  updateQuotaPresetButton();
+}
+
+function clearQuotaNotice() {
+  if (quotaNoticeTimer !== null) {
+    window.clearTimeout(quotaNoticeTimer);
+    quotaNoticeTimer = null;
+  }
+  state.quotaNotice = "";
+  updateQuotaPresetButton();
+}
+
+function showQuotaNotice(message) {
+  clearQuotaNotice();
+  if (!message) return;
+  state.quotaNotice = message;
+  updateQuotaPresetButton();
+  quotaNoticeTimer = window.setTimeout(() => {
+    quotaNoticeTimer = null;
+    state.quotaNotice = "";
+    updateQuotaPresetButton();
+  }, 5000);
+}
+
+function updateQuotaPresetButton() {
+  const button = $("#quotaPresetToggle");
+  if (!button) return;
+  const enabled = selectedCodexAvailable();
+  button.disabled = !enabled;
+  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || state.report?.quota || null;
+  const quotaActive = isQuotaPreset(state.preset);
+  const currentStatus = quotaActive ? quotaWindowAvailability(quotaSnapshot, state.preset) : null;
+  const preferred = QUOTA_PRESETS.includes(state.lastQuotaPreset) ? state.lastQuotaPreset : "quota_5h";
+  const target = quotaActive ? (state.preset === "quota_5h" ? "quota_week" : "quota_5h") : preferred;
+  const targetName = QUOTA_MODE_LABELS[target] || "限额窗口";
+  const currentName = quotaActive ? QUOTA_MODE_LABELS[state.preset] :
+    state.preset === "recent" ? state.recentValue : state.preset === "week" ? "本周" : COMPARISON_PERIOD_LABELS[state.preset] || state.preset;
+  const currentReason = currentStatus && !currentStatus.available ? `；${currentStatus.reason}` : "";
+  const label = `当前范围为${currentName}${currentReason}；点击切换到${targetName}`;
+  button.classList.toggle("active", quotaActive);
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(quotaActive));
+  button.title = enabled ? label : "";
+  for (const mode of button.querySelectorAll("[data-quota-mode]")) {
+    mode.classList.toggle("is-selected", quotaActive && mode.dataset.quotaMode === state.preset);
+  }
+  const status = $("#quotaPresetStatus");
+  if (status) {
+    status.textContent = state.quotaNotice;
+    status.hidden = !enabled || !state.quotaNotice;
+  }
+  updateRecentControls();
+}
+
+function selectedCodexAvailable() {
+  return hasSelectedCodexSource(homeRowsFromMetadata(currentMetadata() || {}), state.excludedHomes);
+}
+
+function reconcileQuotaSourceSelection() {
+  if (!selectedCodexAvailable()) {
+    if (isQuotaPreset(state.preset) || (state.preset === "recent" && ["上一个5h", "上周"].includes(state.recentValue))) {
+      state.preset = "today";
+      state.bucket = "hour";
+    }
+    if (["上一个5h", "上周"].includes(state.recentValue)) state.recentValue = "上个月";
+    state.quotaNotice = "";
+  }
+  updatePresetButtons();
+  updateRecentControls();
 }
 
 function updateRecentControls() {
   const recentValue = $("#recentValue");
-  if (recentValue && recentValue.value !== state.recentValue) {
-    recentValue.value = state.recentValue;
+  const display = displayRecentValue(state.recentValue);
+  if (recentValue && recentValue.value !== display) {
+    recentValue.value = display;
   }
   for (const option of document.querySelectorAll("[data-recent-option]")) {
+    const mode = { "上一个5h": "quota_5h", "上周": "quota_week" }[option.dataset.recentOption];
+    const quota = state.quotaSnapshot || state.summary?.quota || state.report?.quota;
+    option.disabled = Boolean(mode && (!selectedCodexAvailable() || quota?.previousWindows?.[mode]?.state !== "available"));
     option.setAttribute("aria-selected", String(option.dataset.recentOption === state.recentValue));
-  }
-}
-
-function updateBucketSelect() {
-  // Keep the native select in sync when presets adjust bucket state programmatically.
-  const bucketSelect = $("#bucketSelect");
-  if (bucketSelect && bucketSelect.value !== state.bucket) {
-    bucketSelect.value = state.bucket;
   }
 }
 
@@ -2235,6 +3091,7 @@ function applyDateValue(field, value) {
     input.value = value;
   }
   state.preset = "custom";
+  clearQuotaNotice();
   updatePresetButtons();
   refreshViewForFilters();
 }
@@ -2279,10 +3136,18 @@ function setRecentMenuOpen(open) {
 
 function activateRecentValue(value) {
   const next = nextRecentState(state, value);
+  const option = [...document.querySelectorAll("[data-recent-option]")].find(node => node.dataset.recentOption === next.recentValue);
+  if (option?.disabled) return;
+  if (!parseRecentValue(next.recentValue)) {
+    setAutoRefreshStatus("最近范围格式无效。请使用数字和天、周、月或年。", { error: true });
+    updateRecentControls();
+    setRecentMenuOpen(false);
+    return;
+  }
   state.recentValue = next.recentValue;
   state.preset = next.preset;
   state.bucket = next.bucket;
-  updateBucketSelect();
+  clearQuotaNotice();
   updatePresetButtons();
   updateRecentControls();
   setRecentMenuOpen(false);
@@ -2306,6 +3171,9 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
   if (state.preset === "recent" && state.recentValue) {
     params.set("recentValue", state.recentValue);
   }
+  if (state.excludedHomes.length) {
+    params.set("exclude", state.excludedHomes.join(","));
+  }
 
   if (skipCheck) {
     params.set("skipCheck", "1");
@@ -2326,31 +3194,45 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     if (embeddedReport) {
       state.autoRefreshEnabled = false;
       state.report = embeddedReport;
+      state.quotaSnapshot = embeddedReport.quota || null;
+      state.now = embeddedReport.asOf || embeddedReport.quota?.asOf || embeddedReport.generatedAt || null;
       state.metadata = metadataFromReport(embeddedReport);
       state.summary = null;
       state.periodComparison = window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
       state.fingerprint = "static";
+      if (Number(embeddedReport.pricing?.usdToCnyRate) > 0) state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
+      state.costScaleTarget = (embeddedReport.events || []).some((event) => event.costEstimate?.currency === "CNY") ? "CNY" : "USD";
       setAutoRefreshStatus("此静态快照不会轮询；运行 npm run export 可生成新快照");
     } else {
       const response = await fetch(`/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`);
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        const error = new Error(`API ${response.status}`);
+        const error = new Error(localizeServerError(data, response.status));
         error.status = response.status;
+        error.body = data;
         throw error;
       }
-      const data = await response.json();
       if (loadId !== state.usageLoadId) return;
       state.report = null;
       state.metadata = data.metadata;
       state.summary = data.summary;
+      state.quotaSnapshot = data.summary?.quota || data.quota || null;
+      clearQuotaNotice();
       state.periodComparison = data.periodComparison || null;
       state.fingerprint = data.fingerprint || "";
       state.snapshotId = data.snapshotId || null;
+      const costEstimate = data.summary?.costEstimate;
+      if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
+      state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
       if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
       setAutoRefreshStatus(state.autoRefreshEnabled ? "" : "已关闭");
     }
     if (loadId !== state.usageLoadId) return;
+    const previousPreset = state.preset;
+    reconcileQuotaSourceSelection();
+    if (!embeddedReport && previousPreset !== state.preset) return loadUsage({ skipCheck: true });
     renderAutoRefreshControls();
+    updateQuotaPresetButton();
     render();
   } catch (error) {
     if (loadId === state.usageLoadId && error.status === 410 && state.snapshotId && !state.autoRefreshEnabled) {
@@ -2360,6 +3242,19 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       return;
     }
     if (loadId === state.usageLoadId) {
+      if (isQuotaPreset(state.preset) && [409, 413].includes(error.status)) {
+        if (error.body?.quota) state.quotaSnapshot = error.body.quota;
+        state.summary = null;
+        state.report = null;
+        const windowStatus = quotaWindowAvailability(state.quotaSnapshot, state.preset);
+        const reason = windowStatus.available
+          ? localizeServerError(error.body, error.status)
+          : windowStatus.reason || localizeServerError(error.body, error.status);
+        renderUnavailableQuota(reason);
+        const expectedWait = error.body?.code === "QUOTA_WINDOW_UNAVAILABLE";
+        setAutoRefreshStatus(expectedWait ? "" : "限额统计暂不可用", { error: !expectedWait });
+        return;
+      }
       setAutoRefreshStatus(`加载失败：${error.message}`, { error: true });
     }
   }
@@ -2378,8 +3273,8 @@ async function checkForUpdates() {
     state.lastSuccessfulCheck = status.checkedAt || new Date().toISOString();
     setAutoRefreshStatus("");
     renderAutoRefreshControls();
-    if (status.changed) {
-      setAutoRefreshStatus("检测到用量变化，正在更新…");
+    if (status.changed || isQuotaPreset(state.preset)) {
+      setAutoRefreshStatus(status.changed ? "检测到用量变化，正在更新…" : "正在刷新限额窗口…");
       await loadUsage();
     }
   } catch (error) {
@@ -2412,8 +3307,32 @@ function refreshViewForFilters() {
   void loadUsage({ skipCheck: true });
 }
 
+function toggleQuotaPreset() {
+  if (!selectedCodexAvailable()) return;
+  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || state.report?.quota || null;
+  const next = nextQuotaPresetState(state);
+  state.preset = next.preset;
+  state.bucket = next.bucket;
+  state.lastQuotaPreset = next.lastQuotaPreset;
+  clearQuotaNotice();
+  updatePresetButtons();
+  updateRecentControls();
+  const availability = quotaWindowAvailability(quotaSnapshot, next.preset);
+  const reason = availability.available ? "正在加载限额窗口…" : availability.reason;
+  if (!isStaticSnapshot()) state.summary = null;
+  renderUnavailableQuota(reason);
+  if (!availability.available) showQuotaNotice(`${QUOTA_MODE_LABELS[next.preset]}：${reason}`);
+  refreshViewForFilters();
+}
+
 function bootDashboard() {
   setupUsageTooltip();
+  updateLanguageButton();
+  $("#languageToggle").addEventListener("click", () => {
+    setLanguage(getLocale() === "en-US" ? "zh-CN" : "en-US");
+  });
+
+  $("#quotaPresetToggle").addEventListener("click", toggleQuotaPreset);
 
   $("#presetButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-preset]");
@@ -2423,16 +3342,14 @@ function bootDashboard() {
     const next = nextPresetState(state, button.dataset.preset);
     state.preset = next.preset;
     state.bucket = next.bucket;
-    updateBucketSelect();
+    if (next.lastQuotaPreset) state.lastQuotaPreset = next.lastQuotaPreset;
+    clearQuotaNotice();
     updatePresetButtons();
     updateRecentControls();
     refreshViewForFilters();
   });
 
-  $("#bucketSelect").addEventListener("change", (event) => {
-    state.bucket = event.target.value;
-    refreshViewForFilters();
-  });
+  $("#bucketSelect")?.remove(); // 粒度选择已移除，粒度随范围自动推导。
 
   for (const field of ["start", "end"]) {
     const input = dateInputForField(field);
@@ -2494,7 +3411,7 @@ function bootDashboard() {
 
   $("#recentRangeMenu").addEventListener("click", (event) => {
     const option = event.target.closest("[data-recent-option]");
-    if (!option) {
+    if (!option || option.disabled) {
       return;
     }
     event.stopPropagation();
@@ -2521,9 +3438,29 @@ function bootDashboard() {
   $("#updatePricingButton").addEventListener("click", openPricingDialog);
   $("#pricingForm").addEventListener("submit", submitPricing);
   $("#cancelPricingButton").addEventListener("click", closePricingDialog);
-  $("#closePricingDialogButton").addEventListener("click", closePricingDialog);
   $("#pricingDialog").addEventListener("click", (event) => {
     if (event.target.id === "pricingDialog") closePricingDialog();
+  });
+  $("#pricingSearch").addEventListener("input", (event) => {
+    state.pricingSearch = event.target.value;
+    renderPricingModelList();
+  });
+  $("#pricingScope").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-pricing-scope]");
+    if (!button) return;
+    state.pricingScope = button.dataset.pricingScope;
+    updatePricingScopeButtons();
+    renderPricingModelList();
+  });
+  $("#pricingModelList").addEventListener("click", (event) => {
+    const row = event.target.closest("[data-pricing-model]");
+    if (!row) return;
+    openModelPricing(row.dataset.pricingModel);
+  });
+  $("#applyModelPricingButton").addEventListener("click", applyModelPricing);
+  $("#cancelModelPricingButton").addEventListener("click", closeModelPricing);
+  $("#modelPricingDialog").addEventListener("click", (event) => {
+    if (event.target.id === "modelPricingDialog") closeModelPricing();
   });
   $("#importButton").addEventListener("click", openImportDialog);
   $("#addImportButton").addEventListener("click", openImportDialog);
@@ -2571,8 +3508,14 @@ function bootDashboard() {
   });
   $("#importForm").addEventListener("submit", submitImportDirectory);
   $("#pickImportDirectoryButton").addEventListener("click", pickImportDirectory);
+  $("#sourcePicker").addEventListener("change", (event) => {
+    const input = event.target.closest("input[data-source-id]");
+    if (!input) {
+      return;
+    }
+    setSourceOption(input.dataset.sourceId, input.checked);
+  });
   $("#cancelImportButton").addEventListener("click", closeImportDialog);
-  $("#closeImportDialogButton").addEventListener("click", closeImportDialog);
   $("#importDialog").addEventListener("click", (event) => {
     if (event.target.id === "importDialog") {
       closeImportDialog();
@@ -2583,6 +3526,7 @@ function bootDashboard() {
       setRecentMenuOpen(false);
     }
     if (event.key === "Escape" && !$("#pricingDialog").hidden) closePricingDialog();
+    if (event.key === "Escape" && !$("#modelPricingDialog").hidden) closeModelPricing();
     if (event.key === "Escape" && !$("#importDialog").hidden) {
       closeImportDialog();
     }
@@ -2599,6 +3543,16 @@ function bootDashboard() {
       render();
     });
   });
+  // 图表高度随容器（右侧详情行数、窗口/面板拖拽）变化：观察到尺寸变化就按新尺寸重绘。
+  const chartCanvas = $("#timelineChart");
+  if (chartCanvas && typeof ResizeObserver !== "undefined") {
+    let chartResizeTimer = null;
+    const chartResizeObserver = new ResizeObserver(() => {
+      clearTimeout(chartResizeTimer);
+      chartResizeTimer = setTimeout(() => render(), 60);
+    });
+    chartResizeObserver.observe(chartCanvas);
+  }
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.autoRefreshEnabled) {
       startAutoRefresh();
@@ -2607,9 +3561,9 @@ function bootDashboard() {
   });
 
   setTheme(preferredTheme(), { persist: false });
+  state.excludedHomes = readExcludedHomes();
   initializeAutoRefresh();
   updateRecentControls();
-  updateBucketSelect();
   $("#updatePricingButton").disabled = isStaticSnapshot();
   $("#updatePricingButton").title = isStaticSnapshot() ? "静态快照无法更新计价标准；请启动本地服务" : "";
   setImportControlsDisabled(isStaticSnapshot());

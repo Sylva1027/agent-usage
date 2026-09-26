@@ -17,6 +17,12 @@ import {
   renderComparisonHtml,
   renderDatePickerHtml,
   renderHomesHtml,
+  renderSourceOptionsHtml,
+  formatCostAmount,
+  formatCostPair,
+  costPairFromSlots,
+  costScaleValue,
+  fitTextToWidth,
   renderPeriodComparisonTableHtml,
   setSummaryFilters,
   timelineAxisLabels,
@@ -70,8 +76,8 @@ test("timeline details follow channel, model, and cost modes", () => {
   assert.equal(timelineDetailRows(summary, "channel"), channels);
   assert.equal(timelineDetailRows(summary, "model"), models);
   assert.deepEqual(timelineDetailRows(summary, "cost"), [
-    { name: "gpt-6-luna", totalUsd: 0.6 },
-    { name: "gpt-6-sol", totalUsd: 0.5 },
+    { name: "gpt-6-luna", totalUsd: 0.6, currency: "USD", scaleValue: 0.6 },
+    { name: "gpt-6-sol", totalUsd: 0.5, currency: "USD", scaleValue: 0.5 },
   ]);
   assert.deepEqual(timelineDetailRows({ ...summary, timelineError: "too many slots" }, "cost"), []);
 });
@@ -120,6 +126,28 @@ test("comparison sort cycles through descending, ascending, and default order", 
   assert.deepEqual(rowNames(defaultSort, "model"), ["/work/large", "/work/medium", "/work/small"]);
   assert.deepEqual(rowNames(ascending, "model"), ["/work/small", "/work/medium", "/work/large"]);
   assert.match(renderPeriodComparisonTableHtml(rows, { sort: cancelled }), /aria-sort="none"/);
+});
+
+test("natural week comparison headings and accessible sort labels use 本周", () => {
+  const rows = [{
+    key: "gpt-6-luna",
+    name: "gpt-6-luna",
+    periods: {
+      today: { total: 1 },
+      week: { total: 2 },
+      month: { total: 3 },
+      all: { total: 4 },
+    },
+  }];
+  const html = renderPeriodComparisonTableHtml(rows, {
+    kind: "model",
+    expanded: { kind: "model", key: "gpt-6-luna", period: "week" },
+  });
+  assert.match(html, /本周/);
+  assert.match(html, /aria-label="按本周用量排序"/);
+  assert.match(html, /title="按本周用量排序"/);
+  assert.match(html, /本周明细/);
+  assert.doesNotMatch(html, /本自然周明细/);
 });
 
 test("period comparison includes the union of all four periods and reconciles totals", () => {
@@ -308,6 +336,107 @@ test("renderHomesHtml shows escaped statuses and removable imported directories"
   assert.match(html, /\/tmp\/project&amp;one/);
   assert.match(html, /data-import-action="remove"/);
   assert.match(html, /有用量记录/);
+});
+
+test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", () => {
+  const homes = [
+    { id: "main-1", label: "Main Codex", kind: "main", path: "/u/.codex", eventCount: 5, sessionCount: 2 },
+    { id: "zcode-1", label: "Main ZCode", kind: "zcode", path: "/u/.zcode", eventCount: 9, sessionCount: 3 },
+    { label: "导入 <unsafe>", kind: "unsupported", path: "/tmp/x", eventCount: 0 },
+  ];
+  const html = renderSourceOptionsHtml(homes, ["zcode-1"]);
+
+  assert.match(html, /data-source-id="main-1" checked/);
+  assert.doesNotMatch(html, /data-source-id="zcode-1" checked/);
+  assert.match(html, /Main ZCode/);
+  // 没有稳定 id 的条目（如不支持的导入）不进入多选列表。
+  assert.doesNotMatch(html, /unsafe/);
+  assert.equal(renderSourceOptionsHtml([], []), `<div class="empty">没有可统计的来源</div>`);
+});
+
+test("renderHomesHtml 标记被排除统计的来源", () => {
+  const html = renderHomesHtml(
+    [
+      { id: "zcode-1", label: "Main ZCode", kind: "zcode", path: "/u/.zcode", status: "active", eventCount: 9, sessionCount: 3 },
+      { id: "main-1", label: "Main Codex", kind: "main", path: "/u/.codex", status: "active", eventCount: 5, sessionCount: 2 },
+    ],
+    { excludedIds: ["zcode-1"] },
+  );
+
+  assert.match(html, /home-row excluded/);
+  assert.match(html, /不计入统计/);
+  assert.equal((html.match(/不计入统计/g) || []).length, 1);
+});
+
+test("费用金额按币种显示符号，混合币种并列展示", () => {
+  assert.match(formatCostAmount(1.5, "USD"), /\$1\.50/);
+  assert.match(formatCostAmount(1.5, "CNY"), /1\.50/);
+  assert.match(formatCostAmount(1.5, "CNY"), /¥/);
+  assert.equal(formatCostPair(null, null), "—");
+  assert.match(formatCostPair(1, null), /^\$1\.00$/);
+  assert.match(formatCostPair(null, 2), /2\.00/);
+  assert.match(formatCostPair(1, 2), /\$1\.00 \+ .*2\.00/);
+
+  const pair = costPairFromSlots({
+    a: { totalUsd: 3, currency: "USD" },
+    b: { totalUsd: 4, currency: "CNY" },
+    c: { totalUsd: 0, currency: "CNY" },
+  });
+  assert.deepEqual(pair, { usd: 3, cny: 4 });
+  assert.deepEqual(costPairFromSlots({}), { usd: null, cny: null });
+});
+
+test("fitTextToWidth 只缩小字号且不破下限，放得下时不改动", () => {
+  const oldGetComputedStyle = globalThis.getComputedStyle;
+  const makeElement = (fitsAtSize) => {
+    const element = { style: { fontSize: "" }, clientWidth: 100 };
+    Object.defineProperty(element, "scrollWidth", {
+      get() {
+        const size = this.style.fontSize ? parseFloat(this.style.fontSize) : 22;
+        return size <= fitsAtSize ? 100 : 140;
+      },
+    });
+    return element;
+  };
+  globalThis.getComputedStyle = () => ({ fontSize: "22px" });
+  try {
+    const needsShrink = makeElement(16);
+    fitTextToWidth(needsShrink);
+    assert.equal(needsShrink.style.fontSize, "16px");
+
+    const hopeless = makeElement(5);
+    fitTextToWidth(hopeless);
+    assert.equal(hopeless.style.fontSize, "11px");
+
+    const alreadyFits = makeElement(22);
+    fitTextToWidth(alreadyFits);
+    assert.equal(alreadyFits.style.fontSize, "");
+  } finally {
+    globalThis.getComputedStyle = oldGetComputedStyle;
+  }
+});
+
+test("图例按名称字母排序，跨币种费用按汇率折算比较", () => {
+  const summary = {
+    timeline: [
+      {
+        channels: [{ name: "ZCode", total: { total: 500 } }],
+        models: [{ name: "aaa-model", total: { total: 200 } }, { name: "zzz-model", total: { total: 500 } }],
+      },
+    ],
+  };
+  const legendHtml = renderTimelineLegendHtml(summary, "model", new Map(), new Map([
+    ["aaa-model", "#111111"],
+    ["zzz-model", "#222222"],
+  ]));
+  // 字母序：aaa 在前；若按用量排 zzz 会在前。
+  assert.ok(legendHtml.indexOf("aaa-model") < legendHtml.indexOf("zzz-model"));
+
+  // ¥75.51 按 7.2 汇率约合 $10.49，排序应低于 $60.11。
+  assert.ok(costScaleValue(75.51, "CNY", 7.2, "CNY") < costScaleValue(60.11, "USD", 7.2, "CNY"));
+  assert.ok(costScaleValue(75.51, "CNY", 7.2, "USD") < costScaleValue(60.11, "USD", 7.2, "USD"));
+  assert.equal(costScaleValue(75.51, "CNY", 7.2, "CNY"), 75.51);
+  assert.ok(Math.abs(costScaleValue(60.11, "USD", 7.2, "CNY") - 432.792) < 1e-9);
 });
 
 test("renderComparisonHtml renders trend, average trend, and previous totals", () => {

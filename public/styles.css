@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7f8;
+  --bg: #dfe4e9;
   --panel: #ffffff;
   --control: #ffffff;
   --control-hover: #9fb2c4;
@@ -16,6 +16,7 @@
   --chart-text: #607080;
   --active-ink: #ffffff;
   --shadow: 0 10px 30px rgba(31, 41, 51, 0.08);
+  --record: #0e93a6;
 }
 
 [data-theme="dark"] {
@@ -36,6 +37,7 @@
   --chart-text: #9aa8b4;
   --active-ink: #071013;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --record: #2dd4bf;
 }
 
 * {
@@ -57,6 +59,10 @@ select {
   font: inherit;
 }
 
+html[data-i18n-pending] body {
+  visibility: hidden;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -73,7 +79,12 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  padding: 12px 18px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 21px;
+  background: var(--neo-surface);
+  box-shadow: var(--neo-raised);
 }
 
 .topbar-actions {
@@ -81,7 +92,8 @@ button:disabled {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 h1,
@@ -127,6 +139,7 @@ label {
 .auto-refresh-heading {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
 }
 
 .auto-refresh-label {
@@ -282,6 +295,9 @@ label {
   align-items: center;
   justify-content: center;
   width: 44px;
+  flex: 0 0 44px;
+  --toggle-muted: #718096;
+  --toggle-selected: #0891b2;
   min-height: 36px;
   padding: 0;
   border: 0;
@@ -298,8 +314,27 @@ label {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.82;
+  opacity: 1;
 }
+
+#importButton {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  flex: 0 0 96px;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+[data-theme="dark"] .theme-toggle {
+  --toggle-muted: #94a3b8;
+  --toggle-selected: #22d3ee;
+}
+
+#themeToggle .theme-sun { stroke: var(--toggle-selected); }
+#themeToggle .theme-moon { stroke: var(--toggle-muted); }
+[data-theme="dark"] #themeToggle .theme-sun { stroke: var(--toggle-muted); }
+[data-theme="dark"] #themeToggle .theme-moon { stroke: var(--toggle-selected); }
 
 .theme-toggle:hover svg {
   opacity: 1;
@@ -317,6 +352,34 @@ label {
 .theme-toggle:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
+}
+
+.language-toggle {
+  gap: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.language-toggle > span {
+  color: var(--toggle-muted);
+  opacity: 1;
+  transition: none;
+}
+
+.language-toggle .language-divider {
+  color: var(--toggle-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.language-toggle > .is-selected {
+  color: var(--toggle-selected);
+  opacity: 1;
+}
+
+.language-toggle:hover > span:not(.language-divider) {
+  opacity: 1;
 }
 
 .toolbar {
@@ -348,6 +411,91 @@ label {
   background: var(--blue);
   border-color: var(--blue);
   color: var(--active-ink);
+}
+
+#presetButtons > button[data-preset]:not([data-preset="recent"]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 76px;
+  width: 76px;
+  padding: 0 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+html[lang="en-US"] #presetButtons > button[data-preset]:not([data-preset="recent"]) {
+  flex-basis: auto;
+  width: auto;
+  min-width: 76px;
+  padding-inline: 12px;
+}
+
+#presetButtons > .quota-preset-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 102px;
+  width: 102px;
+  padding: 0;
+  overflow: hidden;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+#presetButtons > .quota-preset-toggle .quota-preset-mode {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+}
+
+#presetButtons > .quota-preset-toggle.active .quota-preset-mode:not(.is-selected) {
+  color: var(--muted);
+}
+
+#presetButtons > .quota-preset-toggle .quota-preset-mode.is-selected {
+  color: var(--blue);
+  font-weight: 650;
+}
+
+#presetButtons > .quota-preset-toggle .quota-preset-divider {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font: inherit;
+}
+
+.quota-preset-status {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 80;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 11px;
+  background: var(--neo-surface);
+  color: var(--ink);
+  box-shadow: var(--neo-raised-small);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+#presetButtons > button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+#comparisonSummary[hidden] {
+  display: none;
 }
 
 .custom-range {
@@ -483,6 +631,36 @@ select {
   padding: 0 10px;
 }
 
+/* 复选框不是文本输入框：不套用上面的 36px 高度和内阴影外观，按主题画成小方块。 */
+input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--neo-surface);
+  box-shadow: none;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--active-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
 .segmented .recent-segment {
   display: inline-flex;
   align-items: center;
@@ -513,7 +691,7 @@ select {
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: 112px;
+  width: 140px;
   height: 26px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -624,8 +802,15 @@ select {
   margin-bottom: 16px;
 }
 
+.bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .pricing-note-panel {
-  margin-top: 16px;
+  min-width: 0;
 }
 
 .cost-estimate-tools {
@@ -709,6 +894,28 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.comparison-item.comparison-unavailable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.comparison-unavailable > span {
+  flex: 1 1 auto;
+}
+
+.comparison-unavailable > strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.comparison-unavailable > small {
+  flex: 0 0 100%;
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .comparison-item.previous-period-equal-range small {
   grid-column: 1 / -1;
   min-width: 0;
@@ -744,8 +951,19 @@ select {
 }
 
 .metric {
+  position: relative;
   min-width: 0;
   padding: 14px;
+}
+
+.metric-new {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  color: var(--record);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .metric strong {
@@ -796,12 +1014,21 @@ select {
   line-height: 1.4;
 }
 
-.comparison-table-scroll {
-  max-height: 460px;
-  overflow-x: hidden;
-  overflow-y: auto;
+.comparison-table-frame {
   border: 1px solid var(--line);
   border-radius: 6px;
+  overflow: hidden;
+}
+
+.comparison-table-scroll {
+  /* 固定高度的滚动区 + 独立的合计行：合计始终钉在框体底部。 */
+  height: 460px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.comparison-table-foot {
+  border-top: 1px solid var(--line);
 }
 
 .comparison-table {
@@ -1031,9 +1258,19 @@ select {
 
 .chart-panel canvas {
   display: block;
-  flex: 0 0 220px;
+  /* 绝对定位脱离文档流：画布尺寸完全由容器决定，缓冲区大小不再反过来撑动布局。 */
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 220px;
+  height: 100%;
+}
+
+/* 图表随行高（右侧详情的行数）拉伸：大范围多模型时纵轴分辨率更高，图例沉底。 */
+.chart-panel .timeline-chart-well {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 240px;
 }
 
 .detail-panel .bar-list {
@@ -1163,7 +1400,8 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: var(--shadow);
+  /* 弹窗浮层不使用新拟物的双向偏移阴影（浅色下白边会形成光晕），改用居中的柔和投影。 */
+  box-shadow: var(--dialog-shadow);
 }
 
 .dialog-heading,
@@ -1187,6 +1425,88 @@ select {
   gap: 14px;
 }
 
+.source-picker-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-picker-field legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.source-picker {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.source-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.source-option input {
+  flex: none;
+  margin: 0;
+}
+
+.source-option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.source-option-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.source-option-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.source-option-count {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.home-excluded {
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-row.excluded .home-label strong,
+.home-row.excluded .home-path {
+  opacity: 0.55;
+}
+
 .pricing-dialog {
   width: min(900px, 100%);
   max-height: calc(100vh - 40px);
@@ -1205,6 +1525,135 @@ select {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
+}
+
+.pricing-model-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pricing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pricing-toolbar input[type="search"] {
+  flex: 1;
+  min-width: 160px;
+}
+
+.pricing-rate-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pricing-rate-label input {
+  width: 90px;
+}
+
+.pricing-scope {
+  align-self: start;
+}
+
+.pricing-model-list {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.pricing-harness-group {
+  display: grid;
+  gap: 6px;
+}
+
+.pricing-harness-group h3 {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pricing-model-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pricing-model-row:hover {
+  border-color: var(--blue);
+}
+
+.pricing-model-name {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 币种徽标（USD / CNY）：小号灰字，与名称保持间距。 */
+.currency-badge {
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pricing-model-hint {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pricing-full-form summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pricing-full-form .pricing-rows {
+  margin-top: 10px;
+}
+
+.pricing-fast-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.pricing-fast-block > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.model-pricing-dialog {
+  width: min(560px, 100%);
+}
+
+@media (max-width: 720px) {
+  .bottom-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .pricing-contexts {
@@ -1410,21 +1859,23 @@ select {
 
 /* Shared neumorphic surfaces. Dark mode uses compact exterior shadows. */
 :root {
-  --bg: #edf2f7;
+  --bg: #dfe4e9;
   --panel: #edf2f7;
   --control: #edf2f7;
   --track: #e3eaf1;
   --neo-surface: #edf2f7;
-  --neo-edge: rgba(255, 255, 255, 0.7);
+  --neo-glow: color-mix(in srgb, var(--bg) 92%, transparent);
+  --neo-edge: color-mix(in srgb, var(--bg) 70%, transparent);
   --neo-raised: 7px 7px 16px rgba(149, 165, 183, 0.28),
-    -7px -7px 16px rgba(255, 255, 255, 0.92);
+    -7px -7px 16px var(--neo-glow);
   --neo-raised-small: 4px 4px 9px rgba(149, 165, 183, 0.28),
-    -4px -4px 9px rgba(255, 255, 255, 0.9);
+    -4px -4px 9px var(--neo-glow);
   --neo-inset: inset 5px 5px 10px rgba(149, 165, 183, 0.25),
-    inset -5px -5px 10px rgba(255, 255, 255, 0.85);
+    inset -5px -5px 10px var(--neo-glow);
   --neo-inset-small: inset 3px 3px 6px rgba(149, 165, 183, 0.28),
-    inset -3px -3px 6px rgba(255, 255, 255, 0.8);
+    inset -3px -3px 6px var(--neo-glow);
   --shadow: var(--neo-raised);
+  --dialog-shadow: 0 12px 32px rgba(15, 23, 42, 0.24);
 }
 
 [data-theme="dark"] {
@@ -1441,16 +1892,23 @@ select {
   --neo-inset-small: inset 3px 3px 6px rgba(0, 0, 0, 0.42),
     inset -2px -2px 5px rgba(54, 65, 75, 0.16);
   --shadow: var(--neo-raised);
+  --dialog-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .toolbar,
 .comparison-item,
 .metric,
-.panel,
-.dialog {
+.panel {
   border: 1px solid var(--neo-edge);
   background: var(--neo-surface);
   box-shadow: var(--neo-raised);
+}
+
+/* 弹窗浮层不用新拟物的双向偏移阴影：浅色下白色那半边贴着遮罩会形成光晕。 */
+.dialog {
+  border: 1px solid var(--neo-edge);
+  background: var(--neo-surface);
+  box-shadow: var(--dialog-shadow);
 }
 
 .toolbar,
@@ -1537,13 +1995,20 @@ select {
 input,
 select,
 .recent-combobox,
-.comparison-table-scroll,
 .bar-track,
 .pricing-model {
   border: 1px solid transparent;
   border-radius: 11px;
   background: var(--neo-surface);
   box-shadow: var(--neo-inset);
+}
+
+/* 表格框体只用平整表面，不加内阴影：滚动区留白处不会显得下沉重。 */
+.comparison-table-frame {
+  border: 1px solid var(--neo-edge);
+  border-radius: 13px;
+  background: var(--neo-surface);
+}
 }
 
 input:focus-visible,
@@ -1596,7 +2061,7 @@ select:focus-visible {
   box-shadow: var(--neo-raised-small);
 }
 
-.comparison-table-scroll { border-radius: 13px; }
+.comparison-table-frame { border-radius: 13px; }
 .bar-track {
   border-radius: 999px;
   box-shadow: var(--neo-inset-small);

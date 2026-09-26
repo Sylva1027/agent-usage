@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { buildUsageReport, summarizePeriodComparison } from "./usage-core.js";
+import { buildUsageReport, selectQuotaWindows, summarizePeriodComparison } from "./usage-core.js";
 import { API_PRICING_MODE, API_PRICING_SOURCE, estimateEventCost, getPricingCatalog } from "./pricing.js";
 import { loadPricingFile } from "./pricing-store.js";
 
@@ -27,14 +27,33 @@ export function renderStaticDashboardHtml(report) {
   const indexHtml = readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
   const styles = readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   const app = readFileSync(path.join(PUBLIC_DIR, "app.js"), "utf8");
+  const i18n = readFileSync(path.join(PUBLIC_DIR, "i18n.js"), "utf8");
   const timelineUtils = readFileSync(path.join(PUBLIC_DIR, "timeline-utils.js"), "utf8");
   const inlineTimelineUtils = timelineUtils.replace(/^export\s+/gm, "");
-  const bundledApp = app.replace(/^import \{ buildTimelineRows \} from "\.\/timeline-utils\.js";\s*/m, "");
-  const periodComparison = summarizePeriodComparison(report.events, { now: report.generatedAt });
+  const inlineI18n = i18n.replace(/^export\s+/gm, "");
+  const i18nImport = app.match(/^import \{([^}]*)\} from "\.\/i18n\.js";\s*/m);
+  if (!i18nImport) throw new Error("Expected the dashboard localization import.");
+  const i18nNames = i18nImport[1].split(",").map((name) => name.trim()).filter(Boolean);
+  if (!i18nNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name))) {
+    throw new Error("Expected simple named dashboard localization imports.");
+  }
+  const bundledApp = app
+    .replace(/^import \{[^}]*\} from "\.\/timeline-utils\.js";\s*/m, "")
+    .replace(/^import \{[^}]*\} from "\.\/i18n\.js";\s*/m, "");
+  const bundledTimelineUtils = `const { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource } = (() => {\n${inlineTimelineUtils}\nreturn { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource };\n})();`;
+  const bundledI18n = `const { ${i18nNames.join(", ")} } = (() => {\n${inlineI18n}\nreturn { ${i18nNames.join(", ")} };\n})();`;
+  const asOf = report.asOf || report.generatedAt || new Date().toISOString();
+  const quota = selectQuotaWindows(report.rateLimitObservations || [], asOf);
+  const periodComparison = summarizePeriodComparison(report.events, { now: asOf });
+  const catalog = getPricingCatalog();
   const pricedReport = {
     ...report,
+    generatedAt: asOf,
+    asOf,
+    quota,
     pricing: {
-      checkedAt: getPricingCatalog().checkedAt,
+      checkedAt: catalog.checkedAt,
+      usdToCnyRate: catalog.usdToCnyRate,
       mode: API_PRICING_MODE,
       source: API_PRICING_SOURCE,
     },
@@ -47,7 +66,7 @@ export function renderStaticDashboardHtml(report) {
   html = replaceExactlyOnce(
     html,
     scriptAnchor,
-    `<script>window.__CODEX_USAGE_REPORT__ = ${safeScriptJson(pricedReport)}; window.__CODEX_USAGE_PERIOD_COMPARISON__ = ${safeScriptJson(periodComparison)};</script>\n<script type="module">\n${inlineTimelineUtils}\n${bundledApp}\n</script>`,
+    `<script>window.__CODEX_USAGE_REPORT__ = ${safeScriptJson(pricedReport)}; window.__CODEX_USAGE_PERIOD_COMPARISON__ = ${safeScriptJson(periodComparison)};</script>\n<script type="module">\n${bundledTimelineUtils}\n${bundledI18n}\n${bundledApp}\n</script>`,
     "application script",
   );
   return html;
@@ -57,8 +76,9 @@ export async function exportStaticDashboard(options = {}) {
   const outFile = options.outFile || path.join(ROOT_DIR, "dist", "codex-usage.html");
   await loadPricingFile(options);
   const report = options.report || (await buildUsageReport(options));
+  const asOf = new Date().toISOString();
   await mkdir(path.dirname(outFile), { recursive: true });
-  await writeFile(outFile, renderStaticDashboardHtml(report));
+  await writeFile(outFile, renderStaticDashboardHtml({ ...report, asOf }));
   return outFile;
 }
 

@@ -8,7 +8,11 @@ test("toolbar embeds the fillable recent dropdown inside the range segments", as
 
   assert.ok(html.indexOf('data-preset="all"') < html.indexOf('data-preset="recent"'));
   assert.ok(html.indexOf('data-preset="all"') < html.indexOf('id="recentValue"'));
+  assert.ok(html.indexOf('id="quotaPresetToggle"') < html.indexOf('data-preset="today"'));
+  assert.match(html, /id="quotaPresetToggle"[\s\S]*data-quota-mode="quota_5h">5h<\/span>[\s\S]*data-quota-mode="quota_week">Week<\/span>/);
+  assert.match(html, /id="quotaPresetStatus"[^>]+role="status"[^>]+aria-live="polite"/);
   assert.match(html, /data-preset="today" class="active">今日<\/button>/);
+  assert.match(html, /data-preset="week">本周<\/button>/);
   assert.match(html, /data-preset="all">全部<\/button>/);
   assert.ok(html.indexOf('id="recentValue"') < html.indexOf('data-preset="custom"'));
   assert.match(html, /<span class="recent-segment-label">最近<\/span>/);
@@ -26,12 +30,13 @@ test("toolbar embeds the fillable recent dropdown inside the range segments", as
   assert.match(html, /id="endDatePicker"/);
   assert.match(html, /data-date-picker-button="start"/);
   assert.match(html, /data-date-picker-button="end"/);
-  // The granularity selector exposes hourly buckets before broader date buckets.
-  assert.ok(html.indexOf('value="hour"') < html.indexOf('value="day"'));
-  // Today's preset is the initial view, so its default hourly granularity is selected on first paint.
-  assert.match(html, /<option value="hour" selected>按小时<\/option>/);
-  assert.match(html, /<option value="day">按天<\/option>/);
+  // 粒度选择已移除：时间粒度随范围预设自动推导。
+  assert.doesNotMatch(html, /id="bucketSelect"/);
+  assert.doesNotMatch(html, /粒度/);
   assert.match(css, /\.segmented\s+\.recent-segment\s+\.recent-segment-label\s*{[^}]*color:\s*inherit;/s);
+  assert.match(css, /#presetButtons\s*>\s*button\[data-preset\][^{]*{[^}]*flex:\s*0 0 76px;/s);
+  assert.match(css, /#presetButtons\s*>\s*\.quota-preset-toggle\s*{[^}]*flex:\s*0 0 102px;/s);
+  assert.match(css, /\.quota-preset-mode\.is-selected\s*{[^}]*color:\s*var\(--blue\);/s);
   assert.match(css, /\.segmented\s+\.recent-segment\s*{[^}]*gap:\s*10px;/s);
   assert.match(css, /\.segmented\s+\.recent-segment\s*{[^}]*padding:\s*0 10px 0 14px;/s);
   assert.match(css, /\.recent-combobox\s*{[^}]*border:\s*1px solid var\(--line\);/s);
@@ -48,8 +53,8 @@ test("toolbar embeds the fillable recent dropdown inside the range segments", as
   assert.match(css, /\.date-picker-grid\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\);/s);
   assert.match(css, /\.date-picker-day\.outside-month\s*{[^}]*color:\s*var\(--muted\);/s);
 
-  for (const value of ["1天", "1周", "1个月", "2个月", "3个月", "半年", "一年"]) {
+  for (const value of ["上一个5h", "上周", "上个月", "今年"]) {
     assert.match(html, new RegExp(`data-recent-option="${value}"`));
   }
-  assert.match(html, /data-recent-option="1个月"[^>]+aria-selected="true"/);
+  assert.match(html, /data-recent-option="上个月"[^>]+aria-selected="true"/);
 });
