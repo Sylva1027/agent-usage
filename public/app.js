@@ -1037,11 +1037,7 @@ function summarizeComparison(allEvents, range, currentTotals) {
 }
 
 function codexHomeIdSet(report) {
-  return new Set(
-    (report.homes || [])
-      .filter((home) => CODEX_HOME_KINDS.has(home.kind))
-      .map((home) => String(home.id)),
-  );
+  return new Set((report.homes || []).filter((home) => CODEX_HOME_KINDS.has(home.kind)).map((home) => String(home.id)));
 }
 
 export function summarize(report) {
