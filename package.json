@@ -11,6 +11,9 @@
   "scripts": {
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.checkjs.json",
+    "lint": "biome check --formatter-enabled=false .",
+    "format:check": "biome format .",
+    "format": "biome format --write .",
     "export": "node src/static-export.js",
     "summary": "node src/cli.js summary",
     "serve": "node src/cli.js run"
