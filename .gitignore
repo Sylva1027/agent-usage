@@ -24,6 +24,13 @@ pnpm-debug.log*
 /archived_sessions/
 /state_*.sqlite
 
+# Local-only archived handoff notes (not approved for publication)
+/docs/archive/2026-09-27/code-review/
+/docs/archive/2026-09-27/quota-window-execution-plan.md
+/docs/archive/2026-09-27/quota-window-repair-guide.md
+/docs/archive/2026-09-27/session-changes-2026-09-27.md
+/docs/archive/2026-09-27/local-notes.md
+
 # Python and virtual environments
 .venv/
 venv/
