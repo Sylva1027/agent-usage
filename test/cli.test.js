@@ -88,7 +88,7 @@ function isolatedEnv(homeDir) {
   return { ...process.env, HOME: homeDir };
 }
 
-function runCli(args, env = process.env) {
+function runCli(args, env = process.env, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["src/cli.js", ...args], {
       cwd: path.resolve(import.meta.dirname, ".."),
@@ -96,15 +96,18 @@ function runCli(args, env = process.env) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
+    let stdout = "";
     child.stdout.on("data", (chunk) => {
-      output += chunk.toString();
+      const text = chunk.toString();
+      stdout += text;
+      output += text;
     });
     child.stderr.on("data", (chunk) => {
       output += chunk.toString();
     });
     child.on("exit", (code) => {
       if (code === 0) {
-        resolve(output);
+        resolve(options.stdoutOnly ? stdout : output);
       } else {
         reject(new Error(`cli exited with ${code}: ${output}`));
       }
@@ -140,7 +143,7 @@ test("cli run starts a local usage server", async () => {
 test("cli summary --json returns lightweight summary metadata without full report", async () => {
   const homeDir = await makeFixtureHome();
 
-  const output = await runCli(["summary", "--json", "--home-dir", homeDir], isolatedEnv(homeDir));
+  const output = await runCli(["summary", "--json", "--home-dir", homeDir], isolatedEnv(homeDir), { stdoutOnly: true });
   const parsed = JSON.parse(output);
 
   assert.equal(parsed.summary.totals.total, 77);
