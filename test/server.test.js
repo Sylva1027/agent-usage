@@ -8,7 +8,7 @@ import test from "node:test";
 import { createUsageServer, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
 
 function jsonl(rows) {
-  return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
 
 function localHourKey(value) {
@@ -133,11 +133,11 @@ test("server serves the dashboard and usage API", async () => {
     assert.equal(json.report, undefined);
     assert.ok((await stat(databaseFile)).size > 0);
 
-    const invalidDate = await fetch(baseUrl + "/api/summary?preset=custom&startDate=2026-02-30");
-    const invalidBucket = await fetch(baseUrl + "/api/summary?bucket=fortnight");
-    const invalidPreset = await fetch(baseUrl + "/api/summary?preset=quarter");
-    const unavailableQuota = await fetch(baseUrl + "/api/usage?preset=quota_5h");
-    const malformedPath = await fetch(baseUrl + "/%E0%A4%A");
+    const invalidDate = await fetch(`${baseUrl}/api/summary?preset=custom&startDate=2026-02-30`);
+    const invalidBucket = await fetch(`${baseUrl}/api/summary?bucket=fortnight`);
+    const invalidPreset = await fetch(`${baseUrl}/api/summary?preset=quarter`);
+    const unavailableQuota = await fetch(`${baseUrl}/api/usage?preset=quota_5h`);
+    const malformedPath = await fetch(`${baseUrl}/%E0%A4%A`);
     assert.equal(invalidDate.status, 400);
     assert.equal(invalidBucket.status, 400);
     assert.equal(invalidPreset.status, 400);
@@ -228,7 +228,7 @@ test("server reports status changes and refreshes cached usage reports", async (
 
     await appendFile(
       sessionFile,
-      JSON.stringify({
+      `${JSON.stringify({
         timestamp: "2026-05-01T02:02:00.000Z",
         type: "event_msg",
         payload: {
@@ -243,7 +243,7 @@ test("server reports status changes and refreshes cached usage reports", async (
             },
           },
         },
-      }) + "\n",
+      })}\n`,
     );
 
     const changed = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) => response.json());
@@ -271,7 +271,7 @@ test("paused usage keeps the same indexed data across range changes", async () =
     assert.equal(paused.summary.totals.total, 123);
     assert.ok(paused.snapshotId);
 
-    await appendFile(sessionFile, JSON.stringify({
+    await appendFile(sessionFile, `${JSON.stringify({
       timestamp: "2026-05-01T02:02:00.000Z",
       type: "event_msg",
       payload: {
@@ -283,7 +283,7 @@ test("paused usage keeps the same indexed data across range changes", async () =
           },
         },
       },
-    }) + "\n");
+    })}\n`);
 
     const live = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     assert.equal(live.summary.totals.total, 200);
@@ -517,7 +517,7 @@ test("server starts directly when its script path contains spaces", async () => 
   try {
     const output = await new Promise((resolve, reject) => {
       let text = "";
-      const timer = setTimeout(() => reject(new Error("Timed out waiting for server startup: " + text)), 5_000);
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for server startup: ${text}`)), 5_000);
       child.stdout.on("data", (chunk) => {
         text += chunk.toString();
         if (text.includes("Agent Usage dashboard:")) {
@@ -532,7 +532,7 @@ test("server starts directly when its script path contains spaces", async () => 
       });
       child.once("close", (code) => {
         clearTimeout(timer);
-        reject(new Error("Server exited before startup with code " + code + ": " + text));
+        reject(new Error(`Server exited before startup with code ${code}: ${text}`));
       });
     });
     assert.match(output, /http:\/\/127\.0\.0\.1:\d+/);

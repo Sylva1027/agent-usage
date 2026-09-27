@@ -186,7 +186,7 @@ function generateCalendarKeys(start, end, bucket, calendarZone = "local", limit 
   if (!start || !end || end < start) return keys;
   const utc = calendarZone === "utc";
   if (bucket === "hour") {
-    let cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), start.getUTCHours())) : new Date(start.getFullYear(), start.getMonth(), start.getDate(), start.getHours());
+    const cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), start.getUTCHours())) : new Date(start.getFullYear(), start.getMonth(), start.getDate(), start.getHours());
     const last = utc ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), end.getUTCHours())) : new Date(end.getFullYear(), end.getMonth(), end.getDate(), end.getHours());
     const seen = new Set();
     while (cursor <= last) {
@@ -219,7 +219,7 @@ function generateCalendarKeys(start, end, bucket, calendarZone = "local", limit 
     return keys;
   }
   if (bucket === "month") {
-    let cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)) : new Date(start.getFullYear(), start.getMonth(), 1);
+    const cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)) : new Date(start.getFullYear(), start.getMonth(), 1);
     const last = utc ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1)) : new Date(end.getFullYear(), end.getMonth(), 1);
     while (cursor <= last) {
       appendCalendarKey(keys, timelineBucketKey(cursor, bucket, calendarZone), limit);

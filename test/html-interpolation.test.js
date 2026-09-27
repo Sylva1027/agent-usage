@@ -14,7 +14,7 @@ const markup = '<img src=x onerror="alert(1)">';
 
 test("text, quoted attributes, and trusted fragments stay in their HTML contexts", () => {
   const row = {
-    key: `repo\" onclick=\"alert(1)${markup}`,
+    key: `repo" onclick="alert(1)${markup}`,
     name: markup,
     periods: { today: { total: 10 } },
   };

@@ -275,7 +275,7 @@ export class UsageStore {
       this.database.exec("BEGIN IMMEDIATE");
       try {
         this.database.exec(sql);
-        this.database.exec("PRAGMA user_version = " + nextVersion);
+        this.database.exec(`PRAGMA user_version = ${nextVersion}`);
         this.database.exec("COMMIT");
       } catch (error) {
         this.database.exec("ROLLBACK");
@@ -358,9 +358,9 @@ export class UsageStore {
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
-      throw new Error("不支持的用量索引版本：" + version);
+      throw new Error(`不支持的用量索引版本：${version}`);
     }
-    if (version === 0) this.database.exec("PRAGMA user_version = " + STORE_SCHEMA_VERSION);
+    if (version === 0) this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     this.database.exec("CREATE INDEX IF NOT EXISTS events_repository_idx ON events(repository_key)");
     this.generatedAt = this.readMeta("generated_at");
     this.fingerprint = this.readMeta("fingerprint");
@@ -762,7 +762,7 @@ export class UsageStore {
     }));
   }
 
-  periodAggregate(groupColumn, nameColumn, now, ranges, { includeKind = false, excludeHomes = [] } = {}) {
+  periodAggregate(groupColumn, nameColumn, _now, ranges, { includeKind = false, excludeHomes = [] } = {}) {
     const dimensionKey = groupColumn;
     const dimensions = dimensionKey
       ? `${dimensionKey} AS dimension_key, ${includeKind ? `MIN(${nameColumn}) AS dimension_name, MIN(repository_kind) AS dimension_kind, COUNT(DISTINCT NULLIF(cwd, '')) AS path_count` : `${nameColumn} AS dimension_name`},`

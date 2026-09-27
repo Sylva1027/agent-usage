@@ -85,6 +85,7 @@
                   id="recentValue"
                   class="recent-segment-input"
                   type="text"
+                  role="combobox"
                   value="上个月"
                   readonly
                   autocomplete="off"
@@ -221,6 +222,7 @@
               <h2>时间分布</h2>
               <span id="rangeLabel"></span>
             </div>
+            <!-- biome-ignore lint/a11y/useSemanticElements: 按键组样式依赖 div 布局，改用 fieldset 需重置默认边框与内边距，风险大于收益 -->
             <div class="segmented timeline-mode-select" id="timelineModes" role="group" aria-label="时间分布方式">
               <button type="button" data-timeline-mode="channel" aria-pressed="true">按渠道</button>
               <button type="button" data-timeline-mode="model" aria-pressed="false">按模型</button>
@@ -231,6 +233,7 @@
             <canvas id="timelineChart" width="960" height="320" tabindex="0" role="img" aria-label="时间分布柱状图；聚焦后可查看用量详情"></canvas>
           </div>
           <p id="timelineRangeWarning" class="timeline-range-warning" role="status" hidden></p>
+          <!-- biome-ignore lint/a11y/useSemanticElements: 图例由 JS 渲染 span 列表，改用 ul 需同步重置列表默认样式与缩进 -->
           <div id="timelineLegend" class="timeline-legend" role="list" aria-label="图表图例"></div>
         </section>
 
@@ -329,6 +332,7 @@
               人民币
             </label>
           </div>
+          <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
           <div class="segmented pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
             <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
             <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>

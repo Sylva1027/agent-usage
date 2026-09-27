@@ -825,7 +825,7 @@ export async function parseSessionFile(filePath, home, options = {}) {
   let previousCumulativeCacheWrite = { tokens: 0, known: false };
   let baselineLoaded = false;
   let hasUsageInFile = false;
-  let finalUsage = emptyUsage();
+  const finalUsage = emptyUsage();
   let tokenEventCount = 0;
   const events = [];
   const rateLimitObservations = [];
@@ -1606,7 +1606,7 @@ export async function buildUsageIndex(options = {}) {
   };
 }
 
-function localDateKey(date) {
+function _localDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");

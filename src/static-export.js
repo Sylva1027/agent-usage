@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,7 +19,7 @@ function safeScriptJson(value) {
 function replaceExactlyOnce(value, anchor, replacement, description) {
   const index = value.indexOf(anchor);
   if (index < 0 || value.indexOf(anchor, index + anchor.length) >= 0) {
-    throw new Error("Expected exactly one " + description + " in dashboard HTML.");
+    throw new Error(`Expected exactly one ${description} in dashboard HTML.`);
   }
   return value.slice(0, index) + replacement + value.slice(index + anchor.length);
 }

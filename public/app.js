@@ -14,7 +14,6 @@ import {
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
-  addDays,
   dateKey,
   datePickerMonthModel,
   monthStart,
@@ -692,7 +691,7 @@ export function nextQuotaPresetState(currentState = {}) {
   };
 }
 
-export function nextRecentState(currentState = {}, value = "") {
+export function nextRecentState(_currentState = {}, value = "") {
   const recentValue = normalizeRecentValue(value);
   const parsed = parseRecentValue(recentValue);
   const namedBucket = { "上一个5h": "quota_30m", "上周": "quota_24h", "上个月": "day", "今年": "month" }[recentValue];
@@ -1223,7 +1222,7 @@ export function rangeLabel(summary) {
   }
   const start = summary.range.start ? dateKey(asDate(summary.range.start), range.calendarZone) : "开始";
   const end = summary.range.end ? dateKey(asDate(summary.range.end), range.calendarZone) : "现在";
-  return start + " 至 " + end + (range.calendarZone === "utc" ? " (UTC)" : "");
+  return `${start} 至 ${end}${range.calendarZone === "utc" ? " (UTC)" : ""}`;
 }
 
 export function renderBarListHtml(rows, colorMap = null) {
@@ -1433,7 +1432,7 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
       const value = row.periods?.[period]?.total || 0;
       const formattedValue = formatTokenMillions(value);
       const roundedZeroClass = formattedValue === "0.00M" ? " comparison-total-zero" : "";
-      return `<td><button class="comparison-total-button${roundedZeroClass}" type="button" data-period-expand data-kind="${kind}" data-key="${escapeHtml(row.key)}" data-period="${period}" aria-expanded="${isExpanded}" ${isExpanded ? 'aria-controls="' + rowId + '-detail"' : ""} title="${formatTokens(value)}">${formattedValue}</button></td>`;
+      return `<td><button class="comparison-total-button${roundedZeroClass}" type="button" data-period-expand data-kind="${kind}" data-key="${escapeHtml(row.key)}" data-period="${period}" aria-expanded="${isExpanded}" ${isExpanded ? `aria-controls="${rowId}-detail"` : ""} title="${formatTokens(value)}">${formattedValue}</button></td>`;
     }).join("");
     const isExpanded = expanded?.kind === kind && expanded?.key === row.key;
     const activeMetrics = isExpanded ? row.periods?.[expanded.period] : null;
@@ -1514,13 +1513,13 @@ function shortTimelineLabel(key, bucket, range) {
     const start = asDate(range?.start);
     const end = asDate(range?.end);
     const oneDay = start && end && dateKey(start, range?.calendarZone) === dateKey(end, range?.calendarZone);
-    return oneDay ? match[4] : match[2] + "-" + match[3] + " " + match[4];
+    return oneDay ? match[4] : `${match[2]}-${match[3]} ${match[4]}`;
   }
   if (bucket === "day" || bucket === "week") {
     const start = asDate(range?.start);
     const end = asDate(range?.end);
     if (bucket === "day" && range?.preset === "week") {
-      const date = new Date(text + "T12:00:00");
+      const date = new Date(`${text}T12:00:00`);
       return getLocale() === "en-US"
         ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()]
         : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
@@ -1540,7 +1539,7 @@ export function timelineAxisLabels(rows, options = {}) {
   const oneDayHourly = bucket === "hour" && range.start && range.end && dateKey(asDate(range.start), range.calendarZone) === dateKey(asDate(range.end), range.calendarZone);
   const labels = rows.map((row) => shortTimelineLabel(row.key, bucket, range));
   if (oneDayHourly && chartWidth >= 700) {
-    return rows.map((row, index) => ({ index, label: labels[index] }));
+    return rows.map((_row, index) => ({ index, label: labels[index] }));
   }
   const maxLabels = Math.max(1, options.maxLabels || Math.floor(chartWidth / 68));
   const count = Math.min(rows.length, maxLabels);
@@ -1704,7 +1703,7 @@ const preciseCnyFormatter = new Intl.NumberFormat("zh-CN", {
   maximumFractionDigits: 2,
 });
 
-function formatPreciseUsd(value) {
+function _formatPreciseUsd(value) {
   const amount = Number(value || 0);
   return preciseUsdFormatter.format(Number.isFinite(amount) ? amount : 0);
 }
@@ -1911,7 +1910,7 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   const breakdownReady = timelineBreakdownReady(rows, mode);
   if (!breakdownReady) {
     const action = isStaticSnapshot() ? "请重新导出快照" : "请重启服务";
-    const message = (mode === "model" ? "模型" : "费用") + "明细不可用，" + action;
+    const message = `${mode === "model" ? "模型" : "费用"}明细不可用，${action}`;
     context.fillStyle = chartText;
     context.font = "13px system-ui";
     context.fillText(localizeText(message), padding.left + 12, padding.top + 28);
@@ -2436,7 +2435,7 @@ function pricingModelNoteParts(contexts) {
   return parts;
 }
 
-function pricingModelNote(contexts) {
+function _pricingModelNote(contexts) {
   const parts = pricingModelNoteParts(contexts);
   return parts.length ? `<p class="pricing-model-note">${escapeHtml(parts.join("；"))}</p>` : "";
 }

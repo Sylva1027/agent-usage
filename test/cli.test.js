@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 
 function jsonl(rows) {
-  return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
 
 async function makeFixtureHome() {

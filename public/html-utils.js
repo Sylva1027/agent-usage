@@ -12,6 +12,8 @@ export function escapeHtml(value) {
 }
 
 export function externalHttpUrl(value) {
+  // The control-character range is intentional: URLs containing C0 controls or DEL are rejected before parsing.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberate reject-list for untrusted pricing source URLs
   if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) return null;
   try {
     const url = new URL(value);

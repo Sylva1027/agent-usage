@@ -162,7 +162,7 @@ async function readImportEntries(options = {}) {
 async function writeImportEntries(options, entries) {
   const filePath = importStoreFile(options);
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify({ imports: normalizeImportEntries(entries) }, null, 2) + "\n");
+  await writeFile(filePath, `${JSON.stringify({ imports: normalizeImportEntries(entries) }, null, 2)}\n`);
 }
 
 async function describeImportEntry(importPath) {
@@ -299,7 +299,8 @@ export function createUsageServer(options = {}) {
 
   async function createSnapshot({ check = false } = {}) {
     const status = await loadUsageStore({ check });
-    const snapshotDirectory = await (snapshotDirectoryPromise ||= mkdtemp(path.join(os.tmpdir(), "codex-usage-snapshot-")));
+    snapshotDirectoryPromise ||= mkdtemp(path.join(os.tmpdir(), "codex-usage-snapshot-"));
+    const snapshotDirectory = await snapshotDirectoryPromise;
     const id = randomUUID();
     const databaseFile = path.join(snapshotDirectory, `${id}.sqlite`);
     try {

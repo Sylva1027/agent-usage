@@ -21,7 +21,7 @@ import {
 } from "../src/usage-core.js";
 
 function jsonl(rows) {
-  return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
 
 function tokenRow(timestamp, total, input = total - 10, cached = 0, output = 10) {
@@ -643,7 +643,7 @@ test("buildUsageFingerprint changes when session files change", async () => {
   );
 
   const first = await buildUsageFingerprint({ homeDir: fakeHome });
-  await appendFile(sessionFile, JSON.stringify(tokenRow("2026-05-01T02:02:00.000Z", 140, 110, 30, 30)) + "\n");
+  await appendFile(sessionFile, `${JSON.stringify(tokenRow("2026-05-01T02:02:00.000Z", 140, 110, 30, 30))}\n`);
   const second = await buildUsageFingerprint({ homeDir: fakeHome });
 
   assert.match(first.fingerprint, /^[a-f0-9]{64}$/);

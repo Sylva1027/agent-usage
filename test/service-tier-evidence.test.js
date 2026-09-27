@@ -47,8 +47,8 @@ test("turn evidence identifies Fast and Standard while request input determines 
     ];
     const firstFile = path.join(sessionDir, "rollout-a.jsonl");
     const secondFile = path.join(sessionDir, "rollout-b.jsonl");
-    await writeFile(firstFile, rows.slice(0, 3).map((row) => JSON.stringify(row)).join("\n") + "\n");
-    await writeFile(secondFile, [rows[0], rows[1], ...rows.slice(3)].map((row) => JSON.stringify(row)).join("\n") + "\n");
+    await writeFile(firstFile, `${rows.slice(0, 3).map((row) => JSON.stringify(row)).join("\n")}\n`);
+    await writeFile(secondFile, `${[rows[0], rows[1], ...rows.slice(3)].map((row) => JSON.stringify(row)).join("\n")}\n`);
     const home = { id: "main", label: "Test", path: codexHome, kind: "main" };
     const evidence = loadServiceTierEvidence([home]);
     assert.equal(evidence.resolve(threadId, Date.parse("2026-09-24T10:01:05Z")), "priority");
@@ -72,7 +72,7 @@ test("turn evidence identifies Fast and Standard while request input determines 
       rows[2].payload.info.total_token_usage.input_tokens = 320_000;
       rows[2].payload.info.last_token_usage.total_tokens = 320_000;
       rows[2].payload.info.last_token_usage.input_tokens = 320_000;
-      await writeFile(firstFile, rows.slice(0, 3).map((row) => JSON.stringify(row)).join("\n") + "\n");
+      await writeFile(firstFile, `${rows.slice(0, 3).map((row) => JSON.stringify(row)).join("\n")}\n`);
       const refreshed = await store.sync({ options: { homeDir: root } });
       assert.equal(refreshed.updatedFileCount, 2);
       assert.equal(store.summarize({ preset: "all", bucket: "day" }).totals.total, 672_001);

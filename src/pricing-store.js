@@ -37,7 +37,7 @@ export async function savePricingFile(options, catalog) {
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
   await mkdir(path.dirname(file), { recursive: true });
   try {
-    await writeFile(temporary, JSON.stringify(catalog, null, 2) + "\n");
+    await writeFile(temporary, `${JSON.stringify(catalog, null, 2)}\n`);
     await rename(temporary, file);
   } finally {
     await rm(temporary, { force: true });

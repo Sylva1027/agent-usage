@@ -513,7 +513,7 @@ function estimateEventCost(event = {}) {
   let outputUsd = 0;
   let minimumEstimatedTokens = 0;
   let pricedTokens = 0;
-  let unpricedTokens = 0;
+  const unpricedTokens = 0;
 
   if (!rates) {
     return {

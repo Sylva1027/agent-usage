@@ -10,7 +10,7 @@ import { API_PRICING_VERSION } from "../src/pricing.js";
 import { buildUsageIndex, buildUsageReport, summarizeUsageIndex } from "../src/usage-core.js";
 
 function jsonl(rows) {
-  return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
 
 function tokenRow(timestamp, total, input, cached, output, reasoning) {
@@ -85,7 +85,7 @@ test("UsageStore 首次同步并只重建变化文件", async () => {
     assert.ok(Math.abs(firstSummary.costEstimate.totalUsd - 0.000394) < 1e-12);
     assert.equal(firstSummary.costEstimate.modelCount, 1);
 
-    await appendFile(sessionFile, JSON.stringify(tokenRow("2026-07-12T01:02:00.000Z", 200, 160, 30, 40, 7)) + "\n");
+    await appendFile(sessionFile, `${JSON.stringify(tokenRow("2026-07-12T01:02:00.000Z", 200, 160, 30, 40, 7))}\n`);
 
     const refreshed = await store.sync();
     const refreshedSummary = store.summarize({ preset: "all", bucket: "day" });
@@ -453,10 +453,10 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
 
     await store.sync();
     assert.equal(Number(store.database.prepare("SELECT COUNT(*) AS count FROM rate_limit_observations WHERE source_path = ?").get(quotaFile).count), 1);
-    await writeFile(quotaFile, jsonl([
+    await writeFile(quotaFile, `${jsonl([
       { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
       quotaTokenRow("2026-09-25T12:01:00.000Z", "2026-09-25T14:38:00.000Z"),
-    ]) + "\n");
+    ])}\n`);
     await store.sync();
     const replaced = store.database.prepare("SELECT COUNT(*) AS count, MAX(resets_at_ms) AS reset FROM rate_limit_observations WHERE source_path = ?").get(quotaFile);
     assert.equal(Number(replaced.count), 1);

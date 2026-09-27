@@ -2251,7 +2251,10 @@ button:disabled { transform: none; box-shadow: none; }
   .metric strong { font-size: 22px; padding: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* !important 必须保留：覆盖此前定义的所有过渡与按压动效。 */
+  /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win over every other transition rule */
   button, input, select { transition: none !important; }
+  /* biome-ignore lint/complexity/noImportantStyles: same reduced-motion override for the active press transform */
   button:active { transform: none !important; }
 }
 
@@ -2317,7 +2320,7 @@ button:disabled { transform: none; box-shadow: none; }
   right: 20px;
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(var(--ceramic-top), var(--ceramic-bottom));
+  background: linear-gradient(to bottom, var(--ceramic-top), var(--ceramic-bottom));
   box-shadow: 0 2px 3px var(--ceramic-shade), inset 0 1px 0 var(--ceramic-rim);
 }
 .metric .metric-new {

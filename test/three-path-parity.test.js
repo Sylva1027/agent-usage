@@ -51,7 +51,7 @@ async function writeSession(root, name, model, cwd, rows) {
     { type: "turn_context", payload: { model } },
     ...rows,
   ];
-  await writeFile(path.join(sessionDir, `rollout-${name}.jsonl`), lines.map((row) => JSON.stringify(row)).join("\n") + "\n");
+  await writeFile(path.join(sessionDir, `rollout-${name}.jsonl`), `${lines.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }
 
 async function writeZcodeUsage(root, timestamp) {

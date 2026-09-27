@@ -35,7 +35,6 @@ const ENGLISH = new Map(Object.entries({
   "半年": "6 months",
   "一年": "1 year",
   "自定义": "Custom",
-  "开始": "Start",
   "结束": "End",
   "年/月/日": "YYYY-MM-DD",
   "打开开始日期日历": "Open start date calendar",
@@ -429,7 +428,7 @@ export function localizeQuotaReason(window, locale = activeLocale) {
 function translateNode(node) {
   if (node.nodeType === 3) {
     const parent = node.parentElement;
-    if (!parent || parent.closest("script, style, code, pre, textarea, input, [data-i18n-skip], " + SKIP_USER_DATA)) return;
+    if (!parent || parent.closest(`script, style, code, pre, textarea, input, [data-i18n-skip], ${SKIP_USER_DATA}`)) return;
     const current = node.nodeValue || "";
     const entry = nodeSources.get(node);
     const source = entry && current === entry.output ? entry.source : current;

@@ -208,7 +208,7 @@ test("streamZcodeDbEvents 映射 token 明细、渠道与长上下文", async ()
 });
 
 test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () => {
-  const { homeDir, dbFile } = await makeZcodeHome({
+  const { homeDir } = await makeZcodeHome({
     sessions: [
       { id: "sess_main", directory: "/work/zproj", path: "/work/zproj", title: "重构看板" },
       { id: "sess_sub", parent_id: "sess_main", directory: "", path: "", title: "子任务" },
@@ -323,7 +323,7 @@ test("UsageStore 只在 ZCode 数据库变化后重建", async () => {
 });
 
 test("buildUsageReport 汇总 ZCode 会话与事件", async () => {
-  const { homeDir, dbFile } = await makeZcodeHome({
+  const { homeDir } = await makeZcodeHome({
     sessions: [{ id: "sess_main", directory: "/work/zproj", path: "/work/zproj", title: "重构看板" }],
     usageRows: [
       usageRow(),
@@ -356,7 +356,7 @@ test("ZCode 数据库异常时仅记录警告，不影响 Codex 用量", async (
   await mkdir(sessionDir, { recursive: true });
   await writeFile(
     path.join(sessionDir, "rollout.jsonl"),
-    [
+    `${[
       {
         timestamp: "2026-09-20T01:00:00.000Z",
         type: "session_meta",
@@ -379,7 +379,7 @@ test("ZCode 数据库异常时仅记录警告，不影响 Codex 用量", async (
           },
         },
       },
-    ].map((row) => JSON.stringify(row)).join("\n") + "\n",
+    ].map((row) => JSON.stringify(row)).join("\n")}\n`,
   );
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
 
