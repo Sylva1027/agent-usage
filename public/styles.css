@@ -1587,8 +1587,9 @@ input[type="checkbox"]:checked::after {
 }
 
 .pricing-toolbar input[type="search"] {
-  flex: 1;
-  min-width: 160px;
+  flex: 0 1 250px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .pricing-rate-label {
