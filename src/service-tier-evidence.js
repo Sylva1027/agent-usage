@@ -23,7 +23,7 @@ function readTierLog(filePath) {
         ORDER BY id
       `);
       for (const row of statement.iterate(previous.lastId)) {
-        const message = row.feedback_log_body || "";
+        const message = String(row.feedback_log_body || "");
         const operation = SUBMISSION.exec(message)?.[1];
         const masked = message.replace(/"(?:\\.|[^"\\])*"/g, (quoted) => " ".repeat(quoted.length));
         const fieldPosition = masked.indexOf("service_tier: ");

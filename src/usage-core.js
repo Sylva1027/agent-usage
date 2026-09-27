@@ -81,12 +81,14 @@ function readServiceTier(row = {}, payload = {}) {
 function lastUsageMatchesDelta(last, lastMask, delta, deltaMask) {
   const required = USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.output;
   if ((lastMask & required) !== required || (deltaMask & required) !== required) return false;
-  for (const [field, bit] of [
+  /** @type {Array<[keyof import("./usage-types.js").UsageTotals, number]>} */
+  const detailFields = [
     ["input", USAGE_DETAIL_MASK.input],
     ["cached", USAGE_DETAIL_MASK.cached],
     ["output", USAGE_DETAIL_MASK.output],
     ["reasoning", USAGE_DETAIL_MASK.reasoning],
-  ]) {
+  ];
+  for (const [field, bit] of detailFields) {
     if ((lastMask & bit) && (!(deltaMask & bit) || last[field] !== delta[field])) return false;
   }
   return true;
@@ -140,22 +142,37 @@ function addUsage(target, usage) {
   return target;
 }
 
+/** @param {number} currentMask @param {number} previousMask */
 function diffUsage(current, previous, currentMask = USAGE_DETAIL_MASK.complete, previousMask = USAGE_DETAIL_MASK.complete) {
   const diff = emptyUsage();
   diff.total = Math.max(0, (current.total || 0) - (previous.total || 0));
   let detailMask = 0;
-  for (const [field, bit] of [
+  /** @type {Array<[keyof import("./usage-types.js").UsageTotals, number]>} */
+  const detailFields = [
     ["input", USAGE_DETAIL_MASK.input],
     ["cached", USAGE_DETAIL_MASK.cached],
     ["output", USAGE_DETAIL_MASK.output],
     ["reasoning", USAGE_DETAIL_MASK.reasoning],
-  ]) {
+  ];
+  for (const [field, bit] of detailFields) {
     if ((currentMask & bit) && (previousMask & bit)) {
       diff[field] = Math.max(0, (current[field] || 0) - (previous[field] || 0));
       detailMask |= bit;
     }
   }
   return { usage: diff, detailMask };
+}
+
+function initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff, hasUsageInFile) {
+  if (hasUsageInFile || !last || diff.total <= last.total || !last.total) return null;
+  const required = USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.output;
+  if ((lastMask & required) !== required || (cumulativeMask & required) !== required) return null;
+  for (const field of USAGE_FIELDS) {
+    if (last[field] > cumulative[field]) return null;
+  }
+  // A new rollout can inherit a counter from its parent conversation. Only the
+  // last request is attributable to this file when the first delta is larger.
+  return { usage: last, detailMask: lastMask };
 }
 
 function rememberSessionUsage(baselines, sessionId, usage, detailMask, cacheWriteTokens, cacheWriteKnown) {
@@ -568,6 +585,7 @@ function invalidRateLimitWarning(sourcePath, lineNumber, role, reason) {
   return `无法索引 Codex 限额观察值 ${sourcePath}:${lineNumber} (${role})：${reason}`;
 }
 
+/** @param {any} row @param {{ sourcePath?: string, lineNumber?: number, onWarning?: (warning: string) => void }} [options] */
 export function parseRateLimitObservations(row, { sourcePath = "", lineNumber = 0, onWarning } = {}) {
   if (row?.type !== "event_msg" || row?.payload?.type !== "token_count" || !Object.hasOwn(row.payload, "rate_limits")) {
     return [];
@@ -802,9 +820,11 @@ export async function parseSessionFile(filePath, home, options = {}) {
   let firstAt = "";
   let lastAt = "";
   let previousCumulative = emptyUsage();
+  /** @type {number} */
   let previousCumulativeMask = USAGE_DETAIL_MASK.complete;
   let previousCumulativeCacheWrite = { tokens: 0, known: false };
   let baselineLoaded = false;
+  let hasUsageInFile = false;
   let finalUsage = emptyUsage();
   let tokenEventCount = 0;
   const events = [];
@@ -862,20 +882,21 @@ export async function parseSessionFile(filePath, home, options = {}) {
     let lastMatchesDelta = false;
     if (cumulative) {
       const diff = diffUsage(cumulative, previousCumulative, cumulativeMask, previousCumulativeMask);
-      increment = diff.usage;
-      detailMask = diff.detailMask;
+      const selected = initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
+      increment = selected.usage;
+      detailMask = selected.detailMask;
       lastMatchesDelta = Boolean(last && lastUsageMatchesDelta(last, lastMask, increment, detailMask));
       cacheWrite = cacheWriteForEvent({ cumulative: cumulativeCacheWrite, previous: previousCumulativeCacheWrite, last: lastCacheWrite, lastMatches: lastMatchesDelta });
       previousCumulative = cumulative;
       previousCumulativeMask = cumulativeMask;
       previousCumulativeCacheWrite = cumulativeCacheWrite;
-      finalUsage = cumulative;
     } else if (last) {
       increment = last;
       detailMask = lastMask;
       cacheWrite = lastCacheWrite;
-      addUsage(finalUsage, last);
     }
+    if (!isZeroUsage(increment)) hasUsageInFile = true;
+    addUsage(finalUsage, increment);
     const requestUsage = last && (!cumulative || lastMatchesDelta) ? last : null;
     const context = contextForEvent(Boolean(requestUsage), requestUsage || increment, requestUsage ? lastMask : detailMask);
 
@@ -1164,9 +1185,11 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
   let firstAt = "";
   let lastAt = "";
   let previousCumulative = emptyUsage();
+  /** @type {number} */
   let previousCumulativeMask = USAGE_DETAIL_MASK.complete;
   let previousCumulativeCacheWrite = { tokens: 0, known: false };
   let baselineLoaded = false;
+  let hasUsageInFile = false;
 
   for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
     if (row.timestamp) {
@@ -1215,8 +1238,9 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
     let lastMatchesDelta = false;
     if (cumulative) {
       const diff = diffUsage(cumulative, previousCumulative, cumulativeMask, previousCumulativeMask);
-      increment = diff.usage;
-      detailMask = diff.detailMask;
+      const selected = initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
+      increment = selected.usage;
+      detailMask = selected.detailMask;
       lastMatchesDelta = Boolean(last && lastUsageMatchesDelta(last, lastMask, increment, detailMask));
       cacheWrite = cacheWriteForEvent({ cumulative: cumulativeCacheWrite, previous: previousCumulativeCacheWrite, last: lastCacheWrite, lastMatches: lastMatchesDelta });
       previousCumulative = cumulative;
@@ -1227,6 +1251,7 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       detailMask = lastMask;
       cacheWrite = lastCacheWrite;
     }
+    if (!isZeroUsage(increment)) hasUsageInFile = true;
     const requestUsage = last && (!cumulative || lastMatchesDelta) ? last : null;
     const context = contextForEvent(Boolean(requestUsage), requestUsage || increment, requestUsage ? lastMask : detailMask);
 
@@ -1429,6 +1454,7 @@ async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
   return events;
 }
 
+/** @returns {Promise<import("./usage-types.js").UsageReport>} */
 export async function buildUsageReport(options = {}) {
   const homes = options.homes || (await discoverUsageSources(options));
   const repositoryResolver = createRepositoryResolver();
@@ -1587,51 +1613,56 @@ function localDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
-function startOfLocalDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+function startOfLocalDay(date, zone = "local") {
+  return zone === "utc"
+    ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function endOfLocalDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+function endOfLocalDay(date, zone = "local") {
+  return zone === "utc"
+    ? new Date(startOfLocalDay(date, zone).getTime() + MS_PER_DAY - 1)
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 }
 
-function startOfLocalWeek(date) {
-  const start = startOfLocalDay(date);
-  const day = start.getDay() || 7;
-  start.setDate(start.getDate() - day + 1);
+function startOfLocalWeek(date, zone = "local") {
+  const start = startOfLocalDay(date, zone);
+  const day = (zone === "utc" ? start.getUTCDay() : start.getDay()) || 7;
+  if (zone === "utc") start.setUTCDate(start.getUTCDate() - day + 1);
+  else start.setDate(start.getDate() - day + 1);
   return start;
 }
 
-function addLocalDays(date, days) {
+function addLocalDays(date, days, zone = "local") {
   const next = new Date(date);
-  next.setDate(next.getDate() + days);
+  if (zone === "utc") next.setUTCDate(next.getUTCDate() + days);
+  else next.setDate(next.getDate() + days);
   return next;
 }
 
-function parseDateStart(value) {
-  return value ? new Date(`${value}T00:00:00`) : null;
+function parseDateStart(value, zone = "local") {
+  return value ? new Date(`${value}T00:00:00${zone === "utc" ? "Z" : ""}`) : null;
 }
 
-function parseDateEnd(value) {
-  return value ? new Date(`${value}T23:59:59.999`) : null;
+function parseDateEnd(value, zone = "local") {
+  return value ? new Date(`${value}T23:59:59.999${zone === "utc" ? "Z" : ""}`) : null;
 }
 
 function daysInMonth(year, monthIndex) {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
 
-function subtractMonthsClamped(date, months) {
-  const target = new Date(date.getFullYear(), date.getMonth() - months, 1);
-  const day = Math.min(date.getDate(), daysInMonth(target.getFullYear(), target.getMonth()));
-  return new Date(
-    target.getFullYear(),
-    target.getMonth(),
-    day,
-    date.getHours(),
-    date.getMinutes(),
-    date.getSeconds(),
-    date.getMilliseconds(),
-  );
+function subtractMonthsClamped(date, months, zone = "local") {
+  const year = zone === "utc" ? date.getUTCFullYear() : date.getFullYear();
+  const month = zone === "utc" ? date.getUTCMonth() : date.getMonth();
+  const day = zone === "utc" ? date.getUTCDate() : date.getDate();
+  const target = zone === "utc" ? new Date(Date.UTC(year, month - months, 1)) : new Date(year, month - months, 1);
+  const targetYear = zone === "utc" ? target.getUTCFullYear() : target.getFullYear();
+  const targetMonth = zone === "utc" ? target.getUTCMonth() : target.getMonth();
+  const clampedDay = Math.min(day, daysInMonth(targetYear, targetMonth));
+  return zone === "utc"
+    ? new Date(Date.UTC(targetYear, targetMonth, clampedDay, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()))
+    : new Date(targetYear, targetMonth, clampedDay, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
 }
 
 function parseRecentValue(value) {
@@ -1661,7 +1692,7 @@ function parseRecentValue(value) {
   return null;
 }
 
-function recentDateRange(value, now) {
+function recentDateRange(value, now, zone = "local") {
   const parsed = parseRecentValue(value);
   if (!parsed) {
     return null;
@@ -1675,15 +1706,16 @@ function recentDateRange(value, now) {
     };
   }
   const start = parsed.days
-    ? addLocalDays(startOfLocalDay(now), 1 - parsed.days)
-    : startOfLocalDay(subtractMonthsClamped(now, parsed.months));
+    ? addLocalDays(startOfLocalDay(now, zone), 1 - parsed.days, zone)
+    : startOfLocalDay(subtractMonthsClamped(now, parsed.months, zone), zone);
   return {
     start,
-    end: endOfLocalDay(now),
+    end: endOfLocalDay(now, zone),
     preset: "recent",
   };
 }
 
+/** @returns {import("./usage-types.js").UsageRange} */
 export function resolveDateRange(filters = {}, events = []) {
   return resolveDateRangeFromTimestamps(
     filters,
@@ -1691,9 +1723,11 @@ export function resolveDateRange(filters = {}, events = []) {
   );
 }
 
+/** @returns {import("./usage-types.js").UsageRange} */
 function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
   // Report and index summaries share this resolver to avoid date-range drift.
   const now = filters.now ? new Date(filters.now) : new Date();
+  const zone = filters.calendarZone === "utc" ? "utc" : "local";
   const preset = filters.preset || "all";
   if (!USAGE_PRESETS.includes(preset)) {
     throw new InvalidPresetError(preset);
@@ -1733,42 +1767,43 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
       quotaWindow: true,
       preset,
       rolling: false,
+      calendarZone: zone,
     };
   }
   if (preset === "today") {
-    return { start: startOfLocalDay(now), end: endOfLocalDay(now), preset };
+    return { start: startOfLocalDay(now, zone), end: endOfLocalDay(now, zone), preset, calendarZone: zone };
   }
   if (preset === "week") {
-    return { start: startOfLocalWeek(now), end: endOfLocalDay(now), preset };
+    return { start: startOfLocalWeek(now, zone), end: endOfLocalDay(now, zone), preset, calendarZone: zone };
   }
   if (preset === "month") {
     return {
-      start: new Date(now.getFullYear(), now.getMonth(), 1),
-      end: endOfLocalDay(now),
-      preset,
+      start: zone === "utc" ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) : new Date(now.getFullYear(), now.getMonth(), 1),
+      end: endOfLocalDay(now, zone),
+      preset, calendarZone: zone,
     };
   }
   if (preset === "custom") {
     return {
-      start: parseDateStart(filters.startDate),
-      end: parseDateEnd(filters.endDate),
-      preset,
+      start: parseDateStart(filters.startDate, zone),
+      end: parseDateEnd(filters.endDate, zone),
+      preset, calendarZone: zone,
     };
   }
   if (preset === "recent") {
-    const named = resolveNamedRecentRange(filters.recentValue, now, filters.quota);
+    const named = resolveNamedRecentRange(filters.recentValue, now, filters.quota, zone);
     if (named) {
       if (named.quotaState === "missing") throw new QuotaWindowUnavailableError(named.quotaPreset, filters.quota);
-      return named;
+      return { ...named, calendarZone: zone };
     }
-    const range = recentDateRange(filters.recentValue, now);
+    const range = recentDateRange(filters.recentValue, now, zone);
     if (range) {
-      return range;
+      return { ...range, calendarZone: zone };
     }
   }
 
   if (!timestamps.length) {
-    return { start: null, end: null, preset: "all" };
+    return { start: null, end: null, preset: "all", calendarZone: zone };
   }
   let earliestTimestamp = timestamps[0];
   let latestTimestamp = timestamps[0];
@@ -1781,9 +1816,10 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
     }
   }
   return {
-    start: startOfLocalDay(new Date(earliestTimestamp)),
-    end: endOfLocalDay(new Date(latestTimestamp)),
+    start: startOfLocalDay(new Date(earliestTimestamp), zone),
+    end: endOfLocalDay(new Date(latestTimestamp), zone),
     preset: "all",
+    calendarZone: zone,
   };
 }
 
@@ -1879,6 +1915,7 @@ function groupRepositories(events) {
     .sort((a, b) => b.total.total - a.total.total || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
+/** @returns {import("./usage-types.js").UsageRange} */
 function indexDateRange(filters = {}, events = []) {
   return resolveDateRangeFromTimestamps(
     filters,
@@ -2035,25 +2072,26 @@ export function previousUsageRange(range) {
   if (!range.start || !range.end || range.preset === "all") {
     return null;
   }
+  const zone = range.calendarZone === "utc" ? "utc" : "local";
   if (range.preset === "today") {
-    const previousDay = addLocalDays(startOfLocalDay(range.start), -1);
+    const previousDay = addLocalDays(startOfLocalDay(range.start, zone), -1, zone);
     return {
       start: previousDay,
-      end: endOfLocalDay(previousDay),
+      end: endOfLocalDay(previousDay, zone),
     };
   }
   if (range.preset === "week") {
-    const previousWeekStart = addLocalDays(startOfLocalWeek(range.start), -7);
+    const previousWeekStart = addLocalDays(startOfLocalWeek(range.start, zone), -7, zone);
     return {
       start: previousWeekStart,
-      end: endOfLocalDay(addLocalDays(previousWeekStart, 6)),
+      end: endOfLocalDay(addLocalDays(previousWeekStart, 6, zone), zone),
     };
   }
   if (range.preset === "month") {
-    const currentMonthStart = new Date(range.start.getFullYear(), range.start.getMonth(), 1);
+    const currentMonthStart = startOfLocalDay(range.start, zone);
     return {
-      start: new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
-      end: endOfLocalDay(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 0)),
+      start: zone === "utc" ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1)) : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
+      end: new Date(currentMonthStart.getTime() - 1),
     };
   }
   const durationMs = range.end.getTime() - range.start.getTime() + 1;
@@ -2262,7 +2300,7 @@ export function summarizePeriodComparison(events = [], options = {}) {
     .map((event) => ({ timestamp: event.timestamp }))
     .filter((event) => Number.isFinite(Date.parse(event.timestamp)));
   const ranges = Object.fromEntries(
-    COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now: asOf }, timestamps)]),
+    COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now: asOf, calendarZone: options.calendarZone }, timestamps)]),
   );
   const rows = { models: new Map(), repositories: new Map() };
   const totals = Object.fromEntries(COMPARISON_PERIOD_KEYS.map((key) => [key, emptyPeriodMetrics()]));
@@ -2337,6 +2375,7 @@ function summaryRangeFields(range, bucket) {
     start: range.start ? range.start.toISOString() : null,
     end: range.end ? range.end.toISOString() : null,
     bucket,
+    calendarZone: range.calendarZone || "local",
     rolling: Boolean(range.rolling),
     ...(range.quotaWindow ? {
       quotaWindow: true, recentValue: range.recentValue, quotaPreset: range.quotaPreset,
@@ -2436,6 +2475,9 @@ export function summarizeUsageIndex(index, filters = {}) {
   };
 }
 
+/** @param {import("./usage-types.js").UsageReport} report
+ * @returns {import("./usage-types.js").UsageSummary}
+ */
 export function summarizeUsage(report, filters = {}) {
   const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
   const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);

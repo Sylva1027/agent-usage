@@ -1,4 +1,4 @@
-import { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource } from "./timeline-utils.js";
+import { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } from "./timeline-utils.js";
 import {
   canonicalRecentValue,
   displayRecentValue,
@@ -11,52 +11,22 @@ import {
   setLocale,
   translatePage,
 } from "./i18n.js";
+import { state } from "./app-state.js";
+import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
+import {
+  addDays,
+  dateKey,
+  datePickerMonthModel,
+  monthStart,
+  normalizeDateInput,
+  parseLocalDate,
+  renderDatePickerHtml,
+} from "./calendar.js";
+
+export { datePickerMonthModel, renderDatePickerHtml };
 
 if (typeof document !== "undefined" && document.body) initializeLocale();
-
-const state = {
-  report: null,
-  metadata: null,
-  summary: null,
-  quotaSnapshot: null,
-  quotaNotice: "",
-  periodComparison: null,
-  fingerprint: "",
-  snapshotId: null,
-  preset: "today",
-  lastQuotaPreset: "quota_5h",
-  bucket: "hour",
-  startDate: "",
-  endDate: "",
-  recentValue: "上个月",
-  now: null,
-  autoRefreshTimer: null,
-  usageLoadId: 0,
-  autoRefreshEnabled: true,
-  autoRefreshRunId: 0,
-  autoRefreshCheckInFlight: false,
-  lastSuccessfulCheck: null,
-  timelineMode: "channel",
-  theme: "light",
-  locale: getLocale(),
-  repositoryComparisonQuery: "",
-  modelComparisonQuery: "",
-  modelComparisonSort: { period: "today", direction: "desc", showIndicator: false },
-  repositoryComparisonSort: { period: "today", direction: "desc", showIndicator: false },
-  expandedPeriodCell: null,
-  datePickerField: "",
-  pricingCatalog: null,
-  excludedHomes: [],
-  usdToCnyRate: 6.72,
-  costScaleTarget: "USD",
-  pricingSearch: "",
-  pricingScope: "used",
-  modelPricingDraft: null,
-  datePickerViews: {
-    start: null,
-    end: null,
-  },
-};
+state.locale = getLocale();
 let quotaNoticeTimer = null;
 
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
@@ -141,6 +111,7 @@ function setLanguage(locale) {
   state.locale = setLocale(locale);
   updateLanguageButton();
   updateThemeButtons();
+  updateCalendarZoneSelect();
   updateRecentControls();
   renderAutoRefreshControls();
   if (state.datePickerField) renderDatePicker(state.datePickerField);
@@ -228,29 +199,22 @@ function setCurrencyMetric(selector, usd, cny = null) {
   element.title = hasUsd && hasCny
     ? `美元 ${formatPreciseCost(usdValue, "USD")} + 人民币 ${formatPreciseCost(cnyValue, "CNY")}（按汇率 ${rate} 折算）`
     : formatted;
-  fitTextToWidth(element);
+  // Keep monetary values at the same typographic scale as the token row.
+  // Very long amounts retain the full value in their existing title tooltip.
+  element.style.fontSize = "";
 }
 
 export function formatTokenMillions(value) {
   const amount = Number(value || 0);
-  return `${millionTokenFormatter.format((Number.isFinite(amount) ? amount : 0) / 1_000_000)}M`;
+  const finite = Number.isFinite(amount) ? amount : 0;
+  const magnitude = Math.abs(finite);
+  const [divisor, unit] = magnitude >= 1_000_000_000_000 ? [1e12, "T"]
+    : magnitude >= 1_000_000_000 ? [1e9, "B"] : [1e6, "M"];
+  return `${millionTokenFormatter.format(finite / divisor)}${unit}`;
 }
 
 function formatCompact(value) {
   return compactFormatter.format(Math.round(value || 0));
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (character) => {
-    const replacements = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
-    return replacements[character];
-  });
 }
 
 // Normalize optional row labels before rendering or building accessible names.
@@ -438,13 +402,6 @@ export function timelineChannelSegments(row, channelRows = []) {
   return ordered;
 }
 
-function dateKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function isQuotaPreset(preset = state.preset) {
   return QUOTA_PRESETS.includes(preset);
 }
@@ -519,91 +476,6 @@ function quotaTimelineSlotInfo(row) {
   return { title, interval, note };
 }
 
-const datePickerWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
-
-function parseLocalDate(value) {
-  const match = String(value || "")
-    .trim()
-    .match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (!match) {
-    return null;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
-    return null;
-  }
-  return date;
-}
-
-function normalizeDateInput(value) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed) {
-    return "";
-  }
-  const date = parseLocalDate(trimmed);
-  return date ? dateKey(date) : null;
-}
-
-function monthStart(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") {
-  const selectedDate = parseLocalDate(selectedValue);
-  const visibleMonth = monthStart(viewDate instanceof Date ? viewDate : new Date(viewDate));
-  const mondayOffset = (visibleMonth.getDay() + 6) % 7;
-  const firstCell = addDays(visibleMonth, -mondayOffset);
-  const cells = Array.from({ length: 42 }, (_, index) => {
-    const date = addDays(firstCell, index);
-    const value = dateKey(date);
-    return {
-      date: value,
-      day: date.getDate(),
-      inCurrentMonth: date.getMonth() === visibleMonth.getMonth(),
-      selected: selectedDate ? value === dateKey(selectedDate) : false,
-    };
-  });
-  return {
-    year: visibleMonth.getFullYear(),
-    month: visibleMonth.getMonth() + 1,
-    weekdays: getLocale() === "en-US" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : datePickerWeekdays,
-    cells,
-  };
-}
-
-export function renderDatePickerHtml({ field = "start", viewDate = new Date(), selectedValue = "" } = {}) {
-  const model = datePickerMonthModel(viewDate, selectedValue);
-  const escapedField = escapeHtml(field);
-  const monthTitle = getLocale() === "en-US"
-    ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(model.year, model.month - 1, 1)))
-    : `${model.year}年${String(model.month).padStart(2, "0")}月`;
-  return `
-    <div class="date-picker-heading">
-      <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="${localizeText("上个月")}">‹</button>
-      <div class="date-picker-title">${monthTitle}</div>
-      <button class="date-picker-nav" type="button" data-date-picker-action="next" data-date-picker-field="${escapedField}" aria-label="${localizeText("下个月")}">›</button>
-    </div>
-    <div class="date-picker-grid">
-      ${model.weekdays.map((weekday) => `<div class="date-picker-weekday">${weekday}</div>`).join("")}
-      ${model.cells
-        .map((cell) => {
-          const classes = ["date-picker-day"];
-          if (!cell.inCurrentMonth) {
-            classes.push("outside-month");
-          }
-          if (cell.selected) {
-            classes.push("selected");
-          }
-          return `<button type="button" data-date="${cell.date}" data-date-picker-field="${escapedField}" class="${classes.join(" ")}">${cell.day}</button>`;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
 function asDate(value) {
   if (!value) {
     return null;
@@ -611,30 +483,29 @@ function asDate(value) {
   return value instanceof Date ? value : new Date(value);
 }
 
-function startOfDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+function startOfDay(date, zone = "local") {
+  return zone === "utc" ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())) : new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function endOfDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+function endOfDay(date, zone = "local") {
+  return zone === "utc" ? new Date(startOfDay(date, zone).getTime() + MS_PER_DAY - 1) : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 }
 
 function daysInMonth(year, monthIndex) {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
 
-function subtractMonthsClamped(date, months) {
-  const target = new Date(date.getFullYear(), date.getMonth() - months, 1);
-  const day = Math.min(date.getDate(), daysInMonth(target.getFullYear(), target.getMonth()));
-  return new Date(
-    target.getFullYear(),
-    target.getMonth(),
-    day,
-    date.getHours(),
-    date.getMinutes(),
-    date.getSeconds(),
-    date.getMilliseconds(),
-  );
+function subtractMonthsClamped(date, months, zone = "local") {
+  const utc = zone === "utc";
+  const year = utc ? date.getUTCFullYear() : date.getFullYear();
+  const month = utc ? date.getUTCMonth() : date.getMonth();
+  const day = utc ? date.getUTCDate() : date.getDate();
+  const target = utc ? new Date(Date.UTC(year, month - months, 1)) : new Date(year, month - months, 1);
+  const targetYear = utc ? target.getUTCFullYear() : target.getFullYear();
+  const targetMonth = utc ? target.getUTCMonth() : target.getMonth();
+  const clamped = Math.min(day, daysInMonth(targetYear, targetMonth));
+  return utc ? new Date(Date.UTC(targetYear, targetMonth, clamped, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()))
+    : new Date(targetYear, targetMonth, clamped, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
 }
 
 export function normalizeRecentValue(value) {
@@ -670,7 +541,7 @@ function parseRecentValue(value) {
   return null;
 }
 
-function recentDateRange(value, now) {
+function recentDateRange(value, now, zone = "local") {
   const parsed = parseRecentValue(value);
   if (!parsed) {
     return null;
@@ -684,30 +555,33 @@ function recentDateRange(value, now) {
     };
   }
   const start = parsed.days
-    ? addDays(startOfDay(now), 1 - parsed.days)
-    : startOfDay(subtractMonthsClamped(now, parsed.months));
+    ? addCalendarDays(startOfDay(now, zone), 1 - parsed.days, zone)
+    : startOfDay(subtractMonthsClamped(now, parsed.months, zone), zone);
   return {
     start,
-    end: endOfDay(now),
+    end: endOfDay(now, zone),
     preset: "recent",
   };
 }
 
-function startOfWeek(date) {
-  const start = startOfDay(date);
-  const day = start.getDay() || 7;
-  start.setDate(start.getDate() - day + 1);
+function startOfWeek(date, zone = "local") {
+  const start = startOfDay(date, zone);
+  const day = (zone === "utc" ? start.getUTCDay() : start.getDay()) || 7;
+  if (zone === "utc") start.setUTCDate(start.getUTCDate() - day + 1);
+  else start.setDate(start.getDate() - day + 1);
   return start;
 }
 
-function addDays(date, days) {
+function addCalendarDays(date, days, zone = "local") {
   const next = new Date(date);
-  next.setDate(next.getDate() + days);
+  if (zone === "utc") next.setUTCDate(next.getUTCDate() + days);
+  else next.setDate(next.getDate() + days);
   return next;
 }
 
 export function getRange(events, quotaSnapshot = state.report?.quota) {
   const now = state.now ? new Date(state.now) : quotaSnapshot?.asOf ? new Date(quotaSnapshot.asOf) : new Date();
+  const zone = state.calendarZone;
   if (state.preset === "quota_5h" || state.preset === "quota_week") {
     const quota = quotaSnapshot || null;
     const quotaWindow = quota?.windows?.[state.preset];
@@ -720,6 +594,7 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
         quotaReason: quotaWindow?.reason || (state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.unavailable),
         preset: state.preset,
         bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+        calendarZone: zone,
       };
     }
     const asOfMs = Date.parse(quota.asOf);
@@ -734,6 +609,7 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
         quotaReason: QUOTA_UI_COPY.invalidBoundaries,
         preset: state.preset,
         bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+        calendarZone: zone,
       };
     }
     return {
@@ -751,30 +627,31 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
       quotaWindow: true,
       preset: state.preset,
       bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
+      calendarZone: zone,
     };
   }
   if (state.preset === "today") {
-    return { start: startOfDay(now), end: endOfDay(now), preset: state.preset };
+    return { start: startOfDay(now, zone), end: endOfDay(now, zone), preset: state.preset, calendarZone: zone };
   }
   if (state.preset === "week") {
-    return { start: startOfWeek(now), end: endOfDay(now), preset: state.preset };
+    return { start: startOfWeek(now, zone), end: endOfDay(now, zone), preset: state.preset, calendarZone: zone };
   }
   if (state.preset === "month") {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(now), preset: state.preset };
+    return { start: zone === "utc" ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) : new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(now, zone), preset: state.preset, calendarZone: zone };
   }
   if (state.preset === "custom") {
     return {
-      start: state.startDate ? new Date(`${state.startDate}T00:00:00`) : null,
-      end: state.endDate ? new Date(`${state.endDate}T23:59:59.999`) : null,
-      preset: state.preset,
+      start: state.startDate ? new Date(`${state.startDate}T00:00:00${zone === "utc" ? "Z" : ""}`) : null,
+      end: state.endDate ? new Date(`${state.endDate}T23:59:59.999${zone === "utc" ? "Z" : ""}`) : null,
+      preset: state.preset, calendarZone: zone,
     };
   }
   if (state.preset === "recent") {
-    const named = resolveNamedRecentRange(state.recentValue, now, quotaSnapshot);
-    if (named) return named;
-    const range = recentDateRange(state.recentValue, now);
+    const named = resolveNamedRecentRange(state.recentValue, now, quotaSnapshot, zone);
+    if (named) return { ...named, calendarZone: zone };
+    const range = recentDateRange(state.recentValue, now, zone);
     if (range) {
-      return range;
+      return { ...range, calendarZone: zone };
     }
   }
   let firstTimestamp = Infinity;
@@ -786,9 +663,10 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
     lastTimestamp = Math.max(lastTimestamp, timestamp);
   }
   return {
-    start: Number.isFinite(firstTimestamp) ? startOfDay(new Date(firstTimestamp)) : null,
-    end: Number.isFinite(lastTimestamp) ? endOfDay(new Date(lastTimestamp)) : null,
+    start: Number.isFinite(firstTimestamp) ? startOfDay(new Date(firstTimestamp), zone) : null,
+    end: Number.isFinite(lastTimestamp) ? endOfDay(new Date(lastTimestamp), zone) : null,
     preset: state.preset,
+    calendarZone: zone,
   };
 }
 
@@ -922,25 +800,26 @@ function previousPeriodRange(range) {
   if (!range.start || !range.end || state.preset === "all" || state.preset === "quota_5h" || state.preset === "quota_week") {
     return null;
   }
+  const zone = range.calendarZone === "utc" ? "utc" : "local";
   if (state.preset === "today") {
-    const previousDay = addDays(startOfDay(asDate(range.start)), -1);
+    const previousDay = addCalendarDays(startOfDay(asDate(range.start), zone), -1, zone);
     return {
       start: previousDay,
-      end: endOfDay(previousDay),
+      end: endOfDay(previousDay, zone),
     };
   }
   if (state.preset === "week") {
-    const previousWeekStart = addDays(startOfWeek(asDate(range.start)), -7);
+    const previousWeekStart = addCalendarDays(startOfWeek(asDate(range.start), zone), -7, zone);
     return {
       start: previousWeekStart,
-      end: endOfDay(addDays(previousWeekStart, 6)),
+      end: endOfDay(addCalendarDays(previousWeekStart, 6, zone), zone),
     };
   }
   if (state.preset === "month") {
-    const currentMonthStart = new Date(asDate(range.start).getFullYear(), asDate(range.start).getMonth(), 1);
+    const currentMonthStart = asDate(range.start);
     return {
-      start: new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
-      end: endOfDay(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), 0)),
+      start: zone === "utc" ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1)) : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
+      end: new Date(currentMonthStart.getTime() - 1),
     };
   }
   const durationMs = range.end.getTime() - range.start.getTime() + 1;
@@ -1077,6 +956,14 @@ export function summarize(report) {
     range,
     totals,
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
+    records: quotaPreset ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
+      const rows = sourceEvents.filter(event => new Date(event.timestamp) >= window.start && new Date(event.timestamp) <= window.end);
+      return { eventCount: rows.length, values: quotaRecordValues(
+        rows.reduce((sum, event) => addUsage(sum, event.total), emptyUsage()),
+        summarizeEmbeddedCostEstimates(rows, report.pricing), new Set(rows.map(event => event.sessionId)).size,
+        report.pricing?.usdToCnyRate,
+      ) };
+    }) : {},
     comparison: quotaPreset ? null : summarizeComparison(sourceEvents, range, totals),
     quota: report.quota || null,
     timeline,
@@ -1227,23 +1114,7 @@ function renderCostMetrics(summary) {
   if (estimate.minimumEstimatedTokens > 0) caveats.push(`${formatTokens(estimate.minimumEstimatedTokens)} / ${totalTokens} tokens 使用最低费率估算`);
   if (estimate.minimumRateModels?.length) caveats.push(`模型 ${estimate.minimumRateModels.join("、")} 缺少专用单价，按价目表最低费率估算`);
   if (estimate.unpricedTokens > 0) caveats.push(`仍有 ${formatTokens(estimate.unpricedTokens)} tokens 无法估算`);
-  const sourceLabels = [
-    ["developers.openai.com", "OpenAI 价格表"],
-    ["stepfun.com", "StepFun 定价"],
-    ["mimo.mi.com", "MiMo 定价"],
-    ["deepseek.com", "DeepSeek 定价"],
-    ["kimi.com", "Kimi 定价"],
-    ["bigmodel.cn", "GLM 定价"],
-  ];
-  const currencies = estimate.currencies || [];
-  const sources = [...new Set([estimate.priceSource, ...(estimate.priceSources || [])].filter((url) => {
-    if (!url) return false;
-    return currencies.includes("USD") || !url.includes("developers.openai.com");
-  }))];
-  const sourceLinks = sources.map((url) => {
-    const label = sourceLabels.find(([host]) => url.includes(host))?.[1] || "价格来源";
-    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
-  }).join("、");
+  const sourceLinks = renderPricingSourceLinksHtml([estimate.priceSource, ...(estimate.priceSources || [])], estimate.currencies || []);
   note.innerHTML = `
     <p>按当前价目表估算 · ${escapeHtml(checkedAt)} · ${sourceLinks || "默认价格来源"}</p>
     <p>金额按已知明细及最低费率情景折算 API 等价费用，不代表实际账单，也不含工具调用等非 token 费用。</p>
@@ -1254,6 +1125,28 @@ function renderCostMetrics(summary) {
   note.title = estimate.unpricedModels?.length
     ? `仍无法计价的模型：${estimate.unpricedModels.join("、")}`
     : "更新计价标准后，所有已索引的历史用量会按新单价重算。";
+}
+
+const PRICING_SOURCE_LABELS = Object.freeze({
+  "developers.openai.com": "OpenAI 价格表",
+  "stepfun.com": "StepFun 定价",
+  "mimo.mi.com": "MiMo 定价",
+  "deepseek.com": "DeepSeek 定价",
+  "kimi.com": "Kimi 定价",
+  "bigmodel.cn": "GLM 定价",
+});
+
+export function renderPricingSourceLinksHtml(values = [], currencies = []) {
+  const sources = new Map();
+  for (const value of values) {
+    const url = externalHttpUrl(value);
+    if (!url || (!currencies.includes("USD") && url.hostname === "developers.openai.com")) continue;
+    sources.set(url.href, url);
+  }
+  return [...sources.values()].map((url) => {
+    const label = Object.hasOwn(PRICING_SOURCE_LABELS, url.hostname) ? PRICING_SOURCE_LABELS[url.hostname] : url.hostname;
+    return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+  }).join("、");
 }
 
 // New Record：所选范围内的纪录期点亮对应指标卡右上角的 New 小字。
@@ -1286,10 +1179,14 @@ function renderRecordBadges(records = {}) {
     if (!badge) continue;
     const record = state.preset === "all" ? null : records?.[metric];
     badge.hidden = !record;
+    badge.textContent = "";
+    badge.setAttribute("role", "img");
+    badge.setAttribute("aria-label", getLocale() === "en-US" ? "New record" : "新纪录");
+    const comparisonCount = record?.comparedWindowCount;
     card.title = record
       ? getLocale() === "en-US"
-        ? `Highest ${englishRecordNames[metric]?.toLowerCase() || "usage"} in a ${record.unit || "period"}: ${record.period}`
-        : `${record.title}：${record.period}`
+        ? `Highest ${englishRecordNames[metric]?.toLowerCase() || "usage"} in a ${record.unit || "period"}: ${record.period}${comparisonCount ? ` (compared with ${comparisonCount} earlier observed windows)` : ""}`
+        : `${record.title}：${record.period}${comparisonCount ? `（对比此前 ${comparisonCount} 个已观测窗口）` : ""}`
       : "";
   }
 }
@@ -1324,9 +1221,9 @@ export function rangeLabel(summary) {
       ? `${startLabel}–${formatLocalClock(end)}`
       : `${startLabel}–${endLabel}`;
   }
-  const start = summary.range.start ? dateKey(asDate(summary.range.start)) : "开始";
-  const end = summary.range.end ? dateKey(asDate(summary.range.end)) : "现在";
-  return start + " 至 " + end;
+  const start = summary.range.start ? dateKey(asDate(summary.range.start), range.calendarZone) : "开始";
+  const end = summary.range.end ? dateKey(asDate(summary.range.end), range.calendarZone) : "现在";
+  return start + " 至 " + end + (range.calendarZone === "utc" ? " (UTC)" : "");
 }
 
 export function renderBarListHtml(rows, colorMap = null) {
@@ -1339,7 +1236,7 @@ export function renderBarListHtml(rows, colorMap = null) {
     .map((row) => {
       const width = Math.max(2, (row.total.total / max) * 100);
       const color = colorMap?.get(row.name);
-      const fillStyle = `width: ${width}%;${color ? ` background: ${color};` : ""}`;
+      const fillStyle = `width: ${width}%;${color ? ` background: ${safeChartColor(color)};` : ""}`;
       const name = escapeHtml(usageRowName(row));
       const ariaLabel = escapeHtml(usageRowAriaLabel(row));
       return `
@@ -1405,7 +1302,7 @@ export function renderCostDetailHtml(rows, colorMap = null) {
   return rows.map((row, index) => {
     const name = escapeHtml(row.name);
     const amount = formatPreciseCost(row.totalUsd, row.currency);
-    const color = colorMap?.get(row.name) || getModelColor(row.name);
+    const color = safeChartColor(colorMap?.get(row.name) || getModelColor(row.name));
     const width = Math.max(2, (values[index] / max) * 100);
     return `
       <div class="bar-row" tabindex="0" aria-label="${name}，费用估算 ${amount}">
@@ -1616,7 +1513,7 @@ function shortTimelineLabel(key, bucket, range) {
     if (!match) return text;
     const start = asDate(range?.start);
     const end = asDate(range?.end);
-    const oneDay = start && end && dateKey(start) === dateKey(end);
+    const oneDay = start && end && dateKey(start, range?.calendarZone) === dateKey(end, range?.calendarZone);
     return oneDay ? match[4] : match[2] + "-" + match[3] + " " + match[4];
   }
   if (bucket === "day" || bucket === "week") {
@@ -1629,7 +1526,7 @@ function shortTimelineLabel(key, bucket, range) {
         : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
     }
     if (bucket === "day" && range?.preset === "month") return text.slice(8, 10);
-    if (start && end && start.getFullYear() !== end.getFullYear()) return text;
+    if (start && end && dateKey(start, range?.calendarZone).slice(0, 4) !== dateKey(end, range?.calendarZone).slice(0, 4)) return text;
     return text.slice(5);
   }
   return text;
@@ -1640,7 +1537,7 @@ export function timelineAxisLabels(rows, options = {}) {
   const bucket = options.bucket || "day";
   const range = options.range || {};
   const chartWidth = options.chartWidth || 960;
-  const oneDayHourly = bucket === "hour" && range.start && range.end && dateKey(asDate(range.start)) === dateKey(asDate(range.end));
+  const oneDayHourly = bucket === "hour" && range.start && range.end && dateKey(asDate(range.start), range.calendarZone) === dateKey(asDate(range.end), range.calendarZone);
   const labels = rows.map((row) => shortTimelineLabel(row.key, bucket, range));
   if (oneDayHourly && chartWidth >= 700) {
     return rows.map((row, index) => ({ index, label: labels[index] }));
@@ -1675,15 +1572,17 @@ function previousTokensLabel(comparisonLabel) {
 function previousPeriodDateLabel(range) {
   const start = asDate(range?.start);
   const end = asDate(range?.end);
-  return start && end ? `${dateKey(start)} 至 ${dateKey(end)}` : "";
+  return start && end ? `${dateKey(start, state.calendarZone)} 至 ${dateKey(end, state.calendarZone)}` : "";
 }
 
 function formatPercent(value) {
   if (value === null || value === undefined) {
     return "无基准";
   }
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value}%`;
+  const percent = Number(value);
+  if (!Number.isFinite(percent)) return "无基准";
+  const sign = percent > 0 ? "+" : "";
+  return `${sign}${percent}%`;
 }
 
 function comparisonClass(value) {
@@ -1718,7 +1617,7 @@ export function renderComparisonHtml(comparison) {
       <small>${formatPercent(comparison.percentChange)}</small>
     </article>
     <article class="comparison-item ${comparisonClass(comparison.averageDelta)}">
-      <span>平均趋势变化</span>
+      <span>流速同比</span>
       <strong title="${formatExactDelta(comparison.averageDelta)}">${formatDelta(comparison.averageDelta)}</strong>
       <small>${formatPercent(comparison.averagePercentChange)}</small>
     </article>
@@ -1936,7 +1835,7 @@ export function renderTimelineLegendHtml(summary, mode, channelColors, modelColo
     ? channelColors.get(name) || "var(--green)"
     : modelColors.get(name) || getModelColor(name);
   return ordered.map((name) => {
-    const color = colorFor(name);
+    const color = safeChartColor(colorFor(name));
     const escapedName = escapeHtml(name);
     return "<span class=\"timeline-legend-item\" role=\"listitem\"><span class=\"timeline-legend-swatch\" style=\"background:" +
       color + "\"></span><span title=\"" + escapedName + "\">" + escapedName + "</span></span>";
@@ -1957,8 +1856,8 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   const context = canvas.getContext("2d");
   canvas.dataset.usageTooltip = "true";
   const modeLabel = { channel: "按渠道", model: "按模型", cost: "按花销" }[mode] || "按渠道";
-  const startLabel = range?.start ? dateKey(asDate(range.start)) : "";
-  const endLabel = range?.end ? dateKey(asDate(range.end)) : "";
+  const startLabel = range?.start ? dateKey(asDate(range.start), range?.calendarZone) : "";
+  const endLabel = range?.end ? dateKey(asDate(range.end), range?.calendarZone) : "";
   const rangeLabelText = startLabel && endLabel ? `，统计范围 ${startLabel} 至 ${endLabel}` : "";
   const baseAriaLabel = getLocale() === "en-US"
     ? `Usage over time, ${mode === "cost" ? "estimated API-equivalent cost by model, with USD on the vertical axis" : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates, model costs, and fallback estimates" : "dates and details"}.`
@@ -2323,7 +2222,7 @@ function currentSummary() {
   if (state.report) {
     const nowKey = state.now ? new Date(state.now).getTime() : Math.floor(Date.now() / 60_000);
     const excludedKey = [...(state.excludedHomes || [])].map(String).sort().join(",");
-    const key = [state.preset, state.bucket, state.startDate, state.endDate, state.recentValue, excludedKey, nowKey].join("|");
+    const key = [state.preset, state.bucket, state.startDate, state.endDate, state.recentValue, state.calendarZone, excludedKey, nowKey].join("|");
     if (staticSummaryCache?.report === state.report && staticSummaryCache.key === key) return staticSummaryCache.summary;
     const summary = summarize(state.report);
     staticSummaryCache = { report: state.report, key, summary };
@@ -2422,7 +2321,9 @@ function render() {
   const rangeEnd = asDate(summary.range.end);
   rangeNode.title = quotaMode
     ? quotaRangeAccessibleLabel(summary.range)
-    : rangeStart && rangeEnd ? `${rangeStart.toLocaleString(getLocale())} 至 ${rangeEnd.toLocaleString(getLocale())}` : rangeNode.textContent;
+    : rangeStart && rangeEnd ? summary.range.calendarZone === "utc"
+      ? `${rangeStart.toISOString()} 至 ${rangeEnd.toISOString()}`
+      : `${rangeStart.toLocaleString(getLocale())} 至 ${rangeEnd.toLocaleString(getLocale())}` : rangeNode.textContent;
   const timelineWarning = $("#timelineRangeWarning");
   if (timelineWarning) {
     timelineWarning.hidden = !summary.timelineError;
@@ -2517,7 +2418,7 @@ function initializeAutoRefresh() {
 }
 
 const PRICING_FIELDS = [
-  ["input", "普通输入"], ["cachedInput", "缓存读取"],
+  ["input", "缓外输入"], ["cachedInput", "缓存输入"],
   ["cacheWrite", "缓存写入"], ["output", "输出"],
 ];
 
@@ -2557,7 +2458,7 @@ function pricingContextsHtml(model, contexts) {
         ${PRICING_FIELDS.map(([field, fieldLabel]) => `
           <label>${fieldLabel}<input type="number" min="0" step="any" required
             data-model="${escapeHtml(model)}" data-context="${context}" data-field="${field}"
-            value="${source[field]}" /></label>
+            value="${escapeHtml(source[field])}" /></label>
         `).join("")}
       </div>
     `;
@@ -3158,6 +3059,7 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
   const params = new URLSearchParams({
     preset: state.preset,
     bucket: state.bucket,
+    calendarZone: state.calendarZone,
     view: "dashboard",
   });
   if (state.preset === "custom") {
@@ -3198,7 +3100,9 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       state.now = embeddedReport.asOf || embeddedReport.quota?.asOf || embeddedReport.generatedAt || null;
       state.metadata = metadataFromReport(embeddedReport);
       state.summary = null;
-      state.periodComparison = window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
+      state.periodComparison = state.calendarZone === "utc"
+        ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
+        : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
       state.fingerprint = "static";
       if (Number(embeddedReport.pricing?.usdToCnyRate) > 0) state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
       state.costScaleTarget = (embeddedReport.events || []).some((event) => event.costEstimate?.currency === "CNY") ? "CNY" : "USD";
@@ -3301,10 +3205,21 @@ function stopAutoRefresh() {
 
 function refreshViewForFilters() {
   if (isStaticSnapshot()) {
+    state.periodComparison = state.calendarZone === "utc"
+      ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
+      : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
     render();
     return;
   }
   void loadUsage({ skipCheck: true });
+}
+
+function updateCalendarZoneSelect() {
+  const select = $("#calendarZoneSelect");
+  const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai"
+    ? "UTC+8" : "本地时间";
+  select.value = state.calendarZone;
 }
 
 function toggleQuotaPreset() {
@@ -3326,6 +3241,12 @@ function toggleQuotaPreset() {
 }
 
 function bootDashboard() {
+  try {
+    state.calendarZone = window.localStorage.getItem("codexUsageCalendarZoneV2") === "utc" ? "utc" : "local";
+  } catch {
+    state.calendarZone = "local";
+  }
+  updateCalendarZoneSelect();
   setupUsageTooltip();
   updateLanguageButton();
   $("#languageToggle").addEventListener("click", () => {
@@ -3333,6 +3254,15 @@ function bootDashboard() {
   });
 
   $("#quotaPresetToggle").addEventListener("click", toggleQuotaPreset);
+
+  $("#calendarZoneSelect").addEventListener("change", (event) => {
+    const zone = event.target.value;
+    if (!["local", "utc"].includes(zone) || zone === state.calendarZone) return;
+    state.calendarZone = zone;
+    try { window.localStorage.setItem("codexUsageCalendarZoneV2", zone); } catch {}
+    updateCalendarZoneSelect();
+    refreshViewForFilters();
+  });
 
   $("#presetButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-preset]");

@@ -270,6 +270,34 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
   }
 });
 
+test("ZCode UTC 账单日按原始请求时间分日，不改写计价时间", async () => {
+  const first = Date.parse("2026-09-24T18:42:34.668Z");
+  const second = Date.parse("2026-09-25T02:12:34.668Z");
+  const { homeDir } = await makeZcodeHome({
+    sessions: [{ id: "sess_main", directory: "/work/mimo" }],
+    usageRows: [
+      usageRow({ id: "utc-day-24", model_id: "mimo-v2.6-pro", started_at: first - 1000, completed_at: first }),
+      usageRow({ id: "utc-day-25", model_id: "mimo-v2.6-pro", started_at: second - 1000, completed_at: second }),
+    ],
+  });
+  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  try {
+    await store.sync();
+    const day24 = store.summarize({ preset: "custom", startDate: "2026-09-24", endDate: "2026-09-24", bucket: "day", calendarZone: "utc" });
+    const day25 = store.summarize({ preset: "custom", startDate: "2026-09-25", endDate: "2026-09-25", bucket: "day", calendarZone: "utc" });
+    assert.equal(day24.totals.total, 120);
+    assert.equal(day25.totals.total, 120);
+    assert.equal(day24.range.start, "2026-09-24T00:00:00.000Z");
+    assert.equal(day24.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
+    assert.equal(day25.timeline.find((row) => row.key === "2026-09-25")?.total.total, 120);
+    assert.ok(day24.costEstimate.totalCny > 0);
+    const timestamps = store.database.prepare("SELECT timestamp_ms FROM events ORDER BY timestamp_ms").all().map((row) => row.timestamp_ms);
+    assert.deepEqual(timestamps, [first, second]);
+  } finally {
+    store.close();
+  }
+});
+
 test("UsageStore 只在 ZCode 数据库变化后重建", async () => {
   const { homeDir, dbFile } = await makeZcodeHome({
     sessions: [{ id: "sess_main", directory: "/work/zproj", path: "/work/zproj", title: "重构看板" }],

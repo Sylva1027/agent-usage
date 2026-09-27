@@ -14,6 +14,8 @@ const ENGLISH = new Map(Object.entries({
   "导入目录": "Import",
   "筛选": "Filters",
   "范围": "Range",
+  "日期范围时区": "Date Range Time Zone",
+  "本地时间": "Local Time",
   "今日": "Today",
   "本周": "This Week",
   "本月": "This Month",
@@ -44,13 +46,16 @@ const ENGLISH = new Map(Object.entries({
   "总 tokens": "Total Tokens",
   "总输入": "Total Input",
   "缓存读取": "Cache Hit",
+  "缓存输入": "Cache Hit",
   "输出": "Output",
   "推理输出": "Reasoning Tokens",
+  "推理": "Reasoning Tokens",
   "会话": "Sessions",
   "事件": "Events",
   "API 费用估算": "Estimated API Cost",
   "总花销": "Estimated Cost",
-  "普通输入": "Cache Miss",
+  "估算花销": "Estimated Cost",
+  "缓外输入": "Cache Miss",
   "缓存写入": "Cache Write",
   "未命中输入": "Cache Miss",
   "缓存命中": "Cache Hit Rate",
@@ -115,10 +120,10 @@ const ENGLISH = new Map(Object.entries({
   "未知时间": "Unknown time",
   "本地时区": "local time zone",
   "限额窗口边界不可用": "Limit window boundaries unavailable",
-  "较昨日": "Vs. Yesterday",
-  "较上周": "Vs. Last Week",
-  "较上月": "Vs. Last Month",
-  "较上一等长周期": "Vs. Previous Period",
+  "较昨日": "VS Yesterday",
+  "较上周": "VS Last Week",
+  "较上月": "VS Last Month",
+  "较上一等长周期": "VS Previous Period",
   "暂无对比": "No Comparison",
   "昨日 tokens": "Yesterday's Tokens",
   "上周 tokens": "Last Week's Tokens",
@@ -128,7 +133,7 @@ const ENGLISH = new Map(Object.entries({
   "无基准": "No baseline",
   "全部范围没有可比较的上一周期": "All-time usage has no preceding period for comparison.",
   "当前范围没有可比较的上一周期": "No preceding period is available for this range.",
-  "平均趋势变化": "Average Usage Change",
+  "流速同比": "Usage Pace vs. Prior Period",
   "此静态快照没有费用估算，请重新导出快照。": "This snapshot has no cost estimates. Export a new snapshot.",
   "费用估算暂不可用。": "Cost estimates are temporarily unavailable.",
   "当前价格基准": "Current Pricing Baseline",
@@ -428,7 +433,9 @@ function translateNode(node) {
     const current = node.nodeValue || "";
     const entry = nodeSources.get(node);
     const source = entry && current === entry.output ? entry.source : current;
-    const output = localizeText(source);
+    const output = activeLocale === "en-US" && parent.dataset.i18nEn
+      ? parent.dataset.i18nEn
+      : localizeText(source);
     nodeSources.set(node, { source, output });
     if (current !== output) node.nodeValue = output;
     return;

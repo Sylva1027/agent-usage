@@ -15,6 +15,23 @@ import {
 import { API_PRICING_CHECKED_AT, API_PRICING_MODE, estimateEventCost } from "../src/pricing.js";
 import { selectQuotaWindows } from "../src/usage-core.js";
 
+test("static UTC date selection agrees with live day boundaries", () => {
+  setSummaryFilters({ preset: "custom", bucket: "day", calendarZone: "utc", startDate: "2026-09-24", endDate: "2026-09-24", now: "2026-09-25T12:00:00.000Z" });
+  try {
+    const summary = summarize({
+      events: [
+        { timestamp: "2026-09-24T18:42:34.668Z", sessionId: "first", channel: "ZCode", model: "mimo-v2.6-pro", total: { total: 120, input: 100, cached: 80, output: 20, reasoning: 0 } },
+        { timestamp: "2026-09-25T02:12:34.668Z", sessionId: "second", channel: "ZCode", model: "mimo-v2.6-pro", total: { total: 80, input: 70, cached: 50, output: 10, reasoning: 0 } },
+      ],
+    });
+    assert.equal(summary.totals.total, 120);
+    assert.equal(summary.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
+    assert.match(rangeLabel(summary), /2026-09-24.*UTC/);
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", calendarZone: "local", startDate: "", endDate: "", now: null });
+  }
+});
+
 test("summarize includes channel breakdowns for timeline buckets", () => {
   setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "" });
   try {

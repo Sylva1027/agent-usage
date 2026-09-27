@@ -969,3 +969,25 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
   );
   assert.deepEqual(indexSummary.quota, reportSummary.quota);
 });
+
+test("UTC calendar days keep report and memory index summaries aligned across midnight", () => {
+  const events = [
+    usageEvent("2026-09-24T18:42:34.668Z", 120),
+    usageEvent("2026-09-25T02:12:34.668Z", 80),
+  ];
+  const report = { generatedAt: "2026-09-25T12:00:00.000Z", events };
+  const index = usageIndex(events);
+  const filters = {
+    preset: "custom", startDate: "2026-09-24", endDate: "2026-09-24",
+    bucket: "day", calendarZone: "utc", now: "2026-09-25T12:00:00.000Z",
+  };
+  const full = summarizeUsage(report, filters);
+  const memory = summarizeUsageIndex(index, filters);
+  for (const summary of [full, memory]) {
+    assert.equal(summary.range.calendarZone, "utc");
+    assert.equal(summary.range.start, "2026-09-24T00:00:00.000Z");
+    assert.equal(summary.totals.total, 120);
+    assert.equal(summary.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
+  }
+  assert.equal(summarizeUsage(report, { ...filters, startDate: "2026-09-25", endDate: "2026-09-25" }).totals.total, 80);
+});

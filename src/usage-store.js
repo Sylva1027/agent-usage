@@ -21,9 +21,9 @@ import { createRepositoryResolver } from "./repository-identity.js";
 import { createCostEstimateAccumulator, estimateCostForEvents, estimateEventCost, getPricingCatalog } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
-import { buildTimelineRows } from "../public/timeline-utils.js";
+import { buildTimelineRows, quotaRecordsForRange, quotaRecordValues } from "../public/timeline-utils.js";
 
-const STORE_SCHEMA_VERSION = 7;
+const STORE_SCHEMA_VERSION = 8;
 
 function localDateKey(date) {
   const year = date.getFullYear();
@@ -44,6 +44,7 @@ function startOfLocalWeek(date) {
   return start;
 }
 
+/** @returns {import("./usage-types.js").UsageTotals} */
 function usageFromRow(row) {
   const values = row || {};
   return {
@@ -52,6 +53,28 @@ function usageFromRow(row) {
     cached: Number(values.cached || 0),
     output: Number(values.output || 0),
     reasoning: Number(values.reasoning || 0),
+  };
+}
+
+const COST_EVENT_COLUMNS = "timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
+
+/** @returns {import("./usage-types.js").IndexedCostEvent} */
+function costEventFromRow(row, tierEvidence) {
+  const timestamp = Number(row.timestamp_ms);
+  const sessionId = String(row.session_id);
+  return {
+    timestamp,
+    sessionId,
+    channel: String(row.channel),
+    model: String(row.model),
+    detailMask: Number(row.detail_mask || 0),
+    cacheWriteTokens: Number(row.cache_write_tokens || 0),
+    cacheWriteKnown: Boolean(row.cache_write_known),
+    requestInputTokens: Number(row.request_input_tokens || 0),
+    contextLevel: String(row.context_level),
+    serviceTier: tierEvidence?.resolve(sessionId, timestamp, String(row.service_tier)) || String(row.service_tier),
+    priceVersion: String(row.price_version),
+    total: usageFromRow(row),
   };
 }
 
@@ -108,32 +131,39 @@ const RECORD_METRICS = Object.freeze({
   sessionCount: { kind: "count", field: "sessions", title: "会话最多" },
   modelCount: { kind: "count", field: "models", title: "模型数量最多" },
   cacheHitRate: { kind: "ratio", title: "缓存命中最高" },
-  totalCost: { kind: "cost", field: "total", title: "总花销最高" },
-  inputCost: { kind: "cost", field: "input", title: "普通输入花销最高" },
-  cachedCost: { kind: "cost", field: "cached", title: "缓存读取花销最高" },
+  totalCost: { kind: "cost", field: "total", title: "估算花销最高" },
+  inputCost: { kind: "cost", field: "input", title: "缓外输入花销最高" },
+  cachedCost: { kind: "cost", field: "cached", title: "缓存输入花销最高" },
   outputCost: { kind: "cost", field: "output", title: "输出花销最高" },
 });
 
 const RECORD_UNIT_LABELS = Object.freeze({ day: "一日", week: "一周", month: "一个月" });
 
-function recordUnitBoundaries(key, unit) {
+function recordUnitBoundaries(key, unit, zone = "local") {
   if (unit === "day") {
-    const start = parseDateKey(key);
+    const start = parseDateKey(key, zone);
     return start ? [start.getTime(), addDaysMs(start, 1)] : null;
   }
   if (unit === "week") {
-    const start = parseDateKey(key);
+    const start = parseDateKey(key, zone);
     return start ? [start.getTime(), addDaysMs(start, 7)] : null;
   }
   const match = /^(\d{4})-(\d{2})$/.exec(key || "");
   if (!match) return null;
-  const start = new Date(Number(match[1]), Number(match[2]) - 1, 1);
-  return [start.getTime(), new Date(Number(match[1]), Number(match[2]), 1).getTime()];
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  return zone === "utc"
+    ? [Date.UTC(year, month, 1), Date.UTC(year, month + 1, 1)]
+    : [new Date(year, month, 1).getTime(), new Date(year, month + 1, 1).getTime()];
 }
 
-function parseDateKey(key) {
+function parseDateKey(key, zone = "local") {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || "");
-  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  return zone === "utc" ? new Date(Date.UTC(year, month, day)) : new Date(year, month, day);
 }
 
 function addDaysMs(date, days) {
@@ -312,6 +342,16 @@ export class UsageStore {
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
           AND lower(path) LIKE '%.jsonl';
+      `, 7);
+      version = 7;
+    }
+    if (version === 7) {
+      // A new rollout can inherit cumulative token counters from another
+      // conversation. Recompute Codex events from their first request usage.
+      migrate(`
+        UPDATE source_files SET size = -1, mtime_ms = -1
+        WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
+          AND lower(path) LIKE '%.jsonl';
       `, STORE_SCHEMA_VERSION);
       version = STORE_SCHEMA_VERSION;
     }
@@ -327,7 +367,7 @@ export class UsageStore {
   }
 
   readMeta(key) {
-    return this.database.prepare("SELECT value FROM store_meta WHERE key = ?").get(key)?.value || "";
+    return String(this.database.prepare("SELECT value FROM store_meta WHERE key = ?").get(key)?.value || "");
   }
 
   writeMeta(key, value) {
@@ -361,6 +401,7 @@ export class UsageStore {
     return { files, warnings, failedHomes };
   }
 
+  /** @param {any} file @param {{ onWarning?: (warning: string) => void }} [options] */
   async replaceFile({ filePath, source, info }, { onWarning } = {}) {
     const database = this.database;
     const insertSource = database.prepare(`
@@ -484,6 +525,7 @@ export class UsageStore {
     }
   }
 
+  /** @param {{ options?: any }} [args] */
   async sync({ options } = {}) {
     await this.open();
     const syncOptions = options || this.options;
@@ -659,56 +701,29 @@ export class UsageStore {
     }));
   }
 
-  costEstimateRange(range, excludeHomes = []) {
-    const tierEvidence = this.serviceTierEvidence;
+  /** @param {import("./usage-types.js").UsageRange} range
+   * @returns {Generator<import("./usage-types.js").IndexedCostEvent>}
+   */
+  *costEventsForRange(range, excludeHomes = []) {
     const scope = scopeFilterSql(excludeHomes);
     const where = eventRangeScope(range, scope);
-    const statement = this.database.prepare(`SELECT timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning FROM events WHERE ${where.sql}`);
-    function* events() {
-      for (const row of statement.iterate(...where.params)) {
-        yield {
-          timestamp: Number(row.timestamp_ms),
-          sessionId: row.session_id,
-          channel: row.channel,
-          model: row.model,
-          detailMask: Number(row.detail_mask || 0),
-          cacheWriteTokens: Number(row.cache_write_tokens || 0),
-          cacheWriteKnown: Boolean(row.cache_write_known),
-          requestInputTokens: Number(row.request_input_tokens || 0),
-          contextLevel: row.context_level,
-          serviceTier: tierEvidence?.resolve(row.session_id, Number(row.timestamp_ms), row.service_tier) || row.service_tier,
-          priceVersion: row.price_version,
-          total: usageFromRow(row),
-        };
-      }
+    const statement = this.database.prepare(`SELECT ${COST_EVENT_COLUMNS} FROM events WHERE ${where.sql}`);
+    for (const row of statement.iterate(...where.params)) {
+      yield costEventFromRow(row, this.serviceTierEvidence);
     }
-    return estimateCostForEvents(events());
   }
 
+  /** @param {import("./usage-types.js").UsageRange} range */
+  costEstimateRange(range, excludeHomes = []) {
+    return estimateCostForEvents(this.costEventsForRange(range, excludeHomes));
+  }
+
+  /** @param {import("./usage-types.js").UsageRange} range
+   * @param {string} bucket
+   * @param {{ onEstimate?: (event: any, estimate: any) => void, excludeHomes?: string[] }} [options]
+   */
   timelineRange(range, bucket, { onEstimate, excludeHomes = [] } = {}) {
-    const tierEvidence = this.serviceTierEvidence;
-    const scope = scopeFilterSql(excludeHomes);
-    const where = eventRangeScope(range, scope);
-    const statement = this.database.prepare(`SELECT timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning FROM events WHERE ${where.sql}`);
-    function* events() {
-      for (const row of statement.iterate(...where.params)) {
-        yield {
-          timestamp: Number(row.timestamp_ms),
-          sessionId: row.session_id,
-          channel: row.channel,
-          model: row.model,
-          detailMask: Number(row.detail_mask || 0),
-          cacheWriteTokens: Number(row.cache_write_tokens || 0),
-          cacheWriteKnown: Boolean(row.cache_write_known),
-          requestInputTokens: Number(row.request_input_tokens || 0),
-          contextLevel: row.context_level,
-          serviceTier: tierEvidence?.resolve(row.session_id, Number(row.timestamp_ms), row.service_tier) || row.service_tier,
-          priceVersion: row.price_version,
-          total: usageFromRow(row),
-        };
-      }
-    }
-    return buildTimelineRows(events(), range, bucket, { estimateCost: estimateEventCost, onEstimate });
+    return buildTimelineRows(this.costEventsForRange(range, excludeHomes), range, bucket, { estimateCost: estimateEventCost, onEstimate });
   }
 
   repositoriesRange(range, excludeHomes = []) {
@@ -742,7 +757,7 @@ export class UsageStore {
       pathCount: Number(row.path_count || 0),
       count: Number(row.count || 0),
       sessions: Number(row.sessions || 0),
-      sessionIds: JSON.parse(row.session_ids || "[]"),
+      sessionIds: JSON.parse(String(row.session_ids || "[]")),
       total: usageFromRow(row),
     }));
   }
@@ -809,7 +824,8 @@ export class UsageStore {
   periodComparison(options = {}) {
     const now = options.now ? new Date(options.now) : new Date();
     const excludeHomes = options.excludeHomes || [];
-    const cacheKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}|${[...excludeHomes].map(String).sort().join(",")}`;
+    const zone = options.calendarZone === "utc" ? "utc" : "local";
+    const cacheKey = `${zone}|${zone === "utc" ? now.toISOString().slice(0, 10) : localDateKey(now)}|${[...excludeHomes].map(String).sort().join(",")}`;
     const cached = this.periodComparisonCache.get(cacheKey);
     if (cached) return { ...structuredClone(cached), asOf: now.toISOString() };
     const scope = scopeFilterSql(excludeHomes);
@@ -823,7 +839,7 @@ export class UsageStore {
           { timestamp: new Date(Number(bounds.maximum)).toISOString() },
         ];
     const ranges = Object.fromEntries(
-      COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now }, timestamps)]),
+      COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now, calendarZone: zone }, timestamps)]),
     );
     const models = this.periodAggregate("model", "model", now, ranges, { excludeHomes });
     const totals = models.length
@@ -854,7 +870,9 @@ export class UsageStore {
 
   // New Record：对日/周/月三种自然周期求各指标的历史最高期（严格新高、至少两期可比），
   // 只有纪录期完整落在所选范围内时才计为“在所选时间范围创下”。
+  /** @param {import("./usage-types.js").UsageRange} range */
   recordsForRange(range, excludeHomes = []) {
+    const zone = range.calendarZone === "utc" ? "utc" : "local";
     const scope = scopeFilterSql(excludeHomes);
     const where = scope.sql ? `WHERE ${scope.sql}` : "";
     const rate = Number(getPricingCatalog().usdToCnyRate);
@@ -874,22 +892,27 @@ export class UsageStore {
       return slot;
     };
 
+    // Record ranking scans the full scoped history. Its pricing projection is
+    // intentionally smaller: estimates use the active catalog and do not read
+    // stored price_version or repository display fields. session_id remains
+    // necessary to resolve service-tier evidence.
     const statement = this.database.prepare(`
-      SELECT day_key, week_key, month_key, session_id, model, channel,
+      SELECT timestamp_ms, day_key, week_key, month_key, session_id, model, channel,
         total, input, cached, output, reasoning, detail_mask, cache_write_tokens,
         cache_write_known, request_input_tokens, context_level, service_tier
       FROM events ${where}
     `);
     for (const row of statement.iterate(...scope.params)) {
       const estimate = estimateEventCost({
-        model: row.model,
-        channel: row.channel,
+        timestamp: Number(row.timestamp_ms),
+        model: String(row.model),
+        channel: String(row.channel),
         detailMask: Number(row.detail_mask || 0),
         cacheWriteTokens: Number(row.cache_write_tokens || 0),
         cacheWriteKnown: Boolean(row.cache_write_known),
         requestInputTokens: Number(row.request_input_tokens || 0),
         contextLevel: row.context_level,
-        serviceTier: row.service_tier,
+        serviceTier: this.serviceTierEvidence?.resolve(String(row.session_id), Number(row.timestamp_ms), String(row.service_tier)) || String(row.service_tier),
         total: {
           total: Number(row.total || 0),
           input: Number(row.input || 0),
@@ -900,8 +923,12 @@ export class UsageStore {
       });
       // 跨币种比较与图表比例一致：统一折算到人民币。
       const scale = estimate.currency === "CNY" ? 1 : usdToCnyRate;
+      const date = zone === "utc" ? new Date(Number(row.timestamp_ms)) : null;
+      const utcDay = date?.toISOString().slice(0, 10);
+      const utcWeek = date ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() || 7) - 1))).toISOString().slice(0, 10) : null;
       for (const unit of ["day", "week", "month"]) {
-        const slot = ensureSlot(unit, String(row[`${unit}_key`] || ""));
+        const key = zone === "utc" ? unit === "day" ? utcDay : unit === "week" ? utcWeek : utcDay.slice(0, 7) : String(row[`${unit}_key`] || "");
+        const slot = ensureSlot(unit, key);
         slot.total += Number(row.total || 0);
         slot.input += Number(row.input || 0);
         slot.cached += Number(row.cached || 0);
@@ -941,7 +968,7 @@ export class UsageStore {
           .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
           .sort((left, right) => right.value - left.value);
         if (ranked.length < 2 || ranked[0].value <= ranked[1].value) continue;
-        const boundaries = recordUnitBoundaries(ranked[0].key, unit);
+        const boundaries = recordUnitBoundaries(ranked[0].key, unit, zone);
         if (!boundaries) continue;
         const [periodStart, periodEnd] = boundaries;
         if (rangeStartMs !== null && periodStart < rangeStartMs) continue;
@@ -1024,6 +1051,7 @@ export class UsageStore {
         start: range.start ? range.start.toISOString() : null,
         end: range.end ? range.end.toISOString() : null,
         bucket,
+        calendarZone: range.calendarZone || "local",
         rolling: Boolean(range.rolling),
         ...(quotaPreset ? {
           quotaWindow: true, recentValue: range.recentValue, quotaPreset: range.quotaPreset,
@@ -1041,7 +1069,12 @@ export class UsageStore {
       totals,
       comparison,
       costEstimate,
-      records: quotaPreset || range.preset === "all" ? {} : this.recordsForRange(range, excludeHomes),
+      records: range.preset === "all" ? {} : quotaPreset
+        ? quotaRecordsForRange(range, quota, this.quotaObservations(), (window) => {
+          const row = window === range ? aggregate : this.aggregateRange(window, excludeHomes);
+          const cost = window === range ? costEstimate : this.costEstimateRange(window, excludeHomes);
+          return { eventCount: Number(row.event_count), values: quotaRecordValues(usageFromRow(row), cost, Number(row.session_count), getPricingCatalog().usdToCnyRate) };
+        }) : this.recordsForRange(range, excludeHomes),
       eventCount: Number(aggregate.event_count || 0),
       sessionCount: Number(aggregate.session_count || 0),
       homeCount: Number(aggregate.home_count || 0),

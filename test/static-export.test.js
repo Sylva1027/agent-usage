@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { exportStaticDashboard, renderStaticDashboardHtml } from "../src/static-export.js";
+import { assertSelfContainedStaticHtml, exportStaticDashboard, renderStaticDashboardHtml } from "../src/static-export.js";
 import { getPricingCatalog, resetPricingCatalog } from "../src/pricing.js";
 
 test("renderStaticDashboardHtml embeds usage data and app assets", () => {
@@ -44,7 +44,8 @@ test("renderStaticDashboardHtml embeds usage data and app assets", () => {
   assert.match(html, /id="totalCost"/);
   assert.match(html, /id="cacheHitRate"/);
   assert.match(html, /costEstimate/);
-  assert.match(html, /<details id="costEstimateDetails" class="cost-estimate-details">/);
+  assert.match(html, /<div id="costEstimateDetails" class="cost-estimate-details">/);
+  assert.doesNotMatch(html, /<details id="costEstimateDetails"/);
   assert.match(html, /id="updatePricingButton"/);
   assert.match(html, /id="pricingDialog"/);
   assert.ok(html.indexOf('id="homeList"') < html.indexOf('id="costEstimateDetails"'));
@@ -63,12 +64,46 @@ test("renderStaticDashboardHtml bundles shared timeline logic and has no unresol
   assert.match(html, /id="timelineModes"/);
   assert.match(html, /id="languageToggle"/);
   assert.match(html, /codexUsageLocale/);
+  assert.match(html, /function escapeHtml/);
+  assert.match(html, /function datePickerMonthModel/);
+  assert.match(html, /const \{ state \} = \(\(\) =>/);
   assert.doesNotMatch(html, /import \{ buildTimelineRows \} from/);
   assert.doesNotMatch(html, /from "\.\/i18n\.js"/);
+  assert.doesNotMatch(html, /from "\.\/(?:app-state|calendar|html-utils)\.js"/);
   const moduleSource = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
   assert.ok(moduleSource);
   const syntax = spawnSync(process.execPath, ["--check", "--input-type=module"], { input: moduleSource, encoding: "utf8" });
   assert.equal(syntax.status, 0, syntax.stderr);
+});
+
+test("static export rejects unresolved module and external asset references", () => {
+  const html = renderStaticDashboardHtml({ generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], events: [], warnings: [] });
+  assert.throws(
+    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nimport "./new-module.js";')),
+    /unresolved module syntax/,
+  );
+  assert.throws(
+    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nexport { helper } from "./new-module.js";')),
+    /unresolved module syntax/,
+  );
+  assert.throws(
+    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nimport("./new-module.js");')),
+    /dynamic module import/,
+  );
+  assert.throws(
+    () => assertSelfContainedStaticHtml(html.replace("</head>", '<script src="./new-module.js"></script></head>')),
+    /external script or stylesheet/,
+  );
+});
+
+test("module checks do not treat embedded usage text as an import", () => {
+  const html = renderStaticDashboardHtml({
+    generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], warnings: [],
+    events: [{ timestamp: "2026-05-25T00:00:00.000Z", sessionId: "s1", homeId: "h1",
+      channel: "CLI", model: "gpt-6-sol", cwd: 'import("./note.js")', detailMask: 15,
+      total: { total: 10, input: 8, cached: 0, output: 2, reasoning: 0 } }],
+  });
+  assert.match(html, /import\(\\"\.\/note\.js\\"\)/);
 });
 
 test("static export freezes quota observations and capability at the export asOf", () => {
@@ -93,6 +128,7 @@ test("static export freezes quota observations and capability at the export asOf
     warnings: [],
   };
   const html = renderStaticDashboardHtml(report);
+  assert.match(html, /window\.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ = /);
   const embedded = html.match(/window\.__CODEX_USAGE_REPORT__ = (.*?); window\.__CODEX_USAGE_PERIOD_COMPARISON__/s)?.[1];
   assert.ok(embedded);
   const snapshot = JSON.parse(embedded);
@@ -141,6 +177,35 @@ test("static export runs directly from a path containing spaces", async () => {
     assert.match(result.output, /usage dashboard\.html/);
     const html = await readFile(outFile, "utf8");
     assert.match(html, /window.__CODEX_USAGE_REPORT__/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("static export runs from an isolated checkout without node_modules", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-usage-no-deps-"));
+  const projectRoot = path.resolve(import.meta.dirname, "..");
+  const homeDir = path.join(root, "home");
+  const outFile = path.join(root, "dashboard.html");
+  try {
+    await cp(path.join(projectRoot, "src"), path.join(root, "src"), { recursive: true });
+    await cp(path.join(projectRoot, "public"), path.join(root, "public"), { recursive: true });
+    await writeFile(path.join(root, "package.json"), '{"type":"module"}\n');
+    await mkdir(path.join(homeDir, ".codex", "sessions"), { recursive: true });
+    const env = {
+      ...process.env,
+      HOME: homeDir,
+      USERPROFILE: homeDir,
+      APPDATA: path.join(homeDir, "AppData", "Roaming"),
+      LOCALAPPDATA: path.join(homeDir, "AppData", "Local"),
+      CODEX_USAGE_HOMES: "",
+      CODEX_USAGE_IMPORT_DIRS: "",
+    };
+    const result = spawnSync(process.execPath, [path.join(root, "src", "static-export.js"), "--out", outFile], {
+      cwd: root, env, encoding: "utf8", timeout: 30_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(await readFile(outFile, "utf8"), /window\.__CODEX_USAGE_REPORT__/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

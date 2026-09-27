@@ -30,6 +30,25 @@ const DETAIL_CACHED = 2;
 const DETAIL_OUTPUT = 4;
 const DETAIL_INCONSISTENT = 16;
 
+/** @typedef {{ input: number, cachedInput: number, cacheWrite: number, output: number }} TokenRates */
+/**
+ * One model's per-million-token rates. Optional tiers are absent when a
+ * provider quotes only one context or service tier.
+ * @typedef {object} PriceModel
+ * @property {TokenRates} short
+ * @property {TokenRates} [long]
+ * @property {{ short?: TokenRates, long?: TokenRates, shortLongOutput?: TokenRates }} [fast]
+ * @property {TokenRates} [shortLongOutput]
+ * @property {"USD" | "CNY"} [currency]
+ * @property {string} [source]
+ * @property {number} [longContextThreshold]
+ * @property {number} [outputThreshold]
+ * @property {number} [offPeakMultiplier]
+ * @property {string} [peakTimezone]
+ * @property {ReadonlyArray<{ days: ReadonlyArray<number>, ranges: ReadonlyArray<ReadonlyArray<string>> }>} [peakWindows]
+ */
+/** @typedef {{ checkedAt: string, version: string, usdToCnyRate: number, models: Record<string, PriceModel> }} PricingCatalog */
+
 // 每 100 万 tokens 的单价。currency 省略时为美元（OpenAI 价目）；
 // 人民币模型来自各厂商官方定价页（见 source 字段）。
 // 分档字段说明：
@@ -37,6 +56,7 @@ const DETAIL_INCONSISTENT = 16;
 //   outputThreshold       输出达到该值时短上下文改用 shortLongOutput 费率（GLM 的输出分档）
 //   offPeakMultiplier     不在 peakWindows 时段内时整体乘以该折扣（DeepSeek 谷价 5 折）
 //   peakWindows           高峰时段：按 peakTimezone 判定星期与时刻；无法识别的节假日按高峰计（略保守）
+/** @type {Readonly<Record<string, PriceModel>>} */
 const MODEL_PRICES = Object.freeze({
   "gpt-6-astra": Object.freeze({ fast: { short: { input: 20, cachedInput: 2, cacheWrite: 25, output: 100 }, long: { input: 40, cachedInput: 4, cacheWrite: 50, output: 150 } }, short: { input: 10, cachedInput: 1, cacheWrite: 12.5, output: 50 }, long: { input: 20, cachedInput: 2, cacheWrite: 25, output: 75 } }),
   "gpt-6-sol": Object.freeze({ fast: { short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 }, long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 30 } }, short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 }, long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 15 } }),
@@ -165,6 +185,7 @@ const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
 
 // Custom rates reprice all indexed events so the dashboard remains internally
 // consistent. The original token counts and recorded price versions are retained.
+/** @type {PricingCatalog} */
 let activePricing = { checkedAt: API_PRICING_CHECKED_AT, version: API_PRICING_VERSION, usdToCnyRate: DEFAULT_USD_TO_CNY_RATE, models: MODEL_PRICES };
 
 export const API_TOKEN_PRICES = Object.freeze(Object.fromEntries(
@@ -179,9 +200,11 @@ export function getPricingCatalog() {
     source: API_PRICING_SOURCE, models: structuredClone(activePricing.models) };
 }
 
+/** @returns {TokenRates} */
 function validateRates(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid rates for ${label}`);
-  const rates = {};
+  /** @type {TokenRates} */
+  const rates = { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 };
   for (const field of RATE_FIELDS) {
     if (typeof value[field] !== "number" || !Number.isFinite(value[field]) || value[field] < 0) {
       throw new Error(`Invalid ${field} rate for ${label}`);
@@ -226,6 +249,7 @@ export function validatePricingCatalog(value) {
       Object.keys(MODEL_PRICES).some((key) => !Object.hasOwn(models, key))) {
     throw new Error("All built-in models must have prices.");
   }
+  /** @type {Record<string, PriceModel>} */
   const normalized = {};
   for (const model of keys.sort()) {
     if (!/^[a-z0-9][a-z0-9._-]{0,79}$/.test(model)) throw new Error(`Invalid model name: ${model}`);
@@ -728,6 +752,7 @@ export function createCostEstimateAccumulator(options = {}) {
   return createCostSummaryState(options);
 }
 
+/** @param {Iterable<any>} items */
 function summarizeCostItems(items = [], options = {}) {
   const summary = createCostSummaryState(options);
   for (const item of items) summary.add(item);
@@ -738,6 +763,7 @@ function modelNameIsKnown(value) {
   return Boolean(value) && value.toLocaleLowerCase() !== "unknown model";
 }
 
+/** @param {Iterable<any>} events */
 export function estimateCostForEvents(events = [], options = {}) {
   return summarizeCostItems(events, options);
 }

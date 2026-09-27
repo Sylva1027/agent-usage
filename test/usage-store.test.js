@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { UsageStore } from "../src/usage-store.js";
 import { API_PRICING_VERSION } from "../src/pricing.js";
-import { buildUsageIndex, summarizeUsageIndex } from "../src/usage-core.js";
+import { buildUsageIndex, buildUsageReport, summarizeUsageIndex } from "../src/usage-core.js";
 
 function jsonl(rows) {
   return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
@@ -101,6 +101,57 @@ test("UsageStore 首次同步并只重建变化文件", async () => {
   }
 });
 
+test("inherited rollout counters do not inflate gpt-6-sol usage or cost", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-inherited-usage-"));
+  const codexHome = path.join(homeDir, ".codex");
+  const sessionDir = path.join(codexHome, "sessions", "2026", "09", "26");
+  const databaseFile = path.join(homeDir, "usage-index.sqlite");
+  const store = new UsageStore({ homeDir, databaseFile });
+  try {
+    await mkdir(sessionDir, { recursive: true });
+    const first = tokenRow("2026-09-26T15:44:48.880Z", 38_745_826, 38_577_419, 37_199_360, 168_407, 58_944);
+    first.payload.info.last_token_usage = {
+      total_tokens: 141_769, input_tokens: 141_470, cached_input_tokens: 0,
+      cache_write_input_tokens: 0, output_tokens: 299, reasoning_output_tokens: 102,
+    };
+    const second = tokenRow("2026-09-26T15:45:06.867Z", 38_891_734, 38_722_820, 37_340_672, 168_914, 59_244);
+    second.payload.info.last_token_usage = {
+      total_tokens: 145_908, input_tokens: 145_401, cached_input_tokens: 141_312,
+      cache_write_input_tokens: 0, output_tokens: 507, reasoning_output_tokens: 300,
+    };
+    const meta = { timestamp: "2026-09-26T15:38:34.000Z", type: "session_meta", payload: { id: "inherited", source: "cli", originator: "codex-tui", cwd: homeDir } };
+    const context = { type: "turn_context", payload: { model: "gpt-6-sol" } };
+    await writeFile(path.join(sessionDir, "rollout-inherited-a.jsonl"), jsonl([meta, context, first]));
+    await writeFile(path.join(sessionDir, "rollout-inherited-b.jsonl"), jsonl([meta, context, second]));
+
+    const report = await buildUsageReport({ homes: [{ id: "main", label: "Codex", path: codexHome, kind: "main" }] });
+    assert.deepEqual(report.events.map((event) => event.total.total), [141_769, 145_908]);
+    assert.deepEqual(report.sessions.map((session) => session.total.total), [141_769, 145_908]);
+    assert.deepEqual(report.events.map((event) => event.contextLevel), ["short", "short"]);
+
+    await store.sync();
+    const summary = store.summarize({ preset: "all", bucket: "day" });
+    assert.equal(summary.totals.total, 287_677);
+    assert.ok(summary.costEstimate.totalUsd > 0 && summary.costEstimate.totalUsd < 1);
+
+    store.close();
+    const legacy = new DatabaseSync(databaseFile);
+    legacy.exec("PRAGMA user_version = 7; UPDATE events SET total = total + 38000000 WHERE total = 141769");
+    legacy.close();
+    const migrated = new UsageStore({ homeDir, databaseFile });
+    try {
+      const result = await migrated.sync();
+      assert.equal(result.updatedFileCount, 2);
+      assert.equal(migrated.summarize({ preset: "all", bucket: "day" }).totals.total, 287_677);
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("UsageStore 将非 Git 仓库比较项按工作目录归组", async () => {
   const { homeDir, databaseFile } = await makeStoreFixture();
   const sessionIndexPath = path.join(homeDir, ".codex", "session_index.jsonl");
@@ -172,7 +223,7 @@ test("New Record 点亮所选范围内的纪录期指标", async () => {
     const recordRange = store.summarize({ preset: "custom", startDate: "2026-07-12", endDate: "2026-07-12", bucket: "day" });
     assert.equal(recordRange.records.totalTokens.title, "总 tokens 最高的一日");
     assert.equal(recordRange.records.totalTokens.period, "2026-07-12");
-    assert.equal(recordRange.records.totalCost.title, "总花销最高的一日");
+    assert.equal(recordRange.records.totalCost.title, "估算花销最高的一日");
     // 三天会话数并列（1:1:1），不构成严格新高，不点亮。
     assert.equal(recordRange.records.sessionCount, undefined);
 
@@ -255,7 +306,7 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
       "SELECT cache_write_known, context_level, service_tier, price_version FROM events",
     ).get();
     assert.equal(result.updatedFileCount, 1);
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 7);
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 8);
     assert.equal(event.cache_write_known, 0);
     assert.equal(event.context_level, "unknown");
     assert.equal(event.service_tier, "unknown");
@@ -304,6 +355,33 @@ test("UsageStore 按来源排除过滤统计与对比", async () => {
   } finally {
     store.close();
   }
+});
+
+test("previous quota cost records compare earlier reset windows and honor source exclusions", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "usage-quota-record-"));
+  const sessionsDir = path.join(homeDir, ".codex", "sessions");
+  await mkdir(sessionsDir, { recursive: true });
+  for (const [day, tokens] of [[24, 100], [25, 200], [26, 500]]) {
+    const stamp = `2026-09-${day}T10:00:00Z`;
+    await writeFile(path.join(sessionsDir, `${day}.jsonl`), jsonl([
+      { type: "session_meta", timestamp: stamp, payload: { id: `s-${day}` } },
+      { type: "turn_context", timestamp: stamp, payload: { model: "gpt-6-sol" } },
+      quotaTokenRow(stamp, `2026-09-${day}T14:00:00Z`),
+      tokenRow(stamp, tokens, tokens, 0, 0, 0),
+    ]));
+  }
+  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "index.sqlite") });
+  try {
+    await store.sync();
+    const filters = { preset: "recent", recentValue: "上一个5h", now: "2026-09-26T12:00:00Z" };
+    const result = store.summarize(filters);
+    assert.equal(result.totals.total, 200);
+    assert.equal(result.records.totalCost.unit, "5-hour window");
+    assert.equal(result.records.totalTokens.value, 200);
+    assert.match(result.records.totalCost.title, /估算花销/);
+    assert.deepEqual(store.summarize({ ...filters, excludeHomes: store.homes.map(home => home.id) }).records, {});
+    assert.deepEqual(store.summarize({ preset: "all", now: filters.now }).records, {});
+  } finally { store.close(); await rm(homeDir, { recursive: true, force: true }); }
 });
 
 test("UsageStore indexes quota observations from zero-token files and uses the half-open event range", async () => {
@@ -435,7 +513,7 @@ test("UsageStore v5 migration marks only Codex JSONL for retryable automatic rei
     const retried = await migrated.sync();
     assert.equal(retried.updatedFileCount, 2);
     assert.equal(Number(migrated.database.prepare("SELECT COUNT(*) AS count FROM rate_limit_observations").get().count), 1);
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 7);
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 8);
   } finally {
     migrated.close();
     await rm(homeDir, { recursive: true, force: true });

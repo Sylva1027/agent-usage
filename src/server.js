@@ -74,6 +74,7 @@ function requestFilters(url) {
     : recentBucket || requestedBucket;
   const startDate = url.searchParams.get("startDate") || "";
   const endDate = url.searchParams.get("endDate") || "";
+  const calendarZone = url.searchParams.get("calendarZone") || "local";
   const excludeHomes = (url.searchParams.get("exclude") || "")
     .split(",")
     .map((value) => value.trim())
@@ -83,6 +84,9 @@ function requestFilters(url) {
   if (!isQuotaPreset(preset) && !recentBucket && !["hour", "day", "week", "month"].includes(bucket)) {
     throw httpError(400, "Invalid bucket.", "INVALID_BUCKET");
   }
+  if (!["local", "utc"].includes(calendarZone)) {
+    throw httpError(400, "Invalid calendar zone.", "INVALID_CALENDAR_ZONE");
+  }
   if (preset === "custom") {
     if ((startDate && !isValidDateOnly(startDate)) || (endDate && !isValidDateOnly(endDate))) {
       throw httpError(400, "Invalid custom date.", "INVALID_DATE");
@@ -91,7 +95,7 @@ function requestFilters(url) {
       throw httpError(400, "Start date must not be after end date.", "INVALID_DATE_RANGE");
     }
   }
-  return { preset, bucket, startDate, endDate, recentValue, excludeHomes };
+  return { preset, bucket, startDate, endDate, recentValue, excludeHomes, calendarZone };
 }
 
 function withoutExcludedHomes(report, excludeHomes = []) {
@@ -200,6 +204,7 @@ function clientFingerprint(sourceFingerprint) {
 }
 
 function httpError(statusCode, message, code) {
+  /** @type {Error & { statusCode?: number, code?: string }} */
   const error = new Error(message);
   error.statusCode = statusCode;
   if (code) error.code = code;
@@ -404,7 +409,7 @@ export function createUsageServer(options = {}) {
           }
           const entry = await describeImportEntry(body.path);
           if (entry.type === "unsupported") {
-            sendJson(response, 400, { code: "INVALID_IMPORT_DIRECTORY", error: entry.reason, path: entry.path });
+            sendJson(response, 400, { code: "INVALID_IMPORT_DIRECTORY", error: "reason" in entry ? entry.reason : "Unsupported import directory.", path: entry.path });
             return;
           }
           const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
@@ -494,7 +499,7 @@ export function createUsageServer(options = {}) {
             report,
             summary,
             quota: summary.quota,
-            periodComparison: summarizePeriodComparison(report.events, { now: asOf }),
+            periodComparison: summarizePeriodComparison(report.events, { now: asOf, calendarZone: filters.calendarZone }),
           });
           return;
         }
@@ -519,7 +524,7 @@ export function createUsageServer(options = {}) {
           metadata: frozen?.metadata || await metadataForStore(),
           summary,
           quota: summary.quota,
-          periodComparison: store.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes }),
+          periodComparison: store.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes, calendarZone: filters.calendarZone }),
         });
         return;
       }
@@ -536,7 +541,7 @@ export function createUsageServer(options = {}) {
           metadata: await metadataForStore(),
           summary,
           quota: summary.quota,
-          periodComparison: usageStore.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes }),
+          periodComparison: usageStore.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes, calendarZone: filters.calendarZone }),
         });
         return;
       }

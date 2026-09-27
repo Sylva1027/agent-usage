@@ -29,8 +29,13 @@ import {
   timelineDetailRows,
 } from "../public/app.js";
 
-test("token values use two decimal places in millions and retain exact hover values", () => {
+test("token values use two decimals with M/B/T units and retain exact hover values", () => {
   assert.equal(formatTokenMillions(62_617_267), "62.62M");
+  assert.equal(formatTokenMillions(1_392_280_000), "1.39B");
+  assert.equal(formatTokenMillions(1_000_000_000), "1.00B");
+  assert.equal(formatTokenMillions(1_000_000_000_000), "1.00T");
+  assert.equal(formatTokenMillions(1_395_280_000_000), "1.40T");
+  assert.equal(formatTokenMillions(-1_392_280_000), "-1.39B");
 
   const barHtml = renderBarListHtml([
     { key: "gpt-6-luna", name: "gpt-6-luna", total: { total: 62_617_267 } },
@@ -456,7 +461,7 @@ test("renderComparisonHtml renders trend, average trend, and previous totals", (
   });
 
   assert.match(html, /较上周/);
-  assert.match(html, /平均趋势变化/);
+  assert.match(html, /流速同比/);
   assert.match(html, /上周 tokens/);
   assert.match(html, /<strong title="-25,518,704">-25\.52M<\/strong>/);
   assert.match(html, /<strong title="\+8,581,809">\+8\.58M<\/strong>/);

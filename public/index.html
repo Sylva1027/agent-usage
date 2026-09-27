@@ -43,19 +43,25 @@
             <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
           </button>
           <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题" aria-pressed="false">
-            <svg viewBox="0 0 44 24" aria-hidden="true" focusable="false">
+            <svg viewBox="-1 0 42 24" aria-hidden="true" focusable="false">
               <circle class="theme-sun" cx="11" cy="12" r="4" />
               <path class="theme-sun" d="M11 1.8v2.1m0 16.2v2.1M.8 12h2.1m16.2 0h2.1M4.3 5.3l1.5 1.5m10.4 10.4 1.5 1.5M4.3 18.7l1.5-1.5M16.2 6.8l1.5-1.5" />
               <g class="theme-moon" transform="translate(21.4 2.4) scale(0.8)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
             </svg>
           </button>
-          <button id="importButton" type="button">导入目录</button>
+          <button id="importButton" type="button">导入</button>
         </div>
       </header>
 
       <section class="toolbar" aria-label="筛选">
         <div class="control-group">
-          <span>范围</span>
+          <div class="range-heading">
+            <span>范围</span>
+            <select id="calendarZoneSelect" aria-label="日期范围时区">
+              <option value="local">本地时间</option>
+              <option value="utc">UTC</option>
+            </select>
+          </div>
           <div class="segmented" id="presetButtons">
             <button
               type="button"
@@ -70,11 +76,10 @@
               <span class="quota-preset-mode" data-quota-mode="quota_week">Week</span>
             </button>
             <button type="button" data-preset="today" class="active">今日</button>
-            <button type="button" data-preset="week">本周</button>
-            <button type="button" data-preset="month">本月</button>
-            <button type="button" data-preset="all">全部</button>
+            <button type="button" data-preset="week" data-i18n-en="Week">本周</button>
+            <button type="button" data-preset="month" data-i18n-en="Month">本月</button>
+            <button type="button" data-preset="all" data-i18n-en="All">全部</button>
             <div class="recent-segment" data-preset="recent">
-              <span class="recent-segment-label">最近</span>
               <span class="recent-combobox">
                 <input
                   id="recentValue"
@@ -165,7 +170,7 @@
         </article>
         <article class="metric">
           <span class="metric-new" hidden>New</span>
-          <span>推理输出</span>
+          <span>推理</span>
           <strong id="reasoningTokens">-</strong>
         </article>
         <article class="metric">
@@ -178,17 +183,17 @@
       <section class="metrics price-metrics" aria-label="API 费用估算">
         <article class="metric">
           <span class="metric-new" hidden>New</span>
-          <span>总花销</span>
+          <span>估算花销</span>
           <strong id="totalCost">—</strong>
         </article>
         <article class="metric">
           <span class="metric-new" hidden>New</span>
-          <span>普通输入</span>
+          <span>缓外输入</span>
           <strong id="inputCost">—</strong>
         </article>
         <article class="metric">
           <span class="metric-new" hidden>New</span>
-          <span>缓存读取</span>
+          <span>缓存输入</span>
           <strong id="cachedInputCost">—</strong>
         </article>
         <article class="metric">
@@ -274,11 +279,11 @@
 
         <section class="panel pricing-note-panel" aria-label="费用估算说明">
           <div class="cost-estimate-tools">
-            <details id="costEstimateDetails" class="cost-estimate-details">
-              <summary>费用估算说明 <span id="costEstimateDate"></span></summary>
-              <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
-            </details>
+            <div id="costEstimateDetails" class="cost-estimate-details">
+              <h2>费用估算说明 <span id="costEstimateDate"></span></h2>
+            </div>
             <button id="updatePricingButton" class="panel-action" type="button">计价标准</button>
+            <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
           </div>
         </section>
       </section>
