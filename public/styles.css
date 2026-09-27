@@ -1695,6 +1695,16 @@ input[type="checkbox"]:checked::after {
   width: min(560px, 100%);
 }
 
+/* 模型计价子弹窗用原生 <dialog>：视觉沿用 .dialog 的整套样式，
+   这里只补遮罩并盖掉 UA 默认的 Canvas 前景色（否则暗色主题下文字发黑）。 */
+#modelPricingDialog {
+  color: var(--ink);
+}
+
+#modelPricingDialog::backdrop {
+  background: rgba(0, 0, 0, 0.42);
+}
+
 @media (max-width: 720px) {
   .bottom-grid {
     grid-template-columns: 1fr;

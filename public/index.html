@@ -73,7 +73,7 @@
             >
               <span class="quota-preset-mode" data-quota-mode="quota_5h">5h</span>
               <span class="quota-preset-divider" aria-hidden="true">/</span>
-              <span class="quota-preset-mode" data-quota-mode="quota_week">Week</span>
+              <span class="quota-preset-mode" data-quota-mode="quota_week">week</span>
             </button>
             <button type="button" data-preset="today" class="active">今日</button>
             <button type="button" data-preset="week" data-i18n-en="Week">本周</button>
@@ -346,19 +346,17 @@
         </form>
       </section>
     </div>
-    <div id="modelPricingDialog" class="dialog-backdrop" hidden>
-      <section class="dialog model-pricing-dialog" role="dialog" aria-modal="true" aria-labelledby="modelPricingTitle">
-        <div class="dialog-heading">
-          <h2 id="modelPricingTitle">模型计价</h2>
-        </div>
-        <p id="modelPricingNote" class="pricing-model-note"></p>
-        <div id="modelPricingFields" class="pricing-contexts"></div>
-        <div class="dialog-actions">
-          <button id="cancelModelPricingButton" type="button">取消</button>
-          <button id="applyModelPricingButton" type="button">应用</button>
-        </div>
-      </section>
-    </div>
+    <dialog id="modelPricingDialog" class="dialog model-pricing-dialog" aria-labelledby="modelPricingTitle">
+      <div class="dialog-heading">
+        <h2 id="modelPricingTitle">模型计价</h2>
+      </div>
+      <p id="modelPricingNote" class="pricing-model-note"></p>
+      <div id="modelPricingFields" class="pricing-contexts"></div>
+      <div class="dialog-actions">
+        <button id="cancelModelPricingButton" type="button">取消</button>
+        <button id="applyModelPricingButton" type="button">应用</button>
+      </div>
+    </dialog>
     <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>
 
     <script src="/app.js" type="module"></script>

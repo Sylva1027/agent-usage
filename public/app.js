@@ -41,6 +41,8 @@ const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const QUOTA_PRESETS = ["quota_5h", "quota_week"];
 const QUOTA_MODE_LABELS = Object.freeze({ quota_5h: "5 小时限额", quota_week: "本周限额" });
+// 与服务端限额观察的来源清单一致：这些 kind 的目录才计入 Codex 限额窗口。
+const CODEX_HOME_KINDS = new Set(["main", "jetbrains", "extra", "codex"]);
 const QUOTA_UI_COPY = Object.freeze({
   unavailable: "此限额窗口当前不可用。",
   missingSnapshot: "尚无限额快照，请等待 Codex 写入限额记录。",
@@ -231,13 +233,19 @@ function usageRowName(row) {
   return row?.name || row?.key || "未知";
 }
 
-// Keep keyboard/screen-reader labels aligned with the visual token value.
-function usageRowAriaLabel(row) {
-  return `${usageRowName(row)}：${formatTokens(usageValue(row?.total, "total"))} tokens`;
+// Model names render lowercase everywhere; aggregation keys and color lookups keep the original casing.
+function displayModelName(value) {
+  return String(value || "").toLowerCase();
 }
 
-export function formatUsageTooltip(row, titleOverride = null) {
+// Keep keyboard/screen-reader labels aligned with the visual token value.
+function usageRowAriaLabel(row, nameOverride = null) {
+  return `${nameOverride ?? usageRowName(row)}：${formatTokens(usageValue(row?.total, "total"))} tokens`;
+}
+
+export function formatUsageTooltip(row, titleOverride = null, options = {}) {
   const total = row?.total || emptyUsage();
+  const tooltipTitle = titleOverride || row?.name || row?.key || "未知";
   const details = [
     ["总 tokens", usageValue(total, "total")],
     ["总输入", usageValue(total, "input")],
@@ -248,8 +256,9 @@ export function formatUsageTooltip(row, titleOverride = null) {
     ["会话", row?.sessions || 0],
   ];
   const channels = row?.channels || [];
+  const titleText = options.modelNames === true ? displayModelName(tooltipTitle) : tooltipTitle;
   return `
-    <div class="usage-tooltip-title">${escapeHtml(titleOverride || row?.name || row?.key || "未知")}</div>
+    <div class="usage-tooltip-title">${escapeHtml(titleText)}</div>
     <div class="usage-tooltip-grid">
       ${details
         .map(
@@ -315,13 +324,13 @@ function positionUsageTooltip(anchor) {
   tooltip.style.top = `${Math.max(margin, top)}px`;
 }
 
-function showUsageTooltip(row, anchor) {
+function showUsageTooltip(row, anchor, options = null) {
   const tooltip = usageTooltip();
   if (!tooltip || !row) {
     hideUsageTooltip();
     return;
   }
-  tooltip.innerHTML = formatUsageTooltip(row);
+  tooltip.innerHTML = formatUsageTooltip(row, null, options || undefined);
   tooltip.hidden = false;
   positionUsageTooltip(anchor);
 }
@@ -366,9 +375,9 @@ function showTimelineTooltip(row, anchor) {
     chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode)));
 }
 
-function bindUsageRows(container, selector, rows) {
+function bindUsageRows(container, selector, rows, options = null) {
   container.querySelectorAll(selector).forEach((element, index) => {
-    tooltipRows.set(element, rows[index]);
+    tooltipRows.set(element, { row: rows[index], options });
   });
 }
 
@@ -1027,15 +1036,28 @@ function summarizeComparison(allEvents, range, currentTotals) {
   };
 }
 
+function codexHomeIdSet(report) {
+  return new Set(
+    (report.homes || [])
+      .filter((home) => CODEX_HOME_KINDS.has(home.kind))
+      .map((home) => String(home.id)),
+  );
+}
+
 export function summarize(report) {
   const excluded = new Set((state.excludedHomes || []).map(String));
   const sourceEvents = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
   const range = getRange(sourceEvents, report.quota);
   const quotaPreset = isQuotaPreset(state.preset) || Boolean(range.quotaWindow);
   const quotaAvailable = !quotaPreset || range.quotaState === "available";
+  // 限额窗口只衡量 Codex 用量，与服务端聚合保持同一口径。
+  const codexHomeIds = quotaPreset ? codexHomeIdSet(report) : null;
   const bucket = range.bucket || state.bucket;
   const events = sourceEvents.filter((event) => {
     if (!quotaAvailable) return false;
+    if (codexHomeIds && !codexHomeIds.has(String(event.homeId))) {
+      return false;
+    }
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -1072,7 +1094,7 @@ export function summarize(report) {
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
     records: quotaPreset
       ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
-          const rows = sourceEvents.filter(
+          const rows = events.filter(
             (event) => new Date(event.timestamp) >= window.start && new Date(event.timestamp) <= window.end,
           );
           return {
@@ -1256,7 +1278,9 @@ function renderCostMetrics(summary) {
   if (estimate.minimumEstimatedTokens > 0)
     caveats.push(`${formatTokens(estimate.minimumEstimatedTokens)} / ${totalTokens} tokens 使用最低费率估算`);
   if (estimate.minimumRateModels?.length)
-    caveats.push(`模型 ${estimate.minimumRateModels.join("、")} 缺少专用单价，按价目表最低费率估算`);
+    caveats.push(
+      `模型 ${estimate.minimumRateModels.map((name) => displayModelName(name)).join("、")} 缺少专用单价，按价目表最低费率估算`,
+    );
   if (estimate.unpricedTokens > 0) caveats.push(`仍有 ${formatTokens(estimate.unpricedTokens)} tokens 无法估算`);
   const sourceLinks = renderPricingSourceLinksHtml(
     [estimate.priceSource, ...(estimate.priceSources || [])],
@@ -1272,7 +1296,7 @@ function renderCostMetrics(summary) {
     }
   `;
   note.title = estimate.unpricedModels?.length
-    ? `仍无法计价的模型：${estimate.unpricedModels.join("、")}`
+    ? `仍无法计价的模型：${estimate.unpricedModels.map((name) => displayModelName(name)).join("、")}`
     : "更新计价标准后，所有已索引的历史用量会按新单价重算。";
 }
 
@@ -1385,19 +1409,22 @@ export function rangeLabel(summary) {
   return `${start} 至 ${end}${range.calendarZone === "utc" ? " (UTC)" : ""}`;
 }
 
-export function renderBarListHtml(rows, colorMap = null) {
+export function renderBarListHtml(rows, colorMap = null, options = {}) {
   // Build escaped HTML in one place so all bar-list render paths stay safe.
   if (!rows.length) {
     return `<div class="empty">没有匹配的用量记录</div>`;
   }
+  const modelNames = options.modelNames === true;
   const max = rows[0].total.total || 1;
   return rows
     .map((row) => {
       const width = Math.max(2, (row.total.total / max) * 100);
       const color = colorMap?.get(row.name);
       const fillStyle = `width: ${width}%;${color ? ` background: ${safeChartColor(color)};` : ""}`;
-      const name = escapeHtml(usageRowName(row));
-      const ariaLabel = escapeHtml(usageRowAriaLabel(row));
+      const rawName = usageRowName(row);
+      const displayName = modelNames ? displayModelName(rawName) : rawName;
+      const name = escapeHtml(displayName);
+      const ariaLabel = escapeHtml(usageRowAriaLabel(row, modelNames ? displayName : null));
       return `
         <div class="bar-row" data-usage-tooltip="true" tabindex="0" aria-label="${ariaLabel}">
           <div class="bar-label">
@@ -1411,9 +1438,9 @@ export function renderBarListHtml(rows, colorMap = null) {
     .join("");
 }
 
-function renderBarList(container, rows, colorMap = null) {
-  container.innerHTML = renderBarListHtml(rows, colorMap);
-  bindUsageRows(container, ".bar-row", rows);
+function renderBarList(container, rows, colorMap = null, options = null) {
+  container.innerHTML = renderBarListHtml(rows, colorMap, options || undefined);
+  bindUsageRows(container, ".bar-row", rows, options);
 }
 
 function timelineBreakdownReady(rows, mode) {
@@ -1466,7 +1493,7 @@ export function renderCostDetailHtml(rows, colorMap = null) {
   const max = values[0] || 1;
   return rows
     .map((row, index) => {
-      const name = escapeHtml(row.name);
+      const name = escapeHtml(displayModelName(row.name));
       const amount = formatPreciseCost(row.totalUsd, row.currency);
       const color = safeChartColor(colorMap?.get(row.name) || getModelColor(row.name));
       const width = Math.max(2, (values[index] / max) * 100);
@@ -1501,7 +1528,12 @@ function renderTimelineDetails(summary, channelColors, modelColors) {
     container.innerHTML = renderCostDetailHtml(rows, modelColors);
     return;
   }
-  renderBarList(container, rows, mode === "model" ? modelColors : channelColors);
+  renderBarList(
+    container,
+    rows,
+    mode === "model" ? modelColors : channelColors,
+    mode === "model" ? { modelNames: true } : null,
+  );
 }
 const COMPARISON_PERIOD_LABELS = { today: "今日", week: "本周", month: "本月", all: "全部" };
 
@@ -1556,6 +1588,7 @@ export function filterPeriodComparisonRows(rows = []) {
 
 function comparisonRowName(value, kind) {
   const name = String(value || "");
+  if (kind === "model") return displayModelName(name);
   if (kind !== "repository" || !name || name === "Unknown cwd") return name;
   const normalized = name.replace(/[\\/]+$/, "");
   const parts = normalized.split(/[\\/]/);
@@ -1619,7 +1652,7 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
       const isExpanded = expanded?.kind === kind && expanded?.key === row.key;
       const activeMetrics = isExpanded ? row.periods?.[expanded.period] : null;
       return `
-      <tr><th scope="row"><span class="comparison-row-name">${repositoryIcon}<span class="comparison-row-label" title="${escapeHtml(row.name)}" aria-label="${escapeHtml(row.name)}">${escapeHtml(displayName)}</span></span></th>${cells}</tr>
+      <tr><th scope="row"><span class="comparison-row-name">${repositoryIcon}<span class="comparison-row-label" title="${escapeHtml(displayName)}" aria-label="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span></span></th>${cells}</tr>
       ${activeMetrics ? `<tr class="comparison-detail-row"><td id="${rowId}-detail" colspan="5">${renderPeriodDetailHtml(activeMetrics, expanded.period)}</td></tr>` : ""}
     `;
     })
@@ -1974,7 +2007,7 @@ export function formatTimelineTooltip(row, mode = "channel") {
     const models = (row?.models || [])
       .map(
         (model) =>
-          `<span class="usage-tooltip-label">${escapeHtml(model.name)}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
+          `<span class="usage-tooltip-label">${escapeHtml(displayModelName(model.name))}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
       )
       .join("");
     return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokens(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
@@ -1991,7 +2024,7 @@ export function formatTimelineTooltip(row, mode = "channel") {
         cost.currency === state.costScaleTarget
           ? ""
           : `（≈${formatPreciseCost(scaledCost(cost.totalUsd, cost.currency), state.costScaleTarget)}）`;
-      return `<span class="usage-tooltip-label">${escapeHtml(name)}</span><span class="usage-tooltip-value">${native}${converted}</span>`;
+      return `<span class="usage-tooltip-label">${escapeHtml(displayModelName(name))}</span><span class="usage-tooltip-value">${native}${converted}</span>`;
     })
     .join("");
   const pair = costPairFromSlots(row?.costByModel);
@@ -2042,7 +2075,7 @@ export function renderTimelineLegendHtml(summary, mode, channelColors, modelColo
   return ordered
     .map((name) => {
       const color = safeChartColor(colorFor(name));
-      const escapedName = escapeHtml(name);
+      const escapedName = escapeHtml(isChannel ? name : displayModelName(name));
       return (
         '<span class="timeline-legend-item" role="listitem"><span class="timeline-legend-swatch" style="background:' +
         color +
@@ -2279,7 +2312,8 @@ function setupUsageTooltip() {
       hideUsageTooltip();
       return;
     }
-    showUsageTooltip(tooltipRows.get(target), event);
+    const bound = tooltipRows.get(target);
+    showUsageTooltip(bound?.row, event, bound?.options);
   });
   document.addEventListener("pointerleave", hideUsageTooltip);
   document.addEventListener("focusin", (event) => {
@@ -2287,7 +2321,8 @@ function setupUsageTooltip() {
     if (!target) {
       return;
     }
-    showUsageTooltip(tooltipRows.get(target), target);
+    const bound = tooltipRows.get(target);
+    showUsageTooltip(bound?.row, target, bound?.options);
   });
   document.addEventListener("focusout", (event) => {
     if (event.target.closest?.("[data-usage-tooltip]")) {
@@ -2877,13 +2912,13 @@ function openModelPricing(model) {
     `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
   $("#modelPricingNote").textContent = pricingModelNoteParts(entry).join("；");
   $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
-  $("#modelPricingDialog").hidden = false;
-  window.requestAnimationFrame(() => $("#modelPricingFields input")?.focus());
+  // 原生顶层弹窗：showModal 负责置顶、焦点圈定，关闭时焦点自动还原。
+  $("#modelPricingDialog").showModal();
 }
 
 function closeModelPricing() {
-  $("#modelPricingDialog").hidden = true;
-  state.modelPricingDraft = null;
+  const dialog = $("#modelPricingDialog");
+  if (dialog.open) dialog.close();
 }
 
 function applyModelPricing() {
@@ -3710,6 +3745,10 @@ function bootDashboard() {
   $("#modelPricingDialog").addEventListener("click", (event) => {
     if (event.target.id === "modelPricingDialog") closeModelPricing();
   });
+  // cancel（Esc）与 close() 都会走到 close：草稿在这里统一清理。
+  $("#modelPricingDialog").addEventListener("close", () => {
+    state.modelPricingDraft = null;
+  });
   $("#importButton").addEventListener("click", openImportDialog);
   $("#addImportButton").addEventListener("click", openImportDialog);
   $("#repositoryComparisonSearch").addEventListener("input", (event) => {
@@ -3781,8 +3820,8 @@ function bootDashboard() {
     if (event.key === "Escape") {
       setRecentMenuOpen(false);
     }
-    if (event.key === "Escape" && !$("#pricingDialog").hidden) closePricingDialog();
-    if (event.key === "Escape" && !$("#modelPricingDialog").hidden) closeModelPricing();
+    // 子弹窗已改原生 <dialog>，Esc 由平台关闭顶层弹窗；这里只在子弹窗未打开时关父弹窗。
+    if (event.key === "Escape" && !$("#pricingDialog").hidden && !$("#modelPricingDialog").open) closePricingDialog();
     if (event.key === "Escape" && !$("#importDialog").hidden) {
       closeImportDialog();
     }
