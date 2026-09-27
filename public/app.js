@@ -301,28 +301,51 @@ function hideUsageTooltip() {
   }
 }
 
+export function usageTooltipPosition(anchorX, anchorY, width, height, viewportWidth, viewportHeight) {
+  const offset = 14;
+  const margin = 8;
+  let left = anchorX + offset;
+  let top = anchorY + offset;
+  if (left + width + margin > viewportWidth) {
+    left = anchorX - width - offset;
+  }
+  if (top + height + margin > viewportHeight) {
+    top = anchorY - height - offset;
+  }
+  return {
+    left: Math.min(Math.max(margin, left), Math.max(margin, viewportWidth - width - margin)),
+    top: Math.min(Math.max(margin, top), Math.max(margin, viewportHeight - height - margin)),
+  };
+}
+
 function positionUsageTooltip(anchor) {
   const tooltip = usageTooltip();
   if (!tooltip || tooltip.hidden) {
     return;
   }
-  const offset = 14;
-  const margin = 8;
-  const width = tooltip.offsetWidth;
-  const height = tooltip.offsetHeight;
   const rect = anchor?.getBoundingClientRect?.();
-  const anchorX = Number.isFinite(anchor?.clientX) ? anchor.clientX : rect?.left || margin;
-  const anchorY = Number.isFinite(anchor?.clientY) ? anchor.clientY : rect?.bottom || margin;
-  let left = anchorX + offset;
-  let top = anchorY + offset;
-  if (left + width + margin > window.innerWidth) {
-    left = anchorX - width - offset;
-  }
-  if (top + height + margin > window.innerHeight) {
-    top = anchorY - height - offset;
-  }
-  tooltip.style.left = `${Math.max(margin, left)}px`;
-  tooltip.style.top = `${Math.max(margin, top)}px`;
+  const anchorX = Number.isFinite(anchor?.clientX) ? anchor.clientX : rect?.left || 8;
+  const anchorY = Number.isFinite(anchor?.clientY) ? anchor.clientY : rect?.bottom || 8;
+  const position = usageTooltipPosition(
+    anchorX,
+    anchorY,
+    tooltip.offsetWidth,
+    tooltip.offsetHeight,
+    window.innerWidth,
+    window.innerHeight,
+  );
+  tooltip.style.left = `${position.left}px`;
+  tooltip.style.top = `${position.top}px`;
+}
+
+function scrollUsageTooltip(deltaY) {
+  const tooltip = usageTooltip();
+  if (!tooltip || tooltip.hidden || !deltaY) return false;
+  const maxScroll = tooltip.scrollHeight - tooltip.clientHeight;
+  const nextScroll = Math.min(maxScroll, Math.max(0, tooltip.scrollTop + deltaY));
+  if (maxScroll <= 0 || nextScroll === tooltip.scrollTop) return false;
+  tooltip.scrollTop = nextScroll;
+  return true;
 }
 
 function showUsageTooltip(row, anchor, options = null) {
@@ -2417,6 +2440,35 @@ function setupUsageTooltip() {
       hideUsageTooltip();
     }
   });
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !event.target.closest?.("[data-usage-tooltip]") ||
+      (event.key !== "PageDown" && event.key !== "PageUp")
+    ) {
+      return;
+    }
+    const delta = (event.key === "PageDown" ? 1 : -1) * (usageTooltip()?.clientHeight || 0) * 0.75;
+    if (scrollUsageTooltip(delta)) event.preventDefault();
+  });
+  document.addEventListener(
+    "wheel",
+    (event) => {
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        !event.target.closest?.("[data-usage-tooltip]")
+      )
+        return;
+      if (scrollUsageTooltip(event.deltaY)) event.preventDefault();
+    },
+    { passive: false },
+  );
 }
 
 function homeStatusLabel(home) {

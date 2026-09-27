@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatUsageTooltip } from "../public/app.js";
+import { formatUsageTooltip, usageTooltipPosition } from "../public/app.js";
+
+test("usageTooltipPosition keeps the measured tooltip inside each viewport edge", () => {
+  const viewportWidth = 320;
+  const viewportHeight = 240;
+  const width = 268;
+  const height = 224;
+  for (const [anchorX, anchorY] of [
+    [0, 0],
+    [319, 0],
+    [0, 239],
+    [319, 239],
+    [160, 120],
+    [-20, -20],
+    [350, 270],
+  ]) {
+    const { left, top } = usageTooltipPosition(anchorX, anchorY, width, height, viewportWidth, viewportHeight);
+    assert.ok(left >= 8 && left + width <= viewportWidth - 8);
+    assert.ok(top >= 8 && top + height <= viewportHeight - 8);
+  }
+});
 
 test("formatUsageTooltip renders token details for a usage row", () => {
   const html = formatUsageTooltip({
