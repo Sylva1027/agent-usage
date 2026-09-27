@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { estimateCostForEvents, estimateCostForGroups, estimateEventCost, getPricingCatalog, setPricingCatalog, resetPricingCatalog, LONG_CONTEXT_INPUT_THRESHOLD } from "../src/pricing.js";
+import {
+  estimateCostForEvents,
+  estimateCostForGroups,
+  estimateEventCost,
+  getPricingCatalog,
+  setPricingCatalog,
+  resetPricingCatalog,
+  LONG_CONTEXT_INPUT_THRESHOLD,
+} from "../src/pricing.js";
 import { loadPricingFile } from "../src/pricing-store.js";
 
 test("API cost estimate prices uncached input, cached input, and output separately", () => {
@@ -65,9 +73,7 @@ test("grouped store rows produce the same aggregate as individual events", () =>
     total: { total: 120, input: 100, cached: 60, output: 20 },
   };
   const expected = estimateCostForEvents([event]);
-  const actual = estimateCostForGroups([
-    { model: event.model, detailMask: event.detailMask, ...event.total },
-  ]);
+  const actual = estimateCostForGroups([{ model: event.model, detailMask: event.detailMask, ...event.total }]);
 
   assert.deepEqual(actual, expected);
 });

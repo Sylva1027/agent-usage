@@ -26,7 +26,9 @@ export function externalHttpUrl(value) {
 // These are the only color forms produced by the dashboard palettes.
 export function safeChartColor(value) {
   const color = String(value || "");
-  return /^#[0-9a-f]{6}$/i.test(color) || /^hsl\(\d+(?:\.\d+)? 70% (?:38|64)%\)$/.test(color) || color === "var(--green)"
+  return /^#[0-9a-f]{6}$/i.test(color) ||
+    /^hsl\(\d+(?:\.\d+)? 70% (?:38|64)%\)$/.test(color) ||
+    color === "var(--green)"
     ? color
     : "var(--green)";
 }

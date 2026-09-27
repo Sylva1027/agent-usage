@@ -111,23 +111,44 @@ test("inherited rollout counters do not inflate gpt-6-sol usage or cost", async 
     await mkdir(sessionDir, { recursive: true });
     const first = tokenRow("2026-09-26T15:44:48.880Z", 38_745_826, 38_577_419, 37_199_360, 168_407, 58_944);
     first.payload.info.last_token_usage = {
-      total_tokens: 141_769, input_tokens: 141_470, cached_input_tokens: 0,
-      cache_write_input_tokens: 0, output_tokens: 299, reasoning_output_tokens: 102,
+      total_tokens: 141_769,
+      input_tokens: 141_470,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 299,
+      reasoning_output_tokens: 102,
     };
     const second = tokenRow("2026-09-26T15:45:06.867Z", 38_891_734, 38_722_820, 37_340_672, 168_914, 59_244);
     second.payload.info.last_token_usage = {
-      total_tokens: 145_908, input_tokens: 145_401, cached_input_tokens: 141_312,
-      cache_write_input_tokens: 0, output_tokens: 507, reasoning_output_tokens: 300,
+      total_tokens: 145_908,
+      input_tokens: 145_401,
+      cached_input_tokens: 141_312,
+      cache_write_input_tokens: 0,
+      output_tokens: 507,
+      reasoning_output_tokens: 300,
     };
-    const meta = { timestamp: "2026-09-26T15:38:34.000Z", type: "session_meta", payload: { id: "inherited", source: "cli", originator: "codex-tui", cwd: homeDir } };
+    const meta = {
+      timestamp: "2026-09-26T15:38:34.000Z",
+      type: "session_meta",
+      payload: { id: "inherited", source: "cli", originator: "codex-tui", cwd: homeDir },
+    };
     const context = { type: "turn_context", payload: { model: "gpt-6-sol" } };
     await writeFile(path.join(sessionDir, "rollout-inherited-a.jsonl"), jsonl([meta, context, first]));
     await writeFile(path.join(sessionDir, "rollout-inherited-b.jsonl"), jsonl([meta, context, second]));
 
     const report = await buildUsageReport({ homes: [{ id: "main", label: "Codex", path: codexHome, kind: "main" }] });
-    assert.deepEqual(report.events.map((event) => event.total.total), [141_769, 145_908]);
-    assert.deepEqual(report.sessions.map((session) => session.total.total), [141_769, 145_908]);
-    assert.deepEqual(report.events.map((event) => event.contextLevel), ["short", "short"]);
+    assert.deepEqual(
+      report.events.map((event) => event.total.total),
+      [141_769, 145_908],
+    );
+    assert.deepEqual(
+      report.sessions.map((session) => session.total.total),
+      [141_769, 145_908],
+    );
+    assert.deepEqual(
+      report.events.map((event) => event.contextLevel),
+      ["short", "short"],
+    );
 
     await store.sync();
     const summary = store.summarize({ preset: "all", bucket: "day" });
@@ -202,7 +223,11 @@ test("New Record 点亮所选范围内的纪录期指标", async () => {
   const sessionDir = path.join(homeDir, ".codex", "sessions", "2026", "07");
   await mkdir(sessionDir, { recursive: true });
   // 三天数据：7-10 共 300、7-11 共 100、7-12 共 500（严格新高）。
-  for (const [day, total, name] of [["10", 300, "a"], ["11", 100, "b"], ["12", 500, "c"]]) {
+  for (const [day, total, name] of [
+    ["10", 300, "a"],
+    ["11", 100, "b"],
+    ["12", 500, "c"],
+  ]) {
     await writeFile(
       path.join(sessionDir, `rollout-${name}.jsonl`),
       jsonl([
@@ -220,7 +245,12 @@ test("New Record 点亮所选范围内的纪录期指标", async () => {
 
   try {
     await store.sync();
-    const recordRange = store.summarize({ preset: "custom", startDate: "2026-07-12", endDate: "2026-07-12", bucket: "day" });
+    const recordRange = store.summarize({
+      preset: "custom",
+      startDate: "2026-07-12",
+      endDate: "2026-07-12",
+      bucket: "day",
+    });
     assert.equal(recordRange.records.totalTokens.title, "总 tokens 最高的一日");
     assert.equal(recordRange.records.totalTokens.period, "2026-07-12");
     assert.equal(recordRange.records.totalCost.title, "估算花销最高的一日");
@@ -228,11 +258,18 @@ test("New Record 点亮所选范围内的纪录期指标", async () => {
     assert.equal(recordRange.records.sessionCount, undefined);
 
     // 纪录期不在所选范围内时不应点亮。
-    const earlierRange = store.summarize({ preset: "custom", startDate: "2026-07-10", endDate: "2026-07-10", bucket: "day" });
+    const earlierRange = store.summarize({
+      preset: "custom",
+      startDate: "2026-07-10",
+      endDate: "2026-07-10",
+      bucket: "day",
+    });
     assert.equal(earlierRange.records.totalTokens, undefined);
 
     // All Time 包含历史纪录期，但不属于创纪录的比较范围，也不需要扫描纪录。
-    store.recordsForRange = () => { throw new Error("All Time must skip record scans"); };
+    store.recordsForRange = () => {
+      throw new Error("All Time must skip record scans");
+    };
     const allTime = store.summarize({ preset: "all", bucket: "day" });
     assert.deepEqual(allTime.records, {});
     assert.equal(allTime.totals.total, 900);
@@ -293,7 +330,12 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
   const database = new DatabaseSync(databaseFile);
   database.exec("PRAGMA user_version = 2");
   for (const column of [
-    "price_version", "service_tier", "context_level", "request_input_tokens", "cache_write_known", "cache_write_tokens",
+    "price_version",
+    "service_tier",
+    "context_level",
+    "request_input_tokens",
+    "cache_write_known",
+    "cache_write_tokens",
   ]) {
     database.exec(`ALTER TABLE events DROP COLUMN ${column}`);
   }
@@ -302,9 +344,9 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
   const migrated = new UsageStore({ homeDir, databaseFile });
   try {
     const result = await migrated.sync();
-    const event = migrated.database.prepare(
-      "SELECT cache_write_known, context_level, service_tier, price_version FROM events",
-    ).get();
+    const event = migrated.database
+      .prepare("SELECT cache_write_known, context_level, service_tier, price_version FROM events")
+      .get();
     assert.equal(result.updatedFileCount, 1);
     assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 8);
     assert.equal(event.cache_write_known, 0);
@@ -322,17 +364,19 @@ test("UsageStore 按来源排除过滤统计与对比", async () => {
   await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
   await writeFile(
     path.join(projectRoot, ".codex-usage", "usage.jsonl"),
-    jsonl([{
-      schema_version: "codex-usage.project-log.v1",
-      timestamp: "2026-07-12T02:00:00.000Z",
-      source: "test",
-      channel: "Test",
-      project_root: "/work/log",
-      cwd: "/work/log",
-      session_id: "log-session",
-      model: "gpt-6-luna",
-      usage: { total: 70, input: 50, cached: 10, output: 20, reasoning: 2 },
-    }]),
+    jsonl([
+      {
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: "2026-07-12T02:00:00.000Z",
+        source: "test",
+        channel: "Test",
+        project_root: "/work/log",
+        cwd: "/work/log",
+        session_id: "log-session",
+        model: "gpt-6-luna",
+        usage: { total: 70, input: 50, cached: 10, output: 20, reasoning: 2 },
+      },
+    ]),
   );
   const store = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
 
@@ -347,11 +391,20 @@ test("UsageStore 按来源排除过滤统计与对比", async () => {
 
     const filtered = store.summarize({ preset: "all", bucket: "day", excludeHomes: [projectHome.id] });
     assert.equal(filtered.totals.total, 123);
-    assert.deepEqual(filtered.homes.map((home) => home.name), ["Main Codex"]);
-    assert.deepEqual(filtered.models.map((model) => model.name), ["gpt-6-sol"]);
+    assert.deepEqual(
+      filtered.homes.map((home) => home.name),
+      ["Main Codex"],
+    );
+    assert.deepEqual(
+      filtered.models.map((model) => model.name),
+      ["gpt-6-sol"],
+    );
 
     const comparison = store.periodComparison({ now: "2026-07-12T12:00:00.000Z", excludeHomes: [projectHome.id] });
-    assert.deepEqual(comparison.models.map((model) => model.key), ["gpt-6-sol"]);
+    assert.deepEqual(
+      comparison.models.map((model) => model.key),
+      ["gpt-6-sol"],
+    );
   } finally {
     store.close();
   }
@@ -361,14 +414,21 @@ test("previous quota cost records compare earlier reset windows and honor source
   const homeDir = await mkdtemp(path.join(tmpdir(), "usage-quota-record-"));
   const sessionsDir = path.join(homeDir, ".codex", "sessions");
   await mkdir(sessionsDir, { recursive: true });
-  for (const [day, tokens] of [[24, 100], [25, 200], [26, 500]]) {
+  for (const [day, tokens] of [
+    [24, 100],
+    [25, 200],
+    [26, 500],
+  ]) {
     const stamp = `2026-09-${day}T10:00:00Z`;
-    await writeFile(path.join(sessionsDir, `${day}.jsonl`), jsonl([
-      { type: "session_meta", timestamp: stamp, payload: { id: `s-${day}` } },
-      { type: "turn_context", timestamp: stamp, payload: { model: "gpt-6-sol" } },
-      quotaTokenRow(stamp, `2026-09-${day}T14:00:00Z`),
-      tokenRow(stamp, tokens, tokens, 0, 0, 0),
-    ]));
+    await writeFile(
+      path.join(sessionsDir, `${day}.jsonl`),
+      jsonl([
+        { type: "session_meta", timestamp: stamp, payload: { id: `s-${day}` } },
+        { type: "turn_context", timestamp: stamp, payload: { model: "gpt-6-sol" } },
+        quotaTokenRow(stamp, `2026-09-${day}T14:00:00Z`),
+        tokenRow(stamp, tokens, tokens, 0, 0, 0),
+      ]),
+    );
   }
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "index.sqlite") });
   try {
@@ -379,9 +439,12 @@ test("previous quota cost records compare earlier reset windows and honor source
     assert.equal(result.records.totalCost.unit, "5-hour window");
     assert.equal(result.records.totalTokens.value, 200);
     assert.match(result.records.totalCost.title, /估算花销/);
-    assert.deepEqual(store.summarize({ ...filters, excludeHomes: store.homes.map(home => home.id) }).records, {});
+    assert.deepEqual(store.summarize({ ...filters, excludeHomes: store.homes.map((home) => home.id) }).records, {});
     assert.deepEqual(store.summarize({ preset: "all", now: filters.now }).records, {});
-  } finally { store.close(); await rm(homeDir, { recursive: true, force: true }); }
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
 });
 
 test("UsageStore indexes quota observations from zero-token files and uses the half-open event range", async () => {
@@ -392,36 +455,53 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
   const startFile = path.join(sessionsDir, "start.jsonl");
   const asOfFile = path.join(sessionsDir, "as-of.jsonl");
   await mkdir(sessionsDir, { recursive: true });
-  await writeFile(quotaFile, jsonl([
-    { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
-    quotaTokenRow("2026-09-25T11:59:00.000Z", "2026-09-25T14:37:00.000Z"),
-  ]));
-  await writeFile(startFile, jsonl([
-    { type: "session_meta", timestamp: "2026-09-25T09:37:00.000Z", payload: { id: "at-start" } },
-    tokenRow("2026-09-25T09:37:00.000Z", 50, 40, 5, 10, 0),
-  ]));
-  await writeFile(asOfFile, jsonl([
-    { type: "session_meta", timestamp: "2026-09-25T12:00:00.000Z", payload: { id: "at-as-of" } },
-    tokenRow("2026-09-25T12:00:00.000Z", 100, 80, 10, 20, 0),
-  ]));
+  await writeFile(
+    quotaFile,
+    jsonl([
+      { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
+      quotaTokenRow("2026-09-25T11:59:00.000Z", "2026-09-25T14:37:00.000Z"),
+    ]),
+  );
+  await writeFile(
+    startFile,
+    jsonl([
+      { type: "session_meta", timestamp: "2026-09-25T09:37:00.000Z", payload: { id: "at-start" } },
+      tokenRow("2026-09-25T09:37:00.000Z", 50, 40, 5, 10, 0),
+    ]),
+  );
+  await writeFile(
+    asOfFile,
+    jsonl([
+      { type: "session_meta", timestamp: "2026-09-25T12:00:00.000Z", payload: { id: "at-as-of" } },
+      tokenRow("2026-09-25T12:00:00.000Z", 100, 80, 10, 20, 0),
+    ]),
+  );
   const store = new UsageStore({ homeDir, databaseFile });
 
   try {
     await store.sync();
-    store.recordsForRange = () => { throw new Error("quota summaries must skip New Record history scans"); };
-    const indexedSnapshots = store.database.prepare(
-      "SELECT line_number, role, limit_id, window_minutes, used_percent FROM rate_limit_observations WHERE source_path = ?",
-    ).all(quotaFile);
+    store.recordsForRange = () => {
+      throw new Error("quota summaries must skip New Record history scans");
+    };
+    const indexedSnapshots = store.database
+      .prepare(
+        "SELECT line_number, role, limit_id, window_minutes, used_percent FROM rate_limit_observations WHERE source_path = ?",
+      )
+      .all(quotaFile);
     const summary = store.summarize({ preset: "quota_5h", bucket: "month", now: "2026-09-25T12:00:00.000Z" });
-    const quotaLookupPlan = store.database.prepare(`
+    const quotaLookupPlan = store.database
+      .prepare(`
       EXPLAIN QUERY PLAN SELECT source_path, line_number, role, observed_at_ms, limit_id,
         limit_name, plan_type, window_minutes, resets_at_ms, used_percent
       FROM rate_limit_observations INDEXED BY rate_limit_window_lookup_idx
       ORDER BY limit_id ASC, window_minutes ASC, observed_at_ms DESC
-    `).all();
-    const eventRangePlan = store.database.prepare(`
+    `)
+      .all();
+    const eventRangePlan = store.database
+      .prepare(`
       EXPLAIN QUERY PLAN SELECT COUNT(*) FROM events WHERE timestamp_ms >= ? AND timestamp_ms <= ?
-    `).all(Date.parse(summary.range.start), Date.parse(summary.range.end));
+    `)
+      .all(Date.parse(summary.range.start), Date.parse(summary.range.end));
     const excluded = store.summarize({
       preset: "quota_5h",
       now: "2026-09-25T12:00:00.000Z",
@@ -443,22 +523,42 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
     assert.equal(summary.eventCount, 1);
     assert.equal(summary.timeline.length, 10);
     assert.equal(summary.timeline[0].total.total, 50);
-    assert.equal(summary.timeline.reduce((sum, slot) => sum + slot.total.total, 0), summary.totals.total);
+    assert.equal(
+      summary.timeline.reduce((sum, slot) => sum + slot.total.total, 0),
+      summary.totals.total,
+    );
     assert.ok(summary.timeline.slice(5).every((slot) => slot.future));
     assert.equal(summary.comparison, null);
     assert.deepEqual(summary.records, {});
     assert.equal(excluded.quota.windows.quota_5h.state, "available");
     assert.equal(excluded.totals.total, 0);
-    assert.equal(Number(store.database.prepare("SELECT COUNT(*) AS count FROM events WHERE source_path = ?").get(quotaFile).count), 0);
+    assert.equal(
+      Number(store.database.prepare("SELECT COUNT(*) AS count FROM events WHERE source_path = ?").get(quotaFile).count),
+      0,
+    );
 
     await store.sync();
-    assert.equal(Number(store.database.prepare("SELECT COUNT(*) AS count FROM rate_limit_observations WHERE source_path = ?").get(quotaFile).count), 1);
-    await writeFile(quotaFile, `${jsonl([
-      { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
-      quotaTokenRow("2026-09-25T12:01:00.000Z", "2026-09-25T14:38:00.000Z"),
-    ])}\n`);
+    assert.equal(
+      Number(
+        store.database
+          .prepare("SELECT COUNT(*) AS count FROM rate_limit_observations WHERE source_path = ?")
+          .get(quotaFile).count,
+      ),
+      1,
+    );
+    await writeFile(
+      quotaFile,
+      `${jsonl([
+        { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
+        quotaTokenRow("2026-09-25T12:01:00.000Z", "2026-09-25T14:38:00.000Z"),
+      ])}\n`,
+    );
     await store.sync();
-    const replaced = store.database.prepare("SELECT COUNT(*) AS count, MAX(resets_at_ms) AS reset FROM rate_limit_observations WHERE source_path = ?").get(quotaFile);
+    const replaced = store.database
+      .prepare(
+        "SELECT COUNT(*) AS count, MAX(resets_at_ms) AS reset FROM rate_limit_observations WHERE source_path = ?",
+      )
+      .get(quotaFile);
     assert.equal(Number(replaced.count), 1);
     assert.equal(Number(replaced.reset), Date.parse("2026-09-25T14:38:00.000Z"));
   } finally {
@@ -470,10 +570,13 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
 test("UsageStore v5 migration marks only Codex JSONL for retryable automatic reindex", async () => {
   const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
   const quotaFile = path.join(path.dirname(sessionFile), "quota.jsonl");
-  await writeFile(quotaFile, jsonl([
-    { type: "session_meta", timestamp: "2026-07-12T01:00:00.000Z", payload: { id: "migration-quota" } },
-    quotaTokenRow("2026-07-12T01:02:00.000Z", "2026-07-12T06:02:00.000Z"),
-  ]));
+  await writeFile(
+    quotaFile,
+    jsonl([
+      { type: "session_meta", timestamp: "2026-07-12T01:00:00.000Z", payload: { id: "migration-quota" } },
+      quotaTokenRow("2026-07-12T01:02:00.000Z", "2026-07-12T06:02:00.000Z"),
+    ]),
+  );
   const initial = new UsageStore({ homeDir, databaseFile });
   await initial.sync();
   initial.close();
@@ -484,17 +587,20 @@ test("UsageStore v5 migration marks only Codex JSONL for retryable automatic rei
     ["zcode.jsonl", "zcode", "zcode-home"],
     ["project-log.jsonl", "project-log", "project-home"],
   ]) {
-    legacy.prepare(`
+    legacy
+      .prepare(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
       VALUES (?, ?, ?, ?, ?, 123, 456, ?)
-    `).run(pathName, kind, homeId, homeId, path.dirname(pathName), new Date().toISOString());
+    `)
+      .run(pathName, kind, homeId, homeId, path.dirname(pathName), new Date().toISOString());
   }
   legacy.close();
 
   const migrated = new UsageStore({ homeDir, databaseFile });
   try {
     await migrated.open();
-    const sourceState = (filePath) => migrated.database.prepare("SELECT size, mtime_ms FROM source_files WHERE path = ?").get(filePath);
+    const sourceState = (filePath) =>
+      migrated.database.prepare("SELECT size, mtime_ms FROM source_files WHERE path = ?").get(filePath);
     assert.equal(Number(sourceState(sessionFile).size), -1);
     assert.equal(Number(sourceState(sessionFile).mtime_ms), -1);
     assert.equal(Number(sourceState("zcode.jsonl").size), 123);
@@ -503,7 +609,9 @@ test("UsageStore v5 migration marks only Codex JSONL for retryable automatic rei
     assert.equal(Number(sourceState("project-log.jsonl").mtime_ms), 456);
 
     const replaceFile = migrated.replaceFile.bind(migrated);
-    migrated.replaceFile = async () => { throw new Error("simulated reindex failure"); };
+    migrated.replaceFile = async () => {
+      throw new Error("simulated reindex failure");
+    };
     const failed = await migrated.sync();
     assert.equal(failed.updatedFileCount, 0);
     assert.equal(Number(sourceState(sessionFile).size), -1);
@@ -512,7 +620,10 @@ test("UsageStore v5 migration marks only Codex JSONL for retryable automatic rei
     migrated.replaceFile = replaceFile;
     const retried = await migrated.sync();
     assert.equal(retried.updatedFileCount, 2);
-    assert.equal(Number(migrated.database.prepare("SELECT COUNT(*) AS count FROM rate_limit_observations").get().count), 1);
+    assert.equal(
+      Number(migrated.database.prepare("SELECT COUNT(*) AS count FROM rate_limit_observations").get().count),
+      1,
+    );
     assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 8);
   } finally {
     migrated.close();

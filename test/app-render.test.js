@@ -37,32 +37,36 @@ test("token values use two decimals with M/B/T units and retain exact hover valu
   assert.equal(formatTokenMillions(1_395_280_000_000), "1.40T");
   assert.equal(formatTokenMillions(-1_392_280_000), "-1.39B");
 
-  const barHtml = renderBarListHtml([
-    { key: "gpt-6-luna", name: "gpt-6-luna", total: { total: 62_617_267 } },
-  ]);
+  const barHtml = renderBarListHtml([{ key: "gpt-6-luna", name: "gpt-6-luna", total: { total: 62_617_267 } }]);
   assert.match(barHtml, /title="62,617,267">62\.62M/);
 
-  const comparisonHtml = renderPeriodComparisonTableHtml([
+  const comparisonHtml = renderPeriodComparisonTableHtml(
+    [
+      {
+        key: "gpt-6-luna",
+        name: "gpt-6-luna",
+        periods: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
+      },
+    ],
     {
-      key: "gpt-6-luna",
-      name: "gpt-6-luna",
-      periods: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
+      totals: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
     },
-  ], {
-    totals: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
-  });
+  );
   assert.match(comparisonHtml, /title="62,617,267">62\.62M/);
   assert.doesNotMatch(comparisonHtml, /aria-controls="model-period-0-detail"/);
 
-  const expandedHtml = renderPeriodComparisonTableHtml([
+  const expandedHtml = renderPeriodComparisonTableHtml(
+    [
+      {
+        key: "gpt-6-luna",
+        name: "gpt-6-luna",
+        periods: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
+      },
+    ],
     {
-      key: "gpt-6-luna",
-      name: "gpt-6-luna",
-      periods: { today: { total: 62_617_267 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
+      expanded: { kind: "model", key: "gpt-6-luna", period: "today" },
     },
-  ], {
-    expanded: { kind: "model", key: "gpt-6-luna", period: "today" },
-  });
+  );
   assert.match(expandedHtml, /aria-controls="model-period-0-detail"/);
   assert.match(expandedHtml, /id="model-period-0-detail"/);
 });
@@ -123,8 +127,12 @@ test("comparison sort cycles through descending, ascending, and default order", 
     { key: "git:small", name: "/work/small", kind: "git", periods: { today: { total: 10 } } },
     { key: "git:medium", name: "/work/medium", kind: "git", periods: { today: { total: 20 } } },
   ];
-  const rowNames = (sort, kind) => [...renderPeriodComparisonTableHtml(rows, { kind, sort })
-    .matchAll(/class="comparison-row-label"[^>]*>([^<]+)<\/span>/g)].map((match) => match[1]);
+  const rowNames = (sort, kind) =>
+    [
+      ...renderPeriodComparisonTableHtml(rows, { kind, sort }).matchAll(
+        /class="comparison-row-label"[^>]*>([^<]+)<\/span>/g,
+      ),
+    ].map((match) => match[1]);
   assert.deepEqual(rowNames(defaultSort, "repository"), ["medium", "small", "large"]);
   assert.deepEqual(rowNames(ascending, "repository"), ["small", "medium", "large"]);
   assert.deepEqual(rowNames(cancelled, "repository"), ["medium", "small", "large"]);
@@ -134,16 +142,18 @@ test("comparison sort cycles through descending, ascending, and default order", 
 });
 
 test("natural week comparison headings and accessible sort labels use 本周", () => {
-  const rows = [{
-    key: "gpt-6-luna",
-    name: "gpt-6-luna",
-    periods: {
-      today: { total: 1 },
-      week: { total: 2 },
-      month: { total: 3 },
-      all: { total: 4 },
+  const rows = [
+    {
+      key: "gpt-6-luna",
+      name: "gpt-6-luna",
+      periods: {
+        today: { total: 1 },
+        week: { total: 2 },
+        month: { total: 3 },
+        all: { total: 4 },
+      },
     },
-  }];
+  ];
   const html = renderPeriodComparisonTableHtml(rows, {
     kind: "model",
     expanded: { kind: "model", key: "gpt-6-luna", period: "week" },
@@ -185,9 +195,15 @@ test("period comparison includes the union of all four periods and reconciles to
       },
     },
   ]);
-  assert.deepEqual(models.map((row) => row.key), ["gpt-6-luna", "gpt-6-sol"]);
+  assert.deepEqual(
+    models.map((row) => row.key),
+    ["gpt-6-luna", "gpt-6-sol"],
+  );
   for (const [period, total] of Object.entries({ today: 120, week: 204, month: 304, all: 404 })) {
-    assert.equal(models.reduce((sum, row) => sum + row.periods[period].total, 0), total);
+    assert.equal(
+      models.reduce((sum, row) => sum + row.periods[period].total, 0),
+      total,
+    );
   }
 
   const repositories = filterPeriodComparisonRows([
@@ -208,7 +224,10 @@ test("period comparison includes the union of all four periods and reconciles to
       periods: { today: { total: 0 }, week: { total: 30 }, month: { total: 30 }, all: { total: 30 } },
     },
   ]);
-  assert.deepEqual(repositories.map((row) => row.key), ["directory:shared", "git:repo"]);
+  assert.deepEqual(
+    repositories.map((row) => row.key),
+    ["directory:shared", "git:repo"],
+  );
 });
 
 test("event date range handles enough records to exceed argument spread limits", () => {
@@ -254,8 +273,9 @@ test("channel colors remain attached to channels when row order changes", () => 
 
 test("timeline model and channel legends assign distinct colors in both themes", () => {
   const oldDocument = globalThis.document;
-  const rows = ["gpt-5.6-luna", "gpt-6-luna", "gpt-5.6-sol", "gpt-6-sol", "gpt-6-astra", "codex-auto-review"]
-    .map((name, index) => ({ name, total: { total: 600 - index * 100 } }));
+  const rows = ["gpt-5.6-luna", "gpt-6-luna", "gpt-5.6-sol", "gpt-6-sol", "gpt-6-astra", "codex-auto-review"].map(
+    (name, index) => ({ name, total: { total: 600 - index * 100 } }),
+  );
   const rgb = (hex) => [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
   try {
     for (const theme of ["light", "dark"]) {
@@ -288,13 +308,22 @@ test("timeline legend shows every model directly without a heading or expand con
   const oldDocument = globalThis.document;
   globalThis.document = { documentElement: { dataset: { theme: "dark" } } };
   try {
-    const names = ["gpt-5.6-luna", "gpt-6-luna", "gpt-5.6-sol", "gpt-6-sol",
-      "gpt-6-astra", "codex-auto-review", "Unknown model"];
+    const names = [
+      "gpt-5.6-luna",
+      "gpt-6-luna",
+      "gpt-5.6-sol",
+      "gpt-6-sol",
+      "gpt-6-astra",
+      "codex-auto-review",
+      "Unknown model",
+    ];
     const colors = getModelColors(names.map((name) => ({ name })));
-    const timeline = [{
-      models: names.map((name, index) => ({ name, total: { total: index + 1 } })),
-      costByModel: Object.fromEntries(names.map((name, index) => [name, { totalUsd: index + 1 }])),
-    }];
+    const timeline = [
+      {
+        models: names.map((name, index) => ({ name, total: { total: index + 1 } })),
+        costByModel: Object.fromEntries(names.map((name, index) => [name, { totalUsd: index + 1 }])),
+      },
+    ];
     for (const mode of ["model", "cost"]) {
       const html = renderTimelineLegendHtml({ timeline }, mode, new Map(), colors);
       assert.equal((html.match(/role="listitem"/g) || []).length, names.length);
@@ -362,8 +391,24 @@ test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", (
 test("renderHomesHtml 标记被排除统计的来源", () => {
   const html = renderHomesHtml(
     [
-      { id: "zcode-1", label: "Main ZCode", kind: "zcode", path: "/u/.zcode", status: "active", eventCount: 9, sessionCount: 3 },
-      { id: "main-1", label: "Main Codex", kind: "main", path: "/u/.codex", status: "active", eventCount: 5, sessionCount: 2 },
+      {
+        id: "zcode-1",
+        label: "Main ZCode",
+        kind: "zcode",
+        path: "/u/.zcode",
+        status: "active",
+        eventCount: 9,
+        sessionCount: 3,
+      },
+      {
+        id: "main-1",
+        label: "Main Codex",
+        kind: "main",
+        path: "/u/.codex",
+        status: "active",
+        eventCount: 5,
+        sessionCount: 2,
+      },
     ],
     { excludedIds: ["zcode-1"] },
   );
@@ -426,14 +471,22 @@ test("图例按名称字母排序，跨币种费用按汇率折算比较", () =>
     timeline: [
       {
         channels: [{ name: "ZCode", total: { total: 500 } }],
-        models: [{ name: "aaa-model", total: { total: 200 } }, { name: "zzz-model", total: { total: 500 } }],
+        models: [
+          { name: "aaa-model", total: { total: 200 } },
+          { name: "zzz-model", total: { total: 500 } },
+        ],
       },
     ],
   };
-  const legendHtml = renderTimelineLegendHtml(summary, "model", new Map(), new Map([
-    ["aaa-model", "#111111"],
-    ["zzz-model", "#222222"],
-  ]));
+  const legendHtml = renderTimelineLegendHtml(
+    summary,
+    "model",
+    new Map(),
+    new Map([
+      ["aaa-model", "#111111"],
+      ["zzz-model", "#222222"],
+    ]),
+  );
   // 字母序：aaa 在前；若按用量排 zzz 会在前。
   assert.ok(legendHtml.indexOf("aaa-model") < legendHtml.indexOf("zzz-model"));
 
@@ -589,10 +642,7 @@ test("timelineAxisLabels samples hourly labels outside a single day", () => {
     labels.map((label) => label.index),
     [0, 7, 13, 20, 27, 34, 40, 47],
   );
-  assert.deepEqual(
-    [labels[0].label, labels.at(-1).label],
-    ["06-18 00", "06-19 23"],
-  );
+  assert.deepEqual([labels[0].label, labels.at(-1).label], ["06-18 00", "06-19 23"]);
 });
 
 test("drawTimeline does not draw visible bars for zero-token rows", () => {
@@ -657,8 +707,12 @@ test("drawTimeline renders model and cost stacks and rejects missing breakdowns"
     translate: () => {},
     rotate: () => {},
     restore: () => {},
-    set fillStyle(value) { currentFillStyle = value; },
-    get fillStyle() { return currentFillStyle; },
+    set fillStyle(value) {
+      currentFillStyle = value;
+    },
+    get fillStyle() {
+      return currentFillStyle;
+    },
   };
   const canvas = {
     clientWidth: 960,
@@ -819,15 +873,24 @@ test("drawTimeline centers date ticks under capped slot bars", () => {
   globalThis.document = { documentElement: {} };
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
   try {
-    drawTimeline(canvas, [{ key: "2026-05-26", total: { total: 100 }, channels: [] }], [], new Map(), {
-      preset: "custom", start: "2026-05-26T00:00:00", end: "2026-05-26T23:59:59",
-    }, "channel");
+    drawTimeline(
+      canvas,
+      [{ key: "2026-05-26", total: { total: 100 }, channels: [] }],
+      [],
+      new Map(),
+      {
+        preset: "custom",
+        start: "2026-05-26T00:00:00",
+        end: "2026-05-26T23:59:59",
+      },
+      "channel",
+    );
     const bar = calls.find(([name]) => name === "fillRect");
     const tick = calls.find(([name]) => name === "translate");
     assert.ok(bar);
     assert.equal(bar[3], 30);
     assert.equal(bar[1] + bar[3] / 2, tick[1]);
-    assert.ok(bar[3] < (960 - 64 - 18));
+    assert.ok(bar[3] < 960 - 64 - 18);
   } finally {
     delete globalThis.window;
     delete globalThis.document;

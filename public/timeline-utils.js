@@ -1,13 +1,21 @@
 const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
 
 export function quotaRecordValues(total, cost, sessions, rate = 1) {
-  const amount = (key) => Number(cost?.[`${key}Usd`] || 0) + Number(cost?.[`${key}Cny`] || 0) / (Number(rate) > 0 ? Number(rate) : 1);
+  const amount = (key) =>
+    Number(cost?.[`${key}Usd`] || 0) + Number(cost?.[`${key}Cny`] || 0) / (Number(rate) > 0 ? Number(rate) : 1);
   return {
-    totalTokens: total.total, inputTokens: total.input, cachedTokens: total.cached,
-    outputTokens: total.output, reasoningTokens: total.reasoning, sessionCount: sessions,
-    modelCount: cost?.modelCount, cacheHitRate: cost?.cacheHitRate,
-    totalCost: amount("total"), inputCost: amount("input"),
-    cachedCost: amount("cachedInput"), outputCost: amount("output"),
+    totalTokens: total.total,
+    inputTokens: total.input,
+    cachedTokens: total.cached,
+    outputTokens: total.output,
+    reasoningTokens: total.reasoning,
+    sessionCount: sessions,
+    modelCount: cost?.modelCount,
+    cacheHitRate: cost?.cacheHitRate,
+    totalCost: amount("total"),
+    inputCost: amount("input"),
+    cachedCost: amount("cachedInput"),
+    outputCost: amount("output"),
   };
 }
 
@@ -26,9 +34,17 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
   for (const row of observations || []) {
     const observed = Number(row.observedAtMs);
     const end = Number(row.resetsAtMs);
-    if (row.limitId !== quota.limitId || Number(row.windowMinutes) !== minutes ||
-        !Number.isFinite(observed) || !Number.isFinite(end) || observed > asOf ||
-        observed < end - duration || observed >= end || end > start) continue;
+    if (
+      row.limitId !== quota.limitId ||
+      Number(row.windowMinutes) !== minutes ||
+      !Number.isFinite(observed) ||
+      !Number.isFinite(end) ||
+      observed > asOf ||
+      observed < end - duration ||
+      observed >= end ||
+      end > start
+    )
+      continue;
     const ends = byObservation.get(observed) || new Set();
     ends.add(end);
     byObservation.set(observed, ends);
@@ -45,7 +61,8 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
     if (!clusters.length || end - clusters.at(-1).at(-1) > tolerance) clusters.push([]);
     clusters.at(-1).push(end);
   }
-  const candidates = clusters.map(cluster => cluster.sort((a, b) => support.get(b) - support.get(a) || b - a)[0])
+  const candidates = clusters
+    .map((cluster) => cluster.sort((a, b) => support.get(b) - support.get(a) || b - a)[0])
     .sort((a, b) => a - b);
   // Inconsistent snapshots can also claim overlapping windows many minutes
   // apart. Keep the non-overlapping set backed by the most observations.
@@ -58,17 +75,38 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
     const withCurrent = { score: before.score + support.get(candidates[i]), ends: [...before.ends, candidates[i]] };
     best.push(withCurrent.score > without.score ? withCurrent : without);
   }
-  const previous = best.at(-1).ends.map(end => summarizeWindow({ start: new Date(end - duration), end: new Date(end - 1) }))
-    .filter(value => value.eventCount > 0);
+  const previous = best
+    .at(-1)
+    .ends.map((end) => summarizeWindow({ start: new Date(end - duration), end: new Date(end - 1) }))
+    .filter((value) => value.eventCount > 0);
   if (!previous.length) return {};
   const current = summarizeWindow(range);
   if (!current.eventCount) return {};
-  const titles = { totalTokens: "总 tokens", inputTokens: "总输入", cachedTokens: "缓存读取", outputTokens: "输出", reasoningTokens: "推理输出", sessionCount: "会话数", modelCount: "模型数量", cacheHitRate: "缓存命中率", totalCost: "估算花销", inputCost: "缓外输入花销", cachedCost: "缓存输入花销", outputCost: "输出花销" };
+  const titles = {
+    totalTokens: "总 tokens",
+    inputTokens: "总输入",
+    cachedTokens: "缓存读取",
+    outputTokens: "输出",
+    reasoningTokens: "推理输出",
+    sessionCount: "会话数",
+    modelCount: "模型数量",
+    cacheHitRate: "缓存命中率",
+    totalCost: "估算花销",
+    inputCost: "缓外输入花销",
+    cachedCost: "缓存输入花销",
+    outputCost: "输出花销",
+  };
   const records = {};
   for (const [metric, title] of Object.entries(titles)) {
     const value = current.values[metric];
-    const baseline = previous.map(item => item.values[metric]).filter(Number.isFinite);
-    if (!Number.isFinite(value) || value <= 0 || !baseline.length || baseline.some(old => value <= old + Math.max(1, Math.abs(old)) * 1e-10)) continue;
+    const baseline = previous.map((item) => item.values[metric]).filter(Number.isFinite);
+    if (
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      !baseline.length ||
+      baseline.some((old) => value <= old + Math.max(1, Math.abs(old)) * 1e-10)
+    )
+      continue;
     records[metric] = {
       title: `${title}最高的${minutes === 300 ? "5 小时限额窗口" : "每周限额窗口"}`,
       unit: minutes === 300 ? "5-hour window" : "weekly limit window",
@@ -85,35 +123,61 @@ export const RECENT_SELECTIONS = Object.freeze(["上一个5h", "上周", "上个
 export function resolveNamedRecentRange(value, now, quota, calendarZone = "local") {
   if (!RECENT_SELECTIONS.includes(value)) return null;
   const utc = calendarZone === "utc";
-  if (value === "上个月") return {
-    preset: "recent", start: utc ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)) : new Date(now.getFullYear(), now.getMonth() - 1, 1),
-    end: new Date((utc ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) : new Date(now.getFullYear(), now.getMonth(), 1).getTime()) - 1), bucket: "day",
-  };
-  if (value === "今年") return {
-    preset: "recent", start: utc ? new Date(Date.UTC(now.getUTCFullYear(), 0, 1)) : new Date(now.getFullYear(), 0, 1),
-    end: utc ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999)) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999), bucket: "month",
-  };
+  if (value === "上个月")
+    return {
+      preset: "recent",
+      start: utc
+        ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+        : new Date(now.getFullYear(), now.getMonth() - 1, 1),
+      end: new Date(
+        (utc
+          ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+          : new Date(now.getFullYear(), now.getMonth(), 1).getTime()) - 1,
+      ),
+      bucket: "day",
+    };
+  if (value === "今年")
+    return {
+      preset: "recent",
+      start: utc ? new Date(Date.UTC(now.getUTCFullYear(), 0, 1)) : new Date(now.getFullYear(), 0, 1),
+      end: utc
+        ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999))
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999),
+      bucket: "month",
+    };
   const mode = value === "上一个5h" ? "quota_5h" : "quota_week";
   const window = quota?.previousWindows?.[mode];
   const start = new Date(window?.windowStart || NaN);
   const endExclusive = new Date(window?.windowEndExclusive || NaN);
   const duration = (mode === "quota_5h" ? 5 : 168) * 60 * 60 * 1000;
-  const available = window?.state === "available" && Number.isFinite(start.getTime()) &&
-    endExclusive.getTime() - start.getTime() === duration && endExclusive <= now;
+  const available =
+    window?.state === "available" &&
+    Number.isFinite(start.getTime()) &&
+    endExclusive.getTime() - start.getTime() === duration &&
+    endExclusive <= now;
   return {
-    preset: "recent", recentValue: value, quotaWindow: true, quotaPreset: mode,
+    preset: "recent",
+    recentValue: value,
+    quotaWindow: true,
+    quotaPreset: mode,
     quotaState: available ? "available" : "missing",
     quotaReason: available ? null : "尚未发现上一限额窗口的 Codex 记录。",
-    start: available ? start : null, end: available ? new Date(endExclusive.getTime() - 1) : null,
-    windowStart: available ? start : null, windowEndExclusive: available ? endExclusive : null,
-    asOf: now, bucket: mode === "quota_5h" ? "quota_30m" : "quota_24h", rolling: true,
+    start: available ? start : null,
+    end: available ? new Date(endExclusive.getTime() - 1) : null,
+    windowStart: available ? start : null,
+    windowEndExclusive: available ? endExclusive : null,
+    asOf: now,
+    bucket: mode === "quota_5h" ? "quota_30m" : "quota_24h",
+    rolling: true,
   };
 }
 
 export function hasSelectedCodexSource(homes = [], excludedIds = []) {
   const excluded = new Set(excludedIds.map(String));
-  return homes.some(home => !excluded.has(String(home.id)) &&
-    !["zcode", "unsupported"].includes(home.kind) && home.status !== "unsupported");
+  return homes.some(
+    (home) =>
+      !excluded.has(String(home.id)) && !["zcode", "unsupported"].includes(home.kind) && home.status !== "unsupported",
+  );
 }
 
 export function timelineDateKey(date, calendarZone = "local") {
@@ -135,7 +199,9 @@ export function timelineBucketKey(value, bucket = "day", calendarZone = "local")
     return timelineDateKey(date, calendarZone).slice(0, 7);
   }
   if (bucket === "week") {
-    const start = utc ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())) : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const start = utc
+      ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+      : new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const day = (utc ? start.getUTCDay() : start.getDay()) || 7;
     if (utc) start.setUTCDate(start.getUTCDate() - day + 1);
     else start.setDate(start.getDate() - day + 1);
@@ -151,7 +217,9 @@ function asDate(value) {
 }
 
 function startOfDay(date, zone = "local") {
-  return zone === "utc" ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())) : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return zone === "utc"
+    ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function startOfWeek(date, zone = "local") {
@@ -186,8 +254,12 @@ function generateCalendarKeys(start, end, bucket, calendarZone = "local", limit 
   if (!start || !end || end < start) return keys;
   const utc = calendarZone === "utc";
   if (bucket === "hour") {
-    const cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), start.getUTCHours())) : new Date(start.getFullYear(), start.getMonth(), start.getDate(), start.getHours());
-    const last = utc ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), end.getUTCHours())) : new Date(end.getFullYear(), end.getMonth(), end.getDate(), end.getHours());
+    const cursor = utc
+      ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), start.getUTCHours()))
+      : new Date(start.getFullYear(), start.getMonth(), start.getDate(), start.getHours());
+    const last = utc
+      ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), end.getUTCHours()))
+      : new Date(end.getFullYear(), end.getMonth(), end.getDate(), end.getHours());
     const seen = new Set();
     while (cursor <= last) {
       const key = timelineBucketKey(cursor, bucket, calendarZone);
@@ -219,8 +291,12 @@ function generateCalendarKeys(start, end, bucket, calendarZone = "local", limit 
     return keys;
   }
   if (bucket === "month") {
-    const cursor = utc ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)) : new Date(start.getFullYear(), start.getMonth(), 1);
-    const last = utc ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1)) : new Date(end.getFullYear(), end.getMonth(), 1);
+    const cursor = utc
+      ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1))
+      : new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = utc
+      ? new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1))
+      : new Date(end.getFullYear(), end.getMonth(), 1);
     while (cursor <= last) {
       appendCalendarKey(keys, timelineBucketKey(cursor, bucket, calendarZone), limit);
       if (utc) cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
@@ -241,12 +317,22 @@ function slotKeys(range, bucket, existingRows) {
   }
   if (bucket === "day" && preset === "week" && start) {
     const monday = startOfWeek(start, zone);
-    return Array.from({ length: 7 }, (_, index) => timelineBucketKey(addCalendarDays(monday, index, zone), "day", zone));
+    return Array.from({ length: 7 }, (_, index) =>
+      timelineBucketKey(addCalendarDays(monday, index, zone), "day", zone),
+    );
   }
   if (bucket === "day" && preset === "month" && start) {
-    const first = zone === "utc" ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)) : new Date(start.getFullYear(), start.getMonth(), 1);
-    const days = zone === "utc" ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate() : new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-    return Array.from({ length: days }, (_, index) => timelineBucketKey(addCalendarDays(first, index, zone), "day", zone));
+    const first =
+      zone === "utc"
+        ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1))
+        : new Date(start.getFullYear(), start.getMonth(), 1);
+    const days =
+      zone === "utc"
+        ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate()
+        : new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    return Array.from({ length: days }, (_, index) =>
+      timelineBucketKey(addCalendarDays(first, index, zone), "day", zone),
+    );
   }
   if (start && end) return generateCalendarKeys(start, end, bucket, zone);
   return [...existingRows].sort((a, b) => a.key.localeCompare(b.key)).map((row) => row.key);
@@ -273,11 +359,13 @@ function emptyRow(key, slot = {}) {
     contextUnknownTokens: 0,
     cacheWriteUnknownTokens: 0,
     pricingStatus: "no-data",
-    ...(slot.slotStartMs === undefined ? {} : {
-      slotStartMs: slot.slotStartMs,
-      slotEndExclusiveMs: slot.slotEndExclusiveMs,
-      future: Boolean(slot.future),
-    }),
+    ...(slot.slotStartMs === undefined
+      ? {}
+      : {
+          slotStartMs: slot.slotStartMs,
+          slotEndExclusiveMs: slot.slotEndExclusiveMs,
+          future: Boolean(slot.future),
+        }),
   };
 }
 
@@ -298,7 +386,12 @@ export function generateQuotaTimelineSlots(range, bucket) {
   const startMs = asDate(range?.windowStart || range?.start)?.getTime();
   const endMs = asDate(range?.windowEndExclusive)?.getTime();
   const asOfMs = asDate(range?.asOf)?.getTime();
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(asOfMs) || endMs - startMs !== slotCount * slotMs) {
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    !Number.isFinite(asOfMs) ||
+    endMs - startMs !== slotCount * slotMs
+  ) {
     throw new RangeError("Quota timeline requires an observed window and a fixed asOf time.");
   }
   return Array.from({ length: slotCount }, (_, index) => {
@@ -315,9 +408,12 @@ export function generateQuotaTimelineSlots(range, bucket) {
 
 function quotaSlotForEvent(event, slots, range, bucket) {
   const timestampValue = event.timestamp ?? event.timestampMs;
-  const timestampMs = timestampValue instanceof Date
-    ? timestampValue.getTime()
-    : typeof timestampValue === "number" ? timestampValue : Date.parse(timestampValue);
+  const timestampMs =
+    timestampValue instanceof Date
+      ? timestampValue.getTime()
+      : typeof timestampValue === "number"
+        ? timestampValue
+        : Date.parse(timestampValue);
   if (!Number.isFinite(timestampMs) || !slots.length) return null;
   const asOfMs = asDate(range.asOf).getTime();
   const windowEndMs = asDate(range.windowEndExclusive).getTime();
@@ -343,16 +439,21 @@ function materializeSegments(groups) {
 /** @param {Iterable<any>} events */
 export function buildTimelineRows(events = [], range = {}, bucket = "day", options = {}) {
   const hasBoundedRange = Boolean(asDate(range?.start) && asDate(range?.end));
-  const quotaSlots = bucket === "quota_30m" || bucket === "quota_24h"
-    ? generateQuotaTimelineSlots(range, bucket)
-    : null;
-  const rangedKeys = quotaSlots ? quotaSlots.map((slot) => slot.key) : hasBoundedRange ? slotKeys(range, bucket, []) : null;
+  const quotaSlots =
+    bucket === "quota_30m" || bucket === "quota_24h" ? generateQuotaTimelineSlots(range, bucket) : null;
+  const rangedKeys = quotaSlots
+    ? quotaSlots.map((slot) => slot.key)
+    : hasBoundedRange
+      ? slotKeys(range, bucket, [])
+      : null;
   const quotaSlotsByKey = quotaSlots ? new Map(quotaSlots.map((slot) => [slot.key, slot])) : null;
   const rowsByKey = new Map();
   const estimateCost = options.estimateCost || ((event) => event.costEstimate || null);
   for (const event of events) {
     const slot = quotaSlots ? quotaSlotForEvent(event, quotaSlots, range, bucket) : null;
-    const key = quotaSlots ? slot?.key : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
+    const key = quotaSlots
+      ? slot?.key
+      : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
     if (!key) continue;
     const row = rowsByKey.get(key) || {
       ...emptyRow(key, slot || {}),
@@ -428,9 +529,14 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
     const statusValues = [...row.modelCosts.values()].flatMap((entry) => [...entry.pricingStatuses]);
     let pricingStatus = "unavailable";
     if (row.estimatedRecords > 0) {
-      pricingStatus = row.unpricedTokens > 0
-        ? (row.pricedTokens > 0 ? "partial" : "unpriced")
-        : row.minimumEstimatedTokens > 0 ? "minimum-estimate" : "estimated";
+      pricingStatus =
+        row.unpricedTokens > 0
+          ? row.pricedTokens > 0
+            ? "partial"
+            : "unpriced"
+          : row.minimumEstimatedTokens > 0
+            ? "minimum-estimate"
+            : "estimated";
       if (!row.pricedTokens && !row.unpricedTokens && statusValues.includes("unknown")) pricingStatus = "unknown";
     }
     return {
@@ -441,17 +547,29 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       total: row.total,
       channels: materializeSegments(row.channelGroups),
       models: materializeSegments(row.modelGroups),
-      costByModel: Object.fromEntries([...row.modelCosts].map(([name, cost]) => [name, {
-        totalUsd: cost.totalUsd,
-        currency: cost.currency || "USD",
-        pricedTokens: cost.pricedTokens,
-        unpricedTokens: cost.unpricedTokens,
-        minimumEstimatedTokens: cost.minimumEstimatedTokens,
-        serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
-        contextUnknownTokens: cost.contextUnknownTokens,
-        cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
-        pricingStatus: cost.unpricedTokens > 0 ? (cost.pricedTokens > 0 ? "partial" : "unpriced") : cost.minimumEstimatedTokens > 0 ? "minimum-estimate" : "estimated",
-      }])),
+      costByModel: Object.fromEntries(
+        [...row.modelCosts].map(([name, cost]) => [
+          name,
+          {
+            totalUsd: cost.totalUsd,
+            currency: cost.currency || "USD",
+            pricedTokens: cost.pricedTokens,
+            unpricedTokens: cost.unpricedTokens,
+            minimumEstimatedTokens: cost.minimumEstimatedTokens,
+            serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
+            contextUnknownTokens: cost.contextUnknownTokens,
+            cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
+            pricingStatus:
+              cost.unpricedTokens > 0
+                ? cost.pricedTokens > 0
+                  ? "partial"
+                  : "unpriced"
+                : cost.minimumEstimatedTokens > 0
+                  ? "minimum-estimate"
+                  : "estimated",
+          },
+        ]),
+      ),
       pricedTokens: row.pricedTokens,
       unpricedTokens: row.unpricedTokens,
       minimumEstimatedTokens: row.minimumEstimatedTokens,
@@ -459,20 +577,24 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       contextUnknownTokens: row.contextUnknownTokens,
       cacheWriteUnknownTokens: row.cacheWriteUnknownTokens,
       pricingStatus,
-      ...(row.slotStartMs === undefined ? {} : {
-        slotStartMs: row.slotStartMs,
-        slotEndExclusiveMs: row.slotEndExclusiveMs,
-        future: Boolean(row.future),
-      }),
+      ...(row.slotStartMs === undefined
+        ? {}
+        : {
+            slotStartMs: row.slotStartMs,
+            slotEndExclusiveMs: row.slotEndExclusiveMs,
+            future: Boolean(row.future),
+          }),
     };
   });
-  rows.sort((a, b) => a.slotStartMs !== undefined && b.slotStartMs !== undefined
-    ? a.slotStartMs - b.slotStartMs
-    : a.key.localeCompare(b.key));
+  rows.sort((a, b) =>
+    a.slotStartMs !== undefined && b.slotStartMs !== undefined
+      ? a.slotStartMs - b.slotStartMs
+      : a.key.localeCompare(b.key),
+  );
 
   const byKey = new Map(rows.map((row) => [row.key, row]));
-  const ordered = (rangedKeys || slotKeys(range, bucket, rows)).map((key) =>
-    byKey.get(key) || emptyRow(key, quotaSlotsByKey?.get(key) || {}),
+  const ordered = (rangedKeys || slotKeys(range, bucket, rows)).map(
+    (key) => byKey.get(key) || emptyRow(key, quotaSlotsByKey?.get(key) || {}),
   );
   const included = new Set(ordered.map((row) => row.key));
   for (const row of rows) if (!included.has(row.key)) ordered.push(row);

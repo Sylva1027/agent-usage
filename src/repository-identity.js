@@ -6,7 +6,8 @@ export function normalizeDirectoryPath(value, platform = process.platform) {
   if (!raw) {
     return "";
   }
-  const windowsStyle = /^[a-zA-Z]:[\\/]/.test(raw) || /^\\\\/.test(raw) || (platform === "win32" && !raw.startsWith("/"));
+  const windowsStyle =
+    /^[a-zA-Z]:[\\/]/.test(raw) || /^\\\\/.test(raw) || (platform === "win32" && !raw.startsWith("/"));
   const pathApi = windowsStyle ? path.win32 : path.posix;
   const normalized = pathApi.normalize(windowsStyle ? raw.replace(/\//g, "\\") : raw);
   const root = pathApi.parse(normalized).root;

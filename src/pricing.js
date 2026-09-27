@@ -58,122 +58,571 @@ const DETAIL_INCONSISTENT = 16;
 //   peakWindows           高峰时段：按 peakTimezone 判定星期与时刻；无法识别的节假日按高峰计（略保守）
 /** @type {Readonly<Record<string, PriceModel>>} */
 const MODEL_PRICES = Object.freeze({
-  "gpt-6-astra": Object.freeze({ fast: { short: { input: 20, cachedInput: 2, cacheWrite: 25, output: 100 }, long: { input: 40, cachedInput: 4, cacheWrite: 50, output: 150 } }, short: { input: 10, cachedInput: 1, cacheWrite: 12.5, output: 50 }, long: { input: 20, cachedInput: 2, cacheWrite: 25, output: 75 } }),
-  "gpt-6-sol": Object.freeze({ fast: { short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 }, long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 30 } }, short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 }, long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 15 } }),
-  "gpt-6-luna": Object.freeze({ fast: { short: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 1 }, long: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 1.5 } }, short: { input: 0.1, cachedInput: 0.01, cacheWrite: 0.125, output: 0.5 }, long: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 0.75 } }),
-  "gpt-5.6-sol": Object.freeze({ fast: { short: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 40 }, long: { input: 16, cachedInput: 1.6, cacheWrite: 20, output: 60 } }, short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 }, long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 30 } }),
-  "gpt-5.6-terra": Object.freeze({ fast: { short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 24 }, long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 36 } }, short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 12 }, long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 18 } }),
-  "gpt-5.6-luna": Object.freeze({ fast: { short: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 2.4 }, long: { input: 0.8, cachedInput: 0.08, cacheWrite: 1, output: 3.6 } }, short: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 1.2 }, long: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 1.8 } }),
+  "gpt-6-astra": Object.freeze({
+    fast: {
+      short: { input: 20, cachedInput: 2, cacheWrite: 25, output: 100 },
+      long: { input: 40, cachedInput: 4, cacheWrite: 50, output: 150 },
+    },
+    short: { input: 10, cachedInput: 1, cacheWrite: 12.5, output: 50 },
+    long: { input: 20, cachedInput: 2, cacheWrite: 25, output: 75 },
+  }),
+  "gpt-6-sol": Object.freeze({
+    fast: {
+      short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 },
+      long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 30 },
+    },
+    short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 },
+    long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 15 },
+  }),
+  "gpt-6-luna": Object.freeze({
+    fast: {
+      short: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 1 },
+      long: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 1.5 },
+    },
+    short: { input: 0.1, cachedInput: 0.01, cacheWrite: 0.125, output: 0.5 },
+    long: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 0.75 },
+  }),
+  "gpt-5.6-sol": Object.freeze({
+    fast: {
+      short: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 40 },
+      long: { input: 16, cachedInput: 1.6, cacheWrite: 20, output: 60 },
+    },
+    short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 },
+    long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 30 },
+  }),
+  "gpt-5.6-terra": Object.freeze({
+    fast: {
+      short: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 24 },
+      long: { input: 8, cachedInput: 0.8, cacheWrite: 10, output: 36 },
+    },
+    short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 12 },
+    long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 18 },
+  }),
+  "gpt-5.6-luna": Object.freeze({
+    fast: {
+      short: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 2.4 },
+      long: { input: 0.8, cachedInput: 0.08, cacheWrite: 1, output: 3.6 },
+    },
+    short: { input: 0.2, cachedInput: 0.02, cacheWrite: 0.25, output: 1.2 },
+    long: { input: 0.4, cachedInput: 0.04, cacheWrite: 0.5, output: 1.8 },
+  }),
   // StepFun（人民币，元/百万 tokens；命中 = 缓存命中价，页面未单列缓存写入费）
-  "step-5-preview": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.stepfun, short: { input: 7, cachedInput: 0.35, cacheWrite: 0, output: 20 }, long: { input: 7, cachedInput: 0.35, cacheWrite: 0, output: 20 } }),
-  "step-3.7-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.stepfun, short: { input: 1.35, cachedInput: 0.27, cacheWrite: 0, output: 8.1 }, long: { input: 1.35, cachedInput: 0.27, cacheWrite: 0, output: 8.1 } }),
-  "step-3.5-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.stepfun, short: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 }, long: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 } }),
-  "step-3.5-flash-2603": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.stepfun, short: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 }, long: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 } }),
+  "step-5-preview": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.stepfun,
+    short: { input: 7, cachedInput: 0.35, cacheWrite: 0, output: 20 },
+    long: { input: 7, cachedInput: 0.35, cacheWrite: 0, output: 20 },
+  }),
+  "step-3.7-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.stepfun,
+    short: { input: 1.35, cachedInput: 0.27, cacheWrite: 0, output: 8.1 },
+    long: { input: 1.35, cachedInput: 0.27, cacheWrite: 0, output: 8.1 },
+  }),
+  "step-3.5-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.stepfun,
+    short: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 },
+    long: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 },
+  }),
+  "step-3.5-flash-2603": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.stepfun,
+    short: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 },
+    long: { input: 0.7, cachedInput: 0.14, cacheWrite: 0, output: 2.1 },
+  }),
   // 小米 MiMo（人民币；缓存写入限时免费按 0 计，批量推理价未纳入）
-  "mimo-v2.6-pro": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.mimo, short: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 }, long: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 } }),
-  "mimo-v2.6-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.mimo, short: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 }, long: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 } }),
-  "mimo-v2.6-pro-ultraspeed": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.mimo, short: { input: 30, cachedInput: 0.25, cacheWrite: 0, output: 60 }, long: { input: 30, cachedInput: 0.25, cacheWrite: 0, output: 60 } }),
-  "mimo-v2.5-pro": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.mimo, short: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 }, long: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 } }),
-  "mimo-v2.5": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.mimo, short: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 }, long: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 } }),
+  "mimo-v2.6-pro": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.mimo,
+    short: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 },
+    long: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 },
+  }),
+  "mimo-v2.6-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.mimo,
+    short: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 },
+    long: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 },
+  }),
+  "mimo-v2.6-pro-ultraspeed": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.mimo,
+    short: { input: 30, cachedInput: 0.25, cacheWrite: 0, output: 60 },
+    long: { input: 30, cachedInput: 0.25, cacheWrite: 0, output: 60 },
+  }),
+  "mimo-v2.5-pro": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.mimo,
+    short: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 },
+    long: { input: 3, cachedInput: 0.025, cacheWrite: 0, output: 6 },
+  }),
+  "mimo-v2.5": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.mimo,
+    short: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 },
+    long: { input: 1, cachedInput: 0.02, cacheWrite: 0, output: 2 },
+  }),
   // DeepSeek（人民币；基准为高峰价，谷时 5 折。高峰 = 北京时间工作日 9:00-12:00、14:00-18:00，节假日未建模按高峰计）
   "deepseek-flash": Object.freeze({
-    currency: "CNY", source: CNY_PRICING_SOURCES.deepseek,
-    short: { input: 2, cachedInput: 0.04, cacheWrite: 0, output: 8 }, long: { input: 2, cachedInput: 0.04, cacheWrite: 0, output: 8 },
-    offPeakMultiplier: 0.5, peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([Object.freeze({ days: Object.freeze([1, 2, 3, 4, 5]), ranges: Object.freeze([Object.freeze(["09:00", "12:00"]), Object.freeze(["14:00", "18:00"])]) })]),
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.deepseek,
+    short: { input: 2, cachedInput: 0.04, cacheWrite: 0, output: 8 },
+    long: { input: 2, cachedInput: 0.04, cacheWrite: 0, output: 8 },
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: Object.freeze([
+      Object.freeze({
+        days: Object.freeze([1, 2, 3, 4, 5]),
+        ranges: Object.freeze([Object.freeze(["09:00", "12:00"]), Object.freeze(["14:00", "18:00"])]),
+      }),
+    ]),
   }),
   "deepseek-v4-pro": Object.freeze({
-    currency: "CNY", source: CNY_PRICING_SOURCES.deepseek,
-    short: { input: 9, cachedInput: 0.3, cacheWrite: 0, output: 27 }, long: { input: 9, cachedInput: 0.3, cacheWrite: 0, output: 27 },
-    offPeakMultiplier: 0.5, peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([Object.freeze({ days: Object.freeze([1, 2, 3, 4, 5]), ranges: Object.freeze([Object.freeze(["09:00", "12:00"]), Object.freeze(["14:00", "18:00"])]) })]),
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.deepseek,
+    short: { input: 9, cachedInput: 0.3, cacheWrite: 0, output: 27 },
+    long: { input: 9, cachedInput: 0.3, cacheWrite: 0, output: 27 },
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: Object.freeze([
+      Object.freeze({
+        days: Object.freeze([1, 2, 3, 4, 5]),
+        ranges: Object.freeze([Object.freeze(["09:00", "12:00"]), Object.freeze(["14:00", "18:00"])]),
+      }),
+    ]),
   }),
   // 月之暗面 Kimi（人民币；kimi-k3 缓存写入默认 5 分钟 TTL 档 20 元，1 小时档为 40 元）
-  "kimi-k3": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.kimi, short: { input: 20, cachedInput: 2, cacheWrite: 20, output: 100 }, long: { input: 20, cachedInput: 2, cacheWrite: 20, output: 100 } }),
-  "kimi-k2.7-code": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.kimi, short: { input: 6.5, cachedInput: 1.3, cacheWrite: 0, output: 27 }, long: { input: 6.5, cachedInput: 1.3, cacheWrite: 0, output: 27 } }),
-  "kimi-k2.7-code-highspeed": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.kimi, short: { input: 13, cachedInput: 2.6, cacheWrite: 0, output: 54 }, long: { input: 13, cachedInput: 2.6, cacheWrite: 0, output: 54 } }),
-  "kimi-k2.6": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.kimi, short: { input: 6.5, cachedInput: 1.1, cacheWrite: 0, output: 27 }, long: { input: 6.5, cachedInput: 1.1, cacheWrite: 0, output: 27 } }),
+  "kimi-k3": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.kimi,
+    short: { input: 20, cachedInput: 2, cacheWrite: 20, output: 100 },
+    long: { input: 20, cachedInput: 2, cacheWrite: 20, output: 100 },
+  }),
+  "kimi-k2.7-code": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.kimi,
+    short: { input: 6.5, cachedInput: 1.3, cacheWrite: 0, output: 27 },
+    long: { input: 6.5, cachedInput: 1.3, cacheWrite: 0, output: 27 },
+  }),
+  "kimi-k2.7-code-highspeed": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.kimi,
+    short: { input: 13, cachedInput: 2.6, cacheWrite: 0, output: 54 },
+    long: { input: 13, cachedInput: 2.6, cacheWrite: 0, output: 54 },
+  }),
+  "kimi-k2.6": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.kimi,
+    short: { input: 6.5, cachedInput: 1.1, cacheWrite: 0, output: 27 },
+    long: { input: 6.5, cachedInput: 1.1, cacheWrite: 0, output: 27 },
+  }),
   // 智谱 GLM（人民币；缓存写入限时免费按 0 计。glm-4.7 / glm-4.5-air 另有输出长度分档）
-  "glm-5.3": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 }, long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 } }),
-  "glm-5.3-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.8, cachedInput: 0.23, cacheWrite: 0, output: 2.8 }, long: { input: 0.8, cachedInput: 0.23, cacheWrite: 0, output: 2.8 } }),
-  "glm-5.3-flashx": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 2, cachedInput: 0.57, cacheWrite: 0, output: 7 }, long: { input: 2, cachedInput: 0.57, cacheWrite: 0, output: 7 } }),
-  "glm-5.2": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 }, long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 } }),
-  "glm-5.1": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, longContextThreshold: 32_000, short: { input: 6, cachedInput: 1.3, cacheWrite: 0, output: 24 }, long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 } }),
-  "glm-5-turbo": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, longContextThreshold: 32_000, short: { input: 5, cachedInput: 1.2, cacheWrite: 0, output: 22 }, long: { input: 7, cachedInput: 1.8, cacheWrite: 0, output: 26 } }),
-  "glm-5": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, longContextThreshold: 32_000, short: { input: 4, cachedInput: 1, cacheWrite: 0, output: 18 }, long: { input: 6, cachedInput: 1.5, cacheWrite: 0, output: 22 } }),
-  "glm-4.7": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, longContextThreshold: 32_000, outputThreshold: 200, short: { input: 2, cachedInput: 0.4, cacheWrite: 0, output: 8 }, shortLongOutput: { input: 3, cachedInput: 0.6, cacheWrite: 0, output: 14 }, long: { input: 4, cachedInput: 0.8, cacheWrite: 0, output: 16 } }),
-  "glm-4.5-air": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, longContextThreshold: 32_000, outputThreshold: 200, short: { input: 0.8, cachedInput: 0.16, cacheWrite: 0, output: 2 }, shortLongOutput: { input: 0.8, cachedInput: 0.16, cacheWrite: 0, output: 6 }, long: { input: 1.2, cachedInput: 0.24, cacheWrite: 0, output: 8 } }),
-  "glm-4.7-flashx": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.5, cachedInput: 0.1, cacheWrite: 0, output: 3 }, long: { input: 0.5, cachedInput: 0.1, cacheWrite: 0, output: 3 } }),
-  "glm-4.7-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 }, long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 } }),
-  "glm-4-plus": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 5, cachedInput: 2.5, cacheWrite: 0, output: 5 }, long: { input: 5, cachedInput: 2.5, cacheWrite: 0, output: 5 } }),
-  "glm-4-air-250414": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.5, cachedInput: 0.25, cacheWrite: 0, output: 0.5 }, long: { input: 0.5, cachedInput: 0.25, cacheWrite: 0, output: 0.5 } }),
-  "glm-4-airx": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 10, cachedInput: 0, cacheWrite: 0, output: 10 }, long: { input: 10, cachedInput: 0, cacheWrite: 0, output: 10 } }),
-  "glm-4-long": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 1, cachedInput: 0.5, cacheWrite: 0, output: 1 }, long: { input: 1, cachedInput: 0.5, cacheWrite: 0, output: 1 } }),
-  "glm-4-assistant": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 }, long: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 } }),
-  "glm-z1-air": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.5, cachedInput: 0, cacheWrite: 0, output: 0.5 }, long: { input: 0.5, cachedInput: 0, cacheWrite: 0, output: 0.5 } }),
-  "glm-z1-airx": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 }, long: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 } }),
-  "glm-z1-flashx": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.1, cachedInput: 0, cacheWrite: 0, output: 0.1 }, long: { input: 0.1, cachedInput: 0, cacheWrite: 0, output: 0.1 } }),
-  "glm-z1-flash": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 }, long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 } }),
-  "glm-4-flashx-250414": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0.1, cachedInput: 0.05, cacheWrite: 0, output: 0.1 }, long: { input: 0.1, cachedInput: 0.05, cacheWrite: 0, output: 0.1 } }),
-  "glm-4-flash-250414": Object.freeze({ currency: "CNY", source: CNY_PRICING_SOURCES.glm, short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 }, long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 } }),
+  "glm-5.3": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 },
+    long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 },
+  }),
+  "glm-5.3-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.8, cachedInput: 0.23, cacheWrite: 0, output: 2.8 },
+    long: { input: 0.8, cachedInput: 0.23, cacheWrite: 0, output: 2.8 },
+  }),
+  "glm-5.3-flashx": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 2, cachedInput: 0.57, cacheWrite: 0, output: 7 },
+    long: { input: 2, cachedInput: 0.57, cacheWrite: 0, output: 7 },
+  }),
+  "glm-5.2": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 },
+    long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 },
+  }),
+  "glm-5.1": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    longContextThreshold: 32_000,
+    short: { input: 6, cachedInput: 1.3, cacheWrite: 0, output: 24 },
+    long: { input: 8, cachedInput: 2, cacheWrite: 0, output: 28 },
+  }),
+  "glm-5-turbo": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    longContextThreshold: 32_000,
+    short: { input: 5, cachedInput: 1.2, cacheWrite: 0, output: 22 },
+    long: { input: 7, cachedInput: 1.8, cacheWrite: 0, output: 26 },
+  }),
+  "glm-5": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    longContextThreshold: 32_000,
+    short: { input: 4, cachedInput: 1, cacheWrite: 0, output: 18 },
+    long: { input: 6, cachedInput: 1.5, cacheWrite: 0, output: 22 },
+  }),
+  "glm-4.7": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    longContextThreshold: 32_000,
+    outputThreshold: 200,
+    short: { input: 2, cachedInput: 0.4, cacheWrite: 0, output: 8 },
+    shortLongOutput: { input: 3, cachedInput: 0.6, cacheWrite: 0, output: 14 },
+    long: { input: 4, cachedInput: 0.8, cacheWrite: 0, output: 16 },
+  }),
+  "glm-4.5-air": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    longContextThreshold: 32_000,
+    outputThreshold: 200,
+    short: { input: 0.8, cachedInput: 0.16, cacheWrite: 0, output: 2 },
+    shortLongOutput: { input: 0.8, cachedInput: 0.16, cacheWrite: 0, output: 6 },
+    long: { input: 1.2, cachedInput: 0.24, cacheWrite: 0, output: 8 },
+  }),
+  "glm-4.7-flashx": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.5, cachedInput: 0.1, cacheWrite: 0, output: 3 },
+    long: { input: 0.5, cachedInput: 0.1, cacheWrite: 0, output: 3 },
+  }),
+  "glm-4.7-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+    long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+  }),
+  "glm-4-plus": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 5, cachedInput: 2.5, cacheWrite: 0, output: 5 },
+    long: { input: 5, cachedInput: 2.5, cacheWrite: 0, output: 5 },
+  }),
+  "glm-4-air-250414": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.5, cachedInput: 0.25, cacheWrite: 0, output: 0.5 },
+    long: { input: 0.5, cachedInput: 0.25, cacheWrite: 0, output: 0.5 },
+  }),
+  "glm-4-airx": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 10, cachedInput: 0, cacheWrite: 0, output: 10 },
+    long: { input: 10, cachedInput: 0, cacheWrite: 0, output: 10 },
+  }),
+  "glm-4-long": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 1, cachedInput: 0.5, cacheWrite: 0, output: 1 },
+    long: { input: 1, cachedInput: 0.5, cacheWrite: 0, output: 1 },
+  }),
+  "glm-4-assistant": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 },
+    long: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 },
+  }),
+  "glm-z1-air": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.5, cachedInput: 0, cacheWrite: 0, output: 0.5 },
+    long: { input: 0.5, cachedInput: 0, cacheWrite: 0, output: 0.5 },
+  }),
+  "glm-z1-airx": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 },
+    long: { input: 5, cachedInput: 0, cacheWrite: 0, output: 5 },
+  }),
+  "glm-z1-flashx": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.1, cachedInput: 0, cacheWrite: 0, output: 0.1 },
+    long: { input: 0.1, cachedInput: 0, cacheWrite: 0, output: 0.1 },
+  }),
+  "glm-z1-flash": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+    long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+  }),
+  "glm-4-flashx-250414": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0.1, cachedInput: 0.05, cacheWrite: 0, output: 0.1 },
+    long: { input: 0.1, cachedInput: 0.05, cacheWrite: 0, output: 0.1 },
+  }),
+  "glm-4-flash-250414": Object.freeze({
+    currency: "CNY",
+    source: CNY_PRICING_SOURCES.glm,
+    short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+    long: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+  }),
   // xAI Grok（美元；200K 输入分档，全部 token 按高档计。grok-4.7 另有官方 Fast 价）
-  "grok-4.7": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 2, cachedInput: 0.5, cacheWrite: 0, output: 6 }, long: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 }, fast: { short: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 }, long: { input: 6, cachedInput: 1.5, cacheWrite: 0, output: 18 } } }),
-  "grok-4.6": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 2, cachedInput: 0.5, cacheWrite: 0, output: 6 }, long: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 } }),
-  "grok-4.5": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 2, cachedInput: 0.3, cacheWrite: 0, output: 6 }, long: { input: 4, cachedInput: 0.6, cacheWrite: 0, output: 12 } }),
-  "grok-4.3": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 }, long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 } }),
-  "grok-4.20-0309-reasoning": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 }, long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 } }),
-  "grok-4.20-0309-non-reasoning": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 }, long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 } }),
-  "grok-4.20-multi-agent-0309": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 }, long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 } }),
-  "grok-build-0.1": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.xai, longContextThreshold: 200_000, short: { input: 1, cachedInput: 0.2, cacheWrite: 0, output: 2 }, long: { input: 2, cachedInput: 0.4, cacheWrite: 0, output: 4 } }),
+  "grok-4.7": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 2, cachedInput: 0.5, cacheWrite: 0, output: 6 },
+    long: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 },
+    fast: {
+      short: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 },
+      long: { input: 6, cachedInput: 1.5, cacheWrite: 0, output: 18 },
+    },
+  }),
+  "grok-4.6": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 2, cachedInput: 0.5, cacheWrite: 0, output: 6 },
+    long: { input: 4, cachedInput: 1, cacheWrite: 0, output: 12 },
+  }),
+  "grok-4.5": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 2, cachedInput: 0.3, cacheWrite: 0, output: 6 },
+    long: { input: 4, cachedInput: 0.6, cacheWrite: 0, output: 12 },
+  }),
+  "grok-4.3": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 },
+    long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 },
+  }),
+  "grok-4.20-0309-reasoning": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 },
+    long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 },
+  }),
+  "grok-4.20-0309-non-reasoning": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 },
+    long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 },
+  }),
+  "grok-4.20-multi-agent-0309": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 1.25, cachedInput: 0.2, cacheWrite: 0, output: 2.5 },
+    long: { input: 2.5, cachedInput: 0.4, cacheWrite: 0, output: 5 },
+  }),
+  "grok-build-0.1": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.xai,
+    longContextThreshold: 200_000,
+    short: { input: 1, cachedInput: 0.2, cacheWrite: 0, output: 2 },
+    long: { input: 2, cachedInput: 0.4, cacheWrite: 0, output: 4 },
+  }),
   // QwenCloud（美元；qwen3.7 系列分档。qwen3.7-plus 为当前 8 折促销价；缓存为隐式缓存命中价）
-  "qwen3.8-max": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, short: { input: 2, cachedInput: 0.25, cacheWrite: 0, output: 6 } }),
-  "qwen3.8-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, short: { input: 0.15, cachedInput: 0.016, cacheWrite: 0, output: 0.47 } }),
-  "qwen3.8-2.4t-a95b": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, short: { input: 2, cachedInput: 0.25, cacheWrite: 0, output: 6 } }),
-  "qwen3.7-max": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, short: { input: 2.5, cachedInput: 0.5, cacheWrite: 0, output: 7.5 } }),
-  "qwen3.7-plus": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, longContextThreshold: 256_000, short: { input: 0.32, cachedInput: 0.064, cacheWrite: 0, output: 1.28 }, long: { input: 0.96, cachedInput: 0.192, cacheWrite: 0, output: 3.84 } }),
-  "qwen3.7-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, longContextThreshold: 32_000, short: { input: 0.03, cachedInput: 0.006, cacheWrite: 0, output: 0.13 }, long: { input: 0.1, cachedInput: 0.02, cacheWrite: 0, output: 0.4 } }),
+  "qwen3.8-max": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    short: { input: 2, cachedInput: 0.25, cacheWrite: 0, output: 6 },
+  }),
+  "qwen3.8-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    short: { input: 0.15, cachedInput: 0.016, cacheWrite: 0, output: 0.47 },
+  }),
+  "qwen3.8-2.4t-a95b": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    short: { input: 2, cachedInput: 0.25, cacheWrite: 0, output: 6 },
+  }),
+  "qwen3.7-max": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    short: { input: 2.5, cachedInput: 0.5, cacheWrite: 0, output: 7.5 },
+  }),
+  "qwen3.7-plus": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    longContextThreshold: 256_000,
+    short: { input: 0.32, cachedInput: 0.064, cacheWrite: 0, output: 1.28 },
+    long: { input: 0.96, cachedInput: 0.192, cacheWrite: 0, output: 3.84 },
+  }),
+  "qwen3.7-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    longContextThreshold: 32_000,
+    short: { input: 0.03, cachedInput: 0.006, cacheWrite: 0, output: 0.13 },
+    long: { input: 0.1, cachedInput: 0.02, cacheWrite: 0, output: 0.4 },
+  }),
   // QwenCloud 第三方转售（美元；deepseek 系按北京时间 8:00-22:00 高峰、其余 5 折）
-  "glm-5.3-prime": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.qwen, short: { input: 2.8, cachedInput: 0.56, cacheWrite: 0, output: 8.8 } }),
+  "glm-5.3-prime": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
+    short: { input: 2.8, cachedInput: 0.56, cacheWrite: 0, output: 8.8 },
+  }),
   "deepseek-v4.1-flash": Object.freeze({
-    currency: "USD", source: CNY_PRICING_SOURCES.qwen,
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
     short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 1.2 },
-    offPeakMultiplier: 0.5, peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([Object.freeze({ days: Object.freeze([1, 2, 3, 4, 5, 6, 7]), ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]) })]),
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: Object.freeze([
+      Object.freeze({
+        days: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
+        ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]),
+      }),
+    ]),
   }),
   "deepseek-v4-flash-0731": Object.freeze({
-    currency: "USD", source: CNY_PRICING_SOURCES.qwen,
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.qwen,
     short: { input: 0.44, cachedInput: 0.044, cacheWrite: 0, output: 1.32 },
-    offPeakMultiplier: 0.5, peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([Object.freeze({ days: Object.freeze([1, 2, 3, 4, 5, 6, 7]), ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]) })]),
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: Object.freeze([
+      Object.freeze({
+        days: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
+        ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]),
+      }),
+    ]),
   }),
   // Google Gemini（美元；Priority 为官方快速档。缓存写入为按时存储费，按 0 简化）
-  "gemini-2.5-pro": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 1.25, cachedInput: 0.125, cacheWrite: 0, output: 10 }, fast: { short: { input: 2.25, cachedInput: 0.125, cacheWrite: 0, output: 18 } } }),
-  "gemini-2.5-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 2.5 }, fast: { short: { input: 0.54, cachedInput: 0.03, cacheWrite: 0, output: 4.5 } } }),
-  "gemini-2.5-flash-lite": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.1, cachedInput: 0.01, cacheWrite: 0, output: 0.4 }, fast: { short: { input: 0.18, cachedInput: 0.01, cacheWrite: 0, output: 0.72 } } }),
-  "gemini-3.8-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 } }),
-  "gemini-3.7-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 } }),
-  "gemini-3.6-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 } }),
-  "gemini-3.5-flash": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 1.5, cachedInput: 0.15, cacheWrite: 0, output: 9 } }),
-  "gemini-3.5-flash-lite": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 2.5 } }),
-  "gemini-3.1-flash-lite": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.25, cachedInput: 0.025, cacheWrite: 0, output: 1.5 } }),
-  "gemini-3.1-pro-preview": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 2, cachedInput: 0.2, cacheWrite: 0, output: 12 } }),
-  "gemini-3-flash-preview": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0.5, cachedInput: 0.05, cacheWrite: 0, output: 3 } }),
-  "gemma-4": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.gemini, short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 } }),
+  "gemini-2.5-pro": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 1.25, cachedInput: 0.125, cacheWrite: 0, output: 10 },
+    fast: { short: { input: 2.25, cachedInput: 0.125, cacheWrite: 0, output: 18 } },
+  }),
+  "gemini-2.5-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 2.5 },
+    fast: { short: { input: 0.54, cachedInput: 0.03, cacheWrite: 0, output: 4.5 } },
+  }),
+  "gemini-2.5-flash-lite": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.1, cachedInput: 0.01, cacheWrite: 0, output: 0.4 },
+    fast: { short: { input: 0.18, cachedInput: 0.01, cacheWrite: 0, output: 0.72 } },
+  }),
+  "gemini-3.8-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 },
+  }),
+  "gemini-3.7-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 },
+  }),
+  "gemini-3.6-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.75, cachedInput: 0.075, cacheWrite: 0, output: 3.75 },
+  }),
+  "gemini-3.5-flash": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 1.5, cachedInput: 0.15, cacheWrite: 0, output: 9 },
+  }),
+  "gemini-3.5-flash-lite": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 2.5 },
+  }),
+  "gemini-3.1-flash-lite": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.25, cachedInput: 0.025, cacheWrite: 0, output: 1.5 },
+  }),
+  "gemini-3.1-pro-preview": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 2, cachedInput: 0.2, cacheWrite: 0, output: 12 },
+  }),
+  "gemini-3-flash-preview": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0.5, cachedInput: 0.05, cacheWrite: 0, output: 3 },
+  }),
+  "gemma-4": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.gemini,
+    short: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0 },
+  }),
   // MiniMax（美元；M3 为长期五折后价、512K 输入分档，Priority 为官方快速档）
-  "minimax-m3": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, longContextThreshold: 512_000, short: { input: 0.3, cachedInput: 0.06, cacheWrite: 0, output: 1.2 }, long: { input: 0.6, cachedInput: 0.12, cacheWrite: 0, output: 2.4 }, fast: { short: { input: 0.45, cachedInput: 0.09, cacheWrite: 0, output: 1.8 }, long: { input: 0.9, cachedInput: 0.18, cacheWrite: 0, output: 3.6 } } }),
-  "minimax-m2.7": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.3, cachedInput: 0.06, cacheWrite: 0.375, output: 1.2 } }),
-  "minimax-m2.7-highspeed": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.6, cachedInput: 0.06, cacheWrite: 0.375, output: 2.4 } }),
-  "minimax-m2.5": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 } }),
-  "minimax-m2.5-highspeed": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.6, cachedInput: 0.03, cacheWrite: 0.375, output: 2.4 } }),
-  "minimax-m2.1": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 } }),
-  "minimax-m2.1-highspeed": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.6, cachedInput: 0.03, cacheWrite: 0.375, output: 2.4 } }),
-  "minimax-m2": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.minimax, short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 } }),
+  "minimax-m3": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    longContextThreshold: 512_000,
+    short: { input: 0.3, cachedInput: 0.06, cacheWrite: 0, output: 1.2 },
+    long: { input: 0.6, cachedInput: 0.12, cacheWrite: 0, output: 2.4 },
+    fast: {
+      short: { input: 0.45, cachedInput: 0.09, cacheWrite: 0, output: 1.8 },
+      long: { input: 0.9, cachedInput: 0.18, cacheWrite: 0, output: 3.6 },
+    },
+  }),
+  "minimax-m2.7": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.3, cachedInput: 0.06, cacheWrite: 0.375, output: 1.2 },
+  }),
+  "minimax-m2.7-highspeed": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.6, cachedInput: 0.06, cacheWrite: 0.375, output: 2.4 },
+  }),
+  "minimax-m2.5": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 },
+  }),
+  "minimax-m2.5-highspeed": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.6, cachedInput: 0.03, cacheWrite: 0.375, output: 2.4 },
+  }),
+  "minimax-m2.1": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 },
+  }),
+  "minimax-m2.1-highspeed": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.6, cachedInput: 0.03, cacheWrite: 0.375, output: 2.4 },
+  }),
+  "minimax-m2": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.minimax,
+    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0.375, output: 1.2 },
+  }),
   // Meta（美元；muse-spark 系列无长上下文加价）
-  "muse-spark-1.3": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.meta, short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 } }),
-  "muse-spark-1.2": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.meta, short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 } }),
-  "muse-spark-1.1": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.meta, short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 } }),
-  "muse-spark-1.3-contributor": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.meta, short: { input: 0.1, cachedInput: 0.002, cacheWrite: 0, output: 0.2 } }),
-  "muse-spark-1.2-contributor": Object.freeze({ currency: "USD", source: CNY_PRICING_SOURCES.meta, short: { input: 0.1, cachedInput: 0.002, cacheWrite: 0, output: 0.2 } }),
+  "muse-spark-1.3": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.meta,
+    short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 },
+  }),
+  "muse-spark-1.2": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.meta,
+    short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 },
+  }),
+  "muse-spark-1.1": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.meta,
+    short: { input: 1.25, cachedInput: 0.15, cacheWrite: 0, output: 4.25 },
+  }),
+  "muse-spark-1.3-contributor": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.meta,
+    short: { input: 0.1, cachedInput: 0.002, cacheWrite: 0, output: 0.2 },
+  }),
+  "muse-spark-1.2-contributor": Object.freeze({
+    currency: "USD",
+    source: CNY_PRICING_SOURCES.meta,
+    short: { input: 0.1, cachedInput: 0.002, cacheWrite: 0, output: 0.2 },
+  }),
 });
 
 const PRICE_ALIASES = Object.freeze({
@@ -186,18 +635,29 @@ const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
 // Custom rates reprice all indexed events so the dashboard remains internally
 // consistent. The original token counts and recorded price versions are retained.
 /** @type {PricingCatalog} */
-let activePricing = { checkedAt: API_PRICING_CHECKED_AT, version: API_PRICING_VERSION, usdToCnyRate: DEFAULT_USD_TO_CNY_RATE, models: MODEL_PRICES };
+let activePricing = {
+  checkedAt: API_PRICING_CHECKED_AT,
+  version: API_PRICING_VERSION,
+  usdToCnyRate: DEFAULT_USD_TO_CNY_RATE,
+  models: MODEL_PRICES,
+};
 
-export const API_TOKEN_PRICES = Object.freeze(Object.fromEntries(
-  Object.entries(MODEL_PRICES)
-    .filter(([, rates]) => (rates.currency || "USD") === "USD")
-    .map(([model, rates]) => [model, rates.short]),
-));
+export const API_TOKEN_PRICES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MODEL_PRICES)
+      .filter(([, rates]) => (rates.currency || "USD") === "USD")
+      .map(([model, rates]) => [model, rates.short]),
+  ),
+);
 
 export function getPricingCatalog() {
-  return { checkedAt: activePricing.checkedAt, version: activePricing.version,
+  return {
+    checkedAt: activePricing.checkedAt,
+    version: activePricing.version,
     usdToCnyRate: activePricing.usdToCnyRate,
-    source: API_PRICING_SOURCE, models: structuredClone(activePricing.models) };
+    source: API_PRICING_SOURCE,
+    models: structuredClone(activePricing.models),
+  };
 }
 
 /** @returns {TokenRates} */
@@ -222,7 +682,12 @@ function validatePeakWindows(value, label) {
       throw new Error(`Invalid peak days for ${label}`);
     }
     const ranges = (window?.ranges || []).map((range) => {
-      if (!Array.isArray(range) || range.length !== 2 || !/^\d{2}:\d{2}$/.test(range[0]) || !/^\d{2}:\d{2}$/.test(range[1])) {
+      if (
+        !Array.isArray(range) ||
+        range.length !== 2 ||
+        !/^\d{2}:\d{2}$/.test(range[0]) ||
+        !/^\d{2}:\d{2}$/.test(range[1])
+      ) {
         throw new Error(`Invalid peak range for ${label}`);
       }
       return [range[0], range[1]];
@@ -235,18 +700,25 @@ function validatePeakWindows(value, label) {
 export function validatePricingCatalog(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Pricing must be an object.");
   const checkedAt = value.checkedAt;
-  if (typeof checkedAt !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(checkedAt) ||
-      Number.isNaN(Date.parse(`${checkedAt}T00:00:00Z`)) ||
-      new Date(`${checkedAt}T00:00:00Z`).toISOString().slice(0, 10) !== checkedAt) {
+  if (
+    typeof checkedAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(checkedAt) ||
+    Number.isNaN(Date.parse(`${checkedAt}T00:00:00Z`)) ||
+    new Date(`${checkedAt}T00:00:00Z`).toISOString().slice(0, 10) !== checkedAt
+  ) {
     throw new Error("Pricing date must be a valid YYYY-MM-DD date.");
   }
   const models = value.models;
   if (!models || typeof models !== "object" || Array.isArray(models)) throw new Error("Model prices are required.");
   const usdToCnyRate = value.usdToCnyRate === undefined ? DEFAULT_USD_TO_CNY_RATE : Number(value.usdToCnyRate);
-  if (!Number.isFinite(usdToCnyRate) || usdToCnyRate <= 0) throw new Error("USD to CNY rate must be a positive number.");
+  if (!Number.isFinite(usdToCnyRate) || usdToCnyRate <= 0)
+    throw new Error("USD to CNY rate must be a positive number.");
   const keys = Object.keys(models);
-  if (keys.length < Object.keys(MODEL_PRICES).length || keys.length > 100 ||
-      Object.keys(MODEL_PRICES).some((key) => !Object.hasOwn(models, key))) {
+  if (
+    keys.length < Object.keys(MODEL_PRICES).length ||
+    keys.length > 100 ||
+    Object.keys(MODEL_PRICES).some((key) => !Object.hasOwn(models, key))
+  ) {
     throw new Error("All built-in models must have prices.");
   }
   /** @type {Record<string, PriceModel>} */
@@ -268,7 +740,8 @@ export function validatePricingCatalog(value) {
       if (!fast || typeof fast !== "object" || Array.isArray(fast)) throw new Error(`Invalid fast rates for ${model}`);
       const fastRates = { short: validateRates(fast.short, `${model} fast short`) };
       if (fast.long !== undefined) fastRates.long = validateRates(fast.long, `${model} fast long`);
-      if (fast.shortLongOutput !== undefined) fastRates.shortLongOutput = validateRates(fast.shortLongOutput, `${model} fast shortLongOutput`);
+      if (fast.shortLongOutput !== undefined)
+        fastRates.shortLongOutput = validateRates(fast.shortLongOutput, `${model} fast shortLongOutput`);
       result.fast = fastRates;
     }
     if (entry.longContextThreshold !== undefined) {
@@ -283,15 +756,18 @@ export function validatePricingCatalog(value) {
     }
     if (entry.offPeakMultiplier !== undefined) {
       const multiplier = Number(entry.offPeakMultiplier);
-      if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 1) throw new Error(`Invalid offPeakMultiplier for ${model}`);
+      if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 1)
+        throw new Error(`Invalid offPeakMultiplier for ${model}`);
       result.offPeakMultiplier = multiplier;
     }
     if (entry.peakWindows !== undefined) {
       result.peakWindows = validatePeakWindows(entry.peakWindows, model);
-      result.peakTimezone = typeof entry.peakTimezone === "string" && entry.peakTimezone ? entry.peakTimezone : "Asia/Shanghai";
+      result.peakTimezone =
+        typeof entry.peakTimezone === "string" && entry.peakTimezone ? entry.peakTimezone : "Asia/Shanghai";
     }
     if (entry.source !== undefined) {
-      if (typeof entry.source !== "string" || !/^https?:\/\//.test(entry.source)) throw new Error(`Invalid source for ${model}`);
+      if (typeof entry.source !== "string" || !/^https?:\/\//.test(entry.source))
+        throw new Error(`Invalid source for ${model}`);
       result.source = entry.source;
     }
     normalized[model] = result;
@@ -324,9 +800,7 @@ export function mergePricingCatalog(value) {
   const savedModels = value.models || {};
   const models = {};
   for (const [model, builtIn] of Object.entries(MODEL_PRICES)) {
-    models[model] = savedModels[model]
-      ? fillMissingStructure(savedModels[model], builtIn)
-      : structuredClone(builtIn);
+    models[model] = savedModels[model] ? fillMissingStructure(savedModels[model], builtIn) : structuredClone(builtIn);
   }
   for (const [model, saved] of Object.entries(savedModels)) {
     if (!models[model]) models[model] = saved;
@@ -339,7 +813,12 @@ export function mergePricingCatalog(value) {
 }
 
 export function resetPricingCatalog() {
-  activePricing = { checkedAt: API_PRICING_CHECKED_AT, version: API_PRICING_VERSION, usdToCnyRate: DEFAULT_USD_TO_CNY_RATE, models: MODEL_PRICES };
+  activePricing = {
+    checkedAt: API_PRICING_CHECKED_AT,
+    version: API_PRICING_VERSION,
+    usdToCnyRate: DEFAULT_USD_TO_CNY_RATE,
+    models: MODEL_PRICES,
+  };
 }
 
 export function pricingVersionForTimestamp(_timestamp) {
@@ -354,7 +833,7 @@ function finiteNonNegative(value) {
 function usageFields(event = {}) {
   const usage = event.total || event.usage || event;
   const mask = Number.isInteger(event.detailMask) ? event.detailMask : 0;
-  const has = (key, bit) => Number.isInteger(event.detailMask) ? Boolean(mask & bit) : Object.hasOwn(usage, key);
+  const has = (key, bit) => (Number.isInteger(event.detailMask) ? Boolean(mask & bit) : Object.hasOwn(usage, key));
   return {
     total: finiteNonNegative(usage.total) ?? 0,
     input: finiteNonNegative(usage.input),
@@ -379,7 +858,9 @@ function normalizeModel(value) {
 }
 
 function normalizeServiceTier(value) {
-  const tier = String(value || "").trim().toLocaleLowerCase();
+  const tier = String(value || "")
+    .trim()
+    .toLocaleLowerCase();
   if (tier === "fast" || tier === "priority") return "fast";
   if (tier === "default" || tier === "standard") return "standard";
   return "unknown";
@@ -417,17 +898,20 @@ export function isPeakPricingTime(entry, timestampMs) {
     minute: "2-digit",
     hour12: false,
   });
-  const parts = Object.fromEntries(formatter.formatToParts(new Date(timestampMs)).map((part) => [part.type, part.value]));
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(timestampMs)).map((part) => [part.type, part.value]),
+  );
   const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday);
   const minutes = Number(parts.hour) * 60 + Number(parts.minute);
   if (weekdayIndex < 0 || !Number.isFinite(minutes)) return true;
-  return entry.peakWindows.some((window) =>
-    (window.days || []).includes(weekdayIndex === 0 ? 7 : weekdayIndex) &&
-    (window.ranges || []).some((range) => {
-      const start = timeOfDayMinutes(range[0]);
-      const end = timeOfDayMinutes(range[1]);
-      return start !== null && end !== null && minutes >= start && minutes < end;
-    }),
+  return entry.peakWindows.some(
+    (window) =>
+      (window.days || []).includes(weekdayIndex === 0 ? 7 : weekdayIndex) &&
+      (window.ranges || []).some((range) => {
+        const start = timeOfDayMinutes(range[0]);
+        const end = timeOfDayMinutes(range[1]);
+        return start !== null && end !== null && minutes >= start && minutes < end;
+      }),
   );
 }
 
@@ -464,8 +948,7 @@ function minimumRatesFor(modelKey, contextLevel, currency) {
 }
 
 function minimumCategory(rates, categories) {
-  return categories.reduce((lowest, category) =>
-    rates[category] < rates[lowest] ? category : lowest, categories[0]);
+  return categories.reduce((lowest, category) => (rates[category] < rates[lowest] ? category : lowest), categories[0]);
 }
 
 function estimateEventCost(event = {}) {
@@ -499,13 +982,19 @@ function estimateEventCost(event = {}) {
   }
   const minimumModelRate = !model.key;
   const cacheWriteTokens = finiteNonNegative(event.cacheWriteTokens);
-  const cacheWriteKnown = event.cacheWriteKnown === true || (Number.isInteger(event.detailMask) && Boolean(event.detailMask & 32));
-  const knownOrInferredInput = usage.inputKnown ? usage.input
-    : usage.outputKnown ? Math.max(0, total - usage.output) : null;
-  const cacheWriteUnknownTokens = !cacheWriteKnown || cacheWriteTokens === null
-    ? knownOrInferredInput === null ? 0
-      : Math.max(0, knownOrInferredInput - (usage.cachedKnown ? Math.min(usage.cached, knownOrInferredInput) : 0))
-    : 0;
+  const cacheWriteKnown =
+    event.cacheWriteKnown === true || (Number.isInteger(event.detailMask) && Boolean(event.detailMask & 32));
+  const knownOrInferredInput = usage.inputKnown
+    ? usage.input
+    : usage.outputKnown
+      ? Math.max(0, total - usage.output)
+      : null;
+  const cacheWriteUnknownTokens =
+    !cacheWriteKnown || cacheWriteTokens === null
+      ? knownOrInferredInput === null
+        ? 0
+        : Math.max(0, knownOrInferredInput - (usage.cachedKnown ? Math.min(usage.cached, knownOrInferredInput) : 0))
+      : 0;
   const reasons = [];
   let inputUsd = 0;
   let cachedInputUsd = 0;
@@ -557,7 +1046,8 @@ function estimateEventCost(event = {}) {
   }
 
   const allCategories = RATE_FIELDS;
-  const countsInconsistent = usage.inconsistent ||
+  const countsInconsistent =
+    usage.inconsistent ||
     (usage.inputKnown && usage.input > total) ||
     (usage.outputKnown && usage.output > total) ||
     (usage.inputKnown && usage.outputKnown && usage.input + usage.output !== total);
@@ -670,8 +1160,18 @@ function createCostSummaryState(options = {}) {
 
   function add(item, estimate = estimateEventCost(item)) {
     for (const field of [
-      "inputUsd", "cachedInputUsd", "cacheWriteInputUsd", "outputUsd", "cacheRateInput", "cacheRateCached",
-      "pricedTokens", "unpricedTokens", "minimumEstimatedTokens", "serviceTierUnknownTokens", "contextUnknownTokens", "cacheWriteUnknownTokens",
+      "inputUsd",
+      "cachedInputUsd",
+      "cacheWriteInputUsd",
+      "outputUsd",
+      "cacheRateInput",
+      "cacheRateCached",
+      "pricedTokens",
+      "unpricedTokens",
+      "minimumEstimatedTokens",
+      "serviceTierUnknownTokens",
+      "contextUnknownTokens",
+      "cacheWriteUnknownTokens",
     ]) {
       if (field in estimate) totals[field] += Number(estimate[field] || 0);
     }
@@ -769,15 +1269,18 @@ export function estimateCostForEvents(events = [], options = {}) {
 }
 
 export function estimateCostForGroups(groups = [], options = {}) {
-  return summarizeCostItems(groups.map((group) => ({
-    ...group,
-    total: {
-      total: group.total,
-      input: group.input,
-      cached: group.cached,
-      output: group.output,
-    },
-  })), options);
+  return summarizeCostItems(
+    groups.map((group) => ({
+      ...group,
+      total: {
+        total: group.total,
+        input: group.input,
+        cached: group.cached,
+        output: group.output,
+      },
+    })),
+    options,
+  );
 }
 
 export { estimateEventCost };

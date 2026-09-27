@@ -28,7 +28,8 @@ function removeNamedPublicImport(source, fileName) {
   const escapedName = fileName.replaceAll(".", "\\.");
   const pattern = new RegExp(`^import\\s*\\{[^}]*\\}\\s*from "\\./${escapedName}";[ \\t]*(?:\\r?\\n)?`, "gm");
   const matches = [...source.matchAll(pattern)];
-  if (matches.length !== 1) throw new Error(`Expected exactly one named import from ${fileName} in the dashboard source.`);
+  if (matches.length !== 1)
+    throw new Error(`Expected exactly one named import from ${fileName} in the dashboard source.`);
   return source.replace(pattern, "");
 }
 
@@ -55,7 +56,10 @@ export function assertSelfContainedStaticHtml(html) {
     try {
       new Script(classicSource, { filename: `static-dashboard-script-${index + 1}.js` });
     } catch (error) {
-      throw new Error(`Static dashboard has unresolved module syntax or invalid JavaScript in script ${index + 1}: ${error.message}`, { cause: error });
+      throw new Error(
+        `Static dashboard has unresolved module syntax or invalid JavaScript in script ${index + 1}: ${error.message}`,
+        { cause: error },
+      );
     }
   }
 }
@@ -72,17 +76,25 @@ export function renderStaticDashboardHtml(report) {
   const inlineTimelineUtils = timelineUtils.replace(/^export\s+/gm, "");
   const inlineI18n = i18n.replace(/^export\s+/gm, "");
   const inlineHtmlUtils = htmlUtils.replace(/^export\s+/gm, "");
-  const inlineCalendar = removeNamedPublicImport(removeNamedPublicImport(calendar, "i18n.js"), "html-utils.js").replace(/^export\s+/gm, "");
+  const inlineCalendar = removeNamedPublicImport(removeNamedPublicImport(calendar, "i18n.js"), "html-utils.js").replace(
+    /^export\s+/gm,
+    "",
+  );
   const inlineAppState = appState.replace(/^export\s+/gm, "");
   const i18nImport = app.match(/^import \{([^}]*)\} from "\.\/i18n\.js";\s*/m);
   if (!i18nImport) throw new Error("Expected the dashboard localization import.");
-  const i18nNames = i18nImport[1].split(",").map((name) => name.trim()).filter(Boolean);
+  const i18nNames = i18nImport[1]
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
   if (!i18nNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name))) {
     throw new Error("Expected simple named dashboard localization imports.");
   }
   const bundledApp = replaceExactlyOnce(
-    ["timeline-utils.js", "i18n.js", "app-state.js", "html-utils.js", "calendar.js"]
-      .reduce((source, fileName) => removeNamedPublicImport(source, fileName), app),
+    ["timeline-utils.js", "i18n.js", "app-state.js", "html-utils.js", "calendar.js"].reduce(
+      (source, fileName) => removeNamedPublicImport(source, fileName),
+      app,
+    ),
     "export { datePickerMonthModel, renderDatePickerHtml };",
     "",
     "dashboard date picker export",

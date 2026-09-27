@@ -65,12 +65,17 @@ function requestFilters(url) {
   const preset = url.searchParams.get("preset") || "all";
   const requestedBucket = url.searchParams.get("bucket") || "day";
   const recentValue = url.searchParams.get("recentValue") || "";
-  const recentBucket = preset === "recent" ? { "上一个5h": "quota_30m", "上周": "quota_24h", "上个月": "day", "今年": "month" }[recentValue] : null;
+  const recentBucket =
+    preset === "recent"
+      ? { 上一个5h: "quota_30m", 上周: "quota_24h", 上个月: "day", 今年: "month" }[recentValue]
+      : null;
   if (!USAGE_PRESETS.includes(preset)) {
     throw httpError(400, `Invalid preset: ${preset}.`, "INVALID_PRESET");
   }
   const bucket = isQuotaPreset(preset)
-    ? preset === "quota_5h" ? "quota_30m" : "quota_24h"
+    ? preset === "quota_5h"
+      ? "quota_30m"
+      : "quota_24h"
     : recentBucket || requestedBucket;
   const startDate = url.searchParams.get("startDate") || "";
   const endDate = url.searchParams.get("endDate") || "";
@@ -410,7 +415,11 @@ export function createUsageServer(options = {}) {
           }
           const entry = await describeImportEntry(body.path);
           if (entry.type === "unsupported") {
-            sendJson(response, 400, { code: "INVALID_IMPORT_DIRECTORY", error: "reason" in entry ? entry.reason : "Unsupported import directory.", path: entry.path });
+            sendJson(response, 400, {
+              code: "INVALID_IMPORT_DIRECTORY",
+              error: "reason" in entry ? entry.reason : "Unsupported import directory.",
+              path: entry.path,
+            });
             return;
           }
           const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
@@ -500,7 +509,10 @@ export function createUsageServer(options = {}) {
             report,
             summary,
             quota: summary.quota,
-            periodComparison: summarizePeriodComparison(report.events, { now: asOf, calendarZone: filters.calendarZone }),
+            periodComparison: summarizePeriodComparison(report.events, {
+              now: asOf,
+              calendarZone: filters.calendarZone,
+            }),
           });
           return;
         }
@@ -512,8 +524,9 @@ export function createUsageServer(options = {}) {
           : url.searchParams.get("freeze") === "1"
             ? await createSnapshot({ check })
             : null;
-        if (requestedSnapshotId && !frozen) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
-        const usage = frozen?.status || await loadUsageStore({ check });
+        if (requestedSnapshotId && !frozen)
+          throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        const usage = frozen?.status || (await loadUsageStore({ check }));
         const store = frozen?.store || usageStore;
         const asOf = frozen?.asOf || new Date();
         Object.assign(filters, { now: asOf });
@@ -522,10 +535,14 @@ export function createUsageServer(options = {}) {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
           snapshotId: frozen?.id || requestedSnapshotId || null,
-          metadata: frozen?.metadata || await metadataForStore(),
+          metadata: frozen?.metadata || (await metadataForStore()),
           summary,
           quota: summary.quota,
-          periodComparison: store.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes, calendarZone: filters.calendarZone }),
+          periodComparison: store.periodComparison({
+            now: asOf,
+            excludeHomes: filters.excludeHomes,
+            calendarZone: filters.calendarZone,
+          }),
         });
         return;
       }
@@ -542,14 +559,20 @@ export function createUsageServer(options = {}) {
           metadata: await metadataForStore(),
           summary,
           quota: summary.quota,
-          periodComparison: usageStore.periodComparison({ now: asOf, excludeHomes: filters.excludeHomes, calendarZone: filters.calendarZone }),
+          periodComparison: usageStore.periodComparison({
+            now: asOf,
+            excludeHomes: filters.excludeHomes,
+            calendarZone: filters.calendarZone,
+          }),
         });
         return;
       }
 
       await serveStatic(url.pathname, response);
     } catch (error) {
-      const statusCode = error.statusCode || (error.code === "QUOTA_WINDOW_UNAVAILABLE" ? 409 : error.code === "INVALID_PRESET" ? 400 : 500);
+      const statusCode =
+        error.statusCode ||
+        (error.code === "QUOTA_WINDOW_UNAVAILABLE" ? 409 : error.code === "INVALID_PRESET" ? 400 : 500);
       sendJson(response, statusCode, {
         ...(error.code ? { code: error.code } : {}),
         error: error.message,

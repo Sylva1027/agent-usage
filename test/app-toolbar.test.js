@@ -9,7 +9,10 @@ test("toolbar embeds the fillable recent dropdown inside the range segments", as
   assert.ok(html.indexOf('data-preset="all"') < html.indexOf('data-preset="recent"'));
   assert.ok(html.indexOf('data-preset="all"') < html.indexOf('id="recentValue"'));
   assert.ok(html.indexOf('id="quotaPresetToggle"') < html.indexOf('data-preset="today"'));
-  assert.match(html, /id="quotaPresetToggle"[\s\S]*data-quota-mode="quota_5h">5h<\/span>[\s\S]*data-quota-mode="quota_week">Week<\/span>/);
+  assert.match(
+    html,
+    /id="quotaPresetToggle"[\s\S]*data-quota-mode="quota_5h">5h<\/span>[\s\S]*data-quota-mode="quota_week">Week<\/span>/,
+  );
   assert.match(html, /id="quotaPresetStatus"[^>]+role="status"[^>]+aria-live="polite"/);
   assert.match(html, /data-preset="today" class="active">今日<\/button>/);
   assert.match(html, /data-preset="week" data-i18n-en="Week">本周<\/button>/);

@@ -43,4 +43,3 @@ export async function savePricingFile(options, catalog) {
     await rm(temporary, { force: true });
   }
 }
-

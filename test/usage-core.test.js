@@ -258,8 +258,10 @@ test("source IDs stay attached to paths when the import list changes", async () 
   assert.ok(beforeB);
   assert.ok(afterB);
   assert.equal(beforeB.id, afterB.id);
-  assert.equal(before.find((source) => source.path === path.join(homeDir, ".codex")).id,
-    after.find((source) => source.path === path.join(homeDir, ".codex")).id);
+  assert.equal(
+    before.find((source) => source.path === path.join(homeDir, ".codex")).id,
+    after.find((source) => source.path === path.join(homeDir, ".codex")).id,
+  );
 });
 
 test("full and streaming parsers both skip token events without valid timestamps", async () => {
@@ -412,10 +414,7 @@ test("summarizeUsage uses rolling recent day ranges", () => {
 });
 
 test("summarizeUsage includes previous-period comparison totals", () => {
-  const events = [
-    usageEvent("2026-06-02T09:00:00", 100),
-    usageEvent("2026-06-03T09:00:00", 300),
-  ];
+  const events = [usageEvent("2026-06-02T09:00:00", 100), usageEvent("2026-06-03T09:00:00", 300)];
   const filters = {
     preset: "today",
     bucket: "day",
@@ -620,8 +619,14 @@ test("buildUsageReport and summarizeUsage include imported project usage logs", 
   assert.equal(report.sessions.length, 1);
   assert.equal(summary.totals.total, 200);
   assert.equal(indexedSummary.totals.total, summary.totals.total);
-  assert.deepEqual(summary.channels.map((channel) => [channel.name, channel.total.total]), [["Codex OAuth", 200]]);
-  assert.deepEqual(summary.projects.map((project) => [project.name, project.total.total]), [[projectRoot, 200]]);
+  assert.deepEqual(
+    summary.channels.map((channel) => [channel.name, channel.total.total]),
+    [["Codex OAuth", 200]],
+  );
+  assert.deepEqual(
+    summary.projects.map((project) => [project.name, project.total.total]),
+    [[projectRoot, 200]],
+  );
   assert.equal(fingerprint.fileCount, 1);
 });
 
@@ -654,7 +659,19 @@ test("buildUsageFingerprint changes when session files change", async () => {
 test("buildUsageReport and summarizeUsage aggregate totals by channel and period", async () => {
   const fakeHome = await mkdtemp(path.join(tmpdir(), "codex-report-"));
   const mainSessions = path.join(fakeHome, ".codex", "sessions", "2026", "05", "01");
-  const jetbrainsSessions = path.join(fakeHome, "Library", "Caches", "JetBrains", "PyCharm2026.1", "aia", "codex", "sessions", "2026", "05", "08");
+  const jetbrainsSessions = path.join(
+    fakeHome,
+    "Library",
+    "Caches",
+    "JetBrains",
+    "PyCharm2026.1",
+    "aia",
+    "codex",
+    "sessions",
+    "2026",
+    "05",
+    "08",
+  );
   await mkdir(mainSessions, { recursive: true });
   await mkdir(jetbrainsSessions, { recursive: true });
 
@@ -736,7 +753,9 @@ test("buildUsageReport and summarizeUsage aggregate totals by channel and period
     ],
   );
   assert.deepEqual(
-    indexedAll.timeline.find((row) => row.key === "2026-04-27").channels.map((channel) => [channel.name, channel.total.total]),
+    indexedAll.timeline
+      .find((row) => row.key === "2026-04-27")
+      .channels.map((channel) => [channel.name, channel.total.total]),
     [
       ["Codex Desktop", 200],
       ["CLI", 100],
@@ -780,50 +799,69 @@ test("summarizeUsage and summarizeUsageIndex fill a single local day with 24 hou
 test("parseSessionFile correlates last-token usage to request context and preserves billing metadata", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "codex-request-pricing-"));
   const file = path.join(root, "rollout.jsonl");
-  await writeFile(file, jsonl([
-    {
-      timestamp: "2026-07-20T10:00:00.000Z",
-      type: "session_meta",
-      payload: { id: "request-pricing", source: "cli", originator: "codex-tui", cwd: root },
-    },
-    { type: "turn_context", payload: { model: "gpt-6-sol", model_context_window: 1_050_000 } },
-    {
-      timestamp: "2026-07-20T10:01:00.000Z",
-      type: "event_msg",
-      payload: {
-        type: "token_count",
-        info: {
-          total_token_usage: {
-            total_tokens: 272_000, input_tokens: 272_000, cached_input_tokens: 0,
-            cache_write_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0,
+  await writeFile(
+    file,
+    jsonl([
+      {
+        timestamp: "2026-07-20T10:00:00.000Z",
+        type: "session_meta",
+        payload: { id: "request-pricing", source: "cli", originator: "codex-tui", cwd: root },
+      },
+      { type: "turn_context", payload: { model: "gpt-6-sol", model_context_window: 1_050_000 } },
+      {
+        timestamp: "2026-07-20T10:01:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 272_000,
+              input_tokens: 272_000,
+              cached_input_tokens: 0,
+              cache_write_input_tokens: 0,
+              output_tokens: 0,
+              reasoning_output_tokens: 0,
+            },
+            last_token_usage: {
+              total_tokens: 272_000,
+              input_tokens: 272_000,
+              cached_input_tokens: 0,
+              cache_write_input_tokens: 0,
+              output_tokens: 0,
+              reasoning_output_tokens: 0,
+            },
+            response: { service_tier: "priority" },
           },
-          last_token_usage: {
-            total_tokens: 272_000, input_tokens: 272_000, cached_input_tokens: 0,
-            cache_write_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0,
-          },
-          response: { service_tier: "priority" },
         },
       },
-    },
-    {
-      timestamp: "2026-07-20T10:02:00.000Z",
-      type: "event_msg",
-      payload: {
-        type: "token_count",
-        info: {
-          total_token_usage: {
-            total_tokens: 544_101, input_tokens: 544_001, cached_input_tokens: 0,
-            cache_write_input_tokens: 0, output_tokens: 100, reasoning_output_tokens: 0,
+      {
+        timestamp: "2026-07-20T10:02:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 544_101,
+              input_tokens: 544_001,
+              cached_input_tokens: 0,
+              cache_write_input_tokens: 0,
+              output_tokens: 100,
+              reasoning_output_tokens: 0,
+            },
+            last_token_usage: {
+              total_tokens: 272_101,
+              input_tokens: 272_001,
+              cached_input_tokens: 0,
+              cache_write_input_tokens: 0,
+              output_tokens: 100,
+              reasoning_output_tokens: 0,
+            },
+            response: { service_tier: "default" },
           },
-          last_token_usage: {
-            total_tokens: 272_101, input_tokens: 272_001, cached_input_tokens: 0,
-            cache_write_input_tokens: 0, output_tokens: 100, reasoning_output_tokens: 0,
-          },
-          response: { service_tier: "default" },
         },
       },
-    },
-  ]));
+    ]),
+  );
   const session = await parseSessionFile(file, { id: "home", label: "Test", path: root });
   assert.equal(session.events.length, 2);
   assert.equal(session.events[0].requestInputTokens, 272_000);
@@ -851,12 +889,15 @@ test("parseSessionFile records zero-token Codex quota observations with physical
       used_percent: null,
     },
   };
-  await writeFile(file, [
-    JSON.stringify({ type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-zero" } }),
-    "",
-    "{ interrupted write",
-    JSON.stringify(row),
-  ].join("\n"));
+  await writeFile(
+    file,
+    [
+      JSON.stringify({ type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-zero" } }),
+      "",
+      "{ interrupted write",
+      JSON.stringify(row),
+    ].join("\n"),
+  );
 
   const parsed = await parseSessionFile(file, { id: "home", label: "Codex", path: root });
 
@@ -892,25 +933,37 @@ test("selectQuotaWindows resolves each window independently and reports waiting,
   const expired = selectQuotaWindows([observation({ resetsAtMs: asOf })], asOf);
   assert.equal(expired.windows.quota_5h.state, "waiting");
 
-  const tiedBuckets = selectQuotaWindows([
-    observation({ limitId: "first" }),
-    observation({ sourcePath: "other.jsonl", limitId: "second" }),
-  ], asOf);
+  const tiedBuckets = selectQuotaWindows(
+    [observation({ limitId: "first" }), observation({ sourcePath: "other.jsonl", limitId: "second" })],
+    asOf,
+  );
   assert.equal(tiedBuckets.limitId, null);
   assert.equal(tiedBuckets.windows.quota_5h.state, "ambiguous");
 
-  const mainBucket = selectQuotaWindows([
-    observation(),
-    observation({ sourcePath: "codex.jsonl", lineNumber: 2, role: "secondary", windowMinutes: 10080, resetsAtMs: Date.parse("2026-10-02T14:37:00.000Z") }),
-    observation({ sourcePath: "other.jsonl", limitId: "orphan" }),
-  ], asOf);
+  const mainBucket = selectQuotaWindows(
+    [
+      observation(),
+      observation({
+        sourcePath: "codex.jsonl",
+        lineNumber: 2,
+        role: "secondary",
+        windowMinutes: 10080,
+        resetsAtMs: Date.parse("2026-10-02T14:37:00.000Z"),
+      }),
+      observation({ sourcePath: "other.jsonl", limitId: "orphan" }),
+    ],
+    asOf,
+  );
   assert.equal(mainBucket.limitId, "codex");
   assert.equal(mainBucket.ignoredBucketCount, 1);
 
-  const conflict = selectQuotaWindows([
-    observation({ lineNumber: 1 }),
-    observation({ lineNumber: 2, resetsAtMs: Date.parse("2026-09-25T14:38:00.000Z") }),
-  ], asOf);
+  const conflict = selectQuotaWindows(
+    [
+      observation({ lineNumber: 1 }),
+      observation({ lineNumber: 2, resetsAtMs: Date.parse("2026-09-25T14:38:00.000Z") }),
+    ],
+    asOf,
+  );
   assert.equal(conflict.windows.quota_5h.state, "ambiguous");
 });
 
@@ -932,18 +985,20 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
     usageEvent(new Date(asOfMs).toISOString(), 11),
     usageEvent(new Date(endMs).toISOString(), 13),
   ];
-  const rateLimitObservations = [{
-    sourcePath: "codex.jsonl",
-    lineNumber: 2,
-    role: "primary",
-    observedAtMs: asOfMs - 60_000,
-    limitId: "codex",
-    limitName: null,
-    planType: null,
-    windowMinutes: 300,
-    resetsAtMs: endMs,
-    usedPercent: 42.5,
-  }];
+  const rateLimitObservations = [
+    {
+      sourcePath: "codex.jsonl",
+      lineNumber: 2,
+      role: "primary",
+      observedAtMs: asOfMs - 60_000,
+      limitId: "codex",
+      limitName: null,
+      planType: null,
+      windowMinutes: 300,
+      resetsAtMs: endMs,
+      usedPercent: 42.5,
+    },
+  ];
   const report = { generatedAt: new Date(asOfMs).toISOString(), events, rateLimitObservations };
   const index = usageIndex(events);
   index.generatedAt = report.generatedAt;
@@ -971,15 +1026,16 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
 });
 
 test("UTC calendar days keep report and memory index summaries aligned across midnight", () => {
-  const events = [
-    usageEvent("2026-09-24T18:42:34.668Z", 120),
-    usageEvent("2026-09-25T02:12:34.668Z", 80),
-  ];
+  const events = [usageEvent("2026-09-24T18:42:34.668Z", 120), usageEvent("2026-09-25T02:12:34.668Z", 80)];
   const report = { generatedAt: "2026-09-25T12:00:00.000Z", events };
   const index = usageIndex(events);
   const filters = {
-    preset: "custom", startDate: "2026-09-24", endDate: "2026-09-24",
-    bucket: "day", calendarZone: "utc", now: "2026-09-25T12:00:00.000Z",
+    preset: "custom",
+    startDate: "2026-09-24",
+    endDate: "2026-09-24",
+    bucket: "day",
+    calendarZone: "utc",
+    now: "2026-09-25T12:00:00.000Z",
   };
   const full = summarizeUsage(report, filters);
   const memory = summarizeUsageIndex(index, filters);

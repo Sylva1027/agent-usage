@@ -7,11 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { LONG_CONTEXT_INPUT_THRESHOLD } from "../src/pricing.js";
 import { UsageStore } from "../src/usage-store.js";
-import {
-  buildUsageReport,
-  classifyImportDirectory,
-  discoverUsageSources,
-} from "../src/usage-core.js";
+import { buildUsageReport, classifyImportDirectory, discoverUsageSources } from "../src/usage-core.js";
 import { streamZcodeDbEvents, zcodeDatabaseFile, zcodeSourceStat } from "../src/zcode-usage.js";
 
 const ZCODE_SCHEMA = `
@@ -92,10 +88,26 @@ function insertZcodeRows(dbFile, { sessions = [], usageRows = [] }) {
           cache_creation_input_tokens, cache_read_input_tokens, provider_total_tokens, computed_total_tokens
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        row.id, row.session_id, row.turn_id, row.query_source, row.task_type, row.provider_id, row.model_id,
-        row.variant, row.agent, row.mode, row.status, row.started_at, row.completed_at,
-        row.input_tokens, row.output_tokens, row.reasoning_tokens,
-        row.cache_creation_input_tokens, row.cache_read_input_tokens, row.provider_total_tokens, row.computed_total_tokens,
+        row.id,
+        row.session_id,
+        row.turn_id,
+        row.query_source,
+        row.task_type,
+        row.provider_id,
+        row.model_id,
+        row.variant,
+        row.agent,
+        row.mode,
+        row.status,
+        row.started_at,
+        row.completed_at,
+        row.input_tokens,
+        row.output_tokens,
+        row.reasoning_tokens,
+        row.cache_creation_input_tokens,
+        row.cache_read_input_tokens,
+        row.provider_total_tokens,
+        row.computed_total_tokens,
       );
     }
   } finally {
@@ -127,12 +139,18 @@ test("discoverUsageSources 同时发现 Codex 与 ZCode home，并可整体关�
 
   const sources = await discoverUsageSources({ homeDir, env: {} });
   const zcodeSource = sources.find((source) => source.kind === "zcode");
-  assert.deepEqual(sources.map((source) => source.label), ["Main Codex", "Main ZCode"]);
+  assert.deepEqual(
+    sources.map((source) => source.label),
+    ["Main Codex", "Main ZCode"],
+  );
   assert.equal(zcodeSource.path, path.join(homeDir, ".zcode"));
   assert.equal(zcodeSource.usageLogPath, dbFile);
 
   const disabled = await discoverUsageSources({ homeDir, env: { CODEX_USAGE_ZCODE: "0" } });
-  assert.deepEqual(disabled.map((source) => source.label), ["Main Codex"]);
+  assert.deepEqual(
+    disabled.map((source) => source.label),
+    ["Main Codex"],
+  );
 
   const extraHome = await makeZcodeHome();
   const withExtra = await discoverUsageSources({
@@ -174,7 +192,14 @@ test("streamZcodeDbEvents 映射 token 明细、渠道与长上下文", async ()
   const longInput = LONG_CONTEXT_INPUT_THRESHOLD + 1;
   const { homeDir, dbFile } = await makeZcodeHome({
     sessions: [{ id: "sess_main", directory: "/work/zproj", path: "/work/zproj", title: "重构看板" }],
-    usageRows: [usageRow({ input_tokens: longInput, cache_read_input_tokens: 0, computed_total_tokens: longInput + 20, provider_total_tokens: longInput + 20 })],
+    usageRows: [
+      usageRow({
+        input_tokens: longInput,
+        cache_read_input_tokens: 0,
+        computed_total_tokens: longInput + 20,
+        provider_total_tokens: longInput + 20,
+      }),
+    ],
   });
   const source = {
     id: "zcode-test",
@@ -254,12 +279,15 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
     assert.deepEqual(summary.totals, { total: 190, input: 160, cached: 60, output: 30, reasoning: 5 });
     assert.deepEqual(
       summary.channels.map((channel) => [channel.name, channel.total.total]),
-      [["ZCode", 120], ["ZCode Subagent", 70]],
+      [
+        ["ZCode", 120],
+        ["ZCode Subagent", 70],
+      ],
     );
-    assert.deepEqual(
-      summary.models.map((model) => [model.name, model.total.total]).sort(),
-      [["other-model", 70], ["test-model", 120]],
-    );
+    assert.deepEqual(summary.models.map((model) => [model.name, model.total.total]).sort(), [
+      ["other-model", 70],
+      ["test-model", 120],
+    ]);
     assert.equal(summary.repositories.length, 1);
     assert.equal(summary.repositories[0].key, "directory:/work/zproj");
     assert.equal(summary.repositories[0].total.total, 190);
@@ -283,15 +311,30 @@ test("ZCode UTC 账单日按原始请求时间分日，不改写计价时间", a
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {
     await store.sync();
-    const day24 = store.summarize({ preset: "custom", startDate: "2026-09-24", endDate: "2026-09-24", bucket: "day", calendarZone: "utc" });
-    const day25 = store.summarize({ preset: "custom", startDate: "2026-09-25", endDate: "2026-09-25", bucket: "day", calendarZone: "utc" });
+    const day24 = store.summarize({
+      preset: "custom",
+      startDate: "2026-09-24",
+      endDate: "2026-09-24",
+      bucket: "day",
+      calendarZone: "utc",
+    });
+    const day25 = store.summarize({
+      preset: "custom",
+      startDate: "2026-09-25",
+      endDate: "2026-09-25",
+      bucket: "day",
+      calendarZone: "utc",
+    });
     assert.equal(day24.totals.total, 120);
     assert.equal(day25.totals.total, 120);
     assert.equal(day24.range.start, "2026-09-24T00:00:00.000Z");
     assert.equal(day24.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
     assert.equal(day25.timeline.find((row) => row.key === "2026-09-25")?.total.total, 120);
     assert.ok(day24.costEstimate.totalCny > 0);
-    const timestamps = store.database.prepare("SELECT timestamp_ms FROM events ORDER BY timestamp_ms").all().map((row) => row.timestamp_ms);
+    const timestamps = store.database
+      .prepare("SELECT timestamp_ms FROM events ORDER BY timestamp_ms")
+      .all()
+      .map((row) => row.timestamp_ms);
     assert.deepEqual(timestamps, [first, second]);
   } finally {
     store.close();
@@ -312,7 +355,9 @@ test("UsageStore 只在 ZCode 数据库变化后重建", async () => {
     assert.equal(unchanged.updatedFileCount, 0);
 
     insertZcodeRows(dbFile, {
-      usageRows: [usageRow({ id: "usage_model_main_turn_msg_test_3", completed_at: Date.parse("2026-09-20T11:00:00.000Z") })],
+      usageRows: [
+        usageRow({ id: "usage_model_main_turn_msg_test_3", completed_at: Date.parse("2026-09-20T11:00:00.000Z") }),
+      ],
     });
     const refreshed = await store.sync();
     assert.equal(refreshed.updatedFileCount, 1);
@@ -336,7 +381,10 @@ test("buildUsageReport 汇总 ZCode 会话与事件", async () => {
 
   const report = await buildUsageReport({ homeDir, env: {} });
 
-  assert.deepEqual(report.homes.map((home) => home.label), ["Main ZCode"]);
+  assert.deepEqual(
+    report.homes.map((home) => home.label),
+    ["Main ZCode"],
+  );
   assert.equal(report.sessions.length, 1);
   const session = report.sessions[0];
   assert.equal(session.id, "sess_main");
@@ -379,7 +427,9 @@ test("ZCode 数据库异常时仅记录警告，不影响 Codex 用量", async (
           },
         },
       },
-    ].map((row) => JSON.stringify(row)).join("\n")}\n`,
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n")}\n`,
   );
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
 

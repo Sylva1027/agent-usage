@@ -43,7 +43,17 @@ test("browser language sets the first locale and a saved choice takes precedence
   assert.equal(localeFromLanguages(["en-GB", "zh-CN"]), "en-US");
   assert.equal(localeFromLanguages(["fr-FR"]), "en-US");
   assert.equal(preferredLocale({ getItem: () => "zh-CN" }, ["en-US"]), "zh-CN");
-  assert.equal(preferredLocale({ getItem: () => { throw new Error("denied"); } }, ["en-US"]), "en-US");
+  assert.equal(
+    preferredLocale(
+      {
+        getItem: () => {
+          throw new Error("denied");
+        },
+      },
+      ["en-US"],
+    ),
+    "en-US",
+  );
   setLocale("en-US", { persist: false });
   assert.equal(getLocale(), "en-US");
   setLocale("zh-CN", { persist: false });
@@ -68,8 +78,14 @@ test("translated dashboard copy preserves cost and limit semantics", () => {
   assert.equal(localizeText("本周", "en-US"), "This Week");
   assert.equal(localizeText("总花销", "zh-CN"), "总花销");
   assert.match(localizeText("当前范围为今日；点击切换到 5 小时限额", "en-US"), /Current range: Today.*5-Hour Limit/);
-  assert.equal(localizeQuotaReason({ reasonCode: "waiting", reason: "等待新的限额记录" }, "en-US"), "Waiting for a new limit record.");
-  assert.equal(localizeServerError({ code: "INVALID_IMPORT_DIRECTORY", error: "中文原因" }, 400, "en-US"), "Choose a Codex or ZCode home directory, or a project with a usage log.");
+  assert.equal(
+    localizeQuotaReason({ reasonCode: "waiting", reason: "等待新的限额记录" }, "en-US"),
+    "Waiting for a new limit record.",
+  );
+  assert.equal(
+    localizeServerError({ code: "INVALID_IMPORT_DIRECTORY", error: "中文原因" }, 400, "en-US"),
+    "Choose a Codex or ZCode home directory, or a project with a usage log.",
+  );
 });
 
 test("every static dashboard label and accessible attribute has an English form", async () => {
@@ -91,11 +107,25 @@ test("dynamic dashboard views have English copy for their rendered labels", () =
   setLocale("en-US", { persist: false });
   try {
     const usage = { total: 100, input: 80, cached: 20, output: 20, reasoning: 4 };
-    const home = { id: "home-1", label: "Codex home", path: "/tmp/codex", kind: "main", status: "active", eventCount: 4, sessionCount: 2, imported: true };
+    const home = {
+      id: "home-1",
+      label: "Codex home",
+      path: "/tmp/codex",
+      kind: "main",
+      status: "active",
+      eventCount: 4,
+      sessionCount: 2,
+      imported: true,
+    };
     const comparison = {
-      label: "较昨日", previousRange: { start: "2026-09-25", end: "2026-09-25" },
-      previousTotals: { total: 50 }, previousSessionCount: 2,
-      totalDelta: 50, percentChange: 100, averageDelta: 25, averagePercentChange: 50,
+      label: "较昨日",
+      previousRange: { start: "2026-09-25", end: "2026-09-25" },
+      previousTotals: { total: 50 },
+      previousSessionCount: 2,
+      totalDelta: 50,
+      percentChange: 100,
+      averageDelta: 25,
+      averagePercentChange: 50,
     };
     const period = { total: 100, input: 80, cached: 20, output: 20, reasoning: 4 };
     const pieces = [
@@ -104,12 +134,27 @@ test("dynamic dashboard views have English copy for their rendered labels", () =
       renderCostDetailHtml([{ name: "gpt-6-sol", totalUsd: 1.23 }]),
       renderComparisonHtml(comparison),
       renderComparisonHtml({ label: "暂无对比", previousRange: null }),
-      renderPeriodComparisonTableHtml([{ key: "gpt-6-sol", name: "gpt-6-sol", periods: { today: period } }], { expanded: { kind: "model", key: "gpt-6-sol", period: "today" }, totals: { today: period }, sort: { period: "today", direction: "asc", showIndicator: true } }),
+      renderPeriodComparisonTableHtml([{ key: "gpt-6-sol", name: "gpt-6-sol", periods: { today: period } }], {
+        expanded: { kind: "model", key: "gpt-6-sol", period: "today" },
+        totals: { today: period },
+        sort: { period: "today", direction: "asc", showIndicator: true },
+      }),
       renderHomesHtml([home], { canModify: true, excludedIds: [home.id] }),
       renderSourceOptionsHtml([home]),
       formatUsageTooltip({ name: "CLI", total: usage, count: 4, sessions: 2 }),
-      formatTimelineTooltip({ name: "2026-09-26", total: usage, models: [{ name: "gpt-6-sol", total: usage }] }, "model"),
-      formatTimelineTooltip({ name: "2026-09-26", total: usage, pricedTokens: 100, costByModel: { "gpt-6-sol": { totalUsd: 1.23, currency: "USD" } } }, "cost"),
+      formatTimelineTooltip(
+        { name: "2026-09-26", total: usage, models: [{ name: "gpt-6-sol", total: usage }] },
+        "model",
+      ),
+      formatTimelineTooltip(
+        {
+          name: "2026-09-26",
+          total: usage,
+          pricedTokens: 100,
+          costByModel: { "gpt-6-sol": { totalUsd: 1.23, currency: "USD" } },
+        },
+        "cost",
+      ),
       `<p>${rangeLabel({ range: { preset: "today", start: "2026-09-26", end: "2026-09-26" } })}</p>`,
     ];
     assert.deepEqual(pieces.flatMap(untranslatedUiFragments), []);

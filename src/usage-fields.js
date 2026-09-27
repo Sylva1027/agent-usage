@@ -2,7 +2,14 @@
 // 的解析器共用这里的定义，避免各来源对 token 明细的口径不一致。
 
 export const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
-export const USAGE_DETAIL_MASK = Object.freeze({ input: 1, cached: 2, output: 4, reasoning: 8, complete: 15, cacheWrite: 32 });
+export const USAGE_DETAIL_MASK = Object.freeze({
+  input: 1,
+  cached: 2,
+  output: 4,
+  reasoning: 8,
+  complete: 15,
+  cacheWrite: 32,
+});
 export const USAGE_DETAIL_INCONSISTENT = 16;
 
 export function emptyUsage() {

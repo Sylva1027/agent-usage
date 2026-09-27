@@ -16,19 +16,45 @@ import { API_PRICING_CHECKED_AT, API_PRICING_MODE, estimateEventCost } from "../
 import { selectQuotaWindows } from "../src/usage-core.js";
 
 test("static UTC date selection agrees with live day boundaries", () => {
-  setSummaryFilters({ preset: "custom", bucket: "day", calendarZone: "utc", startDate: "2026-09-24", endDate: "2026-09-24", now: "2026-09-25T12:00:00.000Z" });
+  setSummaryFilters({
+    preset: "custom",
+    bucket: "day",
+    calendarZone: "utc",
+    startDate: "2026-09-24",
+    endDate: "2026-09-24",
+    now: "2026-09-25T12:00:00.000Z",
+  });
   try {
     const summary = summarize({
       events: [
-        { timestamp: "2026-09-24T18:42:34.668Z", sessionId: "first", channel: "ZCode", model: "mimo-v2.6-pro", total: { total: 120, input: 100, cached: 80, output: 20, reasoning: 0 } },
-        { timestamp: "2026-09-25T02:12:34.668Z", sessionId: "second", channel: "ZCode", model: "mimo-v2.6-pro", total: { total: 80, input: 70, cached: 50, output: 10, reasoning: 0 } },
+        {
+          timestamp: "2026-09-24T18:42:34.668Z",
+          sessionId: "first",
+          channel: "ZCode",
+          model: "mimo-v2.6-pro",
+          total: { total: 120, input: 100, cached: 80, output: 20, reasoning: 0 },
+        },
+        {
+          timestamp: "2026-09-25T02:12:34.668Z",
+          sessionId: "second",
+          channel: "ZCode",
+          model: "mimo-v2.6-pro",
+          total: { total: 80, input: 70, cached: 50, output: 10, reasoning: 0 },
+        },
       ],
     });
     assert.equal(summary.totals.total, 120);
     assert.equal(summary.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
     assert.match(rangeLabel(summary), /2026-09-24.*UTC/);
   } finally {
-    setSummaryFilters({ preset: "today", bucket: "hour", calendarZone: "local", startDate: "", endDate: "", now: null });
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      startDate: "",
+      endDate: "",
+      now: null,
+    });
   }
 });
 
@@ -128,19 +154,30 @@ test("static quota summary stays at export asOf and applies source exclusions to
   const asOf = "2026-09-25T12:00:00.000Z";
   const start = "2026-09-25T09:37:00.000Z";
   const end = "2026-09-25T14:37:00.000Z";
-  const quota = selectQuotaWindows([{
-    sourcePath: "codex.jsonl",
-    lineNumber: 4,
-    role: "primary",
-    observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
-    limitId: "codex",
-    windowMinutes: 300,
-    resetsAtMs: Date.parse(end),
-    usedPercent: null,
-  }], asOf);
+  const quota = selectQuotaWindows(
+    [
+      {
+        sourcePath: "codex.jsonl",
+        lineNumber: 4,
+        role: "primary",
+        observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
+        limitId: "codex",
+        windowMinutes: 300,
+        resetsAtMs: Date.parse(end),
+        usedPercent: null,
+      },
+    ],
+    asOf,
+  );
   const events = [
     { timestamp: start, sessionId: "included", homeId: "keep", channel: "CLI", total: { total: 5 } },
-    { timestamp: "2026-09-25T10:07:00.000Z", sessionId: "excluded", homeId: "drop", channel: "ZCode", total: { total: 7 } },
+    {
+      timestamp: "2026-09-25T10:07:00.000Z",
+      sessionId: "excluded",
+      homeId: "drop",
+      channel: "ZCode",
+      total: { total: 7 },
+    },
     { timestamp: asOf, sessionId: "at-as-of", homeId: "keep", channel: "CLI", total: { total: 11 } },
   ];
 
@@ -189,7 +226,13 @@ test("static summarize totals embedded API cost estimates for the selected event
     assert.equal(summary.costEstimate.cacheHitRate, 0.2);
     assert.equal(summary.costEstimate.modelCount, 1);
     assert.equal(summary.costEstimate.priceCheckedAt, API_PRICING_CHECKED_AT);
-    assert.equal(summary.timeline.reduce((sum, row) => sum + Object.values(row.costByModel).reduce((subtotal, model) => subtotal + model.totalUsd, 0), 0), summary.costEstimate.totalUsd);
+    assert.equal(
+      summary.timeline.reduce(
+        (sum, row) => sum + Object.values(row.costByModel).reduce((subtotal, model) => subtotal + model.totalUsd, 0),
+        0,
+      ),
+      summary.costEstimate.totalUsd,
+    );
   } finally {
     setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "" });
   }
@@ -226,12 +269,15 @@ test("quota preset toggle remembers the last mode independently of availability"
   assert.equal(nextQuotaPresetState({ preset: "quota_5h" }, onlyWeekAvailable).preset, "quota_week");
   assert.equal(nextQuotaPresetState({ preset: "quota_week" }, onlyWeekAvailable).preset, "quota_5h");
 
-  const bothUnavailable = nextQuotaPresetState({ preset: "today", lastQuotaPreset: "quota_5h" }, {
-    windows: {
-      quota_5h: { state: "missing", reason: "无 5h 快照" },
-      quota_week: { state: "missing", reason: "无 Week 快照" },
+  const bothUnavailable = nextQuotaPresetState(
+    { preset: "today", lastQuotaPreset: "quota_5h" },
+    {
+      windows: {
+        quota_5h: { state: "missing", reason: "无 5h 快照" },
+        quota_week: { state: "missing", reason: "无 Week 快照" },
+      },
     },
-  });
+  );
   assert.equal(bothUnavailable.changed, true);
   assert.equal(bothUnavailable.preset, "quota_5h");
   assert.equal(bothUnavailable.reason, "");
@@ -266,31 +312,53 @@ test("quota headings show local window boundaries and tooltip intervals include 
 
   const weekStart = new Date(2026, 8, 21, 10, 0, 0);
   const weekEnd = new Date(2026, 8, 28, 10, 0, 0);
-  assert.equal(rangeLabel({ range: {
-    preset: "quota_week",
-    quotaState: "available",
-    windowStart: weekStart,
-    windowEndExclusive: weekEnd,
-  } }), `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")} 至 ${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`);
+  assert.equal(
+    rangeLabel({
+      range: {
+        preset: "quota_week",
+        quotaState: "available",
+        windowStart: weekStart,
+        windowEndExclusive: weekEnd,
+      },
+    }),
+    `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")} 至 ${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`,
+  );
 
   const partialAsOf = new Date(weekStart.getTime() + 30 * 60 * 1000);
-  setSummaryFilters({ preset: "quota_week", quotaSnapshot: { asOf: partialAsOf.toISOString() }, summary: null, report: null });
+  setSummaryFilters({
+    preset: "quota_week",
+    quotaSnapshot: { asOf: partialAsOf.toISOString() },
+    summary: null,
+    report: null,
+  });
   try {
     const startMs = weekStart.getTime();
-    const tooltip = formatTimelineTooltip({
-      key: String(startMs),
-      slotStartMs: startMs,
-      slotEndExclusiveMs: startMs + 24 * 60 * 60 * 1000,
-      name: weekStart.toISOString(),
-      total: { total: 1 },
-      channels: [],
-    }, "channel");
+    const tooltip = formatTimelineTooltip(
+      {
+        key: String(startMs),
+        slotStartMs: startMs,
+        slotEndExclusiveMs: startMs + 24 * 60 * 60 * 1000,
+        name: weekStart.toISOString(),
+        total: { total: 1 },
+        channels: [],
+      },
+      "channel",
+    );
     assert.match(tooltip, /时间槽区间 \[2026-/);
     assert.match(tooltip, /Asia|UTC/);
     assert.match(tooltip, /连续 24 小时/);
     assert.match(tooltip, /当前时间槽仅统计至/);
   } finally {
-    setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "", quotaSnapshot: null, summary: null, report: null });
+    setSummaryFilters({
+      preset: "all",
+      bucket: "day",
+      now: null,
+      startDate: "",
+      endDate: "",
+      quotaSnapshot: null,
+      summary: null,
+      report: null,
+    });
   }
 });
 
@@ -604,10 +672,30 @@ test("timelineChannelSegments follows global channel order", () => {
 
 test("natural week and month slots include future positions without changing range totals", () => {
   const events = [
-    { timestamp: "2026-05-04T12:00:00", sessionId: "mon", channel: "CLI", total: { total: 100, input: 100, cached: 0, output: 0 } },
-    { timestamp: "2026-05-05T12:00:00", sessionId: "tue", channel: "CLI", total: { total: 200, input: 200, cached: 0, output: 0 } },
-    { timestamp: "2026-05-06T12:00:00", sessionId: "future-week", channel: "CLI", total: { total: 300, input: 300, cached: 0, output: 0 } },
-    { timestamp: "2026-05-31T12:00:00", sessionId: "future-month", channel: "CLI", total: { total: 400, input: 400, cached: 0, output: 0 } },
+    {
+      timestamp: "2026-05-04T12:00:00",
+      sessionId: "mon",
+      channel: "CLI",
+      total: { total: 100, input: 100, cached: 0, output: 0 },
+    },
+    {
+      timestamp: "2026-05-05T12:00:00",
+      sessionId: "tue",
+      channel: "CLI",
+      total: { total: 200, input: 200, cached: 0, output: 0 },
+    },
+    {
+      timestamp: "2026-05-06T12:00:00",
+      sessionId: "future-week",
+      channel: "CLI",
+      total: { total: 300, input: 300, cached: 0, output: 0 },
+    },
+    {
+      timestamp: "2026-05-31T12:00:00",
+      sessionId: "future-month",
+      channel: "CLI",
+      total: { total: 400, input: 400, cached: 0, output: 0 },
+    },
   ];
   try {
     setSummaryFilters({ preset: "week", bucket: "day", now: "2026-05-05T13:00:00", startDate: "", endDate: "" });

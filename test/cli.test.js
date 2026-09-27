@@ -117,18 +117,7 @@ test("cli run starts a local usage server", async () => {
   const stateFile = path.join(homeDir, "services.json");
   const child = spawn(
     process.execPath,
-    [
-      "src/cli.js",
-      "run",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ],
+    ["src/cli.js", "run", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
     {
       cwd: path.resolve(import.meta.dirname, ".."),
       env: isolatedEnv(homeDir),
@@ -166,17 +155,10 @@ test("cli gateway starts a background usage server and returns", async () => {
   let url = "";
 
   try {
-    const output = await runCli([
-      "gateway",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    const output = await runCli(
+      ["gateway", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+      isolatedEnv(homeDir),
+    );
     const match = output.match(/http:\/\/127\.0\.0\.1:(\d+)/);
     assert.ok(match, output);
     url = match[0];
@@ -193,17 +175,10 @@ test("cli gateway uses a safer default heap budget for dashboard refreshes", asy
   const stateFile = path.join(homeDir, "services.json");
 
   try {
-    await runCli([
-      "gateway",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    await runCli(
+      ["gateway", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+      isolatedEnv(homeDir),
+    );
 
     const state = JSON.parse(await readFile(stateFile, "utf8"));
     const service = state.services[0];
@@ -222,35 +197,23 @@ test("cli restart stops existing services and starts a new gateway", async () =>
   const stateFile = path.join(homeDir, "services.json");
 
   try {
-    const startOutput = await runCli([
-      "gateway",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    const startOutput = await runCli(
+      ["gateway", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+      isolatedEnv(homeDir),
+    );
     const startMatch = startOutput.match(/(http:\/\/127\.0\.0\.1:\d+).*pid (\d+)/);
     assert.ok(startMatch, startOutput);
     const firstPid = Number(startMatch[2]);
     assert.equal(isProcessRunning(firstPid), true);
 
-    const restartOutput = await runCli([
-      "restart",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    const restartOutput = await runCli(
+      ["restart", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+      isolatedEnv(homeDir),
+    );
     assert.match(restartOutput, /Stopped 1 Agent Usage service/);
-    const restartMatch = restartOutput.match(/Agent Usage gateway restarted: (http:\/\/127\.0\.0\.1:\d+) \(pid (\d+)\)/);
+    const restartMatch = restartOutput.match(
+      /Agent Usage gateway restarted: (http:\/\/127\.0\.0\.1:\d+) \(pid (\d+)\)/,
+    );
     assert.ok(restartMatch, restartOutput);
     const restartUrl = restartMatch[1];
     const restartPid = Number(restartMatch[2]);
@@ -280,18 +243,7 @@ test("cli run recovers from a stale service lock", async () => {
 
   const child = spawn(
     process.execPath,
-    [
-      "src/cli.js",
-      "run",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ],
+    ["src/cli.js", "run", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
     {
       cwd: path.resolve(import.meta.dirname, ".."),
       env: isolatedEnv(homeDir),
@@ -316,18 +268,21 @@ test("cli dashboard starts a background service and prints the dashboard URL", a
   const stateFile = path.join(homeDir, "services.json");
 
   try {
-    const output = await runCli([
-      "dashboard",
-      "--no-open",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    const output = await runCli(
+      [
+        "dashboard",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0",
+        "--home-dir",
+        homeDir,
+        "--state-file",
+        stateFile,
+      ],
+      isolatedEnv(homeDir),
+    );
     const match = output.match(/http:\/\/127\.0\.0\.1:(\d+)/);
     assert.ok(match, output);
 
@@ -343,18 +298,10 @@ test("codex-usage -d opens the dashboard", async () => {
   const stateFile = path.join(homeDir, "services.json");
 
   try {
-    const output = await runCli([
-      "-d",
-      "--no-open",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--home-dir",
-      homeDir,
-      "--state-file",
-      stateFile,
-    ], isolatedEnv(homeDir));
+    const output = await runCli(
+      ["-d", "--no-open", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+      isolatedEnv(homeDir),
+    );
     assert.match(output, /Agent Usage dashboard/);
     assert.match(output, /http:\/\/127\.0\.0\.1:(\d+)/);
   } finally {
@@ -368,18 +315,7 @@ test("cli stop terminates all running usage services from the state file", async
   const children = [0, 1].map(() =>
     spawn(
       process.execPath,
-      [
-        "src/cli.js",
-        "run",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "0",
-        "--home-dir",
-        homeDir,
-        "--state-file",
-        stateFile,
-      ],
+      ["src/cli.js", "run", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
       {
         cwd: path.resolve(import.meta.dirname, ".."),
         env: isolatedEnv(homeDir),

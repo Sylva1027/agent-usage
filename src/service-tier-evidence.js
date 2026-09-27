@@ -3,7 +3,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const cachedLogs = new Map();
-const TIER_FIELD = /^service_tier: (None|Some\(None\)|Some\(Some\("(fast|priority|default|standard)"\)\)), collaboration_mode:/;
+const TIER_FIELD =
+  /^service_tier: (None|Some\(None\)|Some\(Some\("(fast|priority|default|standard)"\)\)), collaboration_mode:/;
 const SUBMISSION = /Submission sub=Submission \{ id: "[^"]+", op: (TurnInput|ThreadSettings) \{/;
 
 function readTierLog(filePath) {
@@ -49,8 +50,13 @@ function readTierLog(filePath) {
 }
 
 export function loadServiceTierEvidence(homes = []) {
-  const filePaths = [...new Set(homes.filter((home) => home.kind !== "project-log" && home.kind !== "zcode")
-    .map((home) => path.join(home.path, "logs_2.sqlite")))];
+  const filePaths = [
+    ...new Set(
+      homes
+        .filter((home) => home.kind !== "project-log" && home.kind !== "zcode")
+        .map((home) => path.join(home.path, "logs_2.sqlite")),
+    ),
+  ];
   const byThread = new Map();
   for (const filePath of filePaths) {
     for (const row of readTierLog(filePath)) {

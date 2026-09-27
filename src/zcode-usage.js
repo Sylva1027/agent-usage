@@ -101,9 +101,7 @@ function timestampMsFor(row) {
 }
 
 export function zcodeChannel(row) {
-  return row.query_source === "subagent" || row.task_type === "subagent_child"
-    ? "ZCode Subagent"
-    : "ZCode";
+  return row.query_source === "subagent" || row.task_type === "subagent_child" ? "ZCode Subagent" : "ZCode";
 }
 
 function sessionDirectory(sessionsById, sessionId, depth = 0) {
@@ -190,69 +188,74 @@ export async function parseZcodeDb(dbFile, source, options = {}) {
   const sessions = new Map();
   const events = [];
 
-  await streamZcodeDbEvents(dbFile, source, (event) => {
-    events.push({
-      id: event.eventId,
-      sessionId: event.sessionId,
-      timestamp: event.timestamp,
-      homeId: event.homeId,
-      homeLabel: event.homeLabel,
-      homePath: event.homePath,
-      channel: event.channel,
-      source: event.source,
-      originator: "",
-      cwd: event.project,
-      repositoryKey: event.repositoryKey,
-      repositoryPath: event.repositoryPath,
-      repositoryKind: event.repositoryKind,
-      conversationName: event.conversationName,
-      model: event.model,
-      total: event.usage,
-      detailMask: event.detailMask,
-      reconciliationGap: event.reconciliationGap,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: event.contextLevel,
-      serviceTier: event.serviceTier,
-      priceVersion: event.priceVersion,
-    });
+  await streamZcodeDbEvents(
+    dbFile,
+    source,
+    (event) => {
+      events.push({
+        id: event.eventId,
+        sessionId: event.sessionId,
+        timestamp: event.timestamp,
+        homeId: event.homeId,
+        homeLabel: event.homeLabel,
+        homePath: event.homePath,
+        channel: event.channel,
+        source: event.source,
+        originator: "",
+        cwd: event.project,
+        repositoryKey: event.repositoryKey,
+        repositoryPath: event.repositoryPath,
+        repositoryKind: event.repositoryKind,
+        conversationName: event.conversationName,
+        model: event.model,
+        total: event.usage,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: event.contextLevel,
+        serviceTier: event.serviceTier,
+        priceVersion: event.priceVersion,
+      });
 
-    const session = sessions.get(event.sessionId) || {
-      id: event.sessionId,
-      filePath: dbFile,
-      firstAt: event.timestamp,
-      lastAt: event.timestamp,
-      homeId: event.homeId,
-      homeLabel: event.homeLabel,
-      homePath: event.homePath,
-      channel: event.channel,
-      source: event.source,
-      originator: "",
-      cwd: event.project,
-      conversationName: event.conversationName,
-      model: event.model,
-      cliVersion: "",
-      modelProvider: event.modelProvider,
-      eventCount: 0,
-      total: emptyUsage(),
-    };
-    if (event.timestampMs < Date.parse(session.firstAt)) {
-      session.firstAt = event.timestamp;
-    }
-    if (event.timestampMs > Date.parse(session.lastAt)) {
-      session.lastAt = event.timestamp;
-    }
-    if (event.conversationName) {
-      session.conversationName = event.conversationName;
-    }
-    session.eventCount += 1;
-    session.model = event.model;
-    for (const field of ["total", "input", "cached", "output", "reasoning"]) {
-      session.total[field] += event.usage[field] || 0;
-    }
-    sessions.set(event.sessionId, session);
-  }, options);
+      const session = sessions.get(event.sessionId) || {
+        id: event.sessionId,
+        filePath: dbFile,
+        firstAt: event.timestamp,
+        lastAt: event.timestamp,
+        homeId: event.homeId,
+        homeLabel: event.homeLabel,
+        homePath: event.homePath,
+        channel: event.channel,
+        source: event.source,
+        originator: "",
+        cwd: event.project,
+        conversationName: event.conversationName,
+        model: event.model,
+        cliVersion: "",
+        modelProvider: event.modelProvider,
+        eventCount: 0,
+        total: emptyUsage(),
+      };
+      if (event.timestampMs < Date.parse(session.firstAt)) {
+        session.firstAt = event.timestamp;
+      }
+      if (event.timestampMs > Date.parse(session.lastAt)) {
+        session.lastAt = event.timestamp;
+      }
+      if (event.conversationName) {
+        session.conversationName = event.conversationName;
+      }
+      session.eventCount += 1;
+      session.model = event.model;
+      for (const field of ["total", "input", "cached", "output", "reasoning"]) {
+        session.total[field] += event.usage[field] || 0;
+      }
+      sessions.set(event.sessionId, session);
+    },
+    options,
+  );
 
   return {
     sessions: [...sessions.values()],

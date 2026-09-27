@@ -36,15 +36,18 @@ test("text, quoted attributes, and trusted fragments stay in their HTML contexts
 });
 
 test("pricing links require HTTP URLs and label only the exact known host", () => {
-  const html = renderPricingSourceLinksHtml([
-    "https://developers.openai.com/api/docs/pricing",
-    "https://developers.openai.com/api/docs/pricing",
-    "https://example.test/path?next=developers.openai.com",
-    "http://constructor/",
-    "javascript:alert(1)",
-    "data:text/html,<img src=x onerror=alert(1)>",
-    "https://user@example.test/path",
-  ], ["USD"]);
+  const html = renderPricingSourceLinksHtml(
+    [
+      "https://developers.openai.com/api/docs/pricing",
+      "https://developers.openai.com/api/docs/pricing",
+      "https://example.test/path?next=developers.openai.com",
+      "http://constructor/",
+      "javascript:alert(1)",
+      "data:text/html,<img src=x onerror=alert(1)>",
+      "https://user@example.test/path",
+    ],
+    ["USD"],
+  );
   assert.equal((html.match(/OpenAI 价格表/g) || []).length, 1);
   assert.match(html, />example\.test<\/a>/);
   assert.match(html, />constructor<\/a>/);
@@ -56,7 +59,12 @@ test("chart colors cannot break out of style attributes", () => {
   const color = '#123456" onmouseover="alert(1)';
   const row = { name: markup, total: { total: 10 } };
   const bars = renderBarListHtml([row], new Map([[row.name, color]]));
-  const legend = renderTimelineLegendHtml({ timeline: [{ channels: [row] }] }, "channel", new Map([[row.name, color]]), new Map());
+  const legend = renderTimelineLegendHtml(
+    { timeline: [{ channels: [row] }] },
+    "channel",
+    new Map([[row.name, color]]),
+    new Map(),
+  );
   assert.doesNotMatch(bars + legend, /onmouseover=|background: #123456/);
   assert.match(bars + legend, /var\(--green\)/);
   assert.match(bars + legend, /&lt;img/);
@@ -64,10 +72,14 @@ test("chart colors cannot break out of style attributes", () => {
 
 test("malformed comparison percentages cannot become HTML", () => {
   const html = renderComparisonHtml({
-    label: "较昨日", previousRange: { start: "2026-09-26", end: "2026-09-26" },
-    previousTotals: { total: 5 }, previousSessionCount: 1,
-    totalDelta: 5, averageDelta: 5,
-    percentChange: markup, averagePercentChange: markup,
+    label: "较昨日",
+    previousRange: { start: "2026-09-26", end: "2026-09-26" },
+    previousTotals: { total: 5 },
+    previousSessionCount: 1,
+    totalDelta: 5,
+    averageDelta: 5,
+    percentChange: markup,
+    averagePercentChange: markup,
   });
   assert.doesNotMatch(html, /<img\b/);
   assert.match(html, /无基准/);

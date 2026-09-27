@@ -55,27 +55,33 @@ test("formatUsageTooltip renders timeline channel breakdowns", () => {
 
 test("formatTimelineTooltip exposes priced model costs and never labels unpriced usage as free", async () => {
   const { formatTimelineTooltip } = await import("../public/app.js");
-  const priced = formatTimelineTooltip({
-    key: "2026-05-01",
-    total: { total: 90, input: 80, cached: 20, output: 10 },
-    costByModel: { "gpt-6-luna": { totalUsd: 0.0000001, pricedTokens: 10 } },
-    pricedTokens: 10,
-    unpricedTokens: 80,
-    serviceTierUnknownTokens: 10,
-    cacheWriteUnknownTokens: 80,
-  }, "cost");
+  const priced = formatTimelineTooltip(
+    {
+      key: "2026-05-01",
+      total: { total: 90, input: 80, cached: 20, output: 10 },
+      costByModel: { "gpt-6-luna": { totalUsd: 0.0000001, pricedTokens: 10 } },
+      pricedTokens: 10,
+      unpricedTokens: 80,
+      serviceTierUnknownTokens: 10,
+      cacheWriteUnknownTokens: 80,
+    },
+    "cost",
+  );
   assert.match(priced, /2026-05-01/);
   assert.match(priced, /费用估算/);
   assert.match(priced, /\$0\.00/);
   assert.match(priced, /未计价 80 tokens/);
   assert.match(priced, /缓存写入明细未知/);
 
-  const unpriced = formatTimelineTooltip({
-    key: "2026-05-02",
-    costByModel: { "unknown-model": { totalUsd: 0, pricedTokens: 0 } },
-    pricedTokens: 0,
-    unpricedTokens: 15,
-  }, "cost");
+  const unpriced = formatTimelineTooltip(
+    {
+      key: "2026-05-02",
+      costByModel: { "unknown-model": { totalUsd: 0, pricedTokens: 0 } },
+      pricedTokens: 0,
+      unpricedTokens: 15,
+    },
+    "cost",
+  );
   assert.match(unpriced, /无可计价费用/);
   assert.doesNotMatch(unpriced, /\$0\.00/);
 });

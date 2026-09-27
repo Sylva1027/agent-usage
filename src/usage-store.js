@@ -1,4 +1,3 @@
-
 import { mkdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,14 +10,18 @@ import {
   discoverUsageSources,
   isQuotaPreset,
   previousUsageRange,
-
   resolveDateRange,
   selectQuotaWindows,
   streamUsageFileEvents,
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 import { createRepositoryResolver } from "./repository-identity.js";
-import { createCostEstimateAccumulator, estimateCostForEvents, estimateEventCost, getPricingCatalog } from "./pricing.js";
+import {
+  createCostEstimateAccumulator,
+  estimateCostForEvents,
+  estimateEventCost,
+  getPricingCatalog,
+} from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
 import { buildTimelineRows, quotaRecordsForRange, quotaRecordValues } from "../public/timeline-utils.js";
@@ -56,7 +59,8 @@ function usageFromRow(row) {
   };
 }
 
-const COST_EVENT_COLUMNS = "timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
+const COST_EVENT_COLUMNS =
+  "timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
 
 /** @returns {import("./usage-types.js").IndexedCostEvent} */
 function costEventFromRow(row, tierEvidence) {
@@ -285,74 +289,95 @@ export class UsageStore {
       }
     };
     if (version === 1) {
-      migrate([
-        "ALTER TABLE events ADD COLUMN cwd TEXT NOT NULL DEFAULT '';",
-        "ALTER TABLE events ADD COLUMN repository_key TEXT NOT NULL DEFAULT 'unknown:cwd';",
-        "ALTER TABLE events ADD COLUMN repository_path TEXT NOT NULL DEFAULT 'Unknown cwd';",
-        "ALTER TABLE events ADD COLUMN repository_kind TEXT NOT NULL DEFAULT 'unknown';",
-        "ALTER TABLE events ADD COLUMN detail_mask INTEGER NOT NULL DEFAULT 0;",
-        "ALTER TABLE events ADD COLUMN reconciliation_gap INTEGER NOT NULL DEFAULT 0;",
-        "UPDATE events SET cwd = project;",
-        "UPDATE source_files SET size = -1, mtime_ms = -1;",
-      ].join("\n"), 2);
+      migrate(
+        [
+          "ALTER TABLE events ADD COLUMN cwd TEXT NOT NULL DEFAULT '';",
+          "ALTER TABLE events ADD COLUMN repository_key TEXT NOT NULL DEFAULT 'unknown:cwd';",
+          "ALTER TABLE events ADD COLUMN repository_path TEXT NOT NULL DEFAULT 'Unknown cwd';",
+          "ALTER TABLE events ADD COLUMN repository_kind TEXT NOT NULL DEFAULT 'unknown';",
+          "ALTER TABLE events ADD COLUMN detail_mask INTEGER NOT NULL DEFAULT 0;",
+          "ALTER TABLE events ADD COLUMN reconciliation_gap INTEGER NOT NULL DEFAULT 0;",
+          "UPDATE events SET cwd = project;",
+          "UPDATE source_files SET size = -1, mtime_ms = -1;",
+        ].join("\n"),
+        2,
+      );
       version = 2;
     }
     if (version === 2) {
-      migrate([
-        "ALTER TABLE events ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;",
-        "ALTER TABLE events ADD COLUMN cache_write_known INTEGER NOT NULL DEFAULT 0;",
-        "ALTER TABLE events ADD COLUMN request_input_tokens INTEGER NOT NULL DEFAULT 0;",
-        "ALTER TABLE events ADD COLUMN context_level TEXT NOT NULL DEFAULT 'unknown';",
-        "ALTER TABLE events ADD COLUMN service_tier TEXT NOT NULL DEFAULT 'unknown';",
-        "ALTER TABLE events ADD COLUMN price_version TEXT NOT NULL DEFAULT '';",
-        "UPDATE source_files SET size = -1, mtime_ms = -1;",
-      ].join("\n"), 3);
+      migrate(
+        [
+          "ALTER TABLE events ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;",
+          "ALTER TABLE events ADD COLUMN cache_write_known INTEGER NOT NULL DEFAULT 0;",
+          "ALTER TABLE events ADD COLUMN request_input_tokens INTEGER NOT NULL DEFAULT 0;",
+          "ALTER TABLE events ADD COLUMN context_level TEXT NOT NULL DEFAULT 'unknown';",
+          "ALTER TABLE events ADD COLUMN service_tier TEXT NOT NULL DEFAULT 'unknown';",
+          "ALTER TABLE events ADD COLUMN price_version TEXT NOT NULL DEFAULT '';",
+          "UPDATE source_files SET size = -1, mtime_ms = -1;",
+        ].join("\n"),
+        3,
+      );
       version = 3;
     }
     if (version === 3) {
-      migrate(`
+      migrate(
+        `
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE path IN (SELECT DISTINCT source_path FROM events WHERE context_level = 'unknown' AND total > 0);
-      `, 4);
+      `,
+        4,
+      );
       version = 4;
     }
     if (version === 4) {
-      migrate(`
+      migrate(
+        `
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE path IN (
           SELECT source_path FROM events WHERE session_id IN (
             SELECT session_id FROM events GROUP BY session_id HAVING COUNT(DISTINCT source_path) > 1
           )
         );
-      `, 5);
+      `,
+        5,
+      );
       version = 5;
     }
     if (version === 5) {
-      migrate(`
+      migrate(
+        `
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
           AND lower(path) LIKE '%.jsonl';
-      `, 6);
+      `,
+        6,
+      );
       version = 6;
     }
     if (version === 6) {
       // Earlier quota parsing looked for limit_id inside primary/secondary.
       // Codex writes it on rate_limits, so unchanged session files need a reindex.
-      migrate(`
+      migrate(
+        `
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
           AND lower(path) LIKE '%.jsonl';
-      `, 7);
+      `,
+        7,
+      );
       version = 7;
     }
     if (version === 7) {
       // A new rollout can inherit cumulative token counters from another
       // conversation. Recompute Codex events from their first request usage.
-      migrate(`
+      migrate(
+        `
         UPDATE source_files SET size = -1, mtime_ms = -1
         WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
           AND lower(path) LIKE '%.jsonl';
-      `, STORE_SCHEMA_VERSION);
+      `,
+        STORE_SCHEMA_VERSION,
+      );
       version = STORE_SCHEMA_VERSION;
     }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
@@ -372,7 +397,9 @@ export class UsageStore {
 
   writeMeta(key, value) {
     this.database
-      .prepare("INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .prepare(
+        "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
       .run(key, String(value));
   }
 
@@ -447,8 +474,11 @@ export class UsageStore {
       if (!earlier.count) return null;
       return {
         usage: usageFromRow(earlier),
-        detailMask: Number(earlier.input_known || 0) | Number(earlier.cached_known || 0) |
-          Number(earlier.output_known || 0) | Number(earlier.reasoning_known || 0),
+        detailMask:
+          Number(earlier.input_known || 0) |
+          Number(earlier.cached_known || 0) |
+          Number(earlier.output_known || 0) |
+          Number(earlier.reasoning_known || 0),
         cacheWrite: { tokens: Number(earlier.cache_write_tokens || 0), known: Boolean(earlier.cache_write_known) },
       };
     };
@@ -466,58 +496,64 @@ export class UsageStore {
       );
       database.prepare("DELETE FROM events WHERE source_path = ?").run(filePath);
       database.prepare("DELETE FROM rate_limit_observations WHERE source_path = ?").run(filePath);
-      await streamUsageFileEvents(filePath, source, (event) => {
-        const date = new Date(event.timestampMs);
-        insertEvent.run(
-          filePath,
-          event.timestampMs,
-          event.sessionId,
-          event.homeId,
-          event.homeLabel,
-          event.channel,
-          event.project || "Unknown cwd",
-          event.model || "Unknown model",
-          localHourKey(date),
-          localDateKey(date),
-          localDateKey(startOfLocalWeek(date)),
-          localDateKey(date).slice(0, 7),
-          event.project || "",
-          event.repositoryKey || "unknown:cwd",
-          event.repositoryPath || "Unknown cwd",
-          event.repositoryKind || "unknown",
-          Number(event.detailMask || 0),
-          Number(event.reconciliationGap || 0),
-          Number(event.cacheWriteTokens || 0),
-          event.cacheWriteKnown ? 1 : 0,
-          Number(event.requestInputTokens || 0),
-          event.contextLevel || "unknown",
-          event.serviceTier || "unknown",
-          event.priceVersion || "",
-          event.usage.total,
-          event.usage.input,
-          event.usage.cached,
-          event.usage.output,
-          event.usage.reasoning,
-        );
-      }, {
-        repositoryResolver: this.repositoryResolver,
-        previousCumulativeForSession,
-        onRateLimit: ["main", "jetbrains", "extra", "codex"].includes(source.kind)
-          ? (observation) => insertRateLimitObservation.run(
-              filePath,
-              observation.lineNumber,
-              observation.role,
-              observation.observedAtMs,
-              observation.limitId,
-              observation.limitName,
-              observation.planType,
-              observation.windowMinutes,
-              observation.resetsAtMs,
-              observation.usedPercent,
-            )
-          : undefined,
-        onWarning,
-      });
+      await streamUsageFileEvents(
+        filePath,
+        source,
+        (event) => {
+          const date = new Date(event.timestampMs);
+          insertEvent.run(
+            filePath,
+            event.timestampMs,
+            event.sessionId,
+            event.homeId,
+            event.homeLabel,
+            event.channel,
+            event.project || "Unknown cwd",
+            event.model || "Unknown model",
+            localHourKey(date),
+            localDateKey(date),
+            localDateKey(startOfLocalWeek(date)),
+            localDateKey(date).slice(0, 7),
+            event.project || "",
+            event.repositoryKey || "unknown:cwd",
+            event.repositoryPath || "Unknown cwd",
+            event.repositoryKind || "unknown",
+            Number(event.detailMask || 0),
+            Number(event.reconciliationGap || 0),
+            Number(event.cacheWriteTokens || 0),
+            event.cacheWriteKnown ? 1 : 0,
+            Number(event.requestInputTokens || 0),
+            event.contextLevel || "unknown",
+            event.serviceTier || "unknown",
+            event.priceVersion || "",
+            event.usage.total,
+            event.usage.input,
+            event.usage.cached,
+            event.usage.output,
+            event.usage.reasoning,
+          );
+        },
+        {
+          repositoryResolver: this.repositoryResolver,
+          previousCumulativeForSession,
+          onRateLimit: ["main", "jetbrains", "extra", "codex"].includes(source.kind)
+            ? (observation) =>
+                insertRateLimitObservation.run(
+                  filePath,
+                  observation.lineNumber,
+                  observation.role,
+                  observation.observedAtMs,
+                  observation.limitId,
+                  observation.limitName,
+                  observation.planType,
+                  observation.windowMinutes,
+                  observation.resetsAtMs,
+                  observation.usedPercent,
+                )
+            : undefined,
+          onWarning,
+        },
+      );
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
@@ -545,17 +581,29 @@ export class UsageStore {
         .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
         .get(file.filePath);
       const previousSessions = existing
-        ? this.database.prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?").all(file.filePath).map((row) => row.session_id)
+        ? this.database
+            .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
+            .all(file.filePath)
+            .map((row) => row.session_id)
         : [];
       const earlierFileChanged = previousSessions.some((sessionId) => changedSessions.has(sessionId));
-      if (!earlierFileChanged && existing && Number(existing.size) === file.info.size && Number(existing.mtime_ms) === file.info.mtimeMs &&
-          existing.kind === (file.source.kind || "codex") && existing.home_id === file.source.id &&
-          existing.home_label === file.source.label && existing.home_path === file.source.path) {
+      if (
+        !earlierFileChanged &&
+        existing &&
+        Number(existing.size) === file.info.size &&
+        Number(existing.mtime_ms) === file.info.mtimeMs &&
+        existing.kind === (file.source.kind || "codex") &&
+        existing.home_id === file.source.id &&
+        existing.home_label === file.source.label &&
+        existing.home_path === file.source.path
+      ) {
         continue;
       }
       try {
         await this.replaceFile(file, { onWarning: (warning) => warnings.push(warning) });
-        for (const row of this.database.prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?").all(file.filePath)) {
+        for (const row of this.database
+          .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
+          .all(file.filePath)) {
           changedSessions.add(row.session_id);
         }
         updatedFileCount += 1;
@@ -584,23 +632,26 @@ export class UsageStore {
   }
 
   quotaObservations() {
-    return this.database.prepare(`
+    return this.database
+      .prepare(`
       SELECT source_path, line_number, role, observed_at_ms, limit_id, limit_name,
         plan_type, window_minutes, resets_at_ms, used_percent
       FROM rate_limit_observations INDEXED BY rate_limit_window_lookup_idx
       ORDER BY limit_id ASC, window_minutes ASC, observed_at_ms DESC
-    `).all().map((row) => ({
-      sourcePath: row.source_path,
-      lineNumber: Number(row.line_number),
-      role: row.role,
-      observedAtMs: Number(row.observed_at_ms),
-      limitId: row.limit_id,
-      limitName: row.limit_name,
-      planType: row.plan_type,
-      windowMinutes: Number(row.window_minutes),
-      resetsAtMs: Number(row.resets_at_ms),
-      usedPercent: row.used_percent === null ? null : Number(row.used_percent),
-    }));
+    `)
+      .all()
+      .map((row) => ({
+        sourcePath: row.source_path,
+        lineNumber: Number(row.line_number),
+        role: row.role,
+        observedAtMs: Number(row.observed_at_ms),
+        limitId: row.limit_id,
+        limitName: row.limit_name,
+        planType: row.plan_type,
+        windowMinutes: Number(row.window_minutes),
+        resetsAtMs: Number(row.resets_at_ms),
+        usedPercent: row.used_percent === null ? null : Number(row.used_percent),
+      }));
   }
 
   metadata() {
@@ -622,7 +673,11 @@ export class UsageStore {
     for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
       const model = String(row.model || "").trim();
       if (!model || model.toLocaleLowerCase() === "unknown model") continue;
-      const bucket = String(row.channel || "").toLowerCase().startsWith("zcode") ? "ZCode" : "Codex";
+      const bucket = String(row.channel || "")
+        .toLowerCase()
+        .startsWith("zcode")
+        ? "ZCode"
+        : "Codex";
       harnessModels[bucket].add(model);
     }
     this.metadataCache = {
@@ -669,7 +724,16 @@ export class UsageStore {
   }
 
   groupedRange(column, range, orderBy = "total DESC", excludeHomes = []) {
-    const allowedColumns = new Set(["channel", "home_label", "model", "project", "hour_key", "day_key", "week_key", "month_key"]);
+    const allowedColumns = new Set([
+      "channel",
+      "home_label",
+      "model",
+      "project",
+      "hour_key",
+      "day_key",
+      "week_key",
+      "month_key",
+    ]);
     if (!allowedColumns.has(column)) {
       throw new Error(`不支持的聚合字段：${column}`);
     }
@@ -723,7 +787,10 @@ export class UsageStore {
    * @param {{ onEstimate?: (event: any, estimate: any) => void, excludeHomes?: string[] }} [options]
    */
   timelineRange(range, bucket, { onEstimate, excludeHomes = [] } = {}) {
-    return buildTimelineRows(this.costEventsForRange(range, excludeHomes), range, bucket, { estimateCost: estimateEventCost, onEstimate });
+    return buildTimelineRows(this.costEventsForRange(range, excludeHomes), range, bucket, {
+      estimateCost: estimateEventCost,
+      onEstimate,
+    });
   }
 
   repositoriesRange(range, excludeHomes = []) {
@@ -830,28 +897,36 @@ export class UsageStore {
     if (cached) return { ...structuredClone(cached), asOf: now.toISOString() };
     const scope = scopeFilterSql(excludeHomes);
     const bounds = this.database
-      .prepare(`SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`)
+      .prepare(
+        `SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`,
+      )
       .get(...scope.params);
-    const timestamps = bounds.minimum === null
-      ? []
-      : [
-          { timestamp: new Date(Number(bounds.minimum)).toISOString() },
-          { timestamp: new Date(Number(bounds.maximum)).toISOString() },
-        ];
+    const timestamps =
+      bounds.minimum === null
+        ? []
+        : [
+            { timestamp: new Date(Number(bounds.minimum)).toISOString() },
+            { timestamp: new Date(Number(bounds.maximum)).toISOString() },
+          ];
     const ranges = Object.fromEntries(
-      COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now, calendarZone: zone }, timestamps)]),
+      COMPARISON_PERIOD_KEYS.map((key) => [
+        key,
+        resolveDateRange({ preset: key, now, calendarZone: zone }, timestamps),
+      ]),
     );
     const models = this.periodAggregate("model", "model", now, ranges, { excludeHomes });
     const totals = models.length
-      ? Object.fromEntries(COMPARISON_PERIOD_KEYS.map((period) => {
-          const periodTotals = {};
-          for (const model of models) {
-            for (const [field, value] of Object.entries(model.periods[period])) {
-              periodTotals[field] = (periodTotals[field] || 0) + value;
+      ? Object.fromEntries(
+          COMPARISON_PERIOD_KEYS.map((period) => {
+            const periodTotals = {};
+            for (const model of models) {
+              for (const [field, value] of Object.entries(model.periods[period])) {
+                periodTotals[field] = (periodTotals[field] || 0) + value;
+              }
             }
-          }
-          return [period, periodTotals];
-        }))
+            return [period, periodTotals];
+          }),
+        )
       : this.periodAggregate(null, null, now, ranges, { excludeHomes })[0].periods;
     const value = {
       periods: COMPARISON_PERIOD_KEYS.map((key) => ({
@@ -861,7 +936,10 @@ export class UsageStore {
       })),
       totals,
       models,
-      repositories: this.periodAggregate("repository_key", "repository_path", now, ranges, { includeKind: true, excludeHomes }),
+      repositories: this.periodAggregate("repository_key", "repository_path", now, ranges, {
+        includeKind: true,
+        excludeHomes,
+      }),
     };
     this.periodComparisonCache.clear();
     this.periodComparisonCache.set(cacheKey, value);
@@ -883,8 +961,13 @@ export class UsageStore {
       if (!slot) {
         slot = {
           key,
-          total: 0, input: 0, cached: 0, output: 0, reasoning: 0,
-          sessions: new Set(), models: new Set(),
+          total: 0,
+          input: 0,
+          cached: 0,
+          output: 0,
+          reasoning: 0,
+          sessions: new Set(),
+          models: new Set(),
           cost: { total: 0, input: 0, cached: 0, output: 0 },
         };
         periods[unit].set(key, slot);
@@ -912,7 +995,12 @@ export class UsageStore {
         cacheWriteKnown: Boolean(row.cache_write_known),
         requestInputTokens: Number(row.request_input_tokens || 0),
         contextLevel: row.context_level,
-        serviceTier: this.serviceTierEvidence?.resolve(String(row.session_id), Number(row.timestamp_ms), String(row.service_tier)) || String(row.service_tier),
+        serviceTier:
+          this.serviceTierEvidence?.resolve(
+            String(row.session_id),
+            Number(row.timestamp_ms),
+            String(row.service_tier),
+          ) || String(row.service_tier),
         total: {
           total: Number(row.total || 0),
           input: Number(row.input || 0),
@@ -925,9 +1013,22 @@ export class UsageStore {
       const scale = estimate.currency === "CNY" ? 1 : usdToCnyRate;
       const date = zone === "utc" ? new Date(Number(row.timestamp_ms)) : null;
       const utcDay = date?.toISOString().slice(0, 10);
-      const utcWeek = date ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() || 7) - 1))).toISOString().slice(0, 10) : null;
+      const utcWeek = date
+        ? new Date(
+            Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() || 7) - 1)),
+          )
+            .toISOString()
+            .slice(0, 10)
+        : null;
       for (const unit of ["day", "week", "month"]) {
-        const key = zone === "utc" ? unit === "day" ? utcDay : unit === "week" ? utcWeek : utcDay.slice(0, 7) : String(row[`${unit}_key`] || "");
+        const key =
+          zone === "utc"
+            ? unit === "day"
+              ? utcDay
+              : unit === "week"
+                ? utcWeek
+                : utcDay.slice(0, 7)
+            : String(row[`${unit}_key`] || "");
         const slot = ensureSlot(unit, key);
         slot.total += Number(row.total || 0);
         slot.input += Number(row.input || 0);
@@ -1003,7 +1104,9 @@ export class UsageStore {
     const quota = selectQuotaWindows(this.quotaObservations(), asOf);
     const scope = scopeFilterSql(excludeHomes);
     const bounds = this.database
-      .prepare(`SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`)
+      .prepare(
+        `SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`,
+      )
       .get(...scope.params);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {
@@ -1018,17 +1121,19 @@ export class UsageStore {
     const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
     const previousRange = quotaPreset ? null : previousUsageRange(range);
     const previousAggregate = previousRange ? this.aggregateRange(previousRange, excludeHomes) : null;
-    const comparison = quotaPreset ? null : usageComparisonFromAggregates({
-      range,
-      currentTotals: totals,
-      previousTotals: usageFromRow(previousAggregate),
-      previousEventCount: Number(previousAggregate?.event_count || 0),
-      previousSessionCount: Number(previousAggregate?.session_count || 0),
-      now: asOf,
-    });
-    const bucket = range.bucket || (quotaPreset
-      ? range.preset === "quota_5h" ? "quota_30m" : "quota_24h"
-      : filters.bucket || "day");
+    const comparison = quotaPreset
+      ? null
+      : usageComparisonFromAggregates({
+          range,
+          currentTotals: totals,
+          previousTotals: usageFromRow(previousAggregate),
+          previousEventCount: Number(previousAggregate?.event_count || 0),
+          previousSessionCount: Number(previousAggregate?.session_count || 0),
+          now: asOf,
+        });
+    const bucket =
+      range.bucket ||
+      (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
     let timeline = [];
     let timelineError = null;
     let costEstimate;
@@ -1053,28 +1158,44 @@ export class UsageStore {
         bucket,
         calendarZone: range.calendarZone || "local",
         rolling: Boolean(range.rolling),
-        ...(quotaPreset ? {
-          quotaWindow: true, recentValue: range.recentValue, quotaPreset: range.quotaPreset,
-          asOf: range.asOf.toISOString(),
-          windowStart: range.start.toISOString(),
-          windowEndExclusive: range.windowEndExclusive.toISOString(),
-          observedAt: range.observedAt?.toISOString() || null,
-          usedPercent: range.usedPercent,
-          percentStale: range.percentStale,
-          limitId: range.limitId,
-          quotaState: range.quotaState,
-          quotaReason: range.quotaReason,
-        } : {}),
+        ...(quotaPreset
+          ? {
+              quotaWindow: true,
+              recentValue: range.recentValue,
+              quotaPreset: range.quotaPreset,
+              asOf: range.asOf.toISOString(),
+              windowStart: range.start.toISOString(),
+              windowEndExclusive: range.windowEndExclusive.toISOString(),
+              observedAt: range.observedAt?.toISOString() || null,
+              usedPercent: range.usedPercent,
+              percentStale: range.percentStale,
+              limitId: range.limitId,
+              quotaState: range.quotaState,
+              quotaReason: range.quotaReason,
+            }
+          : {}),
       },
       totals,
       comparison,
       costEstimate,
-      records: range.preset === "all" ? {} : quotaPreset
-        ? quotaRecordsForRange(range, quota, this.quotaObservations(), (window) => {
-          const row = window === range ? aggregate : this.aggregateRange(window, excludeHomes);
-          const cost = window === range ? costEstimate : this.costEstimateRange(window, excludeHomes);
-          return { eventCount: Number(row.event_count), values: quotaRecordValues(usageFromRow(row), cost, Number(row.session_count), getPricingCatalog().usdToCnyRate) };
-        }) : this.recordsForRange(range, excludeHomes),
+      records:
+        range.preset === "all"
+          ? {}
+          : quotaPreset
+            ? quotaRecordsForRange(range, quota, this.quotaObservations(), (window) => {
+                const row = window === range ? aggregate : this.aggregateRange(window, excludeHomes);
+                const cost = window === range ? costEstimate : this.costEstimateRange(window, excludeHomes);
+                return {
+                  eventCount: Number(row.event_count),
+                  values: quotaRecordValues(
+                    usageFromRow(row),
+                    cost,
+                    Number(row.session_count),
+                    getPricingCatalog().usdToCnyRate,
+                  ),
+                };
+              })
+            : this.recordsForRange(range, excludeHomes),
       eventCount: Number(aggregate.event_count || 0),
       sessionCount: Number(aggregate.session_count || 0),
       homeCount: Number(aggregate.home_count || 0),

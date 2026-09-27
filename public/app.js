@@ -1,4 +1,12 @@
-import { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } from "./timeline-utils.js";
+import {
+  buildTimelineRows,
+  MAX_TIMELINE_SLOTS,
+  RECENT_SELECTIONS,
+  resolveNamedRecentRange,
+  hasSelectedCodexSource,
+  quotaRecordsForRange,
+  quotaRecordValues,
+} from "./timeline-utils.js";
 import {
   canonicalRecentValue,
   displayRecentValue,
@@ -195,9 +203,10 @@ function setCurrencyMetric(selector, usd, cny = null) {
   const total = usdValue + cnyValue / rate;
   const formatted = formatCostAmount(total, "USD");
   element.textContent = formatted;
-  element.title = hasUsd && hasCny
-    ? `美元 ${formatPreciseCost(usdValue, "USD")} + 人民币 ${formatPreciseCost(cnyValue, "CNY")}（按汇率 ${rate} 折算）`
-    : formatted;
+  element.title =
+    hasUsd && hasCny
+      ? `美元 ${formatPreciseCost(usdValue, "USD")} + 人民币 ${formatPreciseCost(cnyValue, "CNY")}（按汇率 ${rate} 折算）`
+      : formatted;
   // Keep monetary values at the same typographic scale as the token row.
   // Very long amounts retain the full value in their existing title tooltip.
   element.style.fontSize = "";
@@ -207,8 +216,8 @@ export function formatTokenMillions(value) {
   const amount = Number(value || 0);
   const finite = Number.isFinite(amount) ? amount : 0;
   const magnitude = Math.abs(finite);
-  const [divisor, unit] = magnitude >= 1_000_000_000_000 ? [1e12, "T"]
-    : magnitude >= 1_000_000_000 ? [1e9, "B"] : [1e6, "M"];
+  const [divisor, unit] =
+    magnitude >= 1_000_000_000_000 ? [1e12, "T"] : magnitude >= 1_000_000_000 ? [1e9, "B"] : [1e6, "M"];
   return `${millionTokenFormatter.format(finite / divisor)}${unit}`;
 }
 
@@ -320,18 +329,25 @@ function timelineAccessibleLabel(row, mode) {
   const quotaInfo = quotaTimelineSlotInfo(row);
   const english = getLocale() === "en-US";
   const key = quotaInfo
-    ? english ? `${quotaInfo.title}. Interval ${quotaInfo.interval}. ${quotaInfo.note}` : `${quotaInfo.title}，时间槽区间 ${quotaInfo.interval}。${quotaInfo.note}`
+    ? english
+      ? `${quotaInfo.title}. Interval ${quotaInfo.interval}. ${quotaInfo.note}`
+      : `${quotaInfo.title}，时间槽区间 ${quotaInfo.interval}。${quotaInfo.note}`
     : String(row?.key || row?.name || localizeText("未知时间"));
   if (mode === "cost") {
     const pair = costPairFromSlots(row?.costByModel);
-    const amount = Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : localizeText("无可计价费用");
-    if (english) return `${key}. Estimated cost ${amount}; ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens use fallback rates; ${formatTokens(row?.unpricedTokens || 0)} tokens are unpriced.`;
+    const amount =
+      Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : localizeText("无可计价费用");
+    if (english)
+      return `${key}. Estimated cost ${amount}; ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens use fallback rates; ${formatTokens(row?.unpricedTokens || 0)} tokens are unpriced.`;
     return `${key}，费用估算 ${amount}，其中 ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens 按最低费率估算，未计价 ${formatTokens(row?.unpricedTokens || 0)} tokens`;
   }
-  const details = mode === "model" ? (row?.models || []) : (row?.channels || []);
+  const details = mode === "model" ? row?.models || [] : row?.channels || [];
   const kind = mode === "model" ? "模型" : "渠道";
-  const breakdown = details.map((item) => `${item.name} ${formatTokens(usageValue(item.total, "total"))} tokens`).join(english ? ", " : "，");
-  if (english) return `${key}. Total ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `; ${mode === "model" ? "models" : "sources"}: ${breakdown}` : ""}.`;
+  const breakdown = details
+    .map((item) => `${item.name} ${formatTokens(usageValue(item.total, "total"))} tokens`)
+    .join(english ? ", " : "，");
+  if (english)
+    return `${key}. Total ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `; ${mode === "model" ? "models" : "sources"}: ${breakdown}` : ""}.`;
   return `${key}，总计 ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `，${kind}：${breakdown}` : ""}`;
 }
 
@@ -345,7 +361,8 @@ function showTimelineTooltip(row, anchor) {
   tooltip.hidden = false;
   positionUsageTooltip(anchor);
   const chart = document.querySelector("#timelineChart");
-  if (chart && document.activeElement === chart) chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode)));
+  if (chart && document.activeElement === chart)
+    chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode)));
 }
 
 function bindUsageRows(container, selector, rows) {
@@ -355,16 +372,48 @@ function bindUsageRows(container, selector, rows) {
 }
 
 const CATEGORY_PALETTES = {
-  light: ["#2563eb", "#c2410c", "#7c3aed", "#0f766e", "#be185d", "#4d7c0f",
-    "#6b7280", "#b91c1c", "#0e7490", "#4338ca", "#15803d", "#9f1239"],
-  dark: ["#60a5fa", "#fb923c", "#c084fc", "#2dd4bf", "#f472b6", "#a3e635",
-    "#cbd5e1", "#f87171", "#22d3ee", "#818cf8", "#4ade80", "#fda4af"],
+  light: [
+    "#2563eb",
+    "#c2410c",
+    "#7c3aed",
+    "#0f766e",
+    "#be185d",
+    "#4d7c0f",
+    "#6b7280",
+    "#b91c1c",
+    "#0e7490",
+    "#4338ca",
+    "#15803d",
+    "#9f1239",
+  ],
+  dark: [
+    "#60a5fa",
+    "#fb923c",
+    "#c084fc",
+    "#2dd4bf",
+    "#f472b6",
+    "#a3e635",
+    "#cbd5e1",
+    "#f87171",
+    "#22d3ee",
+    "#818cf8",
+    "#4ade80",
+    "#fda4af",
+  ],
 };
 
 const MODEL_COLOR_ORDER = [
-  "gpt-5.6-luna", "gpt-6-luna", "gpt-5.6-sol", "gpt-6-sol",
-  "gpt-6-astra", "codex-auto-review", "Unknown model", "gpt-5.6-terra",
-  "gpt-5.5", "gpt-5.6", "gpt-daybreak-blue-latest",
+  "gpt-5.6-luna",
+  "gpt-6-luna",
+  "gpt-5.6-sol",
+  "gpt-6-sol",
+  "gpt-6-astra",
+  "codex-auto-review",
+  "Unknown model",
+  "gpt-5.6-terra",
+  "gpt-5.5",
+  "gpt-5.6",
+  "gpt-daybreak-blue-latest",
 ];
 const MODEL_COLOR_SLOTS = new Map(MODEL_COLOR_ORDER.map((name, index) => [name, index]));
 
@@ -379,7 +428,9 @@ function categoricalColors(rows = []) {
   const dark = document.documentElement.dataset?.theme === "dark";
   const totals = new Map();
   for (const row of rows) totals.set(row.name, Math.max(totals.get(row.name) || 0, usageValue(row.total, "total")));
-  const names = [...totals.keys()].sort((left, right) => totals.get(right) - totals.get(left) || left.localeCompare(right));
+  const names = [...totals.keys()].sort(
+    (left, right) => totals.get(right) - totals.get(left) || left.localeCompare(right),
+  );
   return new Map(names.map((name, index) => [name, categoryColor(index, dark)]));
 }
 
@@ -410,9 +461,13 @@ function quotaWindowAvailability(quotaSnapshot, preset) {
   if (window?.state === "available") return { available: true, reason: "" };
   return {
     available: false,
-    reason: (window?.reason ? localizeQuotaReason(window) : "") || (quotaSnapshot
-      ? QUOTA_UI_COPY.unavailable
-      : state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.missingSnapshot),
+    reason:
+      (window?.reason ? localizeQuotaReason(window) : "") ||
+      (quotaSnapshot
+        ? QUOTA_UI_COPY.unavailable
+        : state.report
+          ? QUOTA_UI_COPY.staticMissingSnapshot
+          : QUOTA_UI_COPY.missingSnapshot),
   };
 }
 
@@ -429,7 +484,8 @@ function formatLocalDateTimeWithZone(value) {
   const absoluteOffset = Math.abs(offsetMinutes);
   const offset = `UTC${sign}${String(Math.floor(absoluteOffset / 60)).padStart(2, "0")}:${String(absoluteOffset % 60).padStart(2, "0")}`;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "本地时区";
-  const timestamp = getLocale() === "en-US" ? formatLocalDateTime(date) : `${dateKey(date)} ${formatLocalClock(date)}:${seconds}`;
+  const timestamp =
+    getLocale() === "en-US" ? formatLocalDateTime(date) : `${dateKey(date)} ${formatLocalClock(date)}:${seconds}`;
   return `${timestamp} (${timeZone}, ${offset})`;
 }
 
@@ -444,9 +500,10 @@ function quotaRangeAccessibleLabel(range) {
   const { start, end } = quotaWindowBounds(range);
   const mode = range?.quotaPreset || range?.preset;
   const name = range?.recentValue || QUOTA_MODE_LABELS[mode] || "限额窗口";
-  const interval = start && end
-    ? `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`
-    : localizeText("限额窗口边界不可用");
+  const interval =
+    start && end
+      ? `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`
+      : localizeText("限额窗口边界不可用");
   if (getLocale() === "en-US") {
     const asOf = range?.asOf ? `; data as of ${formatLocalDateTimeWithZone(range.asOf)}` : "";
     const weekNote = mode === "quota_week" ? `; ${localizeText(QUOTA_UI_COPY.weekSlot)}` : "";
@@ -466,11 +523,20 @@ function quotaTimelineSlotInfo(row) {
   const end = new Date(endMs);
   const interval = `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`;
   const title = `${formatLocalDateTimeWithZone(start)} – ${formatLocalDateTimeWithZone(end)}`;
-  const baseNote = localizeText(state.preset === "quota_week" || (state.preset === "recent" && state.recentValue === "上周") ? QUOTA_UI_COPY.weekSlot : QUOTA_UI_COPY.halfHourSlot);
-  const asOf = asDate(state.summary?.range?.asOf || state.report?.asOf || state.report?.quota?.asOf || state.quotaSnapshot?.asOf);
-  const partialNote = asOf && asOf.getTime() > startMs && asOf.getTime() < endMs
-    ? getLocale() === "en-US" ? `${localizeText(QUOTA_UI_COPY.partialSlot)} ${formatLocalDateTimeWithZone(asOf)}.` : `${QUOTA_UI_COPY.partialSlot} ${formatLocalDateTimeWithZone(asOf)}。`
-    : "";
+  const baseNote = localizeText(
+    state.preset === "quota_week" || (state.preset === "recent" && state.recentValue === "上周")
+      ? QUOTA_UI_COPY.weekSlot
+      : QUOTA_UI_COPY.halfHourSlot,
+  );
+  const asOf = asDate(
+    state.summary?.range?.asOf || state.report?.asOf || state.report?.quota?.asOf || state.quotaSnapshot?.asOf,
+  );
+  const partialNote =
+    asOf && asOf.getTime() > startMs && asOf.getTime() < endMs
+      ? getLocale() === "en-US"
+        ? `${localizeText(QUOTA_UI_COPY.partialSlot)} ${formatLocalDateTimeWithZone(asOf)}.`
+        : `${QUOTA_UI_COPY.partialSlot} ${formatLocalDateTimeWithZone(asOf)}。`
+      : "";
   const note = [baseNote, partialNote].filter(Boolean).join(" ");
   return { title, interval, note };
 }
@@ -483,11 +549,15 @@ function asDate(value) {
 }
 
 function startOfDay(date, zone = "local") {
-  return zone === "utc" ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())) : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return zone === "utc"
+    ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function endOfDay(date, zone = "local") {
-  return zone === "utc" ? new Date(startOfDay(date, zone).getTime() + MS_PER_DAY - 1) : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  return zone === "utc"
+    ? new Date(startOfDay(date, zone).getTime() + MS_PER_DAY - 1)
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 }
 
 function daysInMonth(year, monthIndex) {
@@ -503,12 +573,33 @@ function subtractMonthsClamped(date, months, zone = "local") {
   const targetYear = utc ? target.getUTCFullYear() : target.getFullYear();
   const targetMonth = utc ? target.getUTCMonth() : target.getMonth();
   const clamped = Math.min(day, daysInMonth(targetYear, targetMonth));
-  return utc ? new Date(Date.UTC(targetYear, targetMonth, clamped, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()))
-    : new Date(targetYear, targetMonth, clamped, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  return utc
+    ? new Date(
+        Date.UTC(
+          targetYear,
+          targetMonth,
+          clamped,
+          date.getUTCHours(),
+          date.getUTCMinutes(),
+          date.getUTCSeconds(),
+          date.getUTCMilliseconds(),
+        ),
+      )
+    : new Date(
+        targetYear,
+        targetMonth,
+        clamped,
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+        date.getMilliseconds(),
+      );
 }
 
 export function normalizeRecentValue(value) {
-  const normalized = String(value || "").trim().replace(/\s+/g, "");
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "");
   return canonicalRecentValue(value) || normalized;
 }
 
@@ -590,7 +681,8 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
         end: null,
         asOf: quota?.asOf ? new Date(quota.asOf) : now,
         quotaState: quotaWindow?.state || "missing",
-        quotaReason: quotaWindow?.reason || (state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.unavailable),
+        quotaReason:
+          quotaWindow?.reason || (state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.unavailable),
         preset: state.preset,
         bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
         calendarZone: zone,
@@ -636,13 +728,22 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
     return { start: startOfWeek(now, zone), end: endOfDay(now, zone), preset: state.preset, calendarZone: zone };
   }
   if (state.preset === "month") {
-    return { start: zone === "utc" ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) : new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(now, zone), preset: state.preset, calendarZone: zone };
+    return {
+      start:
+        zone === "utc"
+          ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+          : new Date(now.getFullYear(), now.getMonth(), 1),
+      end: endOfDay(now, zone),
+      preset: state.preset,
+      calendarZone: zone,
+    };
   }
   if (state.preset === "custom") {
     return {
       start: state.startDate ? new Date(`${state.startDate}T00:00:00${zone === "utc" ? "Z" : ""}`) : null,
       end: state.endDate ? new Date(`${state.endDate}T23:59:59.999${zone === "utc" ? "Z" : ""}`) : null,
-      preset: state.preset, calendarZone: zone,
+      preset: state.preset,
+      calendarZone: zone,
     };
   }
   if (state.preset === "recent") {
@@ -679,9 +780,7 @@ export function nextPresetState(currentState = {}, preset = "today") {
 export function nextQuotaPresetState(currentState = {}) {
   const currentPreset = currentState.preset || "today";
   const preferred = QUOTA_PRESETS.includes(currentState.lastQuotaPreset) ? currentState.lastQuotaPreset : "quota_5h";
-  const target = isQuotaPreset(currentPreset)
-    ? currentPreset === "quota_5h" ? "quota_week" : "quota_5h"
-    : preferred;
+  const target = isQuotaPreset(currentPreset) ? (currentPreset === "quota_5h" ? "quota_week" : "quota_5h") : preferred;
   return {
     changed: true,
     preset: target,
@@ -694,7 +793,7 @@ export function nextQuotaPresetState(currentState = {}) {
 export function nextRecentState(_currentState = {}, value = "") {
   const recentValue = normalizeRecentValue(value);
   const parsed = parseRecentValue(recentValue);
-  const namedBucket = { "上一个5h": "quota_30m", "上周": "quota_24h", "上个月": "day", "今年": "month" }[recentValue];
+  const namedBucket = { 上一个5h: "quota_30m", 上周: "quota_24h", 上个月: "day", 今年: "month" }[recentValue];
   return { preset: "recent", recentValue, bucket: namedBucket || (parsed?.days === 1 ? "hour" : "day") };
 }
 
@@ -796,7 +895,13 @@ function groupRepositoryEvents(events) {
 }
 
 function previousPeriodRange(range) {
-  if (!range.start || !range.end || state.preset === "all" || state.preset === "quota_5h" || state.preset === "quota_week") {
+  if (
+    !range.start ||
+    !range.end ||
+    state.preset === "all" ||
+    state.preset === "quota_5h" ||
+    state.preset === "quota_week"
+  ) {
     return null;
   }
   const zone = range.calendarZone === "utc" ? "utc" : "local";
@@ -817,7 +922,10 @@ function previousPeriodRange(range) {
   if (state.preset === "month") {
     const currentMonthStart = asDate(range.start);
     return {
-      start: zone === "utc" ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1)) : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
+      start:
+        zone === "utc"
+          ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1))
+          : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
       end: new Date(currentMonthStart.getTime() - 1),
     };
   }
@@ -861,13 +969,15 @@ function averageTrend(currentTotals, previousTotals, range, previousRange, now) 
 }
 
 function comparisonLabel() {
-  return {
-    today: "较昨日",
-    week: "较上周",
-    month: "较上月",
-    custom: "较上一等长周期",
-    recent: "较上一等长周期",
-  }[state.preset] || "暂无对比";
+  return (
+    {
+      today: "较昨日",
+      week: "较上周",
+      month: "较上月",
+      custom: "较上一等长周期",
+      recent: "较上一等长周期",
+    }[state.preset] || "暂无对比"
+  );
 }
 
 function percentChange(current, previous) {
@@ -948,21 +1058,33 @@ export function summarize(report) {
     timelineError = error.message;
   }
   const channels = groupEvents(events, (event) => event.channel).sort((a, b) => b.total.total - a.total.total);
-  const projects = groupEvents(events, (event) => event.cwd || "Unknown cwd").sort((a, b) => b.total.total - a.total.total);
+  const projects = groupEvents(events, (event) => event.cwd || "Unknown cwd").sort(
+    (a, b) => b.total.total - a.total.total,
+  );
   const repositories = groupRepositoryEvents(events);
-  const models = groupEvents(events, (event) => event.model || "Unknown model").sort((a, b) => b.total.total - a.total.total);
+  const models = groupEvents(events, (event) => event.model || "Unknown model").sort(
+    (a, b) => b.total.total - a.total.total,
+  );
   return {
     range,
     totals,
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
-    records: quotaPreset ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
-      const rows = sourceEvents.filter(event => new Date(event.timestamp) >= window.start && new Date(event.timestamp) <= window.end);
-      return { eventCount: rows.length, values: quotaRecordValues(
-        rows.reduce((sum, event) => addUsage(sum, event.total), emptyUsage()),
-        summarizeEmbeddedCostEstimates(rows, report.pricing), new Set(rows.map(event => event.sessionId)).size,
-        report.pricing?.usdToCnyRate,
-      ) };
-    }) : {},
+    records: quotaPreset
+      ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
+          const rows = sourceEvents.filter(
+            (event) => new Date(event.timestamp) >= window.start && new Date(event.timestamp) <= window.end,
+          );
+          return {
+            eventCount: rows.length,
+            values: quotaRecordValues(
+              rows.reduce((sum, event) => addUsage(sum, event.total), emptyUsage()),
+              summarizeEmbeddedCostEstimates(rows, report.pricing),
+              new Set(rows.map((event) => event.sessionId)).size,
+              report.pricing?.usdToCnyRate,
+            ),
+          };
+        })
+      : {},
     comparison: quotaPreset ? null : summarizeComparison(sourceEvents, range, totals),
     quota: report.quota || null,
     timeline,
@@ -1012,9 +1134,14 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
   for (const event of events) {
     const estimate = event.costEstimate;
     for (const field of [
-      "pricedTokens", "unpricedTokens", "minimumEstimatedTokens",
-      "serviceTierUnknownTokens", "contextUnknownTokens", "cacheWriteUnknownTokens",
-    ]) totals[field] += Number(estimate[field] || 0);
+      "pricedTokens",
+      "unpricedTokens",
+      "minimumEstimatedTokens",
+      "serviceTierUnknownTokens",
+      "contextUnknownTokens",
+      "cacheWriteUnknownTokens",
+    ])
+      totals[field] += Number(estimate[field] || 0);
     const bucket = byCurrency[estimate.currency === "CNY" ? "CNY" : "USD"];
     for (const field of ["inputUsd", "cachedInputUsd", "cacheWriteInputUsd", "outputUsd", "totalUsd"]) {
       bucket[field] += Number(estimate[field] || 0);
@@ -1086,7 +1213,14 @@ function renderCostMetrics(summary) {
   const note = $("#costEstimateNote");
   if (!estimate) {
     $("#costEstimateDate").textContent = "";
-    for (const selector of ["#totalCost", "#inputCost", "#cachedInputCost", "#outputCost", "#cacheHitRate", "#priceModelCount"]) {
+    for (const selector of [
+      "#totalCost",
+      "#inputCost",
+      "#cachedInputCost",
+      "#outputCost",
+      "#cacheHitRate",
+      "#priceModelCount",
+    ]) {
       $(selector).textContent = "—";
       $(selector).removeAttribute("title");
     }
@@ -1099,7 +1233,8 @@ function renderCostMetrics(summary) {
   setCurrencyMetric("#inputCost", estimate.inputUsd, estimate.inputCny);
   setCurrencyMetric("#cachedInputCost", estimate.cachedInputUsd, estimate.cachedInputCny);
   setCurrencyMetric("#outputCost", estimate.outputUsd, estimate.outputCny);
-  $("#cacheHitRate").textContent = estimate.cacheHitRate === null ? "—" : `${(estimate.cacheHitRate * 100).toFixed(2)}%`;
+  $("#cacheHitRate").textContent =
+    estimate.cacheHitRate === null ? "—" : `${(estimate.cacheHitRate * 100).toFixed(2)}%`;
   $("#cacheHitRate").title = $("#cacheHitRate").textContent;
   setMetric("#priceModelCount", estimate.modelCount);
 
@@ -1107,19 +1242,33 @@ function renderCostMetrics(summary) {
   const checkedAt = estimate.priceCheckedAt ? `价格基准 ${estimate.priceCheckedAt}` : "当前价格基准";
   const totalTokens = formatTokens(summary.totals.total);
   const caveats = [];
-  if (estimate.serviceTierUnknownRecords > 0) caveats.push(`${formatTokens(estimate.serviceTierUnknownRecords)} 条记录的服务等级未知，按 Standard 情景估算`);
-  if (estimate.contextUnknownRecords > 0) caveats.push(`${formatTokens(estimate.contextUnknownRecords)} 条记录无法可靠对应单次请求输入，按可用的较低上下文费率估算`);
-  if (estimate.cacheWriteUnknownRecords > 0) caveats.push(`${formatTokens(estimate.cacheWriteUnknownTokens)} 个输入 tokens 缺少缓存写入明细，相关未知部分按最低费率估算`);
-  if (estimate.minimumEstimatedTokens > 0) caveats.push(`${formatTokens(estimate.minimumEstimatedTokens)} / ${totalTokens} tokens 使用最低费率估算`);
-  if (estimate.minimumRateModels?.length) caveats.push(`模型 ${estimate.minimumRateModels.join("、")} 缺少专用单价，按价目表最低费率估算`);
+  if (estimate.serviceTierUnknownRecords > 0)
+    caveats.push(`${formatTokens(estimate.serviceTierUnknownRecords)} 条记录的服务等级未知，按 Standard 情景估算`);
+  if (estimate.contextUnknownRecords > 0)
+    caveats.push(
+      `${formatTokens(estimate.contextUnknownRecords)} 条记录无法可靠对应单次请求输入，按可用的较低上下文费率估算`,
+    );
+  if (estimate.cacheWriteUnknownRecords > 0)
+    caveats.push(
+      `${formatTokens(estimate.cacheWriteUnknownTokens)} 个输入 tokens 缺少缓存写入明细，相关未知部分按最低费率估算`,
+    );
+  if (estimate.minimumEstimatedTokens > 0)
+    caveats.push(`${formatTokens(estimate.minimumEstimatedTokens)} / ${totalTokens} tokens 使用最低费率估算`);
+  if (estimate.minimumRateModels?.length)
+    caveats.push(`模型 ${estimate.minimumRateModels.join("、")} 缺少专用单价，按价目表最低费率估算`);
   if (estimate.unpricedTokens > 0) caveats.push(`仍有 ${formatTokens(estimate.unpricedTokens)} tokens 无法估算`);
-  const sourceLinks = renderPricingSourceLinksHtml([estimate.priceSource, ...(estimate.priceSources || [])], estimate.currencies || []);
+  const sourceLinks = renderPricingSourceLinksHtml(
+    [estimate.priceSource, ...(estimate.priceSources || [])],
+    estimate.currencies || [],
+  );
   note.innerHTML = `
     <p>按当前价目表估算 · ${escapeHtml(checkedAt)} · ${sourceLinks || "默认价格来源"}</p>
     <p>金额按已知明细及最低费率情景折算 API 等价费用，不代表实际账单，也不含工具调用等非 token 费用。</p>
-    ${caveats.length
-      ? `<ul aria-label="估算限制">${caveats.map((caveat) => `<li>${escapeHtml(caveat)}。</li>`).join("")}</ul>`
-      : "<p>缓存读取与写入按各自官方费率计入总额。</p>"}
+    ${
+      caveats.length
+        ? `<ul aria-label="估算限制">${caveats.map((caveat) => `<li>${escapeHtml(caveat)}。</li>`).join("")}</ul>`
+        : "<p>缓存读取与写入按各自官方费率计入总额。</p>"
+    }
   `;
   note.title = estimate.unpricedModels?.length
     ? `仍无法计价的模型：${estimate.unpricedModels.join("、")}`
@@ -1142,10 +1291,14 @@ export function renderPricingSourceLinksHtml(values = [], currencies = []) {
     if (!url || (!currencies.includes("USD") && url.hostname === "developers.openai.com")) continue;
     sources.set(url.href, url);
   }
-  return [...sources.values()].map((url) => {
-    const label = Object.hasOwn(PRICING_SOURCE_LABELS, url.hostname) ? PRICING_SOURCE_LABELS[url.hostname] : url.hostname;
-    return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
-  }).join("、");
+  return [...sources.values()]
+    .map((url) => {
+      const label = Object.hasOwn(PRICING_SOURCE_LABELS, url.hostname)
+        ? PRICING_SOURCE_LABELS[url.hostname]
+        : url.hostname;
+      return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+    })
+    .join("、");
 }
 
 // New Record：所选范围内的纪录期点亮对应指标卡右上角的 New 小字。
@@ -1166,10 +1319,18 @@ const RECORD_CARD_METRICS = Object.freeze({
 
 function renderRecordBadges(records = {}) {
   const englishRecordNames = {
-    totalTokens: "Total tokens", inputTokens: "Input tokens", cachedTokens: "Cache hit tokens",
-    outputTokens: "Output tokens", reasoningTokens: "Reasoning tokens", sessionCount: "Sessions",
-    totalCost: "Estimated cost", inputCost: "Cache miss cost", cachedCost: "Cache hit cost",
-    outputCost: "Output cost", cacheHitRate: "Cache hit rate", modelCount: "Model count",
+    totalTokens: "Total tokens",
+    inputTokens: "Input tokens",
+    cachedTokens: "Cache hit tokens",
+    outputTokens: "Output tokens",
+    reasoningTokens: "Reasoning tokens",
+    sessionCount: "Sessions",
+    totalCost: "Estimated cost",
+    inputCost: "Cache miss cost",
+    cachedCost: "Cache hit cost",
+    outputCost: "Output cost",
+    cacheHitRate: "Cache hit rate",
+    modelCount: "Model count",
   };
   for (const [metric, selector] of Object.entries(RECORD_CARD_METRICS)) {
     const valueNode = $(selector);
@@ -1216,9 +1377,7 @@ export function rangeLabel(summary) {
     const shortEnd = dateKey(end).slice(5);
     const startLabel = `${shortStart} ${formatLocalClock(start)}`;
     const endLabel = `${shortEnd} ${formatLocalClock(end)}`;
-    return dateKey(start) === dateKey(end)
-      ? `${startLabel}–${formatLocalClock(end)}`
-      : `${startLabel}–${endLabel}`;
+    return dateKey(start) === dateKey(end) ? `${startLabel}–${formatLocalClock(end)}` : `${startLabel}–${endLabel}`;
   }
   const start = summary.range.start ? dateKey(asDate(summary.range.start), range.calendarZone) : "开始";
   const end = summary.range.end ? dateKey(asDate(summary.range.end), range.calendarZone) : "现在";
@@ -1260,9 +1419,13 @@ function timelineBreakdownReady(rows, mode) {
   if (mode === "channel") return true;
   const activeRows = rows.filter((row) => usageValue(row?.total, "total") > 0);
   if (mode === "model") {
-    return activeRows.every((row) => Array.isArray(row.models) &&
-      Math.abs(row.models.reduce((sum, model) => sum + usageValue(model.total, "total"), 0) -
-        usageValue(row.total, "total")) < 1e-6);
+    return activeRows.every(
+      (row) =>
+        Array.isArray(row.models) &&
+        Math.abs(
+          row.models.reduce((sum, model) => sum + usageValue(model.total, "total"), 0) - usageValue(row.total, "total"),
+        ) < 1e-6,
+    );
   }
   return activeRows.every((row) => {
     const costs = row.costByModel;
@@ -1270,8 +1433,10 @@ function timelineBreakdownReady(rows, mode) {
     if (!Number.isFinite(Number(row.pricedTokens)) || !Number.isFinite(Number(row.unpricedTokens))) return false;
     const pricedTokens = Object.values(costs).reduce((sum, cost) => sum + Number(cost.pricedTokens || 0), 0);
     const unpricedTokens = Object.values(costs).reduce((sum, cost) => sum + Number(cost.unpricedTokens || 0), 0);
-    return Math.abs(pricedTokens - Number(row.pricedTokens)) < 1e-6 &&
-      Math.abs(unpricedTokens - Number(row.unpricedTokens)) < 1e-6;
+    return (
+      Math.abs(pricedTokens - Number(row.pricedTokens)) < 1e-6 &&
+      Math.abs(unpricedTokens - Number(row.unpricedTokens)) < 1e-6
+    );
   });
 }
 
@@ -1298,12 +1463,13 @@ export function renderCostDetailHtml(rows, colorMap = null) {
   if (!rows.length) return '<div class="empty">没有可计价的费用记录</div>';
   const values = rows.map((row) => row.scaleValue ?? scaledCost(row.totalUsd, row.currency));
   const max = values[0] || 1;
-  return rows.map((row, index) => {
-    const name = escapeHtml(row.name);
-    const amount = formatPreciseCost(row.totalUsd, row.currency);
-    const color = safeChartColor(colorMap?.get(row.name) || getModelColor(row.name));
-    const width = Math.max(2, (values[index] / max) * 100);
-    return `
+  return rows
+    .map((row, index) => {
+      const name = escapeHtml(row.name);
+      const amount = formatPreciseCost(row.totalUsd, row.currency);
+      const color = safeChartColor(colorMap?.get(row.name) || getModelColor(row.name));
+      const width = Math.max(2, (values[index] / max) * 100);
+      return `
       <div class="bar-row" tabindex="0" aria-label="${name}，费用估算 ${amount}">
         <div class="bar-label">
           <span class="bar-name" title="${name}">${name}</span>
@@ -1312,7 +1478,8 @@ export function renderCostDetailHtml(rows, colorMap = null) {
         <div class="bar-track"><div class="bar-fill" style="width: ${width}%; background: ${color};"></div></div>
       </div>
     `;
-  }).join("");
+    })
+    .join("");
 }
 
 function renderTimelineDetails(summary, channelColors, modelColors) {
@@ -1344,7 +1511,12 @@ function comparisonTokenValueClass(formattedValue) {
 function comparisonMetricHtml(label, value, unavailableTokens, { suffix = "", precision = 0 } = {}) {
   const known = Number(value || 0);
   const missing = Number(unavailableTokens || 0);
-  const formatted = known === 0 && missing > 0 ? "明细未提供" : precision ? `${(known * 100).toFixed(precision)}%` : `${formatTokenMillions(known)}${suffix}`;
+  const formatted =
+    known === 0 && missing > 0
+      ? "明细未提供"
+      : precision
+        ? `${(known * 100).toFixed(precision)}%`
+        : `${formatTokenMillions(known)}${suffix}`;
   const title = precision || (known === 0 && missing > 0) ? "" : ` title="${formatTokens(known)}"`;
   const note = missing > 0 ? `；另有 ${formatTokenMillions(missing)} token 的记录未提供此项` : "";
   return `<div class="comparison-detail-metric"><span>${escapeHtml(label)}</span><strong${comparisonTokenValueClass(formatted)}${title}>${formatted}</strong><small${missing > 0 ? ` title="${formatTokens(missing)}"` : ""}>${missing > 0 ? escapeHtml(note.slice(2)) : ""}</small></div>`;
@@ -1354,7 +1526,12 @@ function renderPeriodDetailHtml(metrics, period) {
   const hitInput = Number(metrics.cacheRateInput || 0);
   const hitRate = hitInput > 0 ? Number(metrics.cacheRateCached || 0) / hitInput : null;
   const partialHitData = Number(metrics.uncachedInputUnavailableTokens || 0) > 0;
-  const hitLabel = hitRate === null ? (partialHitData ? "明细未提供" : "—") : `${(hitRate * 100).toFixed(2)}%${partialHitData ? "（已知部分）" : ""}`;
+  const hitLabel =
+    hitRate === null
+      ? partialHitData
+        ? "明细未提供"
+        : "—"
+      : `${(hitRate * 100).toFixed(2)}%${partialHitData ? "（已知部分）" : ""}`;
   return `
     <h3 class="comparison-detail-title">${COMPARISON_PERIOD_LABELS[period]}明细</h3>
     <div class="comparison-detail-grid">
@@ -1373,9 +1550,7 @@ function renderPeriodDetailHtml(metrics, period) {
 }
 
 export function filterPeriodComparisonRows(rows = []) {
-  return rows.filter((row) =>
-    Object.values(row.periods || {}).some((period) => Number(period?.total || 0) > 0),
-  );
+  return rows.filter((row) => Object.values(row.periods || {}).some((period) => Number(period?.total || 0) > 0));
 }
 
 function comparisonRowName(value, kind) {
@@ -1398,7 +1573,9 @@ export function nextComparisonSort(current, period) {
 
 export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
   const kind = options.kind === "repository" ? "repository" : "model";
-  const query = String(options.query || "").trim().toLocaleLowerCase();
+  const query = String(options.query || "")
+    .trim()
+    .toLocaleLowerCase();
   const expanded = options.expanded || null;
   const totals = options.totals || null;
   const sort = options.sort || { period: "today", direction: "desc", showIndicator: false };
@@ -1421,47 +1598,56 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
     const totalOrder = sort.direction === "asc" ? leftTotal - rightTotal : rightTotal - leftTotal;
     return totalOrder || comparisonRowName(left.name, kind).localeCompare(comparisonRowName(right.name, kind));
   });
-  const body = sorted.map((row, index) => {
-    const rowId = `${kind}-period-${index}`;
-    const displayName = comparisonRowName(row.name, kind);
-    const repositoryIcon = kind === "repository" && row.kind === "git"
-      ? '<svg class="repository-git-icon" viewBox="0 0 16 16" role="img" aria-label="Git 仓库" title="Git 仓库" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5v7m0-3.5h3a3 3 0 0 0 3-3V5.5" /><circle cx="6" cy="3" r="1.5" /><circle cx="6" cy="13" r="1.5" /><circle cx="12" cy="4" r="1.5" /></svg>'
-      : "";
-    const cells = periodKeys.map((period) => {
-      const isExpanded = expanded?.kind === kind && expanded?.key === row.key && expanded?.period === period;
-      const value = row.periods?.[period]?.total || 0;
-      const formattedValue = formatTokenMillions(value);
-      const roundedZeroClass = formattedValue === "0.00M" ? " comparison-total-zero" : "";
-      return `<td><button class="comparison-total-button${roundedZeroClass}" type="button" data-period-expand data-kind="${kind}" data-key="${escapeHtml(row.key)}" data-period="${period}" aria-expanded="${isExpanded}" ${isExpanded ? `aria-controls="${rowId}-detail"` : ""} title="${formatTokens(value)}">${formattedValue}</button></td>`;
-    }).join("");
-    const isExpanded = expanded?.kind === kind && expanded?.key === row.key;
-    const activeMetrics = isExpanded ? row.periods?.[expanded.period] : null;
-    return `
+  const body = sorted
+    .map((row, index) => {
+      const rowId = `${kind}-period-${index}`;
+      const displayName = comparisonRowName(row.name, kind);
+      const repositoryIcon =
+        kind === "repository" && row.kind === "git"
+          ? '<svg class="repository-git-icon" viewBox="0 0 16 16" role="img" aria-label="Git 仓库" title="Git 仓库" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5v7m0-3.5h3a3 3 0 0 0 3-3V5.5" /><circle cx="6" cy="3" r="1.5" /><circle cx="6" cy="13" r="1.5" /><circle cx="12" cy="4" r="1.5" /></svg>'
+          : "";
+      const cells = periodKeys
+        .map((period) => {
+          const isExpanded = expanded?.kind === kind && expanded?.key === row.key && expanded?.period === period;
+          const value = row.periods?.[period]?.total || 0;
+          const formattedValue = formatTokenMillions(value);
+          const roundedZeroClass = formattedValue === "0.00M" ? " comparison-total-zero" : "";
+          return `<td><button class="comparison-total-button${roundedZeroClass}" type="button" data-period-expand data-kind="${kind}" data-key="${escapeHtml(row.key)}" data-period="${period}" aria-expanded="${isExpanded}" ${isExpanded ? `aria-controls="${rowId}-detail"` : ""} title="${formatTokens(value)}">${formattedValue}</button></td>`;
+        })
+        .join("");
+      const isExpanded = expanded?.kind === kind && expanded?.key === row.key;
+      const activeMetrics = isExpanded ? row.periods?.[expanded.period] : null;
+      return `
       <tr><th scope="row"><span class="comparison-row-name">${repositoryIcon}<span class="comparison-row-label" title="${escapeHtml(row.name)}" aria-label="${escapeHtml(row.name)}">${escapeHtml(displayName)}</span></span></th>${cells}</tr>
       ${activeMetrics ? `<tr class="comparison-detail-row"><td id="${rowId}-detail" colspan="5">${renderPeriodDetailHtml(activeMetrics, expanded.period)}</td></tr>` : ""}
     `;
-  }).join("");
+    })
+    .join("");
   const totalsRow = totals
-    ? `<tfoot><tr><th scope="row" title="不受搜索筛选影响">全局合计</th>${periodKeys.map((period) => {
-      const value = totals[period]?.total || 0;
-      const formattedValue = formatTokenMillions(value);
-      const roundedZeroClass = formattedValue === "0.00M" ? "comparison-total-zero" : "";
-      return `<td class="${roundedZeroClass}" title="${formatTokens(value)}">${formattedValue}</td>`;
-    }).join("")}</tr></tfoot>`
+    ? `<tfoot><tr><th scope="row" title="不受搜索筛选影响">全局合计</th>${periodKeys
+        .map((period) => {
+          const value = totals[period]?.total || 0;
+          const formattedValue = formatTokenMillions(value);
+          const roundedZeroClass = formattedValue === "0.00M" ? "comparison-total-zero" : "";
+          return `<td class="${roundedZeroClass}" title="${formatTokens(value)}">${formattedValue}</td>`;
+        })
+        .join("")}</tr></tfoot>`
     : "";
   return `
     <div class="comparison-table-frame">
       <div class="comparison-table-scroll">
         <table class="comparison-table">
-          <thead><tr><th scope="col">${kind === "repository" ? "仓库" : "模型"}</th>${periodKeys.map((period) => {
-            const isSorted = sort.showIndicator && sort.period === period;
-            const direction = isSorted ? sort.direction : "desc";
-            const indicator = isSorted ? (direction === "asc" ? "▲" : "▼") : "";
-            const ariaSort = isSorted ? (direction === "asc" ? "ascending" : "descending") : "none";
-            const label = COMPARISON_PERIOD_LABELS[period];
-            const sortLabel = isSorted ? `${label}，${direction === "asc" ? "正序" : "倒序"}` : `按${label}用量排序`;
-            return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="按${label}用量排序"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
-          }).join("")}</tr></thead>
+          <thead><tr><th scope="col">${kind === "repository" ? "仓库" : "模型"}</th>${periodKeys
+            .map((period) => {
+              const isSorted = sort.showIndicator && sort.period === period;
+              const direction = isSorted ? sort.direction : "desc";
+              const indicator = isSorted ? (direction === "asc" ? "▲" : "▼") : "";
+              const ariaSort = isSorted ? (direction === "asc" ? "ascending" : "descending") : "none";
+              const label = COMPARISON_PERIOD_LABELS[period];
+              const sortLabel = isSorted ? `${label}，${direction === "asc" ? "正序" : "倒序"}` : `按${label}用量排序`;
+              return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="按${label}用量排序"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
+            })
+            .join("")}</tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -1525,7 +1711,12 @@ function shortTimelineLabel(key, bucket, range) {
         : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
     }
     if (bucket === "day" && range?.preset === "month") return text.slice(8, 10);
-    if (start && end && dateKey(start, range?.calendarZone).slice(0, 4) !== dateKey(end, range?.calendarZone).slice(0, 4)) return text;
+    if (
+      start &&
+      end &&
+      dateKey(start, range?.calendarZone).slice(0, 4) !== dateKey(end, range?.calendarZone).slice(0, 4)
+    )
+      return text;
     return text.slice(5);
   }
   return text;
@@ -1536,7 +1727,11 @@ export function timelineAxisLabels(rows, options = {}) {
   const bucket = options.bucket || "day";
   const range = options.range || {};
   const chartWidth = options.chartWidth || 960;
-  const oneDayHourly = bucket === "hour" && range.start && range.end && dateKey(asDate(range.start), range.calendarZone) === dateKey(asDate(range.end), range.calendarZone);
+  const oneDayHourly =
+    bucket === "hour" &&
+    range.start &&
+    range.end &&
+    dateKey(asDate(range.start), range.calendarZone) === dateKey(asDate(range.end), range.calendarZone);
   const labels = rows.map((row) => shortTimelineLabel(row.key, bucket, range));
   if (oneDayHourly && chartWidth >= 700) {
     return rows.map((_row, index) => ({ index, label: labels[index] }));
@@ -1560,12 +1755,14 @@ function formatExactDelta(value) {
 }
 
 function previousTokensLabel(comparisonLabel) {
-  return {
-    "较昨日": "昨日 tokens",
-    "较上周": "上周 tokens",
-    "较上月": "上月 tokens",
-    "较上一等长周期": "前一等长区间 tokens",
-  }[comparisonLabel] || "上一周期 tokens";
+  return (
+    {
+      较昨日: "昨日 tokens",
+      较上周: "上周 tokens",
+      较上月: "上月 tokens",
+      较上一等长周期: "前一等长区间 tokens",
+    }[comparisonLabel] || "上一周期 tokens"
+  );
 }
 
 function previousPeriodDateLabel(range) {
@@ -1593,9 +1790,7 @@ export function renderComparisonHtml(comparison) {
     return "";
   }
   if (!comparison.previousRange) {
-    const message = comparison.label === "暂无对比"
-      ? "全部范围没有可比较的上一周期"
-      : "当前范围没有可比较的上一周期";
+    const message = comparison.label === "暂无对比" ? "全部范围没有可比较的上一周期" : "当前范围没有可比较的上一周期";
     return `
       <article class="comparison-item comparison-unavailable flat">
         <span>趋势变化</span>
@@ -1605,9 +1800,7 @@ export function renderComparisonHtml(comparison) {
     `;
   }
   const equalLengthPreviousRange = comparison.label === "较上一等长周期";
-  const previousPeriodDetail = equalLengthPreviousRange
-    ? previousPeriodDateLabel(comparison.previousRange)
-    : "";
+  const previousPeriodDetail = equalLengthPreviousRange ? previousPeriodDateLabel(comparison.previousRange) : "";
   const previousSessionDetail = `${formatTokens(comparison.previousSessionCount)} 个会话`;
   return `
     <article class="comparison-item ${comparisonClass(comparison.totalDelta)}">
@@ -1651,7 +1844,9 @@ function getModelColor(name) {
 export function getModelColors(rows = []) {
   const dark = document.documentElement.dataset?.theme === "dark";
   const names = [...new Set(rows.map((row) => row.name))];
-  const extraNames = names.filter((name) => !MODEL_COLOR_SLOTS.has(name)).sort((left, right) => left.localeCompare(right));
+  const extraNames = names
+    .filter((name) => !MODEL_COLOR_SLOTS.has(name))
+    .sort((left, right) => left.localeCompare(right));
   const extraSlots = new Map(extraNames.map((name, index) => [name, MODEL_COLOR_ORDER.length + index]));
   return new Map(names.map((name) => [name, categoryColor(MODEL_COLOR_SLOTS.get(name) ?? extraSlots.get(name), dark)]));
 }
@@ -1684,7 +1879,10 @@ function timelineCostSegments(row, modelRows = []) {
 
 function timelineValue(row, mode) {
   if (mode === "cost") {
-    return Object.values(row?.costByModel || {}).reduce((total, cost) => total + scaledCost(cost.totalUsd, cost.currency), 0);
+    return Object.values(row?.costByModel || {}).reduce(
+      (total, cost) => total + scaledCost(cost.totalUsd, cost.currency),
+      0,
+    );
   }
   return usageValue(row?.total, "total");
 }
@@ -1772,19 +1970,26 @@ export function formatTimelineTooltip(row, mode = "channel") {
   if (mode === "channel") return `${formatUsageTooltip(row, quotaInfo?.title || null)}${quotaNote}`;
   const title = escapeHtml(quotaInfo?.title || row?.name || row?.key || "未知时间");
   if (mode === "model") {
-    const models = (row?.models || []).map((model) =>
-      `<span class="usage-tooltip-label">${escapeHtml(model.name)}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
-    ).join("");
+    const models = (row?.models || [])
+      .map(
+        (model) =>
+          `<span class="usage-tooltip-label">${escapeHtml(model.name)}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
+      )
+      .join("");
     return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokens(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
   }
   const costs = Object.entries(row?.costByModel || {})
     .filter(([, cost]) => Number(cost.totalUsd || 0) > 0)
-    .sort((left, right) => scaledCost(right[1].totalUsd, right[1].currency) - scaledCost(left[1].totalUsd, left[1].currency))
+    .sort(
+      (left, right) =>
+        scaledCost(right[1].totalUsd, right[1].currency) - scaledCost(left[1].totalUsd, left[1].currency),
+    )
     .map(([name, cost]) => {
       const native = formatPreciseCost(cost.totalUsd, cost.currency);
-      const converted = cost.currency === state.costScaleTarget
-        ? ""
-        : `（≈${formatPreciseCost(scaledCost(cost.totalUsd, cost.currency), state.costScaleTarget)}）`;
+      const converted =
+        cost.currency === state.costScaleTarget
+          ? ""
+          : `（≈${formatPreciseCost(scaledCost(cost.totalUsd, cost.currency), state.costScaleTarget)}）`;
       return `<span class="usage-tooltip-label">${escapeHtml(name)}</span><span class="usage-tooltip-value">${native}${converted}</span>`;
     })
     .join("");
@@ -1794,7 +1999,8 @@ export function formatTimelineTooltip(row, mode = "channel") {
   if (Number(row?.unpricedTokens || 0) > 0) caveats.push(`未计价 ${formatTokens(row.unpricedTokens)} tokens`);
   if (Number(row?.serviceTierUnknownTokens || 0) > 0) caveats.push("服务等级未知，金额按 Standard 情景估算");
   if (Number(row?.contextUnknownTokens || 0) > 0) caveats.push("请求上下文未知，按可用的较低上下文费率估算");
-  if (Number(row?.minimumEstimatedTokens || 0) > 0) caveats.push(`其中 ${formatTokens(row.minimumEstimatedTokens)} tokens 按最低费率估算`);
+  if (Number(row?.minimumEstimatedTokens || 0) > 0)
+    caveats.push(`其中 ${formatTokens(row.minimumEstimatedTokens)} tokens 按最低费率估算`);
   if (Number(row?.cacheWriteUnknownTokens || 0) > 0) caveats.push("缓存写入明细未知，相关未知部分按最低费率估算");
   return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-subtitle">费用估算</div><div class="usage-tooltip-grid"><span class="usage-tooltip-label">估算金额</span><span class="usage-tooltip-value">${amountLabel}</span><span class="usage-tooltip-label">已纳入估算 tokens</span><span class="usage-tooltip-value">${formatTokens(row?.pricedTokens || 0)}</span></div>${costs ? `<div class="usage-tooltip-subtitle">按模型</div><div class="usage-tooltip-grid">${costs}</div>` : ""}${caveats.length ? `<div class="usage-tooltip-note">${caveats.map(escapeHtml).join("；")}</div>` : ""}`;
 }
@@ -1830,15 +2036,23 @@ export function renderTimelineLegendHtml(summary, mode, channelColors, modelColo
     }
   }
   const ordered = [...totalsByName.keys()].sort((a, b) => a.localeCompare(b));
-  const colorFor = (name) => isChannel
-    ? channelColors.get(name) || "var(--green)"
-    : modelColors.get(name) || getModelColor(name);
-  return ordered.map((name) => {
-    const color = safeChartColor(colorFor(name));
-    const escapedName = escapeHtml(name);
-    return "<span class=\"timeline-legend-item\" role=\"listitem\"><span class=\"timeline-legend-swatch\" style=\"background:" +
-      color + "\"></span><span title=\"" + escapedName + "\">" + escapedName + "</span></span>";
-  }).join("");
+  const colorFor = (name) =>
+    isChannel ? channelColors.get(name) || "var(--green)" : modelColors.get(name) || getModelColor(name);
+  return ordered
+    .map((name) => {
+      const color = safeChartColor(colorFor(name));
+      const escapedName = escapeHtml(name);
+      return (
+        '<span class="timeline-legend-item" role="listitem"><span class="timeline-legend-swatch" style="background:' +
+        color +
+        '"></span><span title="' +
+        escapedName +
+        '">' +
+        escapedName +
+        "</span></span>"
+      );
+    })
+    .join("");
 }
 
 function renderTimelineLegend(summary, channelColors, modelColors) {
@@ -1851,18 +2065,28 @@ export function maxTimelineValue(values) {
   return values.reduce((maximum, value) => Math.max(maximum, value), 0);
 }
 
-export function drawTimeline(canvas, rows, channelRows = [], channelColors = new Map(), range = null, mode = state.timelineMode, modelRows = [], modelColorsByName = getModelColors(modelRows)) {
+export function drawTimeline(
+  canvas,
+  rows,
+  channelRows = [],
+  channelColors = new Map(),
+  range = null,
+  mode = state.timelineMode,
+  modelRows = [],
+  modelColorsByName = getModelColors(modelRows),
+) {
   const context = canvas.getContext("2d");
   canvas.dataset.usageTooltip = "true";
   const modeLabel = { channel: "按渠道", model: "按模型", cost: "按花销" }[mode] || "按渠道";
   const startLabel = range?.start ? dateKey(asDate(range.start), range?.calendarZone) : "";
   const endLabel = range?.end ? dateKey(asDate(range.end), range?.calendarZone) : "";
   const rangeLabelText = startLabel && endLabel ? `，统计范围 ${startLabel} 至 ${endLabel}` : "";
-  const baseAriaLabel = getLocale() === "en-US"
-    ? `Usage over time, ${mode === "cost" ? "estimated API-equivalent cost by model, with USD on the vertical axis" : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates, model costs, and fallback estimates" : "dates and details"}.`
-    : mode === "cost"
-      ? `时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期、模型费用和最低费率估算部分`
-      : `时间分布，${modeLabel}堆叠 tokens${rangeLabelText}；每个时间槽可查看完整日期和明细`;
+  const baseAriaLabel =
+    getLocale() === "en-US"
+      ? `Usage over time, ${mode === "cost" ? "estimated API-equivalent cost by model, with USD on the vertical axis" : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates, model costs, and fallback estimates" : "dates and details"}.`
+      : mode === "cost"
+        ? `时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期、模型费用和最低费率估算部分`
+        : `时间分布，${modeLabel}堆叠 tokens${rangeLabelText}；每个时间槽可查看完整日期和明细`;
   canvas.dataset.chartAriaLabel = localizeText(baseAriaLabel);
   canvas.setAttribute?.("aria-label", localizeText(baseAriaLabel));
   timelineBars.set(canvas, []);
@@ -1893,9 +2117,10 @@ export function drawTimeline(canvas, rows, channelRows = [], channelColors = new
   context.stroke();
 
   if (!rows.length) {
-    const emptyMessage = isQuotaPreset(range?.preset) && range?.quotaState !== "available"
-      ? range?.quotaReason || QUOTA_UI_COPY.waiting
-      : "没有匹配的用量记录";
+    const emptyMessage =
+      isQuotaPreset(range?.preset) && range?.quotaState !== "available"
+        ? range?.quotaReason || QUOTA_UI_COPY.waiting
+        : "没有匹配的用量记录";
     context.fillStyle = chartText;
     context.font = "13px system-ui";
     context.fillText(localizeText(emptyMessage), padding.left + 12, padding.top + 28);
@@ -2031,8 +2256,10 @@ function setupUsageTooltip() {
     else if (event.key === "ArrowLeft" || event.key === "ArrowUp") index = Math.max(0, index - 1);
     else if (event.key === "Home") index = 0;
     else if (event.key === "End") index = bars.length - 1;
-    else if (event.key === "Escape") { hideUsageTooltip(); return; }
-    else return;
+    else if (event.key === "Escape") {
+      hideUsageTooltip();
+      return;
+    } else return;
     event.preventDefault();
     timelineFocusIndex.set(timelineChart, index);
     showTimelineTooltip(bars[index].row, timelineChart);
@@ -2190,7 +2417,11 @@ function metadataFromReport(report) {
     homeStats.set(event.homeId, current);
     const model = String(event.model || "").trim();
     if (model && model.toLocaleLowerCase() !== "unknown model") {
-      const bucket = String(event.channel || "").toLowerCase().startsWith("zcode") ? "ZCode" : "Codex";
+      const bucket = String(event.channel || "")
+        .toLowerCase()
+        .startsWith("zcode")
+        ? "ZCode"
+        : "Codex";
       harnessModels[bucket].add(model);
     }
   }
@@ -2221,8 +2452,18 @@ function currentSummary() {
   if (state.report) {
     const nowKey = state.now ? new Date(state.now).getTime() : Math.floor(Date.now() / 60_000);
     const excludedKey = [...(state.excludedHomes || [])].map(String).sort().join(",");
-    const key = [state.preset, state.bucket, state.startDate, state.endDate, state.recentValue, state.calendarZone, excludedKey, nowKey].join("|");
-    if (staticSummaryCache?.report === state.report && staticSummaryCache.key === key) return staticSummaryCache.summary;
+    const key = [
+      state.preset,
+      state.bucket,
+      state.startDate,
+      state.endDate,
+      state.recentValue,
+      state.calendarZone,
+      excludedKey,
+      nowKey,
+    ].join("|");
+    if (staticSummaryCache?.report === state.report && staticSummaryCache.key === key)
+      return staticSummaryCache.summary;
     const summary = summarize(state.report);
     staticSummaryCache = { report: state.report, key, summary };
     return summary;
@@ -2251,8 +2492,18 @@ function renderUnavailableQuota(reason, range = null) {
     rangeNode.title = quotaRangeAccessibleLabel(unavailableRange);
   }
   for (const selector of [
-    "#totalTokens", "#inputTokens", "#cachedTokens", "#outputTokens", "#reasoningTokens", "#sessionCount",
-    "#totalCost", "#inputCost", "#cachedInputCost", "#outputCost", "#cacheHitRate", "#priceModelCount",
+    "#totalTokens",
+    "#inputTokens",
+    "#cachedTokens",
+    "#outputTokens",
+    "#reasoningTokens",
+    "#sessionCount",
+    "#totalCost",
+    "#inputCost",
+    "#cachedInputCost",
+    "#outputCost",
+    "#cacheHitRate",
+    "#priceModelCount",
   ]) {
     const node = $(selector);
     if (node) {
@@ -2292,9 +2543,10 @@ function render() {
   }
   const quotaWindow = summary.quota?.windows?.[state.preset];
   const quotaState = summary.range?.quotaState ?? quotaWindow?.state;
-  const quotaReason = quotaWindow?.reason && getLocale() === "en-US"
-    ? localizeQuotaReason(quotaWindow)
-    : summary.range?.quotaReason ?? quotaWindow?.reason;
+  const quotaReason =
+    quotaWindow?.reason && getLocale() === "en-US"
+      ? localizeQuotaReason(quotaWindow)
+      : (summary.range?.quotaReason ?? quotaWindow?.reason);
   if (isQuotaPreset(state.preset) && quotaState !== "available") {
     renderUnavailableQuota(quotaReason || QUOTA_UI_COPY.waiting, {
       ...summary.range,
@@ -2320,9 +2572,11 @@ function render() {
   const rangeEnd = asDate(summary.range.end);
   rangeNode.title = quotaMode
     ? quotaRangeAccessibleLabel(summary.range)
-    : rangeStart && rangeEnd ? summary.range.calendarZone === "utc"
-      ? `${rangeStart.toISOString()} 至 ${rangeEnd.toISOString()}`
-      : `${rangeStart.toLocaleString(getLocale())} 至 ${rangeEnd.toLocaleString(getLocale())}` : rangeNode.textContent;
+    : rangeStart && rangeEnd
+      ? summary.range.calendarZone === "utc"
+        ? `${rangeStart.toISOString()} 至 ${rangeEnd.toISOString()}`
+        : `${rangeStart.toLocaleString(getLocale())} 至 ${rangeEnd.toLocaleString(getLocale())}`
+      : rangeNode.textContent;
   const timelineWarning = $("#timelineRangeWarning");
   if (timelineWarning) {
     timelineWarning.hidden = !summary.timelineError;
@@ -2341,7 +2595,16 @@ function render() {
     // 数据先于弹窗就绪时，让弹窗里的来源多选同步最新列表。
     renderSourceOptions();
   }
-  drawTimeline($("#timelineChart"), summary.timeline, summary.channels, channelColors, summary.range, state.timelineMode, summary.models, modelColors);
+  drawTimeline(
+    $("#timelineChart"),
+    summary.timeline,
+    summary.channels,
+    channelColors,
+    summary.range,
+    state.timelineMode,
+    summary.models,
+    modelColors,
+  );
   updateQuotaPresetButton();
   translatePage();
 }
@@ -2377,11 +2640,12 @@ function renderAutoRefreshControls() {
   button.textContent = state.autoRefreshEnabled && !staticSnapshot ? "开" : "关";
   button.setAttribute("aria-pressed", String(state.autoRefreshEnabled && !staticSnapshot));
   button.title = staticSnapshot ? "静态快照不能启动轮询" : "切换自动刷新";
-  document.querySelector("#autoRefreshInterval").textContent = staticSnapshot ? "静态快照，不轮询" : `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
+  document.querySelector("#autoRefreshInterval").textContent = staticSnapshot
+    ? "静态快照，不轮询"
+    : `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
   const checked = state.lastSuccessfulCheck ? new Date(state.lastSuccessfulCheck) : null;
-  document.querySelector("#lastSuccessfulCheck").textContent = checked && !Number.isNaN(checked.getTime())
-    ? `上次：${checked.toLocaleString(getLocale())}`
-    : "上次：尚无";
+  document.querySelector("#lastSuccessfulCheck").textContent =
+    checked && !Number.isNaN(checked.getTime()) ? `上次：${checked.toLocaleString(getLocale())}` : "上次：尚无";
 }
 
 function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}) {
@@ -2417,8 +2681,10 @@ function initializeAutoRefresh() {
 }
 
 const PRICING_FIELDS = [
-  ["input", "缓外输入"], ["cachedInput", "缓存输入"],
-  ["cacheWrite", "缓存写入"], ["output", "输出"],
+  ["input", "缓外输入"],
+  ["cachedInput", "缓存输入"],
+  ["cacheWrite", "缓存写入"],
+  ["output", "输出"],
 ];
 
 function setPricingMessage(message, isError = false) {
@@ -2429,9 +2695,14 @@ function setPricingMessage(message, isError = false) {
 
 function pricingModelNoteParts(contexts) {
   const parts = [];
-  if (Number.isInteger(contexts.longContextThreshold)) parts.push(`单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`);
-  if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`);
-  if (contexts.offPeakMultiplier) parts.push(`谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`);
+  if (Number.isInteger(contexts.longContextThreshold))
+    parts.push(`单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`);
+  if (Number.isInteger(contexts.outputThreshold))
+    parts.push(`输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`);
+  if (contexts.offPeakMultiplier)
+    parts.push(
+      `谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`,
+    );
   return parts;
 }
 
@@ -2443,7 +2714,8 @@ function _pricingModelNote(contexts) {
 function pricingModelHint(contexts) {
   const short = contexts.short || {};
   const parts = [`${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}（入/缓/出）`];
-  if (Number.isInteger(contexts.longContextThreshold)) parts.push(`上下文 ${formatTokens(contexts.longContextThreshold)} 分档`);
+  if (Number.isInteger(contexts.longContextThreshold))
+    parts.push(`上下文 ${formatTokens(contexts.longContextThreshold)} 分档`);
   if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出 ${formatTokens(contexts.outputThreshold)} 分档`);
   if (contexts.offPeakMultiplier) parts.push(`谷时 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折`);
   if (contexts.fast) parts.push("快速模式价");
@@ -2454,24 +2726,40 @@ function pricingContextsHtml(model, contexts) {
   const contextBlock = (context, label, source) => `
       <div class="pricing-context">
         <strong>${label}</strong>
-        ${PRICING_FIELDS.map(([field, fieldLabel]) => `
+        ${PRICING_FIELDS.map(
+          ([field, fieldLabel]) => `
           <label>${fieldLabel}<input type="number" min="0" step="any" required
             data-model="${escapeHtml(model)}" data-context="${context}" data-field="${field}"
             value="${escapeHtml(source[field])}" /></label>
-        `).join("")}
+        `,
+        ).join("")}
       </div>
     `;
   const standard = ["short", "shortLongOutput", "long"]
     .filter((context) => contexts[context])
-    .map((context) => contextBlock(context, { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context], contexts[context]))
+    .map((context) =>
+      contextBlock(
+        context,
+        { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context],
+        contexts[context],
+      ),
+    )
     .join("");
   const fast = contexts.fast
-    ? `<div class="pricing-fast-block"><strong>快速模式</strong><div class="pricing-contexts">${
-        ["short", "shortLongOutput", "long"]
-          .filter((context) => contexts.fast[context])
-          .map((context) => contextBlock(`fast.${context}`, { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context], contexts.fast[context]))
-          .join("")
-      }</div></div>`
+    ? `<div class="pricing-fast-block"><strong>快速模式</strong><div class="pricing-contexts">${[
+        "short",
+        "shortLongOutput",
+        "long",
+      ]
+        .filter((context) => contexts.fast[context])
+        .map((context) =>
+          contextBlock(
+            `fast.${context}`,
+            { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context],
+            contexts.fast[context],
+          ),
+        )
+        .join("")}</div></div>`
     : "";
   return standard + fast;
 }
@@ -2490,7 +2778,11 @@ function writePricingField(entry, context, field, value) {
 function catalogKeysForNames(names, catalog) {
   const keys = Object.keys(catalog);
   const lowerNames = [...names]
-    .map((name) => String(name || "").trim().toLocaleLowerCase())
+    .map((name) =>
+      String(name || "")
+        .trim()
+        .toLocaleLowerCase(),
+    )
     .filter((name) => name && name !== "unknown model");
   const matched = new Set(lowerNames.filter((name) => catalog[name]));
   for (const lower of lowerNames.filter((name) => !catalog[name])) {
@@ -2555,14 +2847,16 @@ function renderPricingModelList() {
   }
 
   const groups = pricingHarnessGroups();
-  const sections = ["Codex", "ZCode"].map((harness) => {
-    const rows = [...groups[harness]]
-      .sort((a, b) => a.localeCompare(b))
-      .filter(matches)
-      .map(row)
-      .join("");
-    return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
-  }).join("");
+  const sections = ["Codex", "ZCode"]
+    .map((harness) => {
+      const rows = [...groups[harness]]
+        .sort((a, b) => a.localeCompare(b))
+        .filter(matches)
+        .map(row)
+        .join("");
+      return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
+    })
+    .join("");
   container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
 }
 
@@ -2578,7 +2872,8 @@ function openModelPricing(model) {
   const entry = state.pricingCatalog?.models?.[model];
   if (!entry) return;
   state.modelPricingDraft = model;
-  $("#modelPricingTitle").innerHTML = `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
+  $("#modelPricingTitle").innerHTML =
+    `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
   $("#modelPricingNote").textContent = pricingModelNoteParts(entry).join("；");
   $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
   $("#modelPricingDialog").hidden = false;
@@ -2861,8 +3156,13 @@ function updateQuotaPresetButton() {
   const preferred = QUOTA_PRESETS.includes(state.lastQuotaPreset) ? state.lastQuotaPreset : "quota_5h";
   const target = quotaActive ? (state.preset === "quota_5h" ? "quota_week" : "quota_5h") : preferred;
   const targetName = QUOTA_MODE_LABELS[target] || "限额窗口";
-  const currentName = quotaActive ? QUOTA_MODE_LABELS[state.preset] :
-    state.preset === "recent" ? state.recentValue : state.preset === "week" ? "本周" : COMPARISON_PERIOD_LABELS[state.preset] || state.preset;
+  const currentName = quotaActive
+    ? QUOTA_MODE_LABELS[state.preset]
+    : state.preset === "recent"
+      ? state.recentValue
+      : state.preset === "week"
+        ? "本周"
+        : COMPARISON_PERIOD_LABELS[state.preset] || state.preset;
   const currentReason = currentStatus && !currentStatus.available ? `；${currentStatus.reason}` : "";
   const label = `当前范围为${currentName}${currentReason}；点击切换到${targetName}`;
   button.classList.toggle("active", quotaActive);
@@ -2886,7 +3186,10 @@ function selectedCodexAvailable() {
 
 function reconcileQuotaSourceSelection() {
   if (!selectedCodexAvailable()) {
-    if (isQuotaPreset(state.preset) || (state.preset === "recent" && ["上一个5h", "上周"].includes(state.recentValue))) {
+    if (
+      isQuotaPreset(state.preset) ||
+      (state.preset === "recent" && ["上一个5h", "上周"].includes(state.recentValue))
+    ) {
       state.preset = "today";
       state.bucket = "hour";
     }
@@ -2904,9 +3207,11 @@ function updateRecentControls() {
     recentValue.value = display;
   }
   for (const option of document.querySelectorAll("[data-recent-option]")) {
-    const mode = { "上一个5h": "quota_5h", "上周": "quota_week" }[option.dataset.recentOption];
+    const mode = { 上一个5h: "quota_5h", 上周: "quota_week" }[option.dataset.recentOption];
     const quota = state.quotaSnapshot || state.summary?.quota || state.report?.quota;
-    option.disabled = Boolean(mode && (!selectedCodexAvailable() || quota?.previousWindows?.[mode]?.state !== "available"));
+    option.disabled = Boolean(
+      mode && (!selectedCodexAvailable() || quota?.previousWindows?.[mode]?.state !== "available"),
+    );
     option.setAttribute("aria-selected", String(option.dataset.recentOption === state.recentValue));
   }
 }
@@ -3036,7 +3341,9 @@ function setRecentMenuOpen(open) {
 
 function activateRecentValue(value) {
   const next = nextRecentState(state, value);
-  const option = [...document.querySelectorAll("[data-recent-option]")].find(node => node.dataset.recentOption === next.recentValue);
+  const option = [...document.querySelectorAll("[data-recent-option]")].find(
+    (node) => node.dataset.recentOption === next.recentValue,
+  );
   if (option?.disabled) return;
   if (!parseRecentValue(next.recentValue)) {
     setAutoRefreshStatus("最近范围格式无效。请使用数字和天、周、月或年。", { error: true });
@@ -3099,15 +3406,21 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       state.now = embeddedReport.asOf || embeddedReport.quota?.asOf || embeddedReport.generatedAt || null;
       state.metadata = metadataFromReport(embeddedReport);
       state.summary = null;
-      state.periodComparison = state.calendarZone === "utc"
-        ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
-        : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
+      state.periodComparison =
+        state.calendarZone === "utc"
+          ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
+          : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
       state.fingerprint = "static";
-      if (Number(embeddedReport.pricing?.usdToCnyRate) > 0) state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
-      state.costScaleTarget = (embeddedReport.events || []).some((event) => event.costEstimate?.currency === "CNY") ? "CNY" : "USD";
+      if (Number(embeddedReport.pricing?.usdToCnyRate) > 0)
+        state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
+      state.costScaleTarget = (embeddedReport.events || []).some((event) => event.costEstimate?.currency === "CNY")
+        ? "CNY"
+        : "USD";
       setAutoRefreshStatus("此静态快照不会轮询；运行 npm run export 可生成新快照");
     } else {
-      const response = await fetch(`/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`);
+      const response = await fetch(
+        `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
+      );
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         const error = new Error(localizeServerError(data, response.status));
@@ -3204,9 +3517,10 @@ function stopAutoRefresh() {
 
 function refreshViewForFilters() {
   if (isStaticSnapshot()) {
-    state.periodComparison = state.calendarZone === "utc"
-      ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
-      : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
+    state.periodComparison =
+      state.calendarZone === "utc"
+        ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
+        : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
     render();
     return;
   }
@@ -3216,8 +3530,7 @@ function refreshViewForFilters() {
 function updateCalendarZoneSelect() {
   const select = $("#calendarZoneSelect");
   const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai"
-    ? "UTC+8" : "本地时间";
+  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai" ? "UTC+8" : "本地时间";
   select.value = state.calendarZone;
 }
 
@@ -3258,7 +3571,9 @@ function bootDashboard() {
     const zone = event.target.value;
     if (!["local", "utc"].includes(zone) || zone === state.calendarZone) return;
     state.calendarZone = zone;
-    try { window.localStorage.setItem("codexUsageCalendarZoneV2", zone); } catch {}
+    try {
+      window.localStorage.setItem("codexUsageCalendarZoneV2", zone);
+    } catch {}
     updateCalendarZoneSelect();
     refreshViewForFilters();
   });
@@ -3409,17 +3724,25 @@ function bootDashboard() {
         const stateKey = kind === "repository" ? "repositoryComparisonSort" : "modelComparisonSort";
         state[stateKey] = nextComparisonSort(state[stateKey], period);
         renderPeriodComparisons(state.periodComparison);
-        document.querySelector(`#${kind === "repository" ? "repositoryComparisonTable" : "modelComparisonTable"} [data-comparison-sort][data-period="${period}"]`)?.focus({ preventScroll: true });
+        document
+          .querySelector(
+            `#${kind === "repository" ? "repositoryComparisonTable" : "modelComparisonTable"} [data-comparison-sort][data-period="${period}"]`,
+          )
+          ?.focus({ preventScroll: true });
         return;
       }
       const button = event.target.closest("[data-period-expand]");
       if (!button) return;
       const next = { kind: button.dataset.kind, key: button.dataset.key, period: button.dataset.period };
       const current = state.expandedPeriodCell;
-      state.expandedPeriodCell = current?.kind === next.kind && current?.key === next.key && current?.period === next.period ? null : next;
+      state.expandedPeriodCell =
+        current?.kind === next.kind && current?.key === next.key && current?.period === next.period ? null : next;
       renderPeriodComparisons(state.periodComparison);
       const restoredButton = [...document.querySelectorAll("[data-period-expand]")].find(
-        (candidate) => candidate.dataset.kind === next.kind && candidate.dataset.key === next.key && candidate.dataset.period === next.period,
+        (candidate) =>
+          candidate.dataset.kind === next.kind &&
+          candidate.dataset.key === next.key &&
+          candidate.dataset.period === next.period,
       );
       restoredButton?.focus({ preventScroll: true });
     });

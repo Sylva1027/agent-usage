@@ -27,7 +27,15 @@ function quotaTokenRow(timestamp, { resetsAtMs, windowMinutes = 300, limitId = "
     type: "event_msg",
     payload: {
       type: "token_count",
-      info: { total_token_usage: { total_tokens: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 } },
+      info: {
+        total_token_usage: {
+          total_tokens: 0,
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          output_tokens: 0,
+          reasoning_output_tokens: 0,
+        },
+      },
       rate_limits: {
         limit_id: limitId,
         primary: {
@@ -160,14 +168,22 @@ test("server accepts named recent reset windows and calendar ranges", async () =
   const fixture = await makeFixtureHome();
   const end = Date.now() - 60_000;
   const observed = new Date(end - 60_000).toISOString();
-  await appendFile(fixture.sessionFile, jsonl([
-    quotaTokenRow(observed, { resetsAtMs: end }),
-    quotaTokenRow(observed, { resetsAtMs: end, windowMinutes: 10080 }),
-  ]));
+  await appendFile(
+    fixture.sessionFile,
+    jsonl([
+      quotaTokenRow(observed, { resetsAtMs: end }),
+      quotaTokenRow(observed, { resetsAtMs: end, windowMinutes: 10080 }),
+    ]),
+  );
   const server = createUsageServer(fixture);
-  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
-    for (const [value, bucket, slots] of [["上一个5h", "quota_30m", 10], ["上周", "quota_24h", 7], ["上个月", "day", null], ["今年", "month", null]]) {
+    for (const [value, bucket, slots] of [
+      ["上一个5h", "quota_30m", 10],
+      ["上周", "quota_24h", 7],
+      ["上个月", "day", null],
+      ["今年", "month", null],
+    ]) {
       const query = new URLSearchParams({ preset: "recent", recentValue: value, bucket });
       const response = await fetch(`http://127.0.0.1:${server.address().port}/api/usage?${query}`);
       const body = await response.json();
@@ -179,7 +195,7 @@ test("server accepts named recent reset windows and calendar ranges", async () =
       }
     }
   } finally {
-    await new Promise(resolve => server.close(resolve));
+    await new Promise((resolve) => server.close(resolve));
     await rm(fixture.homeDir, { recursive: true, force: true });
   }
 });
@@ -220,7 +236,9 @@ test("server reports status changes and refreshes cached usage reports", async (
 
   try {
     const firstUsage = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
-    const unchanged = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) => response.json());
+    const unchanged = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) =>
+      response.json(),
+    );
 
     assert.equal(firstUsage.summary.totals.total, 123);
     assert.match(firstUsage.fingerprint, /^[a-f0-9]{64}$/);
@@ -246,15 +264,14 @@ test("server reports status changes and refreshes cached usage reports", async (
       })}\n`,
     );
 
-    const changed = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) => response.json());
+    const changed = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) =>
+      response.json(),
+    );
     const refreshed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
-
 
     assert.equal(changed.changed, true);
     assert.notEqual(changed.fingerprint, firstUsage.fingerprint);
     assert.equal(refreshed.summary.totals.total, 200);
-
-
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -271,27 +288,34 @@ test("paused usage keeps the same indexed data across range changes", async () =
     assert.equal(paused.summary.totals.total, 123);
     assert.ok(paused.snapshotId);
 
-    await appendFile(sessionFile, `${JSON.stringify({
-      timestamp: "2026-05-01T02:02:00.000Z",
-      type: "event_msg",
-      payload: {
-        type: "token_count",
-        info: {
-          total_token_usage: {
-            total_tokens: 200, input_tokens: 160, cached_input_tokens: 30,
-            output_tokens: 40, reasoning_output_tokens: 7,
+    await appendFile(
+      sessionFile,
+      `${JSON.stringify({
+        timestamp: "2026-05-01T02:02:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 200,
+              input_tokens: 160,
+              cached_input_tokens: 30,
+              output_tokens: 40,
+              reasoning_output_tokens: 7,
+            },
           },
         },
-      },
-    })}\n`);
+      })}\n`,
+    );
 
     const live = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     assert.equal(live.summary.totals.total, 200);
 
     for (const preset of ["all", "week", "month", "custom"]) {
       const range = preset === "custom" ? "&startDate=2026-05-01&endDate=2026-05-01" : "";
-      const frozen = await fetch(`${baseUrl}/api/usage?preset=${preset}&snapshot=${paused.snapshotId}${range}`)
-        .then((response) => response.json());
+      const frozen = await fetch(`${baseUrl}/api/usage?preset=${preset}&snapshot=${paused.snapshotId}${range}`).then(
+        (response) => response.json(),
+      );
       assert.equal(frozen.summary.totals.total, preset === "all" || preset === "custom" ? 123 : 0);
       assert.equal(frozen.checkedAt, paused.checkedAt);
       assert.equal(frozen.snapshotId, paused.snapshotId);
@@ -316,22 +340,44 @@ test("quota API forces its server bucket, returns capability state, and keeps sn
     resets_at: (estimateNow + (10080 - 60) * 60_000) / 1000,
     used_percent: 5,
   };
-  await writeFile(quotaFile, jsonl([
-    { type: "session_meta", timestamp: new Date(observedAtMs - 1_000).toISOString(), payload: { id: "quota-window" } },
-    quotaRow,
-  ]));
-  const liveUsageAt = new Date(estimateNow - 10_000).toISOString();
-  await writeFile(liveUsageFile, jsonl([
-    { type: "session_meta", timestamp: liveUsageAt, payload: { id: "quota-usage", source: "cli", originator: "codex-tui", cwd: "/work/quota" } },
-    {
-      timestamp: liveUsageAt,
-      type: "event_msg",
-      payload: {
-        type: "token_count",
-        info: { total_token_usage: { total_tokens: 50, input_tokens: 40, cached_input_tokens: 5, output_tokens: 10, reasoning_output_tokens: 0 } },
+  await writeFile(
+    quotaFile,
+    jsonl([
+      {
+        type: "session_meta",
+        timestamp: new Date(observedAtMs - 1_000).toISOString(),
+        payload: { id: "quota-window" },
       },
-    },
-  ]));
+      quotaRow,
+    ]),
+  );
+  const liveUsageAt = new Date(estimateNow - 10_000).toISOString();
+  await writeFile(
+    liveUsageFile,
+    jsonl([
+      {
+        type: "session_meta",
+        timestamp: liveUsageAt,
+        payload: { id: "quota-usage", source: "cli", originator: "codex-tui", cwd: "/work/quota" },
+      },
+      {
+        timestamp: liveUsageAt,
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 50,
+              input_tokens: 40,
+              cached_input_tokens: 5,
+              output_tokens: 10,
+              reasoning_output_tokens: 0,
+            },
+          },
+        },
+      },
+    ]),
+  );
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -362,13 +408,17 @@ test("quota API forces its server bucket, returns capability state, and keeps sn
 
     const paused = await fetch(`${baseUrl}/api/usage?preset=quota_5h&freeze=1`).then((response) => response.json());
     assert.ok(paused.snapshotId);
-    const frozen = await fetch(`${baseUrl}/api/usage?preset=quota_5h&snapshot=${paused.snapshotId}&bucket=month`).then((response) => response.json());
+    const frozen = await fetch(`${baseUrl}/api/usage?preset=quota_5h&snapshot=${paused.snapshotId}&bucket=month`).then(
+      (response) => response.json(),
+    );
     assert.equal(frozen.quota.asOf, paused.quota.asOf);
     assert.deepEqual(frozen.quota, paused.quota);
     assert.equal(frozen.summary.range.bucket, "quota_30m");
     assert.equal(frozen.summary.range.quotaState, "available");
 
-    const excluded = await fetch(`${baseUrl}/api/summary?preset=quota_5h&exclude=${encodeURIComponent(live.metadata.homes[0].id)}`).then((response) => response.json());
+    const excluded = await fetch(
+      `${baseUrl}/api/summary?preset=quota_5h&exclude=${encodeURIComponent(live.metadata.homes[0].id)}`,
+    ).then((response) => response.json());
     assert.equal(excluded.quota.windows.quota_5h.state, "available");
     assert.equal(excluded.summary.totals.total, 0);
   } finally {
@@ -416,7 +466,10 @@ test("server imports project usage log directories and refreshes usage data", as
     assert.equal(before.summary.totals.total, 123);
     assert.equal(imported.import.type, "project-log");
     assert.equal(imported.import.path, projectRoot);
-    assert.deepEqual(imports.imports.map((entry) => entry.path), [projectRoot]);
+    assert.deepEqual(
+      imports.imports.map((entry) => entry.path),
+      [projectRoot],
+    );
     assert.equal(after.summary.totals.total, 200);
     assert.deepEqual(
       after.summary.channels.map((channel) => [channel.name, channel.total.total]),
@@ -425,13 +478,19 @@ test("server imports project usage log directories and refreshes usage data", as
         ["Codex OAuth", 77],
       ],
     );
-    assert.equal(after.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot), true);
+    assert.equal(
+      after.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot),
+      true,
+    );
 
     await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(projectRoot)}`, { method: "DELETE" });
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
 
     assert.equal(removed.summary.totals.total, 123);
-    assert.equal(removed.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot), false);
+    assert.equal(
+      removed.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot),
+      false,
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -461,7 +520,6 @@ test("server returns a picked directory from the local directory picker", async 
     await new Promise((resolve) => server.close(resolve));
   }
 });
-
 
 test("JSON request parsing preserves UTF-8 split across chunks and returns client errors", async () => {
   const payload = Buffer.from(JSON.stringify({ path: "项目" }), "utf8");
@@ -525,7 +583,9 @@ test("server starts directly when its script path contains spaces", async () => 
           resolve(text);
         }
       });
-      child.stderr.on("data", (chunk) => { text += chunk.toString(); });
+      child.stderr.on("data", (chunk) => {
+        text += chunk.toString();
+      });
       child.once("error", (error) => {
         clearTimeout(timer);
         reject(error);
@@ -545,21 +605,25 @@ test("server starts directly when its script path contains spaces", async () => 
   }
 });
 
-
 test("pricing API validates, persists, and reprices indexed history", async () => {
   const fixture = await makeFixtureHome();
   const projectRoot = path.join(fixture.homeDir, "priced-project");
   await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
-  await writeFile(path.join(projectRoot, ".codex-usage", "usage.jsonl"), jsonl([{
-    schema_version: "codex-usage.project-log.v1",
-    timestamp: "2026-05-31T12:00:00.000Z",
-    session_id: "priced-session",
-    request_id: "priced-request",
-    model: "gpt-6-sol",
-    cwd: projectRoot,
-    usage: { total: 110, input: 100, cached: 20, cache_write_input_tokens: 0, output: 10 },
-    service_tier: "standard",
-  }]));
+  await writeFile(
+    path.join(projectRoot, ".codex-usage", "usage.jsonl"),
+    jsonl([
+      {
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: "2026-05-31T12:00:00.000Z",
+        session_id: "priced-session",
+        request_id: "priced-request",
+        model: "gpt-6-sol",
+        cwd: projectRoot,
+        usage: { total: 110, input: 100, cached: 20, cache_write_input_tokens: 0, output: 10 },
+        service_tier: "standard",
+      },
+    ]),
+  );
   const options = { ...fixture, importDirs: [projectRoot] };
   let server = createUsageServer(options);
   const listen = async () => {
@@ -577,23 +641,32 @@ test("pricing API validates, persists, and reprices indexed history", async () =
     const invalid = structuredClone(original);
     invalid.models["gpt-6-sol"].short.input = -1;
     const rejected = await fetch(`${baseUrl}/api/pricing`, {
-      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(invalid),
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(invalid),
     });
     assert.equal(rejected.status, 400);
-    assert.equal((await fetch(`${baseUrl}/api/pricing`).then((response) => response.json())).models["gpt-6-sol"].short.input, 2);
+    assert.equal(
+      (await fetch(`${baseUrl}/api/pricing`).then((response) => response.json())).models["gpt-6-sol"].short.input,
+      2,
+    );
 
     const updated = structuredClone(original);
     updated.checkedAt = "2026-09-24";
     updated.models["gpt-6-sol"].short.input = 4;
     const saved = await fetch(`${baseUrl}/api/pricing`, {
-      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(updated),
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(updated),
     });
     assert.equal(saved.status, 200);
     const savedCatalog = await saved.json();
     const after = await fetch(`${baseUrl}/api/usage?preset=all&skipCheck=1`).then((response) => response.json());
     assert.equal(savedCatalog.checkedAt, "2026-09-24");
     assert.equal(after.summary.costEstimate.priceCheckedAt, "2026-09-24");
-    const changedStatus = await fetch(`${baseUrl}/api/status?since=${encodeURIComponent(before.fingerprint)}`).then((response) => response.json());
+    const changedStatus = await fetch(`${baseUrl}/api/status?since=${encodeURIComponent(before.fingerprint)}`).then(
+      (response) => response.json(),
+    );
     assert.equal(changedStatus.changed, true);
     assert.equal(changedStatus.fingerprint, after.fingerprint);
     assert.ok(Math.abs(after.summary.costEstimate.totalUsd - before.summary.costEstimate.totalUsd - 0.00016) < 1e-12);
@@ -624,14 +697,18 @@ test("usage API 按 exclude 参数过滤数据来源", async () => {
     assert.equal(base.summary.totals.total, 123);
     const homeId = base.metadata.homes[0].id;
 
-    const filtered = await fetch(`${baseUrl}/api/usage?exclude=${encodeURIComponent(homeId)}`).then((response) => response.json());
+    const filtered = await fetch(`${baseUrl}/api/usage?exclude=${encodeURIComponent(homeId)}`).then((response) =>
+      response.json(),
+    );
     assert.equal(filtered.summary.totals.total, 0);
     assert.equal(filtered.summary.eventCount, 0);
     assert.equal(filtered.periodComparison.models.length, 0);
     // 过滤只影响统计口径，来源列表要保持完整。
     assert.equal(filtered.metadata.homes[0].eventCount, 1);
 
-    const summary = await fetch(`${baseUrl}/api/summary?exclude=${encodeURIComponent(homeId)}`).then((response) => response.json());
+    const summary = await fetch(`${baseUrl}/api/summary?exclude=${encodeURIComponent(homeId)}`).then((response) =>
+      response.json(),
+    );
     assert.equal(summary.summary.totals.total, 0);
     assert.equal(summary.periodComparison.models.length, 0);
   } finally {

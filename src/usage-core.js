@@ -6,9 +6,22 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 
 import { createRepositoryResolver } from "./repository-identity.js";
-import { createCostEstimateAccumulator, estimateCostForEvents, estimateEventCost, LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
+import {
+  createCostEstimateAccumulator,
+  estimateCostForEvents,
+  estimateEventCost,
+  LONG_CONTEXT_INPUT_THRESHOLD,
+  pricingVersionForTimestamp,
+} from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
-import { USAGE_DETAIL_INCONSISTENT, USAGE_DETAIL_MASK, USAGE_FIELDS, emptyUsage, isZeroUsage, validateUsageDetails } from "./usage-fields.js";
+import {
+  USAGE_DETAIL_INCONSISTENT,
+  USAGE_DETAIL_MASK,
+  USAGE_FIELDS,
+  emptyUsage,
+  isZeroUsage,
+  validateUsageDetails,
+} from "./usage-fields.js";
 import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
 import { buildTimelineRows, resolveNamedRecentRange } from "../public/timeline-utils.js";
 
@@ -20,7 +33,16 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MS_PER_MINUTE = 60 * 1000;
 const QUOTA_WINDOW_MINUTES = Object.freeze({ quota_5h: 300, quota_week: 10080 });
 const QUOTA_PERCENT_STALE_AFTER_MS = 10 * 60 * 1000;
-export const USAGE_PRESETS = Object.freeze(["today", "week", "month", "all", "recent", "custom", "quota_5h", "quota_week"]);
+export const USAGE_PRESETS = Object.freeze([
+  "today",
+  "week",
+  "month",
+  "all",
+  "recent",
+  "custom",
+  "quota_5h",
+  "quota_week",
+]);
 const USAGE_DETAIL_KEYS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"];
 
 export { emptyUsage, USAGE_DETAIL_MASK };
@@ -61,7 +83,12 @@ function usageFromRaw(raw = {}) {
 
 function readCacheWrite(raw = {}) {
   const value = raw.cache_write_input_tokens;
-  const known = Object.hasOwn(raw, "cache_write_input_tokens") && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+  const known =
+    Object.hasOwn(raw, "cache_write_input_tokens") &&
+    value !== null &&
+    value !== "" &&
+    Number.isFinite(Number(value)) &&
+    Number(value) >= 0;
   return { tokens: known ? Number(value) : 0, known };
 }
 
@@ -89,7 +116,7 @@ function lastUsageMatchesDelta(last, lastMask, delta, deltaMask) {
     ["reasoning", USAGE_DETAIL_MASK.reasoning],
   ];
   for (const [field, bit] of detailFields) {
-    if ((lastMask & bit) && (!(deltaMask & bit) || last[field] !== delta[field])) return false;
+    if (lastMask & bit && (!(deltaMask & bit) || last[field] !== delta[field])) return false;
   }
   return true;
 }
@@ -116,7 +143,8 @@ function contextForEvent(matches, usage, mask) {
 function usageDetailMask(raw = {}, keys = USAGE_DETAIL_KEYS) {
   return keys.reduce((mask, key, index) => {
     const value = raw[key];
-    const known = Object.hasOwn(raw, key) && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+    const known =
+      Object.hasOwn(raw, key) && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
     return known ? mask | (1 << index) : mask;
   }, 0);
 }
@@ -125,7 +153,13 @@ function projectLogDetailMask(raw = {}) {
   const has = (...keys) =>
     keys.some((key) => {
       const value = raw[key];
-      return Object.hasOwn(raw, key) && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+      return (
+        Object.hasOwn(raw, key) &&
+        value !== null &&
+        value !== "" &&
+        Number.isFinite(Number(value)) &&
+        Number(value) >= 0
+      );
     });
   return (
     (has("input", "input_tokens") ? USAGE_DETAIL_MASK.input : 0) |
@@ -143,7 +177,12 @@ function addUsage(target, usage) {
 }
 
 /** @param {number} currentMask @param {number} previousMask */
-function diffUsage(current, previous, currentMask = USAGE_DETAIL_MASK.complete, previousMask = USAGE_DETAIL_MASK.complete) {
+function diffUsage(
+  current,
+  previous,
+  currentMask = USAGE_DETAIL_MASK.complete,
+  previousMask = USAGE_DETAIL_MASK.complete,
+) {
   const diff = emptyUsage();
   diff.total = Math.max(0, (current.total || 0) - (previous.total || 0));
   let detailMask = 0;
@@ -155,7 +194,7 @@ function diffUsage(current, previous, currentMask = USAGE_DETAIL_MASK.complete, 
     ["reasoning", USAGE_DETAIL_MASK.reasoning],
   ];
   for (const [field, bit] of detailFields) {
-    if ((currentMask & bit) && (previousMask & bit)) {
+    if (currentMask & bit && previousMask & bit) {
       diff[field] = Math.max(0, (current[field] || 0) - (previous[field] || 0));
       detailMask |= bit;
     }
@@ -332,11 +371,7 @@ export async function discoverCodexHomes(options = {}) {
         continue;
       }
       const productName = entry.name;
-      await addHome(
-        `JetBrains ${productName}`,
-        path.join(jetbrainsRoot, productName, "aia", "codex"),
-        "jetbrains",
-      );
+      await addHome(`JetBrains ${productName}`, path.join(jetbrainsRoot, productName, "aia", "codex"), "jetbrains");
     }
   }
 
@@ -472,9 +507,7 @@ async function walkJsonlFiles(root, files = []) {
 }
 
 export async function discoverSessionFiles(homePath) {
-  const groups = await Promise.all(
-    SESSION_DIRS.map((dir) => walkJsonlFiles(path.join(homePath, dir), [])),
-  );
+  const groups = await Promise.all(SESSION_DIRS.map((dir) => walkJsonlFiles(path.join(homePath, dir), [])));
   return groups.flat().sort();
 }
 
@@ -492,7 +525,7 @@ export async function buildUsageFingerprint(options = {}) {
 
   async function addFile(filePath, info = null) {
     try {
-      const details = info || await stat(filePath);
+      const details = info || (await stat(filePath));
       fileCount += 1;
       hash.update(`${filePath}\t${details.size}\t${details.mtimeMs}\n`);
     } catch (error) {
@@ -538,7 +571,12 @@ export async function buildUsageFingerprint(options = {}) {
 }
 
 export function classifyChannel({ originator, source, homeLabel }) {
-  const normalize = (value) => String(value || "").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const normalize = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   const normalizedSource = normalize(source);
   const text = `${normalize(originator)} ${normalizedSource} ${normalize(homeLabel)}`;
   if (text.includes("jetbrains")) {
@@ -605,18 +643,27 @@ export function parseRateLimitObservations(row, { sourcePath = "", lineNumber = 
     const rootLimitId = typeof rateLimits.limit_id === "string" ? rateLimits.limit_id.trim() : "";
     const windowLimitId = typeof raw?.limit_id === "string" ? raw.limit_id.trim() : "";
     const limitId = rootLimitId || windowLimitId;
-    const windowMinutes = raw?.window_minutes === "" || raw?.window_minutes === null ? NaN : Number(raw?.window_minutes);
+    const windowMinutes =
+      raw?.window_minutes === "" || raw?.window_minutes === null ? NaN : Number(raw?.window_minutes);
     const resetSeconds = raw?.resets_at === "" || raw?.resets_at === null ? NaN : Number(raw?.resets_at);
     const resetsAtMs = resetSeconds * 1000;
-    const hasPercent = raw && Object.hasOwn(raw, "used_percent") && raw.used_percent !== null && raw.used_percent !== "";
+    const hasPercent =
+      raw && Object.hasOwn(raw, "used_percent") && raw.used_percent !== null && raw.used_percent !== "";
     const usedPercent = hasPercent ? Number(raw.used_percent) : null;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) reason = "窗口数据格式无效";
     else if (!Number.isFinite(observedAtMs)) reason = "观察时间无效";
     else if (rootLimitId && windowLimitId && rootLimitId !== windowLimitId) reason = "顶层与窗口 limit_id 冲突";
     else if (!limitId) reason = "limit_id 为空";
     else if (!Number.isFinite(windowMinutes) || windowMinutes <= 0) reason = "window_minutes 必须是正数";
-    else if (!Number.isFinite(resetSeconds) || resetSeconds <= 0 || !Number.isFinite(resetsAtMs) || Number.isNaN(new Date(resetsAtMs).getTime())) reason = "resets_at 无效";
-    else if (hasPercent && (!Number.isFinite(usedPercent) || usedPercent < 0 || usedPercent > 100)) reason = "used_percent 必须在 0 到 100 之间";
+    else if (
+      !Number.isFinite(resetSeconds) ||
+      resetSeconds <= 0 ||
+      !Number.isFinite(resetsAtMs) ||
+      Number.isNaN(new Date(resetsAtMs).getTime())
+    )
+      reason = "resets_at 无效";
+    else if (hasPercent && (!Number.isFinite(usedPercent) || usedPercent < 0 || usedPercent > 100))
+      reason = "used_percent 必须在 0 到 100 之间";
     if (reason) {
       onWarning?.(invalidRateLimitWarning(sourcePath, lineNumber, role, reason));
       continue;
@@ -627,10 +674,18 @@ export function parseRateLimitObservations(row, { sourcePath = "", lineNumber = 
       role,
       observedAtMs,
       limitId,
-      limitName: typeof rateLimits.limit_name === "string" ? rateLimits.limit_name :
-        typeof raw.limit_name === "string" ? raw.limit_name : null,
-      planType: typeof rateLimits.plan_type === "string" ? rateLimits.plan_type :
-        typeof raw.plan_type === "string" ? raw.plan_type : null,
+      limitName:
+        typeof rateLimits.limit_name === "string"
+          ? rateLimits.limit_name
+          : typeof raw.limit_name === "string"
+            ? raw.limit_name
+            : null,
+      planType:
+        typeof rateLimits.plan_type === "string"
+          ? rateLimits.plan_type
+          : typeof raw.plan_type === "string"
+            ? raw.plan_type
+            : null,
       windowMinutes,
       resetsAtMs,
       usedPercent,
@@ -653,14 +708,15 @@ function observationValue(observation, camelName, snakeName) {
 }
 
 function unavailableQuotaWindow(state, reason) {
-  const reasonCode = new Map([
-    ["存在多个无法区分的 Codex 限额桶。", "multiple-buckets"],
-    ["尚未发现 Codex 限额记录。", "no-records"],
-    ["同一观察时刻存在相互冲突的限额重置时间。", "conflicting-reset"],
-    ["等待新的限额记录", "waiting"],
-    ["尚未发现当前限额窗口的 Codex 记录。", "missing-window"],
-    ["限额窗口边界无效。", "invalid-boundaries"],
-  ]).get(reason) || state;
+  const reasonCode =
+    new Map([
+      ["存在多个无法区分的 Codex 限额桶。", "multiple-buckets"],
+      ["尚未发现 Codex 限额记录。", "no-records"],
+      ["同一观察时刻存在相互冲突的限额重置时间。", "conflicting-reset"],
+      ["等待新的限额记录", "waiting"],
+      ["尚未发现当前限额窗口的 Codex 记录。", "missing-window"],
+      ["限额窗口边界无效。", "invalid-boundaries"],
+    ]).get(reason) || state;
   return {
     state,
     reason,
@@ -674,9 +730,8 @@ function unavailableQuotaWindow(state, reason) {
 }
 
 export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
-  const asOfMs = asOfValue instanceof Date
-    ? asOfValue.getTime()
-    : typeof asOfValue === "number" ? asOfValue : Date.parse(asOfValue);
+  const asOfMs =
+    asOfValue instanceof Date ? asOfValue.getTime() : typeof asOfValue === "number" ? asOfValue : Date.parse(asOfValue);
   if (!Number.isFinite(asOfMs)) throw new RangeError("asOf must be a valid date.");
   const asOf = new Date(asOfMs).toISOString();
   const unique = new Map();
@@ -689,7 +744,14 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
     const observedAt = Number(observationValue(observation, "observedAtMs", "observed_at_ms"));
     const windowMinutes = Number(observation.windowMinutes ?? observation.window_minutes);
     const resetsAtMs = Number(observationValue(observation, "resetsAtMs", "resets_at_ms"));
-    return typeof id === "string" && id.trim() && Number.isFinite(observedAt) && Number.isFinite(windowMinutes) && windowMinutes > 0 && Number.isFinite(resetsAtMs);
+    return (
+      typeof id === "string" &&
+      id.trim() &&
+      Number.isFinite(observedAt) &&
+      Number.isFinite(windowMinutes) &&
+      windowMinutes > 0 &&
+      Number.isFinite(resetsAtMs)
+    );
   });
   const buckets = new Map();
   for (const observation of valid) {
@@ -712,11 +774,15 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
     if (!repeated.length) {
       bucketAmbiguous = true;
     } else {
-      const candidates = repeated.sort((left, right) =>
-        right[1].count - left[1].count || right[1].latestObservedAtMs - left[1].latestObservedAtMs,
+      const candidates = repeated.sort(
+        (left, right) => right[1].count - left[1].count || right[1].latestObservedAtMs - left[1].latestObservedAtMs,
       );
       ignoredBucketCount = buckets.size - candidates.length;
-      if (candidates.length > 1 && candidates[0][1].count === candidates[1][1].count && candidates[0][1].latestObservedAtMs === candidates[1][1].latestObservedAtMs) {
+      if (
+        candidates.length > 1 &&
+        candidates[0][1].count === candidates[1][1].count &&
+        candidates[0][1].latestObservedAtMs === candidates[1][1].latestObservedAtMs
+      ) {
         bucketAmbiguous = true;
       } else {
         limitId = candidates[0][0];
@@ -734,11 +800,13 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
       windows[preset] = unavailableQuotaWindow("missing", "尚未发现 Codex 限额记录。");
       continue;
     }
-    const bucketObservations = buckets.get(limitId).observations.filter((observation) =>
-      Number(observation.windowMinutes ?? observation.window_minutes) === windowMinutes,
-    );
-    const observedBeforeAsOf = bucketObservations.filter((observation) =>
-      Number(observationValue(observation, "observedAtMs", "observed_at_ms")) <= asOfMs,
+    const bucketObservations = buckets
+      .get(limitId)
+      .observations.filter(
+        (observation) => Number(observation.windowMinutes ?? observation.window_minutes) === windowMinutes,
+      );
+    const observedBeforeAsOf = bucketObservations.filter(
+      (observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms")) <= asOfMs,
     );
     const current = observedBeforeAsOf.filter((observation) => {
       const endMs = Number(observationValue(observation, "resetsAtMs", "resets_at_ms"));
@@ -746,18 +814,26 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
       return startMs <= asOfMs && asOfMs < endMs;
     });
     if (current.length) {
-      const latestObservedAtMs = Math.max(...current.map((observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms"))));
-      const latest = current.filter((observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms")) === latestObservedAtMs);
-      const endPoints = new Set(latest.map((observation) => Number(observationValue(observation, "resetsAtMs", "resets_at_ms"))));
+      const latestObservedAtMs = Math.max(
+        ...current.map((observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms"))),
+      );
+      const latest = current.filter(
+        (observation) => Number(observationValue(observation, "observedAtMs", "observed_at_ms")) === latestObservedAtMs,
+      );
+      const endPoints = new Set(
+        latest.map((observation) => Number(observationValue(observation, "resetsAtMs", "resets_at_ms"))),
+      );
       if (endPoints.size > 1) {
         windows[preset] = unavailableQuotaWindow("ambiguous", "同一观察时刻存在相互冲突的限额重置时间。");
         continue;
       }
       const windowEndMs = endPoints.values().next().value;
-      const percents = new Set(latest.map((observation) => {
-        const value = observationValue(observation, "usedPercent", "used_percent");
-        return value === null || value === undefined ? null : Number(value);
-      }));
+      const percents = new Set(
+        latest.map((observation) => {
+          const value = observationValue(observation, "usedPercent", "used_percent");
+          return value === null || value === undefined ? null : Number(value);
+        }),
+      );
       const usedPercent = percents.size === 1 ? percents.values().next().value : null;
       const windowStartMs = windowEndMs - windowMinutes * MS_PER_MINUTE;
       windows[preset] = {
@@ -771,8 +847,8 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
       };
       continue;
     }
-    const hasExpiredObservation = observedBeforeAsOf.some((observation) =>
-      Number(observationValue(observation, "resetsAtMs", "resets_at_ms")) <= asOfMs,
+    const hasExpiredObservation = observedBeforeAsOf.some(
+      (observation) => Number(observationValue(observation, "resetsAtMs", "resets_at_ms")) <= asOfMs,
     );
     windows[preset] = hasExpiredObservation
       ? unavailableQuotaWindow("waiting", "等待新的限额记录")
@@ -781,26 +857,40 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
   const previousWindows = {};
   for (const [preset, minutes] of Object.entries(QUOTA_WINDOW_MINUTES)) {
     const cutoff = windows[preset]?.state === "available" ? Date.parse(windows[preset].windowStart) : asOfMs;
-    const candidates = (buckets.get(limitId)?.observations || []).filter(row => {
+    const candidates = (buckets.get(limitId)?.observations || []).filter((row) => {
       const observed = Number(observationValue(row, "observedAtMs", "observed_at_ms"));
       const end = Number(observationValue(row, "resetsAtMs", "resets_at_ms"));
-      return Number(row.windowMinutes ?? row.window_minutes) === minutes && observed <= asOfMs && observed < end && end <= cutoff;
+      return (
+        Number(row.windowMinutes ?? row.window_minutes) === minutes &&
+        observed <= asOfMs &&
+        observed < end &&
+        end <= cutoff
+      );
     });
     if (!candidates.length || bucketAmbiguous || windows[preset]?.state === "ambiguous") {
       previousWindows[preset] = unavailableQuotaWindow("missing", "尚未发现上一限额窗口的 Codex 记录。");
       continue;
     }
-    const latestTime = candidates.reduce((max, row) => Math.max(max, Number(observationValue(row, "observedAtMs", "observed_at_ms"))), -Infinity);
-    const latest = candidates.filter(row => Number(observationValue(row, "observedAtMs", "observed_at_ms")) === latestTime);
-    const ends = new Set(latest.map(row => Number(observationValue(row, "resetsAtMs", "resets_at_ms"))));
+    const latestTime = candidates.reduce(
+      (max, row) => Math.max(max, Number(observationValue(row, "observedAtMs", "observed_at_ms"))),
+      -Infinity,
+    );
+    const latest = candidates.filter(
+      (row) => Number(observationValue(row, "observedAtMs", "observed_at_ms")) === latestTime,
+    );
+    const ends = new Set(latest.map((row) => Number(observationValue(row, "resetsAtMs", "resets_at_ms"))));
     if (ends.size !== 1) {
       previousWindows[preset] = unavailableQuotaWindow("ambiguous", "同一观察时刻存在相互冲突的限额重置时间。");
       continue;
     }
     const end = [...ends][0];
-    previousWindows[preset] = { state: "available", reason: null,
+    previousWindows[preset] = {
+      state: "available",
+      reason: null,
       windowStart: new Date(end - minutes * MS_PER_MINUTE).toISOString(),
-      windowEndExclusive: new Date(end).toISOString(), observedAt: new Date(latestTime).toISOString() };
+      windowEndExclusive: new Date(end).toISOString(),
+      observedAt: new Date(latestTime).toISOString(),
+    };
   }
   return { asOf, limitId, ignoredBucketCount, windows, previousWindows };
 }
@@ -875,18 +965,25 @@ export async function parseSessionFile(filePath, home, options = {}) {
       }
       baselineLoaded = true;
     }
-    const { cumulative, cumulativeMask, cumulativeCacheWrite, last, lastMask, lastCacheWrite, serviceTier } = readTokenUsage(row.payload, row);
+    const { cumulative, cumulativeMask, cumulativeCacheWrite, last, lastMask, lastCacheWrite, serviceTier } =
+      readTokenUsage(row.payload, row);
     let increment = emptyUsage();
     let detailMask = 0;
     let cacheWrite = { tokens: 0, known: false };
     let lastMatchesDelta = false;
     if (cumulative) {
       const diff = diffUsage(cumulative, previousCumulative, cumulativeMask, previousCumulativeMask);
-      const selected = initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
+      const selected =
+        initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
       increment = selected.usage;
       detailMask = selected.detailMask;
       lastMatchesDelta = Boolean(last && lastUsageMatchesDelta(last, lastMask, increment, detailMask));
-      cacheWrite = cacheWriteForEvent({ cumulative: cumulativeCacheWrite, previous: previousCumulativeCacheWrite, last: lastCacheWrite, lastMatches: lastMatchesDelta });
+      cacheWrite = cacheWriteForEvent({
+        cumulative: cumulativeCacheWrite,
+        previous: previousCumulativeCacheWrite,
+        last: lastCacheWrite,
+        lastMatches: lastMatchesDelta,
+      });
       previousCumulative = cumulative;
       previousCumulativeMask = cumulativeMask;
       previousCumulativeCacheWrite = cumulativeCacheWrite;
@@ -898,7 +995,11 @@ export async function parseSessionFile(filePath, home, options = {}) {
     if (!isZeroUsage(increment)) hasUsageInFile = true;
     addUsage(finalUsage, increment);
     const requestUsage = last && (!cumulative || lastMatchesDelta) ? last : null;
-    const context = contextForEvent(Boolean(requestUsage), requestUsage || increment, requestUsage ? lastMask : detailMask);
+    const context = contextForEvent(
+      Boolean(requestUsage),
+      requestUsage || increment,
+      requestUsage ? lastMask : detailMask,
+    );
 
     if (isZeroUsage(increment)) {
       continue;
@@ -956,25 +1057,27 @@ export async function parseSessionFile(filePath, home, options = {}) {
   });
 
   return {
-    session: events.length ? {
-      id: meta.id,
-      filePath,
-      firstAt,
-      lastAt,
-      homeId: home.homeId || home.id,
-      homeLabel: home.homeLabel || home.label,
-      homePath: home.homePath || home.path,
-      channel,
-      source: meta.source,
-      originator: meta.originator,
-      cwd: meta.cwd,
-      conversationName: threadNames.get(meta.id) || "",
-      model,
-      cliVersion: meta.cliVersion,
-      modelProvider: meta.modelProvider,
-      eventCount: events.length,
-      total: finalUsage,
-    } : null,
+    session: events.length
+      ? {
+          id: meta.id,
+          filePath,
+          firstAt,
+          lastAt,
+          homeId: home.homeId || home.id,
+          homeLabel: home.homeLabel || home.label,
+          homePath: home.homePath || home.path,
+          channel,
+          source: meta.source,
+          originator: meta.originator,
+          cwd: meta.cwd,
+          conversationName: threadNames.get(meta.id) || "",
+          model,
+          cliVersion: meta.cliVersion,
+          modelProvider: meta.modelProvider,
+          eventCount: events.length,
+          total: finalUsage,
+        }
+      : null,
     events,
     rateLimitObservations,
   };
@@ -1231,18 +1334,25 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       }
       baselineLoaded = true;
     }
-    const { cumulative, cumulativeMask, cumulativeCacheWrite, last, lastMask, lastCacheWrite, serviceTier } = readTokenUsage(row.payload, row);
+    const { cumulative, cumulativeMask, cumulativeCacheWrite, last, lastMask, lastCacheWrite, serviceTier } =
+      readTokenUsage(row.payload, row);
     let increment = emptyUsage();
     let detailMask = 0;
     let cacheWrite = { tokens: 0, known: false };
     let lastMatchesDelta = false;
     if (cumulative) {
       const diff = diffUsage(cumulative, previousCumulative, cumulativeMask, previousCumulativeMask);
-      const selected = initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
+      const selected =
+        initialRequestUsage(cumulative, cumulativeMask, last, lastMask, diff.usage, hasUsageInFile) || diff;
       increment = selected.usage;
       detailMask = selected.detailMask;
       lastMatchesDelta = Boolean(last && lastUsageMatchesDelta(last, lastMask, increment, detailMask));
-      cacheWrite = cacheWriteForEvent({ cumulative: cumulativeCacheWrite, previous: previousCumulativeCacheWrite, last: lastCacheWrite, lastMatches: lastMatchesDelta });
+      cacheWrite = cacheWriteForEvent({
+        cumulative: cumulativeCacheWrite,
+        previous: previousCumulativeCacheWrite,
+        last: lastCacheWrite,
+        lastMatches: lastMatchesDelta,
+      });
       previousCumulative = cumulative;
       previousCumulativeMask = cumulativeMask;
       previousCumulativeCacheWrite = cumulativeCacheWrite;
@@ -1253,7 +1363,11 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
     }
     if (!isZeroUsage(increment)) hasUsageInFile = true;
     const requestUsage = last && (!cumulative || lastMatchesDelta) ? last : null;
-    const context = contextForEvent(Boolean(requestUsage), requestUsage || increment, requestUsage ? lastMask : detailMask);
+    const context = contextForEvent(
+      Boolean(requestUsage),
+      requestUsage || increment,
+      requestUsage ? lastMask : detailMask,
+    );
 
     if (isZeroUsage(increment)) {
       continue;
@@ -1358,99 +1472,122 @@ export async function streamUsageFileEvents(filePath, source, onEvent, options =
   await streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
-async function parseSessionFileForIndex(filePath, home, intern, resolveRepository, previousCumulativeForSession, onRateLimit, onWarning) {
+async function parseSessionFileForIndex(
+  filePath,
+  home,
+  intern,
+  resolveRepository,
+  previousCumulativeForSession,
+  onRateLimit,
+  onWarning,
+) {
   const events = [];
-  await streamSessionUsageFileEvents(filePath, home, (event) => {
-    events.push({
-      t: event.timestampMs,
-      s: intern(event.sessionId),
-      h: intern(event.homeId),
-      l: intern(event.homeLabel),
-      c: intern(event.channel),
-      p: intern(event.project),
-      rk: intern(event.repositoryKey),
-      rp: intern(event.repositoryPath),
-      rt: intern(event.repositoryKind),
-      m: intern(event.model),
-      total: event.usage.total,
-      input: event.usage.input,
-      cached: event.usage.cached,
-      output: event.usage.output,
-      reasoning: event.usage.reasoning,
-      detailMask: event.detailMask,
-      reconciliationGap: event.reconciliationGap,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: intern(event.contextLevel),
-      serviceTier: intern(event.serviceTier),
-      priceVersion: intern(event.priceVersion),
-    });
-  }, { repositoryResolver: resolveRepository, previousCumulativeForSession, onRateLimit, onWarning });
+  await streamSessionUsageFileEvents(
+    filePath,
+    home,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: intern(event.priceVersion),
+      });
+    },
+    { repositoryResolver: resolveRepository, previousCumulativeForSession, onRateLimit, onWarning },
+  );
   return events;
 }
 
 async function parseProjectUsageLogFileForIndex(filePath, source, intern, resolveRepository) {
   const events = [];
-  await streamProjectUsageFileEvents(filePath, source, (event) => {
-    events.push({
-      t: event.timestampMs,
-      s: intern(event.sessionId),
-      h: intern(event.homeId),
-      l: intern(event.homeLabel),
-      c: intern(event.channel),
-      p: intern(event.project),
-      rk: intern(event.repositoryKey),
-      rp: intern(event.repositoryPath),
-      rt: intern(event.repositoryKind),
-      m: intern(event.model),
-      total: event.usage.total,
-      input: event.usage.input,
-      cached: event.usage.cached,
-      output: event.usage.output,
-      reasoning: event.usage.reasoning,
-      detailMask: event.detailMask,
-      reconciliationGap: event.reconciliationGap,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: intern(event.contextLevel),
-      serviceTier: intern(event.serviceTier),
-      priceVersion: intern(event.priceVersion),
-    });
-  }, { repositoryResolver: resolveRepository });
+  await streamProjectUsageFileEvents(
+    filePath,
+    source,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: intern(event.priceVersion),
+      });
+    },
+    { repositoryResolver: resolveRepository },
+  );
   return events;
 }
 
 async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
   const events = [];
-  await streamZcodeDbEvents(dbFile, source, (event) => {
-    events.push({
-      t: event.timestampMs,
-      s: intern(event.sessionId),
-      h: intern(event.homeId),
-      l: intern(event.homeLabel),
-      c: intern(event.channel),
-      p: intern(event.project),
-      rk: intern(event.repositoryKey),
-      rp: intern(event.repositoryPath),
-      rt: intern(event.repositoryKind),
-      m: intern(event.model),
-      total: event.usage.total,
-      input: event.usage.input,
-      cached: event.usage.cached,
-      output: event.usage.output,
-      reasoning: event.usage.reasoning,
-      detailMask: event.detailMask,
-      reconciliationGap: event.reconciliationGap,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: intern(event.contextLevel),
-      serviceTier: intern(event.serviceTier),
-      priceVersion: intern(event.priceVersion),
-    });
-  }, { repositoryResolver: resolveRepository });
+  await streamZcodeDbEvents(
+    dbFile,
+    source,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: intern(event.priceVersion),
+      });
+    },
+    { repositoryResolver: resolveRepository },
+  );
   return events;
 }
 
@@ -1511,7 +1648,14 @@ export async function buildUsageReport(options = {}) {
         events.push(...parsed.events);
         rateLimitObservations.push(...parsed.rateLimitObservations);
         for (const event of parsed.events) {
-          rememberSessionUsage(previousBySession, event.sessionId, event.total, event.detailMask, event.cacheWriteTokens, event.cacheWriteKnown);
+          rememberSessionUsage(
+            previousBySession,
+            event.sessionId,
+            event.total,
+            event.detailMask,
+            event.cacheWriteTokens,
+            event.cacheWriteKnown,
+          );
         }
       } catch (error) {
         warnings.push(`无法解析 ${file}: ${error.message}`);
@@ -1547,7 +1691,9 @@ export async function buildUsageIndex(options = {}) {
   for (const home of homes) {
     if (home.kind === "project-log" && home.usageLogPath) {
       try {
-        events.push(...(await parseProjectUsageLogFileForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)));
+        events.push(
+          ...(await parseProjectUsageLogFileForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)),
+        );
       } catch (error) {
         warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
       }
@@ -1574,13 +1720,25 @@ export async function buildUsageIndex(options = {}) {
 
     for (const file of files) {
       try {
-      const parsed = await parseSessionFileForIndex(file, home, interner.intern, repositoryResolver,
+        const parsed = await parseSessionFileForIndex(
+          file,
+          home,
+          interner.intern,
+          repositoryResolver,
           (sessionId) => previousBySession.get(sessionId),
           (observation) => rateLimitObservations.push(observation),
-          (warning) => warnings.push(warning));
+          (warning) => warnings.push(warning),
+        );
         events.push(...parsed);
         for (const event of parsed) {
-          rememberSessionUsage(previousBySession, interner.values[event.s], event, event.detailMask, event.cacheWriteTokens, event.cacheWriteKnown);
+          rememberSessionUsage(
+            previousBySession,
+            interner.values[event.s],
+            event,
+            event.detailMask,
+            event.cacheWriteTokens,
+            event.cacheWriteKnown,
+          );
         }
       } catch (error) {
         warnings.push(`无法解析 ${file}: ${error.message}`);
@@ -1661,12 +1819,32 @@ function subtractMonthsClamped(date, months, zone = "local") {
   const targetMonth = zone === "utc" ? target.getUTCMonth() : target.getMonth();
   const clampedDay = Math.min(day, daysInMonth(targetYear, targetMonth));
   return zone === "utc"
-    ? new Date(Date.UTC(targetYear, targetMonth, clampedDay, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()))
-    : new Date(targetYear, targetMonth, clampedDay, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+    ? new Date(
+        Date.UTC(
+          targetYear,
+          targetMonth,
+          clampedDay,
+          date.getUTCHours(),
+          date.getUTCMinutes(),
+          date.getUTCSeconds(),
+          date.getUTCMilliseconds(),
+        ),
+      )
+    : new Date(
+        targetYear,
+        targetMonth,
+        clampedDay,
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+        date.getMilliseconds(),
+      );
 }
 
 function parseRecentValue(value) {
-  const normalized = String(value || "").trim().replace(/\s+/g, "");
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "");
   if (normalized === "半年") {
     return { months: 6 };
   }
@@ -1742,8 +1920,14 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
     const windowEndExclusiveMs = Date.parse(quotaWindow.windowEndExclusive || "");
     const asOfMs = Date.parse(quota?.asOf || "");
     const expectedDuration = QUOTA_WINDOW_MINUTES[preset] * MS_PER_MINUTE;
-    if (!Number.isFinite(windowStartMs) || !Number.isFinite(windowEndExclusiveMs) || !Number.isFinite(asOfMs) ||
-        windowEndExclusiveMs - windowStartMs !== expectedDuration || windowStartMs > asOfMs || asOfMs >= windowEndExclusiveMs) {
+    if (
+      !Number.isFinite(windowStartMs) ||
+      !Number.isFinite(windowEndExclusiveMs) ||
+      !Number.isFinite(asOfMs) ||
+      windowEndExclusiveMs - windowStartMs !== expectedDuration ||
+      windowStartMs > asOfMs ||
+      asOfMs >= windowEndExclusiveMs
+    ) {
       throw new QuotaWindowUnavailableError(preset, {
         ...quota,
         windows: { ...quota?.windows, [preset]: unavailableQuotaWindow("ambiguous", "限额窗口边界无效。") },
@@ -1778,16 +1962,21 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
   }
   if (preset === "month") {
     return {
-      start: zone === "utc" ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) : new Date(now.getFullYear(), now.getMonth(), 1),
+      start:
+        zone === "utc"
+          ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+          : new Date(now.getFullYear(), now.getMonth(), 1),
       end: endOfLocalDay(now, zone),
-      preset, calendarZone: zone,
+      preset,
+      calendarZone: zone,
     };
   }
   if (preset === "custom") {
     return {
       start: parseDateStart(filters.startDate, zone),
       end: parseDateEnd(filters.endDate, zone),
-      preset, calendarZone: zone,
+      preset,
+      calendarZone: zone,
     };
   }
   if (preset === "recent") {
@@ -1917,10 +2106,7 @@ function groupRepositories(events) {
 
 /** @returns {import("./usage-types.js").UsageRange} */
 function indexDateRange(filters = {}, events = []) {
-  return resolveDateRangeFromTimestamps(
-    filters,
-    events.map((event) => event.t).filter(Number.isFinite),
-  );
+  return resolveDateRangeFromTimestamps(filters, events.map((event) => event.t).filter(Number.isFinite));
 }
 
 function addIndexedUsage(target, event) {
@@ -2090,7 +2276,10 @@ export function previousUsageRange(range) {
   if (range.preset === "month") {
     const currentMonthStart = startOfLocalDay(range.start, zone);
     return {
-      start: zone === "utc" ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1)) : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
+      start:
+        zone === "utc"
+          ? new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1))
+          : new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1),
       end: new Date(currentMonthStart.getTime() - 1),
     };
   }
@@ -2137,13 +2326,15 @@ function percentChange(current, previous) {
 }
 
 function comparisonLabel(preset) {
-  return {
-    today: "较昨日",
-    week: "较上周",
-    month: "较上月",
-    custom: "较上一等长周期",
-    recent: "较上一等长周期",
-  }[preset] || "暂无对比";
+  return (
+    {
+      today: "较昨日",
+      week: "较上周",
+      month: "较上月",
+      custom: "较上一等长周期",
+      recent: "较上一等长周期",
+    }[preset] || "暂无对比"
+  );
 }
 
 function usageComparison({ range, allEvents, eventTime, eventSession, addEventUsage, currentTotals, now }) {
@@ -2246,7 +2437,10 @@ function addPeriodEvent(target, event) {
   } else {
     target.cachedUnavailableTokens += total;
   }
-  if ((mask & (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)) === (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)) {
+  if (
+    (mask & (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)) ===
+    (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)
+  ) {
     target.uncachedInput += Math.max(0, Number(usage.input || 0) - Number(usage.cached || 0));
     target.cacheRateInput += Number(usage.input || 0);
     target.cacheRateCached += Number(usage.cached || 0);
@@ -2278,9 +2472,7 @@ function comparisonRow(map, key, name, event, periodKeys, { includeRepositoryMet
     row = {
       key,
       name,
-      ...(includeRepositoryMetadata
-        ? { kind: event.repositoryKind || "directory", pathSet: new Set() }
-        : {}),
+      ...(includeRepositoryMetadata ? { kind: event.repositoryKind || "directory", pathSet: new Set() } : {}),
       periods: Object.fromEntries(periodKeys.map((period) => [period, emptyPeriodMetrics()])),
     };
     map.set(key, row);
@@ -2300,7 +2492,10 @@ export function summarizePeriodComparison(events = [], options = {}) {
     .map((event) => ({ timestamp: event.timestamp }))
     .filter((event) => Number.isFinite(Date.parse(event.timestamp)));
   const ranges = Object.fromEntries(
-    COMPARISON_PERIOD_KEYS.map((key) => [key, resolveDateRange({ preset: key, now: asOf, calendarZone: options.calendarZone }, timestamps)]),
+    COMPARISON_PERIOD_KEYS.map((key) => [
+      key,
+      resolveDateRange({ preset: key, now: asOf, calendarZone: options.calendarZone }, timestamps),
+    ]),
   );
   const rows = { models: new Map(), repositories: new Map() };
   const totals = Object.fromEntries(COMPARISON_PERIOD_KEYS.map((key) => [key, emptyPeriodMetrics()]));
@@ -2315,9 +2510,16 @@ export function summarizePeriodComparison(events = [], options = {}) {
     const modelRow = comparisonRow(rows.models, modelKey, modelKey, event, COMPARISON_PERIOD_KEYS);
     const repositoryRowKey = repositoryKey;
     const repositoryName = event.repositoryPath || event.cwd || "Unknown cwd";
-    const repositoryRow = comparisonRow(rows.repositories, repositoryRowKey, repositoryName, event, COMPARISON_PERIOD_KEYS, {
-      includeRepositoryMetadata: true,
-    });
+    const repositoryRow = comparisonRow(
+      rows.repositories,
+      repositoryRowKey,
+      repositoryName,
+      event,
+      COMPARISON_PERIOD_KEYS,
+      {
+        includeRepositoryMetadata: true,
+      },
+    );
 
     for (const period of COMPARISON_PERIOD_KEYS) {
       const range = ranges[period];
@@ -2334,9 +2536,7 @@ export function summarizePeriodComparison(events = [], options = {}) {
     return [...map.values()]
       .map((row) => {
         const { pathSet, ...result } = row;
-        return pathSet
-          ? { ...result, pathCount: pathSet.size }
-          : result;
+        return pathSet ? { ...result, pathCount: pathSet.size } : result;
       })
       .sort((a, b) => b.periods.all.total - a.periods.all.total || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
@@ -2377,18 +2577,22 @@ function summaryRangeFields(range, bucket) {
     bucket,
     calendarZone: range.calendarZone || "local",
     rolling: Boolean(range.rolling),
-    ...(range.quotaWindow ? {
-      quotaWindow: true, recentValue: range.recentValue, quotaPreset: range.quotaPreset,
-      asOf: range.asOf.toISOString(),
-      windowStart: range.start.toISOString(),
-      windowEndExclusive: range.windowEndExclusive.toISOString(),
-      observedAt: range.observedAt?.toISOString() || null,
-      usedPercent: range.usedPercent,
-      percentStale: range.percentStale,
-      limitId: range.limitId,
-      quotaState: range.quotaState,
-      quotaReason: range.quotaReason,
-    } : {}),
+    ...(range.quotaWindow
+      ? {
+          quotaWindow: true,
+          recentValue: range.recentValue,
+          quotaPreset: range.quotaPreset,
+          asOf: range.asOf.toISOString(),
+          windowStart: range.start.toISOString(),
+          windowEndExclusive: range.windowEndExclusive.toISOString(),
+          observedAt: range.observedAt?.toISOString() || null,
+          usedPercent: range.usedPercent,
+          percentStale: range.percentStale,
+          limitId: range.limitId,
+          quotaState: range.quotaState,
+          quotaReason: range.quotaReason,
+        }
+      : {}),
   };
 }
 
@@ -2397,7 +2601,8 @@ export function summarizeUsageIndex(index, filters = {}) {
   const { quota, asOf } = summaryQuotaContext(index.rateLimitObservations, filters);
   const range = indexDateRange({ ...filters, quota, now: asOf }, index.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
-  const bucket = range.bucket || (quotaPreset ? range.preset === "quota_5h" ? "quota_30m" : "quota_24h" : filters.bucket || "day");
+  const bucket =
+    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
   const now = range.asOf || asOf;
   const events = index.events.filter((event) => {
     if (!Number.isFinite(event.t)) {
@@ -2414,15 +2619,17 @@ export function summarizeUsageIndex(index, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.s));
   const totals = events.reduce((sum, event) => addIndexedUsage(sum, event), emptyUsage());
-  const comparison = quotaPreset ? null : usageComparison({
-    range,
-    allEvents: index.events,
-    eventTime: (event) => event.t,
-    eventSession: (event) => event.s,
-    addEventUsage: addIndexedUsage,
-    currentTotals: totals,
-    now,
-  });
+  const comparison = quotaPreset
+    ? null
+    : usageComparison({
+        range,
+        allEvents: index.events,
+        eventTime: (event) => event.t,
+        eventSession: (event) => event.s,
+        addEventUsage: addIndexedUsage,
+        currentTotals: totals,
+        now,
+      });
   function* timelineEvents() {
     for (const event of events) {
       yield {
@@ -2430,7 +2637,13 @@ export function summarizeUsageIndex(index, filters = {}) {
         sessionId: strings[event.s] || String(event.s),
         channel: strings[event.c] || "Unknown",
         model: strings[event.m] || "Unknown model",
-        total: { total: event.total, input: event.input, cached: event.cached, output: event.output, reasoning: event.reasoning },
+        total: {
+          total: event.total,
+          input: event.input,
+          cached: event.cached,
+          output: event.output,
+          reasoning: event.reasoning,
+        },
         detailMask: event.detailMask,
         cacheWriteTokens: event.cacheWriteTokens,
         cacheWriteKnown: Boolean(event.cacheWriteKnown),
@@ -2442,18 +2655,11 @@ export function summarizeUsageIndex(index, filters = {}) {
     }
   }
   const costAccumulator = createCostEstimateAccumulator();
-  const { timeline, timelineError } = buildTimelineRowsWithLimit(
-    timelineEvents(),
-    range,
-    bucket,
-    {
-      estimateCost: estimateEventCost,
-      onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
-    },
-  );
-  const costEstimate = timelineError
-    ? estimateCostForEvents(timelineEvents())
-    : costAccumulator.result();
+  const { timeline, timelineError } = buildTimelineRowsWithLimit(timelineEvents(), range, bucket, {
+    estimateCost: estimateEventCost,
+    onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
+  });
+  const costEstimate = timelineError ? estimateCostForEvents(timelineEvents()) : costAccumulator.result();
 
   return {
     generatedAt: index.generatedAt,
@@ -2482,7 +2688,8 @@ export function summarizeUsage(report, filters = {}) {
   const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
   const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
-  const bucket = range.bucket || (quotaPreset ? range.preset === "quota_5h" ? "quota_30m" : "quota_24h" : filters.bucket || "day");
+  const bucket =
+    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
   const now = range.asOf || asOf;
   const events = report.events.filter((event) => {
     const date = new Date(event.timestamp);
@@ -2500,25 +2707,22 @@ export function summarizeUsage(report, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.sessionId));
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
-  const comparison = quotaPreset ? null : usageComparison({
-    range,
-    allEvents: report.events,
-    eventTime: (event) => Date.parse(event.timestamp),
-    eventSession: (event) => event.sessionId,
-    addEventUsage: (sum, event) => addUsage(sum, event.total),
-    currentTotals: totals,
-    now,
-  });
+  const comparison = quotaPreset
+    ? null
+    : usageComparison({
+        range,
+        allEvents: report.events,
+        eventTime: (event) => Date.parse(event.timestamp),
+        eventSession: (event) => event.sessionId,
+        addEventUsage: (sum, event) => addUsage(sum, event.total),
+        currentTotals: totals,
+        now,
+      });
   const costAccumulator = createCostEstimateAccumulator();
-  const { timeline, timelineError } = buildTimelineRowsWithLimit(
-    events,
-    range,
-    bucket,
-    {
-      estimateCost: estimateEventCost,
-      onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
-    },
-  );
+  const { timeline, timelineError } = buildTimelineRowsWithLimit(events, range, bucket, {
+    estimateCost: estimateEventCost,
+    onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
+  });
   const costEstimate = timelineError ? estimateCostForEvents(events) : costAccumulator.result();
 
   return {

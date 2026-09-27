@@ -73,9 +73,12 @@ export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") 
 export function renderDatePickerHtml({ field = "start", viewDate = new Date(), selectedValue = "" } = {}) {
   const model = datePickerMonthModel(viewDate, selectedValue);
   const escapedField = escapeHtml(field);
-  const monthTitle = getLocale() === "en-US"
-    ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(model.year, model.month - 1, 1)))
-    : `${model.year}年${String(model.month).padStart(2, "0")}月`;
+  const monthTitle =
+    getLocale() === "en-US"
+      ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+          new Date(Date.UTC(model.year, model.month - 1, 1)),
+        )
+      : `${model.year}年${String(model.month).padStart(2, "0")}月`;
   return `
     <div class="date-picker-heading">
       <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="${localizeText("上个月")}">‹</button>

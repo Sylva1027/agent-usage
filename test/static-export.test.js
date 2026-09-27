@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { assertSelfContainedStaticHtml, exportStaticDashboard, renderStaticDashboardHtml } from "../src/static-export.js";
+import {
+  assertSelfContainedStaticHtml,
+  exportStaticDashboard,
+  renderStaticDashboardHtml,
+} from "../src/static-export.js";
 import { getPricingCatalog, resetPricingCatalog } from "../src/pricing.js";
 
 test("renderStaticDashboardHtml embeds usage data and app assets", () => {
@@ -58,7 +62,13 @@ test("renderStaticDashboardHtml embeds usage data and app assets", () => {
 });
 
 test("renderStaticDashboardHtml bundles shared timeline logic and has no unresolved imports", () => {
-  const html = renderStaticDashboardHtml({ generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], events: [], warnings: [] });
+  const html = renderStaticDashboardHtml({
+    generatedAt: "2026-05-25T00:00:00.000Z",
+    homes: [],
+    sessions: [],
+    events: [],
+    warnings: [],
+  });
   assert.match(html, /function buildTimelineRows/);
   assert.match(html, /id="autoRefreshToggle"/);
   assert.match(html, /id="timelineModes"/);
@@ -72,22 +82,40 @@ test("renderStaticDashboardHtml bundles shared timeline logic and has no unresol
   assert.doesNotMatch(html, /from "\.\/(?:app-state|calendar|html-utils)\.js"/);
   const moduleSource = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
   assert.ok(moduleSource);
-  const syntax = spawnSync(process.execPath, ["--check", "--input-type=module"], { input: moduleSource, encoding: "utf8" });
+  const syntax = spawnSync(process.execPath, ["--check", "--input-type=module"], {
+    input: moduleSource,
+    encoding: "utf8",
+  });
   assert.equal(syntax.status, 0, syntax.stderr);
 });
 
 test("static export rejects unresolved module and external asset references", () => {
-  const html = renderStaticDashboardHtml({ generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], events: [], warnings: [] });
+  const html = renderStaticDashboardHtml({
+    generatedAt: "2026-05-25T00:00:00.000Z",
+    homes: [],
+    sessions: [],
+    events: [],
+    warnings: [],
+  });
   assert.throws(
-    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nimport "./new-module.js";')),
+    () =>
+      assertSelfContainedStaticHtml(
+        html.replace('<script type="module">', '<script type="module">\nimport "./new-module.js";'),
+      ),
     /unresolved module syntax/,
   );
   assert.throws(
-    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nexport { helper } from "./new-module.js";')),
+    () =>
+      assertSelfContainedStaticHtml(
+        html.replace('<script type="module">', '<script type="module">\nexport { helper } from "./new-module.js";'),
+      ),
     /unresolved module syntax/,
   );
   assert.throws(
-    () => assertSelfContainedStaticHtml(html.replace('<script type="module">', '<script type="module">\nimport("./new-module.js");')),
+    () =>
+      assertSelfContainedStaticHtml(
+        html.replace('<script type="module">', '<script type="module">\nimport("./new-module.js");'),
+      ),
     /dynamic module import/,
   );
   assert.throws(
@@ -98,10 +126,22 @@ test("static export rejects unresolved module and external asset references", ()
 
 test("module checks do not treat embedded usage text as an import", () => {
   const html = renderStaticDashboardHtml({
-    generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], warnings: [],
-    events: [{ timestamp: "2026-05-25T00:00:00.000Z", sessionId: "s1", homeId: "h1",
-      channel: "CLI", model: "gpt-6-sol", cwd: 'import("./note.js")', detailMask: 15,
-      total: { total: 10, input: 8, cached: 0, output: 2, reasoning: 0 } }],
+    generatedAt: "2026-05-25T00:00:00.000Z",
+    homes: [],
+    sessions: [],
+    warnings: [],
+    events: [
+      {
+        timestamp: "2026-05-25T00:00:00.000Z",
+        sessionId: "s1",
+        homeId: "h1",
+        channel: "CLI",
+        model: "gpt-6-sol",
+        cwd: 'import("./note.js")',
+        detailMask: 15,
+        total: { total: 10, input: 8, cached: 0, output: 2, reasoning: 0 },
+      },
+    ],
   });
   assert.match(html, /import\(\\"\.\/note\.js\\"\)/);
 });
@@ -113,23 +153,27 @@ test("static export freezes quota observations and capability at the export asOf
     homes: [],
     sessions: [],
     events: [],
-    rateLimitObservations: [{
-      sourcePath: "codex.jsonl",
-      lineNumber: 4,
-      role: "primary",
-      observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
-      limitId: "codex",
-      limitName: null,
-      planType: null,
-      windowMinutes: 300,
-      resetsAtMs: Date.parse("2026-09-25T14:37:00.000Z"),
-      usedPercent: null,
-    }],
+    rateLimitObservations: [
+      {
+        sourcePath: "codex.jsonl",
+        lineNumber: 4,
+        role: "primary",
+        observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
+        limitId: "codex",
+        limitName: null,
+        planType: null,
+        windowMinutes: 300,
+        resetsAtMs: Date.parse("2026-09-25T14:37:00.000Z"),
+        usedPercent: null,
+      },
+    ],
     warnings: [],
   };
   const html = renderStaticDashboardHtml(report);
   assert.match(html, /window\.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ = /);
-  const embedded = html.match(/window\.__CODEX_USAGE_REPORT__ = (.*?); window\.__CODEX_USAGE_PERIOD_COMPARISON__/s)?.[1];
+  const embedded = html.match(
+    /window\.__CODEX_USAGE_REPORT__ = (.*?); window\.__CODEX_USAGE_PERIOD_COMPARISON__/s,
+  )?.[1];
   assert.ok(embedded);
   const snapshot = JSON.parse(embedded);
 
@@ -167,8 +211,12 @@ test("static export runs directly from a path containing spaces", async () => {
         stdio: ["ignore", "pipe", "pipe"],
       });
       let output = "";
-      child.stdout.on("data", (chunk) => { output += chunk.toString(); });
-      child.stderr.on("data", (chunk) => { output += chunk.toString(); });
+      child.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+      });
+      child.stderr.on("data", (chunk) => {
+        output += chunk.toString();
+      });
       child.once("error", reject);
       child.once("close", (code) => resolve({ code, output }));
     });
@@ -202,7 +250,10 @@ test("static export runs from an isolated checkout without node_modules", async 
       CODEX_USAGE_IMPORT_DIRS: "",
     };
     const result = spawnSync(process.execPath, [path.join(root, "src", "static-export.js"), "--out", outFile], {
-      cwd: root, env, encoding: "utf8", timeout: 30_000,
+      cwd: root,
+      env,
+      encoding: "utf8",
+      timeout: 30_000,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(await readFile(outFile, "utf8"), /window\.__CODEX_USAGE_REPORT__/);
@@ -210,7 +261,6 @@ test("static export runs from an isolated checkout without node_modules", async 
     await rm(root, { recursive: true, force: true });
   }
 });
-
 
 test("static export applies saved pricing standards", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "codex-pricing-export-"));
@@ -221,13 +271,30 @@ test("static export applies saved pricing standards", async () => {
   catalog.models["gpt-6-sol"].short.output = 20;
   await writeFile(pricingFile, JSON.stringify(catalog));
   try {
-    await exportStaticDashboard({ pricingFile, outFile, report: {
-      generatedAt: "2026-05-25T00:00:00.000Z", homes: [], sessions: [], warnings: [],
-      events: [{ timestamp: "2026-05-25T00:00:00.000Z", sessionId: "s1", channel: "CLI",
-        model: "gpt-6-sol", detailMask: 7, cacheWriteKnown: true, cacheWriteTokens: 0,
-        contextLevel: "short", serviceTier: "standard",
-        total: { total: 10, input: 0, cached: 0, output: 10 } }],
-    } });
+    await exportStaticDashboard({
+      pricingFile,
+      outFile,
+      report: {
+        generatedAt: "2026-05-25T00:00:00.000Z",
+        homes: [],
+        sessions: [],
+        warnings: [],
+        events: [
+          {
+            timestamp: "2026-05-25T00:00:00.000Z",
+            sessionId: "s1",
+            channel: "CLI",
+            model: "gpt-6-sol",
+            detailMask: 7,
+            cacheWriteKnown: true,
+            cacheWriteTokens: 0,
+            contextLevel: "short",
+            serviceTier: "standard",
+            total: { total: 10, input: 0, cached: 0, output: 10 },
+          },
+        ],
+      },
+    });
     const html = await readFile(outFile, "utf8");
     assert.match(html, /"checkedAt":"2026-09-24"/);
     assert.match(html, /"outputUsd":0\.0002/);

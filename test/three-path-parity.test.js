@@ -47,11 +47,18 @@ async function writeSession(root, name, model, cwd, rows) {
   const sessionDir = path.join(root, ".codex", "sessions", year, month, day);
   await mkdir(sessionDir, { recursive: true });
   const lines = [
-    { timestamp: rows[0].timestamp, type: "session_meta", payload: { id: name, source: "cli", originator: "codex-tui", cwd } },
+    {
+      timestamp: rows[0].timestamp,
+      type: "session_meta",
+      payload: { id: name, source: "cli", originator: "codex-tui", cwd },
+    },
     { type: "turn_context", payload: { model } },
     ...rows,
   ];
-  await writeFile(path.join(sessionDir, `rollout-${name}.jsonl`), `${lines.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  await writeFile(
+    path.join(sessionDir, `rollout-${name}.jsonl`),
+    `${lines.map((row) => JSON.stringify(row)).join("\n")}\n`,
+  );
 }
 
 async function writeZcodeUsage(root, timestamp) {
@@ -69,12 +76,34 @@ async function writeZcodeUsage(root, timestamp) {
         provider_total_tokens INTEGER, computed_total_tokens INTEGER
       );
     `);
-    db.prepare("INSERT INTO session (id, parent_id, directory, path, title) VALUES (?, ?, ?, ?, ?)")
-      .run("zcode-session", null, "/work/zcode", "/work/zcode", "ZCode fixture");
+    db.prepare("INSERT INTO session (id, parent_id, directory, path, title) VALUES (?, ?, ?, ?, ?)").run(
+      "zcode-session",
+      null,
+      "/work/zcode",
+      "/work/zcode",
+      "ZCode fixture",
+    );
     db.prepare(`INSERT INTO model_usage VALUES (${Array(20).fill("?").join(", ")})`).run(
-      "zcode-usage", "zcode-session", "zcode-turn", "main_turn", "interactive",
-      "test-provider", "test-model", "enabled", "zcode-agent", "build", "completed",
-      Date.parse(timestamp) - 1000, Date.parse(timestamp), 100, 20, 5, 0, 10, 120, 120,
+      "zcode-usage",
+      "zcode-session",
+      "zcode-turn",
+      "main_turn",
+      "interactive",
+      "test-provider",
+      "test-model",
+      "enabled",
+      "zcode-agent",
+      "build",
+      "completed",
+      Date.parse(timestamp) - 1000,
+      Date.parse(timestamp),
+      100,
+      20,
+      5,
+      0,
+      10,
+      120,
+      120,
     );
   } finally {
     db.close();
@@ -135,8 +164,12 @@ function comparisonFields(comparison) {
   return {
     periods: comparison.periods,
     totals: comparison.totals,
-    models: comparison.models.map((row) => ({ key: row.key, periods: row.periods })).sort((a, b) => a.key.localeCompare(b.key)),
-    repositories: comparison.repositories.map((row) => ({ key: row.key, periods: row.periods })).sort((a, b) => a.key.localeCompare(b.key)),
+    models: comparison.models
+      .map((row) => ({ key: row.key, periods: row.periods }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
+    repositories: comparison.repositories
+      .map((row) => ({ key: row.key, periods: row.periods }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
 
@@ -164,11 +197,20 @@ test("memory, SQLite, and exported snapshot agree for local and UTC usage", asyn
       const periodOptions = { now: AS_OF, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison = calendarZone === "utc"
-        ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
-        : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
-      assert.deepEqual(comparisonFields(indexedComparison), comparisonFields(memoryComparison), `${calendarZone} SQLite period comparison`);
-      assert.deepEqual(comparisonFields(snapshotComparison), comparisonFields(memoryComparison), `${calendarZone} snapshot period comparison`);
+      const snapshotComparison =
+        calendarZone === "utc"
+          ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
+          : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
+      assert.deepEqual(
+        comparisonFields(indexedComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} SQLite period comparison`,
+      );
+      assert.deepEqual(
+        comparisonFields(snapshotComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} snapshot period comparison`,
+      );
 
       for (const preset of ["today", "all", "quota_5h"]) {
         const filters = { preset, bucket: preset === "quota_5h" ? "quota_30m" : "day", now: AS_OF, calendarZone };
@@ -179,12 +221,29 @@ test("memory, SQLite, and exported snapshot agree for local and UTC usage", asyn
         if (preset === "all") assert.equal(memorySummary.totals.total, 275);
         if (preset === "quota_5h") assert.equal(memorySummary.totals.total, 75);
         if (calendarZone === "utc" && preset === "today") assert.equal(memorySummary.totals.total, 155);
-        assert.deepEqual(summaryFields(indexedSummary), summaryFields(memorySummary), `${calendarZone}/${preset} SQLite summary`);
-        assert.deepEqual(summaryFields(snapshotSummary), summaryFields(memorySummary), `${calendarZone}/${preset} snapshot summary`);
+        assert.deepEqual(
+          summaryFields(indexedSummary),
+          summaryFields(memorySummary),
+          `${calendarZone}/${preset} SQLite summary`,
+        );
+        assert.deepEqual(
+          summaryFields(snapshotSummary),
+          summaryFields(memorySummary),
+          `${calendarZone}/${preset} snapshot summary`,
+        );
       }
     }
   } finally {
-    setSummaryFilters({ preset: "today", bucket: "hour", calendarZone: "local", now: null, excludedHomes: [], startDate: "", endDate: "", recentValue: "上个月" });
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
     store.close();
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -223,25 +282,44 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
     assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, 4);
     const pricedCodexEvent = snapshot.__CODEX_USAGE_REPORT__.events.find((event) => event.sessionId === "tuesday");
     assert.ok(pricedCodexEvent);
-    assert.ok(Math.abs(pricedCodexEvent.costEstimate.outputUsd - 0.0004) < 1e-12, JSON.stringify(pricedCodexEvent.costEstimate));
+    assert.ok(
+      Math.abs(pricedCodexEvent.costEstimate.outputUsd - 0.0004) < 1e-12,
+      JSON.stringify(pricedCodexEvent.costEstimate),
+    );
 
     const recordDay = store.summarize({
-      preset: "custom", startDate: "2026-09-01", endDate: "2026-09-01", bucket: "day",
-      calendarZone: "utc", now: asOf, excludeHomes: [zcodeHome.id],
+      preset: "custom",
+      startDate: "2026-09-01",
+      endDate: "2026-09-01",
+      bucket: "day",
+      calendarZone: "utc",
+      now: asOf,
+      excludeHomes: [zcodeHome.id],
     });
     assert.equal(recordDay.records.totalCost.period, "2026-09-01");
-    assert.ok(Math.abs(recordDay.records.totalCost.value -
-      recordDay.costEstimate.totalUsd * getPricingCatalog().usdToCnyRate) < 1e-12);
+    assert.ok(
+      Math.abs(recordDay.records.totalCost.value - recordDay.costEstimate.totalUsd * getPricingCatalog().usdToCnyRate) <
+        1e-12,
+    );
 
     for (const calendarZone of ["local", "utc"]) {
       const periodOptions = { now: asOf, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison = calendarZone === "utc"
-        ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
-        : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
-      assert.deepEqual(comparisonFields(indexedComparison), comparisonFields(memoryComparison), `${calendarZone} SQLite period comparison`);
-      assert.deepEqual(comparisonFields(snapshotComparison), comparisonFields(memoryComparison), `${calendarZone} snapshot period comparison`);
+      const snapshotComparison =
+        calendarZone === "utc"
+          ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
+          : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
+      assert.deepEqual(
+        comparisonFields(indexedComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} SQLite period comparison`,
+      );
+      assert.deepEqual(
+        comparisonFields(snapshotComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} snapshot period comparison`,
+      );
 
       for (const excludedHomes of [[], [zcodeHome.id]]) {
         const scope = excludedHomes.length ? "without ZCode" : "all sources";
@@ -269,13 +347,30 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
               : { all: 300, week: 260, month: 200 };
             assert.equal(memorySummary.totals.total, expected[preset], `${scope}/${preset} UTC fixture total`);
           }
-          assert.deepEqual(summaryFields(indexedSummary), summaryFields(memorySummary), `${calendarZone}/${scope}/${preset} SQLite summary`);
-          assert.deepEqual(summaryFields(snapshotSummary), summaryFields(memorySummary), `${calendarZone}/${scope}/${preset} snapshot summary`);
+          assert.deepEqual(
+            summaryFields(indexedSummary),
+            summaryFields(memorySummary),
+            `${calendarZone}/${scope}/${preset} SQLite summary`,
+          );
+          assert.deepEqual(
+            summaryFields(snapshotSummary),
+            summaryFields(memorySummary),
+            `${calendarZone}/${scope}/${preset} snapshot summary`,
+          );
         }
       }
     }
   } finally {
-    setSummaryFilters({ preset: "today", bucket: "hour", calendarZone: "local", now: null, excludedHomes: [], startDate: "", endDate: "", recentValue: "上个月" });
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
     resetPricingCatalog();
     store.close();
     await rm(homeDir, { recursive: true, force: true });
