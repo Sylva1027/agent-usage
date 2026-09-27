@@ -24,7 +24,12 @@ import {
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
-import { buildTimelineRows, quotaRecordsForRange, quotaRecordValues } from "../public/timeline-utils.js";
+import {
+  buildTimelineRows,
+  deriveTimelineBucket,
+  quotaRecordsForRange,
+  quotaRecordValues,
+} from "../public/timeline-utils.js";
 
 const STORE_SCHEMA_VERSION = 8;
 
@@ -1144,9 +1149,11 @@ export class UsageStore {
           previousSessionCount: Number(previousAggregate?.session_count || 0),
           now: asOf,
         });
-    const bucket =
+    const bucket = deriveTimelineBucket(
+      range,
       range.bucket ||
-      (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
+        (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
+    );
     let timeline = [];
     let timelineError = null;
     let costEstimate;

@@ -377,3 +377,62 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
     await rm(homeDir, { recursive: true, force: true });
   }
 });
+
+test("three paths agree on week-bucket escalation for a half-year all-time range", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-halfyear-"));
+  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const asOf = "2026-09-01T12:00:00.000Z";
+  try {
+    await writeSession(homeDir, "march", "gpt-6-sol", "/work/halfyear", [
+      tokenRow("2026-03-15T10:00:00.000Z", 40, 30, 0, 10, 2),
+    ]);
+    await writeSession(homeDir, "september", "gpt-6-luna", "/work/halfyear", [
+      tokenRow("2026-09-01T10:00:00.000Z", 80, 60, 0, 20, 4),
+    ]);
+
+    await store.sync();
+    const report = await buildUsageReport({ homeDir });
+    assert.equal(report.events.length, 2);
+    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
+    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, 2);
+
+    for (const calendarZone of ["local", "utc"]) {
+      const filters = { preset: "all", bucket: "day", now: asOf, calendarZone };
+      const memorySummary = summarizeUsage(report, filters);
+      const indexedSummary = store.summarize(filters);
+      setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
+      const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+
+      assert.equal(memorySummary.range.bucket, "week", `${calendarZone} span escalation to week`);
+      assert.equal(memorySummary.timeline.length, 26, `${calendarZone} week slot count`);
+      assert.equal(memorySummary.timeline[0].key, "2026-03-09", `${calendarZone} first Monday key`);
+      assert.equal(memorySummary.timeline.at(-1).key, "2026-08-31", `${calendarZone} last Monday key`);
+      assert.equal(memorySummary.timeline[0].total.total, 40, `${calendarZone} March week total`);
+      assert.equal(memorySummary.timeline.at(-1).total.total, 80, `${calendarZone} September week total`);
+      assert.equal(memorySummary.totals.total, 120, `${calendarZone} all-time total`);
+      assert.deepEqual(
+        summaryFields(indexedSummary),
+        summaryFields(memorySummary),
+        `${calendarZone} SQLite half-year summary`,
+      );
+      assert.deepEqual(
+        summaryFields(snapshotSummary),
+        summaryFields(memorySummary),
+        `${calendarZone} snapshot half-year summary`,
+      );
+    }
+  } finally {
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});

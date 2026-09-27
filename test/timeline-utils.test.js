@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 
-import { buildTimelineRows, generateQuotaTimelineSlots } from "../public/timeline-utils.js";
+import { buildTimelineRows, deriveTimelineBucket, generateQuotaTimelineSlots } from "../public/timeline-utils.js";
 import { estimateCostForEvents, estimateEventCost } from "../src/pricing.js";
 
 const dateAt = (year, month, day, hour = 0) => new Date(year, month - 1, day, hour);
@@ -235,4 +235,58 @@ test("quota_24h uses seven Unix-time days across a daylight-saving transition", 
   assert.equal(rows[0].total.total, 10);
   assert.equal(rows[1].total.total, 20);
   assert.equal(rows[2].future, true);
+});
+
+test("deriveTimelineBucket keeps explicit non-day buckets pinned regardless of span", () => {
+  const long = range("all", dateAt(2020, 1, 1), new Date(2026, 8, 27, 23, 59, 59, 999));
+  assert.equal(deriveTimelineBucket(long, "hour"), "hour");
+  assert.equal(deriveTimelineBucket(long, "week"), "week");
+  assert.equal(deriveTimelineBucket(long, "month"), "month");
+  assert.equal(deriveTimelineBucket(long, "quota_30m"), "quota_30m");
+  assert.equal(deriveTimelineBucket(long, "quota_24h"), "quota_24h");
+});
+
+test("deriveTimelineBucket keeps day and week bucket counts within 31 slots", () => {
+  const span = (days) => range("all", dateAt(2026, 1, 1), new Date(2026, 0, days, 23, 59, 59, 999));
+  assert.equal(deriveTimelineBucket(span(31), "day"), "day");
+  assert.equal(deriveTimelineBucket(span(32), "day"), "week");
+  assert.equal(deriveTimelineBucket(span(214), "day"), "week");
+  assert.equal(deriveTimelineBucket(span(215), "day"), "month");
+  assert.equal(deriveTimelineBucket(span(217), "day"), "month");
+  assert.equal(deriveTimelineBucket(span(218), "day"), "month");
+  const mondaySpan = (days) => range("all", dateAt(2026, 1, 5), new Date(2026, 0, 4 + days, 23, 59, 59, 999));
+  assert.equal(deriveTimelineBucket(mondaySpan(217), "day"), "week");
+  assert.equal(buildTimelineRows([], mondaySpan(217), "week").length, 31);
+  // 半年（1 月 1 日至 7 月 2 日，183 天）落在周档。
+  assert.equal(deriveTimelineBucket(span(183), "day"), "week");
+});
+
+test("deriveTimelineBucket falls back to day when the range has no usable bounds", () => {
+  assert.equal(deriveTimelineBucket({}, "day"), "day");
+  assert.equal(deriveTimelineBucket(range("all", null, null), "day"), "day");
+  assert.equal(deriveTimelineBucket(range("custom", dateAt(2026, 1, 1), null), "day"), "day");
+});
+
+test("deriveTimelineBucket honors the calendar zone when counting span days", () => {
+  const utc = { preset: "all", start: "2026-01-01T00:00:00Z", end: "2026-02-15T23:59:59.999Z", calendarZone: "utc" };
+  assert.equal(deriveTimelineBucket(utc, "day"), "week");
+  const local = { preset: "all", start: "2026-01-01T00:00:00", end: "2026-02-15T23:59:59.999" };
+  assert.equal(deriveTimelineBucket(local, "day"), "week");
+});
+
+test("buildTimelineRows with a derived week bucket merges half a year into Monday-keyed weeks", () => {
+  const rows = buildTimelineRows(
+    [
+      event("2026-03-15T10:00:00.000Z", { total: 40, input: 30, cached: 0, output: 10 }),
+      event("2026-09-01T10:00:00.000Z", { total: 80, input: 60, cached: 0, output: 20 }),
+    ],
+    range("all", dateAt(2026, 3, 15), new Date(2026, 8, 1, 23, 59, 59, 999)),
+    "week",
+  );
+  assert.equal(rows.length, 26);
+  assert.equal(rows[0].key, "2026-03-09");
+  assert.equal(rows.at(-1).key, "2026-08-31");
+  assert.equal(rows[0].total.total, 40);
+  assert.equal(rows.at(-1).total.total, 80);
+  assert.ok(rows.slice(1, -1).every((row) => row.total.total === 0));
 });

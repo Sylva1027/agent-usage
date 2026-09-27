@@ -111,7 +111,7 @@ export function renderStaticDashboardHtml(report) {
     "",
     "dashboard date picker export",
   );
-  const bundledTimelineUtils = `const { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } = (() => {\n${inlineTimelineUtils}\nreturn { buildTimelineRows, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues };\n})();`;
+  const bundledTimelineUtils = `const { buildTimelineRows, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } = (() => {\n${inlineTimelineUtils}\nreturn { buildTimelineRows, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues };\n})();`;
   const bundledI18n = `const { ${i18nNames.join(", ")} } = (() => {\n${inlineI18n}\nreturn { ${i18nNames.join(", ")} };\n})();`;
   const bundledHtmlUtils = `const { escapeHtml, externalHttpUrl, safeChartColor } = (() => {\n${inlineHtmlUtils}\nreturn { escapeHtml, externalHttpUrl, safeChartColor };\n})();`;
   const bundledCalendar = `const { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml } = (() => {\n${inlineCalendar}\nreturn { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml };\n})();`;

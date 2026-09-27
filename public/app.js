@@ -1,5 +1,6 @@
 import {
   buildTimelineRows,
+  deriveTimelineBucket,
   MAX_TIMELINE_SLOTS,
   RECENT_SELECTIONS,
   resolveNamedRecentRange,
@@ -335,14 +336,14 @@ function showUsageTooltip(row, anchor, options = null) {
   positionUsageTooltip(anchor);
 }
 
-function timelineAccessibleLabel(row, mode) {
+function timelineAccessibleLabel(row, mode, range = null) {
   const quotaInfo = quotaTimelineSlotInfo(row);
   const english = getLocale() === "en-US";
   const key = quotaInfo
     ? english
       ? `${quotaInfo.title}. Interval ${quotaInfo.interval}. ${quotaInfo.note}`
       : `${quotaInfo.title}，时间槽区间 ${quotaInfo.interval}。${quotaInfo.note}`
-    : String(row?.key || row?.name || localizeText("未知时间"));
+    : timelineSlotRangeTitle(row, range) || String(row?.key || row?.name || localizeText("未知时间"));
   if (mode === "cost") {
     const pair = costPairFromSlots(row?.costByModel);
     const amount =
@@ -367,12 +368,13 @@ function showTimelineTooltip(row, anchor) {
     hideUsageTooltip();
     return;
   }
-  tooltip.innerHTML = formatTimelineTooltip(row, state.timelineMode);
+  const range = currentSummary()?.range || null;
+  tooltip.innerHTML = formatTimelineTooltip(row, state.timelineMode, range);
   tooltip.hidden = false;
   positionUsageTooltip(anchor);
   const chart = document.querySelector("#timelineChart");
   if (chart && document.activeElement === chart)
-    chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode)));
+    chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode, range)));
 }
 
 function bindUsageRows(container, selector, rows, options = null) {
@@ -1048,7 +1050,8 @@ export function summarize(report) {
   const quotaAvailable = !quotaPreset || range.quotaState === "available";
   // 限额窗口只衡量 Codex 用量，与服务端聚合保持同一口径。
   const codexHomeIds = quotaPreset ? codexHomeIdSet(report) : null;
-  const bucket = range.bucket || state.bucket;
+  // 跨度升档在汇总时推导（此时范围已解析、跨度已知），而非切换预设时。
+  const bucket = deriveTimelineBucket(range, range.bucket || state.bucket);
   const events = sourceEvents.filter((event) => {
     if (!quotaAvailable) return false;
     if (codexHomeIds && !codexHomeIds.has(String(event.homeId))) {
@@ -1402,7 +1405,9 @@ export function rangeLabel(summary) {
   }
   const start = summary.range.start ? dateKey(asDate(summary.range.start), range.calendarZone) : "开始";
   const end = summary.range.end ? dateKey(asDate(summary.range.end), range.calendarZone) : "现在";
-  return `${start} 至 ${end}${range.calendarZone === "utc" ? " (UTC)" : ""}`;
+  // 粒度升档时在副标题明示合并方式，避免"日柱去哪了"的困惑。
+  const granularity = range.bucket === "week" ? " · 按周合并" : range.bucket === "month" ? " · 按月合并" : "";
+  return `${start} 至 ${end}${range.calendarZone === "utc" ? " (UTC)" : ""}${granularity}`;
 }
 
 export function renderBarListHtml(rows, colorMap = null, options = {}) {
@@ -1512,7 +1517,7 @@ function renderTimelineDetails(summary, channelColors, modelColors) {
   $("#detailModeLabel").textContent = label;
   const container = $("#detailList");
   if (summary.timelineError) {
-    container.innerHTML = '<div class="empty">时间槽过多，请缩短日期范围或调大时间粒度。</div>';
+    container.innerHTML = '<div class="empty">时间范围过大，无法生成时间分布。</div>';
     return;
   }
   if (!timelineBreakdownReady(summary.timeline || [], mode)) {
@@ -1710,6 +1715,8 @@ function renderPeriodComparisons(comparison) {
   }
 }
 
+const MONTH_NAMES_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 function shortTimelineLabel(key, bucket, range) {
   const text = String(key || "");
   if (bucket === "quota_30m" || bucket === "quota_24h") {
@@ -1730,6 +1737,19 @@ function shortTimelineLabel(key, bucket, range) {
     const end = asDate(range?.end);
     const oneDay = start && end && dateKey(start, range?.calendarZone) === dateKey(end, range?.calendarZone);
     return oneDay ? match[4] : `${match[2]}-${match[3]} ${match[4]}`;
+  }
+  if (bucket === "month") {
+    const monthStart = asDate(range?.start);
+    const monthEnd = asDate(range?.end);
+    const crossYear =
+      monthStart &&
+      monthEnd &&
+      dateKey(monthStart, range?.calendarZone).slice(0, 4) !== dateKey(monthEnd, range?.calendarZone).slice(0, 4);
+    // 跨年时保留 "2026-09" 全键，同年内缩成 "9月"/"Sep"。
+    if (crossYear) return text;
+    const month = Number(text.slice(5, 7));
+    if (!Number.isFinite(month)) return text;
+    return getLocale() === "en-US" ? MONTH_NAMES_EN[month - 1] || text : `${month}月`;
   }
   if (bucket === "day" || bucket === "week") {
     const start = asDate(range?.start);
@@ -1752,6 +1772,47 @@ function shortTimelineLabel(key, bucket, range) {
   return text;
 }
 
+// 周/月槽的标题显示覆盖日期区间，首尾槽不满时标注"部分"，
+// 避免把周键（周一日期）或月键（YYYY-MM）误读成某一天。
+export function timelineSlotRangeTitle(row, range) {
+  const bucket = range?.bucket;
+  const key = String(row?.key || "");
+  if ((bucket !== "week" && bucket !== "month") || !key) return null;
+  const zone = range?.calendarZone === "utc" ? "utc" : "local";
+  const rangeStart = asDate(range?.start);
+  const rangeEnd = asDate(range?.end);
+  let first = null;
+  let last = null;
+  if (bucket === "week") {
+    first = asDate(zone === "utc" ? `${key}T00:00:00Z` : `${key}T00:00:00`);
+    last = first ? addCalendarDays(first, 6, zone) : null;
+  } else {
+    const year = Number(key.slice(0, 4));
+    const month = Number(key.slice(5, 7));
+    if (Number.isFinite(year) && Number.isFinite(month)) {
+      first = zone === "utc" ? new Date(Date.UTC(year, month - 1, 1)) : new Date(year, month - 1, 1);
+      last = zone === "utc" ? new Date(Date.UTC(year, month, 0)) : new Date(year, month, 0);
+    }
+  }
+  if (!first || !last || Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return null;
+  const effectiveStart = rangeStart && first < rangeStart ? rangeStart : first;
+  const effectiveEnd = rangeEnd && last > rangeEnd ? rangeEnd : last;
+  const partial = effectiveStart > first || effectiveEnd < last;
+  const english = getLocale() === "en-US";
+  const partialLabel = !partial
+    ? ""
+    : english
+      ? bucket === "week"
+        ? " (partial week)"
+        : " (partial month)"
+      : bucket === "week"
+        ? "（部分周）"
+        : "（部分月）";
+  return `${dateKey(effectiveStart, zone)}${english ? " to " : " 至 "}${dateKey(effectiveEnd, zone)}${partialLabel}`;
+}
+
+const CALENDAR_BUCKETS = new Set(["day", "week", "month", "hour"]);
+
 export function timelineAxisLabels(rows, options = {}) {
   if (!rows.length) return [];
   const bucket = options.bucket || "day";
@@ -1766,12 +1827,26 @@ export function timelineAxisLabels(rows, options = {}) {
   if (oneDayHourly && chartWidth >= 700) {
     return rows.map((_row, index) => ({ index, label: labels[index] }));
   }
-  const maxLabels = Math.max(1, options.maxLabels || Math.floor(chartWidth / 68));
-  const count = Math.min(rows.length, maxLabels);
-  return Array.from({ length: count }, (_, position) => {
-    const index = Math.round((position * (rows.length - 1)) / Math.max(1, count - 1));
-    return { index, label: labels[index] };
+  // 未来槽位不画柱（drawTimeline 跳过 row.future），也不作为刻度候选，月视图才不会标出统计范围外的日期。
+  const endKey = range?.end ? dateKey(asDate(range.end), range.calendarZone) : null;
+  const candidateIndexes = [];
+  rows.forEach((row, index) => {
+    const isFuture =
+      typeof row.future === "boolean"
+        ? row.future
+        : Boolean(endKey) && CALENDAR_BUCKETS.has(bucket) && String(row.key).slice(0, 10) > endKey;
+    if (!isFuture) candidateIndexes.push(index);
   });
+  const pool = candidateIndexes.length ? candidateIndexes : rows.map((_row, index) => index);
+  const maxLabels = Math.max(1, options.maxLabels || Math.floor(chartWidth / 68));
+  // 固定整数步长、末尾锚定：相邻刻度间隔恒定，且最新一天必有标签。
+  // 旧的等分四舍五入在除不尽时产生 2/3 天交替间隔，还会整段跳过某天（如 13 天范围恰好丢掉 09-21）。
+  const step = Math.max(1, Math.ceil(pool.length / maxLabels));
+  const picked = [];
+  for (let position = pool.length - 1; position >= 0; position -= step) {
+    picked.push(pool[position]);
+  }
+  return picked.reverse().map((index) => ({ index, label: labels[index] }));
 }
 
 function formatDelta(value) {
@@ -1987,13 +2062,14 @@ function scaledCost(amount, currency) {
   return costScaleValue(amount, currency, state.usdToCnyRate, state.costScaleTarget);
 }
 
-export function formatTimelineTooltip(row, mode = "channel") {
+export function formatTimelineTooltip(row, mode = "channel", range = null) {
   const quotaInfo = quotaTimelineSlotInfo(row);
   const quotaNote = quotaInfo
     ? `<div class="usage-tooltip-note">${getLocale() === "en-US" ? "Interval" : "时间槽区间"} ${escapeHtml(quotaInfo.interval)}${getLocale() === "en-US" ? "; " : "；"}${escapeHtml(quotaInfo.note)}</div>`
     : "";
-  if (mode === "channel") return `${formatUsageTooltip(row, quotaInfo?.title || null)}${quotaNote}`;
-  const title = escapeHtml(quotaInfo?.title || row?.name || row?.key || "未知时间");
+  const slotTitle = quotaInfo?.title || timelineSlotRangeTitle(row, range);
+  if (mode === "channel") return `${formatUsageTooltip(row, slotTitle)}${quotaNote}`;
+  const title = escapeHtml(slotTitle || row?.name || row?.key || "未知时间");
   if (mode === "model") {
     const models = (row?.models || [])
       .map(
@@ -2089,6 +2165,12 @@ function renderTimelineLegend(summary, channelColors, modelColors) {
 export function maxTimelineValue(values) {
   return values.reduce((maximum, value) => Math.max(maximum, value), 0);
 }
+
+// 时间轴刻度文字：12px、-22.5° 旋转，水平占位 ≈ 文字宽×cos(22.5°) + 字号×sin(22.5°)，另留 4px 呼吸空隙。
+const TIMELINE_AXIS_FONT = "12px system-ui";
+const TIMELINE_AXIS_FONT_PX = 12;
+const TIMELINE_TICK_TILT = Math.PI / 8;
+const TIMELINE_TICK_GAP = 4;
 
 export function drawTimeline(
   canvas,
@@ -2219,7 +2301,7 @@ export function drawTimeline(
   timelineBars.set(canvas, bars);
 
   context.fillStyle = chartText;
-  context.font = "12px system-ui";
+  context.font = TIMELINE_AXIS_FONT;
   // 纵轴数值右对齐贴住坐标轴，各模式保持一致（含按花销的金额标签）。
   context.textAlign = "right";
   const axisLabelX = padding.left - 10;
@@ -2234,7 +2316,22 @@ export function drawTimeline(
   context.textAlign = "left";
 
   const bucket = range?.bucket || state.bucket;
-  const labels = timelineAxisLabels(rows, { bucket, range, chartWidth });
+  // 刻度密度按旋转后的实际文字占位估算：固定 68px 会高估"01"这类窄标签的宽度，
+  // 把放得下的刻度（如 13 天的"全部"视图）误判成超容。
+  context.font = TIMELINE_AXIS_FONT;
+  const tickFootprint = rows.reduce((widest, row) => {
+    const width = context.measureText(shortTimelineLabel(row.key, bucket, range)).width;
+    return Math.max(
+      widest,
+      width * Math.cos(TIMELINE_TICK_TILT) + TIMELINE_AXIS_FONT_PX * Math.sin(TIMELINE_TICK_TILT),
+    );
+  }, 0);
+  const labels = timelineAxisLabels(rows, {
+    bucket,
+    range,
+    chartWidth,
+    maxLabels: Math.max(1, Math.floor(chartWidth / (tickFootprint + TIMELINE_TICK_GAP))),
+  });
   for (const label of labels) {
     const centerX = padding.left + label.index * slotWidth + slotWidth / 2;
     context.save();
@@ -2608,7 +2705,7 @@ function render() {
   if (timelineWarning) {
     timelineWarning.hidden = !summary.timelineError;
     timelineWarning.textContent = summary.timelineError
-      ? `此范围超过 ${MAX_TIMELINE_SLOTS.toLocaleString(getLocale())} 个时间槽。请缩短日期范围或选择更大的时间粒度。`
+      ? `此范围超过 ${MAX_TIMELINE_SLOTS.toLocaleString(getLocale())} 个时间槽，无法生成时间分布。请缩短日期范围。`
       : "";
   }
   const channelColors = getChannelColors(summary.channels);

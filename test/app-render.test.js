@@ -29,6 +29,7 @@ import {
   setSummaryFilters,
   timelineAxisLabels,
   timelineDetailRows,
+  timelineSlotRangeTitle,
 } from "../public/app.js";
 
 test("token values use two decimals with M/B/T units and retain exact hover values", () => {
@@ -624,7 +625,7 @@ test("timelineAxisLabels shows all 24 labels for a single hourly day", () => {
 });
 
 test("timelineAxisLabels samples hourly labels outside a single day", () => {
-  // Multi-day hourly charts keep labels evenly distributed instead of drawing every hour.
+  // Multi-day hourly charts sample labels at a fixed step anchored to the most recent slot.
   const rows = Array.from({ length: 48 }, (_, index) => {
     const day = index < 24 ? "18" : "19";
     const hour = String(index % 24).padStart(2, "0");
@@ -640,11 +641,51 @@ test("timelineAxisLabels samples hourly labels outside a single day", () => {
   });
 
   assert.equal(labels.length, 8);
+  const indexes = labels.map((label) => label.index);
+  assert.deepEqual(indexes, [5, 11, 17, 23, 29, 35, 41, 47]);
+  assert.deepEqual(
+    indexes.slice(1).map((index, position) => index - indexes[position]),
+    [6, 6, 6, 6, 6, 6, 6],
+  );
+  assert.deepEqual([labels[0].label, labels.at(-1).label], ["06-18 05", "06-19 23"]);
+});
+
+test("timelineAxisLabels keeps equal day gaps over a full month and skips future days", () => {
+  // 月视图：整月 30 槽，28-30 是未来日不参与刻度；固定步长间隔全等（旧算法为 3/2 天交替）。
+  const rows = Array.from({ length: 30 }, (_, index) => ({
+    key: `2026-09-${String(index + 1).padStart(2, "0")}`,
+  }));
+  const labels = timelineAxisLabels(rows, {
+    bucket: "day",
+    range: { preset: "month", start: "2026-09-01T00:00:00", end: "2026-09-27T23:59:59" },
+    maxLabels: 12,
+  });
+
+  const indexes = labels.map((label) => label.index);
+  assert.deepEqual(indexes, [2, 5, 8, 11, 14, 17, 20, 23, 26]);
+  assert.deepEqual(
+    indexes.slice(1).map((index, position) => index - indexes[position]),
+    [3, 3, 3, 3, 3, 3, 3, 3],
+  );
+  assert.equal(labels.at(-1).label, "27");
+});
+
+test("timelineAxisLabels keeps every day labeled when slots fit the text", () => {
+  // 13 天的"全部"视图曾在 12 标签上限下整段跳过 09-21；步长为 1 时必须全天保留。
+  const rows = Array.from({ length: 13 }, (_, index) => ({
+    key: `2026-09-${String(index + 15).padStart(2, "0")}`,
+  }));
+  const labels = timelineAxisLabels(rows, {
+    bucket: "day",
+    range: { preset: "all", start: "2026-09-15T00:00:00", end: "2026-09-27T23:59:59" },
+    maxLabels: 22,
+  });
+
   assert.deepEqual(
     labels.map((label) => label.index),
-    [0, 7, 13, 20, 27, 34, 40, 47],
+    Array.from({ length: 13 }, (_, index) => index),
   );
-  assert.deepEqual([labels[0].label, labels.at(-1).label], ["06-18 00", "06-19 23"]);
+  assert.ok(labels.some((label) => label.label === "09-21"));
 });
 
 test("drawTimeline does not draw visible bars for zero-token rows", () => {
@@ -663,6 +704,7 @@ test("drawTimeline does not draw visible bars for zero-token rows", () => {
     translate: (...args) => calls.push(["translate", ...args]),
     rotate: (...args) => calls.push(["rotate", ...args]),
     restore: (...args) => calls.push(["restore", ...args]),
+    measureText: () => ({ width: 20 }),
   };
   const canvas = {
     clientWidth: 960,
@@ -709,6 +751,7 @@ test("drawTimeline renders model and cost stacks and rejects missing breakdowns"
     translate: () => {},
     rotate: () => {},
     restore: () => {},
+    measureText: () => ({ width: 20 }),
     set fillStyle(value) {
       currentFillStyle = value;
     },
@@ -785,6 +828,7 @@ test("drawTimeline keeps dense hourly bars inside the chart width", () => {
     translate: (...args) => calls.push(["translate", ...args]),
     rotate: (...args) => calls.push(["rotate", ...args]),
     restore: (...args) => calls.push(["restore", ...args]),
+    measureText: () => ({ width: 20 }),
   };
   const canvas = {
     clientWidth: 1200,
@@ -823,7 +867,8 @@ test("timeline labels show natural week weekdays and full month dates", () => {
   assert.deepEqual(
     timelineAxisLabels(weekRows, {
       bucket: "day",
-      range: { preset: "week", start: "2026-05-04T00:00:00", end: "2026-05-05T23:59:59" },
+      // range.end 需覆盖整周：超出 end 的行是未来槽位，不参与刻度候选。
+      range: { preset: "week", start: "2026-05-04T00:00:00", end: "2026-05-10T23:59:59" },
     }).map((label) => label.label),
     ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
   );
@@ -833,7 +878,8 @@ test("timeline labels show natural week weekdays and full month dates", () => {
   }));
   const labels = timelineAxisLabels(monthRows, {
     bucket: "day",
-    range: { preset: "month", start: "2024-02-01T00:00:00", end: "2024-02-10T23:59:59" },
+    // range.end 需覆盖整月：超出 end 的行现在是未来槽位，不参与刻度候选。
+    range: { preset: "month", start: "2024-02-01T00:00:00", end: "2024-02-29T23:59:59" },
     chartWidth: 2000,
     maxLabels: 31,
   });
@@ -864,6 +910,7 @@ test("drawTimeline centers date ticks under capped slot bars", () => {
     translate: (...args) => calls.push(["translate", ...args]),
     rotate: (...args) => calls.push(["rotate", ...args]),
     restore: (...args) => calls.push(["restore", ...args]),
+    measureText: () => ({ width: 20 }),
   };
   const canvas = {
     clientWidth: 960,
@@ -965,4 +1012,67 @@ test("model names render lowercase while data keys, colors, and non-model labels
   assert.match(formatTimelineTooltip(slotRow, "model"), /usage-tooltip-label">glm-4\.7-air</);
   assert.doesNotMatch(formatTimelineTooltip(slotRow, "model"), /GLM/);
   assert.match(formatTimelineTooltip(slotRow, "cost"), /usage-tooltip-label">glm-4\.7-air</);
+});
+
+test("timelineAxisLabels renders month keys as month names within one year and full keys across years", () => {
+  const sameYear = timelineAxisLabels(
+    Array.from({ length: 9 }, (_, index) => ({ key: `2026-0${index + 1}` })),
+    {
+      bucket: "month",
+      range: { preset: "all", start: "2026-01-15T00:00:00", end: "2026-09-01T23:59:59" },
+      maxLabels: 20,
+    },
+  );
+  assert.deepEqual(
+    sameYear.map((label) => label.label),
+    ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月"],
+  );
+
+  const crossYear = timelineAxisLabels([{ key: "2025-11" }, { key: "2025-12" }, { key: "2026-01" }], {
+    bucket: "month",
+    range: { preset: "all", start: "2025-11-01T00:00:00", end: "2026-01-31T23:59:59" },
+    maxLabels: 10,
+  });
+  assert.deepEqual(
+    crossYear.map((label) => label.label),
+    ["2025-11", "2025-12", "2026-01"],
+  );
+});
+
+test("timelineSlotRangeTitle expands week and month keys into covered date ranges", () => {
+  const weekFull = timelineSlotRangeTitle(
+    { key: "2026-03-09" },
+    { bucket: "week", start: "2026-03-09T00:00:00", end: "2026-09-01T23:59:59.999" },
+  );
+  assert.equal(weekFull, "2026-03-09 至 2026-03-15");
+
+  const weekClippedStart = timelineSlotRangeTitle(
+    { key: "2026-03-09" },
+    { bucket: "week", start: "2026-03-11T00:00:00", end: "2026-09-01T23:59:59.999" },
+  );
+  assert.equal(weekClippedStart, "2026-03-11 至 2026-03-15（部分周）");
+
+  const weekClippedEnd = timelineSlotRangeTitle(
+    { key: "2026-03-09" },
+    { bucket: "week", start: "2026-03-09T00:00:00", end: "2026-03-12T23:59:59.999" },
+  );
+  assert.equal(weekClippedEnd, "2026-03-09 至 2026-03-12（部分周）");
+
+  const monthFull = timelineSlotRangeTitle(
+    { key: "2026-04" },
+    { bucket: "month", start: "2026-03-15T00:00:00", end: "2026-09-01T23:59:59.999" },
+  );
+  assert.equal(monthFull, "2026-04-01 至 2026-04-30");
+
+  const monthPartial = timelineSlotRangeTitle(
+    { key: "2026-03" },
+    { bucket: "month", start: "2026-03-15T00:00:00", end: "2026-09-01T23:59:59.999" },
+  );
+  assert.equal(monthPartial, "2026-03-15 至 2026-03-31（部分月）");
+
+  const dayBucket = timelineSlotRangeTitle(
+    { key: "2026-03-15" },
+    { bucket: "day", start: "2026-03-15T00:00:00", end: "2026-03-15T23:59:59.999" },
+  );
+  assert.equal(dayBucket, null);
 });

@@ -22,7 +22,7 @@ import {
   validateUsageDetails,
 } from "../public/usage-fields.js";
 import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
-import { buildTimelineRows, resolveNamedRecentRange } from "../public/timeline-utils.js";
+import { buildTimelineRows, deriveTimelineBucket, resolveNamedRecentRange } from "../public/timeline-utils.js";
 import {
   COMPARISON_PERIOD_KEYS,
   MS_PER_DAY,
@@ -2396,8 +2396,10 @@ export function summarizeUsageIndex(index, filters = {}) {
   const { quota, asOf } = summaryQuotaContext(index.rateLimitObservations, filters);
   const range = indexDateRange({ ...filters, quota, now: asOf }, index.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
-  const bucket =
-    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
+  const bucket = deriveTimelineBucket(
+    range,
+    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
+  );
   const now = range.asOf || asOf;
   const events = index.events.filter((event) => {
     if (!Number.isFinite(event.t)) {
@@ -2483,8 +2485,10 @@ export function summarizeUsage(report, filters = {}) {
   const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
   const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
-  const bucket =
-    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day");
+  const bucket = deriveTimelineBucket(
+    range,
+    range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
+  );
   const now = range.asOf || asOf;
   const events = report.events.filter((event) => {
     const date = new Date(event.timestamp);

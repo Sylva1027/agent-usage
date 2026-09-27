@@ -735,3 +735,69 @@ test("natural week and month slots include future positions without changing ran
     setSummaryFilters({ preset: "today", recentValue: "1个月", bucket: "hour", now: null, startDate: "", endDate: "" });
   }
 });
+
+test("all-time summarize escalates long spans to weekly bars and labels the merge", () => {
+  const events = [
+    {
+      timestamp: "2026-03-15T12:00:00",
+      sessionId: "march",
+      channel: "CLI",
+      total: { total: 40, input: 40, cached: 0, output: 0 },
+    },
+    {
+      timestamp: "2026-09-01T12:00:00",
+      sessionId: "september",
+      channel: "CLI",
+      total: { total: 80, input: 80, cached: 0, output: 0 },
+    },
+  ];
+  try {
+    setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "" });
+    const summary = summarize({ events });
+    assert.equal(summary.range.bucket, "week");
+    assert.equal(summary.timeline.length, 26);
+    assert.equal(summary.timeline[0].key, "2026-03-09");
+    assert.equal(summary.timeline.at(-1).key, "2026-08-31");
+    assert.equal(summary.totals.total, 120);
+    assert.equal(rangeLabel(summary), "2026-03-15 至 2026-09-01 · 按周合并");
+
+    // 跨度 ≤31 天的“全部”保持日柱，副标题不加合并标注。
+    setSummaryFilters({ preset: "all", bucket: "day", now: null, startDate: "", endDate: "" });
+    const short = summarize({
+      events: [events[0], { ...events[1], timestamp: "2026-04-10T12:00:00", sessionId: "april" }],
+    });
+    assert.equal(short.range.bucket, "day");
+    assert.equal(short.timeline[0].key, "2026-03-15");
+    assert.equal(rangeLabel(short), "2026-03-15 至 2026-04-10");
+  } finally {
+    setSummaryFilters({ preset: "today", recentValue: "1个月", bucket: "hour", now: null, startDate: "", endDate: "" });
+  }
+});
+
+test("custom summarize with a monthly bucket appends the month-merge label", () => {
+  const events = [
+    {
+      timestamp: "2026-03-15T12:00:00",
+      sessionId: "march",
+      channel: "CLI",
+      total: { total: 40, input: 40, cached: 0, output: 0 },
+    },
+    {
+      timestamp: "2026-09-01T12:00:00",
+      sessionId: "september",
+      channel: "CLI",
+      total: { total: 80, input: 80, cached: 0, output: 0 },
+    },
+  ];
+  try {
+    setSummaryFilters({ preset: "custom", bucket: "month", startDate: "2026-03-15", endDate: "2026-09-01", now: null });
+    const summary = summarize({ events });
+    assert.equal(summary.range.bucket, "month");
+    assert.equal(summary.timeline.length, 7);
+    assert.equal(summary.timeline[0].key, "2026-03");
+    assert.equal(summary.timeline.at(-1).key, "2026-09");
+    assert.equal(rangeLabel(summary), "2026-03-15 至 2026-09-01 · 按月合并");
+  } finally {
+    setSummaryFilters({ preset: "today", recentValue: "1个月", bucket: "hour", now: null, startDate: "", endDate: "" });
+  }
+});

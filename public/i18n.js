@@ -161,8 +161,9 @@ const ENGLISH = new Map(
     没有匹配的用量记录: "No matching usage records",
     所选时间范围内没有用量: "No usage in the selected period",
     没有可计价的费用记录: "No priced usage records",
-    "时间槽过多，请缩短日期范围或调大时间粒度。":
-      "Too many chart intervals. Shorten the range or use a coarser interval.",
+    "时间范围过大，无法生成时间分布。": "The date range is too large to build the time distribution.",
+    按周合并: "merged by week",
+    按月合并: "merged by month",
     明细未提供: "Details unavailable",
     只按总输入与缓存读取都已知的记录计算:
       "Calculated only from records with known total input and cache-hit token counts",
@@ -339,8 +340,8 @@ const ENGLISH_PATTERNS = [
     (_, kind, action) => `${englishText(kind)} details are unavailable. ${englishText(action)}`,
   ],
   [
-    /^此范围超过 (.+) 个时间槽。请缩短日期范围或选择更大的时间粒度。$/,
-    (_, n) => `This range exceeds ${n} chart intervals. Shorten it or use a coarser interval.`,
+    /^此范围超过 (.+) 个时间槽，无法生成时间分布。请缩短日期范围。$/,
+    (_, n) => `This range exceeds ${n} chart intervals and cannot build the time distribution. Shorten the range.`,
   ],
   [/^上次：(.+)$/, (_, date) => `Last check: ${date}`],
   [/^单次输入超过 (.+) tokens 按长上下文价$/, (_, n) => `Long-context rates apply above ${n} input tokens per request`],

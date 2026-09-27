@@ -237,6 +237,30 @@ function addCalendarDays(date, days, zone = "local") {
   return next;
 }
 
+// 柱数上限法：时间分布粒度取"柱数不超过 31"的最细档（天 → 周 → 月）。
+// 该规则复刻所有预设的既有选择（今日 24 小时柱、本月 ≤31 天柱、今年 12 月柱），
+// 因此只有全部/自定义/近 N 天里跨度超过 31 天的范围会升档，31 天内逐柱不变。
+export const TIMELINE_BAR_LIMIT = 31;
+export const TIMELINE_WEEK_SPAN_LIMIT_DAYS = TIMELINE_BAR_LIMIT * 7;
+
+export function deriveTimelineBucket(range, requested = "day") {
+  // 非 day 桶都是显式选择（今日小时柱、今年月柱、限额窗口固定槽位），不参与跨度升档。
+  if (requested !== "day") return requested;
+  const start = asDate(range?.start);
+  const end = asDate(range?.end);
+  if (!start || !end || end < start) return "day";
+  const zone = range?.calendarZone === "utc" ? "utc" : "local";
+  const days = Math.round((startOfDay(end, zone).getTime() - startOfDay(start, zone).getTime()) / 86_400_000) + 1;
+  if (days <= TIMELINE_BAR_LIMIT) return "day";
+  // 同样是 217 天，非周一起始的范围可能跨 32 个自然周。
+  // 计算真正的周槽数，避免按天数判断时突破柱数上限。
+  const firstWeekday = zone === "utc" ? start.getUTCDay() : start.getDay();
+  const daysBeforeFirstMonday = (firstWeekday + 6) % 7;
+  const weekSlots = Math.ceil((days + daysBeforeFirstMonday) / 7);
+  if (weekSlots <= TIMELINE_BAR_LIMIT && days <= TIMELINE_WEEK_SPAN_LIMIT_DAYS) return "week";
+  return "month";
+}
+
 export const MAX_TIMELINE_SLOTS = 2_000;
 
 function appendCalendarKey(keys, key, limit) {
