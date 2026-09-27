@@ -29,6 +29,7 @@ import {
   parseLocalDate,
   renderDatePickerHtml,
 } from "./calendar.js";
+import { summarizePeriodComparison } from "./period-comparison.js";
 
 export { datePickerMonthModel, renderDatePickerHtml };
 
@@ -3394,6 +3395,15 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
   return `?${params.toString()}`;
 }
 
+// 静态快照没有服务端可用：对比数据直接用内嵌事件在浏览器里重算，
+// 并沿用 localStorage 中持久化的来源排除，保证与在线面板同一口径。
+export function staticPeriodComparison(report, calendarZone = state.calendarZone) {
+  const excluded = new Set((state.excludedHomes || []).map(String));
+  const events = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
+  const now = state.now || report.asOf || report.quota?.asOf || report.generatedAt || undefined;
+  return summarizePeriodComparison(events, { now, calendarZone });
+}
+
 async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   const loadId = ++state.usageLoadId;
   const embeddedReport = window.__CODEX_USAGE_REPORT__;
@@ -3406,10 +3416,7 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       state.now = embeddedReport.asOf || embeddedReport.quota?.asOf || embeddedReport.generatedAt || null;
       state.metadata = metadataFromReport(embeddedReport);
       state.summary = null;
-      state.periodComparison =
-        state.calendarZone === "utc"
-          ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
-          : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
+      state.periodComparison = staticPeriodComparison(embeddedReport);
       state.fingerprint = "static";
       if (Number(embeddedReport.pricing?.usdToCnyRate) > 0)
         state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
@@ -3517,10 +3524,7 @@ function stopAutoRefresh() {
 
 function refreshViewForFilters() {
   if (isStaticSnapshot()) {
-    state.periodComparison =
-      state.calendarZone === "utc"
-        ? window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ || null
-        : window.__CODEX_USAGE_PERIOD_COMPARISON__ || null;
+    state.periodComparison = staticPeriodComparison(state.report || window.__CODEX_USAGE_REPORT__);
     render();
     return;
   }

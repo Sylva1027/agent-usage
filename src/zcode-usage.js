@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
-import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "./usage-fields.js";
+import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
 
 // 相对 ZCode home 目录的数据库位置，按顺序探测。
 const ZCODE_DB_RELATIVE_PATHS = [

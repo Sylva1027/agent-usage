@@ -6,7 +6,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { runInNewContext } from "node:vm";
 
-import { setSummaryFilters, summarize } from "../public/app.js";
+import { setSummaryFilters, staticPeriodComparison, summarize } from "../public/app.js";
 import { getPricingCatalog, resetPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { renderStaticDashboardHtml } from "../src/static-export.js";
 import { buildUsageReport, summarizePeriodComparison, summarizeUsage } from "../src/usage-core.js";
@@ -197,10 +197,7 @@ test("memory, SQLite, and exported snapshot agree for local and UTC usage", asyn
       const periodOptions = { now: AS_OF, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison =
-        calendarZone === "utc"
-          ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
-          : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
+      const snapshotComparison = staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone);
       assert.deepEqual(
         comparisonFields(indexedComparison),
         comparisonFields(memoryComparison),
@@ -306,19 +303,10 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
       const periodOptions = { now: asOf, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison =
-        calendarZone === "utc"
-          ? snapshot.__CODEX_USAGE_PERIOD_COMPARISON_UTC__
-          : snapshot.__CODEX_USAGE_PERIOD_COMPARISON__;
       assert.deepEqual(
         comparisonFields(indexedComparison),
         comparisonFields(memoryComparison),
         `${calendarZone} SQLite period comparison`,
-      );
-      assert.deepEqual(
-        comparisonFields(snapshotComparison),
-        comparisonFields(memoryComparison),
-        `${calendarZone} snapshot period comparison`,
       );
 
       for (const excludedHomes of [[], [zcodeHome.id]]) {
@@ -326,14 +314,27 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
         const filteredReport = excludedHomes.length
           ? { ...report, events: report.events.filter((event) => !excludedHomes.includes(event.homeId)) }
           : report;
-        if (excludedHomes.length) {
-          const filteredComparison = summarizePeriodComparison(filteredReport.events, periodOptions);
-          assert.deepEqual(
-            comparisonFields(store.periodComparison({ ...periodOptions, excludeHomes: excludedHomes })),
-            comparisonFields(filteredComparison),
-            `${calendarZone}/${scope} SQLite period comparison`,
-          );
-        }
+        const expectedComparison = summarizePeriodComparison(filteredReport.events, periodOptions);
+        assert.deepEqual(
+          comparisonFields(store.periodComparison({ ...periodOptions, excludeHomes: excludedHomes })),
+          comparisonFields(expectedComparison),
+          `${calendarZone}/${scope} SQLite period comparison`,
+        );
+        setSummaryFilters({
+          preset: "all",
+          bucket: "day",
+          calendarZone,
+          now: asOf,
+          excludedHomes,
+          startDate: "",
+          endDate: "",
+          recentValue: "",
+        });
+        assert.deepEqual(
+          comparisonFields(staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone)),
+          comparisonFields(expectedComparison),
+          `${calendarZone}/${scope} snapshot period comparison`,
+        );
 
         for (const preset of ["all", "week", "month"]) {
           const filters = { preset, bucket: "day", now: asOf, calendarZone };

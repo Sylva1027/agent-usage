@@ -15,21 +15,30 @@ import {
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import {
-  USAGE_DETAIL_INCONSISTENT,
   USAGE_DETAIL_MASK,
   USAGE_FIELDS,
   emptyUsage,
   isZeroUsage,
   validateUsageDetails,
-} from "./usage-fields.js";
+} from "../public/usage-fields.js";
 import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
 import { buildTimelineRows, resolveNamedRecentRange } from "../public/timeline-utils.js";
+import {
+  COMPARISON_PERIOD_KEYS,
+  MS_PER_DAY,
+  calendarPresetRange,
+  endOfLocalDay,
+  startOfLocalDay,
+  startOfLocalWeek,
+  summarizePeriodComparison,
+} from "../public/period-comparison.js";
+
+export { COMPARISON_PERIOD_KEYS, summarizePeriodComparison };
 
 const SESSION_DIRS = ["sessions", "archived_sessions"];
 const PROJECT_USAGE_DIR = ".codex-usage";
 const PROJECT_USAGE_FILE = "usage.jsonl";
 const PROJECT_LOG_SCHEMA_VERSION = "codex-usage.project-log.v1";
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MS_PER_MINUTE = 60 * 1000;
 const QUOTA_WINDOW_MINUTES = Object.freeze({ quota_5h: 300, quota_week: 10080 });
 const QUOTA_PERCENT_STALE_AFTER_MS = 10 * 60 * 1000;
@@ -1771,26 +1780,6 @@ function _localDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
-function startOfLocalDay(date, zone = "local") {
-  return zone === "utc"
-    ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function endOfLocalDay(date, zone = "local") {
-  return zone === "utc"
-    ? new Date(startOfLocalDay(date, zone).getTime() + MS_PER_DAY - 1)
-    : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-}
-
-function startOfLocalWeek(date, zone = "local") {
-  const start = startOfLocalDay(date, zone);
-  const day = (zone === "utc" ? start.getUTCDay() : start.getDay()) || 7;
-  if (zone === "utc") start.setUTCDate(start.getUTCDate() - day + 1);
-  else start.setDate(start.getDate() - day + 1);
-  return start;
-}
-
 function addLocalDays(date, days, zone = "local") {
   const next = new Date(date);
   if (zone === "utc") next.setUTCDate(next.getUTCDate() + days);
@@ -1954,22 +1943,8 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
       calendarZone: zone,
     };
   }
-  if (preset === "today") {
-    return { start: startOfLocalDay(now, zone), end: endOfLocalDay(now, zone), preset, calendarZone: zone };
-  }
-  if (preset === "week") {
-    return { start: startOfLocalWeek(now, zone), end: endOfLocalDay(now, zone), preset, calendarZone: zone };
-  }
-  if (preset === "month") {
-    return {
-      start:
-        zone === "utc"
-          ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-          : new Date(now.getFullYear(), now.getMonth(), 1),
-      end: endOfLocalDay(now, zone),
-      preset,
-      calendarZone: zone,
-    };
+  if (preset === "today" || preset === "week" || preset === "month" || preset === "all") {
+    return calendarPresetRange(preset, now, zone, timestamps);
   }
   if (preset === "custom") {
     return {
@@ -1991,25 +1966,7 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
     }
   }
 
-  if (!timestamps.length) {
-    return { start: null, end: null, preset: "all", calendarZone: zone };
-  }
-  let earliestTimestamp = timestamps[0];
-  let latestTimestamp = timestamps[0];
-  for (const timestamp of timestamps) {
-    if (timestamp < earliestTimestamp) {
-      earliestTimestamp = timestamp;
-    }
-    if (timestamp > latestTimestamp) {
-      latestTimestamp = timestamp;
-    }
-  }
-  return {
-    start: startOfLocalDay(new Date(earliestTimestamp), zone),
-    end: endOfLocalDay(new Date(latestTimestamp), zone),
-    preset: "all",
-    calendarZone: zone,
-  };
+  return calendarPresetRange("all", now, zone, timestamps);
 }
 
 function groupByUsage(events, keyFn, options = {}) {
@@ -2396,161 +2353,6 @@ export function usageComparisonFromAggregates({
     totalDelta: currentTotals.total - previousTotals.total,
     percentChange: percentChange(currentTotals.total, previousTotals.total),
     ...average,
-  };
-}
-
-export const COMPARISON_PERIOD_KEYS = ["today", "week", "month", "all"];
-
-function emptyPeriodMetrics() {
-  return {
-    total: 0,
-    input: 0,
-    inputUnavailableTokens: 0,
-    cached: 0,
-    cachedUnavailableTokens: 0,
-    uncachedInput: 0,
-    uncachedInputUnavailableTokens: 0,
-    cacheRateInput: 0,
-    cacheRateCached: 0,
-    output: 0,
-    outputUnavailableTokens: 0,
-    reasoning: 0,
-    reasoningUnavailableTokens: 0,
-    unattributedDetailTokens: 0,
-    inconsistentTokens: 0,
-    reconciliationGap: 0,
-  };
-}
-
-function addPeriodEvent(target, event) {
-  const usage = event.total || emptyUsage();
-  const total = Number(usage.total || 0);
-  const mask = Number.isInteger(event.detailMask) ? event.detailMask : USAGE_DETAIL_MASK.complete;
-  target.total += total;
-  if (mask & USAGE_DETAIL_MASK.input) {
-    target.input += Number(usage.input || 0);
-  } else {
-    target.inputUnavailableTokens += total;
-  }
-  if (mask & USAGE_DETAIL_MASK.cached) {
-    target.cached += Number(usage.cached || 0);
-  } else {
-    target.cachedUnavailableTokens += total;
-  }
-  if (
-    (mask & (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)) ===
-    (USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached)
-  ) {
-    target.uncachedInput += Math.max(0, Number(usage.input || 0) - Number(usage.cached || 0));
-    target.cacheRateInput += Number(usage.input || 0);
-    target.cacheRateCached += Number(usage.cached || 0);
-  } else {
-    target.uncachedInputUnavailableTokens += total;
-  }
-  if (mask & USAGE_DETAIL_MASK.output) {
-    target.output += Number(usage.output || 0);
-  } else {
-    target.outputUnavailableTokens += total;
-  }
-  if (mask & USAGE_DETAIL_MASK.reasoning) {
-    target.reasoning += Number(usage.reasoning || 0);
-  } else {
-    target.reasoningUnavailableTokens += total;
-  }
-  if ((mask & USAGE_DETAIL_MASK.complete) !== USAGE_DETAIL_MASK.complete) {
-    target.unattributedDetailTokens += total;
-  }
-  if (mask & USAGE_DETAIL_INCONSISTENT) {
-    target.inconsistentTokens += total;
-  }
-  target.reconciliationGap += Number(event.reconciliationGap || 0);
-}
-
-function comparisonRow(map, key, name, event, periodKeys, { includeRepositoryMetadata = false } = {}) {
-  let row = map.get(key);
-  if (!row) {
-    row = {
-      key,
-      name,
-      ...(includeRepositoryMetadata ? { kind: event.repositoryKind || "directory", pathSet: new Set() } : {}),
-      periods: Object.fromEntries(periodKeys.map((period) => [period, emptyPeriodMetrics()])),
-    };
-    map.set(key, row);
-  } else if (includeRepositoryMetadata && name < row.name) {
-    row.name = name;
-  }
-  if (includeRepositoryMetadata && event.cwd) {
-    row.pathSet.add(event.cwd);
-  }
-
-  return row;
-}
-
-export function summarizePeriodComparison(events = [], options = {}) {
-  const asOf = options.now ? new Date(options.now) : new Date();
-  const timestamps = events
-    .map((event) => ({ timestamp: event.timestamp }))
-    .filter((event) => Number.isFinite(Date.parse(event.timestamp)));
-  const ranges = Object.fromEntries(
-    COMPARISON_PERIOD_KEYS.map((key) => [
-      key,
-      resolveDateRange({ preset: key, now: asOf, calendarZone: options.calendarZone }, timestamps),
-    ]),
-  );
-  const rows = { models: new Map(), repositories: new Map() };
-  const totals = Object.fromEntries(COMPARISON_PERIOD_KEYS.map((key) => [key, emptyPeriodMetrics()]));
-
-  for (const event of events) {
-    const timestamp = Date.parse(event.timestamp);
-    if (!Number.isFinite(timestamp)) {
-      continue;
-    }
-    const modelKey = event.model || "Unknown model";
-    const repositoryKey = event.repositoryKey || `directory:${event.cwd || "Unknown cwd"}`;
-    const modelRow = comparisonRow(rows.models, modelKey, modelKey, event, COMPARISON_PERIOD_KEYS);
-    const repositoryRowKey = repositoryKey;
-    const repositoryName = event.repositoryPath || event.cwd || "Unknown cwd";
-    const repositoryRow = comparisonRow(
-      rows.repositories,
-      repositoryRowKey,
-      repositoryName,
-      event,
-      COMPARISON_PERIOD_KEYS,
-      {
-        includeRepositoryMetadata: true,
-      },
-    );
-
-    for (const period of COMPARISON_PERIOD_KEYS) {
-      const range = ranges[period];
-      if ((range.start && timestamp < range.start.getTime()) || (range.end && timestamp > range.end.getTime())) {
-        continue;
-      }
-      addPeriodEvent(totals[period], event);
-      addPeriodEvent(modelRow.periods[period], event);
-      addPeriodEvent(repositoryRow.periods[period], event);
-    }
-  }
-
-  function sortedRows(map) {
-    return [...map.values()]
-      .map((row) => {
-        const { pathSet, ...result } = row;
-        return pathSet ? { ...result, pathCount: pathSet.size } : result;
-      })
-      .sort((a, b) => b.periods.all.total - a.periods.all.total || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  }
-
-  return {
-    asOf: asOf.toISOString(),
-    periods: COMPARISON_PERIOD_KEYS.map((key) => ({
-      key,
-      start: ranges[key].start?.toISOString() || null,
-      end: ranges[key].end?.toISOString() || null,
-    })),
-    totals,
-    models: sortedRows(rows.models),
-    repositories: sortedRows(rows.repositories),
   };
 }
 

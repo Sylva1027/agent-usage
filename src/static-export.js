@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Script } from "node:vm";
 
-import { buildUsageReport, selectQuotaWindows, summarizePeriodComparison } from "./usage-core.js";
+import { buildUsageReport, selectQuotaWindows } from "./usage-core.js";
 import { API_PRICING_MODE, API_PRICING_SOURCE, estimateEventCost, getPricingCatalog } from "./pricing.js";
 import { loadPricingFile } from "./pricing-store.js";
 
@@ -73,6 +73,8 @@ export function renderStaticDashboardHtml(report) {
   const htmlUtils = readFileSync(path.join(PUBLIC_DIR, "html-utils.js"), "utf8");
   const calendar = readFileSync(path.join(PUBLIC_DIR, "calendar.js"), "utf8");
   const appState = readFileSync(path.join(PUBLIC_DIR, "app-state.js"), "utf8");
+  const usageFields = readFileSync(path.join(PUBLIC_DIR, "usage-fields.js"), "utf8");
+  const periodComparison = readFileSync(path.join(PUBLIC_DIR, "period-comparison.js"), "utf8");
   const inlineTimelineUtils = timelineUtils.replace(/^export\s+/gm, "");
   const inlineI18n = i18n.replace(/^export\s+/gm, "");
   const inlineHtmlUtils = htmlUtils.replace(/^export\s+/gm, "");
@@ -81,6 +83,16 @@ export function renderStaticDashboardHtml(report) {
     "",
   );
   const inlineAppState = appState.replace(/^export\s+/gm, "");
+  // period-comparison 依赖 usage-fields，把后者嵌进前者的 IIFE 里，
+  // 避免顶层名字与 app.js 自身的 emptyUsage 等定义冲突。
+  const inlineUsageFields = `const { USAGE_DETAIL_MASK, USAGE_DETAIL_INCONSISTENT, emptyUsage } = (() => {\n${usageFields.replace(
+    /^export\s+/gm,
+    "",
+  )}\nreturn { USAGE_DETAIL_MASK, USAGE_DETAIL_INCONSISTENT, emptyUsage };\n})();`;
+  const inlinePeriodComparison = removeNamedPublicImport(periodComparison, "usage-fields.js").replace(
+    /^export\s+/gm,
+    "",
+  );
   const i18nImport = app.match(/^import \{([^}]*)\} from "\.\/i18n\.js";\s*/m);
   if (!i18nImport) throw new Error("Expected the dashboard localization import.");
   const i18nNames = i18nImport[1]
@@ -91,7 +103,7 @@ export function renderStaticDashboardHtml(report) {
     throw new Error("Expected simple named dashboard localization imports.");
   }
   const bundledApp = replaceExactlyOnce(
-    ["timeline-utils.js", "i18n.js", "app-state.js", "html-utils.js", "calendar.js"].reduce(
+    ["timeline-utils.js", "i18n.js", "app-state.js", "html-utils.js", "calendar.js", "period-comparison.js"].reduce(
       (source, fileName) => removeNamedPublicImport(source, fileName),
       app,
     ),
@@ -104,10 +116,9 @@ export function renderStaticDashboardHtml(report) {
   const bundledHtmlUtils = `const { escapeHtml, externalHttpUrl, safeChartColor } = (() => {\n${inlineHtmlUtils}\nreturn { escapeHtml, externalHttpUrl, safeChartColor };\n})();`;
   const bundledCalendar = `const { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml } = (() => {\n${inlineCalendar}\nreturn { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml };\n})();`;
   const bundledAppState = `const { state } = (() => {\n${inlineAppState}\nreturn { state };\n})();`;
+  const bundledPeriodComparison = `const { summarizePeriodComparison } = (() => {\n${inlineUsageFields}\n${inlinePeriodComparison}\nreturn { summarizePeriodComparison };\n})();`;
   const asOf = report.asOf || report.generatedAt || new Date().toISOString();
   const quota = selectQuotaWindows(report.rateLimitObservations || [], asOf);
-  const periodComparison = summarizePeriodComparison(report.events, { now: asOf });
-  const utcPeriodComparison = summarizePeriodComparison(report.events, { now: asOf, calendarZone: "utc" });
   const catalog = getPricingCatalog();
   const pricedReport = {
     ...report,
@@ -129,7 +140,7 @@ export function renderStaticDashboardHtml(report) {
   html = replaceExactlyOnce(
     html,
     scriptAnchor,
-    `<script>window.__CODEX_USAGE_REPORT__ = ${safeScriptJson(pricedReport)}; window.__CODEX_USAGE_PERIOD_COMPARISON__ = ${safeScriptJson(periodComparison)}; window.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ = ${safeScriptJson(utcPeriodComparison)};</script>\n<script type="module">\n${bundledTimelineUtils}\n${bundledI18n}\n${bundledHtmlUtils}\n${bundledCalendar}\n${bundledAppState}\n${bundledApp}\n</script>`,
+    `<script>window.__CODEX_USAGE_REPORT__ = ${safeScriptJson(pricedReport)};</script>\n<script type="module">\n${bundledTimelineUtils}\n${bundledI18n}\n${bundledHtmlUtils}\n${bundledCalendar}\n${bundledAppState}\n${bundledPeriodComparison}\n${bundledApp}\n</script>`,
     "application script",
   );
   assertSelfContainedStaticHtml(html);

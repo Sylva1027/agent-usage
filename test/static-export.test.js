@@ -70,6 +70,7 @@ test("renderStaticDashboardHtml bundles shared timeline logic and has no unresol
     warnings: [],
   });
   assert.match(html, /function buildTimelineRows/);
+  assert.match(html, /function summarizePeriodComparison/);
   assert.match(html, /id="autoRefreshToggle"/);
   assert.match(html, /id="timelineModes"/);
   assert.match(html, /id="languageToggle"/);
@@ -79,7 +80,7 @@ test("renderStaticDashboardHtml bundles shared timeline logic and has no unresol
   assert.match(html, /const \{ state \} = \(\(\) =>/);
   assert.doesNotMatch(html, /import \{ buildTimelineRows \} from/);
   assert.doesNotMatch(html, /from "\.\/i18n\.js"/);
-  assert.doesNotMatch(html, /from "\.\/(?:app-state|calendar|html-utils)\.js"/);
+  assert.doesNotMatch(html, /from "\.\/(?:app-state|calendar|html-utils|period-comparison)\.js"/);
   const moduleSource = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
   assert.ok(moduleSource);
   const syntax = spawnSync(process.execPath, ["--check", "--input-type=module"], {
@@ -170,10 +171,9 @@ test("static export freezes quota observations and capability at the export asOf
     warnings: [],
   };
   const html = renderStaticDashboardHtml(report);
-  assert.match(html, /window\.__CODEX_USAGE_PERIOD_COMPARISON_UTC__ = /);
-  const embedded = html.match(
-    /window\.__CODEX_USAGE_REPORT__ = (.*?); window\.__CODEX_USAGE_PERIOD_COMPARISON__/s,
-  )?.[1];
+  // 对比数据由内嵌事件在浏览器端按排除来源重算，不再预写入快照全局变量。
+  assert.doesNotMatch(html, /__CODEX_USAGE_PERIOD_COMPARISON__/);
+  const embedded = html.match(/window\.__CODEX_USAGE_REPORT__ = ([\s\S]*?);<\/script>/)?.[1];
   assert.ok(embedded);
   const snapshot = JSON.parse(embedded);
 
