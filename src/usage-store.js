@@ -654,6 +654,18 @@ export class UsageStore {
       }));
   }
 
+  nonCodexHomeIds() {
+    // 限额窗口只衡量 Codex 用量：main/jetbrains/extra/codex 之外的目录（zcode、project-log）
+    // 只在普通范围里计入统计，不能进入限额聚合。
+    return this.database
+      .prepare(
+        "SELECT DISTINCT home_id AS id FROM source_files WHERE kind NOT IN ('main', 'jetbrains', 'extra', 'codex')",
+      )
+      .all()
+      .map((row) => row.id)
+      .filter((id) => typeof id === "string" && id.length > 0);
+  }
+
   metadata() {
     if (this.metadataCache) return structuredClone(this.metadataCache);
     const totals = this.database
@@ -1116,9 +1128,10 @@ export class UsageStore {
       boundaryEvents.push({ timestamp: new Date(Number(bounds.maximum)).toISOString() });
     }
     const range = resolveDateRange({ ...filters, now: asOf, quota }, boundaryEvents);
-    const aggregate = this.aggregateRange(range, excludeHomes);
-    const totals = usageFromRow(aggregate);
     const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
+    const scopeExclusions = quotaPreset ? [...new Set([...excludeHomes, ...this.nonCodexHomeIds()])] : excludeHomes;
+    const aggregate = this.aggregateRange(range, scopeExclusions);
+    const totals = usageFromRow(aggregate);
     const previousRange = quotaPreset ? null : previousUsageRange(range);
     const previousAggregate = previousRange ? this.aggregateRange(previousRange, excludeHomes) : null;
     const comparison = quotaPreset
@@ -1141,13 +1154,13 @@ export class UsageStore {
     try {
       timeline = this.timelineRange(range, bucket, {
         onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
-        excludeHomes,
+        excludeHomes: scopeExclusions,
       });
       costEstimate = costAccumulator.result();
     } catch (error) {
       if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
       timelineError = error.message;
-      costEstimate = this.costEstimateRange(range, excludeHomes);
+      costEstimate = this.costEstimateRange(range, scopeExclusions);
     }
     const summary = {
       generatedAt: this.generatedAt,
@@ -1183,8 +1196,8 @@ export class UsageStore {
           ? {}
           : quotaPreset
             ? quotaRecordsForRange(range, quota, this.quotaObservations(), (window) => {
-                const row = window === range ? aggregate : this.aggregateRange(window, excludeHomes);
-                const cost = window === range ? costEstimate : this.costEstimateRange(window, excludeHomes);
+                const row = window === range ? aggregate : this.aggregateRange(window, scopeExclusions);
+                const cost = window === range ? costEstimate : this.costEstimateRange(window, scopeExclusions);
                 return {
                   eventCount: Number(row.event_count),
                   values: quotaRecordValues(
@@ -1195,20 +1208,20 @@ export class UsageStore {
                   ),
                 };
               })
-            : this.recordsForRange(range, excludeHomes),
+            : this.recordsForRange(range, scopeExclusions),
       eventCount: Number(aggregate.event_count || 0),
       sessionCount: Number(aggregate.session_count || 0),
       homeCount: Number(aggregate.home_count || 0),
       timeline,
       timelineError,
       quota,
-      channels: this.groupedRange("channel", range, "total DESC", excludeHomes),
-      models: this.groupedRange("model", range, "total DESC", excludeHomes),
+      channels: this.groupedRange("channel", range, "total DESC", scopeExclusions),
+      models: this.groupedRange("model", range, "total DESC", scopeExclusions),
     };
     if (includeDetails) {
-      summary.homes = this.groupedRange("home_label", range, "total DESC", excludeHomes);
-      summary.projects = this.groupedRange("project", range, "total DESC", excludeHomes);
-      summary.repositories = this.repositoriesRange(range, excludeHomes);
+      summary.homes = this.groupedRange("home_label", range, "total DESC", scopeExclusions);
+      summary.projects = this.groupedRange("project", range, "total DESC", scopeExclusions);
+      summary.repositories = this.repositoriesRange(range, scopeExclusions);
     }
     return summary;
   }

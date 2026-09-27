@@ -133,7 +133,8 @@ test("live and static previous-window summaries agree and exclude the reset endp
   }));
   const report = {
     events,
-    homes: [],
+    // 限额窗口只统计 Codex 来源：homeId "codex" 是 main home。
+    homes: [{ id: "codex", label: "Codex", kind: "main" }],
     sessions: [],
     warnings: [],
     rateLimitObservations: observations,

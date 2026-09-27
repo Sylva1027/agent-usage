@@ -178,12 +178,31 @@ test("static quota summary stays at export asOf and applies source exclusions to
       channel: "ZCode",
       total: { total: 7 },
     },
+    {
+      // 未被手动排除，但限额窗口只统计 Codex 来源：同样不能进入限额统计。
+      timestamp: "2026-09-25T11:00:00.000Z",
+      sessionId: "zcode-in-window",
+      homeId: "zopen",
+      channel: "ZCode",
+      total: { total: 9 },
+    },
     { timestamp: asOf, sessionId: "at-as-of", homeId: "keep", channel: "CLI", total: { total: 11 } },
   ];
 
   setSummaryFilters({ preset: "quota_5h", bucket: "month", now: asOf, excludedHomes: ["drop"] });
   try {
-    const summary = summarize({ asOf, generatedAt: asOf, quota, events });
+    const summary = summarize({
+      asOf,
+      generatedAt: asOf,
+      quota,
+      // 限额窗口只统计 Codex 来源：keep 是 main home，drop/zopen 是 ZCode home。
+      homes: [
+        { id: "keep", label: "Main Codex", kind: "main" },
+        { id: "drop", label: "ZCode", kind: "zcode" },
+        { id: "zopen", label: "ZCode 2", kind: "zcode" },
+      ],
+      events,
+    });
     assert.equal(summary.range.bucket, "quota_30m");
     assert.equal(summary.range.windowStart.toISOString(), start);
     assert.equal(summary.range.windowEndExclusive.toISOString(), end);

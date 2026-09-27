@@ -12,6 +12,8 @@ import {
   maxTimelineValue,
   nextComparisonSort,
   formatTokenMillions,
+  formatTimelineTooltip,
+  formatUsageTooltip,
   renderBarListHtml,
   renderCostDetailHtml,
   renderComparisonHtml,
@@ -327,7 +329,7 @@ test("timeline legend shows every model directly without a heading or expand con
     for (const mode of ["model", "cost"]) {
       const html = renderTimelineLegendHtml({ timeline }, mode, new Map(), colors);
       assert.equal((html.match(/role="listitem"/g) || []).length, names.length);
-      for (const name of names) assert.ok(html.includes(`>${name}</span>`));
+      for (const name of names) assert.ok(html.includes(`>${name.toLowerCase()}</span>`));
       assert.doesNotMatch(html, /<details|timeline-legend-title|其余/);
     }
   } finally {
@@ -896,4 +898,71 @@ test("drawTimeline centers date ticks under capped slot bars", () => {
     delete globalThis.document;
     delete globalThis.getComputedStyle;
   }
+});
+
+test("model names render lowercase while data keys, colors, and non-model labels keep their casing", () => {
+  const mixed = "GLM-4.7-Air";
+  const periods = { today: { total: 10 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } };
+
+  const comparisonHtml = renderPeriodComparisonTableHtml([{ key: mixed, name: mixed, periods }], { kind: "model" });
+  assert.match(
+    comparisonHtml,
+    /class="comparison-row-label" title="glm-4\.7-air" aria-label="glm-4\.7-air">glm-4\.7-air</,
+  );
+  assert.match(comparisonHtml, /data-key="GLM-4\.7-Air"/);
+  assert.match(
+    renderPeriodComparisonTableHtml([{ key: mixed, name: mixed, periods }], { kind: "model", query: "GLM" }),
+    /glm-4\.7-air</,
+  );
+  const repoHtml = renderPeriodComparisonTableHtml([{ key: "repo:x", name: "/Work/MixedCase", periods }], {
+    kind: "repository",
+  });
+  assert.match(repoHtml, /aria-label="MixedCase">MixedCase</);
+
+  const modelColors = new Map([[mixed, "#123456"]]);
+  const modelBarHtml = renderBarListHtml([{ name: mixed, total: { total: 20 } }], modelColors, { modelNames: true });
+  assert.match(modelBarHtml, /title="glm-4\.7-air">glm-4\.7-air</);
+  assert.match(modelBarHtml, /aria-label="glm-4\.7-air：20 tokens"/);
+  assert.match(modelBarHtml, /background: #123456/);
+  assert.match(renderBarListHtml([{ name: "CLI", total: { total: 5 } }]), /title="CLI">CLI</);
+
+  const costDetailHtml = renderCostDetailHtml(
+    [{ name: mixed, totalUsd: 1.5, currency: "USD", scaleValue: 1.5 }],
+    modelColors,
+  );
+  assert.match(costDetailHtml, /title="glm-4\.7-air">glm-4\.7-air</);
+  assert.match(costDetailHtml, /background: #123456/);
+
+  const legendSummary = {
+    timeline: [
+      {
+        models: [{ name: mixed, total: { total: 8 } }],
+        channels: [{ name: "CLI", total: { total: 8 } }],
+        costByModel: { [mixed]: { totalUsd: 0.5, currency: "USD" } },
+      },
+    ],
+  };
+  assert.match(renderTimelineLegendHtml(legendSummary, "model", new Map(), modelColors), />glm-4\.7-air</);
+  assert.match(renderTimelineLegendHtml(legendSummary, "cost", new Map(), modelColors), />glm-4\.7-air</);
+  assert.match(renderTimelineLegendHtml(legendSummary, "channel", new Map(), new Map()), />CLI</);
+
+  const usageTooltipHtml = formatUsageTooltip(
+    { name: mixed, total: { total: 3 }, channels: [{ name: "CLI", total: { total: 3 } }] },
+    null,
+    { modelNames: true },
+  );
+  assert.match(usageTooltipHtml, /usage-tooltip-title">glm-4\.7-air</);
+  assert.match(usageTooltipHtml, /usage-tooltip-label">CLI</);
+  assert.doesNotMatch(usageTooltipHtml, /GLM/);
+  assert.match(formatUsageTooltip({ name: "CLI", total: { total: 3 } }), /usage-tooltip-title">CLI</);
+
+  const slotRow = {
+    name: "2026-09-27 10:00",
+    models: [{ name: mixed, total: { total: 6 } }],
+    costByModel: { [mixed]: { totalUsd: 0.4, currency: "USD" } },
+    total: { total: 6 },
+  };
+  assert.match(formatTimelineTooltip(slotRow, "model"), /usage-tooltip-label">glm-4\.7-air</);
+  assert.doesNotMatch(formatTimelineTooltip(slotRow, "model"), /GLM/);
+  assert.match(formatTimelineTooltip(slotRow, "cost"), /usage-tooltip-label">glm-4\.7-air</);
 });

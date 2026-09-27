@@ -447,6 +447,68 @@ test("previous quota cost records compare earlier reset windows and honor source
   }
 });
 
+test("UsageStore 限额窗口只统计 Codex 来源，普通范围不受影响", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "usage-quota-codex-only-"));
+  const sessionsDir = path.join(homeDir, ".codex", "sessions", "2026", "09", "25");
+  await mkdir(sessionsDir, { recursive: true });
+  await writeFile(
+    path.join(sessionsDir, "codex.jsonl"),
+    jsonl([
+      {
+        type: "session_meta",
+        timestamp: "2026-09-25T11:00:00.000Z",
+        payload: { id: "codex-session", source: "cli", originator: "codex-tui", cwd: "/work/codex" },
+      },
+      { type: "turn_context", timestamp: "2026-09-25T11:00:00.000Z", payload: { model: "gpt-6-sol" } },
+      quotaTokenRow("2026-09-25T11:59:00.000Z", "2026-09-25T14:37:00.000Z"),
+      tokenRow("2026-09-25T11:30:00.000Z", 100, 80, 10, 20, 0),
+    ]),
+  );
+  // 项目日志（project-log）来源在同一个限额窗口内贡献用量：它不能进入限额统计。
+  const projectRoot = path.join(homeDir, "log-project");
+  await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
+  await writeFile(
+    path.join(projectRoot, ".codex-usage", "usage.jsonl"),
+    jsonl([
+      {
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: "2026-09-25T11:45:00.000Z",
+        source: "test",
+        channel: "Test",
+        project_root: "/work/log",
+        cwd: "/work/log",
+        session_id: "log-session",
+        model: "gpt-6-luna",
+        usage: { total: 70, input: 50, cached: 10, output: 20, reasoning: 2 },
+      },
+    ]),
+  );
+  const store = new UsageStore({
+    homeDir,
+    databaseFile: path.join(homeDir, "index.sqlite"),
+    importDirs: [projectRoot],
+  });
+
+  try {
+    await store.sync();
+    const filters = { preset: "quota_5h", now: "2026-09-25T12:00:00.000Z" };
+    const quotaSummary = store.summarize(filters);
+    assert.equal(quotaSummary.range.quotaWindow, true);
+    // 11:45Z 的项目日志事件在窗口内，但限额窗口只衡量 Codex 用量。
+    assert.equal(quotaSummary.totals.total, 100);
+    assert.deepEqual(
+      quotaSummary.channels.map((channel) => channel.name),
+      ["CLI"],
+    );
+
+    const all = store.summarize({ preset: "all", bucket: "day", now: filters.now });
+    assert.equal(all.totals.total, 170);
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("UsageStore indexes quota observations from zero-token files and uses the half-open event range", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-quota-store-"));
   const sessionsDir = path.join(homeDir, ".codex", "sessions", "2026", "09", "25");
