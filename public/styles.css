@@ -1596,6 +1596,7 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
   white-space: nowrap;
 }
 
