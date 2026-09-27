@@ -1931,11 +1931,6 @@ const preciseCnyFormatter = new Intl.NumberFormat("zh-CN", {
   maximumFractionDigits: 2,
 });
 
-function _formatPreciseUsd(value) {
-  const amount = Number(value || 0);
-  return preciseUsdFormatter.format(Number.isFinite(amount) ? amount : 0);
-}
-
 // 金额符号随模型标价货币切换：美元模型显示 $，人民币模型显示 ¥。
 export function formatCostAmount(value, currency = "USD") {
   const amount = Number(value || 0);
@@ -2736,11 +2731,6 @@ function pricingModelNoteParts(contexts) {
       `谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`,
     );
   return parts;
-}
-
-function _pricingModelNote(contexts) {
-  const parts = pricingModelNoteParts(contexts);
-  return parts.length ? `<p class="pricing-model-note">${escapeHtml(parts.join("；"))}</p>` : "";
 }
 
 function pricingModelHint(contexts) {

@@ -1773,13 +1773,6 @@ export async function buildUsageIndex(options = {}) {
   };
 }
 
-function _localDateKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function addLocalDays(date, days, zone = "local") {
   const next = new Date(date);
   if (zone === "utc") next.setUTCDate(next.getUTCDate() + days);
