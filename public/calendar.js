@@ -70,9 +70,26 @@ export function datePickerMonthModel(viewDate = new Date(), selectedValue = "") 
   };
 }
 
-export function renderDatePickerHtml({ field = "start", viewDate = new Date(), selectedValue = "" } = {}) {
-  const model = datePickerMonthModel(viewDate, selectedValue);
-  const escapedField = escapeHtml(field);
+export function selectDateRange({ startDate = "", field = "start" } = {}, value) {
+  const selected = normalizeDateInput(value);
+  if (!selected) return null;
+  const start = normalizeDateInput(startDate);
+  if (field !== "end" || !start) {
+    return { startDate: selected, endDate: "", field: "end", complete: false };
+  }
+  return {
+    startDate: selected < start ? selected : start,
+    endDate: selected < start ? start : selected,
+    field: "start",
+    complete: true,
+  };
+}
+
+export function renderDatePickerHtml({ field = "start", viewDate = new Date(), startDate = "", endDate = "" } = {}) {
+  const model = datePickerMonthModel(viewDate);
+  const start = normalizeDateInput(startDate);
+  const end = normalizeDateInput(endDate);
+  const hasSelection = Boolean(start || end);
   const monthTitle =
     getLocale() === "en-US"
       ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
@@ -81,9 +98,9 @@ export function renderDatePickerHtml({ field = "start", viewDate = new Date(), s
       : `${model.year}年${String(model.month).padStart(2, "0")}月`;
   return `
     <div class="date-picker-heading">
-      <button class="date-picker-nav" type="button" data-date-picker-action="prev" data-date-picker-field="${escapedField}" aria-label="${localizeText("上个月")}">‹</button>
+      <button class="date-picker-nav" type="button" data-date-picker-action="prev" aria-label="${localizeText("上个月")}">‹</button>
       <div class="date-picker-title">${monthTitle}</div>
-      <button class="date-picker-nav" type="button" data-date-picker-action="next" data-date-picker-field="${escapedField}" aria-label="${localizeText("下个月")}">›</button>
+      <button class="date-picker-nav" type="button" data-date-picker-action="next" aria-label="${localizeText("下个月")}">›</button>
     </div>
     <div class="date-picker-grid">
       ${model.weekdays.map((weekday) => `<div class="date-picker-weekday">${weekday}</div>`).join("")}
@@ -93,12 +110,22 @@ export function renderDatePickerHtml({ field = "start", viewDate = new Date(), s
           if (!cell.inCurrentMonth) {
             classes.push("outside-month");
           }
-          if (cell.selected) {
-            classes.push("selected");
-          }
-          return `<button type="button" data-date="${cell.date}" data-date-picker-field="${escapedField}" class="${classes.join(" ")}">${cell.day}</button>`;
+          const isStart = cell.date === start;
+          const isEnd = cell.date === end;
+          if (isStart || isEnd) classes.push("selected");
+          if (isStart) classes.push("range-start");
+          if (isEnd) classes.push("range-end");
+          if (start && end && cell.date > start && cell.date < end) classes.push("in-range");
+          const labels = [cell.date];
+          if (isStart) labels.push(localizeText("开始日期"));
+          if (isEnd) labels.push(localizeText("结束日期"));
+          return `<button type="button" data-date="${cell.date}" class="${classes.join(" ")}" aria-label="${escapeHtml(labels.join(" · "))}" aria-pressed="${isStart || isEnd}">${cell.day}</button>`;
         })
         .join("")}
+    </div>
+    <div class="date-picker-footer">
+      <div class="date-picker-hint picking-${field === "end" ? "end" : "start"}" role="status">${localizeText(field === "end" ? "选择结束日期" : "选择开始日期")}</div>
+      <button type="button" class="date-picker-clear" data-date-picker-clear${hasSelection ? "" : " disabled"} aria-label="${localizeText("清除日期范围")}">${localizeText("清除")}</button>
     </div>
   `;
 }

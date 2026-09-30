@@ -34,10 +34,7 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <h1>Agent Usage</h1>
-          <p id="autoRefreshStatus" class="auto-refresh-status" aria-live="polite"><span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span></span><button id="autoRefreshToggle" type="button" aria-pressed="true">开</button><span id="lastSuccessfulCheck">上次：尚无</span><span id="autoRefreshError" class="auto-refresh-error"></span></p>
-        </div>
+        <h1>Agent Usage</h1>
         <div class="topbar-actions">
           <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
             <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
@@ -54,13 +51,9 @@
       </header>
 
       <section class="toolbar" aria-label="筛选">
-        <div class="control-group">
+        <div class="control-group range-controls">
           <div class="range-heading">
             <span>范围</span>
-            <select id="calendarZoneSelect" aria-label="日期范围时区">
-              <option value="local">本地时间</option>
-              <option value="utc">UTC</option>
-            </select>
           </div>
           <div class="segmented" id="presetButtons">
             <button
@@ -73,7 +66,7 @@
             >
               <span class="quota-preset-mode" data-quota-mode="quota_5h">5h</span>
               <span class="quota-preset-divider" aria-hidden="true">/</span>
-              <span class="quota-preset-mode" data-quota-mode="quota_week">week</span>
+              <span class="quota-preset-mode" data-quota-mode="quota_week">7d</span>
             </button>
             <button type="button" data-preset="today" class="active">今日</button>
             <button type="button" data-preset="week" data-i18n-en="Week">本周</button>
@@ -106,45 +99,38 @@
               </span>
               <div id="recentRangeMenu" class="recent-range-menu" role="listbox" hidden>
                 <button type="button" role="option" data-recent-option="上一个5h" aria-selected="false">上一个5h</button>
-                <button type="button" role="option" data-recent-option="上周" aria-selected="false">上周</button>
+                <button type="button" role="option" data-recent-option="上周" aria-selected="false">上一个week</button>
                 <button type="button" role="option" data-recent-option="上个月" aria-selected="true">上个月</button>
                 <button type="button" role="option" data-recent-option="今年" aria-selected="false">今年</button>
               </div>
             </div>
-            <button type="button" data-preset="custom">自定义</button>
           </div>
         </div>
-        <div class="control-group custom-range">
-          <label>
-            开始
-            <span class="date-input-wrap">
-              <input id="startDate" type="text" autocomplete="off" inputmode="numeric" placeholder="年/月/日" />
-              <button
-                class="date-picker-button"
-                type="button"
-                data-date-picker-button="start"
-                aria-label="打开开始日期日历"
-                aria-controls="startDatePicker"
-                aria-expanded="false"
-              ></button>
-              <div id="startDatePicker" class="date-picker-popover" data-date-picker="start" hidden></div>
+        <div class="control-group date-range-controls">
+          <div class="range-heading">
+            <span>自定义</span>
+          </div>
+          <button id="dateRangeButton" class="date-range-button" type="button" aria-label="打开日期范围日历" aria-controls="dateRangePicker" aria-haspopup="dialog" aria-expanded="false">
+            <span class="date-range-values">
+              <span id="dateRangeStart">年/月/日</span>
+              <span id="dateRangeSeparator" aria-hidden="true" hidden>—</span>
+              <span id="dateRangeEnd" hidden></span>
             </span>
-          </label>
-          <label>
-            结束
-            <span class="date-input-wrap">
-              <input id="endDate" type="text" autocomplete="off" inputmode="numeric" placeholder="年/月/日" />
-              <button
-                class="date-picker-button"
-                type="button"
-                data-date-picker-button="end"
-                aria-label="打开结束日期日历"
-                aria-controls="endDatePicker"
-                aria-expanded="false"
-              ></button>
-              <div id="endDatePicker" class="date-picker-popover" data-date-picker="end" hidden></div>
+            <span class="date-range-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 9h16M8 3v4M16 3v4" /></svg>
             </span>
-          </label>
+          </button>
+          <div id="dateRangePicker" class="date-picker-popover" role="dialog" aria-label="日期范围日历" hidden></div>
+        </div>
+        <div id="autoRefreshStatus" class="control-group auto-refresh-status" aria-live="polite">
+          <span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span></span>
+          <button id="autoRefreshToggle" type="button" aria-pressed="true">开</button>
+          <span id="lastSuccessfulCheck">上次：尚无</span>
+          <select id="calendarZoneSelect" aria-label="日期范围时区">
+            <option value="local">本地时间</option>
+            <option value="utc">UTC+0</option>
+          </select>
+          <span id="autoRefreshError" class="auto-refresh-error"></span>
         </div>
       </section>
 
@@ -324,13 +310,21 @@
           <div class="dialog-heading">
             <h2 id="pricingDialogTitle">更新计价标准</h2>
           </div>
-          <p class="dialog-copy">单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。点击模型名编辑费率（含官方单独声明的快速模式价）；汇率只用于混合币种的排序与图表比例，不改变各币种金额。保存后按当天日期记为核对日期并重算历史估算。</p>
+          <p class="dialog-copy">单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。支持自动更新匹配的模型价格与美元兑人民币汇率；点击模型名或汇率可手动调整。保存后按当天日期重算历史估算。</p>
+          <div class="pricing-auto-row">
+            <div class="pricing-status-stack">
+              <span id="pricingAutomaticStatus" class="pricing-model-note">正在读取更新状态…</span>
+              <span id="pricingUsageCoverage" class="pricing-model-note" aria-live="polite"></span>
+            </div>
+            <button id="refreshPricingButton" class="panel-action" type="button">立即更新</button>
+          </div>
           <div class="pricing-toolbar">
             <input id="pricingSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型" />
             <label class="pricing-rate-label">1 美元 =
-              <input id="usdToCnyRate" type="number" min="0.01" step="0.01" required />
+              <input id="usdToCnyRate" type="number" min="0.01" step="any" required />
               人民币
             </label>
+            <button id="restoreAutomaticRateButton" class="panel-action pricing-restore-rate" type="button" data-i18n-en="Restore automatic rate" aria-pressed="false" hidden>恢复自动汇率</button>
           </div>
           <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
           <div class="segmented pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
@@ -354,7 +348,7 @@
       <div id="modelPricingFields" class="pricing-contexts"></div>
       <div class="dialog-actions">
         <button id="cancelModelPricingButton" type="button">取消</button>
-        <button id="applyModelPricingButton" type="button">应用</button>
+        <button id="applyModelPricingButton" type="button" disabled>应用</button>
       </div>
     </dialog>
     <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>

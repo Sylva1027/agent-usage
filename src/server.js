@@ -20,8 +20,16 @@ import {
   USAGE_PRESETS,
 } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
-import { getPricingCatalog, pricingVersionForTimestamp, setPricingCatalog, validatePricingCatalog } from "./pricing.js";
-import { loadPricingFile, savePricingFile } from "./pricing-store.js";
+import { buildUsagePricingCoverage } from "../public/pricing-models.js";
+import { AUTO_RETRY_INTERVAL_MS } from "./pricing-auto.js";
+import { getPricingCatalog, pricingVersionForTimestamp, validatePricingCatalog } from "./pricing.js";
+import {
+  getAutomaticPricingStatus,
+  loadPricingFile,
+  MAX_PRICING_MODELS,
+  refreshAutomaticPricing,
+  savePricingFile,
+} from "./pricing-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -170,20 +178,26 @@ async function writeImportEntries(options, entries) {
   await writeFile(filePath, `${JSON.stringify({ imports: normalizeImportEntries(entries) }, null, 2)}\n`);
 }
 
-async function describeImportEntry(importPath) {
+export async function describeImportEntry(importPath) {
   const classified = await classifyImportDirectory(importPath);
   if (classified.type === "unsupported") {
     return classified;
   }
+  const name = path.basename(classified.path) || classified.path;
+  const label =
+    classified.type === "project-log"
+      ? `Project ${name}`
+      : classified.type === "zcode-home"
+        ? `ZCode ${name}`
+        : classified.type === "dsh-home"
+          ? `DSH ${name}`
+          : classified.type === "opencode-home"
+            ? `OpenCode ${name}`
+            : `Imported ${name}`;
   return {
     type: classified.type,
     path: classified.path,
-    label:
-      classified.type === "project-log"
-        ? `Project ${path.basename(classified.path) || classified.path}`
-        : classified.type === "zcode-home"
-          ? `ZCode ${path.basename(classified.path) || classified.path}`
-          : `Imported ${path.basename(classified.path) || classified.path}`,
+    label,
     ...(classified.usageLogPath ? { usageLogPath: classified.usageLogPath } : {}),
     ...(classified.dbFile ? { dbFile: classified.dbFile } : {}),
   };
@@ -297,10 +311,129 @@ async function serveStatic(requestPath, response) {
 export function createUsageServer(options = {}) {
   const usageStore = new UsageStore(options);
   const pricingReady = loadPricingFile(options);
+  let pricingRefreshPromise = null;
+  let pricingRefreshOptions = null;
+  let pricingRefreshPending = null;
   let storeStatus = null;
   let syncPromise = null;
   let snapshotDirectoryPromise = null;
+  let discoveryTimer = null;
+  let discoveryTimerSignature = null;
+  let activeDiscoverySignature = null;
+  let serverClosed = false;
   const snapshots = new Map();
+
+  function usedModelNames(value) {
+    const groups = Array.isArray(value)
+      ? [value]
+      : value && typeof value === "object"
+        ? Object.values(value).filter(Array.isArray)
+        : [];
+    return [
+      ...new Set(
+        groups
+          .flat()
+          .map((model) => String(model ?? "").trim())
+          .filter(Boolean),
+      ),
+    ].sort();
+  }
+
+  function mergeRefreshOptions(left, right) {
+    return {
+      force: left.force === true || right.force === true,
+      discoveryReady: left.discoveryReady !== false || right.discoveryReady !== false,
+      automaticDiscoveryEnabled: options.automaticDiscoveryEnabled !== false,
+      usedModels: [...new Set([...usedModelNames(left.usedModels), ...usedModelNames(right.usedModels)])].sort(),
+    };
+  }
+
+  function requestPricingRefresh(refreshOptions) {
+    const normalized = {
+      ...refreshOptions,
+      automaticDiscoveryEnabled: options.automaticDiscoveryEnabled !== false,
+    };
+    if (!pricingRefreshPromise) {
+      pricingRefreshOptions = normalized;
+      pricingRefreshPromise = refreshAutomaticPricing({ ...options, ...normalized }).finally(() => {
+        pricingRefreshPromise = null;
+        pricingRefreshOptions = null;
+      });
+      return pricingRefreshPromise;
+    }
+
+    const activeOptions = pricingRefreshOptions || {};
+    const changedCandidates =
+      JSON.stringify(usedModelNames(activeOptions.usedModels)) !==
+      JSON.stringify(usedModelNames(normalized.usedModels));
+    if (normalized.force || changedCandidates) {
+      pricingRefreshPending = pricingRefreshPending
+        ? mergeRefreshOptions(pricingRefreshPending, normalized)
+        : mergeRefreshOptions(activeOptions, normalized);
+      const active = pricingRefreshPromise;
+      return active.then((result) => {
+        const pending = pricingRefreshPending;
+        if (!pending) return result;
+        pricingRefreshPending = null;
+        return requestPricingRefresh(pending);
+      });
+    }
+    return pricingRefreshPromise;
+  }
+
+  function clearDiscoveryTimer() {
+    if (discoveryTimer === null) return;
+    (options.cancelPricingDiscovery || clearTimeout)(discoveryTimer);
+    discoveryTimer = null;
+    discoveryTimerSignature = null;
+  }
+
+  function scheduleUsageDiscovery(harnessModels) {
+    if (serverClosed || options.automaticDiscoveryEnabled === false || storeStatus === null) return;
+    const missing = buildUsagePricingCoverage(harnessModels, getPricingCatalog().models, true)
+      .missingUsedModels.map((item) => item.model.toLowerCase())
+      .sort();
+    if (!missing.length) {
+      clearDiscoveryTimer();
+      return;
+    }
+    const nowValue =
+      typeof options.pricingDiscoveryNow === "function"
+        ? options.pricingDiscoveryNow()
+        : options.pricingDiscoveryNow || new Date();
+    const nowMs = nowValue instanceof Date ? nowValue.getTime() : Date.parse(nowValue);
+    const attemptedAt = getAutomaticPricingStatus().discoveryAttemptedAt || {};
+    const dueModels = missing.filter((model) => {
+      const lastAttempt = Date.parse(attemptedAt[model] || "");
+      return !Number.isFinite(lastAttempt) || !Number.isFinite(nowMs) || nowMs - lastAttempt >= AUTO_RETRY_INTERVAL_MS;
+    });
+    if (!dueModels.length) {
+      clearDiscoveryTimer();
+      return;
+    }
+
+    const signature = JSON.stringify(dueModels);
+    if (signature === activeDiscoverySignature || signature === discoveryTimerSignature) return;
+    clearDiscoveryTimer();
+    discoveryTimerSignature = signature;
+    const schedule = options.schedulePricingDiscovery || setTimeout;
+    discoveryTimer = schedule(async () => {
+      discoveryTimer = null;
+      discoveryTimerSignature = null;
+      if (serverClosed || storeStatus === null) return;
+      activeDiscoverySignature = signature;
+      try {
+        const models = usageStore.metadata().harnessModels;
+        await requestPricingRefresh({ force: false, usedModels: models, discoveryReady: true });
+      } catch {
+        // A background source or disk failure is returned by the pricing API on its next explicit refresh.
+      } finally {
+        activeDiscoverySignature = null;
+        if (!serverClosed && storeStatus !== null) scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+      }
+    }, options.pricingDiscoveryDelayMs ?? 1_000);
+    discoveryTimer?.unref?.();
+  }
 
   async function createSnapshot({ check = false } = {}) {
     const status = await loadUsageStore({ check });
@@ -345,6 +478,11 @@ export function createUsageServer(options = {}) {
     };
   }
 
+  function usagePricingCoverage() {
+    if (storeStatus === null) return buildUsagePricingCoverage(null, getPricingCatalog().models, false);
+    return buildUsagePricingCoverage(usageStore.metadata().harnessModels, getPricingCatalog().models, true);
+  }
+
   async function loadUsageStore({ check = true } = {}) {
     const currentUsageOptions = await usageOptions(options);
     if (syncPromise) {
@@ -356,6 +494,7 @@ export function createUsageServer(options = {}) {
         .sync({ options: currentUsageOptions })
         .then((status) => {
           storeStatus = status;
+          scheduleUsageDiscovery(usageStore.metadata().harnessModels);
           return status;
         })
         .finally(() => {
@@ -372,21 +511,77 @@ export function createUsageServer(options = {}) {
       await pricingReady;
       if (url.pathname === "/api/pricing") {
         if (request.method === "GET") {
-          sendJson(response, 200, getPricingCatalog());
+          sendJson(response, 200, {
+            ...getPricingCatalog(),
+            automatic: getAutomaticPricingStatus(),
+            usageCoverage: usagePricingCoverage(),
+          });
           return;
         }
         if (request.method === "PUT") {
           let catalog;
+          let restoreAutomaticExchangeRate = false;
           try {
-            catalog = validatePricingCatalog(await readJsonBody(request, { maxBytes: 128 * 1024 }));
+            const body = await readJsonBody(request, { maxBytes: 128 * 1024 });
+            restoreAutomaticExchangeRate = body.restoreAutomaticExchangeRate === true;
+            if (body.version && body.version !== getPricingCatalog().version) {
+              throw httpError(
+                409,
+                "Pricing changed while this editor was open. Reopen it and retry.",
+                "PRICING_CHANGED",
+              );
+            }
+            if (
+              body.models &&
+              typeof body.models === "object" &&
+              !Array.isArray(body.models) &&
+              Object.keys(body.models).length > MAX_PRICING_MODELS
+            ) {
+              throw httpError(
+                400,
+                `Pricing catalog cannot contain more than ${MAX_PRICING_MODELS} models.`,
+                "PRICING_CAPACITY",
+              );
+            }
+            catalog = validatePricingCatalog(body);
           } catch (error) {
-            throw httpError(error.statusCode || 400, error.message, "INVALID_PRICING");
+            throw httpError(error.statusCode || 400, error.message, error.code || "INVALID_PRICING");
           }
-          await savePricingFile(options, catalog);
-          sendJson(response, 200, setPricingCatalog(catalog));
+          await savePricingFile(options, catalog, {
+            restoreAutomaticExchangeRate,
+          });
+          sendJson(response, 200, getPricingCatalog());
           return;
         }
         sendJson(response, 405, { error: "Method not allowed" });
+        return;
+      }
+
+      if (url.pathname === "/api/pricing/refresh") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "Method not allowed" });
+          return;
+        }
+        const body = await readJsonBody(request);
+        const discoveryReady = storeStatus !== null;
+        const refreshResult = await requestPricingRefresh({
+          force: body.force === true,
+          usedModels: discoveryReady ? usageStore.metadata().harnessModels : [],
+          discoveryReady,
+        });
+        sendJson(
+          response,
+          200,
+          discoveryReady
+            ? refreshResult
+            : {
+                ...refreshResult,
+                discovery: {
+                  addedModels: [],
+                  results: [{ model: "*", status: "deferred", reason: "usage-not-ready" }],
+                },
+              },
+        );
         return;
       }
 
@@ -582,6 +777,8 @@ export function createUsageServer(options = {}) {
     }
   });
   server.on("close", () => {
+    serverClosed = true;
+    clearDiscoveryTimer();
     usageStore.close();
     for (const snapshot of snapshots.values()) snapshot.store.close();
     snapshots.clear();

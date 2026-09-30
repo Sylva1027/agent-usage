@@ -292,7 +292,12 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
     assert.equal(summary.repositories[0].key, "directory:/work/zproj");
     assert.equal(summary.repositories[0].total.total, 190);
     assert.equal(summary.repositories[0].sessions, 2);
-    assert.deepEqual(metadata.harnessModels, { Codex: [], ZCode: ["other-model", "test-model"] });
+    assert.deepEqual(metadata.harnessModels, {
+      Codex: [],
+      ZCode: ["other-model", "test-model"],
+      DSH: [],
+      OpenCode: [],
+    });
   } finally {
     store.close();
   }

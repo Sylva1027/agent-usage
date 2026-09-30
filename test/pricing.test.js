@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  createCostEstimateAccumulator,
   estimateCostForEvents,
   estimateCostForGroups,
   estimateEventCost,
@@ -36,6 +37,61 @@ test("API cost estimate prices uncached input, cached input, and output separate
   assert.equal(estimate.modelCount, 1);
   assert.equal(estimate.pricedTokens, 110);
   assert.equal(estimate.unpricedTokens, 0);
+});
+
+test("GPT-6.1 Sol uses its independent Standard and Fast rates", () => {
+  const event = {
+    model: "gpt-6.1-sol",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    requestInputTokens: 10_000,
+    serviceTier: "standard",
+    total: { total: 11_000, input: 10_000, cached: 5_000, output: 1_000 },
+  };
+  const standard = estimateEventCost(event);
+  assert.ok(Math.abs(standard.totalUsd - 0.0205) < 1e-12);
+  assert.deepEqual(standard.minimumRateModels, []);
+  assert.ok(!standard.unpricedReasons.includes("unknown-model-price-minimum-scenario"));
+  assert.ok(standard.unpricedReasons.includes("request-context-unknown-minimum-scenario") === false);
+
+  const fast = estimateEventCost({ ...event, serviceTier: "fast" });
+  assert.ok(Math.abs(fast.totalUsd - 0.041) < 1e-12);
+  assert.ok(Math.abs(estimateEventCost({ ...event, serviceTier: "priority" }).totalUsd - 0.041) < 1e-12);
+
+  const gpt6 = estimateEventCost({ ...event, model: "gpt-6-sol" });
+  assert.ok(Math.abs(gpt6.totalUsd - 0.021) < 1e-12);
+});
+
+test("GPT-6.1 Sol prices cache writes and selects context from one request only", () => {
+  const event = {
+    model: "gpt-6.1-sol",
+    detailMask: 15,
+    serviceTier: "standard",
+    cacheWriteKnown: true,
+    cacheWriteTokens: 1_000,
+    requestInputTokens: 10_000,
+    total: { total: 11_000, input: 10_000, cached: 4_000, output: 1_000 },
+  };
+  assert.ok(Math.abs(estimateEventCost(event).totalUsd - 0.0229) < 1e-12);
+
+  const contextEvent = {
+    ...event,
+    cacheWriteTokens: 0,
+    total: { total: 301_000, input: 300_000, cached: 0, output: 1_000 },
+  };
+  const exact = estimateEventCost({ ...contextEvent, requestInputTokens: 272_000 });
+  const over = estimateEventCost({ ...contextEvent, requestInputTokens: 272_001 });
+  assert.equal(exact.contextLevel, "short");
+  assert.ok(Math.abs(exact.totalUsd - (300_000 * 2 + 1_000 * 10) / 1_000_000) < 1e-12);
+  assert.equal(over.contextLevel, "long");
+  assert.ok(Math.abs(over.totalUsd - (300_000 * 4 + 1_000 * 15) / 1_000_000) < 1e-12);
+
+  const parsedShort = estimateEventCost({ ...contextEvent, requestInputTokens: undefined, contextLevel: "short" });
+  assert.equal(parsedShort.contextLevel, "short", "large accumulated input cannot override a known short request");
+  const unknown = estimateEventCost({ ...contextEvent, requestInputTokens: undefined, contextLevel: "unknown" });
+  assert.equal(unknown.contextLevel, "unknown");
+  assert.ok(unknown.unpricedReasons.includes("request-context-unknown-minimum-scenario"));
 });
 
 test("unknown prices and incomplete details use minimum catalog rates", () => {
@@ -302,6 +358,121 @@ test("未知模型按事件渠道决定回退币种", () => {
   assert.equal(usd.currency, "USD");
   assert.equal(cny.pricingStatus, "minimum-estimate");
   assert.deepEqual(cny.minimumRateModels, ["mystery-model"]);
+});
+
+test("-free 后缀的未收录模型按零费率估算", () => {
+  const build = (model, extra = {}) => ({
+    model,
+    channel: "OpenCode",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+    ...extra,
+  });
+
+  for (const model of ["longcat-2.5-preview-free", "space-bunny-free"]) {
+    const estimate = estimateEventCost(build(model));
+    assert.equal(estimate.totalUsd, 0, model);
+    assert.equal(estimate.pricedTokens, 110, model);
+    assert.equal(estimate.pricingStatus, "estimated", model);
+    assert.equal(estimate.minimumEstimatedTokens, 0, model);
+    assert.deepEqual(estimate.minimumRateModels, [], model);
+    assert.ok(!estimate.unpricedReasons.includes("unknown-model-price-minimum-scenario"), model);
+  }
+  // 大小写不敏感。
+  assert.equal(estimateEventCost(build("LONGCAT-2.5-PREVIEW-FREE")).totalUsd, 0);
+});
+
+test("-free 零费率优先于前缀匹配", () => {
+  const build = (model, channel) => ({
+    model,
+    channel,
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  });
+
+  // 若被前缀规则吸收，mimo-v2.6-flash-free 会按 CNY 费率估出正数，
+  // muse-spark-1.3-contributor-free 会按 USD 费率估出正数。
+  for (const model of ["mimo-v2.6-flash-free", "muse-spark-1.3-contributor-free"]) {
+    assert.equal(estimateEventCost(build(model, "OpenCode")).totalUsd, 0, model);
+    assert.equal(estimateEventCost(build(model, "ZCode")).totalUsd, 0, model);
+  }
+  // 币种仍按渠道回退（金额为 0）。
+  assert.equal(estimateEventCost(build("mimo-v2.6-flash-free", "ZCode")).currency, "CNY");
+  assert.equal(estimateEventCost(build("mimo-v2.6-flash-free", "OpenCode")).currency, "USD");
+});
+
+test("价目表精确键优先于 -free 零费率", () => {
+  const catalog = getPricingCatalog();
+  setPricingCatalog({
+    checkedAt: catalog.checkedAt,
+    usdToCnyRate: catalog.usdToCnyRate,
+    models: {
+      ...catalog.models,
+      "my-model-free": { short: { input: 1, cachedInput: 0.1, cacheWrite: 0, output: 2 } },
+    },
+  });
+  try {
+    const estimate = estimateEventCost({
+      model: "my-model-free",
+      channel: "OpenCode",
+      detailMask: 15,
+      cacheWriteTokens: 0,
+      cacheWriteKnown: true,
+      contextLevel: "short",
+      serviceTier: "standard",
+      total: { total: 110, input: 100, cached: 20, output: 10 },
+    });
+    assert.ok(estimate.totalUsd > 0, "精确键应按自定义费率计价");
+  } finally {
+    resetPricingCatalog();
+  }
+});
+
+test("-free 模型不误伤付费模型与未知模型兜底", () => {
+  const build = (model) => ({
+    model,
+    channel: "OpenCode",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  });
+
+  const paid = estimateEventCost(build("mimo-v2.6-flash"));
+  assert.equal(paid.currency, "CNY");
+  assert.ok(paid.totalUsd > 0, "付费模型费率不变");
+  const unknown = estimateEventCost(build("mystery-model"));
+  assert.equal(unknown.pricingStatus, "minimum-estimate", "非 -free 未知模型仍走最低费率兜底");
+});
+
+test("-free 事件不计入最低估算汇总", () => {
+  const freeEvent = {
+    model: "space-bunny-free",
+    channel: "OpenCode",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  };
+  const unknownEvent = { ...freeEvent, model: "mystery-model" };
+  const accumulator = createCostEstimateAccumulator();
+  accumulator.add(freeEvent, estimateEventCost(freeEvent));
+  accumulator.add(unknownEvent, estimateEventCost(unknownEvent));
+  const result = accumulator.result();
+  assert.equal(result.minimumEstimatedRecords, 1);
+  assert.deepEqual(result.minimumRateModels, ["mystery-model"]);
 });
 
 test("官方声明的快速模式费率优先于双倍兜底", () => {

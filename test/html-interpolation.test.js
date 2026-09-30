@@ -26,9 +26,13 @@ test("text, quoted attributes, and trusted fragments stay in their HTML contexts
   assert.doesNotMatch(html, /<img\b|onclick="alert\(1\)"/);
   assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
 
-  const picker = renderDatePickerHtml({ field: 'start" onclick="alert(1)', viewDate: new Date(2026, 8, 1) });
-  assert.match(picker, /data-date-picker-field="start&quot; onclick=&quot;alert\(1\)"/);
-  assert.doesNotMatch(picker, /onclick="alert\(1\)"/);
+  const picker = renderDatePickerHtml({
+    field: 'start" onclick="alert(1)',
+    startDate: markup,
+    viewDate: new Date(2026, 8, 1),
+  });
+  assert.match(picker, /class="date-picker-hint picking-start"/);
+  assert.doesNotMatch(picker, /<img\b|onclick=|data-date-picker-field/);
 
   const git = renderPeriodComparisonTableHtml([{ ...row, kind: "git" }], { kind: "repository" });
   assert.match(git, /<svg class="repository-git-icon"/);

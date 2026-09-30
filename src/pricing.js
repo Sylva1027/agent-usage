@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
+import { resolvePricingModel } from "../public/pricing-models.js";
 
-export const API_PRICING_CHECKED_AT = "2026-09-25";
-export const API_PRICING_VERSION = "2026-09-25";
+// This catalog revision includes a fresh GPT-6.1 Sol check on 2026-09-30;
+// the date does not claim that every provider entry was rechecked that day.
+export const API_PRICING_CHECKED_AT = "2026-09-30";
+export const API_PRICING_VERSION = "2026-09-30";
 export const API_PRICING_MODE = "minimum-fallback-scenario";
 export const API_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
 export const LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
@@ -20,8 +23,8 @@ export const CNY_PRICING_SOURCES = Object.freeze({
 });
 
 // 混合币种排序与图表比例只做显示折算，金额本身仍按原币种累计。
-// 汇率（1 美元兑多少人民币）由用户在“更新计价标准”弹窗中填写；
-// 默认值取 2026-09-25 实时汇率 6.717（open.er-api.com），四舍五入为 6.72。
+// 离线兜底汇率。在线汇率和手动覆盖由 pricing-store.js 管理。
+// 此值取 2026-09-25 汇率 6.717（open.er-api.com），四舍五入为 6.72。
 export const DEFAULT_USD_TO_CNY_RATE = 6.72;
 
 const USD_PER_MILLION_TOKENS = 1_000_000;
@@ -73,6 +76,17 @@ const MODEL_PRICES = Object.freeze({
     },
     short: { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 },
     long: { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 15 },
+  }),
+  "gpt-6.1-sol": Object.freeze({
+    currency: "USD",
+    source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+    longContextThreshold: 272_000,
+    fast: {
+      short: { input: 4, cachedInput: 0.2, cacheWrite: 5, output: 20 },
+      long: { input: 8, cachedInput: 0.4, cacheWrite: 10, output: 30 },
+    },
+    short: { input: 2, cachedInput: 0.1, cacheWrite: 2.5, output: 10 },
+    long: { input: 4, cachedInput: 0.2, cacheWrite: 5, output: 15 },
   }),
   "gpt-6-luna": Object.freeze({
     fast: {
@@ -625,12 +639,10 @@ const MODEL_PRICES = Object.freeze({
   }),
 });
 
-const PRICE_ALIASES = Object.freeze({
-  "gpt-5.6": "gpt-5.6-sol",
-  "gpt-daybreak-blue-latest": "gpt-5.6-sol",
-});
-
 const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
+
+// 名称以 -free 结尾的未收录模型按免费处理：零费率，不参与最低费率兜底。
+const ZERO_RATES = Object.freeze({ input: 0, cachedInput: 0, cacheWrite: 0, output: 0 });
 
 // Custom rates reprice all indexed events so the dashboard remains internally
 // consistent. The original token counts and recorded price versions are retained.
@@ -657,6 +669,14 @@ export function getPricingCatalog() {
     usdToCnyRate: activePricing.usdToCnyRate,
     source: API_PRICING_SOURCE,
     models: structuredClone(activePricing.models),
+  };
+}
+
+export function getDefaultPricingCatalog() {
+  return {
+    checkedAt: API_PRICING_CHECKED_AT,
+    usdToCnyRate: DEFAULT_USD_TO_CNY_RATE,
+    models: structuredClone(MODEL_PRICES),
   };
 }
 
@@ -848,13 +868,9 @@ function usageFields(event = {}) {
 
 function normalizeModel(value) {
   const model = String(value || "Unknown model").trim() || "Unknown model";
-  const lower = model.toLocaleLowerCase();
-  if (activePricing.models[lower]) return { name: model, key: lower };
-  if (PRICE_ALIASES[lower]) return { name: model, key: PRICE_ALIASES[lower] };
-  for (const known of Object.keys(activePricing.models)) {
-    if (lower.startsWith(`${known}-`)) return { name: model, key: known };
-  }
-  return { name: model, key: "" };
+  const resolved = resolvePricingModel(model, activePricing.models);
+  if (resolved.matchType === "free") return { name: model, key: "", free: true };
+  return { name: model, key: resolved.catalogKey || "" };
 }
 
 function normalizeServiceTier(value) {
@@ -915,8 +931,14 @@ export function isPeakPricingTime(entry, timestampMs) {
   );
 }
 
-function contextTierFor(entry, event, usage) {
+function contextTierFor(entry, event, usage, modelKey) {
   if (Number.isInteger(entry?.longContextThreshold)) {
+    if (modelKey === "gpt-6.1-sol") {
+      const requestInput = finiteNonNegative(event.requestInputTokens);
+      if (requestInput !== null && requestInput > 0)
+        return requestInput > entry.longContextThreshold ? "long" : "short";
+      return event.contextLevel === "long" ? "long" : event.contextLevel === "short" ? "short" : "unknown";
+    }
     const requestInput = finiteNonNegative(event.requestInputTokens) || usage.input;
     if (requestInput === null || !(requestInput > 0)) return "unknown";
     return requestInput > entry.longContextThreshold ? "long" : "short";
@@ -934,8 +956,10 @@ function rateSetsFor(entry, contextTier, usage) {
 
 function currencyForEvent(model, event) {
   if (model.key) return activePricing.models[model.key].currency || "USD";
-  const channel = String(event.channel || event.source || "");
-  return channel.toLocaleLowerCase().startsWith("zcode") ? "CNY" : "USD";
+  // 价目表里没有的模型只能按渠道兜底。ZCode 与 DSH 都跑人民币模型，
+  // 漏掉 dsh 会把 DSH 的未收录模型按美元计价。
+  const channel = String(event.channel || event.source || "").toLocaleLowerCase();
+  return channel.startsWith("zcode") || channel.startsWith("dsh") ? "CNY" : "USD";
 }
 
 function minimumRatesFor(modelKey, contextLevel, currency) {
@@ -958,7 +982,7 @@ function estimateEventCost(event = {}) {
   const version = activePricing.version;
   const entry = model.key ? activePricing.models[model.key] : null;
   const currency = currencyForEvent(model, event);
-  const contextLevel = contextTierFor(entry, event, usage);
+  const contextLevel = contextTierFor(entry, event, usage, model.key);
   const serviceTier = normalizeServiceTier(event.serviceTier ?? event.service_tier);
   // 官方单独声明快速模式费率时按其计价；否则沿用 Fast/Priority 双倍标准价的兜底。
   const useFastRates = serviceTier === "fast" && Boolean(entry?.fast);
@@ -977,10 +1001,12 @@ function estimateEventCost(event = {}) {
   let rates = entry
     ? minimumRateSets(rateSetsFor(rateEntry, contextLevel, usage))
     : minimumRatesFor("", contextLevel, currency);
+  // 免费模型不参与最低费率兜底：费率全零，金额恒为 0。
+  if (model.free) rates = ZERO_RATES;
   if (rates && offPeakMultiplier !== 1) {
     rates = Object.fromEntries(RATE_FIELDS.map((category) => [category, rates[category] * offPeakMultiplier]));
   }
-  const minimumModelRate = !model.key;
+  const minimumModelRate = !model.key && !model.free;
   const cacheWriteTokens = finiteNonNegative(event.cacheWriteTokens);
   const cacheWriteKnown =
     event.cacheWriteKnown === true || (Number.isInteger(event.detailMask) && Boolean(event.detailMask & 32));

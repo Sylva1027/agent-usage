@@ -4,8 +4,78 @@ import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
+import { zstdCompressSync } from "node:zlib";
 
 import { createUsageServer, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
+import {
+  GLM_PRICES_URL,
+  KIMI_PRICES_URL,
+  LITELLM_PRICES_URL,
+  MIMO_PRICES_URL,
+  MODEL_PRICES_URL,
+  STEPFUN_PRICES_URL,
+  USD_CNY_RATE_URL,
+} from "../src/pricing-auto.js";
+
+function mimoPricingPage() {
+  return `<!doctype html><html><body><h2>模型国内定价</h2><p>单位：元 / 百万 tokens；缓存写入限时免费</p><table>
+    <tr><td>实时推理</td><td>模型</td><td>缓存输入</td><td>输入</td><td>输出</td></tr>
+    <tr><td></td><td>mimo-v2.6-pro、mimo-v2.5-pro</td><td>¥0.025</td><td>¥3</td><td>¥6</td></tr>
+    <tr><td></td><td>mimo-v2.6-flash、mimo-v2.5</td><td>¥0.02</td><td>¥1</td><td>¥2</td></tr>
+    <tr><td></td><td>mimo-v2.6-pro-ultraspeed</td><td>¥0.25</td><td>¥30</td><td>¥60</td></tr>
+    <tr><td>批量推理</td><td>mimo-v2.6-pro</td><td>¥0.01</td><td>¥1</td><td>¥2</td></tr>
+  </table></body></html>`;
+}
+
+function stepfunPricingPage() {
+  return `<!doctype html><html><body><table><thead><tr><th>模型</th><th>计费单位</th><th>输入价格（缓存未命中）</th><th>输入价格（缓存命中）</th><th>输出价格</th></tr></thead><tbody>
+    <tr><td><code>step-5-preview</code></td><td>1M tokens</td><td>7 元</td><td>0.35 元</td><td>20 元</td></tr>
+    <tr><td><code>step-3.7-flash</code></td><td>1M tokens</td><td>1.35 元</td><td>0.27 元</td><td>8.1 元</td></tr>
+    <tr><td><code>step-3.5-flash</code></td><td>1M tokens</td><td>0.7 元</td><td>0.14 元</td><td>2.1 元</td></tr>
+    <tr><td><code>step-3.5-flash-2603</code></td><td>1M tokens</td><td>0.7 元</td><td>0.14 元</td><td>2.1 元</td></tr>
+  </tbody></table></body></html>`;
+}
+
+function kimiPricingPage() {
+  return [
+    "此处 1M = 1,000,000 tokens。缓存写入（TTL 5min）和缓存写入（TTL 1h）。",
+    "rows:[[ `kimi-k3`,`1M tokens`,`¥20.00`,`¥40.00`,`¥2.00`,`¥20.00`,`¥100.00`,`1,048,576 tokens` ]]",
+    "rows:[[ `kimi-k2.7-code`,`1M tokens`,`¥1.30`,`¥6.50`,`¥27.00`,`262,144 tokens` ],[ `kimi-k2.7-code-highspeed`,`1M tokens`,`¥2.60`,`¥13.00`,`¥54.00`,`262,144 tokens` ],[ `kimi-k2.6`,`1M tokens`,`¥1.10`,`¥6.50`,`¥27.00`,`262,144 tokens` ]]",
+  ].join("\n");
+}
+
+function glmPricingPage() {
+  const rows = [
+    ["GLM-5.3", "1M", "8", "28", "限时免费", "2"],
+    ["GLM-5.3-Flash", "1M", "0.8", "2.8", "限时免费", "0.23"],
+    ["GLM-5.3-FlashX", "1M", "2", "7", "限时免费", "0.57"],
+    ["GLM-5.2", "1M", "8", "28", "限时免费", "2"],
+    ["GLM-5.1", "输入长度 [0, 32K)", "6", "24", "限时免费", "1.3"],
+    ["GLM-5.1", "输入长度 ≥32K", "8", "28", "限时免费", "2"],
+    ["GLM-5-Turbo", "输入长度 [0, 32K)", "5", "22", "限时免费", "1.2"],
+    ["GLM-5-Turbo", "输入长度 ≥32K", "7", "26", "限时免费", "1.8"],
+    ["GLM-5", "输入长度 [0, 32K)", "4", "18", "限时免费", "1"],
+    ["GLM-5", "输入长度 ≥32K", "6", "22", "限时免费", "1.5"],
+    ["GLM-4.7-FlashX", "200K", "0.5", "3", "限时免费", "0.1"],
+    ["GLM-4.7-Flash", "200K", "免费", "免费", "限时免费", "免费"],
+    ["GLM-4-Plus", "128K", "5", "5", "限时免费", "2.5"],
+    ["GLM-4-Air-250414", "128K", "0.5", "0.5", "限时免费", "0.25"],
+    ["GLM-4-AirX", "8K", "10", "10", "限时免费", "不支持"],
+    ["GLM-4-Long", "1M", "1", "1", "限时免费", "0.5"],
+    ["GLM-4-Assistant", "128K", "5", "5", "限时免费", "不支持"],
+    ["GLM-Z1-Air", "128K", "0.5", "0.5", "限时免费", "不支持"],
+    ["GLM-Z1-AirX", "32K", "5", "5", "限时免费", "不支持"],
+    ["GLM-Z1-FlashX", "128K", "0.1", "0.1", "限时免费", "不支持"],
+    ["GLM-4-FlashX-250414", "128K", "0.1", "0.1", "限时免费", "0.05"],
+    ["GLM-4-Flash-250414", "128K", "免费", "免费", "限时免费", "不支持"],
+    ["GLM-Z1-Flash", "128K", "免费", "免费", "限时免费", "不支持"],
+    ["GLM-4.7", "输入 [0, 32K)，输出 [0, 0.2K)", "2", "8", "限时免费", "0.4"],
+    ["GLM-4.7", "输入 [0, 32K)，输出 ≥0.2K", "3", "14", "限时免费", "0.6"],
+    ["GLM-4.5-Air", "输入 [0, 32K)，输出 [0, 0.2K)", "0.8", "2", "限时免费", "0.16"],
+  ];
+  return `<html><body><table><thead><tr><th>模型名称</th><th>上下文</th><th>输入单价（元/百万 Tokens）</th><th>输出单价（元/百万 Tokens）</th><th>缓存存储（元/百万 Tokens/小时）</th><th>缓存命中（元/百万 Tokens）</th></tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+}
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -496,6 +566,172 @@ test("server imports project usage log directories and refreshes usage data", as
   }
 });
 
+test("server imports a DSH home and labels it as DSH", async () => {
+  const { homeDir, importStoreFile } = await makeFixtureHome();
+  // 造一个独立的 DSH home（不放在 fakeHome/.dsh 下，避免被自动发现路径撞上）。
+  const dshRoot = path.join(homeDir, "external-dsh");
+  const dshSessionDir = path.join(dshRoot, "sessions", "--work-dsh--", "session-srv-1");
+  await mkdir(dshSessionDir, { recursive: true });
+  await writeFile(
+    path.join(dshSessionDir, "session.v4.jsonl.zstd"),
+    Buffer.concat([
+      zstdCompressSync(
+        Buffer.from(
+          `${JSON.stringify({
+            type: "session",
+            version: 4,
+            id: "session-srv-1",
+            createdAt: Date.parse("2026-05-31T12:00:00.000Z"),
+            cwd: "/work/dsh",
+            isSeeded: false,
+            delegationDepth: 0,
+            agentPreset: "standard",
+          })}\n`,
+          "utf8",
+        ),
+      ),
+      zstdCompressSync(
+        Buffer.from(
+          `${JSON.stringify({
+            type: "request/header",
+            seq: 2,
+            time: Date.parse("2026-05-31T12:00:01.000Z"),
+            data: { header: { config: { provider: "deepseek-account", model: "deepseek-flash" } } },
+          })}\n${JSON.stringify({
+            type: "assistant/message",
+            seq: 3,
+            time: Date.parse("2026-05-31T12:00:02.000Z"),
+            data: {
+              turn: 1,
+              step: 1,
+              usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 40, cacheWriteTokens: 0, totalTokens: 160 },
+            },
+          })}\n`,
+          "utf8",
+        ),
+      ),
+    ]),
+  );
+
+  const server = createUsageServer({ homeDir, importStoreFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    const imported = await fetch(`${baseUrl}/api/imports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: dshRoot }),
+    }).then((response) => response.json());
+
+    assert.equal(imported.import.type, "dsh-home");
+    assert.equal(imported.import.path, dshRoot);
+    assert.equal(imported.import.label, "DSH external-dsh");
+    // DSH 没有单一数据库文件，不应带 dbFile / usageLogPath。
+    assert.equal(imported.import.dbFile, undefined);
+    assert.equal(imported.import.usageLogPath, undefined);
+
+    const after = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(after.summary.totals.total, before.summary.totals.total + 160);
+    assert.ok(after.summary.channels.some((channel) => channel.name === "DSH"));
+    assert.equal(
+      after.metadata.homes.some((home) => home.kind === "dsh" && home.path === dshRoot),
+      true,
+    );
+    assert.deepEqual(after.metadata.harnessModels.DSH, ["deepseek-flash"]);
+
+    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(dshRoot)}`, { method: "DELETE" });
+    const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(
+      removed.metadata.homes.some((home) => home.kind === "dsh" && home.path === dshRoot),
+      false,
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("server imports an OpenCode data dir and labels it as OpenCode", async () => {
+  const { homeDir, importStoreFile } = await makeFixtureHome();
+  // 造一个独立的 OpenCode 数据目录（不放在 fakeHome 下，避免被自动发现路径撞上）。
+  const ocRoot = path.join(homeDir, "external-opencode");
+  await mkdir(ocRoot, { recursive: true });
+  const db = new DatabaseSync(path.join(ocRoot, "opencode.db"));
+  try {
+    db.exec(`
+      CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT, title TEXT, version TEXT, agent TEXT, model TEXT);
+      CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT);
+    `);
+    db.prepare("INSERT INTO session_v2 (id, directory, title, version, agent, model) VALUES (?, ?, ?, ?, ?, ?)").run(
+      "session-srv-1",
+      "/work/oc",
+      "oc title",
+      "2.0.19",
+      "build",
+      null,
+    );
+    db.prepare(
+      "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "msg-srv-1",
+      "session-srv-1",
+      "assistant",
+      0,
+      Date.parse("2026-05-31T12:00:02.000Z"),
+      Date.parse("2026-05-31T12:00:02.000Z"),
+      JSON.stringify({
+        time: { created: Date.parse("2026-05-31T12:00:02.000Z"), completed: Date.parse("2026-05-31T12:00:03.000Z") },
+        model: { id: "test-model", providerID: "opencode" },
+        tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 10, write: 0 } },
+      }),
+    );
+  } finally {
+    db.close();
+  }
+
+  const server = createUsageServer({ homeDir, importStoreFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    const imported = await fetch(`${baseUrl}/api/imports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: ocRoot }),
+    }).then((response) => response.json());
+
+    assert.equal(imported.import.type, "opencode-home");
+    assert.equal(imported.import.path, ocRoot);
+    assert.equal(imported.import.label, "OpenCode external-opencode");
+    // OpenCode 按数据目录导入，没有单一数据库文件，不应带 dbFile / usageLogPath。
+    assert.equal(imported.import.dbFile, undefined);
+    assert.equal(imported.import.usageLogPath, undefined);
+
+    const after = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(after.summary.totals.total, before.summary.totals.total + 135);
+    assert.ok(after.summary.channels.some((channel) => channel.name === "OpenCode"));
+    assert.equal(
+      after.metadata.homes.some((home) => home.kind === "opencode" && home.path === ocRoot),
+      true,
+    );
+
+    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(ocRoot)}`, { method: "DELETE" });
+    const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(
+      removed.metadata.homes.some((home) => home.kind === "opencode" && home.path === ocRoot),
+      false,
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("server returns a picked directory from the local directory picker", async () => {
   const { homeDir, importStoreFile } = await makeFixtureHome();
   const pickedPath = path.join(homeDir, "picked-project");
@@ -605,6 +841,314 @@ test("server starts directly when its script path contains spaces", async () => 
   }
 });
 
+test("pricing refresh endpoint updates cached values and rejects an outdated editor", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-pricing-refresh-"));
+  const calls = [];
+  const server = createUsageServer({
+    homeDir,
+    pricingFetcher: async (url) => {
+      calls.push(url);
+      if (url === MIMO_PRICES_URL)
+        return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === STEPFUN_PRICES_URL)
+        return new Response(stepfunPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === KIMI_PRICES_URL)
+        return new Response(kimiPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === GLM_PRICES_URL)
+        return new Response(glmPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      const payload =
+        url === USD_CNY_RATE_URL
+          ? { base: "USD", quote: "CNY", date: "2026-09-28", rate: 6.82 }
+          : url === LITELLM_PRICES_URL
+            ? {
+                "gpt-6-sol": {
+                  litellm_provider: "openai",
+                  input_cost_per_token: 0.000003,
+                  output_cost_per_token: 0.000012,
+                  input_cost_per_token_above_272k_tokens: 0.000006,
+                  output_cost_per_token_above_272k_tokens: 0.000018,
+                },
+              }
+            : {};
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    let original = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    const manualRate = structuredClone(original);
+    manualRate.usdToCnyRate = 7.2;
+    const manualRateSaved = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(manualRate),
+    });
+    assert.equal(manualRateSaved.status, 200);
+    assert.equal((await manualRateSaved.json()).usdToCnyRate, 7.2);
+
+    const restoreRate = structuredClone(await fetch(`${baseUrl}/api/pricing`).then((response) => response.json()));
+    restoreRate.restoreAutomaticExchangeRate = true;
+    const restoredRate = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(restoreRate),
+    });
+    assert.equal(restoredRate.status, 200, await restoredRate.clone().text());
+    original = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(original.automatic.manualExchangeRate, false);
+    assert.equal(original.usdToCnyRate, original.automatic.automaticUsdToCnyRate);
+
+    const refreshed = await fetch(`${baseUrl}/api/pricing/refresh`, { method: "POST" }).then((response) =>
+      response.json(),
+    );
+    assert.equal(refreshed.changed, true);
+    assert.equal(refreshed.automaticModelCount, 34);
+    assert.ok(refreshed.automaticModels.includes("gpt-6-sol"));
+    assert.equal(refreshed.unmatchedModelCount, refreshed.totalModelCount - 34);
+    assert.equal(calls.length, 7);
+    const updated = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.ok(updated.automatic.automaticModels.includes("gpt-6-sol"));
+    assert.equal(updated.models["gpt-6-sol"].short.input, 3);
+    assert.equal(updated.usdToCnyRate, 6.82);
+    await fetch(`${baseUrl}/api/pricing/refresh`, { method: "POST" });
+    assert.equal(calls.length, 7);
+    const stale = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(original),
+    });
+    assert.equal(stale.status, 409);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("pricing coverage waits for the usage index and lists missing models", async () => {
+  const fixture = await makeFixtureHome();
+  const projectRoot = path.join(fixture.homeDir, "coverage-project");
+  await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
+  await writeFile(
+    path.join(projectRoot, ".codex-usage", "usage.jsonl"),
+    jsonl(
+      ["gpt-daybreak-blue-latest", "mimo-v2.6-flash-free", "gpt-test-coverage"].map((model, index) => ({
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: `2026-05-31T12:0${index}:00.000Z`,
+        session_id: `coverage-${index}`,
+        request_id: `coverage-request-${index}`,
+        model,
+        cwd: projectRoot,
+        usage: { total: 1, input: 1, cached: 0, cache_write_input_tokens: 0, output: 0 },
+        service_tier: "standard",
+      })),
+    ),
+  );
+  const server = createUsageServer({ ...fixture, importDirs: [projectRoot] });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const before = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(before.usageCoverage.ready, false);
+
+    await fetch(`${baseUrl}/api/usage?preset=all`);
+    const after = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.deepEqual(after.usageCoverage, {
+      ready: true,
+      usedModelCount: 3,
+      matchedUsedModelCount: 2,
+      freeRuleUsedModelCount: 1,
+      missingUsedModels: [{ model: "gpt-test-coverage", harnesses: ["Codex"] }],
+    });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
+test("usage completion debounces missing-model discovery and keeps model IDs local", async () => {
+  const fixture = await makeFixtureHome();
+  const projectRoot = path.join(fixture.homeDir, "discovery-project");
+  const laterProjectRoot = path.join(fixture.homeDir, "discovery-project-later");
+  const afterCloseProjectRoot = path.join(fixture.homeDir, "discovery-project-after-close");
+  await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
+  await mkdir(path.join(laterProjectRoot, ".codex-usage"), { recursive: true });
+  await mkdir(path.join(afterCloseProjectRoot, ".codex-usage"), { recursive: true });
+  const usageLogPath = path.join(projectRoot, ".codex-usage", "usage.jsonl");
+  const usageRow = (model, index) => ({
+    schema_version: "codex-usage.project-log.v1",
+    timestamp: `2026-09-30T12:0${index}:00.000Z`,
+    session_id: `discovery-session-${index}`,
+    request_id: `discovery-request-${index}`,
+    model,
+    cwd: projectRoot,
+    usage: { total: 1, input: 1, cached: 0, cache_write_input_tokens: 0, output: 0 },
+  });
+  await writeFile(usageLogPath, jsonl([usageRow("gpt-test-discovery", 0)]));
+  const calls = [];
+  const timers = [];
+  let holdNextDiscovery = false;
+  let signalDiscoveryStarted;
+  let releaseDiscovery;
+  const discoveryStarted = new Promise((resolve) => {
+    signalDiscoveryStarted = resolve;
+  });
+  const blockedDiscovery = new Promise((resolve) => {
+    releaseDiscovery = resolve;
+  });
+  const pricePayload = {
+    openai: {
+      models: {
+        "gpt-test-discovery": {
+          modalities: { input: ["text"], output: ["text"] },
+          cost: {
+            input: 2,
+            cache_read: 0.1,
+            cache_write: 2.5,
+            output: 10,
+            tiers: [
+              {
+                tier: { type: "context", size: 272_000 },
+                input: 4,
+                cache_read: 0.2,
+                cache_write: 5,
+                output: 15,
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+  pricePayload.openai.models["gpt-next-discovery"] = structuredClone(pricePayload.openai.models["gpt-test-discovery"]);
+  const server = createUsageServer({
+    ...fixture,
+    importDirs: [projectRoot, laterProjectRoot, afterCloseProjectRoot],
+    pricingDiscoveryDelayMs: 1_000,
+    schedulePricingDiscovery(callback, delay) {
+      const timer = { callback, delay };
+      timers.push(timer);
+      return timer;
+    },
+    cancelPricingDiscovery(timer) {
+      timer.cancelled = true;
+    },
+    pricingFetcher: async (url) => {
+      calls.push(url);
+      if (holdNextDiscovery && url === MODEL_PRICES_URL) {
+        holdNextDiscovery = false;
+        signalDiscoveryStarted();
+        await blockedDiscovery;
+      }
+      if (url === MIMO_PRICES_URL)
+        return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === STEPFUN_PRICES_URL)
+        return new Response(stepfunPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === KIMI_PRICES_URL)
+        return new Response(kimiPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      if (url === GLM_PRICES_URL)
+        return new Response(glmPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
+      const payload =
+        url === MODEL_PRICES_URL
+          ? pricePayload
+          : url === LITELLM_PRICES_URL
+            ? {}
+            : { base: "USD", quote: "CNY", date: "2026-09-30", rate: 6.83 };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const waiting = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(waiting.usageCoverage.ready, false);
+    const beforeUsageRefresh = await fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: false }),
+    }).then((response) => response.json());
+    assert.deepEqual(beforeUsageRefresh.discovery.results, [
+      { model: "*", status: "deferred", reason: "usage-not-ready" },
+    ]);
+    assert.deepEqual(timers, []);
+
+    await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    assert.equal(timers.length, 1);
+    assert.equal(timers[0].delay, 1_000);
+    assert.deepEqual(calls, [
+      MODEL_PRICES_URL,
+      LITELLM_PRICES_URL,
+      MIMO_PRICES_URL,
+      STEPFUN_PRICES_URL,
+      KIMI_PRICES_URL,
+      GLM_PRICES_URL,
+      USD_CNY_RATE_URL,
+    ]);
+    holdNextDiscovery = true;
+    const firstDiscovery = timers[0].callback();
+    await discoveryStarted;
+
+    await writeFile(
+      path.join(laterProjectRoot, ".codex-usage", "usage.jsonl"),
+      jsonl([usageRow("gpt-next-discovery", 1)]),
+    );
+    await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const coverageDuringDiscovery = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.deepEqual(coverageDuringDiscovery.usageCoverage.missingUsedModels.map((item) => item.model).sort(), [
+      "gpt-next-discovery",
+      "gpt-test-discovery",
+    ]);
+    assert.equal(timers.length, 2);
+    releaseDiscovery();
+    await firstDiscovery;
+
+    const firstAdded = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(firstAdded.models["gpt-test-discovery"].short.input, 2);
+    assert.equal(firstAdded.models["gpt-next-discovery"], undefined);
+    const secondTimer = timers.find((timer) => !timer.cancelled && timer !== timers[0]);
+    assert.ok(
+      secondTimer,
+      JSON.stringify({
+        timers: timers.map((timer) => ({ cancelled: timer.cancelled, delay: timer.delay })),
+        discoveryResults: firstAdded.automatic.discoveryResults,
+        attemptedAt: firstAdded.automatic.discoveryAttemptedAt,
+        missing: firstAdded.usageCoverage.missingUsedModels,
+      }),
+    );
+    await secondTimer.callback();
+
+    const after = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(after.models["gpt-next-discovery"].short.input, 2);
+    assert.equal(after.usageCoverage.missingUsedModels.length, 0);
+    assert.ok(
+      calls.every((url) =>
+        [
+          MODEL_PRICES_URL,
+          LITELLM_PRICES_URL,
+          MIMO_PRICES_URL,
+          STEPFUN_PRICES_URL,
+          KIMI_PRICES_URL,
+          GLM_PRICES_URL,
+          USD_CNY_RATE_URL,
+        ].includes(url),
+      ),
+    );
+
+    await writeFile(
+      path.join(afterCloseProjectRoot, ".codex-usage", "usage.jsonl"),
+      jsonl([usageRow("gpt-after-close-discovery", 2)]),
+    );
+    await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const pendingTimer = timers.at(-1);
+    assert.equal(pendingTimer.cancelled, undefined);
+    await new Promise((resolve) => server.close(resolve));
+    assert.equal(pendingTimer.cancelled, true);
+  } finally {
+    if (server.listening) await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
 test("pricing API validates, persists, and reprices indexed history", async () => {
   const fixture = await makeFixtureHome();
   const projectRoot = path.join(fixture.homeDir, "priced-project");
@@ -651,7 +1195,46 @@ test("pricing API validates, persists, and reprices indexed history", async () =
       2,
     );
 
+    const oversized = { ...original, padding: "x".repeat(128 * 1024) };
+    const oversizedRejected = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(oversized),
+    });
+    assert.equal(oversizedRejected.status, 413);
+
+    const atCapacity = structuredClone(original);
+    for (let index = 0; index < 14; index += 1) {
+      atCapacity.models[`manual-capacity-${String(index).padStart(2, "0")}`] = structuredClone(
+        original.models["gpt-6-sol"],
+      );
+    }
+    const capacitySaved = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(atCapacity),
+    });
+    assert.equal(capacitySaved.status, 200, await capacitySaved.clone().text());
+    const capacityCatalog = await capacitySaved.json();
+    assert.equal(Object.keys(capacityCatalog.models).length, 100);
+
+    const overCapacity = structuredClone(original);
+    overCapacity.version = capacityCatalog.version;
+    for (let index = 0; index < 15; index += 1) {
+      overCapacity.models[`manual-capacity-${String(index).padStart(2, "0")}`] = structuredClone(
+        original.models["gpt-6-sol"],
+      );
+    }
+    const capacityRejected = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(overCapacity),
+    });
+    assert.equal(capacityRejected.status, 400);
+    assert.equal((await capacityRejected.json()).code, "PRICING_CAPACITY");
+
     const updated = structuredClone(original);
+    updated.version = capacityCatalog.version;
     updated.checkedAt = "2026-09-24";
     updated.models["gpt-6-sol"].short.input = 4;
     const saved = await fetch(`${baseUrl}/api/pricing`, {

@@ -3,6 +3,7 @@ import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   buildUsageIndex,
@@ -10,6 +11,7 @@ import {
   buildUsageFingerprint,
   classifyImportDirectory,
   discoverCodexHomes,
+  discoverOpencodeHomes,
   discoverUsageSources,
   parseSessionFile,
   selectQuotaWindows,
@@ -1046,4 +1048,125 @@ test("UTC calendar days keep report and memory index summaries aligned across mi
     assert.equal(summary.timeline.find((row) => row.key === "2026-09-24")?.total.total, 120);
   }
   assert.equal(summarizeUsage(report, { ...filters, startDate: "2026-09-25", endDate: "2026-09-25" }).totals.total, 80);
+});
+
+const OPENCODE_FIXTURE_TIME = Date.parse("2026-09-20T10:00:00.000Z");
+
+async function makeOpencodeDataDir(homeDir, { version = "2.0.19" } = {}) {
+  const dataDir = path.join(homeDir, ".local", "share", "opencode");
+  await mkdir(dataDir, { recursive: true });
+  const dbFile = path.join(dataDir, "opencode.db");
+  const db = new DatabaseSync(dbFile);
+  try {
+    db.exec(`
+      CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT, title TEXT, version TEXT, agent TEXT, model TEXT);
+      CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT);
+    `);
+    db.prepare("INSERT INTO session_v2 (id, directory, title, version, agent, model) VALUES (?, ?, ?, ?, ?, ?)").run(
+      "sess-1",
+      "/work/demo",
+      "demo",
+      version,
+      "build",
+      null,
+    );
+    db.prepare(
+      "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "msg-1",
+      "sess-1",
+      "assistant",
+      0,
+      OPENCODE_FIXTURE_TIME,
+      OPENCODE_FIXTURE_TIME,
+      JSON.stringify({
+        time: { created: OPENCODE_FIXTURE_TIME, completed: OPENCODE_FIXTURE_TIME + 1000 },
+        model: { id: "test-model", providerID: "opencode" },
+        tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 10, write: 0 } },
+      }),
+    );
+  } finally {
+    db.close();
+  }
+  return { dataDir, dbFile };
+}
+
+function opencodeHome(dataDir) {
+  return { id: "opencode-test", label: "Main OpenCode", path: dataDir, kind: "opencode" };
+}
+
+test("classifyImportDirectory 识别 OpenCode 数据目录", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const classified = await classifyImportDirectory(dataDir);
+  assert.equal(classified.type, "opencode-home");
+  assert.equal(classified.path, path.resolve(dataDir));
+});
+
+test("discoverOpencodeHomes 发现默认目录，支持关闭与追加", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const homes = await discoverOpencodeHomes({ homeDir, env: {} });
+  assert.equal(homes.length, 1);
+  assert.equal(homes[0].kind, "opencode");
+  assert.equal(homes[0].path, path.resolve(dataDir));
+
+  assert.deepEqual(await discoverOpencodeHomes({ homeDir, env: { CODEX_USAGE_OPENCODE: "0" } }), []);
+  assert.deepEqual(await discoverOpencodeHomes({ homeDir: path.join(homeDir, "empty"), env: {} }), []);
+
+  const extraDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-extra-"));
+  await makeOpencodeDataDir(extraDir);
+  const extraDataDir = path.join(extraDir, ".local", "share", "opencode");
+  const appended = await discoverOpencodeHomes({ homeDir, env: { CODEX_USAGE_OPENCODE_HOMES: extraDataDir } });
+  assert.equal(appended.length, 2);
+  assert.ok(appended.some((home) => home.path === path.resolve(extraDataDir)));
+});
+
+test("discoverUsageSources 把 OpenCode 作为来源并入", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const sources = await discoverUsageSources({ homeDir, env: {} });
+  const found = sources.filter((source) => source.kind === "opencode");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].path, path.resolve(dataDir));
+});
+
+test("buildUsageReport 汇总 OpenCode 事件", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const report = await buildUsageReport({ homes: [opencodeHome(dataDir)] });
+  assert.equal(report.events.length, 1);
+  assert.equal(report.events[0].channel, "OpenCode");
+  assert.deepEqual(report.events[0].total, { total: 135, input: 110, cached: 10, output: 25, reasoning: 5 });
+  assert.equal(report.sessions.length, 1);
+});
+
+test("buildUsageIndex 产出 OpenCode 索引事件", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const index = await buildUsageIndex({ homes: [opencodeHome(dataDir)] });
+  assert.equal(index.events.length, 1);
+  const [event] = index.events;
+  assert.equal(event.total, 135);
+  assert.equal(event.input, 110);
+  assert.equal(event.cached, 10);
+  assert.equal(event.output, 25);
+  assert.equal(event.reasoning, 5);
+});
+
+test("buildUsageFingerprint 把 OpenCode 数据库计入指纹", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir } = await makeOpencodeDataDir(homeDir);
+  const status = await buildUsageFingerprint({ homes: [opencodeHome(dataDir)] });
+  assert.equal(status.fileCount, 1);
+  assert.equal(status.homeCount, 1);
+});
+
+test("streamUsageFileEvents 按 kind 分派到 OpenCode 解析", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-opencode-"));
+  const { dataDir, dbFile } = await makeOpencodeDataDir(homeDir);
+  const events = [];
+  await streamUsageFileEvents(dbFile, opencodeHome(dataDir), (event) => events.push(event), {});
+  assert.equal(events.length, 1);
+  assert.equal(events[0].channel, "OpenCode");
 });

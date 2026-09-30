@@ -1,0 +1,2835 @@
+{
+  "date": "2026-09-30T15:29:14.588Z",
+  "phase": "audit",
+  "browser": "Microsoft Edge 154.0.4258.37",
+  "fixture": "Synthetic project logs and pricing metadata; no personal data",
+  "checks": [
+    {
+      "name": "live 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "live 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "live 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "model and repository default ordering prioritizes today, week, month, all",
+      "passed": true
+    },
+    {
+      "name": "manual comparison sort cycles and returns to default",
+      "passed": true
+    },
+    {
+      "name": "model and repository search supports matches and empty results",
+      "passed": true
+    },
+    {
+      "name": "timezone follows last-refresh label and updates timestamp",
+      "passed": true
+    },
+    {
+      "name": "date picker closes with Escape and returns keyboard focus",
+      "passed": true
+    },
+    {
+      "name": "date picker applies two dates and clears the custom range",
+      "passed": true
+    },
+    {
+      "name": "recent-range menu selects year and quota controls select both windows",
+      "passed": true
+    },
+    {
+      "name": "source dialog excludes and restores a fixture data source",
+      "passed": true
+    },
+    {
+      "name": "source dialog closing restores opener focus",
+      "passed": true
+    },
+    {
+      "name": "source dialog keyboard navigation stays within the dialog",
+      "passed": true
+    },
+    {
+      "name": "search and directory input values share the theme text color",
+      "passed": true,
+      "details": [
+        {
+          "theme": "light",
+          "colors": [
+            {
+              "id": "modelComparisonSearch",
+              "value": "rgb(35, 49, 60)",
+              "placeholder": "color(srgb 0.270588 0.337255 0.4 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "repositoryComparisonSearch",
+              "value": "rgb(35, 49, 60)",
+              "placeholder": "color(srgb 0.270588 0.337255 0.4 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "pricingSearch",
+              "value": "rgb(35, 49, 60)",
+              "placeholder": "color(srgb 0.270588 0.337255 0.4 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "importPath",
+              "value": "rgb(35, 49, 60)",
+              "placeholder": "color(srgb 0.270588 0.337255 0.4 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "colors": [
+            {
+              "id": "modelComparisonSearch",
+              "value": "rgb(237, 243, 247)",
+              "placeholder": "color(srgb 0.694118 0.745098 0.796078 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "repositoryComparisonSearch",
+              "value": "rgb(237, 243, 247)",
+              "placeholder": "color(srgb 0.694118 0.745098 0.796078 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "pricingSearch",
+              "value": "rgb(237, 243, 247)",
+              "placeholder": "color(srgb 0.694118 0.745098 0.796078 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            },
+            {
+              "id": "importPath",
+              "value": "rgb(237, 243, 247)",
+              "placeholder": "color(srgb 0.694118 0.745098 0.796078 / 0.76)",
+              "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "model price editor exposes ordinary/Fast and short/long tiers with provenance",
+      "passed": true
+    },
+    {
+      "name": "restore automatic exchange rate can cancel without persisting",
+      "passed": true
+    },
+    {
+      "name": "restore automatic exchange rate saves without clearing model overrides",
+      "passed": true
+    },
+    {
+      "name": "pricing scopes, search, empty state and download failure are usable",
+      "passed": true
+    },
+    {
+      "name": "pricing dialog keyboard navigation stays within the dialog",
+      "passed": true
+    },
+    {
+      "name": "pricing dialog Escape restores opener focus",
+      "passed": true
+    },
+    {
+      "name": "390px light English pricing dialog fits and empty text is localized",
+      "passed": true
+    },
+    {
+      "name": "390px light long refresh timestamp and error fit",
+      "passed": true
+    },
+    {
+      "name": "390px dark English pricing dialog fits and empty text is localized",
+      "passed": true
+    },
+    {
+      "name": "390px dark long refresh timestamp and error fit",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline snapshot controls stay offline and interactive",
+      "passed": true
+    },
+    {
+      "name": "live 200% equivalent light zh-CN fits",
+      "passed": true
+    },
+    {
+      "name": "live 200% equivalent light en-US fits",
+      "passed": true
+    },
+    {
+      "name": "live 200% equivalent dark zh-CN fits",
+      "passed": true
+    },
+    {
+      "name": "live 200% equivalent dark en-US fits",
+      "passed": true
+    },
+    {
+      "name": "offline 200% equivalent light zh-CN fits",
+      "passed": true
+    },
+    {
+      "name": "offline 200% equivalent light en-US fits",
+      "passed": true
+    },
+    {
+      "name": "offline 200% equivalent dark zh-CN fits",
+      "passed": true
+    },
+    {
+      "name": "offline 200% equivalent dark en-US fits",
+      "passed": true
+    },
+    {
+      "name": "auto refresh timer pauses and resumes without duplicate polls",
+      "passed": true,
+      "details": {
+        "statusRequests": 2,
+        "priceRequests": 1,
+        "intervalMs": 60000
+      }
+    },
+    {
+      "name": "browser runs without script errors or external/font requests",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 121,
+        "right": 1424,
+        "bottom": 201
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 102,
+        "right": 1424,
+        "bottom": 182
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1212,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1424,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 622.796875,
+        "height": 107,
+        "right": 638.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 80,
+        "width": 461.34375,
+        "height": 121,
+        "right": 1424,
+        "bottom": 201
+      },
+      "last": {
+        "x": 979.65625,
+        "y": 122,
+        "width": 356.34375,
+        "height": 19,
+        "right": 1336,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1344,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1407,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 121,
+        "right": 1263.984375,
+        "bottom": 201
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 102,
+        "right": 1263.984375,
+        "bottom": 182
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 1052,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1264,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 550.796875,
+        "height": 107,
+        "right": 566.796875,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 80,
+        "width": 408,
+        "height": 121,
+        "right": 1263.984375,
+        "bottom": 201
+      },
+      "last": {
+        "x": 872.984375,
+        "y": 122,
+        "width": 303,
+        "height": 19,
+        "right": 1175.984375,
+        "bottom": 141
+      },
+      "zone": {
+        "x": 1183.984375,
+        "y": 122.5,
+        "width": 63,
+        "height": 18,
+        "right": 1246.984375,
+        "bottom": 140.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 193.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 796,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 1008,
+        "bottom": 66
+      },
+      "range": {
+        "x": 16,
+        "y": 80,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 187
+      },
+      "refresh": {
+        "x": 16,
+        "y": 318,
+        "width": 992,
+        "height": 102,
+        "right": 1008,
+        "bottom": 420
+      },
+      "last": {
+        "x": 33,
+        "y": 360,
+        "width": 887,
+        "height": 19,
+        "right": 920,
+        "bottom": 379
+      },
+      "zone": {
+        "x": 928,
+        "y": 360.5,
+        "width": 63,
+        "height": 18,
+        "right": 991,
+        "bottom": 378.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 127,
+        "right": 380,
+        "bottom": 548.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 108,
+        "right": 380,
+        "bottom": 529.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 60.1875
+      },
+      "actions": {
+        "x": 10,
+        "y": 76.1875,
+        "width": 212,
+        "height": 38,
+        "right": 222,
+        "bottom": 114.1875
+      },
+      "range": {
+        "x": 10,
+        "y": 128.1875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 284.1875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 421.1875,
+        "width": 370,
+        "height": 127,
+        "right": 380,
+        "bottom": 548.1875
+      },
+      "last": {
+        "x": 27,
+        "y": 466.1875,
+        "width": 265,
+        "height": 19,
+        "right": 292,
+        "bottom": 485.1875
+      },
+      "zone": {
+        "x": 300,
+        "y": 466.6875,
+        "width": 63,
+        "height": 18,
+        "right": 363,
+        "bottom": 484.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live-200-percent-equivalent",
+      "theme": "light",
+      "locale": "zh-CN",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live-200-percent-equivalent",
+      "theme": "light",
+      "locale": "en-US",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live-200-percent-equivalent",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "live-200-percent-equivalent",
+      "theme": "dark",
+      "locale": "en-US",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline-200-percent-equivalent",
+      "theme": "light",
+      "locale": "zh-CN",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline-200-percent-equivalent",
+      "theme": "light",
+      "locale": "en-US",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline-200-percent-equivalent",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    {
+      "page": "offline-200-percent-equivalent",
+      "theme": "dark",
+      "locale": "en-US",
+      "physicalWidth": 1440,
+      "deviceScaleFactor": 2,
+      "width": 720,
+      "documentWidth": 720,
+      "bodyWidth": 720,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 30.90625,
+        "width": 177.265625,
+        "height": 32.1875,
+        "right": 187.265625,
+        "bottom": 63.09375
+      },
+      "actions": {
+        "x": 498,
+        "y": 28,
+        "width": 212,
+        "height": 38,
+        "right": 710,
+        "bottom": 66
+      },
+      "range": {
+        "x": 10,
+        "y": 80,
+        "width": 700,
+        "height": 156,
+        "right": 710,
+        "bottom": 236
+      },
+      "refresh": {
+        "x": 10,
+        "y": 373,
+        "width": 700,
+        "height": 108,
+        "right": 710,
+        "bottom": 481
+      },
+      "last": {
+        "x": 27,
+        "y": 418,
+        "width": 595,
+        "height": 19,
+        "right": 622,
+        "bottom": 437
+      },
+      "zone": {
+        "x": 630,
+        "y": 418.5,
+        "width": 63,
+        "height": 18,
+        "right": 693,
+        "bottom": 436.5
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    }
+  ],
+  "backgrounds": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "externalRequests": [],
+  "fontRequests": [],
+  "fonts": [
+    {
+      "selector": "h1",
+      "fonts": [
+        {
+          "familyName": "Noto Sans SC",
+          "postScriptName": "Noto-Sans-SC-Bold",
+          "isCustomFont": false,
+          "glyphCount": 11
+        }
+      ]
+    },
+    {
+      "selector": "h2",
+      "fonts": [
+        {
+          "familyName": "Noto Sans SC",
+          "postScriptName": "Noto-Sans-SC-Bold",
+          "isCustomFont": false,
+          "glyphCount": 15
+        }
+      ]
+    },
+    {
+      "selector": "#totalTokens",
+      "fonts": [
+        {
+          "familyName": "Noto Sans SC",
+          "postScriptName": "Noto-Sans-SC-Bold",
+          "isCustomFont": false,
+          "glyphCount": 6
+        }
+      ]
+    }
+  ]
+}

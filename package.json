@@ -19,7 +19,7 @@
     "serve": "node src/cli.js run"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=23.8"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

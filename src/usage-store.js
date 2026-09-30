@@ -24,6 +24,8 @@ import {
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
+import { dshSessionFiles } from "./dsh-usage.js";
+import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
 import {
   buildTimelineRows,
   deriveTimelineBucket,
@@ -31,7 +33,7 @@ import {
   quotaRecordValues,
 } from "../public/timeline-utils.js";
 
-const STORE_SCHEMA_VERSION = 8;
+export const STORE_SCHEMA_VERSION = 10;
 
 function localDateKey(date) {
   const year = date.getFullYear();
@@ -381,8 +383,22 @@ export class UsageStore {
         WHERE kind IN ('main', 'jetbrains', 'extra', 'codex')
           AND lower(path) LIKE '%.jsonl';
       `,
-        STORE_SCHEMA_VERSION,
+        8,
       );
+      version = 8;
+    }
+    if (version === 8) {
+      // v9 新增 DSH 数据源。表结构没变，因此无需重扫既有数据；
+      // 旧索引里不存在 kind='dsh' 的行，升级后第一次 sync 会直接纳入它们。
+      // 这里只抬版本号，为将来真正需要重扫的迁移留出位置。
+      // 落点必须用字面量：若用 STORE_SCHEMA_VERSION 常量，后续抬版本会静默跳过新迁移。
+      migrate("SELECT 1;", 9);
+      version = 9;
+    }
+    if (version === 9) {
+      // v10 新增 OpenCode 数据源。同 v9，表结构没变，只抬版本号；
+      // 旧索引里不存在 kind='opencode' 的行，升级后第一次 sync 会直接纳入它们。
+      migrate("SELECT 1;", STORE_SCHEMA_VERSION);
       version = STORE_SCHEMA_VERSION;
     }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
@@ -420,6 +436,22 @@ export class UsageStore {
         }
         if (home.kind === "zcode" && home.usageLogPath) {
           files.push({ filePath: home.usageLogPath, source: home, info: await zcodeSourceStat(home.usageLogPath) });
+          continue;
+        }
+        if (home.kind === "dsh") {
+          // DSH 的用量按会话分散在多个日志文件里，逐个纳入增量索引
+          // （每个文件各自按 size+mtime 判定是否需要重解析）。
+          for (const filePath of await dshSessionFiles(home.path)) {
+            files.push({ filePath, source: home, info: await stat(filePath) });
+          }
+          continue;
+        }
+        if (home.kind === "opencode") {
+          // 单个数据目录下可能有多个数据库（opencode.db、opencode-<channel>.db），
+          // 逐个纳入增量索引（含 -wal 指纹）。
+          for (const filePath of await opencodeDatabaseFiles(home.path)) {
+            files.push({ filePath, source: home, info: await opencodeSourceStat(filePath) });
+          }
           continue;
         }
         for (const filePath of await discoverSessionFiles(home.path)) {
@@ -660,7 +692,7 @@ export class UsageStore {
   }
 
   nonCodexHomeIds() {
-    // 限额窗口只衡量 Codex 用量：main/jetbrains/extra/codex 之外的目录（zcode、project-log）
+    // 限额窗口只衡量 Codex 用量：main/jetbrains/extra/codex 之外的目录（zcode、dsh、opencode、project-log）
     // 只在普通范围里计入统计，不能进入限额聚合。
     return this.database
       .prepare(
@@ -685,16 +717,19 @@ export class UsageStore {
         .all()
         .map((row) => [row.home_id, row]),
     );
-    // 按实际使用记录给出各 harness（Codex / ZCode）用到的模型名称。
-    const harnessModels = { Codex: new Set(), ZCode: new Set() };
+    // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode）用到的模型名称。
+    const harnessModels = { Codex: new Set(), ZCode: new Set(), DSH: new Set(), OpenCode: new Set() };
     for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
       const model = String(row.model || "").trim();
       if (!model || model.toLocaleLowerCase() === "unknown model") continue;
-      const bucket = String(row.channel || "")
-        .toLowerCase()
-        .startsWith("zcode")
+      const channel = String(row.channel || "").toLowerCase();
+      const bucket = channel.startsWith("zcode")
         ? "ZCode"
-        : "Codex";
+        : channel.startsWith("dsh")
+          ? "DSH"
+          : channel.startsWith("opencode")
+            ? "OpenCode"
+            : "Codex";
       harnessModels[bucket].add(model);
     }
     this.metadataCache = {
@@ -705,6 +740,8 @@ export class UsageStore {
       harnessModels: {
         Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
         ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
+        DSH: [...harnessModels.DSH].sort((a, b) => a.localeCompare(b)),
+        OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
       },
       homes: this.homes.map((home) => {
         const row = homeRows.get(home.id);

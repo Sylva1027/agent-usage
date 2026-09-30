@@ -1,0 +1,57 @@
+{
+  "date": "2026-09-30T15:18:15.814Z",
+  "phase": "compare",
+  "browser": "Microsoft Edge 154.0.4258.37",
+  "fixture": "Synthetic project logs and pricing metadata; no personal data",
+  "checks": [],
+  "layouts": [],
+  "backgrounds": [
+    {
+      "theme": "light",
+      "variant": "current",
+      "color": "#d7dfe6",
+      "file": "background-light-current.png",
+      "panelMaterialUnchanged": true
+    },
+    {
+      "theme": "light",
+      "variant": "slightly-darker",
+      "color": "#cfd8e1",
+      "file": "background-light-slightly-darker.png",
+      "panelMaterialUnchanged": true
+    },
+    {
+      "theme": "light",
+      "variant": "darker",
+      "color": "#c5ced8",
+      "file": "background-light-darker.png",
+      "panelMaterialUnchanged": true
+    },
+    {
+      "theme": "dark",
+      "variant": "current",
+      "color": "#252b31",
+      "file": "background-dark-current.png",
+      "panelMaterialUnchanged": true
+    },
+    {
+      "theme": "dark",
+      "variant": "slightly-darker",
+      "color": "#20252b",
+      "file": "background-dark-slightly-darker.png",
+      "panelMaterialUnchanged": true
+    },
+    {
+      "theme": "dark",
+      "variant": "darker",
+      "color": "#1b2026",
+      "file": "background-dark-darker.png",
+      "panelMaterialUnchanged": true
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "externalRequests": [],
+  "fontRequests": [],
+  "fonts": []
+}

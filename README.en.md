@@ -2,13 +2,13 @@
 
 [简体中文](README.md) · English
 
-Agent Usage is a local dashboard for Codex and ZCode usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
+Agent Usage is a local dashboard for Codex, ZCode, DSH, and OpenCode usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
 
 This project builds on [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage).
 
 ## Quick Start
 
-Requires **Node.js 22.13 or later**; check with `node -v`. Download and extract the repository ZIP, or run:
+Requires **Node.js 23.8 or later**; check with `node -v` (DSH session logs are zstd-compressed, which needs the zstd support available from that version). Download and extract the repository ZIP, or run:
 
 ```bash
 git clone https://github.com/Sylva1027/codex-usage.git
@@ -25,21 +25,29 @@ Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.
 - **Codex Limits:** The `5h / week` control switches between the current five-hour and weekly limit windows. These limit ranges, Last 5h, and Last Week count Codex sources only; ordinary ranges such as Today, This Week, and This Month still count all selected sources. Boundaries come from local Codex limit observations; the five-hour chart uses 30-minute slots and the weekly chart uses consecutive 24-hour slots. The dashboard does not guess missing boundaries. With no Codex source selected, the limit control and the corresponding recent range options are disabled.
 - **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates.
 - **Records and Comparisons:** Applicable ranges can highlight new highs and compare them with a preceding period. All Time has no preceding period and shows no New Record badges.
-- **Sources and Refresh:** Codex and ZCode data are discovered locally. You can import another Codex or ZCode directory, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. The page checks for new records every 60 seconds by default; pausing auto refresh keeps the data snapshot fixed while you change ranges.
+- **Sources and Refresh:** Codex, ZCode, DSH, and OpenCode data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. The page checks for new records every 60 seconds by default; pausing auto refresh keeps the data snapshot fixed while you change ranges.
 - **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available.
 
 ## Data Sources and Privacy
 
-Codex usage comes from session logs in Codex homes such as `~/.codex`. ZCode usage comes from `~/.zcode/cli/db/db.sqlite` by default. Agent Usage opens that database read-only and does not modify it. Requests absent from these records or an imported project log do not appear in the dashboard.
+Codex usage comes from session logs in Codex homes such as `~/.codex`. ZCode usage comes from `~/.zcode/cli/db/db.sqlite` by default. Agent Usage opens that database read-only and does not modify it. DSH (DeepSeek Harness) usage comes from the session logs under `~/.dsh/sessions`, also read-only. OpenCode usage comes from `opencode*.db` in the data directory (such as `~/.local/share/opencode`), also read-only. Requests absent from these records or an imported project log do not appear in the dashboard.
 
 - `CODEX_USAGE_ZCODE_HOMES`: Add ZCode data directories. Separate paths with the system path separator (`;` on Windows, `:` on macOS/Linux).
 - `CODEX_USAGE_ZCODE=0`: Disable the ZCode source.
+- `CODEX_USAGE_DSH_HOMES`: Add DSH data directories, using the same path separator.
+- `CODEX_USAGE_DSH=0`: Disable the DSH source.
+- `CODEX_USAGE_OPENCODE_HOMES`: Add OpenCode data directories, using the same path separator.
+- `CODEX_USAGE_OPENCODE=0`: Disable the OpenCode source.
+
+Codex, ZCode, DSH, and OpenCode all count toward ordinary ranges. The **5-hour and weekly limit windows measure Codex usage only**; the other sources have no limit records and never take part in them.
 
 An incremental SQLite index stays on your computer at `~/.codex-usage/usage-index.sqlite` by default. Subsequent scans process only changed files.
 
 ## Cost Estimates
 
 The dashboard estimates **API equivalent costs, not actual bills or subscription limit charges**. You can inspect and edit model rates in the dashboard. Pricing distinguishes cache-miss input, cache-hit input, cache writes, and output, plus long-context and Fast/Priority rates where applicable. When a record lacks required details, the page identifies tokens estimated at the lowest applicable rate and tokens that cannot be priced.
+
+On opening the local dashboard, the app checks [Models.dev](https://models.dev/) and a [LiteLLM fallback price map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) for model rates, and [Frankfurter](https://frankfurter.dev/) for USD/CNY exchange rates. Results are cached in `~/.codex-usage/pricing-auto.json`; existing rates normally refresh every 24 hours and retry an hour after a failed source update. After the usage index is ready, the app checks models actually in use that lack rates and adds an OpenAI USD text model only when the public sources provide complete rates and reliable context tiers. A failed model discovery retries after an hour, and the pricing dialog can force an immediate retry. Missing models stay visible in the dialog and continue to use the lowest applicable rates for estimates; `-free` models count separately under the free rule. Offline use falls back to cached or built-in rates. Manually edited fields, manually added models, and exchange rates are saved in `~/.codex-usage/pricing.json` and always take precedence. Embedding applications can set `automaticDiscoveryEnabled: false` in `createUsageServer` to disable new model discovery while keeping cached price updates. Network requests only GET public pricing and exchange-rate data; local model names, usage records, paths, and message content are never sent. Static exports retain the prices and exchange rate present at export time.
 
 Built-in rates are based on public provider information: [OpenAI](https://developers.openai.com/api/docs/pricing), [StepFun](https://platform.stepfun.com/docs/zh/guides/pricing/details), [MiMo](https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go), [DeepSeek](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/), [Kimi](https://platform.kimi.com/docs/pricing/chat), [GLM](https://bigmodel.cn/pricing), [xAI](https://docs.x.ai/developers/pricing), [Qwen](https://www.qwencloud.com/pricing/api), [Gemini](https://ai.google.dev/gemini-api/docs/pricing), [MiniMax](https://platform.minimax.io/docs/guides/pricing-paygo), and [Meta](https://dev.meta.ai/docs/pricing-rate-limits). Amounts retain each model's pricing currency (USD or CNY). Mixed-currency totals appear side by side; charts use an adjustable exchange rate for comparison. Rates and discounts can change, so check the provider's current terms before relying on an estimate.
 

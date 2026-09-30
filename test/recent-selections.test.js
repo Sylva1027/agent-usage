@@ -161,9 +161,19 @@ test("Codex availability follows selected source kinds, not model or source disp
   const homes = [
     { id: "c", kind: "main", label: "Personal" },
     { id: "z", kind: "zcode", label: "Codex" },
+    // DSH、OpenCode 与项目日志同样没有 Codex 限额数据，且 label 里带 "Codex" 也不能算数。
+    { id: "d", kind: "dsh", label: "Codex" },
+    { id: "o", kind: "opencode", label: "Codex" },
+    { id: "p", kind: "project-log", label: "Codex OAuth" },
   ];
   assert.equal(hasSelectedCodexSource(homes), true);
   assert.equal(hasSelectedCodexSource(homes, ["c"]), false);
   assert.equal(hasSelectedCodexSource(homes, ["z"]), true);
+  // 只选中 DSH / OpenCode / 项目日志时不应点亮限额按钮。
+  assert.equal(hasSelectedCodexSource(homes, ["c", "z", "p"]), false);
+  assert.equal(hasSelectedCodexSource([{ id: "d", kind: "dsh", status: "active" }]), false);
+  assert.equal(hasSelectedCodexSource([{ id: "o", kind: "opencode", status: "active" }]), false);
+  assert.equal(hasSelectedCodexSource([{ id: "p", kind: "project-log", status: "active" }]), false);
+  assert.equal(hasSelectedCodexSource([{ id: "u", kind: "unsupported", status: "unsupported" }]), false);
   assert.equal(hasSelectedCodexSource([], []), false);
 });

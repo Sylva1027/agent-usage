@@ -84,7 +84,7 @@ test("translated dashboard copy preserves cost and limit semantics", () => {
   );
   assert.equal(
     localizeServerError({ code: "INVALID_IMPORT_DIRECTORY", error: "中文原因" }, 400, "en-US"),
-    "Choose a Codex or ZCode home directory, or a project with a usage log.",
+    "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project with a usage log.",
   );
 });
 

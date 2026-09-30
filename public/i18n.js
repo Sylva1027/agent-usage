@@ -23,6 +23,7 @@ const ENGLISH = new Map(
     全部: "All Time",
     最近: "Recent",
     上一个5h: "Last 5h",
+    上一个week: "Last 7d",
     上周: "Last Week",
     今年: "This Year",
     "尚未发现上一限额窗口的 Codex 记录。": "No Codex record was found for the previous limit window.",
@@ -36,6 +37,15 @@ const ENGLISH = new Map(
     半年: "6 months",
     一年: "1 year",
     自定义: "Custom",
+    日期范围: "Date Range",
+    打开日期范围日历: "Open date range calendar",
+    日期范围日历: "Date range calendar",
+    开始日期: "Start date",
+    结束日期: "End date",
+    选择开始日期: "Choose a start date",
+    选择结束日期: "Choose an end date",
+    清除: "Clear",
+    清除日期范围: "Clear date range",
     结束: "End",
     "年/月/日": "YYYY-MM-DD",
     打开开始日期日历: "Open start date calendar",
@@ -81,6 +91,8 @@ const ENGLISH = new Map(
     搜索模型用量对比: "Search model usage",
     搜索仓库: "Search Repositories",
     搜索仓库用量对比: "Search repository usage",
+    "默认排序优先级：今日 → 本周 → 本月 → 全部（各项倒序）":
+      "Default sort priority: Today → This Week → This Month → All Time (descending)",
     扫描目录: "Scanned Directories",
     编辑: "Edit",
     费用估算说明: "About Cost Estimates",
@@ -94,6 +106,7 @@ const ENGLISH = new Map(
     关闭: "Close",
     导入: "Import",
     更新计价标准: "Update Pricing Rates",
+    恢复自动汇率: "Restore automatic rate",
     "单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。点击模型名编辑费率（含官方单独声明的快速模式价）；汇率只用于混合币种的排序与图表比例，不改变各币种金额。保存后按当天日期记为核对日期并重算历史估算。":
       "Rates are quoted per million tokens in each model's billing currency (USD or CNY). Select a model to edit its rates, including published fast tier rates. The exchange rate affects only sorting and chart proportions when currencies are mixed. Saving records today's review date and recalculates historical estimates.",
     "1 美元 =": "1 USD =",
@@ -156,6 +169,13 @@ const ENGLISH = new Map(
       "Cache-hit input and cache writes are charged at their respective published rates.",
     "更新计价标准后，所有已索引的历史用量会按新单价重算。":
       "Updating pricing rates recalculates estimates for all indexed usage.",
+    "支持自动更新匹配的模型价格与美元兑人民币汇率；点击模型名或汇率可手动调整。":
+      "Matching model prices and the USD/CNY exchange rate update automatically. Edit a model or the rate to override them.",
+    "单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。支持自动更新匹配的模型价格与美元兑人民币汇率；点击模型名或汇率可手动调整。保存后按当天日期重算历史估算。":
+      "Prices are per million tokens in each model's listed currency (USD or CNY). Matching model prices and the USD/CNY rate update automatically; you can edit either manually. Saving recalculates historical estimates using today's date.",
+    "正在读取更新状态…": "Loading update status…",
+    立即更新: "Update now",
+    "更新完成；未保存的编辑已重置。": "Update complete. Unsaved edits were reset.",
     开始: "Start",
     现在: "Now",
     没有匹配的用量记录: "No matching usage records",
@@ -196,7 +216,7 @@ const ENGLISH = new Map(
     无用量记录: "No usage found",
     可扫描: "Ready to scan",
     没有可统计的来源: "No sources available",
-    "没有发现 Codex 或 ZCode 目录": "No Codex or ZCode directories found",
+    "没有发现 Codex、ZCode、DSH 或 OpenCode 目录": "No Codex, ZCode, DSH, or OpenCode directories found",
     移除: "Remove",
     不计入统计: "Excluded from totals",
     静态快照不能启动轮询: "Auto refresh is unavailable in a static snapshot",
@@ -247,8 +267,8 @@ const ENGLISH = new Map(
     "同一观察时刻存在相互冲突的限额重置时间。": "Conflicting reset times were recorded at the same observation time.",
     "尚未发现当前限额窗口的 Codex 记录。": "No Codex record was found for the current limit window.",
     "限额窗口边界无效。": "The limit window boundaries are invalid.",
-    "目录需要是 Codex home、ZCode home，或包含 .codex-usage/usage.jsonl":
-      "Choose a Codex or ZCode home directory, or a project containing .codex-usage/usage.jsonl.",
+    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录，或包含 .codex-usage/usage.jsonl":
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project containing .codex-usage/usage.jsonl.",
   }),
 );
 
@@ -308,6 +328,11 @@ const ENGLISH_PATTERNS = [
   [/^(.+)（已知部分）$/, (_, value) => `${value} (known records only)`],
   [/^(.+)，正序$/, (_, label) => `${englishText(label)}, ascending`],
   [/^(.+)，倒序$/, (_, label) => `${englishText(label)}, descending`],
+  [
+    /^当前先按(.+)(正序|倒序)；平手依次按其余周期倒序$/,
+    (_, label, direction) =>
+      `Sort by ${englishText(label).toLowerCase()} ${direction === "正序" ? "ascending" : "descending"}; ties follow the remaining periods in descending priority`,
+  ],
   [/^按(.+)用量排序$/, (_, label) => `Sort by ${englishText(label).toLowerCase()} usage`],
   [/^统计截至 (.+)$/, (_, date) => `As of ${date}`],
   [
@@ -507,7 +532,8 @@ export function localizeServerError(body, status = 0, locale = activeLocale) {
       "Full detail is unavailable in low-memory mode. Restart with more memory or export a snapshot.",
     QUOTA_WINDOW_UNAVAILABLE: "This limit window is not available yet.",
     SNAPSHOT_EXPIRED: "This snapshot has expired.",
-    INVALID_IMPORT_DIRECTORY: "Choose a Codex or ZCode home directory, or a project with a usage log.",
+    INVALID_IMPORT_DIRECTORY:
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project with a usage log.",
     INVALID_PRICING: "Check the pricing rates and exchange rate, then try again.",
   };
   if (body?.code && known[body.code]) return known[body.code];

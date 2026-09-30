@@ -20,15 +20,16 @@ import {
   setLocale,
   translatePage,
 } from "./i18n.js";
+import { buildUsagePricingCoverage, resolvePricingModel } from "./pricing-models.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
   dateKey,
   datePickerMonthModel,
   monthStart,
-  normalizeDateInput,
   parseLocalDate,
   renderDatePickerHtml,
+  selectDateRange,
 } from "./calendar.js";
 import { summarizePeriodComparison } from "./period-comparison.js";
 
@@ -37,6 +38,7 @@ export { datePickerMonthModel, renderDatePickerHtml };
 if (typeof document !== "undefined" && document.body) initializeLocale();
 state.locale = getLocale();
 let quotaNoticeTimer = null;
+let importDialogOpener = null;
 
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -124,9 +126,11 @@ function setLanguage(locale) {
   updateThemeButtons();
   updateCalendarZoneSelect();
   updateRecentControls();
+  updateDateRangeControl();
   renderAutoRefreshControls();
   if (state.datePickerField) renderDatePicker(state.datePickerField);
   if (!$("#pricingDialog")?.hidden) renderPricingModelList();
+  if (!$("#pricingDialog")?.hidden) renderAutomaticPricingStatus(state.pricingCatalog?.automatic);
   render();
   translatePage();
 }
@@ -1560,6 +1564,33 @@ function renderTimelineDetails(summary, channelColors, modelColors) {
   );
 }
 const COMPARISON_PERIOD_LABELS = { today: "今日", week: "本周", month: "本月", all: "全部" };
+const COMPARISON_PERIOD_ORDER = ["today", "week", "month", "all"];
+
+function comparisonPeriodTotal(row, period) {
+  const total = Number(row.periods?.[period]?.total ?? 0);
+  return Number.isFinite(total) ? total : 0;
+}
+
+function comparePeriodComparisonRows(left, right, kind, sort) {
+  const selectedPeriod = COMPARISON_PERIOD_ORDER.includes(sort?.period) ? sort.period : "today";
+  const periods = sort?.showIndicator
+    ? [selectedPeriod, ...COMPARISON_PERIOD_ORDER.filter((period) => period !== selectedPeriod)]
+    : COMPARISON_PERIOD_ORDER;
+
+  for (const [index, period] of periods.entries()) {
+    const leftTotal = comparisonPeriodTotal(left, period);
+    const rightTotal = comparisonPeriodTotal(right, period);
+    const direction = index === 0 && sort?.showIndicator ? sort.direction : "desc";
+    const difference = direction === "asc" ? leftTotal - rightTotal : rightTotal - leftTotal;
+    if (difference !== 0) return difference;
+  }
+
+  const leftName = comparisonRowName(left.name, kind);
+  const rightName = comparisonRowName(right.name, kind);
+  const nameOrder = leftName.localeCompare(rightName);
+  if (nameOrder !== 0) return nameOrder;
+  return String(left.key || "").localeCompare(String(right.key || ""));
+}
 
 function comparisonTokenValueClass(formattedValue) {
   return formattedValue === "0.00M" ? ' class="comparison-total-zero"' : "";
@@ -1637,7 +1668,7 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
   const expanded = options.expanded || null;
   const totals = options.totals || null;
   const sort = options.sort || { period: "today", direction: "desc", showIndicator: false };
-  const periodKeys = ["today", "week", "month", "all"];
+  const periodKeys = COMPARISON_PERIOD_ORDER;
   const filtered = rows.filter((row) => {
     if (!query) return true;
     return comparisonRowName(row.name, kind).toLocaleLowerCase().includes(query);
@@ -1645,17 +1676,7 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
   if (!filtered.length) {
     return `<div class="empty">${rows.length ? "没有匹配的用量记录" : "所选时间范围内没有用量"}</div>`;
   }
-  const sorted = [...filtered].sort((left, right) => {
-    if (kind === "repository") {
-      const leftIsGit = left.kind === "git";
-      const rightIsGit = right.kind === "git";
-      if (leftIsGit !== rightIsGit) return rightIsGit ? 1 : -1;
-    }
-    const leftTotal = Number(left.periods?.[sort.period]?.total || 0);
-    const rightTotal = Number(right.periods?.[sort.period]?.total || 0);
-    const totalOrder = sort.direction === "asc" ? leftTotal - rightTotal : rightTotal - leftTotal;
-    return totalOrder || comparisonRowName(left.name, kind).localeCompare(comparisonRowName(right.name, kind));
-  });
+  const sorted = [...filtered].sort((left, right) => comparePeriodComparisonRows(left, right, kind, sort));
   const body = sorted
     .map((row, index) => {
       const rowId = `${kind}-period-${index}`;
@@ -1703,7 +1724,10 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
               const ariaSort = isSorted ? (direction === "asc" ? "ascending" : "descending") : "none";
               const label = COMPARISON_PERIOD_LABELS[period];
               const sortLabel = isSorted ? `${label}，${direction === "asc" ? "正序" : "倒序"}` : `按${label}用量排序`;
-              return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="按${label}用量排序"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
+              const sortTitle = sort.showIndicator
+                ? `当前先按${label}${sort.direction === "asc" ? "正序" : "倒序"}；平手依次按其余周期倒序`
+                : "默认排序优先级：今日 → 本周 → 本月 → 全部（各项倒序）";
+              return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="${sortTitle}"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
             })
             .join("")}</tr></thead>
           <tbody>${body}</tbody>
@@ -2190,8 +2214,8 @@ export function maxTimelineValue(values) {
 }
 
 // 时间轴刻度文字：12px、-22.5° 旋转，水平占位 ≈ 文字宽×cos(22.5°) + 字号×sin(22.5°)，另留 4px 呼吸空隙。
-const TIMELINE_AXIS_FONT = "12px system-ui";
 const TIMELINE_AXIS_FONT_PX = 12;
+const TIMELINE_LABEL_FONT_PX = 13;
 const TIMELINE_TICK_TILT = Math.PI / 8;
 const TIMELINE_TICK_GAP = 4;
 
@@ -2222,6 +2246,11 @@ export function drawTimeline(
   timelineBars.set(canvas, []);
   const ratio = window.devicePixelRatio || 1;
   const styles = getComputedStyle(document.documentElement);
+  const fontFamily =
+    styles.getPropertyValue("--ui-font-sans").trim() ||
+    'Inter, "Noto Sans SC", "Microsoft YaHei UI", "PingFang SC", system-ui, -apple-system, sans-serif';
+  const timelineAxisFont = `${TIMELINE_AXIS_FONT_PX}px ${fontFamily}`;
+  const timelineLabelFont = `${TIMELINE_LABEL_FONT_PX}px ${fontFamily}`;
   const chartLine = styles.getPropertyValue("--chart-line").trim() || "#d9e0e6";
   const chartText = styles.getPropertyValue("--chart-text").trim() || "#607080";
   const blue = styles.getPropertyValue("--blue").trim() || "#2364aa";
@@ -2252,7 +2281,7 @@ export function drawTimeline(
         ? range?.quotaReason || QUOTA_UI_COPY.waiting
         : "没有匹配的用量记录";
     context.fillStyle = chartText;
-    context.font = "13px system-ui";
+    context.font = timelineLabelFont;
     context.fillText(localizeText(emptyMessage), padding.left + 12, padding.top + 28);
     if (isQuotaPreset(range?.preset) && range?.quotaState !== "available") {
       canvas.dataset.chartAriaLabel = localizeText(emptyMessage);
@@ -2267,7 +2296,7 @@ export function drawTimeline(
     const action = isStaticSnapshot() ? "请重新导出快照" : "请重启服务";
     const message = `${mode === "model" ? "模型" : "费用"}明细不可用，${action}`;
     context.fillStyle = chartText;
-    context.font = "13px system-ui";
+    context.font = timelineLabelFont;
     context.fillText(localizeText(message), padding.left + 12, padding.top + 28);
     canvas.dataset.chartAriaLabel = localizeText(message);
     canvas.setAttribute?.("aria-label", localizeText(message));
@@ -2324,7 +2353,7 @@ export function drawTimeline(
   timelineBars.set(canvas, bars);
 
   context.fillStyle = chartText;
-  context.font = TIMELINE_AXIS_FONT;
+  context.font = timelineAxisFont;
   // 纵轴数值右对齐贴住坐标轴，各模式保持一致（含按花销的金额标签）。
   context.textAlign = "right";
   const axisLabelX = padding.left - 10;
@@ -2341,7 +2370,7 @@ export function drawTimeline(
   const bucket = range?.bucket || state.bucket;
   // 刻度密度按旋转后的实际文字占位估算：固定 68px 会高估"01"这类窄标签的宽度，
   // 把放得下的刻度（如 13 天的"全部"视图）误判成超容。
-  context.font = TIMELINE_AXIS_FONT;
+  context.font = timelineAxisFont;
   const tickFootprint = rows.reduce((widest, row) => {
     const width = context.measureText(shortTimelineLabel(row.key, bucket, range)).width;
     return Math.max(
@@ -2518,17 +2547,20 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
       const id = escapeHtml(home.id);
       const label = escapeHtml(home.label || home.path || home.id);
       const kind = escapeHtml(home.kind || home.type || "");
+      const status = escapeHtml(homeStatusLabel(home));
       const pathText = escapeHtml(home.path || "");
-      const counts = `${formatTokens(home.eventCount || 0)} 条事件`;
-      const checked = excluded.has(home.id) ? "" : " checked";
+      const counts = `${formatTokens(home.eventCount || 0)} 条事件 · ${formatTokens(home.sessionCount || 0)} 个会话`;
+      const isExcluded = excluded.has(home.id);
+      const checked = isExcluded ? "" : " checked";
+      const excludedBadge = isExcluded ? `<span class="home-excluded">不计入统计</span>` : "";
       return `
-        <label class="source-option">
+        <label class="source-option${isExcluded ? " excluded" : ""}">
           <input type="checkbox" data-source-id="${id}"${checked} />
           <span class="source-option-text">
-            <span class="source-option-label">${label}<span class="home-kind">${kind}</span></span>
+            <span class="source-option-label"><strong>${label}</strong><span class="home-kind">${kind}</span></span>
+            <span class="source-option-meta"><span class="home-status">${status}</span><span>${counts}</span>${excludedBadge}</span>
             <span class="source-option-path" title="${pathText}">${pathText}</span>
           </span>
-          <span class="source-option-count">${counts}</span>
         </label>
       `;
     })
@@ -2538,7 +2570,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
 export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } = {}) {
   // Render paths and labels as escaped text because they may come from imported logs.
   if (!homes.length) {
-    return `<div class="empty">没有发现 Codex 或 ZCode 目录</div>`;
+    return `<div class="empty">没有发现 Codex、ZCode、DSH 或 OpenCode 目录</div>`;
   }
   const excluded = new Set(excludedIds || []);
   return homes
@@ -2580,9 +2612,50 @@ function renderHomes(homes, options = {}) {
   container.innerHTML = renderHomesHtml(homes, options);
 }
 
+// harness 归组顺序。Codex 优先，便于 gpt 系模型归到最相关一侧。
+const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode"];
+
+/** 渠道名 → harness 桶名。ZCode、DSH 与 OpenCode 都用自己的渠道前缀，其余归 Codex。 */
+function bucketForChannel(channel) {
+  const name = String(channel || "").toLowerCase();
+  if (name.startsWith("zcode")) return "ZCode";
+  if (name.startsWith("dsh")) return "DSH";
+  if (name.startsWith("opencode")) return "OpenCode";
+  return "Codex";
+}
+
+function newHarnessModelBuckets() {
+  return Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, new Set()]));
+}
+
+function harnessModelLists(buckets) {
+  return Object.fromEntries(
+    HARNESS_ORDER.map((harness) => [harness, [...(buckets[harness] || [])].sort((a, b) => a.localeCompare(b))]),
+  );
+}
+
+/**
+ * 同一个模型可能被多个 harness 用到（例如 ZCode 与 DSH 都跑 deepseek-flash）。
+ * 计价弹窗按 harness 分区展示，若不去重，同一个模型会在多个分区里重复出现。
+ * 这里按 HARNESS_ORDER 先到先得：一个模型只留在它遇到的第一个分区里。
+ * @param {Record<string, Set<string>>} groups
+ */
+export function claimHarnessKeys(groups) {
+  const claimed = new Set();
+  const ordered = Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, new Set()]));
+  for (const harness of HARNESS_ORDER) {
+    for (const key of groups[harness] || []) {
+      if (claimed.has(key)) continue;
+      claimed.add(key);
+      ordered[harness].add(key);
+    }
+  }
+  return ordered;
+}
+
 function metadataFromReport(report) {
   const homeStats = new Map();
-  const harnessModels = { Codex: new Set(), ZCode: new Set() };
+  const harnessModels = newHarnessModelBuckets();
   for (const event of report.events) {
     const current = homeStats.get(event.homeId) || {
       eventCount: 0,
@@ -2593,22 +2666,14 @@ function metadataFromReport(report) {
     homeStats.set(event.homeId, current);
     const model = String(event.model || "").trim();
     if (model && model.toLocaleLowerCase() !== "unknown model") {
-      const bucket = String(event.channel || "")
-        .toLowerCase()
-        .startsWith("zcode")
-        ? "ZCode"
-        : "Codex";
-      harnessModels[bucket].add(model);
+      harnessModels[bucketForChannel(event.channel)].add(model);
     }
   }
   return {
     generatedAt: report.generatedAt,
     eventCount: report.events.length,
     sessionCount: report.sessions.length,
-    harnessModels: {
-      Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
-      ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
-    },
+    harnessModels: harnessModelLists(harnessModels),
     homes: report.homes.map((home) => {
       const stats = homeStats.get(home.id) || { eventCount: 0, sessions: new Set() };
       return {
@@ -2709,6 +2774,7 @@ function renderUnavailableQuota(reason, range = null) {
   drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
   updateTimelineModeButtons();
   updateQuotaPresetButton();
+  updateDateRangeControl();
 }
 
 function render() {
@@ -2821,7 +2887,23 @@ function renderAutoRefreshControls() {
     : `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
   const checked = state.lastSuccessfulCheck ? new Date(state.lastSuccessfulCheck) : null;
   document.querySelector("#lastSuccessfulCheck").textContent =
-    checked && !Number.isNaN(checked.getTime()) ? `上次：${checked.toLocaleString(getLocale())}` : "上次：尚无";
+    checked && !Number.isNaN(checked.getTime())
+      ? `上次：${formatAutoRefreshTimestamp(checked, getLocale(), state.calendarZone)}`
+      : "上次：尚无";
+}
+
+export function formatAutoRefreshTimestamp(value, locale = "zh-CN", calendarZone = "local") {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const timeZone = calendarZone === "utc" ? "UTC" : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(date);
 }
 
 function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}) {
@@ -2867,6 +2949,274 @@ function setPricingMessage(message, isError = false) {
   const element = $("#pricingMessage");
   element.textContent = message;
   element.classList.toggle("error", isError);
+}
+
+export function automaticPricingStatusText(status = {}, locale = "zh-CN", fallbackTotal = 0) {
+  const english = locale === "en-US";
+  const updatedAt = status.priceUpdatedAt ? new Date(status.priceUpdatedAt) : null;
+  const price = updatedAt && Number.isFinite(updatedAt.getTime()) ? dateKey(updatedAt) : null;
+  const matched = status.automaticModelCount ?? 0;
+  const total = status.totalModelCount ?? fallbackTotal;
+  const partial = status.partialAutomaticModelCount ?? 0;
+  const sourceCoverage = status.priceSourceCoverage || {};
+  const usdSourceMapped = sourceCoverage.supportedUsdModelCount ?? sourceCoverage.supportedModelCount ?? 0;
+  const cnySourceMapped = sourceCoverage.supportedCnyModelCount ?? 0;
+  const unsupportedCurrency = sourceCoverage.unsupportedCurrencyModelCount ?? 0;
+  const manualModels = status.manualModelCount ?? status.manualModels?.length ?? 0;
+  const numberLocale = english ? "en-US" : "zh-CN";
+  const formatRate = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0
+      ? new Intl.NumberFormat(numberLocale, { maximumFractionDigits: 4 }).format(number)
+      : null;
+  };
+  const automaticRate = formatRate(status.automaticUsdToCnyRate);
+  const effectiveRate = formatRate(status.effectiveUsdToCnyRate);
+  const exchangeRate = english
+    ? `${status.manualExchangeRate ? `auto ${automaticRate || "built-in"} · current ${effectiveRate || "built-in"} (manual)` : `current ${effectiveRate || automaticRate || "built-in"}`} · quote date ${status.exchangeRateDate || "built-in"}`
+    : `${status.manualExchangeRate ? `自动 ${automaticRate || "内置"} · 当前 ${effectiveRate || "内置"}（手动）` : `当前 ${effectiveRate || automaticRate || "内置"}`} · 报价日期 ${status.exchangeRateDate || "内置"}`;
+  return english
+    ? `Model prices: ${price || "built-in"} (auto-maintained ${matched}/${total}, partial ${partial}, manual overrides ${manualModels}) · USD source mappings ${usdSourceMapped}/${total}, CNY adapters ${cnySourceMapped}, CNY manual-only ${unsupportedCurrency} · USD/CNY: ${exchangeRate}`
+    : `模型价：${price || "内置"}（自动维护 ${matched}/${total}，部分 ${partial}，手动覆盖 ${manualModels}）· USD 来源适配 ${usdSourceMapped}/${total}，CNY 官方源 ${cnySourceMapped} 条，暂保留本地 ${unsupportedCurrency} 条 · 美元兑人民币：${exchangeRate}`;
+}
+
+export function usagePricingCoverageText(coverage = {}, locale = "zh-CN") {
+  const english = locale === "en-US";
+  if (!coverage.ready)
+    return english ? "Waiting for usage data before checking coverage." : "等待用量加载，暂不能确认计价覆盖。";
+  const used = coverage.usedModelCount || 0;
+  const matched = coverage.matchedUsedModelCount || 0;
+  const missing = coverage.missingUsedModels?.length ?? Math.max(0, used - matched);
+  const free = coverage.freeRuleUsedModelCount || 0;
+  return english
+    ? `Usage coverage ${matched}/${used} · missing rates ${missing} · free-rule models ${free}`
+    : `用量覆盖 ${matched}/${used} · 缺少费率 ${missing} · 免费规则 ${free}`;
+}
+
+export function pricingUpdateSummaryText(summary = {}, locale = "zh-CN") {
+  const english = locale === "en-US";
+  const verified = summary.verifiedModelCount ?? 0;
+  const attempted = summary.attemptedModelCount ?? 0;
+  const changed = summary.changedModelCount ?? 0;
+  const partial = summary.partialModelCount ?? 0;
+  const conflicts = summary.conflictModelCount ?? 0;
+  const manual = summary.manualOverrideModelCount ?? 0;
+  const noMatch = summary.noValidMatchModelCount ?? 0;
+  const cny = summary.unsupportedCurrencyModelCount ?? 0;
+  return english
+    ? `Price check: verified ${verified}/${attempted}, changed ${changed}, partial ${partial}, conflicts ${conflicts}, manual overrides ${manual}, no valid source match ${noMatch}; CNY entries kept local ${cny}`
+    : `本次计价：核验 ${verified}/${attempted}，变化 ${changed}，部分 ${partial}，冲突 ${conflicts}，受手动覆盖 ${manual}，未命中有效来源 ${noMatch}；CNY 本地保留 ${cny}`;
+}
+
+function renderAutomaticRateRestoreControl() {
+  const button = $("#restoreAutomaticRateButton");
+  if (!button) return;
+  button.hidden = state.pricingCatalog?.automatic?.manualExchangeRate !== true;
+  button.setAttribute("aria-pressed", String(state.restoreAutomaticExchangeRate === true));
+}
+
+function renderAutomaticPricingStatus(status = {}, coverage = undefined) {
+  const node = $("#pricingAutomaticStatus");
+  if (!node) return;
+  node.textContent = automaticPricingStatusText(
+    status,
+    getLocale(),
+    Object.keys(state.pricingCatalog?.models || {}).length,
+  );
+  const coverageNode = $("#pricingUsageCoverage");
+  if (coverageNode) {
+    let resolvedCoverage = coverage ?? state.pricingCatalog?.usageCoverage;
+    if (!resolvedCoverage && state.metadata?.harnessModels) {
+      resolvedCoverage = buildUsagePricingCoverage(
+        state.metadata.harnessModels,
+        state.pricingCatalog?.models || {},
+        true,
+      );
+    }
+    coverageNode.textContent = usagePricingCoverageText(resolvedCoverage || {}, getLocale());
+  }
+}
+
+export function pricingIssueText(issue, english) {
+  const source = !english && issue.source === "Xiaomi MiMo" ? "小米 MiMo" : issue.source;
+  if (issue.code === "timeout") {
+    const seconds = issue.timeoutMs ? `（${issue.timeoutMs / 1000} 秒）` : "";
+    return english
+      ? `${source} timed out${issue.timeoutMs ? ` after ${issue.timeoutMs / 1000}s` : ""}`
+      : `${source} 请求超时${seconds}`;
+  }
+  return `${source}：${issue.message}`;
+}
+
+export function discoveryReasonText(reason, english) {
+  const labels = english
+    ? {
+        "not-found": "not listed by either price source",
+        "unsupported-provider": "not a supported OpenAI text model",
+        "incomplete-rates": "required input, cache, or output rates are missing",
+        "context-policy-unknown": "context pricing policy is unknown",
+        "unsupported-context-policy": "multiple context tiers are not supported",
+        conflict: "the price sources disagree",
+        "catalog-capacity": "the 100-model catalog limit was reached",
+        timeout: "price source timed out",
+        "source-error": "price sources could not be read",
+        "retry-after": "retry is available after one hour",
+        "usage-not-ready": "waiting for usage indexing",
+        error: "discovery failed",
+      }
+    : {
+        "not-found": "两个价目来源都没有该模型",
+        "unsupported-provider": "不是支持的 OpenAI 文本模型",
+        "incomplete-rates": "缺少输入、缓存或输出必需费率",
+        "context-policy-unknown": "上下文计价规则不明确",
+        "unsupported-context-policy": "暂不支持多个上下文档位",
+        conflict: "两个价目来源存在冲突",
+        "catalog-capacity": "已达到 100 个模型上限",
+        timeout: "价目来源请求超时",
+        "source-error": "无法读取价目来源",
+        "retry-after": "一小时后可重试",
+        "usage-not-ready": "等待用量索引就绪",
+        error: "自动发现失败",
+      };
+  return labels[reason] || reason || (english ? "unknown result" : "未知结果");
+}
+
+export function pricingProvenanceText(metadata = {}, locale = "zh-CN") {
+  const english = locale === "en-US";
+  const labels = {
+    short: english ? "Standard short" : "标准短上下文",
+    long: english ? "Standard long" : "标准长上下文",
+    "fast.short": english ? "Fast short" : "快速短上下文",
+    "fast.long": english ? "Fast long" : "快速长上下文",
+  };
+  const origins = english
+    ? { remote: "remote", "built-in": "built-in", derived: "derived from Standard ×2", mixed: "mixed" }
+    : { remote: "远端来源", "built-in": "内置价目", derived: "由标准费率推算 ×2", mixed: "混合来源" };
+  const fieldLabels = english
+    ? { input: "input", cachedInput: "cache read", cacheWrite: "cache write", output: "output" }
+    : { input: "输入", cachedInput: "缓存读取", cacheWrite: "缓存写入", output: "输出" };
+  return Object.entries(labels)
+    .filter(([tier]) => metadata[tier])
+    .map(([tier, label]) => {
+      const item = metadata[tier];
+      const details = [origins[item.origin] || item.origin || (english ? "unknown" : "未知")];
+      if (item.sourceUrl) {
+        try {
+          details.push(new URL(item.sourceUrl).hostname);
+        } catch {
+          details.push(item.sourceUrl);
+        }
+      }
+      if (item.inheritedFields?.length) {
+        details.push(
+          (english ? "inherited " : "沿用") +
+            item.inheritedFields.map((field) => fieldLabels[field] || field).join(", "),
+        );
+      }
+      const inheritedSources =
+        item.inheritedFields
+          ?.map((field) => {
+            const inherited = item.inheritedFrom?.[field];
+            if (!inherited) return "";
+            let source = inherited.origin || (english ? "previous rate" : "原费率");
+            if (inherited.sourceUrl) {
+              try {
+                source = new URL(inherited.sourceUrl).hostname;
+              } catch {
+                source = inherited.sourceUrl;
+              }
+            }
+            return `${fieldLabels[field] || field} ← ${source}`;
+          })
+          .filter(Boolean) || [];
+      if (inheritedSources.length) details.push(inheritedSources.join(", "));
+      if (item.checkedAt) details.push(item.checkedAt.slice(0, 10));
+      if (item.conflicts?.length) details.push(english ? "conflict retained previous rate" : "冲突时保留原费率");
+      return `${label}: ${details.join(" · ")}`;
+    })
+    .join(english ? "; " : "；");
+}
+
+async function refreshPricingAutomatically(force = false) {
+  if (isStaticSnapshot() || (state.pricingCatalog && !force)) return;
+  const button = $("#refreshPricingButton");
+  if (button) button.disabled = true;
+  if (force && state.pricingCatalog)
+    setPricingMessage(getLocale() === "en-US" ? "Updating prices and exchange rate…" : "正在更新价目与汇率…");
+  try {
+    const response = await fetch("/api/pricing/refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(localizeServerError(result, response.status));
+    if (state.pricingCatalog) state.pricingCatalog.automatic = result;
+    if (result.changed || result.statusChanged) {
+      if (state.pricingCatalog) {
+        const catalogResponse = await fetch("/api/pricing");
+        if (!catalogResponse.ok) throw new Error(`HTTP ${catalogResponse.status}`);
+        const catalog = await catalogResponse.json();
+        state.pricingCatalog = catalog;
+        $("#usdToCnyRate").value = String(catalog.usdToCnyRate);
+        state.restoreAutomaticExchangeRate = false;
+        renderAutomaticRateRestoreControl();
+      }
+      if (result.changed) await loadUsage({ skipCheck: true });
+    }
+    if (state.pricingCatalog) {
+      renderAutomaticPricingStatus(state.pricingCatalog.automatic || result, state.pricingCatalog.usageCoverage);
+      renderPricingModelList();
+      const english = getLocale() === "en-US";
+      const issueMessages = result.issues?.length
+        ? result.issues.map((issue) => pricingIssueText(issue, english)).join(english ? "; " : "；")
+        : result.errors?.join(english ? "; " : "；");
+      const discoveryResults = result.discovery?.results || [];
+      const discoveryAdded = result.discovery?.addedModels?.length || 0;
+      const discoveryDetails = discoveryResults
+        .filter((item) => ["deferred", "rejected", "error"].includes(item.status))
+        .map((item) => `${item.model}: ${discoveryReasonText(item.reason, english)}`)
+        .join(english ? "; " : "；");
+      const discoveryMessage = [
+        discoveryAdded
+          ? english
+            ? `Added ${discoveryAdded} model rate(s)`
+            : `已新增 ${discoveryAdded} 个模型费率`
+          : "",
+        discoveryDetails,
+      ]
+        .filter(Boolean)
+        .join(english ? "; " : "；");
+      const details = [issueMessages, discoveryMessage].filter(Boolean).join(english ? "; " : "；");
+      const message = details
+        ? english
+          ? `${result.pricesUpdated || result.exchangeRateUpdated || discoveryAdded ? "Partially updated" : "Update incomplete; using saved rates"}: ${details}.`
+          : `${result.pricesUpdated || result.exchangeRateUpdated || discoveryAdded ? "部分更新完成" : "更新未完成，继续使用已有费率"}：${details}。`
+        : force
+          ? result.changed || result.statusChanged
+            ? getLocale() === "en-US"
+              ? result.changed
+                ? "Update complete. Unsaved edits were reset."
+                : "Status checked. Rates are unchanged."
+              : result.changed
+                ? "更新完成；未保存的编辑已重置。"
+                : "状态已检查，费率未变化。"
+            : getLocale() === "en-US"
+              ? "Checked. Rates are unchanged."
+              : "已检查，费率未变化。"
+          : "";
+      const summaryMessage = force ? pricingUpdateSummaryText(result.priceUpdateSummary, getLocale()) : "";
+      setPricingMessage([message, summaryMessage].filter(Boolean).join(english ? " · " : "；"), Boolean(issueMessages));
+    }
+  } catch (error) {
+    if (state.pricingCatalog)
+      setPricingMessage(
+        getLocale() === "en-US" ? `Automatic update failed: ${error.message}` : `自动更新失败：${error.message}`,
+        true,
+      );
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function pricingModelNoteParts(contexts) {
@@ -2945,50 +3295,88 @@ function writePricingField(entry, context, field, value) {
   if (entry[context]) entry[context][field] = value;
 }
 
-// 把使用记录里的模型名称匹配到计价条目（精确优先，其次前缀）。
-function catalogKeysForNames(names, catalog) {
-  const keys = Object.keys(catalog);
-  const lowerNames = [...names]
-    .map((name) =>
-      String(name || "")
-        .trim()
-        .toLocaleLowerCase(),
-    )
-    .filter((name) => name && name !== "unknown model");
-  const matched = new Set(lowerNames.filter((name) => catalog[name]));
-  for (const lower of lowerNames.filter((name) => !catalog[name])) {
-    const match = keys.find((key) => lower.startsWith(`${key}-`));
-    if (match) matched.add(match);
-  }
-  return matched;
+export function modelPricingInputsChanged(inputs) {
+  const fields = [...inputs];
+  return (
+    fields.length > 0 &&
+    fields.every((input) => input.validity.valid && input.value !== "" && Number.isFinite(Number(input.value))) &&
+    fields.some((input) => Number(input.value) !== Number(input.defaultValue))
+  );
+}
+
+function updateModelPricingApplyState() {
+  const inputs = $("#modelPricingFields").querySelectorAll("input[data-model]");
+  $("#applyModelPricingButton").disabled = !modelPricingInputsChanged(inputs);
 }
 
 // 计价条目的 harness 归属：OpenAI 价目（Codex 常用的 gpt 系）归 Codex，其余厂商归 ZCode。
-function isCodexPricingModel(entry) {
-  return !entry?.source || entry.source.includes("developers.openai.com");
+function isCodexPricingModel(model, entry) {
+  return model.startsWith("gpt-") || !entry?.source || entry.source.includes("developers.openai.com");
 }
 
-// 一级：在用 / 全部；在用模型下再按 Codex / ZCode 分组。
-// 在用模型优先按使用记录的实际渠道归属（metadata.harnessModels），
-// 服务端尚未提供该数据时按价目来源兜底分组，保证弹窗始终可用。
-function pricingHarnessGroups() {
+function pricingRowsForNames(names, catalog) {
+  const rows = [];
+  const seen = new Set();
+  for (const raw of names) {
+    const resolved = resolvePricingModel(raw, catalog);
+    if (resolved.matchType === "missing" && !resolved.rawModel) continue;
+    const normalized = resolved.rawModel.toLowerCase();
+    const identity = resolved.catalogKey ? `catalog:${resolved.catalogKey}` : `${resolved.matchType}:${normalized}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    rows.push({ model: resolved.rawModel, catalogKey: resolved.catalogKey, matchType: resolved.matchType });
+  }
+  return rows;
+}
+
+export function pricingHarnessRows() {
   const catalog = state.pricingCatalog?.models || {};
-  const groups = { Codex: new Set(), ZCode: new Set() };
+  const groups = Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, []]));
   const harnessModels = state.metadata?.harnessModels;
-  const hasHarnessData = (harnessModels?.Codex?.length || harnessModels?.ZCode?.length) > 0;
+  const hasHarnessData = HARNESS_ORDER.some((harness) => (harnessModels?.[harness]?.length || 0) > 0);
 
   if (hasHarnessData) {
-    groups.Codex = catalogKeysForNames(harnessModels.Codex || [], catalog);
-    groups.ZCode = catalogKeysForNames(harnessModels.ZCode || [], catalog);
+    const claimedCatalogKeys = new Set();
+    for (const harness of HARNESS_ORDER) {
+      const rows = pricingRowsForNames(harnessModels[harness] || [], catalog);
+      groups[harness] = rows.filter((row) => {
+        if (!row.catalogKey) return true;
+        if (claimedCatalogKeys.has(row.catalogKey)) return false;
+        claimedCatalogKeys.add(row.catalogKey);
+        return true;
+      });
+    }
     return groups;
   }
+
   const names = new Set();
   for (const row of state.summary?.models || []) names.add(row.name || row.key);
   for (const row of state.periodComparison?.models || []) names.add(row.key || row.name);
-  for (const key of catalogKeysForNames(names, catalog)) {
-    groups[isCodexPricingModel(catalog[key]) ? "Codex" : "ZCode"].add(key);
+  for (const row of pricingRowsForNames(names, catalog)) {
+    const harness = row.catalogKey && isCodexPricingModel(row.catalogKey, catalog[row.catalogKey]) ? "Codex" : "ZCode";
+    groups[harness].push(row);
   }
   return groups;
+}
+
+// 一级：在用 / 全部；在用模型下再按 Codex / ZCode / DSH 分组。
+// 在用模型优先按使用记录的实际渠道归属（metadata.harnessModels），
+// 服务端尚未提供该数据时按价目来源兜底分组，保证弹窗始终可用。
+export function pricingHarnessGroups() {
+  const rows = pricingHarnessRows();
+  return Object.fromEntries(
+    HARNESS_ORDER.map((harness) => [harness, new Set(rows[harness].map((row) => row.catalogKey).filter(Boolean))]),
+  );
+}
+
+export function pricingModelBadges(model, automatic = {}, source = "", locale = "zh-CN") {
+  const english = locale === "en-US";
+  const matched = Array.isArray(automatic.automaticModels)
+    ? automatic.automaticModels.includes(model)
+    : String(source || "").startsWith("https://models.dev/") ||
+      String(source || "").includes("raw.githubusercontent.com/BerriAI/litellm/");
+  const manual = automatic.manualModels?.includes(model) || false;
+  return `<span class="pricing-match-badge ${matched ? "auto" : "unmatched"}">${matched ? (english ? "Auto-matched" : "自动匹配") : english ? "Not auto-matched" : "未自动匹配"}</span>${manual ? `<span class="pricing-match-badge manual">${english ? "Manual override" : "手动覆盖"}</span>` : ""}`;
 }
 
 function renderPricingModelList() {
@@ -2996,38 +3384,64 @@ function renderPricingModelList() {
   const catalog = state.pricingCatalog;
   if (!container || !catalog) return;
   const search = state.pricingSearch.trim().toLocaleLowerCase();
-  const matches = (model) => !search || model.toLocaleLowerCase().includes(search);
-  const row = (model) => {
-    const contexts = catalog.models[model];
-    return `
-      <button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(model)}" title="点击编辑该模型费率">
-        <span class="pricing-model-name">${escapeHtml(model)}<span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span></span>
-        <span class="pricing-model-hint">${escapeHtml(pricingModelHint(contexts))}</span>
-      </button>`;
+  const matches = (row) => !search || `${row.model} ${row.catalogKey || ""}`.toLocaleLowerCase().includes(search);
+  const english = getLocale() === "en-US";
+  const rowHtml = (row) => {
+    if (row.matchType === "missing") {
+      return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge missing">${english ? "Missing rate" : "缺少费率"}</span></span>
+        <span class="pricing-model-hint">${english ? "No model-specific rate; currently estimated with the lowest listed rates." : "缺少模型费率，当前按最低费率估算。"}</span>
+        <button type="button" class="pricing-rematch-button" data-pricing-rematch>${english ? "Match again" : "重新匹配"}</button>
+      </div>`;
+    }
+    if (row.matchType === "free") {
+      return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${english ? "Free rule" : "免费规则"}</span></span>
+        <span class="pricing-model-hint">${english ? "Estimated as free by the -free rule." : "按 -free 规则估算为免费。"}</span>
+      </div>`;
+    }
+    const contexts = catalog.models[row.catalogKey];
+    const badges = pricingModelBadges(row.catalogKey, catalog.automatic, contexts.source, getLocale());
+    const priceName =
+      row.model.toLowerCase() === row.catalogKey.toLowerCase()
+        ? ""
+        : `<span class="pricing-model-hint">${english ? "Priced as" : "计价名称"} ${escapeHtml(row.catalogKey)}</span>`;
+    return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
+      <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span>${badges}</span>
+      <span class="pricing-model-hint">${priceName || escapeHtml(pricingModelHint(contexts))}</span>
+    </button>`;
   };
 
   if (state.pricingScope === "all") {
-    // 全部模型：平铺展示，不做 Codex / ZCode 划分。
-    const rows = Object.keys(catalog.models)
-      .sort((a, b) => a.localeCompare(b))
+    const rowsByName = new Map(
+      Object.keys(catalog.models).map((model) => [
+        model.toLowerCase(),
+        { model, catalogKey: model, matchType: "exact" },
+      ]),
+    );
+    for (const rows of Object.values(pricingHarnessRows())) {
+      for (const row of rows) {
+        if (!row.catalogKey) rowsByName.set(row.model.toLowerCase(), row);
+      }
+    }
+    const rows = [...rowsByName.values()]
+      .sort((left, right) => left.model.localeCompare(right.model))
       .filter(matches)
-      .map(row)
+      .map(rowHtml)
       .join("");
     container.innerHTML = rows || `<div class="empty">${search ? "没有匹配的模型" : "暂无模型"}</div>`;
     return;
   }
 
-  const groups = pricingHarnessGroups();
-  const sections = ["Codex", "ZCode"]
-    .map((harness) => {
-      const rows = [...groups[harness]]
-        .sort((a, b) => a.localeCompare(b))
-        .filter(matches)
-        .map(row)
-        .join("");
-      return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
-    })
-    .join("");
+  const displayGroups = pricingHarnessRows();
+  const sections = HARNESS_ORDER.map((harness) => {
+    const rows = displayGroups[harness]
+      .sort((left, right) => left.model.localeCompare(right.model))
+      .filter(matches)
+      .map(rowHtml)
+      .join("");
+    return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
+  }).join("");
   container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
 }
 
@@ -3045,8 +3459,10 @@ function openModelPricing(model) {
   state.modelPricingDraft = model;
   $("#modelPricingTitle").innerHTML =
     `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
-  $("#modelPricingNote").textContent = pricingModelNoteParts(entry).join("；");
+  const provenance = pricingProvenanceText(state.pricingCatalog?.automatic?.modelMetadata?.[model], getLocale());
+  $("#modelPricingNote").textContent = [...pricingModelNoteParts(entry), provenance].filter(Boolean).join("；");
   $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
+  updateModelPricingApplyState();
   // 原生顶层弹窗：showModal 负责置顶、焦点圈定，关闭时焦点自动还原。
   $("#modelPricingDialog").showModal();
 }
@@ -3059,10 +3475,10 @@ function closeModelPricing() {
 function applyModelPricing() {
   const model = state.modelPricingDraft;
   const entry = state.pricingCatalog?.models?.[model];
-  if (model && entry) {
-    for (const input of $("#modelPricingFields").querySelectorAll("input[data-model]")) {
-      writePricingField(entry, input.dataset.context, input.dataset.field, Number(input.value));
-    }
+  const inputs = $("#modelPricingFields").querySelectorAll("input[data-model]");
+  if (!model || !entry || !modelPricingInputsChanged(inputs)) return;
+  for (const input of inputs) {
+    writePricingField(entry, input.dataset.context, input.dataset.field, Number(input.value));
   }
   closeModelPricing();
   renderPricingModelList();
@@ -3077,6 +3493,9 @@ async function openPricingDialog() {
     const catalog = await response.json();
     if (!response.ok) throw new Error(localizeServerError(catalog, response.status));
     state.pricingCatalog = catalog;
+    state.restoreAutomaticExchangeRate = false;
+    renderAutomaticRateRestoreControl();
+    renderAutomaticPricingStatus(catalog.automatic, catalog.usageCoverage);
     state.pricingSearch = "";
     state.pricingScope = "used";
     $("#pricingSearch").value = "";
@@ -3097,9 +3516,30 @@ function closePricingDialog() {
   closeModelPricing();
   $("#pricingDialog").hidden = true;
   state.pricingCatalog = null;
+  state.restoreAutomaticExchangeRate = false;
+  renderAutomaticRateRestoreControl();
   state.pricingSearch = "";
   setPricingMessage("");
   $("#updatePricingButton").focus();
+}
+
+function restoreAutomaticExchangeRateDraft() {
+  const rate = Number(state.pricingCatalog?.automatic?.automaticUsdToCnyRate);
+  if (!(rate > 0)) {
+    setPricingMessage(
+      getLocale() === "en-US" ? "No automatic exchange rate is available." : "当前没有可恢复的自动汇率。",
+      true,
+    );
+    return;
+  }
+  state.restoreAutomaticExchangeRate = true;
+  $("#usdToCnyRate").value = String(rate);
+  renderAutomaticRateRestoreControl();
+  setPricingMessage(
+    getLocale() === "en-US"
+      ? "The automatic rate will take effect when you save. Cancel leaves the saved rate unchanged."
+      : "自动汇率将在保存后生效；取消不会改变已保存的汇率。",
+  );
 }
 
 async function submitPricing(event) {
@@ -3110,6 +3550,7 @@ async function submitPricing(event) {
     setPricingMessage("请填写大于 0 的美元兑人民币汇率。", true);
     return;
   }
+  const restoreAutomaticExchangeRate = state.restoreAutomaticExchangeRate === true;
   // 价格核对日期自动取保存当天，无需用户填写。
   const now = new Date();
   const checkedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -3120,7 +3561,13 @@ async function submitPricing(event) {
     const response = await fetch("/api/pricing", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ checkedAt, usdToCnyRate, models: structuredClone(state.pricingCatalog.models) }),
+      body: JSON.stringify({
+        version: state.pricingCatalog.version,
+        checkedAt,
+        usdToCnyRate,
+        restoreAutomaticExchangeRate,
+        models: structuredClone(state.pricingCatalog.models),
+      }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(localizeServerError(data, response.status));
@@ -3204,6 +3651,7 @@ function openImportDialog() {
     return;
   }
   const dialog = $("#importDialog");
+  importDialogOpener = document.activeElement;
   dialog.hidden = false;
   $("#importPath").value = "";
   setImportMessage("");
@@ -3236,6 +3684,21 @@ function setSourceOption(id, checked) {
 function closeImportDialog() {
   $("#importDialog").hidden = true;
   setImportMessage("");
+  importDialogOpener?.focus({ preventScroll: true });
+  importDialogOpener = null;
+}
+
+function trapDialogFocus(event, dialog) {
+  const controls = [...dialog.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")].filter(
+    (control) => !control.disabled && control.tabIndex >= 0 && control.getClientRects().length > 0,
+  );
+  if (!controls.length) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (!dialog.contains(document.activeElement) || document.activeElement === (event.shiftKey ? first : last)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
 }
 
 async function submitImportDirectory(event) {
@@ -3387,112 +3850,107 @@ function updateRecentControls() {
   }
 }
 
-function dateFieldKey(field) {
-  return field === "end" ? "endDate" : "startDate";
+function datePickerViewDate() {
+  return state.datePickerView || parseLocalDate(state.startDate) || new Date();
 }
 
-function dateInputForField(field) {
-  return field === "end" ? $("#endDate") : $("#startDate");
-}
-
-function datePickerForField(field) {
-  return field === "end" ? $("#endDatePicker") : $("#startDatePicker");
-}
-
-function datePickerButtonForField(field) {
-  return document.querySelector(`[data-date-picker-button="${field}"]`);
-}
-
-function datePickerViewDate(field) {
-  const selected = parseLocalDate(state[dateFieldKey(field)]);
-  if (selected) {
-    return selected;
-  }
-  if (state.datePickerViews[field]) {
-    return state.datePickerViews[field];
-  }
-  return new Date();
+function updateDateRangeControl() {
+  const button = $("#dateRangeButton");
+  if (!button) return;
+  // 只展示正在生效或正在挑选的范围；切回预设后旧的自定义日期保留在 state 里供下次预填，但不再显示。
+  const range = state.datePickerDraft || (state.preset === "custom" ? state : { startDate: "", endDate: "" });
+  $("#dateRangeStart").textContent = range.startDate || localizeText("年/月/日");
+  $("#dateRangeEnd").textContent = range.endDate || "";
+  $("#dateRangeEnd").hidden = !range.endDate;
+  $("#dateRangeSeparator").hidden = !range.endDate;
+  button.classList.toggle("has-range", Boolean(range.startDate));
+  button.classList.toggle("active", state.preset === "custom");
+  const label = [localizeText("打开日期范围日历"), range.startDate, range.endDate].filter(Boolean).join(" · ");
+  button.setAttribute("aria-label", label);
+  button.title = label;
 }
 
 function renderDatePicker(field) {
-  const picker = datePickerForField(field);
+  const picker = $("#dateRangePicker");
   if (!picker) {
     return;
   }
+  const range = state.datePickerDraft || state;
   picker.innerHTML = renderDatePickerHtml({
     field,
-    viewDate: datePickerViewDate(field),
-    selectedValue: state[dateFieldKey(field)],
+    viewDate: datePickerViewDate(),
+    startDate: range.startDate,
+    endDate: range.endDate,
   });
+  updateDateRangeControl();
 }
 
 function closeDatePickers() {
   state.datePickerField = "";
-  for (const field of ["start", "end"]) {
-    const picker = datePickerForField(field);
-    const button = datePickerButtonForField(field);
-    if (picker) {
-      picker.hidden = true;
-    }
-    if (button) {
-      button.setAttribute("aria-expanded", "false");
-    }
-  }
+  state.datePickerDraft = null;
+  $("#dateRangePicker").hidden = true;
+  $("#dateRangeButton").setAttribute("aria-expanded", "false");
+  updateDateRangeControl();
 }
 
-function setDatePickerOpen(field, open) {
+function setDatePickerOpen(open) {
   if (!open) {
     closeDatePickers();
     return;
   }
-  closeDatePickers();
-  state.datePickerField = field;
-  state.datePickerViews[field] = datePickerViewDate(field);
-  renderDatePicker(field);
-  const picker = datePickerForField(field);
-  const button = datePickerButtonForField(field);
-  if (picker) {
-    picker.hidden = false;
-  }
-  if (button) {
-    button.setAttribute("aria-expanded", "true");
-  }
+  setRecentMenuOpen(false);
+  state.datePickerDraft = { startDate: state.startDate, endDate: state.endDate };
+  state.datePickerView = monthStart(parseLocalDate(state.startDate) || new Date());
+  state.datePickerField = "start";
+  renderDatePicker("start");
+  $("#dateRangePicker").hidden = false;
+  $("#dateRangeButton").setAttribute("aria-expanded", "true");
 }
 
-function applyDateValue(field, value) {
-  const key = dateFieldKey(field);
-  state[key] = value;
-  const input = dateInputForField(field);
-  if (input) {
-    input.value = value;
-  }
-  state.preset = "custom";
+function applyDateRangeValues(startDate, endDate) {
+  state.startDate = startDate;
+  state.endDate = endDate;
+  Object.assign(state, nextPresetState(state, "custom"));
   clearQuotaNotice();
   updatePresetButtons();
   refreshViewForFilters();
 }
 
-function applyTypedDateValue(field, value) {
-  const normalized = normalizeDateInput(value);
-  if (normalized === null) {
-    return;
+function clearDateRangeSelection() {
+  // 清空正在挑选的草稿与已保存的自定义日期；若自定义范围已生效，过滤也一并撤掉，回到默认“今日”（与刷新页面等效）。
+  state.datePickerDraft = { startDate: "", endDate: "" };
+  state.datePickerField = "start";
+  state.startDate = "";
+  state.endDate = "";
+  if (state.preset === "custom") {
+    Object.assign(state, nextPresetState(state, "today"));
+    clearQuotaNotice();
+    updatePresetButtons();
+    updateRecentControls();
+    refreshViewForFilters();
   }
-  applyDateValue(field, normalized);
+  renderDatePicker("start");
+  $("#dateRangeButton").focus({ preventScroll: true });
 }
 
 function selectDatePickerDate(field, value) {
-  const date = parseLocalDate(value);
-  if (!date) {
+  const next = selectDateRange({ ...state.datePickerDraft, field }, value);
+  if (!next) return;
+  state.datePickerDraft = { startDate: next.startDate, endDate: next.endDate };
+  if (next.complete) {
+    applyDateRangeValues(next.startDate, next.endDate);
+    closeDatePickers();
+    $("#dateRangeButton").focus({ preventScroll: true });
     return;
   }
-  state.datePickerViews[field] = monthStart(date);
-  applyDateValue(field, dateKey(date));
-  closeDatePickers();
+  state.datePickerField = next.field;
+  renderDatePicker(next.field);
+  $("#dateRangePicker").querySelector(`[data-date="${next.startDate}"]`)?.focus({ preventScroll: true });
 }
 
 function shiftDatePickerMonth(field, offset) {
-  const current = datePickerViewDate(field);
-  state.datePickerViews[field] = new Date(current.getFullYear(), current.getMonth() + offset, 1);
+  const current = datePickerViewDate();
+  state.datePickerView = new Date(current.getFullYear(), current.getMonth() + offset, 1);
   renderDatePicker(field);
 }
 
@@ -3504,6 +3962,7 @@ function setRecentMenuOpen(open) {
   if (!menu || !input || !button || !segment) {
     return;
   }
+  if (open) closeDatePickers();
   menu.hidden = !open;
   input.setAttribute("aria-expanded", String(open));
   button.setAttribute("aria-expanded", String(open));
@@ -3528,6 +3987,7 @@ function activateRecentValue(value) {
   clearQuotaNotice();
   updatePresetButtons();
   updateRecentControls();
+  updateDateRangeControl();
   setRecentMenuOpen(false);
   refreshViewForFilters();
 }
@@ -3627,6 +4087,18 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     renderAutoRefreshControls();
     updateQuotaPresetButton();
     render();
+    if (!embeddedReport && !$("#pricingDialog").hidden && state.pricingCatalog) {
+      try {
+        const response = await fetch("/api/pricing");
+        if (response.ok) {
+          const latest = await response.json();
+          state.pricingCatalog.usageCoverage = latest.usageCoverage;
+          state.pricingCatalog.automatic = latest.automatic;
+          renderAutomaticPricingStatus(latest.automatic, latest.usageCoverage);
+          renderPricingModelList();
+        }
+      } catch {}
+    }
   } catch (error) {
     if (loadId === state.usageLoadId && error.status === 410 && state.snapshotId && !state.autoRefreshEnabled) {
       state.snapshotId = null;
@@ -3704,7 +4176,7 @@ function refreshViewForFilters() {
 function updateCalendarZoneSelect() {
   const select = $("#calendarZoneSelect");
   const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai" ? "UTC+8" : "本地时间";
+  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai" ? "GMT+8" : "本地时间";
   select.value = state.calendarZone;
 }
 
@@ -3733,6 +4205,7 @@ function bootDashboard() {
     state.calendarZone = "local";
   }
   updateCalendarZoneSelect();
+  updateDateRangeControl();
   setupUsageTooltip();
   updateLanguageButton();
   $("#languageToggle").addEventListener("click", () => {
@@ -3740,6 +4213,7 @@ function bootDashboard() {
   });
 
   $("#quotaPresetToggle").addEventListener("click", toggleQuotaPreset);
+  $("#dateRangeButton").addEventListener("click", () => setDatePickerOpen(!state.datePickerField));
 
   $("#calendarZoneSelect").addEventListener("change", (event) => {
     const zone = event.target.value;
@@ -3749,6 +4223,7 @@ function bootDashboard() {
       window.localStorage.setItem("codexUsageCalendarZoneV2", zone);
     } catch {}
     updateCalendarZoneSelect();
+    renderAutoRefreshControls();
     refreshViewForFilters();
   });
 
@@ -3757,6 +4232,7 @@ function bootDashboard() {
     if (!button) {
       return;
     }
+    closeDatePickers();
     const next = nextPresetState(state, button.dataset.preset);
     state.preset = next.preset;
     state.bucket = next.bucket;
@@ -3764,45 +4240,42 @@ function bootDashboard() {
     clearQuotaNotice();
     updatePresetButtons();
     updateRecentControls();
+    updateDateRangeControl();
     refreshViewForFilters();
   });
 
   $("#bucketSelect")?.remove(); // 粒度选择已移除，粒度随范围自动推导。
 
-  for (const field of ["start", "end"]) {
-    const input = dateInputForField(field);
-    const button = datePickerButtonForField(field);
-    const picker = datePickerForField(field);
-    input.addEventListener("change", (event) => {
-      applyTypedDateValue(field, event.target.value);
-    });
-    input.addEventListener("focus", () => setDatePickerOpen(field, true));
-    input.addEventListener("click", () => setDatePickerOpen(field, true));
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeDatePickers();
-      }
-    });
-    button.addEventListener("click", (event) => {
+  $("#dateRangePicker").addEventListener("click", (event) => {
+    const clear = event.target.closest("[data-date-picker-clear]");
+    if (clear) {
       event.stopPropagation();
-      setDatePickerOpen(field, state.datePickerField !== field);
-      input.focus();
-    });
-    picker.addEventListener("click", (event) => {
-      const nav = event.target.closest("[data-date-picker-action]");
-      if (nav) {
-        event.stopPropagation();
-        shiftDatePickerMonth(field, nav.dataset.datePickerAction === "next" ? 1 : -1);
-        return;
+      if (!clear.disabled) {
+        clearDateRangeSelection();
       }
-      const day = event.target.closest("[data-date]");
-      if (!day) {
-        return;
-      }
+      return;
+    }
+    const field = state.datePickerField || "start";
+    const nav = event.target.closest("[data-date-picker-action]");
+    if (nav) {
       event.stopPropagation();
-      selectDatePickerDate(field, day.dataset.date);
-    });
-  }
+      shiftDatePickerMonth(field, nav.dataset.datePickerAction === "next" ? 1 : -1);
+      $("#dateRangePicker")
+        .querySelector(`[data-date-picker-action="${nav.dataset.datePickerAction}"]`)
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    const day = event.target.closest("[data-date]");
+    if (!day) return;
+    event.stopPropagation();
+    selectDatePickerDate(field, day.dataset.date);
+  });
+  $(".toolbar").addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.datePickerField) {
+      closeDatePickers();
+      $("#dateRangeButton").focus({ preventScroll: true });
+    }
+  });
 
   $("#recentValue").addEventListener("change", (event) => {
     activateRecentValue(event.target.value);
@@ -3840,7 +4313,7 @@ function bootDashboard() {
     if (!event.target.closest(".recent-segment")) {
       setRecentMenuOpen(false);
     }
-    if (!event.target.closest(".date-input-wrap")) {
+    if (!event.target.closest("#dateRangePicker, #dateRangeButton")) {
       closeDatePickers();
     }
   });
@@ -3854,8 +4327,15 @@ function bootDashboard() {
   });
 
   $("#updatePricingButton").addEventListener("click", openPricingDialog);
+  $("#refreshPricingButton").addEventListener("click", () => void refreshPricingAutomatically(true));
   $("#pricingForm").addEventListener("submit", submitPricing);
   $("#cancelPricingButton").addEventListener("click", closePricingDialog);
+  $("#restoreAutomaticRateButton").addEventListener("click", restoreAutomaticExchangeRateDraft);
+  $("#usdToCnyRate").addEventListener("input", () => {
+    if (!state.restoreAutomaticExchangeRate) return;
+    state.restoreAutomaticExchangeRate = false;
+    renderAutomaticRateRestoreControl();
+  });
   $("#pricingDialog").addEventListener("click", (event) => {
     if (event.target.id === "pricingDialog") closePricingDialog();
   });
@@ -3871,11 +4351,17 @@ function bootDashboard() {
     renderPricingModelList();
   });
   $("#pricingModelList").addEventListener("click", (event) => {
+    if (event.target.closest("[data-pricing-rematch]")) {
+      void refreshPricingAutomatically(true);
+      return;
+    }
     const row = event.target.closest("[data-pricing-model]");
     if (!row) return;
     openModelPricing(row.dataset.pricingModel);
   });
   $("#applyModelPricingButton").addEventListener("click", applyModelPricing);
+  $("#modelPricingFields").addEventListener("input", updateModelPricingApplyState);
+  $("#modelPricingFields").addEventListener("change", updateModelPricingApplyState);
   $("#cancelModelPricingButton").addEventListener("click", closeModelPricing);
   $("#modelPricingDialog").addEventListener("click", (event) => {
     if (event.target.id === "modelPricingDialog") closeModelPricing();
@@ -3952,6 +4438,10 @@ function bootDashboard() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Tab" && !$("#modelPricingDialog").open) {
+      const dialog = [$("#pricingDialog"), $("#importDialog")].find((candidate) => !candidate.hidden);
+      if (dialog) trapDialogFocus(event, dialog);
+    }
     if (event.key === "Escape") {
       setRecentMenuOpen(false);
     }
@@ -3997,7 +4487,11 @@ function bootDashboard() {
   $("#updatePricingButton").disabled = isStaticSnapshot();
   $("#updatePricingButton").title = isStaticSnapshot() ? "静态快照无法更新计价标准；请启动本地服务" : "";
   setImportControlsDisabled(isStaticSnapshot());
-  void loadUsage().then(startAutoRefresh);
+  void loadUsage().then(() => {
+    startAutoRefresh();
+    void refreshPricingAutomatically();
+  });
+  if (!isStaticSnapshot()) setInterval(() => void refreshPricingAutomatically(), 60 * 60 * 1000);
 }
 
 if (typeof document !== "undefined") {

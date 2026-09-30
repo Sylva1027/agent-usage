@@ -1,5 +1,8 @@
 :root {
   color-scheme: light;
+  --ui-font-sans:
+    Inter, "Noto Sans SC", "Microsoft YaHei UI", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --bg: #dfe4e9;
   --panel: #ffffff;
   --control: #ffffff;
@@ -48,13 +51,28 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--ui-font-sans);
+  font-variant-numeric: lining-nums;
 }
 
 button,
 input,
 select {
   font: inherit;
+}
+
+input::placeholder {
+  color: color-mix(in srgb, var(--muted) 76%, transparent);
+  opacity: 1;
+}
+
+.metric strong,
+.comparison-total-button,
+.comparison-table tfoot td,
+.pricing-context input,
+#lastSuccessfulCheck,
+#autoRefreshInterval {
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 html[data-i18n-pending] body {
@@ -92,6 +110,11 @@ button:disabled {
   gap: 10px;
   flex-wrap: nowrap;
   flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--ceramic-top), var(--neo-surface) 55%, var(--ceramic-bottom));
+  box-shadow: var(--neo-raised);
 }
 
 h1,
@@ -122,21 +145,34 @@ label {
 }
 
 #autoRefreshStatus {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .auto-refresh-status {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "heading toggle"
+    "last zone"
+    "error error";
   align-items: center;
-  gap: 4px 10px;
-  min-height: 20px;
+  gap: 8px 12px;
+  align-content: center;
 }
 
 .auto-refresh-heading {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  grid-area: heading;
+}
+
+#autoRefreshToggle {
+  grid-area: toggle;
+}
+
+#lastSuccessfulCheck {
+  grid-area: last;
 }
 
 .auto-refresh-label {
@@ -149,7 +185,8 @@ label {
   border: 0;
   border-radius: 3px;
   background: transparent;
-  color: var(--green);
+  /* 开=主题青（--record），关=主题橙（--red 在本主题中为橙色） */
+  color: var(--record);
   font-size: inherit;
   font-weight: 650;
   text-decoration: underline;
@@ -157,8 +194,21 @@ label {
   cursor: pointer;
 }
 
+#calendarZoneSelect {
+  grid-area: zone;
+  width: auto;
+  min-width: 82px;
+  justify-self: end;
+}
+
+.auto-refresh-error {
+  grid-area: error;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 #autoRefreshToggle[aria-pressed="false"] {
-  color: var(--gold);
+  color: var(--red);
 }
 
 #autoRefreshToggle:focus-visible,
@@ -168,9 +218,13 @@ label {
   outline-offset: 2px;
 }
 
-#autoRefreshInterval,
-#lastSuccessfulCheck {
+#autoRefreshInterval {
   white-space: nowrap;
+}
+
+#lastSuccessfulCheck {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .auto-refresh-error.is-error {
@@ -310,7 +364,8 @@ label {
   height: 22px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.6;
+  /* 1.6 的 1.5 倍,线条加粗 1/2 */
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 1;
@@ -336,15 +391,19 @@ label {
 
 #themeToggle .theme-sun {
   stroke: var(--toggle-selected);
+  filter: var(--button-icon-glow);
 }
 #themeToggle .theme-moon {
   stroke: var(--toggle-muted);
+  filter: none;
 }
 [data-theme="dark"] #themeToggle .theme-sun {
   stroke: var(--toggle-muted);
+  filter: none;
 }
 [data-theme="dark"] #themeToggle .theme-moon {
   stroke: var(--toggle-selected);
+  filter: var(--button-icon-glow);
 }
 
 .theme-toggle:hover svg {
@@ -352,7 +411,6 @@ label {
 }
 
 .theme-toggle.active {
-  background: transparent;
   color: var(--green);
 }
 
@@ -394,16 +452,15 @@ label {
 }
 
 .toolbar {
-  display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: 14px;
-  padding: 14px;
-  margin-bottom: 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 0;
+  margin-bottom: 20px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .control-group {
@@ -415,6 +472,7 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 18px;
   gap: 12px;
   padding-right: 6px;
 }
@@ -477,23 +535,16 @@ label {
   white-space: nowrap;
 }
 
-html[lang="en-US"] #presetButtons > button[data-preset]:not([data-preset="recent"]) {
-  flex-basis: auto;
-  width: auto;
-  min-width: 76px;
-  padding-inline: 12px;
-}
-
 #presetButtons > .quota-preset-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  flex: 0 0 102px;
-  width: 102px;
+  flex: 0 0 76px;
+  width: 76px;
   padding: 0;
   overflow: hidden;
-  gap: 8px;
+  gap: 6px;
   white-space: nowrap;
 }
 
@@ -550,46 +601,39 @@ html[lang="en-US"] #presetButtons > button[data-preset]:not([data-preset="recent
   display: none;
 }
 
-.custom-range {
-  grid-template-columns: repeat(2, minmax(130px, 1fr));
-}
-
-.date-input-wrap {
+.range-controls {
   position: relative;
-  display: block;
+  min-width: 0;
 }
 
-.date-input-wrap input {
-  width: 100%;
-  padding-right: 38px;
+.toolbar > .control-group {
+  min-width: 0;
+  padding: 13px 16px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--ceramic-top), var(--neo-surface) 55%, var(--ceramic-bottom));
+  box-shadow: var(--neo-raised);
 }
 
-.date-picker-button {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 34px;
-  height: 34px;
+.topbar {
+  padding: 0;
+  margin-bottom: 14px;
   border: 0;
-  border-left: 1px solid var(--line);
-  border-radius: 0 6px 6px 0;
   background: transparent;
-  color: var(--muted);
+  box-shadow: none;
 }
 
-.date-picker-button::before {
-  content: "";
-  position: absolute;
-  inset: 9px;
-  border: 2px solid currentColor;
-  border-top-width: 4px;
-  border-radius: 2px;
-}
-
-.date-picker-button:hover,
-.date-picker-button:focus-visible {
-  background: var(--track);
+.topbar > h1 {
+  padding: 9px 16px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 18px;
   color: var(--ink);
+  letter-spacing: 0.025em;
+  text-shadow:
+    -1px -1px 0 var(--ceramic-rim),
+    1px 1px 1.5px var(--ceramic-shade);
+  background: linear-gradient(135deg, var(--ceramic-top), var(--neo-surface) 55%, var(--ceramic-bottom));
+  box-shadow: var(--neo-inset);
 }
 
 .date-picker-popover {
@@ -1047,8 +1091,18 @@ input[type="checkbox"]:checked::after {
   min-width: 0;
 }
 
+.period-comparison-heading {
+  flex-wrap: wrap;
+}
+
 .period-comparison-heading input {
   width: min(180px, 100%);
+}
+
+html[lang="en-US"] #repositoryComparisonSearch {
+  flex: 0 0 auto;
+  width: 224px;
+  max-width: 100%;
 }
 
 .comparison-as-of {
@@ -1501,6 +1555,7 @@ input[type="checkbox"]:checked::after {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  padding: 9px 2px;
   cursor: pointer;
 }
 
@@ -1519,10 +1574,30 @@ input[type="checkbox"]:checked::after {
 .source-option-label {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.source-option-label strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-option-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.source-option-meta .home-status {
+  font-size: 11px;
 }
 
 .source-option-path {
@@ -1533,11 +1608,9 @@ input[type="checkbox"]:checked::after {
   font-size: 11px;
 }
 
-.source-option-count {
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.source-option.excluded .source-option-label strong,
+.source-option.excluded .source-option-path {
+  opacity: 0.55;
 }
 
 .home-excluded {
@@ -1556,6 +1629,21 @@ input[type="checkbox"]:checked::after {
   width: min(900px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
+}
+
+.pricing-auto-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.pricing-status-stack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .pricing-rows {
@@ -1647,18 +1735,80 @@ input[type="checkbox"]:checked::after {
   border-color: var(--blue);
 }
 
-.pricing-model-name {
-  font-weight: 700;
+.pricing-model-unpriced {
+  flex-wrap: wrap;
+  cursor: default;
+}
+
+.pricing-model-unpriced:hover {
+  border-color: var(--line);
+}
+
+.pricing-state-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
   white-space: nowrap;
+}
+
+.pricing-state-badge.missing {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.pricing-state-badge.free {
+  border-color: var(--muted);
+}
+
+.pricing-rematch-button {
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.pricing-model-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.pricing-model-id {
+  overflow-wrap: anywhere;
 }
 
 /* 币种徽标（USD / CNY）：小号灰字，与名称保持间距。 */
 .currency-badge {
-  margin-left: 10px;
   font-size: 11px;
   font-weight: 400;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.pricing-match-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pricing-match-badge.auto {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.pricing-match-badge.manual {
+  border-color: var(--muted);
 }
 
 .pricing-model-hint {
@@ -1739,6 +1889,17 @@ input[type="checkbox"]:checked::after {
 .pricing-context input {
   width: 100%;
   min-width: 0;
+}
+
+#modelPricingDialog input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+#modelPricingDialog input[type="number"]::-webkit-inner-spin-button,
+#modelPricingDialog input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 @media (max-width: 640px) {
@@ -1852,8 +2013,9 @@ input[type="checkbox"]:checked::after {
   }
 
   .topbar {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .topbar-actions {
@@ -1863,8 +2025,7 @@ input[type="checkbox"]:checked::after {
   .metrics,
   .comparison-strip,
   .main-grid,
-  .period-comparison-grid,
-  .custom-range {
+  .period-comparison-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1925,12 +2086,12 @@ input[type="checkbox"]:checked::after {
 
 /* Ceramic instrument surfaces: one upper-left light source in both themes. */
 :root {
-  --bg: #dbe2e8;
+  --bg: #cfd8e1;
   --panel: #edf2f7;
   --control: #edf2f7;
   --track: #e3eaf1;
   --neo-surface: #dbe2e8;
-  --neo-glow: color-mix(in srgb, var(--bg) 92%, transparent);
+  --neo-glow: #e7edf3;
   --neo-edge: color-mix(in srgb, var(--bg) 70%, transparent);
   --neo-raised: 7px 7px 16px rgba(149, 165, 183, 0.28), -7px -7px 16px var(--neo-glow);
   --neo-raised-small: 4px 4px 9px rgba(149, 165, 183, 0.28), -4px -4px 9px var(--neo-glow);
@@ -1941,11 +2102,12 @@ input[type="checkbox"]:checked::after {
 }
 
 [data-theme="dark"] {
-  --bg: #292f35;
+  --bg: #20252b;
   --panel: #1b2229;
   --control: #1b2229;
   --track: #252e37;
   --neo-surface: #292f35;
+  --neo-glow: #3c454e;
   --neo-edge: rgba(255, 255, 255, 0.045);
   --neo-raised: 0 6px 14px rgba(0, 0, 0, 0.22);
   --neo-raised-small: 0 3px 8px rgba(0, 0, 0, 0.24);
@@ -1978,7 +2140,8 @@ input[type="checkbox"]:checked::after {
 }
 
 .toolbar {
-  padding: 18px;
+  padding: 0;
+  border-radius: 0;
 }
 
 .metric,
@@ -2106,11 +2269,6 @@ select:focus-visible {
   box-shadow: none;
 }
 
-.date-picker-button {
-  border-left-color: var(--line);
-  border-radius: 0 10px 10px 0;
-}
-
 .date-picker-popover,
 .recent-range-menu,
 .usage-tooltip {
@@ -2221,23 +2379,48 @@ select:focus-visible {
   padding-top: 28px;
 }
 .topbar,
-.toolbar,
 .panel,
 .metric,
 .comparison-item,
 .dialog {
   background: linear-gradient(135deg, var(--ceramic-top), var(--neo-surface) 45%, var(--ceramic-bottom));
 }
-.topbar,
-.toolbar,
+.topbar > h1,
+.topbar-actions,
 .panel {
   box-shadow: var(--neo-raised);
 }
-.topbar {
-  margin-bottom: 24px;
-}
 .toolbar {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+.topbar {
+  padding: 0;
+  margin-bottom: 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.topbar > h1 {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: color-mix(in srgb, var(--ink) 88%, var(--neo-surface));
+  text-shadow:
+    -1px -1px 1px var(--ceramic-shade),
+    1px 1px 1px var(--ceramic-rim);
+  background: transparent;
+  box-shadow: none;
+}
+.topbar-actions {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.pricing-restore-rate[aria-pressed="true"] {
+  color: var(--blue);
+  box-shadow: var(--neo-inset-small);
 }
 .metrics,
 .comparison-strip {
@@ -2376,6 +2559,16 @@ button:disabled {
   transform: none;
   box-shadow: none;
 }
+
+#modelPricingDialog #applyModelPricingButton:disabled,
+#modelPricingDialog #applyModelPricingButton:disabled:hover {
+  border-color: var(--line);
+  background: var(--control);
+  color: var(--muted);
+  box-shadow: var(--neo-inset-small);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 @media (max-width: 720px) {
   .metrics,
   .comparison-strip,
@@ -2456,6 +2649,16 @@ button:disabled {
   background: var(--ceramic-well);
   box-shadow: var(--neo-inset);
 }
+.source-picker {
+  gap: 0;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset);
+  --ridge-height: 3px;
+  --ridge-inset: 12px;
+}
 .home-list .home-row {
   position: relative;
   padding: 14px 4px;
@@ -2464,18 +2667,43 @@ button:disabled {
   background: transparent;
   box-shadow: none;
 }
-.home-list .home-row + .home-row::before {
+.home-list .home-row + .home-row::before,
+.source-picker .source-option + .source-option::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 20px;
-  right: 20px;
-  height: 4px;
+  /* 横杠两端各内收原长的 10%,总长缩短 20%,保持居中 */
+  left: calc(var(--ridge-inset, 20px) + (100% - 2 * var(--ridge-inset, 20px)) * 0.1);
+  right: calc(var(--ridge-inset, 20px) + (100% - 2 * var(--ridge-inset, 20px)) * 0.1);
+  height: var(--ridge-height, 4px);
   border-radius: 999px;
   background: linear-gradient(to bottom, var(--ceramic-top), var(--ceramic-bottom));
   box-shadow:
     0 2px 3px var(--ceramic-shade),
     inset 0 1px 0 var(--ceramic-rim);
+  pointer-events: none;
+}
+.source-picker .source-option {
+  position: relative;
+}
+
+.segmented > :is(button, .recent-segment) + :is(button, .recent-segment) {
+  position: relative;
+}
+
+.segmented > :is(button, .recent-segment) + :is(button, .recent-segment)::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--ceramic-rim), var(--ceramic-shade));
+  box-shadow:
+    0 1px 2px var(--ceramic-shade),
+    inset 0 0 1px var(--ceramic-rim);
+  pointer-events: none;
 }
 .metric .metric-new {
   top: 13px;
@@ -2487,47 +2715,194 @@ button:disabled {
   box-shadow: 0 0 6px color-mix(in srgb, var(--record) 55%, transparent);
   font-size: 0;
 }
-.toolbar .date-input-wrap .date-picker-button {
-  top: 7px;
-  right: 7px;
-  width: 38px;
-  height: calc(var(--range-control-height) - 14px);
+.toolbar {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  --range-control-height: 52px;
+  align-items: start;
+}
+.date-range-controls {
+  position: relative;
+  flex: 0 0 240px;
+  width: 240px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.date-range-controls .range-heading {
+  padding-right: 0;
+}
+
+.date-range-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: var(--range-control-height);
+  padding: 7px 8px 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset);
+  cursor: pointer;
+}
+
+.date-range-button:focus-visible {
+  outline: none;
+}
+
+.date-range-button:not(:disabled):active {
+  transform: none;
+}
+
+.date-range-values {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-range-values > span {
+  font-size: 12px;
+}
+
+.date-range-button.has-range #dateRangeStart {
+  color: var(--blue);
+}
+
+.date-range-button.has-range #dateRangeEnd {
+  color: var(--red);
+}
+
+.date-range-button .date-range-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  height: 36px;
   border: 1px solid transparent;
   border-top-color: var(--ceramic-rim);
   border-radius: 10px;
   background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
   box-shadow: var(--neo-raised-small);
+  color: var(--muted);
 }
-.toolbar .date-input-wrap .date-picker-button:active,
-.toolbar .date-input-wrap .date-picker-button[aria-expanded="true"] {
-  background: var(--ceramic-well);
-  box-shadow: var(--neo-inset-small);
+
+.date-range-button .date-range-icon svg {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.toolbar {
-  --range-control-height: 52px;
-  align-items: start;
+
+.date-range-button:is(.active, :hover, :focus-visible, [aria-expanded="true"]) .date-range-icon {
+  color: var(--blue);
 }
-.toolbar .date-input-wrap input {
-  height: var(--range-control-height);
-  padding-right: 52px;
-  border-radius: 16px;
+
+.date-range-button:is(.active, :hover, :focus-visible, [aria-expanded="true"]) .date-range-icon svg {
+  filter: var(--button-icon-glow);
 }
-.toolbar .custom-range > label {
-  gap: 8px;
+
+.date-range-controls .date-picker-popover {
+  width: min(324px, calc(100vw - 72px));
 }
-.toolbar .date-picker-button {
-  height: calc(var(--range-control-height) - 2px);
-  border-radius: 0 15px 15px 0;
+
+.date-picker-day.in-range {
+  background: color-mix(in srgb, var(--blue) 9%, var(--ceramic-well));
+  box-shadow: none;
 }
-.toolbar .date-picker-button::before {
-  top: 50%;
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  transform: translate(-50%, -50%);
+
+.date-picker-day.range-start {
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent);
+  background: color-mix(in srgb, var(--blue) 13%, var(--ceramic-well));
+  color: var(--blue);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--blue) 35%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--blue) 30%, transparent);
+}
+
+.date-picker-day.range-end {
+  border-color: color-mix(in srgb, var(--red) 60%, transparent);
+  background: color-mix(in srgb, var(--red) 13%, var(--ceramic-well));
+  color: var(--red);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--red) 35%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.date-picker-day.range-start.range-end {
+  border-color: transparent;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--blue) 20%, var(--ceramic-well)),
+    color-mix(in srgb, var(--red) 20%, var(--ceramic-well))
+  );
+  color: var(--ink);
+  box-shadow:
+    -3px 0 9px color-mix(in srgb, var(--blue) 35%, transparent),
+    3px 0 9px color-mix(in srgb, var(--red) 35%, transparent);
+}
+
+.date-picker-hint {
+  font-size: 12px;
+  text-align: center;
+  color: var(--blue);
+}
+
+.date-picker-hint.picking-end {
+  color: var(--red);
+}
+
+.date-picker-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin-top: 12px;
+}
+
+/* 提示语横跨整行实现真居中；清除按钮叠加在同一行右侧，不挤占中心位置 */
+.date-picker-footer .date-picker-hint {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.date-picker-clear {
+  grid-column: 2;
+  grid-row: 1;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-top-color: var(--ceramic-rim);
+  border-bottom-color: var(--ceramic-shade);
+  border-radius: 9px;
+  background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
+  box-shadow:
+    0 2px 2px var(--ceramic-shade),
+    var(--neo-raised-small);
+  color: var(--muted);
+  font-size: 12px;
+  transition:
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.date-picker-clear:not(:disabled):is(:hover, :focus-visible) {
+  color: var(--red);
+  text-shadow: 0 0 3px color-mix(in srgb, var(--red) 45%, transparent);
+}
+
+.date-picker-clear:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 #presetButtons {
   min-height: var(--range-control-height);
@@ -2586,33 +2961,78 @@ button:disabled {
 }
 .chart-panel .timeline-mode-select > button {
   min-height: 36px;
-  width: 85px;
-  flex: 0 0 85px;
+  width: 76px;
+  flex: 0 0 76px;
 }
 
-/* Share the six metric-column boundaries with the range controls on wide screens. */
-@media (min-width: 1240px) {
+/* Match the calendar icon's glow on the selected or interactive button content. */
+:root {
+  --button-glow-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  --button-label-glow: 0 0 3px var(--button-glow-color);
+  --button-icon-glow: drop-shadow(0 0 3px var(--button-glow-color));
+}
+
+#presetButtons > button[data-preset]:not(:disabled):is(.active, :hover, :focus-visible, [aria-expanded="true"]),
+#timelineModes > button:not(:disabled):is(.active, [aria-pressed="true"], :hover, :focus-visible),
+.recent-range-menu button:not(:disabled):is([aria-selected="true"], :hover, :focus-visible) {
+  color: var(--blue);
+  text-shadow: var(--button-label-glow);
+}
+
+#presetButtons > .quota-preset-toggle:not(:disabled) .quota-preset-mode.is-selected,
+#presetButtons > .quota-preset-toggle:not(:disabled):not(.active):is(:hover, :focus-visible) .quota-preset-mode {
+  color: var(--blue);
+  text-shadow: var(--button-label-glow);
+}
+
+.recent-segment:is(.active, :hover, :focus-within, .menu-open) .recent-segment-input {
+  color: var(--blue);
+  text-shadow: var(--button-label-glow);
+}
+
+#presetButtons .recent-segment:is(.active, :hover, :focus-within, .menu-open) .recent-menu-button {
+  color: var(--blue);
+}
+
+.recent-segment:is(.active, :hover, :focus-within, .menu-open) .recent-menu-button::before {
+  filter: var(--button-icon-glow);
+}
+
+.language-toggle > .is-selected {
+  text-shadow: var(--button-label-glow);
+}
+
+#themeToggle svg {
+  overflow: visible;
+}
+
+/* Keep the range, date and refresh controls in three compact, separate wells. */
+@media (min-width: 1180px) {
   .toolbar {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    column-gap: 20px;
-    padding-inline: 0;
+    grid-template-columns: minmax(510px, 1.35fr) minmax(220px, 0.65fr) minmax(340px, 1fr);
+    gap: 12px;
   }
-  .toolbar > .control-group:first-child {
-    grid-column: 1 / span 3;
-    min-width: 0;
-    padding-left: 18px;
+  .toolbar > .range-controls {
+    grid-column: 1;
   }
-  .toolbar > .custom-range {
-    grid-column: 4 / span 2;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
-    min-width: 0;
+  .toolbar > .date-range-controls {
+    grid-column: 2;
+    width: auto;
+    flex: none;
+  }
+  .toolbar > .auto-refresh-status {
+    grid-column: 3;
+  }
+  .date-range-controls .date-picker-popover {
+    left: auto;
+    right: 0;
   }
   #presetButtons {
     flex-wrap: nowrap;
     min-width: 0;
   }
+  .toolbar #presetButtons > .quota-preset-toggle,
   .toolbar #presetButtons > button[data-preset] {
     flex: 1 1 0;
     width: auto;
@@ -2623,37 +3043,127 @@ button:disabled {
     flex: 0 0 106px;
     min-width: 0;
   }
+  /* 时间分布控件与范围控件同构：容器取面板标题行的固定比例，按钮等分拉伸，
+     使按钮宽度与范围控件在常见窗口宽度下保持一致（1280-1600+ 误差 ≤2px）。 */
+  .chart-panel .timeline-mode-select {
+    width: 38%;
+  }
+  .chart-panel .timeline-mode-select > button {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    padding-inline: 4px;
+  }
 }
 
 html[lang="en-US"] #presetButtons > .recent-segment {
   flex: 0 0 126px;
 }
 
-@media (min-width: 1240px) and (max-width: 1499px) {
-  html[lang="en-US"] .toolbar {
-    display: flex;
-    padding-inline: 18px;
+@media (max-width: 1179px) {
+  #presetButtons {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
   }
-  html[lang="en-US"] .toolbar > .control-group:first-child {
-    padding-left: 0;
+  #presetButtons > .quota-preset-toggle,
+  #presetButtons > button[data-preset] {
+    grid-column: span 1;
+    width: auto;
+    min-width: 0;
+    padding-inline: 2px;
+    flex: none;
   }
-  html[lang="en-US"] #presetButtons {
-    flex-wrap: wrap;
+  #presetButtons > .recent-segment {
+    grid-column: span 2;
+    min-width: 0;
+    width: auto;
+    flex: none;
   }
-  html[lang="en-US"] .toolbar #presetButtons > button[data-preset] {
-    flex: 0 0 auto;
-    min-width: 76px;
-    padding-inline: 10px;
+}
+
+/* Keep both full dates readable when a single metric column becomes narrow. */
+@media (min-width: 1180px) and (max-width: 1459px) {
+  .date-range-values {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    line-height: 15px;
+  }
+  #dateRangeSeparator {
+    display: none;
   }
 }
 
 @media (max-width: 720px) {
-  .toolbar,
+  #presetButtons {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(126px, 1.4fr);
+    gap: 7px;
+  }
+  #presetButtons > .recent-segment {
+    grid-column: span 1;
+  }
+  #presetButtons > button:nth-child(4)::before {
+    content: none;
+  }
   .panel,
   .dialog {
     padding: 18px;
   }
+  .toolbar > .control-group {
+    padding: 16px;
+  }
   .timeline-chart-well {
     padding: 8px;
+  }
+}
+
+/* Keep spacing in the data-source dialog deliberate, including its empty status line. */
+#importDialog .dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 24px;
+}
+
+#importForm {
+  gap: 0;
+}
+
+#importForm .dialog-copy {
+  margin-top: 14px;
+}
+
+#importForm .source-picker-field {
+  margin-top: 20px;
+}
+
+#importForm .source-picker {
+  margin-top: 10px;
+}
+
+#importForm > label {
+  gap: 8px;
+  margin-top: 20px;
+}
+
+#importForm .dialog-message {
+  margin-top: 14px;
+}
+
+#importForm .dialog-message:empty {
+  margin-top: 0;
+}
+
+#importForm .dialog-actions {
+  margin-top: 24px;
+}
+
+#importForm .dialog-message:not(:empty) + .dialog-actions {
+  margin-top: 18px;
+}
+
+@media (max-width: 720px) {
+  #importDialog .dialog {
+    padding: 20px;
   }
 }

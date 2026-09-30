@@ -172,11 +172,15 @@ export function resolveNamedRecentRange(value, now, quota, calendarZone = "local
   };
 }
 
+// 限额窗口只衡量 Codex 用量：ZCode / DSH / 项目日志来源没有 Codex 限额数据，
+// 选中它们不应点亮限额按钮。
+const NON_CODEX_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "project-log", "unsupported"]);
+
 export function hasSelectedCodexSource(homes = [], excludedIds = []) {
   const excluded = new Set(excludedIds.map(String));
   return homes.some(
     (home) =>
-      !excluded.has(String(home.id)) && !["zcode", "unsupported"].includes(home.kind) && home.status !== "unsupported",
+      !excluded.has(String(home.id)) && !NON_CODEX_SOURCE_KINDS.includes(home.kind) && home.status !== "unsupported",
   );
 }
 

@@ -30,15 +30,14 @@ export const state = {
   repositoryComparisonSort: { period: "today", direction: "desc", showIndicator: false },
   expandedPeriodCell: null,
   datePickerField: "",
+  datePickerView: null,
+  datePickerDraft: null,
   pricingCatalog: null,
   excludedHomes: [],
   usdToCnyRate: 6.72,
   costScaleTarget: "USD",
   pricingSearch: "",
   pricingScope: "used",
+  restoreAutomaticExchangeRate: false,
   modelPricingDraft: null,
-  datePickerViews: {
-    start: null,
-    end: null,
-  },
 };

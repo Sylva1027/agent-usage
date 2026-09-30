@@ -22,6 +22,14 @@ import {
   validateUsageDetails,
 } from "../public/usage-fields.js";
 import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
+import { dshSessionFiles, dshHomeLooksUsable, parseDshSessions, streamDshSessionEvents } from "./dsh-usage.js";
+import {
+  opencodeDatabaseFiles,
+  opencodeHomeLooksUsable,
+  opencodeSourceStat,
+  parseOpencodeDb,
+  streamOpencodeDbEvents,
+} from "./opencode-usage.js";
 import { buildTimelineRows, deriveTimelineBucket, resolveNamedRecentRange } from "../public/timeline-utils.js";
 import {
   COMPARISON_PERIOD_KEYS,
@@ -291,19 +299,36 @@ function optionImportDirs(options = {}) {
 
 export async function classifyImportDirectory(importPath) {
   const resolved = path.resolve(importPath);
-  if (await codexHomeLooksUsable(resolved)) {
-    return {
-      type: "codex-home",
-      path: resolved,
-    };
-  }
-
+  // ZCode、DSH 与 OpenCode 的判据更具体，必须先于 Codex 判断。
+  // codexHomeLooksUsable 只看「有没有 sessions 目录」，而 ~/.dsh/sessions 恰好同名，
+  // 若先判 Codex，DSH home 会被误判成 codex-home。
   const zcodeDbFile = await zcodeDatabaseFile(resolved);
   if (zcodeDbFile) {
     return {
       type: "zcode-home",
       path: resolved,
       dbFile: zcodeDbFile,
+    };
+  }
+
+  if (await dshHomeLooksUsable(resolved)) {
+    return {
+      type: "dsh-home",
+      path: resolved,
+    };
+  }
+
+  if (await opencodeHomeLooksUsable(resolved)) {
+    return {
+      type: "opencode-home",
+      path: resolved,
+    };
+  }
+
+  if (await codexHomeLooksUsable(resolved)) {
+    return {
+      type: "codex-home",
+      path: resolved,
     };
   }
 
@@ -328,7 +353,7 @@ export async function classifyImportDirectory(importPath) {
   return {
     type: "unsupported",
     path: resolved,
-    reason: `目录需要是 Codex home、ZCode home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
+    reason: `目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
   };
 }
 
@@ -430,6 +455,93 @@ export async function discoverZcodeHomes(options = {}) {
   return homes;
 }
 
+export async function discoverDshHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const envHomes = options.extraDshHomes || env.CODEX_USAGE_DSH_HOMES || "";
+  const homes = [];
+  const seen = new Set();
+
+  if (env.CODEX_USAGE_DSH === "0") {
+    return homes;
+  }
+
+  async function addHome(label, homePath) {
+    const resolved = path.resolve(homePath);
+    if (seen.has(resolved) || !(await dshHomeLooksUsable(resolved))) {
+      return;
+    }
+    seen.add(resolved);
+    // DSH 的用量分散在 sessions/**/session.v*.jsonl.zstd 多个文件里，
+    // 不像 ZCode 那样有单一数据库，所以这里不设 usageLogPath。
+    homes.push({
+      id: sourceId("dsh", resolved),
+      label,
+      path: resolved,
+      kind: "dsh",
+    });
+  }
+
+  await addHome("Main DSH", path.join(homeDir, ".dsh"));
+
+  for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
+    await addHome(`DSH ${path.basename(extraHome) || extraHome}`, extraHome);
+  }
+
+  return homes;
+}
+
+function opencodeDataDirs({ homeDir, env }) {
+  // OpenCode 数据目录因平台而异（Windows 本机实测为 XDG 风格路径），逐个探测。
+  const dirs = [path.join(homeDir, ".local", "share", "opencode")];
+  if (env.APPDATA) {
+    dirs.push(path.join(env.APPDATA, "opencode"));
+  }
+  if (env.LOCALAPPDATA) {
+    dirs.push(path.join(env.LOCALAPPDATA, "opencode"));
+  }
+  dirs.push(path.join(homeDir, "Library", "Application Support", "opencode"));
+  return uniquePaths(dirs.filter(Boolean));
+}
+
+export async function discoverOpencodeHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const envHomes = options.extraOpencodeHomes || env.CODEX_USAGE_OPENCODE_HOMES || "";
+  const homes = [];
+  const seen = new Set();
+
+  if (env.CODEX_USAGE_OPENCODE === "0") {
+    return homes;
+  }
+
+  async function addHome(label, homePath) {
+    const resolved = path.resolve(homePath);
+    if (seen.has(resolved) || !(await opencodeHomeLooksUsable(resolved))) {
+      return;
+    }
+    seen.add(resolved);
+    // 单个数据目录下可能有多个数据库（opencode.db、opencode-<channel>.db），
+    // 用量在消费时按目录展开，所以这里不设 usageLogPath。
+    homes.push({
+      id: sourceId("opencode", resolved),
+      label,
+      path: resolved,
+      kind: "opencode",
+    });
+  }
+
+  for (const dataDir of opencodeDataDirs({ homeDir, env })) {
+    await addHome("Main OpenCode", dataDir);
+  }
+
+  for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
+    await addHome(`OpenCode ${path.basename(extraHome) || extraHome}`, extraHome);
+  }
+
+  return homes;
+}
+
 export async function discoverUsageSources(options = {}) {
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
@@ -441,6 +553,22 @@ export async function discoverUsageSources(options = {}) {
     }
     seenPaths.add(zcodeHome.path);
     sources.push(zcodeHome);
+  }
+
+  for (const dshHome of await discoverDshHomes(options)) {
+    if (seenPaths.has(dshHome.path)) {
+      continue;
+    }
+    seenPaths.add(dshHome.path);
+    sources.push(dshHome);
+  }
+
+  for (const opencodeHome of await discoverOpencodeHomes(options)) {
+    if (seenPaths.has(opencodeHome.path)) {
+      continue;
+    }
+    seenPaths.add(opencodeHome.path);
+    sources.push(opencodeHome);
   }
 
   for (const importDir of optionImportDirs(options)) {
@@ -471,6 +599,36 @@ export async function discoverUsageSources(options = {}) {
         path: classified.path,
         kind: "zcode",
         usageLogPath: classified.dbFile,
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "dsh-home") {
+      if (seenPaths.has(classified.path)) {
+        continue;
+      }
+      seenPaths.add(classified.path);
+      sources.push({
+        id: sourceId("dsh", classified.path),
+        label: `DSH ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "dsh",
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "opencode-home") {
+      if (seenPaths.has(classified.path)) {
+        continue;
+      }
+      seenPaths.add(classified.path);
+      sources.push({
+        id: sourceId("opencode", classified.path),
+        label: `OpenCode ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "opencode",
         imported: true,
       });
       continue;
@@ -558,6 +716,35 @@ export async function buildUsageFingerprint(options = {}) {
         await addFile(home.usageLogPath, await zcodeSourceStat(home.usageLogPath));
       } catch (error) {
         hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+      }
+      continue;
+    }
+    if (home.kind === "dsh") {
+      let sessionFiles;
+      try {
+        sessionFiles = await dshSessionFiles(home.path);
+      } catch (error) {
+        hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+        continue;
+      }
+      for (const file of sessionFiles) await addFile(file);
+      continue;
+    }
+    if (home.kind === "opencode") {
+      // 单个数据目录下可能有多个数据库，逐个纳入指纹（含 -wal）。
+      let dbFiles;
+      try {
+        dbFiles = await opencodeDatabaseFiles(home.path);
+      } catch (error) {
+        hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+        continue;
+      }
+      for (const dbFile of dbFiles) {
+        try {
+          await addFile(dbFile, await opencodeSourceStat(dbFile));
+        } catch (error) {
+          hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+        }
       }
       continue;
     }
@@ -1478,6 +1665,14 @@ export async function streamUsageFileEvents(filePath, source, onEvent, options =
     await streamZcodeDbEvents(filePath, source, onEvent, options);
     return;
   }
+  if (source.kind === "dsh") {
+    await streamDshSessionEvents(filePath, source, onEvent, options);
+    return;
+  }
+  if (source.kind === "opencode") {
+    await streamOpencodeDbEvents(filePath, source, onEvent, options);
+    return;
+  }
   await streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
@@ -1600,6 +1795,96 @@ async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
   return events;
 }
 
+/** 把一个 DSH home 下所有会话日志摊平成索引事件。 */
+async function parseDshForIndex(homePath, source, intern, resolveRepository, onWarning) {
+  const events = [];
+  let sessionFiles = [];
+  try {
+    sessionFiles = await dshSessionFiles(homePath);
+  } catch (error) {
+    onWarning?.(`无法读取 ${homePath}: ${error.message}`);
+    return events;
+  }
+
+  for (const filePath of sessionFiles) {
+    try {
+      await streamDshSessionEvents(
+        filePath,
+        source,
+        (event) => {
+          events.push({
+            t: event.timestampMs,
+            s: intern(event.sessionId),
+            h: intern(event.homeId),
+            l: intern(event.homeLabel),
+            c: intern(event.channel),
+            p: intern(event.project),
+            rk: intern(event.repositoryKey),
+            rp: intern(event.repositoryPath),
+            rt: intern(event.repositoryKind),
+            m: intern(event.model),
+            total: event.usage.total,
+            input: event.usage.input,
+            cached: event.usage.cached,
+            output: event.usage.output,
+            reasoning: event.usage.reasoning,
+            detailMask: event.detailMask,
+            reconciliationGap: event.reconciliationGap,
+            cacheWriteTokens: event.cacheWriteTokens,
+            cacheWriteKnown: event.cacheWriteKnown,
+            requestInputTokens: event.requestInputTokens,
+            contextLevel: intern(event.contextLevel),
+            serviceTier: intern(event.serviceTier),
+            priceVersion: event.priceVersion,
+          });
+        },
+        { repositoryResolver: resolveRepository, onWarning },
+      );
+    } catch (error) {
+      onWarning?.(`无法解析 ${filePath}: ${error.message}`);
+    }
+  }
+  return events;
+}
+
+/** 把一个 OpenCode 数据库的用量摊平成索引事件。 */
+async function parseOpencodeDbForIndex(dbFile, source, intern, resolveRepository, onWarning) {
+  const events = [];
+  await streamOpencodeDbEvents(
+    dbFile,
+    source,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: event.priceVersion,
+      });
+    },
+    { repositoryResolver: resolveRepository, onWarning },
+  );
+  return events;
+}
+
 /** @returns {Promise<import("./usage-types.js").UsageReport>} */
 export async function buildUsageReport(options = {}) {
   const homes = options.homes || (await discoverUsageSources(options));
@@ -1628,6 +1913,36 @@ export async function buildUsageReport(options = {}) {
         events.push(...parsed.events);
       } catch (error) {
         warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
+      }
+      continue;
+    }
+
+    if (home.kind === "dsh") {
+      try {
+        const parsed = await parseDshSessions(home.path, home, {
+          repositoryResolver,
+          onWarning: (warning) => warnings.push(warning),
+        });
+        sessions.push(...parsed.sessions);
+        events.push(...parsed.events);
+      } catch (error) {
+        warnings.push(`无法解析 ${home.path}: ${error.message}`);
+      }
+      continue;
+    }
+
+    if (home.kind === "opencode") {
+      for (const dbFile of await opencodeDatabaseFiles(home.path)) {
+        try {
+          const parsed = await parseOpencodeDb(dbFile, home, {
+            repositoryResolver,
+            onWarning: (warning) => warnings.push(warning),
+          });
+          sessions.push(...parsed.sessions);
+          events.push(...parsed.events);
+        } catch (error) {
+          warnings.push(`无法解析 ${dbFile}: ${error.message}`);
+        }
       }
       continue;
     }
@@ -1714,6 +2029,30 @@ export async function buildUsageIndex(options = {}) {
         events.push(...(await parseZcodeDbForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)));
       } catch (error) {
         warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
+      }
+      continue;
+    }
+
+    if (home.kind === "dsh") {
+      events.push(
+        ...(await parseDshForIndex(home.path, home, interner.intern, repositoryResolver, (warning) =>
+          warnings.push(warning),
+        )),
+      );
+      continue;
+    }
+
+    if (home.kind === "opencode") {
+      for (const dbFile of await opencodeDatabaseFiles(home.path)) {
+        try {
+          events.push(
+            ...(await parseOpencodeDbForIndex(dbFile, home, interner.intern, repositoryResolver, (warning) =>
+              warnings.push(warning),
+            )),
+          );
+        } catch (error) {
+          warnings.push(`无法解析 ${dbFile}: ${error.message}`);
+        }
       }
       continue;
     }

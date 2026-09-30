@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  automaticPricingStatusText,
   datePickerMonthModel,
   drawTimeline,
   filterPeriodComparisonRows,
@@ -10,7 +11,13 @@ import {
   renderTimelineLegendHtml,
   getRange,
   maxTimelineValue,
+  modelPricingInputsChanged,
   nextComparisonSort,
+  pricingIssueText,
+  pricingModelBadges,
+  pricingProvenanceText,
+  pricingUpdateSummaryText,
+  discoveryReasonText,
   formatTokenMillions,
   formatTimelineTooltip,
   formatUsageTooltip,
@@ -20,17 +27,243 @@ import {
   renderDatePickerHtml,
   renderHomesHtml,
   renderSourceOptionsHtml,
+  claimHarnessKeys,
+  pricingHarnessGroups,
+  pricingHarnessRows,
   formatCostAmount,
   formatCostPair,
   costPairFromSlots,
   costScaleValue,
   fitTextToWidth,
+  formatAutoRefreshTimestamp,
+  usagePricingCoverageText,
   renderPeriodComparisonTableHtml,
   setSummaryFilters,
   timelineAxisLabels,
   timelineDetailRows,
   timelineSlotRangeTitle,
 } from "../public/app.js";
+import { state } from "../public/app-state.js";
+import { selectDateRange } from "../public/calendar.js";
+
+// ---------------------------------------------------------------- harness 归组（DSH）
+
+test("claimHarnessKeys 让同一模型只留在第一个 harness 分区里", () => {
+  // ZCode 与 DSH 都可能跑 deepseek-flash，去重前会在计价弹窗里出现两次。
+  const claimed = claimHarnessKeys({
+    Codex: new Set([]),
+    ZCode: new Set(["deepseek-flash", "glm-5.3"]),
+    DSH: new Set(["deepseek-flash"]),
+  });
+
+  assert.deepEqual([...claimed.ZCode].sort(), ["deepseek-flash", "glm-5.3"]);
+  assert.deepEqual([...claimed.DSH], [], "已被 ZCode 认领的模型不应再出现在 DSH");
+});
+
+test("claimHarnessKeys 按 Codex → ZCode → DSH 的优先级认领", () => {
+  const claimed = claimHarnessKeys({
+    Codex: new Set(["gpt-6-sol"]),
+    ZCode: new Set(["gpt-6-sol", "deepseek-flash"]),
+    DSH: new Set(["gpt-6-sol", "deepseek-flash"]),
+  });
+
+  assert.deepEqual([...claimed.Codex], ["gpt-6-sol"]);
+  assert.deepEqual([...claimed.ZCode], ["deepseek-flash"]);
+  assert.deepEqual([...claimed.DSH], []);
+});
+
+test("pricingHarnessGroups 读三元 harnessModels 并去重", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
+  try {
+    state.pricingCatalog = {
+      models: {
+        "gpt-6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
+        "deepseek-flash": { currency: "CNY", source: "https://api-docs.deepseek.com/x" },
+      },
+    };
+    // 同一模型同时被 ZCode 与 DSH 使用。
+    state.metadata = { harnessModels: { Codex: ["gpt-6-sol"], ZCode: ["deepseek-flash"], DSH: ["deepseek-flash"] } };
+
+    const groups = pricingHarnessGroups();
+    assert.deepEqual([...groups.Codex], ["gpt-6-sol"]);
+    assert.deepEqual([...groups.ZCode], ["deepseek-flash"]);
+    assert.deepEqual([...groups.DSH], [], "DSH 不应重复展示已被 ZCode 认领的模型");
+
+    // 只被 DSH 用到的模型必须出现在 DSH 分区里，而不是消失。
+    state.metadata = { harnessModels: { Codex: [], ZCode: [], DSH: ["deepseek-flash"] } };
+    const dshOnly = pricingHarnessGroups();
+    assert.deepEqual([...dshOnly.DSH], ["deepseek-flash"]);
+    assert.deepEqual([...dshOnly.ZCode], []);
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
+  }
+});
+
+test("pricingHarnessGroups 无使用记录时按价目来源兜底，不产生 DSH 分区", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog, summary: state.summary };
+  try {
+    state.metadata = { harnessModels: { Codex: [], ZCode: [], DSH: [] } };
+    state.summary = { models: [{ name: "gpt-6-sol" }, { name: "deepseek-flash" }] };
+    state.pricingCatalog = {
+      models: {
+        "gpt-6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
+        "deepseek-flash": { currency: "CNY", source: "https://api-docs.deepseek.com/x" },
+      },
+    };
+
+    const groups = pricingHarnessGroups();
+    assert.deepEqual([...groups.Codex], ["gpt-6-sol"]);
+    assert.deepEqual([...groups.ZCode], ["deepseek-flash"]);
+    assert.deepEqual([...groups.DSH], []);
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
+    state.summary = previous.summary;
+  }
+});
+
+test("pricingHarnessRows keeps aliases visible and exposes missing and free usage", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
+  try {
+    state.pricingCatalog = {
+      models: {
+        "gpt-5.6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
+        "mimo-v2.6-flash": { currency: "CNY", source: "https://example.com/pricing" },
+      },
+    };
+    state.metadata = {
+      harnessModels: {
+        Codex: ["gpt-daybreak-blue-latest", "future-model"],
+        ZCode: ["mimo-v2.6-flash-free"],
+        DSH: [],
+      },
+    };
+    const rows = pricingHarnessRows();
+    assert.deepEqual(rows.Codex, [
+      { model: "gpt-daybreak-blue-latest", catalogKey: "gpt-5.6-sol", matchType: "alias" },
+      { model: "future-model", catalogKey: null, matchType: "missing" },
+    ]);
+    assert.deepEqual(rows.ZCode, [{ model: "mimo-v2.6-flash-free", catalogKey: null, matchType: "free" }]);
+    assert.deepEqual([...pricingHarnessGroups().Codex], ["gpt-5.6-sol"]);
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
+  }
+});
+
+test("空状态文案包含 DSH 与 OpenCode", () => {
+  const html = renderHomesHtml([]);
+  assert.match(html, /没有发现 Codex、ZCode、DSH 或 OpenCode 目录/);
+});
+
+test("claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode 的优先级认领", () => {
+  const claimed = claimHarnessKeys({
+    Codex: new Set(["gpt-6-sol"]),
+    ZCode: new Set(["deepseek-flash"]),
+    DSH: new Set(["deepseek-flash", "test-model"]),
+    OpenCode: new Set(["test-model", "oc-model"]),
+  });
+  assert.deepEqual([...claimed.Codex], ["gpt-6-sol"]);
+  assert.deepEqual([...claimed.ZCode], ["deepseek-flash"]);
+  assert.deepEqual([...claimed.DSH], ["test-model"]);
+  assert.deepEqual([...claimed.OpenCode], ["oc-model"]);
+});
+
+test("pricing status gives total coverage and marks each price source", () => {
+  const status = {
+    priceUpdatedAt: "2026-09-28T08:00:00Z",
+    exchangeRateDate: "2026-09-28",
+    automaticModelCount: 25,
+    partialAutomaticModelCount: 4,
+    totalModelCount: 86,
+    unmatchedModelCount: 52,
+    priceSourceCoverage: {
+      supportedModelCount: 82,
+      supportedUsdModelCount: 49,
+      supportedCnyModelCount: 33,
+      unsupportedCurrencyModelCount: 4,
+    },
+    automaticModels: ["gpt-6-sol"],
+    manualModels: ["gpt-6-sol"],
+  };
+  assert.match(automaticPricingStatusText(status), /自动维护 25\/86，部分 4/);
+  assert.match(automaticPricingStatusText(status), /USD 来源适配 49\/86，CNY 官方源 33 条，暂保留本地 4 条/);
+  assert.match(automaticPricingStatusText(status, "en-US"), /auto-maintained 25\/86, partial 4/);
+  assert.match(
+    automaticPricingStatusText(status, "en-US"),
+    /USD source mappings 49\/86, CNY adapters 33, CNY manual-only 4/,
+  );
+  assert.match(pricingModelBadges("gpt-6-sol", status), /自动匹配.*手动覆盖/);
+  assert.match(pricingModelBadges("deepseek-flash", status), /未自动匹配/);
+  assert.match(pricingModelBadges("gpt-6-sol", {}, "https://models.dev/api.json"), /自动匹配/);
+  assert.equal(
+    pricingIssueText({ source: "LiteLLM", code: "timeout", timeoutMs: 30_000 }, false),
+    "LiteLLM 请求超时（30 秒）",
+  );
+  assert.equal(
+    pricingIssueText({ source: "Xiaomi MiMo", code: "timeout", timeoutMs: 30_000 }, false),
+    "小米 MiMo 请求超时（30 秒）",
+  );
+  assert.match(discoveryReasonText("catalog-capacity", false), /100 个模型上限/);
+  assert.match(discoveryReasonText("context-policy-unknown", true), /context pricing policy is unknown/);
+  const update = pricingUpdateSummaryText({
+    attemptedModelCount: 49,
+    verifiedModelCount: 31,
+    changedModelCount: 7,
+    partialModelCount: 9,
+    conflictModelCount: 1,
+    manualOverrideModelCount: 3,
+    noValidMatchModelCount: 18,
+    unsupportedCurrencyModelCount: 37,
+  });
+  assert.match(update, /核验 31\/49，变化 7，部分 9，冲突 1/);
+  assert.match(
+    pricingUpdateSummaryText({ verifiedModelCount: 31, attemptedModelCount: 49 }, "en-US"),
+    /verified 31\/49/,
+  );
+  const provenance = pricingProvenanceText({
+    short: {
+      sourceUrl: "https://models.dev/api.json",
+      checkedAt: "2026-09-30T12:00:00Z",
+      origin: "mixed",
+      inheritedFields: ["cacheWrite"],
+    },
+    "fast.short": { origin: "derived" },
+  });
+  assert.match(provenance, /标准短上下文.*models.dev.*沿用缓存写入/);
+  assert.match(provenance, /快速短上下文.*由标准费率推算/);
+});
+
+test("usage coverage status distinguishes loading, covered, free, and missing models", () => {
+  assert.match(usagePricingCoverageText({ ready: false }), /等待用量加载/);
+  assert.match(
+    usagePricingCoverageText({
+      ready: true,
+      usedModelCount: 3,
+      matchedUsedModelCount: 2,
+      freeRuleUsedModelCount: 1,
+      missingUsedModels: [{ model: "future-model", harnesses: ["Codex"] }],
+    }),
+    /用量覆盖 2\/3 · 缺少费率 1 · 免费规则 1/,
+  );
+  assert.match(usagePricingCoverageText({ ready: false }, "en-US"), /Waiting for usage/);
+});
+
+test("model pricing Apply requires a valid numeric change and disables again after a revert", () => {
+  const first = { value: "4", defaultValue: "4", validity: { valid: true } };
+  const second = { value: "0.4", defaultValue: "0.4", validity: { valid: true } };
+  assert.equal(modelPricingInputsChanged([first, second]), false);
+  first.value = "4.0";
+  assert.equal(modelPricingInputsChanged([first, second]), false);
+  first.value = "5";
+  assert.equal(modelPricingInputsChanged([first, second]), true);
+  second.validity.valid = false;
+  assert.equal(modelPricingInputsChanged([first, second]), false);
+  second.validity.valid = true;
+  first.value = "4";
+  assert.equal(modelPricingInputsChanged([first, second]), false);
+});
 
 test("token values use two decimals with M/B/T units and retain exact hover values", () => {
   assert.equal(formatTokenMillions(62_617_267), "62.62M");
@@ -126,9 +359,31 @@ test("comparison sort cycles through descending, ascending, and default order", 
   assert.deepEqual(nextComparisonSort(ascending, "week"), { period: "week", direction: "desc", showIndicator: true });
 
   const rows = [
-    { key: "directory:large", name: "/work/large", kind: "directory", periods: { today: { total: 100 } } },
-    { key: "git:small", name: "/work/small", kind: "git", periods: { today: { total: 10 } } },
-    { key: "git:medium", name: "/work/medium", kind: "git", periods: { today: { total: 20 } } },
+    {
+      key: "directory:all",
+      name: "/work/e-all",
+      kind: "directory",
+      periods: { today: { total: 1 }, week: { total: 2 }, month: { total: 3 }, all: { total: 10 } },
+    },
+    {
+      key: "git:month",
+      name: "/work/d-month",
+      kind: "git",
+      periods: { today: { total: 1 }, week: { total: 2 }, month: { total: 4 }, all: { total: 0 } },
+    },
+    {
+      key: "directory:week",
+      name: "/work/c-week",
+      kind: "directory",
+      periods: { today: { total: 1 }, week: { total: 3 }, month: { total: 0 }, all: { total: 0 } },
+    },
+    {
+      key: "directory:today",
+      name: "/work/b-today",
+      kind: "directory",
+      periods: { today: { total: 2 }, week: { total: 0 }, month: { total: 0 }, all: { total: 0 } },
+    },
+    { key: "git:zero", name: "/work/z-zero", kind: "git", periods: {} },
   ];
   const rowNames = (sort, kind) =>
     [
@@ -136,12 +391,54 @@ test("comparison sort cycles through descending, ascending, and default order", 
         /class="comparison-row-label"[^>]*>([^<]+)<\/span>/g,
       ),
     ].map((match) => match[1]);
-  assert.deepEqual(rowNames(defaultSort, "repository"), ["medium", "small", "large"]);
-  assert.deepEqual(rowNames(ascending, "repository"), ["small", "medium", "large"]);
-  assert.deepEqual(rowNames(cancelled, "repository"), ["medium", "small", "large"]);
-  assert.deepEqual(rowNames(defaultSort, "model"), ["/work/large", "/work/medium", "/work/small"]);
-  assert.deepEqual(rowNames(ascending, "model"), ["/work/small", "/work/medium", "/work/large"]);
+  const expected = ["b-today", "c-week", "d-month", "e-all", "z-zero"];
+  assert.deepEqual(rowNames(defaultSort, "repository"), expected);
+  assert.deepEqual(rowNames(cancelled, "repository"), expected);
+  assert.deepEqual(
+    rowNames(defaultSort, "model"),
+    expected.map((name) => `/work/${name}`),
+  );
+  assert.deepEqual(rowNames(ascending, "repository"), ["z-zero", "c-week", "d-month", "e-all", "b-today"]);
+  assert.deepEqual(
+    rowNames(ascending, "model"),
+    ["z-zero", "c-week", "d-month", "e-all", "b-today"].map((name) => `/work/${name}`),
+  );
   assert.match(renderPeriodComparisonTableHtml(rows, { sort: cancelled }), /aria-sort="none"/);
+  assert.match(
+    renderPeriodComparisonTableHtml(rows, { sort: defaultSort }),
+    /title="默认排序优先级：今日 → 本周 → 本月 → 全部（各项倒序）"/,
+  );
+
+  const manualTieRows = [
+    {
+      key: "low-today",
+      name: "/work/low-today",
+      kind: "directory",
+      periods: { today: { total: 1 }, week: { total: 5 } },
+    },
+    { key: "high-today", name: "/work/high-today", kind: "git", periods: { today: { total: 10 }, week: { total: 5 } } },
+    {
+      key: "low-week",
+      name: "/work/low-week",
+      kind: "directory",
+      periods: { today: { total: 100 }, week: { total: 2 } },
+    },
+  ];
+  const manualWeekAscending = { period: "week", direction: "asc", showIndicator: true };
+  const manualNames = [
+    ...renderPeriodComparisonTableHtml(manualTieRows, { kind: "repository", sort: manualWeekAscending }).matchAll(
+      /class="comparison-row-label"[^>]*>([^<]+)<\/span>/g,
+    ),
+  ].map((match) => match[1]);
+  assert.deepEqual(manualNames, ["low-week", "high-today", "low-today"]);
+});
+
+test("auto refresh timestamps use the selected calendar zone and identify it", () => {
+  const value = "2026-01-01T12:05:30.000Z";
+  const utc = formatAutoRefreshTimestamp(value, "en-US", "utc");
+  assert.match(utc, /12:05/);
+  assert.match(utc, /UTC/);
+  assert.equal(formatAutoRefreshTimestamp("not a date", "en-US", "utc"), "");
 });
 
 test("natural week comparison headings and accessible sort labels use 本周", () => {
@@ -163,7 +460,7 @@ test("natural week comparison headings and accessible sort labels use 本周", (
   });
   assert.match(html, /本周/);
   assert.match(html, /aria-label="按本周用量排序"/);
-  assert.match(html, /title="按本周用量排序"/);
+  assert.match(html, /title="默认排序优先级：今日 → 本周 → 本月 → 全部（各项倒序）"/);
   assert.match(html, /本周明细/);
   assert.doesNotMatch(html, /本自然周明细/);
 });
@@ -377,8 +674,24 @@ test("renderHomesHtml shows escaped statuses and removable imported directories"
 
 test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", () => {
   const homes = [
-    { id: "main-1", label: "Main Codex", kind: "main", path: "/u/.codex", eventCount: 5, sessionCount: 2 },
-    { id: "zcode-1", label: "Main ZCode", kind: "zcode", path: "/u/.zcode", eventCount: 9, sessionCount: 3 },
+    {
+      id: "main-1",
+      label: "Main Codex",
+      kind: "main",
+      path: "/u/.codex",
+      status: "active",
+      eventCount: 5,
+      sessionCount: 2,
+    },
+    {
+      id: "zcode-1",
+      label: "Main ZCode",
+      kind: "zcode",
+      path: "/u/.zcode",
+      status: "active",
+      eventCount: 9,
+      sessionCount: 3,
+    },
     { label: "导入 <unsafe>", kind: "unsupported", path: "/tmp/x", eventCount: 0 },
   ];
   const html = renderSourceOptionsHtml(homes, ["zcode-1"]);
@@ -386,6 +699,10 @@ test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", (
   assert.match(html, /data-source-id="main-1" checked/);
   assert.doesNotMatch(html, /data-source-id="zcode-1" checked/);
   assert.match(html, /Main ZCode/);
+  assert.match(html, /source-option excluded/);
+  assert.match(html, /5 条事件 · 2 个会话/);
+  assert.match(html, /有用量记录/);
+  assert.equal((html.match(/不计入统计/g) || []).length, 1);
   // 没有稳定 id 的条目（如不支持的导入）不进入多选列表。
   assert.doesNotMatch(html, /unsafe/);
   assert.equal(renderSourceOptionsHtml([], []), `<div class="empty">没有可统计的来源</div>`);
@@ -595,14 +912,69 @@ test("renderDatePickerHtml marks outside-month dates as dim but selectable butto
   const html = renderDatePickerHtml({
     field: "start",
     viewDate: new Date("2026-07-15T12:00:00"),
-    selectedValue: "2026-06-30",
+    startDate: "2026-06-30",
+    endDate: "2026-07-02",
   });
 
   assert.match(html, /<div class="date-picker-weekday">一<\/div>/);
   assert.match(html, /data-date="2026-06-29"[^>]*class="date-picker-day outside-month"/);
-  assert.match(html, /data-date="2026-06-30"[^>]*class="date-picker-day outside-month selected"/);
-  assert.match(html, /data-date="2026-07-01"[^>]*class="date-picker-day"/);
+  assert.match(html, /data-date="2026-06-30"[^>]*class="date-picker-day outside-month selected range-start"/);
+  assert.match(html, /data-date="2026-07-01"[^>]*class="date-picker-day in-range"/);
+  assert.match(html, /data-date="2026-07-02"[^>]*class="date-picker-day selected range-end"/);
   assert.match(html, /type="button"[^>]*data-date="2026-06-29"/);
+});
+
+test("renderDatePickerHtml enables the clear control once a date is picked and disables it when empty", () => {
+  const withRange = renderDatePickerHtml({
+    field: "start",
+    viewDate: new Date("2026-07-15T12:00:00"),
+    startDate: "2026-06-30",
+    endDate: "2026-07-02",
+  });
+  assert.match(withRange, /class="date-picker-clear" data-date-picker-clear aria-label=/);
+  assert.doesNotMatch(withRange, /data-date-picker-clear disabled/);
+
+  const empty = renderDatePickerHtml({ field: "end", viewDate: new Date("2026-07-15T12:00:00") });
+  assert.match(empty, /data-date-picker-clear disabled/);
+  assert.match(empty, /class="date-picker-hint picking-end"/);
+});
+
+test("date range selection keeps the first endpoint pending and commits the second across months", () => {
+  const pending = selectDateRange({ startDate: "2026-09-01", field: "start" }, "2026/9/29");
+  assert.deepEqual(pending, {
+    startDate: "2026-09-29",
+    endDate: "",
+    field: "end",
+    complete: false,
+  });
+  assert.deepEqual(selectDateRange(pending, "2026-10-02"), {
+    startDate: "2026-09-29",
+    endDate: "2026-10-02",
+    field: "start",
+    complete: true,
+  });
+});
+
+test("date range selection orders reversed endpoints and allows a single day", () => {
+  assert.deepEqual(selectDateRange({ startDate: "2026-09-29", field: "end" }, "2026-09-20"), {
+    startDate: "2026-09-20",
+    endDate: "2026-09-29",
+    field: "start",
+    complete: true,
+  });
+  const singleDay = selectDateRange({ startDate: "2026-09-29", field: "end" }, "2026-09-29");
+  assert.equal(singleDay.startDate, singleDay.endDate);
+  assert.equal(singleDay.complete, true);
+  assert.match(
+    renderDatePickerHtml({ ...singleDay, viewDate: new Date("2026-09-01T12:00:00") }),
+    /data-date="2026-09-29"[^>]*class="date-picker-day selected range-start range-end"/,
+  );
+});
+
+test("date range selection rejects invalid dates and starts a new range when no start exists", () => {
+  assert.equal(selectDateRange({ startDate: "2026-09-29", field: "end" }, "2026-02-30"), null);
+  assert.equal(selectDateRange({}, ""), null);
+  assert.equal(selectDateRange({ field: "end" }, "2026-09-29").complete, false);
 });
 
 test("timelineAxisLabels shows all 24 labels for a single hourly day", () => {
