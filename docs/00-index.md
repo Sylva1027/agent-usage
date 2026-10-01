@@ -32,6 +32,7 @@
 
 - [验证索引](validation/00-index.md)：区分本地自动检查、合成数据浏览器验收、历史真库对照与尚未验证的路径。
 - [2026-10-01 看板九项修正验收](validation/2026-10-01-dashboard-corrections/README.md)：本批检查、结果、截图与重跑入口。
+- [2026-10-01 v0.5.0 发布](validation/2026-10-01-release/README.md)：提交/标签/正式Release与远端CI证据。
 - [2026-10-01 加载圈与下拉框验收](validation/2026-10-01-refresh-dropdowns/README.md)：状态高度稳定、双菜单对齐及材质统一。
 - [2026-10-01 标题最终居中验收](validation/2026-10-01-title-centering/README.md)：真实截图字面居中、手机和字体回退验证。
 - [2026-10-01 模型列表与顶部框体反馈验收](validation/2026-10-01-dashboard-feedback/README.md)：旧契约兼容、真实模型恢复与连续框体截图。

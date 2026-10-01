@@ -4,7 +4,7 @@
 
 ## 当前批次：看板九项修正
 
-本轮九项及用户追加的模型名单/连续顶部框体及加载圈/下拉框反馈均已完成实现与验收。详细规格见 [Implementation Plan](plans/2026-10-01-dashboard-corrections-implementation-plan.md)，逐项状态和实际验证见 [TODOs](plans/2026-10-01-dashboard-corrections-todos.md)，结果与截图见[原批验收](validation/2026-10-01-dashboard-corrections/README.md)、[反馈验收](validation/2026-10-01-dashboard-feedback/README.md)、[最终标题验收](validation/2026-10-01-title-centering/README.md)及[加载圈/菜单验收](validation/2026-10-01-refresh-dropdowns/README.md)；本页不重复完成数量与逐项勾选。
+本轮九项及用户追加的模型名单/连续顶部框体及加载圈/下拉框反馈均已完成实现与验收。详细规格见 [Implementation Plan](plans/2026-10-01-dashboard-corrections-implementation-plan.md)，逐项状态和实际验证见 [TODOs](plans/2026-10-01-dashboard-corrections-todos.md)，结果与截图见[原批验收](validation/2026-10-01-dashboard-corrections/README.md)、[反馈验收](validation/2026-10-01-dashboard-feedback/README.md)、[最终标题验收](validation/2026-10-01-title-centering/README.md)及[加载圈/菜单验收](validation/2026-10-01-refresh-dropdowns/README.md)；本页不重复完成数量与逐项勾选。已依用户授权完成commit/push及[v0.5.0正式发布](validation/2026-10-01-release/README.md)，Node22/24 CI通过。
 
 范围包含标题和操作区连续框体（按追加要求覆盖原独立框体）、自动刷新对齐与内部凹槽、时区下拉、Git 最高排序优先、Codex 目录标签、普通范围渠道整合、在用模型退出、计价分段按钮、同比流速文案及顶部导入入口清理。当前/上一完整 Codex 限额范围保留渠道细分；在用模型退出保留价目和历史记录。
 
