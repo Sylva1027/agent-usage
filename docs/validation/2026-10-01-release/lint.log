@@ -425,30 +425,25 @@ public\styles.css:2249:1 lint/style/noDescendingSpecificity ━━━━━━�
   i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
   
 
-public\styles.css:2271:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test\dsh-usage.test.js:6:28 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  ! Several of these imports are unused.
   
-    2269 │ }
-    2270 │ 
-  > 2271 │ .recent-combobox {
-         │ ^^^^^^^^^^^^^^^^
-    2272 │   border-radius: 8px;
-    2273 │   box-shadow: var(--neo-inset-small);
+    4 │ import path from "node:path";
+    5 │ import test from "node:test";
+  > 6 │ import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
+      │                            ^^^^^^^^^^^^^^^^^^
+    7 │ 
+    8 │ import { estimateEventCost } from "../src/pricing.js";
   
-  i This selector specificity is (0, 3, 0)
+  i Unused imports might be the result of an incomplete refactoring.
   
-    824 │ }
-    825 │ 
-  > 826 │ .recent-segment.active .recent-combobox {
-        │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    827 │   border-color: var(--line);
-    828 │ }
+  i Unsafe fix: Remove the unused imports.
   
-  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
-  
+    6 │ import·{·zstdCompressSync,·zstdDecompressSync·}·from·"node:zlib";
+      │                            -------------------                   
 
 The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
-Diagnostics not shown: 20.
-Checked 48 files in 138ms. No fixes applied.
-Found 40 warnings.
+Diagnostics not shown: 21.
+Checked 48 files in 85ms. No fixes applied.
+Found 41 warnings.

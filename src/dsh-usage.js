@@ -154,7 +154,7 @@ export async function readDshSessionRows(filePath, { onWarning } = {}) {
     } catch {
       decompressed = null;
     }
-    // 注意：zstdDecompressSync 对畸形帧**不抛错**，而是静默返回空 buffer，
+    // 注意：zstdDecompressSync 对畸形帧可能抛错，也可能静默返回空 buffer，
     // 所以「解出空内容」也必须算作坏帧，否则损坏帧会被当成空记录悄悄放过。
     // DSH 从不写空帧（每帧至少一条 JSON），因此这个判据是安全的。
     if (!decompressed?.length) {

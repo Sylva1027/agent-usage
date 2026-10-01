@@ -385,19 +385,17 @@ test("损坏帧只记警告，其余帧照常解析", async () => {
   assert.equal(events.length, 1, "完好帧仍应产出事件");
 });
 
-test("zstdDecompressSync 对畸形帧不抛错而是返回空 buffer，因此必须按空内容判坏帧", () => {
-  // 这条锁定上面那个坑：若实现只靠 try/catch 判坏帧，损坏帧会被静默当成空记录。
-  const malformed = Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x01, 0x02, 0x03]);
-  let threw = false;
-  let out = null;
-  try {
-    out = zstdDecompressSync(malformed);
-  } catch {
-    threw = true;
+test("畸形帧或解出空内容的帧都不能作为 DSH 记录", async () => {
+  const { filePath } = await makeDshHome({ frames: [] });
+  // zstd 对畸形帧可能抛错，也可能返回空 buffer；验证解析器契约，不锁定平台行为。
+  // 合法的零内容帧确定覆盖不抛错但返回空内容的分支，DSH 不写这种帧。
+  for (const frame of [
+    Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x01, 0x02, 0x03]),
+    zstdCompressSync(Buffer.alloc(0)),
+  ]) {
+    await writeFile(filePath, frame);
+    await assert.rejects(() => readDshSessionRows(filePath), /无法解压 DSH 会话日志/);
   }
-  assert.equal(threw, false, "前提：畸形帧不抛错");
-  assert.equal(out.length, 0, "前提：畸形帧解出空内容");
-  assert.ok(zstdCompressSync(Buffer.from("x")).length > 0);
 });
 
 test("无法解压时抛错，由上层记录警告", async () => {
