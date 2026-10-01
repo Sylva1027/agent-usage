@@ -1,0 +1,29 @@
+✔ a damaged automatic cache falls back to the built-in catalog (9.291ms)
+✔ automatic prices require exact provider/model matches and compatible long tiers (1.4442ms)
+✔ official CNY source adapters cover providers with lossless catalog rates (3.1085ms)
+✔ new OpenAI discovery requires complete evidenced tiers and records provenance (0.6166ms)
+✔ new OpenAI discovery rejects uncertain, incomplete, conflicting, and non-text candidates (0.2072ms)
+✔ discovered OpenAI models persist provenance and receive later automatic updates (31.4462ms)
+✔ first-party provider identity survives the aggregated source cache on later updates (15.6686ms)
+✔ failed automatic-cache writes restore the previous catalog and metadata (10.4392ms)
+✔ existing partial price updates record inherited fields, while source conflicts keep prior rates (17.8054ms)
+✔ discovery-only status changes do not report a price change and retry on the next eligible attempt (8.1404ms)
+✔ discovery accepts one complete source, respects cooldown, and force bypasses it (26.2674ms)
+✔ discovery can be disabled and reports capacity per model without dropping cached prices (19.9183ms)
+✔ automatic updates are cached and leave edited rates and exchange rate intact (21.7597ms)
+✔ restoring the automatic exchange rate is explicit and preserves manual model prices (18.7006ms)
+✔ equal official rates verify coverage while unsupported context tiers remain local (6.748ms)
+✔ price-source timeout keeps successful matches and retries the partial update (13.5733ms)
+✔ catalog fetch reports an identifiable timeout (14.7817ms)
+✔ MiMo pricing pages are fetched as bounded HTML text (0.2263ms)
+✔ failed online updates retain local prices and retry after an hour (10.472ms)
+✔ legacy default exchange rate does not block automatic exchange updates (8.7603ms)
+✔ a failed refresh retries after an hour even when an older cache exists (16.4705ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 314.7253

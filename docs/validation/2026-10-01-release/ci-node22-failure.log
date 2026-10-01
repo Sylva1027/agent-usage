@@ -1,0 +1,2099 @@
+test (22)	Set up job	﻿2026-10-01T06:49:56.2732769Z Current runner version: '2.337.0'
+test (22)	Set up job	2026-10-01T06:49:56.2756765Z ##[group]Runner Image Provisioner
+test (22)	Set up job	2026-10-01T06:49:56.2757630Z Hosted Compute Agent
+test (22)	Set up job	2026-10-01T06:49:56.2758209Z Version: 20260901.588
+test (22)	Set up job	2026-10-01T06:49:56.2758766Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+test (22)	Set up job	2026-10-01T06:49:56.2759471Z Build Date: 2026-09-01T19:56:44Z
+test (22)	Set up job	2026-10-01T06:49:56.2760065Z Worker ID: {e89b6229-c5b0-4a0c-ac24-9081bdbcf1b0}
+test (22)	Set up job	2026-10-01T06:49:56.2760847Z Azure Region: centralus
+test (22)	Set up job	2026-10-01T06:49:56.2761446Z ##[endgroup]
+test (22)	Set up job	2026-10-01T06:49:56.2762909Z ##[group]Operating System
+test (22)	Set up job	2026-10-01T06:49:56.2763574Z Ubuntu
+test (22)	Set up job	2026-10-01T06:49:56.2764022Z 24.04.5
+test (22)	Set up job	2026-10-01T06:49:56.2764443Z LTS
+test (22)	Set up job	2026-10-01T06:49:56.2765007Z ##[endgroup]
+test (22)	Set up job	2026-10-01T06:49:56.2765494Z ##[group]Runner Image
+test (22)	Set up job	2026-10-01T06:49:56.2766134Z Image: ubuntu-24.04
+test (22)	Set up job	2026-10-01T06:49:56.2766644Z Version: 20260927.320.1
+test (22)	Set up job	2026-10-01T06:49:56.2767584Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260927.320/images/ubuntu/Ubuntu2404-Readme.md
+test (22)	Set up job	2026-10-01T06:49:56.2769307Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260927.320
+test (22)	Set up job	2026-10-01T06:49:56.2770269Z ##[endgroup]
+test (22)	Set up job	2026-10-01T06:49:56.2771478Z ##[group]GITHUB_TOKEN Permissions
+test (22)	Set up job	2026-10-01T06:49:56.2773673Z Contents: read
+test (22)	Set up job	2026-10-01T06:49:56.2774271Z Metadata: read
+test (22)	Set up job	2026-10-01T06:49:56.2774747Z ##[endgroup]
+test (22)	Set up job	2026-10-01T06:49:56.2776749Z Secret source: Actions
+test (22)	Set up job	2026-10-01T06:49:56.2777593Z Cache mode: write
+test (22)	Set up job	2026-10-01T06:49:56.2778342Z Prepare workflow directory
+test (22)	Set up job	2026-10-01T06:49:56.3040271Z Prepare all required actions
+test (22)	Set up job	2026-10-01T06:49:56.3071405Z Getting action download info
+test (22)	Set up job	2026-10-01T06:49:56.5060178Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+test (22)	Set up job	2026-10-01T06:49:56.5817146Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+test (22)	Set up job	2026-10-01T06:49:56.7423667Z Complete job name: test (22)
+test (22)	Run actions/checkout@v4	﻿2026-10-01T06:49:56.7897654Z ##[group]Run actions/checkout@v4
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7898098Z with:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7898370Z   repository: Sylva1027/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7900584Z   token: ***
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7900829Z   ssh-strict: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7901074Z   ssh-user: git
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7901327Z   persist-credentials: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7901600Z   clean: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7901856Z   sparse-checkout-cone-mode: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7902144Z   fetch-depth: 1
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7902386Z   fetch-tags: false
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7902633Z   show-progress: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7902882Z   lfs: false
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7903114Z   submodules: false
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7903364Z   set-safe-directory: true
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7903647Z   allow-unsafe-pr-checkout: false
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.7904009Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8568296Z Syncing repository: Sylva1027/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8569889Z ##[group]Getting Git version info
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8570683Z Working directory is '/home/runner/work/codex-usage/codex-usage'
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8571725Z [command]/usr/bin/git version
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8639159Z git version 2.55.0
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8661381Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8668108Z Temporarily overriding HOME='/home/runner/work/_temp/6b34e349-f21b-4849-9bbe-10adc765e9cf' before making global git config changes
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8670244Z Adding repository directory to the temporary git global config as a safe directory
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8673924Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/codex-usage/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8721301Z Deleting the contents of '/home/runner/work/codex-usage/codex-usage'
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8725015Z ##[group]Initializing the repository
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8728019Z [command]/usr/bin/git init /home/runner/work/codex-usage/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8830075Z hint: Using 'master' as the name for the initial branch. This default branch name
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8831242Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8832513Z hint: to use in all of your new repositories, which will suppress this warning,
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8833531Z hint: call:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8834359Z hint:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8834806Z hint: 	git config --global init.defaultBranch <name>
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8835329Z hint:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8835818Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8836620Z hint: 'development'. The just-created branch can be renamed via this command:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8837250Z hint:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8837623Z hint: 	git branch -m <name>
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8838054Z hint:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8838581Z hint: Disable this message with "git config set advice.defaultBranchName false"
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8839469Z Initialized empty Git repository in /home/runner/work/codex-usage/codex-usage/.git/
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8845781Z [command]/usr/bin/git remote add origin https://github.com/Sylva1027/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8889291Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8893287Z ##[group]Disabling automatic garbage collection
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8893701Z [command]/usr/bin/git config --local gc.auto 0
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8932321Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8932786Z ##[group]Setting up auth
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8939093Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.8971788Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9267396Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9296370Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9471050Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9500069Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9673803Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9707186Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9707786Z ##[group]Fetching the repository
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:56.9713438Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8b22270e4560df1c3832b1cadfbacdbfeabd5212:refs/remotes/origin/main
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4024374Z From https://github.com/Sylva1027/codex-usage
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4026020Z  * [new ref]         8b22270e4560df1c3832b1cadfbacdbfeabd5212 -> origin/main
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4029096Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4030302Z ##[group]Determining the checkout info
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4031758Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4033383Z [command]/usr/bin/git sparse-checkout disable
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4262524Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4364682Z ##[group]Checking out the ref
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.4366970Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.7978524Z Switched to a new branch 'main'
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.7979214Z branch 'main' set up to track 'origin/main'.
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.7998793Z ##[endgroup]
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.8079689Z [command]/usr/bin/git log -1 --format=%H
+test (22)	Run actions/checkout@v4	2026-10-01T06:49:59.8103356Z 8b22270e4560df1c3832b1cadfbacdbfeabd5212
+test (22)	Run actions/setup-node@v4	﻿2026-10-01T06:49:59.8292169Z ##[group]Run actions/setup-node@v4
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8292419Z with:
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8292555Z   node-version: 22
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8292687Z   cache: npm
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8292818Z   always-auth: false
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8292961Z   check-latest: false
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8294358Z   token: ***
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.8294499Z ##[endgroup]
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.9515488Z Found in cache @ /opt/hostedtoolcache/node/22.23.3/x64
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.9518886Z (node:2071) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.9519415Z (Use `node --trace-deprecation ...` to show where the warning was created)
+test (22)	Run actions/setup-node@v4	2026-10-01T06:49:59.9520439Z ##[group]Environment details
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.3301688Z node: v22.23.3
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.3301999Z npm: 10.9.9
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.3302113Z yarn: 1.22.22
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.3303179Z ##[endgroup]
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.3314784Z [command]/opt/hostedtoolcache/node/22.23.3/x64/bin/npm config get cache
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.4053277Z /home/runner/.npm
+test (22)	Run actions/setup-node@v4	2026-10-01T06:50:00.5535856Z npm cache is not found
+test (22)	Run npm ci	﻿2026-10-01T06:50:00.5698525Z ##[group]Run npm ci
+test (22)	Run npm ci	2026-10-01T06:50:00.5698751Z ^[[36;1mnpm ci^[[0m
+test (22)	Run npm ci	2026-10-01T06:50:00.7108669Z shell: /usr/bin/bash -e {0}
+test (22)	Run npm ci	2026-10-01T06:50:00.7108895Z ##[endgroup]
+test (22)	Run npm ci	2026-10-01T06:50:01.3195190Z npm warn EBADENGINE Unsupported engine {
+test (22)	Run npm ci	2026-10-01T06:50:01.3195868Z npm warn EBADENGINE   package: 'codex-usage@0.5.0',
+test (22)	Run npm ci	2026-10-01T06:50:01.3196310Z npm warn EBADENGINE   required: { node: '>=23.8' },
+test (22)	Run npm ci	2026-10-01T06:50:01.3196745Z npm warn EBADENGINE   current: { node: 'v22.23.3', npm: '10.9.9' }
+test (22)	Run npm ci	2026-10-01T06:50:01.3197109Z npm warn EBADENGINE }
+test (22)	Run npm ci	2026-10-01T06:50:01.9522810Z 
+test (22)	Run npm ci	2026-10-01T06:50:01.9523607Z added 5 packages, and audited 6 packages in 1s
+test (22)	Run npm ci	2026-10-01T06:50:01.9524165Z 
+test (22)	Run npm ci	2026-10-01T06:50:01.9524313Z 1 package is looking for funding
+test (22)	Run npm ci	2026-10-01T06:50:01.9524860Z   run `npm fund` for details
+test (22)	Run npm ci	2026-10-01T06:50:01.9527278Z 
+test (22)	Run npm ci	2026-10-01T06:50:01.9527505Z found 0 vulnerabilities
+test (22)	Run npm test	﻿2026-10-01T06:50:01.9873101Z ##[group]Run npm test
+test (22)	Run npm test	2026-10-01T06:50:01.9873273Z ^[[36;1mnpm test^[[0m
+test (22)	Run npm test	2026-10-01T06:50:01.9926785Z shell: /usr/bin/bash -e {0}
+test (22)	Run npm test	2026-10-01T06:50:01.9926939Z ##[endgroup]
+test (22)	Run npm test	2026-10-01T06:50:02.0567942Z 
+test (22)	Run npm test	2026-10-01T06:50:02.0568557Z > codex-usage@0.5.0 test
+test (22)	Run npm test	2026-10-01T06:50:02.0568859Z > node --test
+test (22)	Run npm test	2026-10-01T06:50:02.0568935Z 
+test (22)	Run npm test	2026-10-01T06:50:02.1282171Z TAP version 13
+test (22)	Run npm test	2026-10-01T06:50:02.1566029Z # Subtest: auto refresh preference gates polling, preserves manual refresh, and disables static snapshots
+test (22)	Run npm test	2026-10-01T06:50:02.1566586Z ok 1 - auto refresh preference gates polling, preserves manual refresh, and disables static snapshots
+test (22)	Run npm test	2026-10-01T06:50:02.1566858Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.1567133Z   duration_ms: 4.98885
+test (22)	Run npm test	2026-10-01T06:50:02.1567342Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.1567548Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.3432566Z # Subtest: recent aliases keep a shared catalog key active while retired missing models remain in All Models
+test (22)	Run npm test	2026-10-01T06:50:02.3451695Z ok 2 - recent aliases keep a shared catalog key active while retired missing models remain in All Models
+test (22)	Run npm test	2026-10-01T06:50:02.3452361Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.3478842Z   duration_ms: 1.943665
+test (22)	Run npm test	2026-10-01T06:50:02.3501121Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.3561352Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.3588039Z # Subtest: claimHarnessKeys 让同一模型只留在第一个 harness 分区里
+test (22)	Run npm test	2026-10-01T06:50:02.3614408Z ok 3 - claimHarnessKeys 让同一模型只留在第一个 harness 分区里
+test (22)	Run npm test	2026-10-01T06:50:02.3661278Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.3691009Z   duration_ms: 0.182534
+test (22)	Run npm test	2026-10-01T06:50:02.3714460Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.3771128Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.3801538Z # Subtest: claimHarnessKeys 按 Codex → ZCode → DSH 的优先级认领
+test (22)	Run npm test	2026-10-01T06:50:02.3831483Z ok 4 - claimHarnessKeys 按 Codex → ZCode → DSH 的优先级认领
+test (22)	Run npm test	2026-10-01T06:50:02.3856604Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.3905142Z   duration_ms: 0.114863
+test (22)	Run npm test	2026-10-01T06:50:02.3921749Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.3949859Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.3981369Z # Subtest: pricingHarnessGroups 读三元 harnessModels 并去重
+test (22)	Run npm test	2026-10-01T06:50:02.3991479Z ok 5 - pricingHarnessGroups 读三元 harnessModels 并去重
+test (22)	Run npm test	2026-10-01T06:50:02.4012597Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4046182Z   duration_ms: 0.218568
+test (22)	Run npm test	2026-10-01T06:50:02.4046474Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4063280Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4064065Z # Subtest: pricingHarnessGroups respects an empty recent set instead of reviving historical models
+test (22)	Run npm test	2026-10-01T06:50:02.4065045Z ok 6 - pricingHarnessGroups respects an empty recent set instead of reviving historical models
+test (22)	Run npm test	2026-10-01T06:50:02.4073240Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4073418Z   duration_ms: 0.150024
+test (22)	Run npm test	2026-10-01T06:50:02.4073611Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4073777Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4074257Z # Subtest: legacy and mixed pricing responses keep observed models visible while explicit recent emptiness wins
+test (22)	Run npm test	2026-10-01T06:50:02.4074962Z ok 7 - legacy and mixed pricing responses keep observed models visible while explicit recent emptiness wins
+test (22)	Run npm test	2026-10-01T06:50:02.4075349Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4075513Z   duration_ms: 0.200791
+test (22)	Run npm test	2026-10-01T06:50:02.4075701Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4075885Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4076243Z # Subtest: pricingHarnessRows keeps aliases visible and exposes missing and free usage
+test (22)	Run npm test	2026-10-01T06:50:02.4076789Z ok 8 - pricingHarnessRows keeps aliases visible and exposes missing and free usage
+test (22)	Run npm test	2026-10-01T06:50:02.4077116Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4077278Z   duration_ms: 0.146259
+test (22)	Run npm test	2026-10-01T06:50:02.4077462Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4077632Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4078087Z # Subtest: 空状态文案包含 DSH 与 OpenCode
+test (22)	Run npm test	2026-10-01T06:50:02.4078371Z ok 9 - 空状态文案包含 DSH 与 OpenCode
+test (22)	Run npm test	2026-10-01T06:50:02.4078588Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4078751Z   duration_ms: 0.655954
+test (22)	Run npm test	2026-10-01T06:50:02.4078938Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4079100Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4079481Z # Subtest: claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode 的优先级认领
+test (22)	Run npm test	2026-10-01T06:50:02.4080005Z ok 10 - claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode 的优先级认领
+test (22)	Run npm test	2026-10-01T06:50:02.4080284Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4080600Z   duration_ms: 0.215073
+test (22)	Run npm test	2026-10-01T06:50:02.4080787Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4081213Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4081535Z # Subtest: pricing status gives total coverage and marks each price source
+test (22)	Run npm test	2026-10-01T06:50:02.4081984Z ok 11 - pricing status gives total coverage and marks each price source
+test (22)	Run npm test	2026-10-01T06:50:02.4082278Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4082433Z   duration_ms: 0.798277
+test (22)	Run npm test	2026-10-01T06:50:02.4082607Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4082755Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4083113Z # Subtest: usage coverage status distinguishes loading, covered, free, and missing models
+test (22)	Run npm test	2026-10-01T06:50:02.4083624Z ok 12 - usage coverage status distinguishes loading, covered, free, and missing models
+test (22)	Run npm test	2026-10-01T06:50:02.4083939Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4084096Z   duration_ms: 0.155183
+test (22)	Run npm test	2026-10-01T06:50:02.4084270Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4084458Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4084915Z # Subtest: model pricing Apply requires a valid numeric change and disables again after a revert
+test (22)	Run npm test	2026-10-01T06:50:02.4085474Z ok 13 - model pricing Apply requires a valid numeric change and disables again after a revert
+test (22)	Run npm test	2026-10-01T06:50:02.4085825Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4085981Z   duration_ms: 0.10714
+test (22)	Run npm test	2026-10-01T06:50:02.4086158Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4086314Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4086660Z # Subtest: token values use two decimals with M/B/T units and retain exact hover values
+test (22)	Run npm test	2026-10-01T06:50:02.4087154Z ok 14 - token values use two decimals with M/B/T units and retain exact hover values
+test (22)	Run npm test	2026-10-01T06:50:02.4087485Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4087646Z   duration_ms: 2.489903
+test (22)	Run npm test	2026-10-01T06:50:02.4087831Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4087987Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4088276Z # Subtest: timeline details follow channel, model, and cost modes
+test (22)	Run npm test	2026-10-01T06:50:02.4088803Z ok 15 - timeline details follow channel, model, and cost modes
+test (22)	Run npm test	2026-10-01T06:50:02.4089063Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4089218Z   duration_ms: 0.201382
+test (22)	Run npm test	2026-10-01T06:50:02.4089398Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4089563Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4089838Z # Subtest: cost details show model amounts and escape model names
+test (22)	Run npm test	2026-10-01T06:50:02.4090232Z ok 16 - cost details show model amounts and escape model names
+test (22)	Run npm test	2026-10-01T06:50:02.4091368Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4091536Z   duration_ms: 0.687621
+test (22)	Run npm test	2026-10-01T06:50:02.4091724Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4091892Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4092242Z # Subtest: comparison sort cycles through descending, ascending, and default order
+test (22)	Run npm test	2026-10-01T06:50:02.4092902Z ok 17 - comparison sort cycles through descending, ascending, and default order
+test (22)	Run npm test	2026-10-01T06:50:02.4093361Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4093522Z   duration_ms: 1.008602
+test (22)	Run npm test	2026-10-01T06:50:02.4093699Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4093868Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4094201Z # Subtest: auto refresh timestamps use the selected calendar zone and identify it
+test (22)	Run npm test	2026-10-01T06:50:02.4094717Z ok 18 - auto refresh timestamps use the selected calendar zone and identify it
+test (22)	Run npm test	2026-10-01T06:50:02.4095039Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4095204Z   duration_ms: 3.773518
+test (22)	Run npm test	2026-10-01T06:50:02.4095397Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4095570Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4096024Z # Subtest: natural week comparison headings and accessible sort labels use 本周
+test (22)	Run npm test	2026-10-01T06:50:02.4096544Z ok 19 - natural week comparison headings and accessible sort labels use 本周
+test (22)	Run npm test	2026-10-01T06:50:02.4096844Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4097001Z   duration_ms: 0.2065
+test (22)	Run npm test	2026-10-01T06:50:02.4097186Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4097353Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4097740Z # Subtest: period comparison includes the union of all four periods and reconciles totals
+test (22)	Run npm test	2026-10-01T06:50:02.4098297Z ok 20 - period comparison includes the union of all four periods and reconciles totals
+test (22)	Run npm test	2026-10-01T06:50:02.4098627Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4098790Z   duration_ms: 0.177556
+test (22)	Run npm test	2026-10-01T06:50:02.4098977Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4099146Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4099501Z # Subtest: event date range handles enough records to exceed argument spread limits
+test (22)	Run npm test	2026-10-01T06:50:02.4100026Z ok 21 - event date range handles enough records to exceed argument spread limits
+test (22)	Run npm test	2026-10-01T06:50:02.4100748Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4100920Z   duration_ms: 110.933371
+test (22)	Run npm test	2026-10-01T06:50:02.4101122Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4101291Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4101645Z # Subtest: timeline maximum handles enough values to exceed argument spread limits
+test (22)	Run npm test	2026-10-01T06:50:02.4102166Z ok 22 - timeline maximum handles enough values to exceed argument spread limits
+test (22)	Run npm test	2026-10-01T06:50:02.4102487Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4102653Z   duration_ms: 4.813968
+test (22)	Run npm test	2026-10-01T06:50:02.4102845Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4103011Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4103334Z # Subtest: channel colors remain attached to channels when row order changes
+test (22)	Run npm test	2026-10-01T06:50:02.4103805Z ok 23 - channel colors remain attached to channels when row order changes
+test (22)	Run npm test	2026-10-01T06:50:02.4104111Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4104275Z   duration_ms: 1.058467
+test (22)	Run npm test	2026-10-01T06:50:02.4104463Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4104633Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4104980Z # Subtest: timeline model and channel legends assign distinct colors in both themes
+test (22)	Run npm test	2026-10-01T06:50:02.4105501Z ok 24 - timeline model and channel legends assign distinct colors in both themes
+test (22)	Run npm test	2026-10-01T06:50:02.4105816Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4105980Z   duration_ms: 0.651277
+test (22)	Run npm test	2026-10-01T06:50:02.4106169Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4106333Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4106702Z # Subtest: timeline legend shows every model directly without a heading or expand control
+test (22)	Run npm test	2026-10-01T06:50:02.4107278Z ok 25 - timeline legend shows every model directly without a heading or expand control
+test (22)	Run npm test	2026-10-01T06:50:02.4107647Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4107818Z   duration_ms: 0.514832
+test (22)	Run npm test	2026-10-01T06:50:02.4108025Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4108198Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4108544Z # Subtest: render helpers escape usage row names before inserting HTML
+test (22)	Run npm test	2026-10-01T06:50:02.4109026Z ok 26 - render helpers escape usage row names before inserting HTML
+test (22)	Run npm test	2026-10-01T06:50:02.4109354Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4109525Z   duration_ms: 0.178908
+test (22)	Run npm test	2026-10-01T06:50:02.4109723Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4109919Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4110321Z # Subtest: renderHomesHtml shows escaped statuses and removable imported directories
+test (22)	Run npm test	2026-10-01T06:50:02.4111153Z ok 27 - renderHomesHtml shows escaped statuses and removable imported directories
+test (22)	Run npm test	2026-10-01T06:50:02.4111573Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4111754Z   duration_ms: 0.198258
+test (22)	Run npm test	2026-10-01T06:50:02.4111969Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4112327Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4112771Z # Subtest: renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项
+test (22)	Run npm test	2026-10-01T06:50:02.4113222Z ok 28 - renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项
+test (22)	Run npm test	2026-10-01T06:50:02.4113495Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4113677Z   duration_ms: 0.215693
+test (22)	Run npm test	2026-10-01T06:50:02.4113884Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4114054Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4114335Z # Subtest: renderHomesHtml 标记被排除统计的来源
+test (22)	Run npm test	2026-10-01T06:50:02.4114650Z ok 29 - renderHomesHtml 标记被排除统计的来源
+test (22)	Run npm test	2026-10-01T06:50:02.4114860Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4115019Z   duration_ms: 0.098037
+test (22)	Run npm test	2026-10-01T06:50:02.4115217Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4115380Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4115652Z # Subtest: 费用金额按币种显示符号，混合币种并列展示
+test (22)	Run npm test	2026-10-01T06:50:02.4115917Z ok 30 - 费用金额按币种显示符号，混合币种并列展示
+test (22)	Run npm test	2026-10-01T06:50:02.4116108Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4116269Z   duration_ms: 0.442704
+test (22)	Run npm test	2026-10-01T06:50:02.4116454Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4116616Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4116902Z # Subtest: fitTextToWidth 只缩小字号且不破下限，放得下时不改动
+test (22)	Run npm test	2026-10-01T06:50:02.4117250Z ok 31 - fitTextToWidth 只缩小字号且不破下限，放得下时不改动
+test (22)	Run npm test	2026-10-01T06:50:02.4117475Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4117635Z   duration_ms: 0.219339
+test (22)	Run npm test	2026-10-01T06:50:02.4117816Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4117975Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4118239Z # Subtest: 图例按名称字母排序，跨币种费用按汇率折算比较
+test (22)	Run npm test	2026-10-01T06:50:02.4118531Z ok 32 - 图例按名称字母排序，跨币种费用按汇率折算比较
+test (22)	Run npm test	2026-10-01T06:50:02.4118721Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4118880Z   duration_ms: 0.196184
+test (22)	Run npm test	2026-10-01T06:50:02.4119067Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4119234Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4119592Z # Subtest: renderComparisonHtml renders trend, average trend, and previous totals
+test (22)	Run npm test	2026-10-01T06:50:02.4120377Z ok 33 - renderComparisonHtml renders trend, average trend, and previous totals
+test (22)	Run npm test	2026-10-01T06:50:02.4120813Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4120970Z   duration_ms: 0.256635
+test (22)	Run npm test	2026-10-01T06:50:02.4121154Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4121312Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4121689Z # Subtest: renderComparisonHtml names the previous token period for day, week, and month
+test (22)	Run npm test	2026-10-01T06:50:02.4122292Z ok 34 - renderComparisonHtml names the previous token period for day, week, and month
+test (22)	Run npm test	2026-10-01T06:50:02.4122637Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4122803Z   duration_ms: 0.163666
+test (22)	Run npm test	2026-10-01T06:50:02.4122994Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4123158Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4123544Z # Subtest: renderComparisonHtml explains all-time comparisons and dates custom baselines
+test (22)	Run npm test	2026-10-01T06:50:02.4124123Z ok 35 - renderComparisonHtml explains all-time comparisons and dates custom baselines
+test (22)	Run npm test	2026-10-01T06:50:02.4124470Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4124634Z   duration_ms: 0.177015
+test (22)	Run npm test	2026-10-01T06:50:02.4124834Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4124997Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4125407Z # Subtest: datePickerMonthModel starts weeks on Monday and keeps outside-month days selectable
+test (22)	Run npm test	2026-10-01T06:50:02.4126012Z ok 36 - datePickerMonthModel starts weeks on Monday and keeps outside-month days selectable
+test (22)	Run npm test	2026-10-01T06:50:02.4126379Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4126541Z   duration_ms: 0.463826
+test (22)	Run npm test	2026-10-01T06:50:02.4126734Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4126898Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4127274Z # Subtest: renderDatePickerHtml marks outside-month dates as dim but selectable buttons
+test (22)	Run npm test	2026-10-01T06:50:02.4127837Z ok 37 - renderDatePickerHtml marks outside-month dates as dim but selectable buttons
+test (22)	Run npm test	2026-10-01T06:50:02.4128173Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4128320Z   duration_ms: 0.58682
+test (22)	Run npm test	2026-10-01T06:50:02.4128502Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4128657Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4129071Z # Subtest: renderDatePickerHtml enables the clear control once a date is picked and disables it when empty
+test (22)	Run npm test	2026-10-01T06:50:02.4129748Z ok 38 - renderDatePickerHtml enables the clear control once a date is picked and disables it when empty
+test (22)	Run npm test	2026-10-01T06:50:02.4130126Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4130278Z   duration_ms: 0.283145
+test (22)	Run npm test	2026-10-01T06:50:02.4130684Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4130868Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4131294Z # Subtest: date range selection keeps the first endpoint pending and commits the second across months
+test (22)	Run npm test	2026-10-01T06:50:02.4132064Z ok 39 - date range selection keeps the first endpoint pending and commits the second across months
+test (22)	Run npm test	2026-10-01T06:50:02.4132442Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4132598Z   duration_ms: 0.141692
+test (22)	Run npm test	2026-10-01T06:50:02.4132786Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4132952Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4133291Z # Subtest: date range selection orders reversed endpoints and allows a single day
+test (22)	Run npm test	2026-10-01T06:50:02.4133765Z ok 40 - date range selection orders reversed endpoints and allows a single day
+test (22)	Run npm test	2026-10-01T06:50:02.4134080Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4134243Z   duration_ms: 0.241071
+test (22)	Run npm test	2026-10-01T06:50:02.4134441Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4134606Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4135006Z # Subtest: date range selection rejects invalid dates and starts a new range when no start exists
+test (22)	Run npm test	2026-10-01T06:50:02.4135604Z ok 41 - date range selection rejects invalid dates and starts a new range when no start exists
+test (22)	Run npm test	2026-10-01T06:50:02.4135949Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4136109Z   duration_ms: 0.084757
+test (22)	Run npm test	2026-10-01T06:50:02.4136303Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4136466Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4136791Z # Subtest: timelineAxisLabels shows all 24 labels for a single hourly day
+test (22)	Run npm test	2026-10-01T06:50:02.4137256Z ok 42 - timelineAxisLabels shows all 24 labels for a single hourly day
+test (22)	Run npm test	2026-10-01T06:50:02.4137556Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4137719Z   duration_ms: 0.584646
+test (22)	Run npm test	2026-10-01T06:50:02.4137912Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4138076Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4138393Z # Subtest: timelineAxisLabels samples hourly labels outside a single day
+test (22)	Run npm test	2026-10-01T06:50:02.4138844Z ok 43 - timelineAxisLabels samples hourly labels outside a single day
+test (22)	Run npm test	2026-10-01T06:50:02.4139260Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4139413Z   duration_ms: 0.304847
+test (22)	Run npm test	2026-10-01T06:50:02.4139597Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4139761Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4140130Z # Subtest: timelineAxisLabels keeps equal day gaps over a full month and skips future days
+test (22)	Run npm test	2026-10-01T06:50:02.4141128Z ok 44 - timelineAxisLabels keeps equal day gaps over a full month and skips future days
+test (22)	Run npm test	2026-10-01T06:50:02.4141478Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4141642Z   duration_ms: 0.201892
+test (22)	Run npm test	2026-10-01T06:50:02.4141834Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4141993Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4142318Z # Subtest: timelineAxisLabels keeps every day labeled when slots fit the text
+test (22)	Run npm test	2026-10-01T06:50:02.4142797Z ok 45 - timelineAxisLabels keeps every day labeled when slots fit the text
+test (22)	Run npm test	2026-10-01T06:50:02.4143153Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4143315Z   duration_ms: 0.171928
+test (22)	Run npm test	2026-10-01T06:50:02.4143505Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4143668Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4143991Z # Subtest: drawTimeline does not draw visible bars for zero-token rows
+test (22)	Run npm test	2026-10-01T06:50:02.4144424Z ok 46 - drawTimeline does not draw visible bars for zero-token rows
+test (22)	Run npm test	2026-10-01T06:50:02.4144709Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4144877Z   duration_ms: 0.974351
+test (22)	Run npm test	2026-10-01T06:50:02.4145065Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4145226Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4145586Z # Subtest: drawTimeline renders model and cost stacks and rejects missing breakdowns
+test (22)	Run npm test	2026-10-01T06:50:02.4146118Z ok 47 - drawTimeline renders model and cost stacks and rejects missing breakdowns
+test (22)	Run npm test	2026-10-01T06:50:02.4146439Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4146602Z   duration_ms: 0.875132
+test (22)	Run npm test	2026-10-01T06:50:02.4146790Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4146953Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4147253Z # Subtest: drawTimeline keeps dense hourly bars inside the chart width
+test (22)	Run npm test	2026-10-01T06:50:02.4147698Z ok 48 - drawTimeline keeps dense hourly bars inside the chart width
+test (22)	Run npm test	2026-10-01T06:50:02.4147980Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4148140Z   duration_ms: 3.276282
+test (22)	Run npm test	2026-10-01T06:50:02.4148336Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4148492Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4148810Z # Subtest: timeline labels show natural week weekdays and full month dates
+test (22)	Run npm test	2026-10-01T06:50:02.4149266Z ok 49 - timeline labels show natural week weekdays and full month dates
+test (22)	Run npm test	2026-10-01T06:50:02.4149559Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4149723Z   duration_ms: 0.206189
+test (22)	Run npm test	2026-10-01T06:50:02.4149912Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4150270Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4150773Z # Subtest: drawTimeline centers date ticks under capped slot bars
+test (22)	Run npm test	2026-10-01T06:50:02.4151162Z ok 50 - drawTimeline centers date ticks under capped slot bars
+test (22)	Run npm test	2026-10-01T06:50:02.4151423Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4151582Z   duration_ms: 0.248804
+test (22)	Run npm test	2026-10-01T06:50:02.4151765Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4151929Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4152351Z # Subtest: model names render lowercase while data keys, colors, and non-model labels keep their casing
+test (22)	Run npm test	2026-10-01T06:50:02.4152987Z ok 51 - model names render lowercase while data keys, colors, and non-model labels keep their casing
+test (22)	Run npm test	2026-10-01T06:50:02.4153370Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4153526Z   duration_ms: 2.486979
+test (22)	Run npm test	2026-10-01T06:50:02.4153710Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4153878Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4154327Z # Subtest: timelineAxisLabels renders month keys as month names within one year and full keys across years
+test (22)	Run npm test	2026-10-01T06:50:02.4154956Z ok 52 - timelineAxisLabels renders month keys as month names within one year and full keys across years
+test (22)	Run npm test	2026-10-01T06:50:02.4155342Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4155510Z   duration_ms: 0.189595
+test (22)	Run npm test	2026-10-01T06:50:02.4155695Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4155857Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4156225Z # Subtest: timelineSlotRangeTitle expands week and month keys into covered date ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4156788Z ok 53 - timelineSlotRangeTitle expands week and month keys into covered date ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4157125Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4157288Z   duration_ms: 0.151417
+test (22)	Run npm test	2026-10-01T06:50:02.4157478Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4157785Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4158245Z # (node:2151) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:02.4159089Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:02.4159696Z # Subtest: static UTC date selection agrees with live day boundaries
+test (22)	Run npm test	2026-10-01T06:50:02.4160281Z ok 54 - static UTC date selection agrees with live day boundaries
+test (22)	Run npm test	2026-10-01T06:50:02.4160954Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4161246Z   duration_ms: 3.101681
+test (22)	Run npm test	2026-10-01T06:50:02.4161544Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4161813Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4162236Z # Subtest: summarize includes channel breakdowns for timeline buckets
+test (22)	Run npm test	2026-10-01T06:50:02.4162773Z ok 55 - summarize includes channel breakdowns for timeline buckets
+test (22)	Run npm test	2026-10-01T06:50:02.4163166Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4163439Z   duration_ms: 0.916994
+test (22)	Run npm test	2026-10-01T06:50:02.4163735Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4164012Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4164441Z # Subtest: summarize fills a single local day with 24 hourly timeline rows
+test (22)	Run npm test	2026-10-01T06:50:02.4165019Z ok 56 - summarize fills a single local day with 24 hourly timeline rows
+test (22)	Run npm test	2026-10-01T06:50:02.4165431Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4165702Z   duration_ms: 1.256624
+test (22)	Run npm test	2026-10-01T06:50:02.4166003Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4166272Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4166790Z # Subtest: static quota summary stays at export asOf and applies source exclusions to embedded events
+test (22)	Run npm test	2026-10-01T06:50:02.4167530Z ok 57 - static quota summary stays at export asOf and applies source exclusions to embedded events
+test (22)	Run npm test	2026-10-01T06:50:02.4168005Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4168280Z   duration_ms: 1.390245
+test (22)	Run npm test	2026-10-01T06:50:02.4168575Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4168930Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4169410Z # Subtest: static summarize totals embedded API cost estimates for the selected events
+test (22)	Run npm test	2026-10-01T06:50:02.4170047Z ok 58 - static summarize totals embedded API cost estimates for the selected events
+test (22)	Run npm test	2026-10-01T06:50:02.4170615Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4170892Z   duration_ms: 1.277445
+test (22)	Run npm test	2026-10-01T06:50:02.4171181Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4171449Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4171852Z # Subtest: today preset defaults the next dashboard bucket to hour
+test (22)	Run npm test	2026-10-01T06:50:02.4172374Z ok 59 - today preset defaults the next dashboard bucket to hour
+test (22)	Run npm test	2026-10-01T06:50:02.4172754Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4173188Z   duration_ms: 0.236475
+test (22)	Run npm test	2026-10-01T06:50:02.4173763Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4173951Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4174341Z # Subtest: quota preset toggle remembers the last mode independently of availability
+test (22)	Run npm test	2026-10-01T06:50:02.4174892Z ok 60 - quota preset toggle remembers the last mode independently of availability
+test (22)	Run npm test	2026-10-01T06:50:02.4175227Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4175396Z   duration_ms: 0.16731
+test (22)	Run npm test	2026-10-01T06:50:02.4175589Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4175757Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4176156Z # Subtest: quota headings show local window boundaries and tooltip intervals include timezone
+test (22)	Run npm test	2026-10-01T06:50:02.4176751Z ok 61 - quota headings show local window boundaries and tooltip intervals include timezone
+test (22)	Run npm test	2026-10-01T06:50:02.4177111Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4177280Z   duration_ms: 4.653928
+test (22)	Run npm test	2026-10-01T06:50:02.4177469Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4177637Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4178005Z # Subtest: recent one-day range defaults to hour and longer recent ranges default to day
+test (22)	Run npm test	2026-10-01T06:50:02.4178535Z ok 62 - recent one-day range defaults to hour and longer recent ranges default to day
+test (22)	Run npm test	2026-10-01T06:50:02.4178884Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4179046Z   duration_ms: 0.730255
+test (22)	Run npm test	2026-10-01T06:50:02.4179233Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4179402Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4179669Z # Subtest: summarize filters recent natural-day month ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4180044Z ok 63 - summarize filters recent natural-day month ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4180307Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4180605Z   duration_ms: 0.864365
+test (22)	Run npm test	2026-10-01T06:50:02.4180875Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4181043Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4181393Z # Subtest: summarize fills recent two-day hourly ranges on natural-day boundaries
+test (22)	Run npm test	2026-10-01T06:50:02.4182030Z ok 64 - summarize fills recent two-day hourly ranges on natural-day boundaries
+test (22)	Run npm test	2026-10-01T06:50:02.4182354Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4182515Z   duration_ms: 0.556464
+test (22)	Run npm test	2026-10-01T06:50:02.4182701Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4182860Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4183125Z # Subtest: summarize uses rolling recent day ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4183496Z ok 65 - summarize uses rolling recent day ranges
+test (22)	Run npm test	2026-10-01T06:50:02.4183793Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4184005Z   duration_ms: 0.369364
+test (22)	Run npm test	2026-10-01T06:50:02.4184275Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4184498Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4184902Z # Subtest: summarize includes previous-period comparison totals
+test (22)	Run npm test	2026-10-01T06:50:02.4185475Z ok 66 - summarize includes previous-period comparison totals
+test (22)	Run npm test	2026-10-01T06:50:02.4185821Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4185968Z   duration_ms: 0.345047
+test (22)	Run npm test	2026-10-01T06:50:02.4186134Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4197356Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4197738Z # Subtest: summarize compares week preset with the full previous natural week
+test (22)	Run npm test	2026-10-01T06:50:02.4198215Z ok 67 - summarize compares week preset with the full previous natural week
+test (22)	Run npm test	2026-10-01T06:50:02.4198515Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4198681Z   duration_ms: 0.275894
+test (22)	Run npm test	2026-10-01T06:50:02.4198868Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4199030Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4199313Z # Subtest: normalizeRecentValue defaults bare numbers to days
+test (22)	Run npm test	2026-10-01T06:50:02.4199725Z ok 68 - normalizeRecentValue defaults bare numbers to days
+test (22)	Run npm test	2026-10-01T06:50:02.4200054Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4200252Z   duration_ms: 0.085588
+test (22)	Run npm test	2026-10-01T06:50:02.4200588Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4200764Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4201123Z # Subtest: timelineChannelSegments follows global channel order
+test (22)	Run npm test	2026-10-01T06:50:02.4201615Z ok 69 - timelineChannelSegments follows global channel order
+test (22)	Run npm test	2026-10-01T06:50:02.4201925Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4202088Z   duration_ms: 0.139519
+test (22)	Run npm test	2026-10-01T06:50:02.4202281Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4202444Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4202829Z # Subtest: natural week and month slots include future positions without changing range totals
+test (22)	Run npm test	2026-10-01T06:50:02.4203407Z ok 70 - natural week and month slots include future positions without changing range totals
+test (22)	Run npm test	2026-10-01T06:50:02.4203750Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4203911Z   duration_ms: 0.504797
+test (22)	Run npm test	2026-10-01T06:50:02.4204256Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4204415Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4204774Z # Subtest: all-time summarize escalates long spans to weekly bars and labels the merge
+test (22)	Run npm test	2026-10-01T06:50:02.4205303Z ok 71 - all-time summarize escalates long spans to weekly bars and labels the merge
+test (22)	Run npm test	2026-10-01T06:50:02.4205624Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4205784Z   duration_ms: 0.364316
+test (22)	Run npm test	2026-10-01T06:50:02.4205969Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4206127Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4206468Z # Subtest: custom summarize with a monthly bucket appends the month-merge label
+test (22)	Run npm test	2026-10-01T06:50:02.4206957Z ok 72 - custom summarize with a monthly bucket appends the month-merge label
+test (22)	Run npm test	2026-10-01T06:50:02.4207271Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4207432Z   duration_ms: 0.252368
+test (22)	Run npm test	2026-10-01T06:50:02.4207618Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4207778Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4208121Z # Subtest: toolbar embeds the fillable recent dropdown inside the range segments
+test (22)	Run npm test	2026-10-01T06:50:02.4208641Z ok 73 - toolbar embeds the fillable recent dropdown inside the range segments
+test (22)	Run npm test	2026-10-01T06:50:02.4208952Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4209111Z   duration_ms: 5.186256
+test (22)	Run npm test	2026-10-01T06:50:02.4209299Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4209464Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4209807Z # Subtest: title, range, refresh, and timezone controls use separate compact groups
+test (22)	Run npm test	2026-10-01T06:50:02.4210334Z ok 74 - title, range, refresh, and timezone controls use separate compact groups
+test (22)	Run npm test	2026-10-01T06:50:02.4214955Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4215172Z   duration_ms: 1.238777
+test (22)	Run npm test	2026-10-01T06:50:02.4215355Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4215517Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4215873Z # Subtest: usageTooltipPosition keeps the measured tooltip inside each viewport edge
+test (22)	Run npm test	2026-10-01T06:50:02.4216584Z ok 75 - usageTooltipPosition keeps the measured tooltip inside each viewport edge
+test (22)	Run npm test	2026-10-01T06:50:02.4216906Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4217063Z   duration_ms: 0.771166
+test (22)	Run npm test	2026-10-01T06:50:02.4217242Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4217404Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4217697Z # Subtest: formatUsageTooltip renders token details for a usage row
+test (22)	Run npm test	2026-10-01T06:50:02.4218119Z ok 76 - formatUsageTooltip renders token details for a usage row
+test (22)	Run npm test	2026-10-01T06:50:02.4218391Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4218594Z   duration_ms: 0.589785
+test (22)	Run npm test	2026-10-01T06:50:02.4218774Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4218937Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4219222Z # Subtest: formatUsageTooltip renders timeline channel breakdowns
+test (22)	Run npm test	2026-10-01T06:50:02.4219630Z ok 77 - formatUsageTooltip renders timeline channel breakdowns
+test (22)	Run npm test	2026-10-01T06:50:02.4219899Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4220058Z   duration_ms: 0.183154
+test (22)	Run npm test	2026-10-01T06:50:02.4220238Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4220408Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4220910Z # Subtest: formatTimelineTooltip exposes priced model costs and never labels unpriced usage as free
+test (22)	Run npm test	2026-10-01T06:50:02.4221532Z ok 78 - formatTimelineTooltip exposes priced model costs and never labels unpriced usage as free
+test (22)	Run npm test	2026-10-01T06:50:02.4221888Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4222037Z   duration_ms: 2.168952
+test (22)	Run npm test	2026-10-01T06:50:02.4222216Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4222376Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.4971675Z # Subtest: cli run starts a local usage server
+test (22)	Run npm test	2026-10-01T06:50:02.4981537Z ok 79 - cli run starts a local usage server
+test (22)	Run npm test	2026-10-01T06:50:02.4982186Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.4982554Z   duration_ms: 251.883012
+test (22)	Run npm test	2026-10-01T06:50:02.4982962Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.4983282Z   ...
+test (22)	Run npm test	2026-10-01T06:50:02.6039076Z # Subtest: cli summary --json returns lightweight summary metadata without full report
+test (22)	Run npm test	2026-10-01T06:50:02.6041229Z ok 80 - cli summary --json returns lightweight summary metadata without full report
+test (22)	Run npm test	2026-10-01T06:50:02.6097677Z   ---
+test (22)	Run npm test	2026-10-01T06:50:02.6102645Z   duration_ms: 106.239169
+test (22)	Run npm test	2026-10-01T06:50:02.6122011Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:02.6131286Z   ...
+test (22)	Run npm test	2026-10-01T06:50:03.0435828Z # Subtest: cli gateway starts a background usage server and returns
+test (22)	Run npm test	2026-10-01T06:50:03.0450369Z ok 81 - cli gateway starts a background usage server and returns
+test (22)	Run npm test	2026-10-01T06:50:03.0451133Z   ---
+test (22)	Run npm test	2026-10-01T06:50:03.0451589Z   duration_ms: 441.143435
+test (22)	Run npm test	2026-10-01T06:50:03.0451797Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:03.0451959Z   ...
+test (22)	Run npm test	2026-10-01T06:50:03.4830409Z # Subtest: cli gateway uses a safer default heap budget for dashboard refreshes
+test (22)	Run npm test	2026-10-01T06:50:03.4831200Z ok 82 - cli gateway uses a safer default heap budget for dashboard refreshes
+test (22)	Run npm test	2026-10-01T06:50:03.4831527Z   ---
+test (22)	Run npm test	2026-10-01T06:50:03.4831711Z   duration_ms: 439.761452
+test (22)	Run npm test	2026-10-01T06:50:03.4831924Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:03.4832090Z   ...
+test (22)	Run npm test	2026-10-01T06:50:05.1673881Z # Subtest: cli restart stops existing services and starts a new gateway
+test (22)	Run npm test	2026-10-01T06:50:05.1674929Z ok 83 - cli restart stops existing services and starts a new gateway
+test (22)	Run npm test	2026-10-01T06:50:05.1675393Z   ---
+test (22)	Run npm test	2026-10-01T06:50:05.1675580Z   duration_ms: 1684.040018
+test (22)	Run npm test	2026-10-01T06:50:05.1675779Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:05.1675943Z   ...
+test (22)	Run npm test	2026-10-01T06:50:05.4016468Z # Subtest: cli run recovers from a stale service lock
+test (22)	Run npm test	2026-10-01T06:50:05.4017327Z ok 84 - cli run recovers from a stale service lock
+test (22)	Run npm test	2026-10-01T06:50:05.4017895Z   ---
+test (22)	Run npm test	2026-10-01T06:50:05.4018317Z   duration_ms: 234.027853
+test (22)	Run npm test	2026-10-01T06:50:05.4018657Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:05.4018963Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.0682465Z # Subtest: cli dashboard starts a background service and prints the dashboard URL
+test (22)	Run npm test	2026-10-01T06:50:06.0781654Z ok 85 - cli dashboard starts a background service and prints the dashboard URL
+test (22)	Run npm test	2026-10-01T06:50:06.0811194Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.0811892Z   duration_ms: 664.439821
+test (22)	Run npm test	2026-10-01T06:50:06.0827091Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.0827693Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.5526755Z # Subtest: codex-usage -d opens the dashboard
+test (22)	Run npm test	2026-10-01T06:50:06.5527841Z ok 86 - codex-usage -d opens the dashboard
+test (22)	Run npm test	2026-10-01T06:50:06.5528679Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.5530048Z   duration_ms: 486.60188
+test (22)	Run npm test	2026-10-01T06:50:06.5530769Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.5531076Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.8973072Z # Subtest: cli stop terminates all running usage services from the state file
+test (22)	Run npm test	2026-10-01T06:50:06.8997473Z ok 87 - cli stop terminates all running usage services from the state file
+test (22)	Run npm test	2026-10-01T06:50:06.8997990Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.8998318Z   duration_ms: 343.55105
+test (22)	Run npm test	2026-10-01T06:50:06.8998529Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.8998755Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9093852Z # (node:2209) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9094730Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9095966Z # Subtest: readDshSessionRows 逐个 zstd 帧解压，不会只读出第一帧
+test (22)	Run npm test	2026-10-01T06:50:06.9096597Z ok 88 - readDshSessionRows 逐个 zstd 帧解压，不会只读出第一帧
+test (22)	Run npm test	2026-10-01T06:50:06.9097135Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9097463Z   duration_ms: 26.170296
+test (22)	Run npm test	2026-10-01T06:50:06.9097808Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9098131Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9098581Z # Subtest: streamDshSessionEvents 跨全部帧产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9099069Z ok 89 - streamDshSessionEvents 跨全部帧产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9099447Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9099765Z   duration_ms: 13.422544
+test (22)	Run npm test	2026-10-01T06:50:06.9100122Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9100432Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9101387Z # Subtest: dshUsageFromRaw 把并列计数重构成 cached <= input 的超集
+test (22)	Run npm test	2026-10-01T06:50:06.9101964Z ok 90 - dshUsageFromRaw 把并列计数重构成 cached <= input 的超集
+test (22)	Run npm test	2026-10-01T06:50:06.9102360Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9102668Z   duration_ms: 0.275233
+test (22)	Run npm test	2026-10-01T06:50:06.9102999Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9103305Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9103794Z # Subtest: 真实样本经 validateUsageDetails 无一致性缺口，且不撤销缓存明细
+test (22)	Run npm test	2026-10-01T06:50:06.9104347Z ok 91 - 真实样本经 validateUsageDetails 无一致性缺口，且不撤销缓存明细
+test (22)	Run npm test	2026-10-01T06:50:06.9104737Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9105078Z   duration_ms: 0.148202
+test (22)	Run npm test	2026-10-01T06:50:06.9105405Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9105710Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9106241Z # Subtest: 天真映射（input ← inputTokens）会触发缓存明细撤销与不一致标记
+test (22)	Run npm test	2026-10-01T06:50:06.9106861Z ok 92 - 天真映射（input ← inputTokens）会触发缓存明细撤销与不一致标记
+test (22)	Run npm test	2026-10-01T06:50:06.9107260Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9107565Z   duration_ms: 0.199179
+test (22)	Run npm test	2026-10-01T06:50:06.9107894Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9108521Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9108944Z # Subtest: DSH 用量走正常计价分档，币种为 CNY
+test (22)	Run npm test	2026-10-01T06:50:06.9109374Z ok 93 - DSH 用量走正常计价分档，币种为 CNY
+test (22)	Run npm test	2026-10-01T06:50:06.9109717Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9110022Z   duration_ms: 0.917575
+test (22)	Run npm test	2026-10-01T06:50:06.9110365Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9110790Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9111215Z # Subtest: 未知模型名的 DSH 用量按 CNY 而非 USD 兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9111679Z ok 94 - 未知模型名的 DSH 用量按 CNY 而非 USD 兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9112032Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9112346Z   duration_ms: 0.921382
+test (22)	Run npm test	2026-10-01T06:50:06.9112675Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9113001Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9113538Z # Subtest: dshHomeLooksUsable 与 dshSessionFiles 只认 sessions 目录下的会话日志
+test (22)	Run npm test	2026-10-01T06:50:06.9114199Z ok 95 - dshHomeLooksUsable 与 dshSessionFiles 只认 sessions 目录下的会话日志
+test (22)	Run npm test	2026-10-01T06:50:06.9114646Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9114955Z   duration_ms: 17.16116
+test (22)	Run npm test	2026-10-01T06:50:06.9115284Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9115588Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9115997Z # Subtest: dshSourceStat 返回 size 与 mtimeMs
+test (22)	Run npm test	2026-10-01T06:50:06.9116495Z ok 96 - dshSourceStat 返回 size 与 mtimeMs
+test (22)	Run npm test	2026-10-01T06:50:06.9116864Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9117175Z   duration_ms: 2.18782
+test (22)	Run npm test	2026-10-01T06:50:06.9117513Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9117822Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9118289Z # Subtest: dshSessionHeader 解析会话头，缺头时返回 null
+test (22)	Run npm test	2026-10-01T06:50:06.9118786Z ok 97 - dshSessionHeader 解析会话头，缺头时返回 null
+test (22)	Run npm test	2026-10-01T06:50:06.9119150Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9119456Z   duration_ms: 0.442284
+test (22)	Run npm test	2026-10-01T06:50:06.9119784Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9120088Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9120608Z # Subtest: 事件带 channel、模型、仓库与上下文分级
+test (22)	Run npm test	2026-10-01T06:50:06.9121372Z ok 98 - 事件带 channel、模型、仓库与上下文分级
+test (22)	Run npm test	2026-10-01T06:50:06.9121731Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9122034Z   duration_ms: 5.232134
+test (22)	Run npm test	2026-10-01T06:50:06.9122360Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9122667Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9123105Z # Subtest: delegationDepth 大于 0 时渠道为 DSH Subagent
+test (22)	Run npm test	2026-10-01T06:50:06.9123741Z ok 99 - delegationDepth 大于 0 时渠道为 DSH Subagent
+test (22)	Run npm test	2026-10-01T06:50:06.9124189Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9124526Z   duration_ms: 2.410274
+test (22)	Run npm test	2026-10-01T06:50:06.9124848Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9125151Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9125619Z # Subtest: 模型跟随 request/header 变化，未出现时回落 Unknown model
+test (22)	Run npm test	2026-10-01T06:50:06.9126187Z ok 100 - 模型跟随 request/header 变化，未出现时回落 Unknown model
+test (22)	Run npm test	2026-10-01T06:50:06.9126576Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9126879Z   duration_ms: 4.749501
+test (22)	Run npm test	2026-10-01T06:50:06.9127203Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9127514Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9127928Z # Subtest: session/title 取最后一条并截断到 120 字符
+test (22)	Run npm test	2026-10-01T06:50:06.9128399Z ok 101 - session/title 取最后一条并截断到 120 字符
+test (22)	Run npm test	2026-10-01T06:50:06.9128776Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9129070Z   duration_ms: 4.82235
+test (22)	Run npm test	2026-10-01T06:50:06.9129398Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9129701Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9130079Z # Subtest: 损坏帧只记警告，其余帧照常解析
+test (22)	Run npm test	2026-10-01T06:50:06.9131267Z ok 102 - 损坏帧只记警告，其余帧照常解析
+test (22)	Run npm test	2026-10-01T06:50:06.9131629Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9131927Z   duration_ms: 2.063273
+test (22)	Run npm test	2026-10-01T06:50:06.9132445Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9132758Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9133174Z # Subtest: 畸形帧或解出空内容的帧都不能作为 DSH 记录
+test (22)	Run npm test	2026-10-01T06:50:06.9133612Z ok 103 - 畸形帧或解出空内容的帧都不能作为 DSH 记录
+test (22)	Run npm test	2026-10-01T06:50:06.9133952Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9134369Z   duration_ms: 2.50109
+test (22)	Run npm test	2026-10-01T06:50:06.9134734Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9135058Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9135434Z # Subtest: 无法解压时抛错，由上层记录警告
+test (22)	Run npm test	2026-10-01T06:50:06.9135825Z ok 104 - 无法解压时抛错，由上层记录警告
+test (22)	Run npm test	2026-10-01T06:50:06.9136173Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9136542Z   duration_ms: 25.234424
+test (22)	Run npm test	2026-10-01T06:50:06.9136933Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9137256Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9137611Z # Subtest: 坏 JSON 行被跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9137984Z ok 105 - 坏 JSON 行被跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9138296Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9138607Z   duration_ms: 5.645759
+test (22)	Run npm test	2026-10-01T06:50:06.9138934Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9139234Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9139612Z # Subtest: 格式版本不是 v4 时跳过并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9140012Z ok 106 - 格式版本不是 v4 时跳过并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9140361Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9140770Z   duration_ms: 3.750979
+test (22)	Run npm test	2026-10-01T06:50:06.9141100Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9141408Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9141763Z # Subtest: 全部用量为零的记录不产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9142153Z ok 107 - 全部用量为零的记录不产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9142468Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9142770Z   duration_ms: 1.896102
+test (22)	Run npm test	2026-10-01T06:50:06.9143094Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9143395Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9143829Z # Subtest: 缺少 data.usage 的 assistant/message 被忽略
+test (22)	Run npm test	2026-10-01T06:50:06.9144346Z ok 108 - 缺少 data.usage 的 assistant/message 被忽略
+test (22)	Run npm test	2026-10-01T06:50:06.9144917Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9145217Z   duration_ms: 1.669182
+test (22)	Run npm test	2026-10-01T06:50:06.9145539Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9145845Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9146200Z # Subtest: 没有会话头的日志被跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9146529Z ok 109 - 没有会话头的日志被跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9146817Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9147123Z   duration_ms: 1.674891
+test (22)	Run npm test	2026-10-01T06:50:06.9147448Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9147755Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9148142Z # Subtest: 正文与工具参数不会进入任何产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9148647Z ok 110 - 正文与工具参数不会进入任何产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9149010Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9149362Z   duration_ms: 1.936273
+test (22)	Run npm test	2026-10-01T06:50:06.9149687Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9149992Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9150413Z # Subtest: parseDshSessions 汇总多个会话并按会话去重
+test (22)	Run npm test	2026-10-01T06:50:06.9150986Z ok 111 - parseDshSessions 汇总多个会话并按会话去重
+test (22)	Run npm test	2026-10-01T06:50:06.9151387Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9151703Z   duration_ms: 5.392986
+test (22)	Run npm test	2026-10-01T06:50:06.9152027Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9152329Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9152805Z # Subtest: discoverDshHomes 发现 ~/.dsh，支持环境变量追加与整体关闭
+test (22)	Run npm test	2026-10-01T06:50:06.9153352Z ok 112 - discoverDshHomes 发现 ~/.dsh，支持环境变量追加与整体关闭
+test (22)	Run npm test	2026-10-01T06:50:06.9153734Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9154040Z   duration_ms: 3.301
+test (22)	Run npm test	2026-10-01T06:50:06.9154370Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9154666Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9155080Z # Subtest: discoverUsageSources 把 DSH 作为第三个来源并入
+test (22)	Run npm test	2026-10-01T06:50:06.9155581Z ok 113 - discoverUsageSources 把 DSH 作为第三个来源并入
+test (22)	Run npm test	2026-10-01T06:50:06.9155961Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9156261Z   duration_ms: 4.651023
+test (22)	Run npm test	2026-10-01T06:50:06.9156583Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9156885Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9157448Z # Subtest: classifyImportDirectory 识别 DSH home，且不会被 Codex 的 sessions 目录抢判
+test (22)	Run npm test	2026-10-01T06:50:06.9158163Z ok 114 - classifyImportDirectory 识别 DSH home，且不会被 Codex 的 sessions 目录抢判
+test (22)	Run npm test	2026-10-01T06:50:06.9158624Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9158968Z   duration_ms: 2.889743
+test (22)	Run npm test	2026-10-01T06:50:06.9159335Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9159641Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9160092Z # Subtest: dshHomeLooksUsable 要求存在真正的 v4 会话日志
+test (22)	Run npm test	2026-10-01T06:50:06.9160749Z ok 115 - dshHomeLooksUsable 要求存在真正的 v4 会话日志
+test (22)	Run npm test	2026-10-01T06:50:06.9161134Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9161436Z   duration_ms: 4.359256
+test (22)	Run npm test	2026-10-01T06:50:06.9161765Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9162078Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9162479Z # Subtest: buildUsageReport 汇总 DSH 事件与会话
+test (22)	Run npm test	2026-10-01T06:50:06.9162953Z ok 116 - buildUsageReport 汇总 DSH 事件与会话
+test (22)	Run npm test	2026-10-01T06:50:06.9163619Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9163920Z   duration_ms: 4.706216
+test (22)	Run npm test	2026-10-01T06:50:06.9164246Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9164549Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9165011Z # Subtest: buildUsageIndex 产出 DSH 索引事件（未命中/命中拆分保持正确）
+test (22)	Run npm test	2026-10-01T06:50:06.9165550Z ok 117 - buildUsageIndex 产出 DSH 索引事件（未命中/命中拆分保持正确）
+test (22)	Run npm test	2026-10-01T06:50:06.9165934Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9166247Z   duration_ms: 3.705346
+test (22)	Run npm test	2026-10-01T06:50:06.9166569Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9166867Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9167303Z # Subtest: buildUsageFingerprint 把 DSH 会话文件计入指纹
+test (22)	Run npm test	2026-10-01T06:50:06.9167867Z ok 118 - buildUsageFingerprint 把 DSH 会话文件计入指纹
+test (22)	Run npm test	2026-10-01T06:50:06.9168265Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9168561Z   duration_ms: 3.867409
+test (22)	Run npm test	2026-10-01T06:50:06.9168889Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9169195Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9169700Z # Subtest: text, quoted attributes, and trusted fragments stay in their HTML contexts
+test (22)	Run npm test	2026-10-01T06:50:06.9170396Z ok 119 - text, quoted attributes, and trusted fragments stay in their HTML contexts
+test (22)	Run npm test	2026-10-01T06:50:06.9170992Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9171293Z   duration_ms: 3.584665
+test (22)	Run npm test	2026-10-01T06:50:06.9171618Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9171915Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9172394Z # Subtest: pricing links require HTTP URLs and label only the exact known host
+test (22)	Run npm test	2026-10-01T06:50:06.9173049Z ok 120 - pricing links require HTTP URLs and label only the exact known host
+test (22)	Run npm test	2026-10-01T06:50:06.9173512Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9173809Z   duration_ms: 0.449834
+test (22)	Run npm test	2026-10-01T06:50:06.9174139Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9174444Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9174966Z # Subtest: chart colors cannot break out of style attributes
+test (22)	Run npm test	2026-10-01T06:50:06.9175727Z ok 121 - chart colors cannot break out of style attributes
+test (22)	Run npm test	2026-10-01T06:50:06.9176164Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9176472Z   duration_ms: 0.625267
+test (22)	Run npm test	2026-10-01T06:50:06.9176800Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9177100Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9177528Z # Subtest: malformed comparison percentages cannot become HTML
+test (22)	Run npm test	2026-10-01T06:50:06.9178128Z ok 122 - malformed comparison percentages cannot become HTML
+test (22)	Run npm test	2026-10-01T06:50:06.9178542Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9178848Z   duration_ms: 0.362214
+test (22)	Run npm test	2026-10-01T06:50:06.9179175Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9179476Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9179984Z # Subtest: browser language sets the first locale and a saved choice takes precedence
+test (22)	Run npm test	2026-10-01T06:50:06.9180781Z ok 123 - browser language sets the first locale and a saved choice takes precedence
+test (22)	Run npm test	2026-10-01T06:50:06.9181270Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9181572Z   duration_ms: 0.631506
+test (22)	Run npm test	2026-10-01T06:50:06.9181891Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9182197Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9182676Z # Subtest: English recent ranges preserve the existing Chinese request values
+test (22)	Run npm test	2026-10-01T06:50:06.9183333Z ok 124 - English recent ranges preserve the existing Chinese request values
+test (22)	Run npm test	2026-10-01T06:50:06.9183792Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9184086Z   duration_ms: 0.424456
+test (22)	Run npm test	2026-10-01T06:50:06.9184419Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9184759Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9185384Z # Subtest: translated dashboard copy preserves cost and limit semantics
+test (22)	Run npm test	2026-10-01T06:50:06.9185996Z ok 125 - translated dashboard copy preserves cost and limit semantics
+test (22)	Run npm test	2026-10-01T06:50:06.9186437Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9186735Z   duration_ms: 0.490706
+test (22)	Run npm test	2026-10-01T06:50:06.9187063Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9187367Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9187869Z # Subtest: every static dashboard label and accessible attribute has an English form
+test (22)	Run npm test	2026-10-01T06:50:06.9188566Z ok 126 - every static dashboard label and accessible attribute has an English form
+test (22)	Run npm test	2026-10-01T06:50:06.9189044Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9189348Z   duration_ms: 4.624985
+test (22)	Run npm test	2026-10-01T06:50:06.9189703Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9190004Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9190584Z # Subtest: dynamic dashboard views have English copy for their rendered labels
+test (22)	Run npm test	2026-10-01T06:50:06.9192063Z ok 127 - dynamic dashboard views have English copy for their rendered labels
+test (22)	Run npm test	2026-10-01T06:50:06.9192849Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9193185Z   duration_ms: 6.063301
+test (22)	Run npm test	2026-10-01T06:50:06.9193538Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9193857Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9194448Z # (node:2238) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9195209Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9195878Z # Subtest: opencodeUsageFromTokens 把互不重叠的拆分重构成超集
+test (22)	Run npm test	2026-10-01T06:50:06.9196421Z ok 128 - opencodeUsageFromTokens 把互不重叠的拆分重构成超集
+test (22)	Run npm test	2026-10-01T06:50:06.9196831Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9197154Z   duration_ms: 1.386408
+test (22)	Run npm test	2026-10-01T06:50:06.9197497Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9198023Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9198405Z # Subtest: 三组样本端到端产出健康事件
+test (22)	Run npm test	2026-10-01T06:50:06.9198810Z ok 129 - 三组样本端到端产出健康事件
+test (22)	Run npm test	2026-10-01T06:50:06.9199157Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9199476Z   duration_ms: 18.42825
+test (22)	Run npm test	2026-10-01T06:50:06.9199823Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9200153Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9200703Z # Subtest: 天真映射之一：output 不折叠会触发 reasoning 不一致
+test (22)	Run npm test	2026-10-01T06:50:06.9201235Z ok 130 - 天真映射之一：output 不折叠会触发 reasoning 不一致
+test (22)	Run npm test	2026-10-01T06:50:06.9201620Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9201949Z   duration_ms: 0.295263
+test (22)	Run npm test	2026-10-01T06:50:06.9202295Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9202615Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9203108Z # Subtest: 天真映射之二：input 漏加 cache.write 会触发计价退化（校验抓不到）
+test (22)	Run npm test	2026-10-01T06:50:06.9203664Z ok 131 - 天真映射之二：input 漏加 cache.write 会触发计价退化（校验抓不到）
+test (22)	Run npm test	2026-10-01T06:50:06.9204072Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9204431Z   duration_ms: 0.201522
+test (22)	Run npm test	2026-10-01T06:50:06.9204828Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9205137Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9205564Z # Subtest: 只有 assistant 行产出事件，无 tokens 与全零行跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9206108Z ok 132 - 只有 assistant 行产出事件，无 tokens 与全零行跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9206472Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9206778Z   duration_ms: 23.471721
+test (22)	Run npm test	2026-10-01T06:50:06.9207107Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9207403Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9207802Z # Subtest: 事件带模型、仓库、上下文分级与会话标题
+test (22)	Run npm test	2026-10-01T06:50:06.9208214Z ok 133 - 事件带模型、仓库、上下文分级与会话标题
+test (22)	Run npm test	2026-10-01T06:50:06.9208544Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9208861Z   duration_ms: 10.799521
+test (22)	Run npm test	2026-10-01T06:50:06.9209188Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9209497Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9209921Z # Subtest: 高缓存事件仍判 short（聚合比高不等于事件分布高）
+test (22)	Run npm test	2026-10-01T06:50:06.9210383Z ok 134 - 高缓存事件仍判 short（聚合比高不等于事件分布高）
+test (22)	Run npm test	2026-10-01T06:50:06.9210833Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9211139Z   duration_ms: 9.975801
+test (22)	Run npm test	2026-10-01T06:50:06.9211459Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9211765Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9212197Z # Subtest: 模型缺失回落 Unknown model，标题截断到 120 字符
+test (22)	Run npm test	2026-10-01T06:50:06.9212686Z ok 135 - 模型缺失回落 Unknown model，标题截断到 120 字符
+test (22)	Run npm test	2026-10-01T06:50:06.9213053Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9213364Z   duration_ms: 30.35039
+test (22)	Run npm test	2026-10-01T06:50:06.9213698Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9214001Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9214394Z # Subtest: 版本守护：v1 会话跳过并告警，缺失版本放行并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9257685Z ok 136 - 版本守护：v1 会话跳过并告警，缺失版本放行并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9281254Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9286742Z   duration_ms: 17.659657
+test (22)	Run npm test	2026-10-01T06:50:06.9287122Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9287776Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9289113Z # Subtest: 缺 session_v2 时事件仍产出、cwd 为空并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9289757Z ok 137 - 缺 session_v2 时事件仍产出、cwd 为空并告警
+test (22)	Run npm test	2026-10-01T06:50:06.9293706Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9294044Z   duration_ms: 6.185353
+test (22)	Run npm test	2026-10-01T06:50:06.9294360Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9294646Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9295058Z # Subtest: 缺 session_message 表时整来源抛错
+test (22)	Run npm test	2026-10-01T06:50:06.9295486Z ok 138 - 缺 session_message 表时整来源抛错
+test (22)	Run npm test	2026-10-01T06:50:06.9295800Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9296090Z   duration_ms: 6.644282
+test (22)	Run npm test	2026-10-01T06:50:06.9296385Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9296680Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9297000Z # Subtest: 非法时间戳的行跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9297338Z ok 139 - 非法时间戳的行跳过
+test (22)	Run npm test	2026-10-01T06:50:06.9297619Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9297894Z   duration_ms: 10.331158
+test (22)	Run npm test	2026-10-01T06:50:06.9298199Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9298476Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9298825Z # Subtest: 正文哨兵字符串不会进入任何产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9299194Z ok 140 - 正文哨兵字符串不会进入任何产出事件
+test (22)	Run npm test	2026-10-01T06:50:06.9299510Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9299789Z   duration_ms: 8.973349
+test (22)	Run npm test	2026-10-01T06:50:06.9300092Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9300365Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9300903Z # Subtest: parseOpencodeDb 汇总会话与事件
+test (22)	Run npm test	2026-10-01T06:50:06.9301335Z ok 141 - parseOpencodeDb 汇总会话与事件
+test (22)	Run npm test	2026-10-01T06:50:06.9301656Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9301932Z   duration_ms: 13.675558
+test (22)	Run npm test	2026-10-01T06:50:06.9302237Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9302517Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9302950Z # Subtest: opencodeDatabaseFiles 只收 opencode*.db
+test (22)	Run npm test	2026-10-01T06:50:06.9303460Z ok 142 - opencodeDatabaseFiles 只收 opencode*.db
+test (22)	Run npm test	2026-10-01T06:50:06.9304059Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9304334Z   duration_ms: 5.271204
+test (22)	Run npm test	2026-10-01T06:50:06.9304631Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9304910Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9305312Z # Subtest: opencodeSourceStat 把 WAL 计入增量检测
+test (22)	Run npm test	2026-10-01T06:50:06.9305773Z ok 143 - opencodeSourceStat 把 WAL 计入增量检测
+test (22)	Run npm test	2026-10-01T06:50:06.9306116Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9306385Z   duration_ms: 7.086454
+test (22)	Run npm test	2026-10-01T06:50:06.9306682Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9306978Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9307405Z # Subtest: a damaged automatic cache falls back to the built-in catalog
+test (22)	Run npm test	2026-10-01T06:50:06.9307972Z ok 144 - a damaged automatic cache falls back to the built-in catalog
+test (22)	Run npm test	2026-10-01T06:50:06.9308368Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9308656Z   duration_ms: 16.452036
+test (22)	Run npm test	2026-10-01T06:50:06.9308960Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9309236Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9309734Z # Subtest: automatic prices require exact provider/model matches and compatible long tiers
+test (22)	Run npm test	2026-10-01T06:50:06.9310433Z ok 145 - automatic prices require exact provider/model matches and compatible long tiers
+test (22)	Run npm test	2026-10-01T06:50:06.9311072Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9311350Z   duration_ms: 2.632958
+test (22)	Run npm test	2026-10-01T06:50:06.9311652Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9311931Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9312403Z # Subtest: official CNY source adapters cover providers with lossless catalog rates
+test (22)	Run npm test	2026-10-01T06:50:06.9313058Z ok 146 - official CNY source adapters cover providers with lossless catalog rates
+test (22)	Run npm test	2026-10-01T06:50:06.9313516Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9313797Z   duration_ms: 5.407097
+test (22)	Run npm test	2026-10-01T06:50:06.9314099Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9314373Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9314875Z # Subtest: new OpenAI discovery requires complete evidenced tiers and records provenance
+test (22)	Run npm test	2026-10-01T06:50:06.9315576Z ok 147 - new OpenAI discovery requires complete evidenced tiers and records provenance
+test (22)	Run npm test	2026-10-01T06:50:06.9316033Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9316312Z   duration_ms: 1.078637
+test (22)	Run npm test	2026-10-01T06:50:06.9316610Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9316896Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9317447Z # Subtest: new OpenAI discovery rejects uncertain, incomplete, conflicting, and non-text candidates
+test (22)	Run npm test	2026-10-01T06:50:06.9318211Z ok 148 - new OpenAI discovery rejects uncertain, incomplete, conflicting, and non-text candidates
+test (22)	Run npm test	2026-10-01T06:50:06.9318698Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9318974Z   duration_ms: 0.387551
+test (22)	Run npm test	2026-10-01T06:50:06.9319278Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9319550Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9320251Z # Subtest: discovered OpenAI models persist provenance and receive later automatic updates
+test (22)	Run npm test	2026-10-01T06:50:06.9321111Z ok 149 - discovered OpenAI models persist provenance and receive later automatic updates
+test (22)	Run npm test	2026-10-01T06:50:06.9321576Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9321857Z   duration_ms: 59.888636
+test (22)	Run npm test	2026-10-01T06:50:06.9322288Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9322535Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9334116Z # Subtest: first-party provider identity survives the aggregated source cache on later updates
+test (22)	Run npm test	2026-10-01T06:50:06.9334757Z ok 150 - first-party provider identity survives the aggregated source cache on later updates
+test (22)	Run npm test	2026-10-01T06:50:06.9335143Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9335318Z   duration_ms: 38.283158
+test (22)	Run npm test	2026-10-01T06:50:06.9335518Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9335685Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9336055Z # Subtest: failed automatic-cache writes restore the previous catalog and metadata
+test (22)	Run npm test	2026-10-01T06:50:06.9336591Z ok 151 - failed automatic-cache writes restore the previous catalog and metadata
+test (22)	Run npm test	2026-10-01T06:50:06.9336925Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9337094Z   duration_ms: 27.054492
+test (22)	Run npm test	2026-10-01T06:50:06.9337294Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9337457Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9337897Z # Subtest: existing partial price updates record inherited fields, while source conflicts keep prior rates
+test (22)	Run npm test	2026-10-01T06:50:06.9338601Z ok 152 - existing partial price updates record inherited fields, while source conflicts keep prior rates
+test (22)	Run npm test	2026-10-01T06:50:06.9338984Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9339148Z   duration_ms: 39.670873
+test (22)	Run npm test	2026-10-01T06:50:06.9339343Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9339507Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9341732Z # Subtest: discovery-only status changes do not report a price change and retry on the next eligible attempt
+test (22)	Run npm test	2026-10-01T06:50:06.9342418Z ok 153 - discovery-only status changes do not report a price change and retry on the next eligible attempt
+test (22)	Run npm test	2026-10-01T06:50:06.9342817Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9342991Z   duration_ms: 29.334552
+test (22)	Run npm test	2026-10-01T06:50:06.9343185Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9343357Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9343750Z # Subtest: discovery accepts one complete source, respects cooldown, and force bypasses it
+test (22)	Run npm test	2026-10-01T06:50:06.9344327Z ok 154 - discovery accepts one complete source, respects cooldown, and force bypasses it
+test (22)	Run npm test	2026-10-01T06:50:06.9344674Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9344841Z   duration_ms: 53.110347
+test (22)	Run npm test	2026-10-01T06:50:06.9345030Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9345197Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9345617Z # Subtest: discovery can be disabled and reports capacity per model without dropping cached prices
+test (22)	Run npm test	2026-10-01T06:50:06.9346258Z ok 155 - discovery can be disabled and reports capacity per model without dropping cached prices
+test (22)	Run npm test	2026-10-01T06:50:06.9346660Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9346838Z   duration_ms: 56.791007
+test (22)	Run npm test	2026-10-01T06:50:06.9347038Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9347211Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9347577Z # Subtest: automatic updates are cached and leave edited rates and exchange rate intact
+test (22)	Run npm test	2026-10-01T06:50:06.9348132Z ok 156 - automatic updates are cached and leave edited rates and exchange rate intact
+test (22)	Run npm test	2026-10-01T06:50:06.9348470Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9348630Z   duration_ms: 44.286227
+test (22)	Run npm test	2026-10-01T06:50:06.9348822Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9348987Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9349388Z # Subtest: restoring the automatic exchange rate is explicit and preserves manual model prices
+test (22)	Run npm test	2026-10-01T06:50:06.9349998Z ok 157 - restoring the automatic exchange rate is explicit and preserves manual model prices
+test (22)	Run npm test	2026-10-01T06:50:06.9350362Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9350670Z   duration_ms: 31.424745
+test (22)	Run npm test	2026-10-01T06:50:06.9350856Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9351027Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9351542Z # Subtest: equal official rates verify coverage while unsupported context tiers remain local
+test (22)	Run npm test	2026-10-01T06:50:06.9352110Z ok 158 - equal official rates verify coverage while unsupported context tiers remain local
+test (22)	Run npm test	2026-10-01T06:50:06.9352469Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9352634Z   duration_ms: 13.585454
+test (22)	Run npm test	2026-10-01T06:50:06.9352824Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9353190Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9353564Z # Subtest: price-source timeout keeps successful matches and retries the partial update
+test (22)	Run npm test	2026-10-01T06:50:06.9354117Z ok 159 - price-source timeout keeps successful matches and retries the partial update
+test (22)	Run npm test	2026-10-01T06:50:06.9354449Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9354619Z   duration_ms: 34.272194
+test (22)	Run npm test	2026-10-01T06:50:06.9354804Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9354972Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9355235Z # Subtest: catalog fetch reports an identifiable timeout
+test (22)	Run npm test	2026-10-01T06:50:06.9355621Z not ok 160 - catalog fetch reports an identifiable timeout
+test (22)	Run npm test	2026-10-01T06:50:06.9355901Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9356070Z   duration_ms: 0.806439
+test (22)	Run npm test	2026-10-01T06:50:06.9356259Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9356612Z   location: '/home/runner/work/codex-usage/codex-usage/test/pricing-auto.test.js:931:1'
+test (22)	Run npm test	2026-10-01T06:50:06.9357016Z   failureType: 'cancelledByParent'
+test (22)	Run npm test	2026-10-01T06:50:06.9357394Z   error: 'Promise resolution is still pending but the event loop has already resolved'
+test (22)	Run npm test	2026-10-01T06:50:06.9357757Z   code: 'ERR_TEST_FAILURE'
+test (22)	Run npm test	2026-10-01T06:50:06.9357974Z   stack: |-
+test (22)	Run npm test	2026-10-01T06:50:06.9358171Z     process.emit (node:events:519:28)
+test (22)	Run npm test	2026-10-01T06:50:06.9358387Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9358672Z # Subtest: MiMo pricing pages are fetched as bounded HTML text
+test (22)	Run npm test	2026-10-01T06:50:06.9359091Z not ok 161 - MiMo pricing pages are fetched as bounded HTML text
+test (22)	Run npm test	2026-10-01T06:50:06.9359371Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9359534Z   duration_ms: 0
+test (22)	Run npm test	2026-10-01T06:50:06.9359708Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9360044Z   location: '/home/runner/work/codex-usage/codex-usage/test/pricing-auto.test.js:941:1'
+test (22)	Run npm test	2026-10-01T06:50:06.9360932Z   failureType: 'cancelledByParent'
+test (22)	Run npm test	2026-10-01T06:50:06.9361337Z   error: 'Promise resolution is still pending but the event loop has already resolved'
+test (22)	Run npm test	2026-10-01T06:50:06.9361713Z   code: 'ERR_TEST_FAILURE'
+test (22)	Run npm test	2026-10-01T06:50:06.9361908Z   stack: |-
+test (22)	Run npm test	2026-10-01T06:50:06.9362118Z     process.emit (node:events:519:28)
+test (22)	Run npm test	2026-10-01T06:50:06.9362345Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9362693Z # Subtest: failed online updates retain local prices and retry after an hour
+test (22)	Run npm test	2026-10-01T06:50:06.9363213Z not ok 162 - failed online updates retain local prices and retry after an hour
+test (22)	Run npm test	2026-10-01T06:50:06.9363545Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9363705Z   duration_ms: 0
+test (22)	Run npm test	2026-10-01T06:50:06.9363886Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9364236Z   location: '/home/runner/work/codex-usage/codex-usage/test/pricing-auto.test.js:957:1'
+test (22)	Run npm test	2026-10-01T06:50:06.9364616Z   failureType: 'cancelledByParent'
+test (22)	Run npm test	2026-10-01T06:50:06.9365009Z   error: 'Promise resolution is still pending but the event loop has already resolved'
+test (22)	Run npm test	2026-10-01T06:50:06.9365396Z   code: 'ERR_TEST_FAILURE'
+test (22)	Run npm test	2026-10-01T06:50:06.9365596Z   stack: |-
+test (22)	Run npm test	2026-10-01T06:50:06.9365895Z     process.emit (node:events:519:28)
+test (22)	Run npm test	2026-10-01T06:50:06.9366122Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9366486Z # Subtest: legacy default exchange rate does not block automatic exchange updates
+test (22)	Run npm test	2026-10-01T06:50:06.9367047Z not ok 163 - legacy default exchange rate does not block automatic exchange updates
+test (22)	Run npm test	2026-10-01T06:50:06.9367395Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9367556Z   duration_ms: 0
+test (22)	Run npm test	2026-10-01T06:50:06.9367738Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9368082Z   location: '/home/runner/work/codex-usage/codex-usage/test/pricing-auto.test.js:985:1'
+test (22)	Run npm test	2026-10-01T06:50:06.9368475Z   failureType: 'cancelledByParent'
+test (22)	Run npm test	2026-10-01T06:50:06.9368865Z   error: 'Promise resolution is still pending but the event loop has already resolved'
+test (22)	Run npm test	2026-10-01T06:50:06.9369238Z   code: 'ERR_TEST_FAILURE'
+test (22)	Run npm test	2026-10-01T06:50:06.9369440Z   stack: |-
+test (22)	Run npm test	2026-10-01T06:50:06.9369645Z     process.emit (node:events:519:28)
+test (22)	Run npm test	2026-10-01T06:50:06.9369871Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9370216Z # Subtest: a failed refresh retries after an hour even when an older cache exists
+test (22)	Run npm test	2026-10-01T06:50:06.9370870Z not ok 164 - a failed refresh retries after an hour even when an older cache exists
+test (22)	Run npm test	2026-10-01T06:50:06.9371191Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9371350Z   duration_ms: 0
+test (22)	Run npm test	2026-10-01T06:50:06.9371577Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9372096Z   location: '/home/runner/work/codex-usage/codex-usage/test/pricing-auto.test.js:1006:1'
+test (22)	Run npm test	2026-10-01T06:50:06.9372494Z   failureType: 'cancelledByParent'
+test (22)	Run npm test	2026-10-01T06:50:06.9372886Z   error: 'Promise resolution is still pending but the event loop has already resolved'
+test (22)	Run npm test	2026-10-01T06:50:06.9373236Z   code: 'ERR_TEST_FAILURE'
+test (22)	Run npm test	2026-10-01T06:50:06.9373433Z   stack: |-
+test (22)	Run npm test	2026-10-01T06:50:06.9373703Z     process.emit (node:events:519:28)
+test (22)	Run npm test	2026-10-01T06:50:06.9373931Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9374272Z # Subtest: model activity expires at one UTC calendar month and clamps month ends
+test (22)	Run npm test	2026-10-01T06:50:06.9374787Z ok 165 - model activity expires at one UTC calendar month and clamps month ends
+test (22)	Run npm test	2026-10-01T06:50:06.9375111Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9375271Z   duration_ms: 1.785397
+test (22)	Run npm test	2026-10-01T06:50:06.9375459Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9375623Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9376046Z # Subtest: pricing model resolution normalizes names and follows exact, alias, free, and suffix order
+test (22)	Run npm test	2026-10-01T06:50:06.9376691Z ok 166 - pricing model resolution normalizes names and follows exact, alias, free, and suffix order
+test (22)	Run npm test	2026-10-01T06:50:06.9377070Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9377229Z   duration_ms: 0.432889
+test (22)	Run npm test	2026-10-01T06:50:06.9377411Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9377611Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9377947Z # Subtest: usage coverage counts normalized model IDs once across harnesses
+test (22)	Run npm test	2026-10-01T06:50:06.9378420Z ok 167 - usage coverage counts normalized model IDs once across harnesses
+test (22)	Run npm test	2026-10-01T06:50:06.9378720Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9378880Z   duration_ms: 7.665723
+test (22)	Run npm test	2026-10-01T06:50:06.9379065Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9379363Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9379733Z # Subtest: API cost estimate prices uncached input, cached input, and output separately
+test (22)	Run npm test	2026-10-01T06:50:06.9380275Z ok 168 - API cost estimate prices uncached input, cached input, and output separately
+test (22)	Run npm test	2026-10-01T06:50:06.9380740Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9380898Z   duration_ms: 1.46059
+test (22)	Run npm test	2026-10-01T06:50:06.9381084Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9381251Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9381547Z # Subtest: GPT-6.1 Sol uses its independent Standard and Fast rates
+test (22)	Run npm test	2026-10-01T06:50:06.9381961Z ok 169 - GPT-6.1 Sol uses its independent Standard and Fast rates
+test (22)	Run npm test	2026-10-01T06:50:06.9382232Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9382388Z   duration_ms: 0.604036
+test (22)	Run npm test	2026-10-01T06:50:06.9382570Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9382731Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9383064Z # Subtest: GPT-6.1 Sol prices cache writes and selects context from one request only
+test (22)	Run npm test	2026-10-01T06:50:06.9383586Z ok 170 - GPT-6.1 Sol prices cache writes and selects context from one request only
+test (22)	Run npm test	2026-10-01T06:50:06.9383908Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9384072Z   duration_ms: 0.483495
+test (22)	Run npm test	2026-10-01T06:50:06.9384262Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9384430Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9384763Z # Subtest: unknown prices and incomplete details use minimum catalog rates
+test (22)	Run npm test	2026-10-01T06:50:06.9385251Z ok 171 - unknown prices and incomplete details use minimum catalog rates
+test (22)	Run npm test	2026-10-01T06:50:06.9385568Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9385743Z   duration_ms: 8.977961
+test (22)	Run npm test	2026-10-01T06:50:06.9385937Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9386106Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9386454Z # Subtest: grouped store rows produce the same aggregate as individual events
+test (22)	Run npm test	2026-10-01T06:50:06.9386976Z ok 172 - grouped store rows produce the same aggregate as individual events
+test (22)	Run npm test	2026-10-01T06:50:06.9387303Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9387471Z   duration_ms: 0.490886
+test (22)	Run npm test	2026-10-01T06:50:06.9387666Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9387834Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9388207Z # Subtest: long-context rates apply to the full request only when input exceeds 272K
+test (22)	Run npm test	2026-10-01T06:50:06.9388779Z ok 173 - long-context rates apply to the full request only when input exceeds 272K
+test (22)	Run npm test	2026-10-01T06:50:06.9389093Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9389331Z   duration_ms: 0.184066
+test (22)	Run npm test	2026-10-01T06:50:06.9389647Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9389895Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9390648Z # Subtest: Fast and legacy priority service tiers double the Standard estimate
+test (22)	Run npm test	2026-10-01T06:50:06.9391247Z ok 174 - Fast and legacy priority service tiers double the Standard estimate
+test (22)	Run npm test	2026-10-01T06:50:06.9391876Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9392224Z   duration_ms: 0.298788
+test (22)	Run npm test	2026-10-01T06:50:06.9392485Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9392792Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9393273Z # Subtest: missing cache-write detail prices known cache and uses lowest eligible input rate
+test (22)	Run npm test	2026-10-01T06:50:06.9393984Z ok 175 - missing cache-write detail prices known cache and uses lowest eligible input rate
+test (22)	Run npm test	2026-10-01T06:50:06.9394476Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9452504Z   duration_ms: 0.136795
+test (22)	Run npm test	2026-10-01T06:50:06.9453823Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9454041Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9454415Z # Subtest: missing cache-write detail selects the cheaper eligible custom rate
+test (22)	Run npm test	2026-10-01T06:50:06.9455236Z ok 176 - missing cache-write detail selects the cheaper eligible custom rate
+test (22)	Run npm test	2026-10-01T06:50:06.9456320Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9456502Z   duration_ms: 2.74125
+test (22)	Run npm test	2026-10-01T06:50:06.9456703Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9456871Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9457243Z # Subtest: known total and output infer input while preserving known cached tokens
+test (22)	Run npm test	2026-10-01T06:50:06.9458181Z ok 177 - known total and output infer input while preserving known cached tokens
+test (22)	Run npm test	2026-10-01T06:50:06.9459365Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9459550Z   duration_ms: 0.41376
+test (22)	Run npm test	2026-10-01T06:50:06.9459747Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9459924Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9460439Z # Subtest: 人民币模型按元计价并标记 CNY
+test (22)	Run npm test	2026-10-01T06:50:06.9464529Z ok 178 - 人民币模型按元计价并标记 CNY
+test (22)	Run npm test	2026-10-01T06:50:06.9464730Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9464907Z   duration_ms: 0.250796
+test (22)	Run npm test	2026-10-01T06:50:06.9465293Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9465464Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9465725Z # Subtest: DeepSeek 谷时段按 5 折计价
+test (22)	Run npm test	2026-10-01T06:50:06.9466002Z ok 179 - DeepSeek 谷时段按 5 折计价
+test (22)	Run npm test	2026-10-01T06:50:06.9466203Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9466372Z   duration_ms: 7.960966
+test (22)	Run npm test	2026-10-01T06:50:06.9466572Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9466739Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9467027Z # Subtest: GLM-4.7 按输入上下文与输出长度分档计价
+test (22)	Run npm test	2026-10-01T06:50:06.9467338Z ok 180 - GLM-4.7 按输入上下文与输出长度分档计价
+test (22)	Run npm test	2026-10-01T06:50:06.9467542Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9467711Z   duration_ms: 0.322353
+test (22)	Run npm test	2026-10-01T06:50:06.9467903Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9468076Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9468337Z # Subtest: kimi-k3 缓存写入按 5 分钟 TTL 档计价
+test (22)	Run npm test	2026-10-01T06:50:06.9468647Z ok 181 - kimi-k3 缓存写入按 5 分钟 TTL 档计价
+test (22)	Run npm test	2026-10-01T06:50:06.9468862Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9469029Z   duration_ms: 0.138688
+test (22)	Run npm test	2026-10-01T06:50:06.9469220Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9469391Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9469620Z # Subtest: 混合币种汇总按美元与人民币分列
+test (22)	Run npm test	2026-10-01T06:50:06.9469862Z ok 182 - 混合币种汇总按美元与人民币分列
+test (22)	Run npm test	2026-10-01T06:50:06.9470068Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9470231Z   duration_ms: 0.250355
+test (22)	Run npm test	2026-10-01T06:50:06.9470415Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9470789Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9471035Z # Subtest: 未知模型按事件渠道决定回退币种
+test (22)	Run npm test	2026-10-01T06:50:06.9471282Z ok 183 - 未知模型按事件渠道决定回退币种
+test (22)	Run npm test	2026-10-01T06:50:06.9471464Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9471631Z   duration_ms: 0.528222
+test (22)	Run npm test	2026-10-01T06:50:06.9472010Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9472181Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9472446Z # Subtest: -free 后缀的未收录模型按零费率估算
+test (22)	Run npm test	2026-10-01T06:50:06.9472728Z ok 184 - -free 后缀的未收录模型按零费率估算
+test (22)	Run npm test	2026-10-01T06:50:06.9472919Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9473079Z   duration_ms: 0.394441
+test (22)	Run npm test	2026-10-01T06:50:06.9473267Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9473431Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9473654Z # Subtest: -free 零费率优先于前缀匹配
+test (22)	Run npm test	2026-10-01T06:50:06.9473911Z ok 185 - -free 零费率优先于前缀匹配
+test (22)	Run npm test	2026-10-01T06:50:06.9474101Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9474263Z   duration_ms: 1.074711
+test (22)	Run npm test	2026-10-01T06:50:06.9474444Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9474599Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9474980Z # Subtest: 价目表精确键优先于 -free 零费率
+test (22)	Run npm test	2026-10-01T06:50:06.9475263Z ok 186 - 价目表精确键优先于 -free 零费率
+test (22)	Run npm test	2026-10-01T06:50:06.9475469Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9475640Z   duration_ms: 1.243204
+test (22)	Run npm test	2026-10-01T06:50:06.9475828Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9476022Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9476275Z # Subtest: -free 模型不误伤付费模型与未知模型兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9476587Z ok 187 - -free 模型不误伤付费模型与未知模型兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9476826Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9476992Z   duration_ms: 0.175233
+test (22)	Run npm test	2026-10-01T06:50:06.9477181Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9477350Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9477576Z # Subtest: -free 事件不计入最低估算汇总
+test (22)	Run npm test	2026-10-01T06:50:06.9477836Z ok 188 - -free 事件不计入最低估算汇总
+test (22)	Run npm test	2026-10-01T06:50:06.9478033Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9478909Z   duration_ms: 0.784847
+test (22)	Run npm test	2026-10-01T06:50:06.9479100Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9479263Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9479513Z # Subtest: 官方声明的快速模式费率优先于双倍兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9479778Z ok 189 - 官方声明的快速模式费率优先于双倍兜底
+test (22)	Run npm test	2026-10-01T06:50:06.9479967Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9480328Z   duration_ms: 0.211928
+test (22)	Run npm test	2026-10-01T06:50:06.9480648Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9480812Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9481093Z # Subtest: 价目只保留文本/推理模型，媒体类 API 不入库
+test (22)	Run npm test	2026-10-01T06:50:06.9481399Z ok 190 - 价目只保留文本/推理模型，媒体类 API 不入库
+test (22)	Run npm test	2026-10-01T06:50:06.9481607Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9481774Z   duration_ms: 0.364517
+test (22)	Run npm test	2026-10-01T06:50:06.9481963Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9482147Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9482378Z # Subtest: 汇率随价目保存，非法汇率被拒绝
+test (22)	Run npm test	2026-10-01T06:50:06.9482629Z ok 191 - 汇率随价目保存，非法汇率被拒绝
+test (22)	Run npm test	2026-10-01T06:50:06.9482814Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9482976Z   duration_ms: 2.294861
+test (22)	Run npm test	2026-10-01T06:50:06.9483171Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9483336Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9483613Z # Subtest: 旧版价目文件加载时补齐新增内置模型并保留自定义价
+test (22)	Run npm test	2026-10-01T06:50:06.9483927Z ok 192 - 旧版价目文件加载时补齐新增内置模型并保留自定义价
+test (22)	Run npm test	2026-10-01T06:50:06.9484135Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9484304Z   duration_ms: 23.179833
+test (22)	Run npm test	2026-10-01T06:50:06.9484500Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9484670Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9485100Z # (node:2333) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9485650Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9486267Z # Subtest: quota records reject ties, missing history and conflicting observations, with comparable currencies
+test (22)	Run npm test	2026-10-01T06:50:06.9486999Z ok 193 - quota records reject ties, missing history and conflicting observations, with comparable currencies
+test (22)	Run npm test	2026-10-01T06:50:06.9487399Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9487561Z   duration_ms: 2.332627
+test (22)	Run npm test	2026-10-01T06:50:06.9487747Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9487911Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9488238Z # Subtest: quota records retain historical windows with small reset-time drift
+test (22)	Run npm test	2026-10-01T06:50:06.9488712Z ok 194 - quota records retain historical windows with small reset-time drift
+test (22)	Run npm test	2026-10-01T06:50:06.9489030Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9489201Z   duration_ms: 0.395794
+test (22)	Run npm test	2026-10-01T06:50:06.9489395Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9489564Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9489985Z # Subtest: previous reset selections use observed completed windows, including gaps between sessions
+test (22)	Run npm test	2026-10-01T06:50:06.9490771Z ok 195 - previous reset selections use observed completed windows, including gaps between sessions
+test (22)	Run npm test	2026-10-01T06:50:06.9491155Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9491314Z   duration_ms: 0.310876
+test (22)	Run npm test	2026-10-01T06:50:06.9491507Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9491856Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9492183Z # Subtest: calendar selections respect month/year boundaries and leap years
+test (22)	Run npm test	2026-10-01T06:50:06.9492663Z ok 196 - calendar selections respect month/year boundaries and leap years
+test (22)	Run npm test	2026-10-01T06:50:06.9492978Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9493147Z   duration_ms: 0.517436
+test (22)	Run npm test	2026-10-01T06:50:06.9493343Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9493510Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9493893Z # Subtest: live and static previous-window summaries agree and exclude the reset endpoint
+test (22)	Run npm test	2026-10-01T06:50:06.9494469Z ok 197 - live and static previous-window summaries agree and exclude the reset endpoint
+test (22)	Run npm test	2026-10-01T06:50:06.9494821Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9494990Z   duration_ms: 4.169411
+test (22)	Run npm test	2026-10-01T06:50:06.9495186Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9495358Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9495768Z # Subtest: Codex availability follows selected source kinds, not model or source display names
+test (22)	Run npm test	2026-10-01T06:50:06.9496386Z ok 198 - Codex availability follows selected source kinds, not model or source display names
+test (22)	Run npm test	2026-10-01T06:50:06.9496773Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9496942Z   duration_ms: 0.257917
+test (22)	Run npm test	2026-10-01T06:50:06.9497141Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9497312Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9497738Z # (node:2344) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9498272Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9498674Z # Subtest: server serves the dashboard and usage API
+test (22)	Run npm test	2026-10-01T06:50:06.9499027Z ok 199 - server serves the dashboard and usage API
+test (22)	Run npm test	2026-10-01T06:50:06.9499283Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9499635Z   duration_ms: 169.559791
+test (22)	Run npm test	2026-10-01T06:50:06.9499844Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9500016Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9500348Z # Subtest: server accepts named recent reset windows and calendar ranges
+test (22)	Run npm test	2026-10-01T06:50:06.9500970Z ok 200 - server accepts named recent reset windows and calendar ranges
+test (22)	Run npm test	2026-10-01T06:50:06.9501260Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9501426Z   duration_ms: 288.754448
+test (22)	Run npm test	2026-10-01T06:50:06.9501633Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9501795Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9502119Z # Subtest: server reports unsupported stored imports instead of hiding them
+test (22)	Run npm test	2026-10-01T06:50:06.9502616Z ok 201 - server reports unsupported stored imports instead of hiding them
+test (22)	Run npm test	2026-10-01T06:50:06.9502930Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9503119Z   duration_ms: 6.262549
+test (22)	Run npm test	2026-10-01T06:50:06.9503311Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9503479Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9503850Z # Subtest: server keeps full detail reports behind the documented 512MB heap budget
+test (22)	Run npm test	2026-10-01T06:50:06.9504398Z ok 202 - server keeps full detail reports behind the documented 512MB heap budget
+test (22)	Run npm test	2026-10-01T06:50:06.9504741Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9504910Z   duration_ms: 0.157195
+test (22)	Run npm test	2026-10-01T06:50:06.9505105Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9505276Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9505622Z # Subtest: server reports status changes and refreshes cached usage reports
+test (22)	Run npm test	2026-10-01T06:50:06.9506080Z ok 203 - server reports status changes and refreshes cached usage reports
+test (22)	Run npm test	2026-10-01T06:50:06.9506384Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9506546Z   duration_ms: 225.748124
+test (22)	Run npm test	2026-10-01T06:50:06.9506742Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9506909Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9507219Z # Subtest: paused usage keeps the same indexed data across range changes
+test (22)	Run npm test	2026-10-01T06:50:06.9507672Z ok 204 - paused usage keeps the same indexed data across range changes
+test (22)	Run npm test	2026-10-01T06:50:06.9507958Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9508122Z   duration_ms: 709.618798
+test (22)	Run npm test	2026-10-01T06:50:06.9508316Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9508480Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9508890Z # Subtest: quota API forces its server bucket, returns capability state, and keeps snapshots frozen
+test (22)	Run npm test	2026-10-01T06:50:06.9509514Z ok 205 - quota API forces its server bucket, returns capability state, and keeps snapshots frozen
+test (22)	Run npm test	2026-10-01T06:50:06.9509879Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9510040Z   duration_ms: 570.25164
+test (22)	Run npm test	2026-10-01T06:50:06.9510235Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9510403Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9511091Z # Subtest: server imports project usage log directories and refreshes usage data
+test (22)	Run npm test	2026-10-01T06:50:06.9511606Z ok 206 - server imports project usage log directories and refreshes usage data
+test (22)	Run npm test	2026-10-01T06:50:06.9511923Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9512085Z   duration_ms: 175.554213
+test (22)	Run npm test	2026-10-01T06:50:06.9512273Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9512436Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9512703Z # Subtest: server imports a DSH home and labels it as DSH
+test (22)	Run npm test	2026-10-01T06:50:06.9513067Z ok 207 - server imports a DSH home and labels it as DSH
+test (22)	Run npm test	2026-10-01T06:50:06.9513318Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9513479Z   duration_ms: 204.409009
+test (22)	Run npm test	2026-10-01T06:50:06.9513683Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9513846Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9514176Z # Subtest: server imports an OpenCode data dir and labels it as OpenCode
+test (22)	Run npm test	2026-10-01T06:50:06.9514650Z ok 208 - server imports an OpenCode data dir and labels it as OpenCode
+test (22)	Run npm test	2026-10-01T06:50:06.9514945Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9515113Z   duration_ms: 61.023212
+test (22)	Run npm test	2026-10-01T06:50:06.9515309Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9515470Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9515797Z # Subtest: server returns a picked directory from the local directory picker
+test (22)	Run npm test	2026-10-01T06:50:06.9516294Z ok 209 - server returns a picked directory from the local directory picker
+test (22)	Run npm test	2026-10-01T06:50:06.9516595Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9516757Z   duration_ms: 6.045474
+test (22)	Run npm test	2026-10-01T06:50:06.9516941Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9517104Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9517519Z # Subtest: JSON request parsing preserves UTF-8 split across chunks and returns client errors
+test (22)	Run npm test	2026-10-01T06:50:06.9518134Z ok 210 - JSON request parsing preserves UTF-8 split across chunks and returns client errors
+test (22)	Run npm test	2026-10-01T06:50:06.9518672Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9518840Z   duration_ms: 0.719389
+test (22)	Run npm test	2026-10-01T06:50:06.9519033Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9519193Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9519503Z # Subtest: server starts directly when its script path contains spaces
+test (22)	Run npm test	2026-10-01T06:50:06.9519936Z ok 211 - server starts directly when its script path contains spaces
+test (22)	Run npm test	2026-10-01T06:50:06.9520233Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9520397Z   duration_ms: 77.714557
+test (22)	Run npm test	2026-10-01T06:50:06.9520750Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9520910Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9521275Z # Subtest: pricing refresh endpoint updates cached values and rejects an outdated editor
+test (22)	Run npm test	2026-10-01T06:50:06.9521847Z ok 212 - pricing refresh endpoint updates cached values and rejects an outdated editor
+test (22)	Run npm test	2026-10-01T06:50:06.9522190Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9522348Z   duration_ms: 65.654736
+test (22)	Run npm test	2026-10-01T06:50:06.9522538Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9522708Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9523076Z # Subtest: pricing model activity keeps historical rates and honors a frozen usage snapshot
+test (22)	Run npm test	2026-10-01T06:50:06.9523676Z ok 213 - pricing model activity keeps historical rates and honors a frozen usage snapshot
+test (22)	Run npm test	2026-10-01T06:50:06.9524041Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9524203Z   duration_ms: 43.979478
+test (22)	Run npm test	2026-10-01T06:50:06.9524401Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9524567Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9524923Z # Subtest: pricing coverage waits for the usage index and lists missing models
+test (22)	Run npm test	2026-10-01T06:50:06.9525469Z ok 214 - pricing coverage waits for the usage index and lists missing models
+test (22)	Run npm test	2026-10-01T06:50:06.9525801Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9525971Z   duration_ms: 212.92701
+test (22)	Run npm test	2026-10-01T06:50:06.9526169Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9526340Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9526739Z # Subtest: usage completion debounces missing-model discovery and keeps model IDs local
+test (22)	Run npm test	2026-10-01T06:50:06.9527800Z ok 215 - usage completion debounces missing-model discovery and keeps model IDs local
+test (22)	Run npm test	2026-10-01T06:50:06.9528143Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9528312Z   duration_ms: 137.825962
+test (22)	Run npm test	2026-10-01T06:50:06.9528504Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9528672Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9528990Z # Subtest: pricing API validates, persists, and reprices indexed history
+test (22)	Run npm test	2026-10-01T06:50:06.9529450Z ok 216 - pricing API validates, persists, and reprices indexed history
+test (22)	Run npm test	2026-10-01T06:50:06.9529757Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9529924Z   duration_ms: 89.761218
+test (22)	Run npm test	2026-10-01T06:50:06.9530298Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9530599Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9530928Z # Subtest: usage API 按 exclude 参数过滤数据来源
+test (22)	Run npm test	2026-10-01T06:50:06.9531247Z ok 217 - usage API 按 exclude 参数过滤数据来源
+test (22)	Run npm test	2026-10-01T06:50:06.9531458Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9531624Z   duration_ms: 56.420005
+test (22)	Run npm test	2026-10-01T06:50:06.9531818Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9531984Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9532419Z # (node:2363) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9532988Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9533594Z # Subtest: turn evidence identifies Fast and Standard while request input determines long context
+test (22)	Run npm test	2026-10-01T06:50:06.9534244Z ok 218 - turn evidence identifies Fast and Standard while request input determines long context
+test (22)	Run npm test	2026-10-01T06:50:06.9534629Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9534799Z   duration_ms: 325.813751
+test (22)	Run npm test	2026-10-01T06:50:06.9534999Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9535171Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9535567Z # (node:2403) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9536110Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9536570Z # Subtest: renderStaticDashboardHtml embeds usage data and app assets
+test (22)	Run npm test	2026-10-01T06:50:06.9537015Z ok 219 - renderStaticDashboardHtml embeds usage data and app assets
+test (22)	Run npm test	2026-10-01T06:50:06.9537313Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9537477Z   duration_ms: 10.608665
+test (22)	Run npm test	2026-10-01T06:50:06.9537673Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9537984Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9538385Z # Subtest: renderStaticDashboardHtml bundles shared timeline logic and has no unresolved imports
+test (22)	Run npm test	2026-10-01T06:50:06.9539013Z ok 220 - renderStaticDashboardHtml bundles shared timeline logic and has no unresolved imports
+test (22)	Run npm test	2026-10-01T06:50:06.9539390Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9539548Z   duration_ms: 41.520581
+test (22)	Run npm test	2026-10-01T06:50:06.9539731Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9539898Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9540234Z # Subtest: static export rejects unresolved module and external asset references
+test (22)	Run npm test	2026-10-01T06:50:06.9540871Z ok 221 - static export rejects unresolved module and external asset references
+test (22)	Run npm test	2026-10-01T06:50:06.9541179Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9541337Z   duration_ms: 9.717149
+test (22)	Run npm test	2026-10-01T06:50:06.9541519Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9541679Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9541973Z # Subtest: module checks do not treat embedded usage text as an import
+test (22)	Run npm test	2026-10-01T06:50:06.9542372Z ok 222 - module checks do not treat embedded usage text as an import
+test (22)	Run npm test	2026-10-01T06:50:06.9542565Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9542667Z   duration_ms: 5.77645
+test (22)	Run npm test	2026-10-01T06:50:06.9542784Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9542887Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9543257Z # Subtest: static export freezes quota observations and capability at the export asOf
+test (22)	Run npm test	2026-10-01T06:50:06.9543788Z ok 223 - static export freezes quota observations and capability at the export asOf
+test (22)	Run npm test	2026-10-01T06:50:06.9544079Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9544188Z   duration_ms: 4.939626
+test (22)	Run npm test	2026-10-01T06:50:06.9544309Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9544412Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9544596Z # Subtest: static export runs directly from a path containing spaces
+test (22)	Run npm test	2026-10-01T06:50:06.9544864Z ok 224 - static export runs directly from a path containing spaces
+test (22)	Run npm test	2026-10-01T06:50:06.9545048Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9545151Z   duration_ms: 74.951585
+test (22)	Run npm test	2026-10-01T06:50:06.9545272Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9545378Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9545576Z # Subtest: static export runs from an isolated checkout without node_modules
+test (22)	Run npm test	2026-10-01T06:50:06.9545872Z ok 225 - static export runs from an isolated checkout without node_modules
+test (22)	Run npm test	2026-10-01T06:50:06.9546065Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9546167Z   duration_ms: 138.073413
+test (22)	Run npm test	2026-10-01T06:50:06.9546290Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9546392Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9546554Z # Subtest: static export applies saved pricing standards
+test (22)	Run npm test	2026-10-01T06:50:06.9546778Z ok 226 - static export applies saved pricing standards
+test (22)	Run npm test	2026-10-01T06:50:06.9547055Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9547156Z   duration_ms: 32.028951
+test (22)	Run npm test	2026-10-01T06:50:06.9547277Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9547381Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9547628Z # (node:2479) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:06.9547956Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:06.9548254Z # Subtest: memory, SQLite, and exported snapshot agree for local and UTC usage
+test (22)	Run npm test	2026-10-01T06:50:06.9548550Z ok 227 - memory, SQLite, and exported snapshot agree for local and UTC usage
+test (22)	Run npm test	2026-10-01T06:50:06.9548753Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9548860Z   duration_ms: 1004.755696
+test (22)	Run npm test	2026-10-01T06:50:06.9548986Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9549090Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9549348Z # Subtest: three paths agree across week/month boundaries, ZCode, source exclusion, and custom pricing
+test (22)	Run npm test	2026-10-01T06:50:06.9549737Z ok 228 - three paths agree across week/month boundaries, ZCode, source exclusion, and custom pricing
+test (22)	Run npm test	2026-10-01T06:50:06.9549972Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9550076Z   duration_ms: 290.595417
+test (22)	Run npm test	2026-10-01T06:50:06.9550202Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9550335Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9550729Z # Subtest: three paths agree on DSH usage, including the input/cache split and quota exclusion
+test (22)	Run npm test	2026-10-01T06:50:06.9551085Z ok 229 - three paths agree on DSH usage, including the input/cache split and quota exclusion
+test (22)	Run npm test	2026-10-01T06:50:06.9551300Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9551404Z   duration_ms: 225.700556
+test (22)	Run npm test	2026-10-01T06:50:06.9551528Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9551728Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9552004Z # Subtest: three paths agree on OpenCode usage, including all three parallel-counter traps and quota exclusion
+test (22)	Run npm test	2026-10-01T06:50:06.9552418Z ok 230 - three paths agree on OpenCode usage, including all three parallel-counter traps and quota exclusion
+test (22)	Run npm test	2026-10-01T06:50:06.9552662Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9552768Z   duration_ms: 56.960066
+test (22)	Run npm test	2026-10-01T06:50:06.9552890Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9552999Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9553217Z # Subtest: three paths agree on week-bucket escalation for a half-year all-time range
+test (22)	Run npm test	2026-10-01T06:50:06.9553541Z ok 231 - three paths agree on week-bucket escalation for a half-year all-time range
+test (22)	Run npm test	2026-10-01T06:50:06.9553745Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9553849Z   duration_ms: 45.76149
+test (22)	Run npm test	2026-10-01T06:50:06.9553968Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9554073Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9554259Z # Subtest: three paths use the independent GPT-6.1 Sol catalog entry
+test (22)	Run npm test	2026-10-01T06:50:06.9554521Z ok 232 - three paths use the independent GPT-6.1 Sol catalog entry
+test (22)	Run npm test	2026-10-01T06:50:06.9554700Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9554802Z   duration_ms: 29.491907
+test (22)	Run npm test	2026-10-01T06:50:06.9554925Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9555030Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9555267Z # Subtest: product channel groups honor home evidence and preserve quota and custom channels
+test (22)	Run npm test	2026-10-01T06:50:06.9555625Z ok 233 - product channel groups honor home evidence and preserve quota and custom channels
+test (22)	Run npm test	2026-10-01T06:50:06.9555846Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9555949Z   duration_ms: 1.034441
+test (22)	Run npm test	2026-10-01T06:50:06.9556068Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9556173Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9556416Z # Subtest: channel grouping deduplicates sessions and leaves original pricing events untouched
+test (22)	Run npm test	2026-10-01T06:50:06.9556777Z ok 234 - channel grouping deduplicates sessions and leaves original pricing events untouched
+test (22)	Run npm test	2026-10-01T06:50:06.9556999Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9557100Z   duration_ms: 1.851836
+test (22)	Run npm test	2026-10-01T06:50:06.9557218Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9557322Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9557535Z # Subtest: today fills 24 local hour slots without adding future usage to totals
+test (22)	Run npm test	2026-10-01T06:50:06.9557834Z ok 235 - today fills 24 local hour slots without adding future usage to totals
+test (22)	Run npm test	2026-10-01T06:50:06.9558025Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9558126Z   duration_ms: 0.526119
+test (22)	Run npm test	2026-10-01T06:50:06.9558244Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9558348Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9558541Z # Subtest: week fills Monday through Sunday and leaves future days empty
+test (22)	Run npm test	2026-10-01T06:50:06.9558954Z ok 236 - week fills Monday through Sunday and leaves future days empty
+test (22)	Run npm test	2026-10-01T06:50:06.9559136Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9559239Z   duration_ms: 5.025425
+test (22)	Run npm test	2026-10-01T06:50:06.9559359Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9559462Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9559676Z # Subtest: month fills every day, including leap February and 30/31-day month ends
+test (22)	Run npm test	2026-10-01T06:50:06.9559984Z ok 237 - month fills every day, including leap February and 30/31-day month ends
+test (22)	Run npm test	2026-10-01T06:50:06.9560180Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9560285Z   duration_ms: 0.370566
+test (22)	Run npm test	2026-10-01T06:50:06.9560403Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9560654Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9560893Z # Subtest: custom daily ranges fill only their own dates, including cross-year boundaries
+test (22)	Run npm test	2026-10-01T06:50:06.9561227Z ok 238 - custom daily ranges fill only their own dates, including cross-year boundaries
+test (22)	Run npm test	2026-10-01T06:50:06.9561438Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9561538Z   duration_ms: 0.18698
+test (22)	Run npm test	2026-10-01T06:50:06.9561662Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9561766Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9561988Z # Subtest: daily slots use local calendar arithmetic across daylight-saving transitions
+test (22)	Run npm test	2026-10-01T06:50:06.9562319Z ok 239 - daily slots use local calendar arithmetic across daylight-saving transitions
+test (22)	Run npm test	2026-10-01T06:50:06.9562525Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9562628Z   duration_ms: 28.802073
+test (22)	Run npm test	2026-10-01T06:50:06.9562749Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9562852Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9563083Z # Subtest: each slot preserves channel/model token totals and aggregates event-level costs
+test (22)	Run npm test	2026-10-01T06:50:06.9563529Z ok 240 - each slot preserves channel/model token totals and aggregates event-level costs
+test (22)	Run npm test	2026-10-01T06:50:06.9563743Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9563843Z   duration_ms: 2.958185
+test (22)	Run npm test	2026-10-01T06:50:06.9563962Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9564069Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9564298Z # Subtest: quota_30m uses ten fixed half-hour slots and excludes future and boundary events
+test (22)	Run npm test	2026-10-01T06:50:06.9564643Z ok 241 - quota_30m uses ten fixed half-hour slots and excludes future and boundary events
+test (22)	Run npm test	2026-10-01T06:50:06.9564854Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9564955Z   duration_ms: 0.784957
+test (22)	Run npm test	2026-10-01T06:50:06.9565075Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9565177Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9565389Z # Subtest: quota_24h uses seven Unix-time days across a daylight-saving transition
+test (22)	Run npm test	2026-10-01T06:50:06.9565697Z ok 242 - quota_24h uses seven Unix-time days across a daylight-saving transition
+test (22)	Run npm test	2026-10-01T06:50:06.9565893Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9565994Z   duration_ms: 0.498096
+test (22)	Run npm test	2026-10-01T06:50:06.9566114Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9566220Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9566454Z # Subtest: deriveTimelineBucket keeps explicit non-day buckets pinned regardless of span
+test (22)	Run npm test	2026-10-01T06:50:06.9566804Z ok 243 - deriveTimelineBucket keeps explicit non-day buckets pinned regardless of span
+test (22)	Run npm test	2026-10-01T06:50:06.9567019Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9567121Z   duration_ms: 0.196355
+test (22)	Run npm test	2026-10-01T06:50:06.9567243Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9567347Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9567559Z # Subtest: deriveTimelineBucket keeps day and week bucket counts within 31 slots
+test (22)	Run npm test	2026-10-01T06:50:06.9567872Z ok 244 - deriveTimelineBucket keeps day and week bucket counts within 31 slots
+test (22)	Run npm test	2026-10-01T06:50:06.9568073Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9568174Z   duration_ms: 0.205849
+test (22)	Run npm test	2026-10-01T06:50:06.9568296Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9568398Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9568620Z # Subtest: deriveTimelineBucket falls back to day when the range has no usable bounds
+test (22)	Run npm test	2026-10-01T06:50:06.9568947Z ok 245 - deriveTimelineBucket falls back to day when the range has no usable bounds
+test (22)	Run npm test	2026-10-01T06:50:06.9569157Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9569257Z   duration_ms: 0.05306
+test (22)	Run npm test	2026-10-01T06:50:06.9569375Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9569478Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9569693Z # Subtest: deriveTimelineBucket honors the calendar zone when counting span days
+test (22)	Run npm test	2026-10-01T06:50:06.9570009Z ok 246 - deriveTimelineBucket honors the calendar zone when counting span days
+test (22)	Run npm test	2026-10-01T06:50:06.9570307Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9570409Z   duration_ms: 0.068673
+test (22)	Run npm test	2026-10-01T06:50:06.9570653Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9570757Z   ...
+test (22)	Run npm test	2026-10-01T06:50:06.9571008Z # Subtest: buildTimelineRows with a derived week bucket merges half a year into Monday-keyed weeks
+test (22)	Run npm test	2026-10-01T06:50:06.9571384Z ok 247 - buildTimelineRows with a derived week bucket merges half a year into Monday-keyed weeks
+test (22)	Run npm test	2026-10-01T06:50:06.9571611Z   ---
+test (22)	Run npm test	2026-10-01T06:50:06.9571712Z   duration_ms: 0.322223
+test (22)	Run npm test	2026-10-01T06:50:06.9571828Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:06.9571932Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0735238Z # (node:2576) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:09.0735909Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:09.0736689Z # Subtest: streamUsageFileEvents 逐条输出标准化会话事件
+test (22)	Run npm test	2026-10-01T06:50:09.0737118Z ok 248 - streamUsageFileEvents 逐条输出标准化会话事件
+test (22)	Run npm test	2026-10-01T06:50:09.0737361Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0737589Z   duration_ms: 163.360515
+test (22)	Run npm test	2026-10-01T06:50:09.0737833Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0738002Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0738313Z # Subtest: period comparison groups non-Git usage by working directory
+test (22)	Run npm test	2026-10-01T06:50:09.0738801Z ok 249 - period comparison groups non-Git usage by working directory
+test (22)	Run npm test	2026-10-01T06:50:09.0739083Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0739251Z   duration_ms: 3.84895
+test (22)	Run npm test	2026-10-01T06:50:09.0739442Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0739551Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0739991Z # Subtest: summarizeUsageIndex 支持大规模索引的全部日期范围
+test (22)	Run npm test	2026-10-01T06:50:09.0740278Z ok 250 - summarizeUsageIndex 支持大规模索引的全部日期范围
+test (22)	Run npm test	2026-10-01T06:50:09.0741186Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0741289Z   duration_ms: 3214.680106
+test (22)	Run npm test	2026-10-01T06:50:09.0741411Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0741512Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0767335Z # Subtest: parseSessionFile derives incremental token events from cumulative totals
+test (22)	Run npm test	2026-10-01T06:50:09.0767909Z ok 251 - parseSessionFile derives incremental token events from cumulative totals
+test (22)	Run npm test	2026-10-01T06:50:09.0768139Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0768251Z   duration_ms: 3.467008
+test (22)	Run npm test	2026-10-01T06:50:09.0768376Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0768479Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0807751Z # Subtest: source IDs stay attached to paths when the import list changes
+test (22)	Run npm test	2026-10-01T06:50:09.0808227Z ok 252 - source IDs stay attached to paths when the import list changes
+test (22)	Run npm test	2026-10-01T06:50:09.0808505Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0808665Z   duration_ms: 4.016812
+test (22)	Run npm test	2026-10-01T06:50:09.0808849Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0809004Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0830209Z # Subtest: full and streaming parsers both skip token events without valid timestamps
+test (22)	Run npm test	2026-10-01T06:50:09.0830891Z ok 253 - full and streaming parsers both skip token events without valid timestamps
+test (22)	Run npm test	2026-10-01T06:50:09.0831201Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0831320Z   duration_ms: 2.392187
+test (22)	Run npm test	2026-10-01T06:50:09.0831526Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0831694Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0841823Z # Subtest: discoverCodexHomes finds main Codex and JetBrains homes
+test (22)	Run npm test	2026-10-01T06:50:09.0842238Z ok 254 - discoverCodexHomes finds main Codex and JetBrains homes
+test (22)	Run npm test	2026-10-01T06:50:09.0842420Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0842532Z   duration_ms: 1.141221
+test (22)	Run npm test	2026-10-01T06:50:09.0842653Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0842755Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0864092Z # Subtest: discoverCodexHomes finds Windows JetBrains homes from app data directories
+test (22)	Run npm test	2026-10-01T06:50:09.0864821Z ok 255 - discoverCodexHomes finds Windows JetBrains homes from app data directories
+test (22)	Run npm test	2026-10-01T06:50:09.0865288Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0865456Z   duration_ms: 2.016223
+test (22)	Run npm test	2026-10-01T06:50:09.0865647Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0865805Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0877435Z # Subtest: discoverCodexHomes ignores missing extra homes
+test (22)	Run npm test	2026-10-01T06:50:09.0877769Z ok 256 - discoverCodexHomes ignores missing extra homes
+test (22)	Run npm test	2026-10-01T06:50:09.0878001Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0878145Z   duration_ms: 1.20698
+test (22)	Run npm test	2026-10-01T06:50:09.0878264Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0878428Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0952217Z # Subtest: classifyImportDirectory detects project usage logs and Codex homes
+test (22)	Run npm test	2026-10-01T06:50:09.0952803Z ok 257 - classifyImportDirectory detects project usage logs and Codex homes
+test (22)	Run npm test	2026-10-01T06:50:09.0953135Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0953313Z   duration_ms: 1.51409
+test (22)	Run npm test	2026-10-01T06:50:09.0953506Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0953673Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0953988Z # Subtest: summarizeUsage filters recent natural-day month ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0954418Z ok 258 - summarizeUsage filters recent natural-day month ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0954685Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0954854Z   duration_ms: 2.019789
+test (22)	Run npm test	2026-10-01T06:50:09.0955038Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0955194Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0955443Z # Subtest: summarizeUsage uses rolling recent day ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0955799Z ok 259 - summarizeUsage uses rolling recent day ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0956051Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0956215Z   duration_ms: 0.893279
+test (22)	Run npm test	2026-10-01T06:50:09.0956394Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0956557Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0971105Z # Subtest: summarizeUsage includes previous-period comparison totals
+test (22)	Run npm test	2026-10-01T06:50:09.0971593Z ok 260 - summarizeUsage includes previous-period comparison totals
+test (22)	Run npm test	2026-10-01T06:50:09.0971887Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0972061Z   duration_ms: 0.40044
+test (22)	Run npm test	2026-10-01T06:50:09.0972257Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0972420Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0972778Z # Subtest: summarizeUsage compares week preset with the full previous natural week
+test (22)	Run npm test	2026-10-01T06:50:09.0973304Z ok 261 - summarizeUsage compares week preset with the full previous natural week
+test (22)	Run npm test	2026-10-01T06:50:09.0973870Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0974034Z   duration_ms: 0.434201
+test (22)	Run npm test	2026-10-01T06:50:09.0974228Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0974392Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0974744Z # Subtest: summarizeUsage filters recent natural-day half-year and manual day ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0975275Z ok 262 - summarizeUsage filters recent natural-day half-year and manual day ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0975601Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0975761Z   duration_ms: 0.737686
+test (22)	Run npm test	2026-10-01T06:50:09.0975947Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0976104Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0986840Z # Subtest: summarizeUsage uses natural-day recent day, week, and month ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0989589Z ok 263 - summarizeUsage uses natural-day recent day, week, and month ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0990046Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0990333Z   duration_ms: 0.997565
+test (22)	Run npm test	2026-10-01T06:50:09.0990811Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0991087Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.0991487Z # Subtest: summarizeUsage uses natural-day recent year ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0992002Z ok 264 - summarizeUsage uses natural-day recent year ranges
+test (22)	Run npm test	2026-10-01T06:50:09.0992383Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.0992664Z   duration_ms: 0.382553
+test (22)	Run npm test	2026-10-01T06:50:09.0992968Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.0993248Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1117602Z # Subtest: buildUsageReport and summarizeUsage include imported project usage logs
+test (22)	Run npm test	2026-10-01T06:50:09.1118635Z ok 265 - buildUsageReport and summarizeUsage include imported project usage logs
+test (22)	Run npm test	2026-10-01T06:50:09.1119098Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1119351Z   duration_ms: 15.989648
+test (22)	Run npm test	2026-10-01T06:50:09.1119627Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1119859Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1154542Z # Subtest: buildUsageFingerprint changes when session files change
+test (22)	Run npm test	2026-10-01T06:50:09.1154973Z ok 266 - buildUsageFingerprint changes when session files change
+test (22)	Run npm test	2026-10-01T06:50:09.1155250Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1155399Z   duration_ms: 4.038465
+test (22)	Run npm test	2026-10-01T06:50:09.1155520Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1155624Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1247523Z # Subtest: buildUsageReport and summarizeUsage aggregate totals by channel and period
+test (22)	Run npm test	2026-10-01T06:50:09.1248164Z ok 267 - buildUsageReport and summarizeUsage aggregate totals by channel and period
+test (22)	Run npm test	2026-10-01T06:50:09.1248493Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1248661Z   duration_ms: 8.645437
+test (22)	Run npm test	2026-10-01T06:50:09.1248844Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1248973Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1249447Z # Subtest: summarizeUsage and summarizeUsageIndex fill a single local day with 24 hourly rows
+test (22)	Run npm test	2026-10-01T06:50:09.1249813Z ok 268 - summarizeUsage and summarizeUsageIndex fill a single local day with 24 hourly rows
+test (22)	Run npm test	2026-10-01T06:50:09.1250032Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1250137Z   duration_ms: 0.516745
+test (22)	Run npm test	2026-10-01T06:50:09.1250256Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1250361Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1259587Z # Subtest: parseSessionFile correlates last-token usage to request context and preserves billing metadata
+test (22)	Run npm test	2026-10-01T06:50:09.1260255Z ok 269 - parseSessionFile correlates last-token usage to request context and preserves billing metadata
+test (22)	Run npm test	2026-10-01T06:50:09.1260704Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1262214Z   duration_ms: 1.324736
+test (22)	Run npm test	2026-10-01T06:50:09.1262338Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1262501Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1287300Z # Subtest: parseSessionFile records zero-token Codex quota observations with physical JSONL line numbers
+test (22)	Run npm test	2026-10-01T06:50:09.1287884Z ok 270 - parseSessionFile records zero-token Codex quota observations with physical JSONL line numbers
+test (22)	Run npm test	2026-10-01T06:50:09.1288205Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1288372Z   duration_ms: 0.898678
+test (22)	Run npm test	2026-10-01T06:50:09.1288577Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1288740Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1289162Z # Subtest: selectQuotaWindows resolves each window independently and reports waiting, ambiguity, and ignored buckets
+test (22)	Run npm test	2026-10-01T06:50:09.1289781Z ok 271 - selectQuotaWindows resolves each window independently and reports waiting, ambiguity, and ignored buckets
+test (22)	Run npm test	2026-10-01T06:50:09.1290114Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1290274Z   duration_ms: 0.441692
+test (22)	Run npm test	2026-10-01T06:50:09.1290782Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1290948Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1291269Z # Subtest: unknown usage presets are rejected rather than falling back to all
+test (22)	Run npm test	2026-10-01T06:50:09.1291719Z ok 272 - unknown usage presets are rejected rather than falling back to all
+test (22)	Run npm test	2026-10-01T06:50:09.1291937Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1292037Z   duration_ms: 0.30642
+test (22)	Run npm test	2026-10-01T06:50:09.1292154Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1292294Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1292694Z # Subtest: report and memory-index summaries share fixed quota slots and half-open event boundaries
+test (22)	Run npm test	2026-10-01T06:50:09.1293319Z ok 273 - report and memory-index summaries share fixed quota slots and half-open event boundaries
+test (22)	Run npm test	2026-10-01T06:50:09.1293684Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1293856Z   duration_ms: 0.705147
+test (22)	Run npm test	2026-10-01T06:50:09.1294035Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1294171Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1294405Z # Subtest: UTC calendar days keep report and memory index summaries aligned across midnight
+test (22)	Run npm test	2026-10-01T06:50:09.1294780Z ok 274 - UTC calendar days keep report and memory index summaries aligned across midnight
+test (22)	Run npm test	2026-10-01T06:50:09.1294994Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1295091Z   duration_ms: 0.374802
+test (22)	Run npm test	2026-10-01T06:50:09.1295204Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1295304Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1367510Z # Subtest: classifyImportDirectory 识别 OpenCode 数据目录
+test (22)	Run npm test	2026-10-01T06:50:09.1367852Z ok 275 - classifyImportDirectory 识别 OpenCode 数据目录
+test (22)	Run npm test	2026-10-01T06:50:09.1368123Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1368290Z   duration_ms: 7.939058
+test (22)	Run npm test	2026-10-01T06:50:09.1368462Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1368568Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1505191Z # Subtest: discoverOpencodeHomes 发现默认目录，支持关闭与追加
+test (22)	Run npm test	2026-10-01T06:50:09.1505975Z ok 276 - discoverOpencodeHomes 发现默认目录，支持关闭与追加
+test (22)	Run npm test	2026-10-01T06:50:09.1506248Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1506391Z   duration_ms: 13.802164
+test (22)	Run npm test	2026-10-01T06:50:09.1506516Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1506619Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1555320Z # Subtest: discoverUsageSources 把 OpenCode 作为来源并入
+test (22)	Run npm test	2026-10-01T06:50:09.1555722Z ok 277 - discoverUsageSources 把 OpenCode 作为来源并入
+test (22)	Run npm test	2026-10-01T06:50:09.1555972Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1556133Z   duration_ms: 5.006386
+test (22)	Run npm test	2026-10-01T06:50:09.1567400Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1567622Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1687073Z # Subtest: buildUsageReport 汇总 OpenCode 事件
+test (22)	Run npm test	2026-10-01T06:50:09.1687488Z ok 278 - buildUsageReport 汇总 OpenCode 事件
+test (22)	Run npm test	2026-10-01T06:50:09.1687706Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1688062Z   duration_ms: 13.132706
+test (22)	Run npm test	2026-10-01T06:50:09.1688188Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1688295Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1852368Z # Subtest: buildUsageIndex 产出 OpenCode 索引事件
+test (22)	Run npm test	2026-10-01T06:50:09.1852742Z ok 279 - buildUsageIndex 产出 OpenCode 索引事件
+test (22)	Run npm test	2026-10-01T06:50:09.1853115Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1854858Z   duration_ms: 15.78769
+test (22)	Run npm test	2026-10-01T06:50:09.1855068Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1855232Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.1941189Z # Subtest: buildUsageFingerprint 把 OpenCode 数据库计入指纹
+test (22)	Run npm test	2026-10-01T06:50:09.1941767Z ok 280 - buildUsageFingerprint 把 OpenCode 数据库计入指纹
+test (22)	Run npm test	2026-10-01T06:50:09.1942138Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.1942425Z   duration_ms: 9.538041
+test (22)	Run npm test	2026-10-01T06:50:09.1942660Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.1942924Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2010772Z # Subtest: streamUsageFileEvents 按 kind 分派到 OpenCode 解析
+test (22)	Run npm test	2026-10-01T06:50:09.2011221Z ok 281 - streamUsageFileEvents 按 kind 分派到 OpenCode 解析
+test (22)	Run npm test	2026-10-01T06:50:09.2011473Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2011605Z   duration_ms: 6.889199
+test (22)	Run npm test	2026-10-01T06:50:09.2011749Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2011857Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2318343Z # (node:2618) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:09.2319041Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:09.2319783Z # Subtest: model activity ages without file changes, agrees with static metadata, and ignores future maxima
+test (22)	Run npm test	2026-10-01T06:50:09.2320615Z ok 282 - model activity ages without file changes, agrees with static metadata, and ignores future maxima
+test (22)	Run npm test	2026-10-01T06:50:09.2320990Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2321669Z   duration_ms: 43.403654
+test (22)	Run npm test	2026-10-01T06:50:09.2321870Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2322045Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2322453Z # Subtest: SQLite product grouping deduplicates shared sessions without rewriting raw channels
+test (22)	Run npm test	2026-10-01T06:50:09.2323061Z ok 283 - SQLite product grouping deduplicates shared sessions without rewriting raw channels
+test (22)	Run npm test	2026-10-01T06:50:09.2323422Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2323599Z   duration_ms: 15.958076
+test (22)	Run npm test	2026-10-01T06:50:09.2323793Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2323964Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2324533Z # Subtest: UsageStore 首次同步并只重建变化文件
+test (22)	Run npm test	2026-10-01T06:50:09.2324843Z ok 284 - UsageStore 首次同步并只重建变化文件
+test (22)	Run npm test	2026-10-01T06:50:09.2325058Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2325225Z   duration_ms: 23.579193
+test (22)	Run npm test	2026-10-01T06:50:09.2325417Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2325585Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2325922Z # Subtest: inherited rollout counters do not inflate gpt-6-sol usage or cost
+test (22)	Run npm test	2026-10-01T06:50:09.2326412Z ok 285 - inherited rollout counters do not inflate gpt-6-sol usage or cost
+test (22)	Run npm test	2026-10-01T06:50:09.2326708Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2326860Z   duration_ms: 34.563782
+test (22)	Run npm test	2026-10-01T06:50:09.2327046Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2327213Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2327527Z # Subtest: UsageStore 将非 Git 仓库比较项按工作目录归组
+test (22)	Run npm test	2026-10-01T06:50:09.2327859Z ok 286 - UsageStore 将非 Git 仓库比较项按工作目录归组
+test (22)	Run npm test	2026-10-01T06:50:09.2328082Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2328245Z   duration_ms: 15.280731
+test (22)	Run npm test	2026-10-01T06:50:09.2328646Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2328812Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2329090Z # Subtest: UsageStore 汇总结果与内存索引保持一致
+test (22)	Run npm test	2026-10-01T06:50:09.2329393Z ok 287 - UsageStore 汇总结果与内存索引保持一致
+test (22)	Run npm test	2026-10-01T06:50:09.2329602Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2329768Z   duration_ms: 18.010092
+test (22)	Run npm test	2026-10-01T06:50:09.2329958Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2330123Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2330385Z # Subtest: New Record 点亮所选范围内的纪录期指标
+test (22)	Run npm test	2026-10-01T06:50:09.2331529Z ok 288 - New Record 点亮所选范围内的纪录期指标
+test (22)	Run npm test	2026-10-01T06:50:09.2331738Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2331903Z   duration_ms: 23.794676
+test (22)	Run npm test	2026-10-01T06:50:09.2332093Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2332268Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2332577Z # Subtest: UsageStore reindexes a file when its source identity changes
+test (22)	Run npm test	2026-10-01T06:50:09.2333032Z ok 289 - UsageStore reindexes a file when its source identity changes
+test (22)	Run npm test	2026-10-01T06:50:09.2333351Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2333516Z   duration_ms: 20.279274
+test (22)	Run npm test	2026-10-01T06:50:09.2333704Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2333875Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2334161Z # Subtest: UsageStore preserves indexed data when a source scan fails
+test (22)	Run npm test	2026-10-01T06:50:09.2334578Z ok 290 - UsageStore preserves indexed data when a source scan fails
+test (22)	Run npm test	2026-10-01T06:50:09.2334858Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2335018Z   duration_ms: 19.020556
+test (22)	Run npm test	2026-10-01T06:50:09.2335211Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2335377Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2335767Z # Subtest: UsageStore upgrades schema v2 and reindexes old source files with unknown billing fields
+test (22)	Run npm test	2026-10-01T06:50:09.2336380Z ok 291 - UsageStore upgrades schema v2 and reindexes old source files with unknown billing fields
+test (22)	Run npm test	2026-10-01T06:50:09.2336937Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2337099Z   duration_ms: 41.416345
+test (22)	Run npm test	2026-10-01T06:50:09.2337291Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2337451Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2337744Z # Subtest: UsageStore 按来源排除过滤统计与对比
+test (22)	Run npm test	2026-10-01T06:50:09.2338037Z ok 292 - UsageStore 按来源排除过滤统计与对比
+test (22)	Run npm test	2026-10-01T06:50:09.2338238Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2338397Z   duration_ms: 18.314478
+test (22)	Run npm test	2026-10-01T06:50:09.2338593Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2338751Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2339150Z # Subtest: previous quota cost records compare earlier reset windows and honor source exclusions
+test (22)	Run npm test	2026-10-01T06:50:09.2339742Z ok 293 - previous quota cost records compare earlier reset windows and honor source exclusions
+test (22)	Run npm test	2026-10-01T06:50:09.2340080Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2340240Z   duration_ms: 19.501594
+test (22)	Run npm test	2026-10-01T06:50:09.2340436Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2340824Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2341144Z # Subtest: UsageStore 限额窗口只统计 Codex 来源，普通范围不受影响
+test (22)	Run npm test	2026-10-01T06:50:09.2341511Z ok 294 - UsageStore 限额窗口只统计 Codex 来源，普通范围不受影响
+test (22)	Run npm test	2026-10-01T06:50:09.2341755Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2341920Z   duration_ms: 17.970483
+test (22)	Run npm test	2026-10-01T06:50:09.2342101Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2342256Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2342659Z # Subtest: UsageStore indexes quota observations from zero-token files and uses the half-open event range
+test (22)	Run npm test	2026-10-01T06:50:09.2343272Z ok 295 - UsageStore indexes quota observations from zero-token files and uses the half-open event range
+test (22)	Run npm test	2026-10-01T06:50:09.2343612Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2343756Z   duration_ms: 31.242953
+test (22)	Run npm test	2026-10-01T06:50:09.2343928Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2344071Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2344403Z # Subtest: UsageStore v5 migration marks only Codex JSONL for retryable automatic reindex
+test (22)	Run npm test	2026-10-01T06:50:09.2344951Z ok 296 - UsageStore v5 migration marks only Codex JSONL for retryable automatic reindex
+test (22)	Run npm test	2026-10-01T06:50:09.2345297Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2345458Z   duration_ms: 36.115263
+test (22)	Run npm test	2026-10-01T06:50:09.2345652Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2345810Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2346066Z # Subtest: DSH 事件不进 Codex 限额窗口聚合
+test (22)	Run npm test	2026-10-01T06:50:09.2346331Z ok 297 - DSH 事件不进 Codex 限额窗口聚合
+test (22)	Run npm test	2026-10-01T06:50:09.2346518Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2346678Z   duration_ms: 35.784361
+test (22)	Run npm test	2026-10-01T06:50:09.2346872Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2347038Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2347293Z # Subtest: UsageStore 索引 DSH 会话日志并只在变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2347592Z ok 298 - UsageStore 索引 DSH 会话日志并只在变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2347999Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2348156Z   duration_ms: 62.287507
+test (22)	Run npm test	2026-10-01T06:50:09.2348340Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2348494Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2348841Z # Subtest: UsageStore metadata 把 DSH 用量归入 harnessModels.DSH
+test (22)	Run npm test	2026-10-01T06:50:09.2349279Z ok 299 - UsageStore metadata 把 DSH 用量归入 harnessModels.DSH
+test (22)	Run npm test	2026-10-01T06:50:09.2349552Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2349738Z   duration_ms: 19.563485
+test (22)	Run npm test	2026-10-01T06:50:09.2349945Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2350132Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2350398Z # Subtest: OpenCode 事件不进 Codex 限额窗口聚合
+test (22)	Run npm test	2026-10-01T06:50:09.2350876Z ok 300 - OpenCode 事件不进 Codex 限额窗口聚合
+test (22)	Run npm test	2026-10-01T06:50:09.2351079Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2351269Z   duration_ms: 54.980161
+test (22)	Run npm test	2026-10-01T06:50:09.2351458Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2351643Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2351935Z # Subtest: UsageStore 索引 OpenCode 数据库并只在变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2352298Z ok 301 - UsageStore 索引 OpenCode 数据库并只在变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2352537Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2352711Z   duration_ms: 106.319109
+test (22)	Run npm test	2026-10-01T06:50:09.2352917Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2353078Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2353455Z # Subtest: UsageStore metadata 把 OpenCode 用量归入 harnessModels.OpenCode
+test (22)	Run npm test	2026-10-01T06:50:09.2353967Z ok 302 - UsageStore metadata 把 OpenCode 用量归入 harnessModels.OpenCode
+test (22)	Run npm test	2026-10-01T06:50:09.2354259Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2354419Z   duration_ms: 114.615658
+test (22)	Run npm test	2026-10-01T06:50:09.2354626Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2354781Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2355201Z # (node:2682) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+test (22)	Run npm test	2026-10-01T06:50:09.2355875Z # (Use `node --trace-warnings ...` to show where the warning was created)
+test (22)	Run npm test	2026-10-01T06:50:09.2356421Z # Subtest: discoverUsageSources 同时发现 Codex 与 ZCode home，并可整体关闭 ZCode
+test (22)	Run npm test	2026-10-01T06:50:09.2356921Z ok 303 - discoverUsageSources 同时发现 Codex 与 ZCode home，并可整体关闭 ZCode
+test (22)	Run npm test	2026-10-01T06:50:09.2357238Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2357421Z   duration_ms: 45.677554
+test (22)	Run npm test	2026-10-01T06:50:09.2357657Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2357818Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2358128Z # Subtest: zcodeDatabaseFile 探测 ZCode 数据库位置
+test (22)	Run npm test	2026-10-01T06:50:09.2358478Z ok 304 - zcodeDatabaseFile 探测 ZCode 数据库位置
+test (22)	Run npm test	2026-10-01T06:50:09.2358714Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2358893Z   duration_ms: 20.07628
+test (22)	Run npm test	2026-10-01T06:50:09.2359080Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2359258Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2359555Z # Subtest: classifyImportDirectory 识别 ZCode home
+test (22)	Run npm test	2026-10-01T06:50:09.2359949Z ok 305 - classifyImportDirectory 识别 ZCode home
+test (22)	Run npm test	2026-10-01T06:50:09.2360185Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2360357Z   duration_ms: 12.681053
+test (22)	Run npm test	2026-10-01T06:50:09.2360652Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2360830Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2361115Z # Subtest: zcodeSourceStat 把 WAL 文件计入增量检测
+test (22)	Run npm test	2026-10-01T06:50:09.2361466Z ok 306 - zcodeSourceStat 把 WAL 文件计入增量检测
+test (22)	Run npm test	2026-10-01T06:50:09.2361682Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2361859Z   duration_ms: 2.386287
+test (22)	Run npm test	2026-10-01T06:50:09.2362060Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2362222Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2362551Z # Subtest: streamZcodeDbEvents 映射 token 明细、渠道与长上下文
+test (22)	Run npm test	2026-10-01T06:50:09.2362954Z ok 307 - streamZcodeDbEvents 映射 token 明细、渠道与长上下文
+test (22)	Run npm test	2026-10-01T06:50:09.2363181Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2363358Z   duration_ms: 29.967444
+test (22)	Run npm test	2026-10-01T06:50:09.2363541Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2363721Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2363996Z # Subtest: UsageStore 索引 ZCode 用量并按会话目录归组仓库
+test (22)	Run npm test	2026-10-01T06:50:09.2364336Z ok 308 - UsageStore 索引 ZCode 用量并按会话目录归组仓库
+test (22)	Run npm test	2026-10-01T06:50:09.2364542Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2364720Z   duration_ms: 69.306816
+test (22)	Run npm test	2026-10-01T06:50:09.2364896Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2365079Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2365373Z # Subtest: ZCode UTC 账单日按原始请求时间分日，不改写计价时间
+test (22)	Run npm test	2026-10-01T06:50:09.2365709Z ok 309 - ZCode UTC 账单日按原始请求时间分日，不改写计价时间
+test (22)	Run npm test	2026-10-01T06:50:09.2365934Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2366106Z   duration_ms: 36.909418
+test (22)	Run npm test	2026-10-01T06:50:09.2366293Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2366472Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2366738Z # Subtest: UsageStore 只在 ZCode 数据库变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2367068Z ok 310 - UsageStore 只在 ZCode 数据库变化后重建
+test (22)	Run npm test	2026-10-01T06:50:09.2367437Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2367613Z   duration_ms: 19.473107
+test (22)	Run npm test	2026-10-01T06:50:09.2367815Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2368030Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2368371Z # Subtest: buildUsageReport 汇总 ZCode 会话与事件
+test (22)	Run npm test	2026-10-01T06:50:09.2368692Z ok 311 - buildUsageReport 汇总 ZCode 会话与事件
+test (22)	Run npm test	2026-10-01T06:50:09.2368910Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2369068Z   duration_ms: 7.536423
+test (22)	Run npm test	2026-10-01T06:50:09.2369243Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2369419Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2369687Z # Subtest: ZCode 数据库异常时仅记录警告，不影响 Codex 用量
+test (22)	Run npm test	2026-10-01T06:50:09.2369983Z ok 312 - ZCode 数据库异常时仅记录警告，不影响 Codex 用量
+test (22)	Run npm test	2026-10-01T06:50:09.2370194Z   ---
+test (22)	Run npm test	2026-10-01T06:50:09.2370373Z   duration_ms: 18.540658
+test (22)	Run npm test	2026-10-01T06:50:09.2370645Z   type: 'test'
+test (22)	Run npm test	2026-10-01T06:50:09.2370823Z   ...
+test (22)	Run npm test	2026-10-01T06:50:09.2370984Z 1..312
+test (22)	Run npm test	2026-10-01T06:50:09.2371192Z # tests 312
+test (22)	Run npm test	2026-10-01T06:50:09.2371401Z # suites 0
+test (22)	Run npm test	2026-10-01T06:50:09.2371598Z # pass 307
+test (22)	Run npm test	2026-10-01T06:50:09.2373676Z # fail 0
+test (22)	Run npm test	2026-10-01T06:50:09.2378237Z # cancelled 5
+test (22)	Run npm test	2026-10-01T06:50:09.2378411Z # skipped 0
+test (22)	Run npm test	2026-10-01T06:50:09.2378547Z # todo 0
+test (22)	Run npm test	2026-10-01T06:50:09.2378868Z # duration_ms 7150.587904
+test (22)	Run npm test	2026-10-01T06:50:09.2655744Z ##[error]Process completed with exit code 1.
+test (22)	Post Run actions/checkout@v4	﻿2026-10-01T06:50:09.2861809Z Post job cleanup.
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3431348Z [command]/usr/bin/git version
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3451318Z git version 2.55.0
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3467102Z Temporarily overriding HOME='/home/runner/work/_temp/1816071a-c3d0-4d21-b03e-1cd2b6c36892' before making global git config changes
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3467910Z Adding repository directory to the temporary git global config as a safe directory
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3470540Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/codex-usage/codex-usage
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3502468Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3528678Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3725470Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3752291Z http.https://github.com/.extraheader
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3761033Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3790548Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.3980580Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+test (22)	Post Run actions/checkout@v4	2026-10-01T06:50:09.4010052Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+test (22)	Complete job	﻿2026-10-01T06:50:09.4295875Z Cleaning up orphan processes
+test (22)	Complete job	2026-10-01T06:50:09.4497848Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

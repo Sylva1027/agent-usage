@@ -930,7 +930,18 @@ test("price-source timeout keeps successful matches and retries the partial upda
 
 test("catalog fetch reports an identifiable timeout", async () => {
   const waitingFetch = (_url, { signal }) =>
-    new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    new Promise((_resolve, reject) => {
+      // A real pending request keeps Node alive; AbortSignal.timeout alone is unref'ed.
+      const pendingRequest = setTimeout(() => reject(new Error("Request did not abort")), 1_000);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(pendingRequest);
+          reject(signal.reason);
+        },
+        { once: true },
+      );
+    });
   await assert.rejects(fetchPricingJson(waitingFetch, MODEL_PRICES_URL, { timeoutMs: 10 }), (error) => {
     assert.equal(error.code, "PRICING_TIMEOUT");
     assert.equal(error.timeoutMs, 10);
