@@ -2,11 +2,62 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 
-import { buildTimelineRows, deriveTimelineBucket, generateQuotaTimelineSlots } from "../public/timeline-utils.js";
+import {
+  buildTimelineRows,
+  channelForRange,
+  deriveTimelineBucket,
+  generateQuotaTimelineSlots,
+  homeSourceKinds,
+  sourceGroup,
+} from "../public/timeline-utils.js";
 import { estimateCostForEvents, estimateEventCost } from "../src/pricing.js";
 
 const dateAt = (year, month, day, hour = 0) => new Date(year, month - 1, day, hour);
+
+test("product channel groups honor home evidence and preserve quota and custom channels", () => {
+  for (const name of ["Codex Desktop", "Editor Integration", "CLI", "Codex Exec", "codex_work_desktop"]) {
+    assert.equal(channelForRange(name, { preset: "month" }), "Codex");
+    for (const quotaRange of [
+      { preset: "quota_5h" },
+      { preset: "quota_week" },
+      { preset: "recent", quotaWindow: true, quotaPreset: "quota_week" },
+    ]) {
+      assert.equal(channelForRange(name, quotaRange, "main"), name);
+    }
+  }
+  assert.equal(sourceGroup("ZCode Subagent"), "ZCode");
+  assert.equal(sourceGroup("DSH Subagent"), "DSH");
+  assert.equal(sourceGroup("unrecognized-client", "main"), "Codex");
+  assert.equal(sourceGroup("CLI", "opencode"), "OpenCode");
+  assert.equal(sourceGroup("custom-agent", "project-log"), "custom-agent");
+  assert.equal(sourceGroup("Unknown"), "Unknown");
+  assert.equal(homeSourceKinds([{ id: "one", kind: "dsh" }]).get("one"), "dsh");
+});
 const range = (preset, start, end) => ({ preset, start, end });
+
+test("channel grouping deduplicates sessions and leaves original pricing events untouched", () => {
+  const originals = [
+    { timestamp: "2026-09-20T10:00:00Z", sessionId: "shared", channel: "Codex Desktop", total: { total: 10 } },
+    { timestamp: "2026-09-20T10:00:00Z", sessionId: "shared", channel: "Codex Exec", total: { total: 20 } },
+    { timestamp: "2026-09-20T10:00:00Z", sessionId: "custom", channel: "custom-agent", total: { total: 5 } },
+  ];
+  const observed = [];
+  const rows = buildTimelineRows(originals, { calendarZone: "utc" }, "day", {
+    estimateCost: (row) => {
+      observed.push(row.channel);
+      return null;
+    },
+  });
+  assert.deepEqual(
+    rows[0].channels.map((row) => [row.name, row.total.total, row.sessions]),
+    [
+      ["Codex", 30, 1],
+      ["custom-agent", 5, 1],
+    ],
+  );
+  assert.deepEqual(observed, ["Codex Desktop", "Codex Exec", "custom-agent"]);
+  assert.equal(rows[0].total.total, 35);
+});
 const event = (timestamp, total, model = "gpt-6-sol", extra = {}) => ({
   timestamp,
   sessionId: `session-${timestamp}`,

@@ -23,11 +23,14 @@ import {
   getPricingCatalog,
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
+import { buildModelActivity } from "../public/pricing-models.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
 import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
 import {
   buildTimelineRows,
+  sourceGroup,
+  homeSourceKinds,
   deriveTimelineBucket,
   quotaRecordsForRange,
   quotaRecordValues,
@@ -67,7 +70,7 @@ function usageFromRow(row) {
 }
 
 const COST_EVENT_COLUMNS =
-  "timestamp_ms, session_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
+  "timestamp_ms, session_id, home_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
 
 /** @returns {import("./usage-types.js").IndexedCostEvent} */
 function costEventFromRow(row, tierEvidence) {
@@ -76,6 +79,7 @@ function costEventFromRow(row, tierEvidence) {
   return {
     timestamp,
     sessionId,
+    homeId: String(row.home_id),
     channel: String(row.channel),
     model: String(row.model),
     detailMask: Number(row.detail_mask || 0),
@@ -210,6 +214,7 @@ export class UsageStore {
     this.periodComparisonCache.clear();
     await mkdir(path.dirname(this.databaseFile), { recursive: true });
     this.database = new DatabaseSync(this.databaseFile);
+    this.database.function("usage_source_group", (channel, kind) => sourceGroup(channel, String(kind ?? "")));
     this.database.exec(`
       PRAGMA foreign_keys = ON;
       PRAGMA busy_timeout = 5000;
@@ -703,58 +708,75 @@ export class UsageStore {
       .filter((id) => typeof id === "string" && id.length > 0);
   }
 
-  metadata() {
-    if (this.metadataCache) return structuredClone(this.metadataCache);
-    const totals = this.database
-      .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
-      .get();
-    const homeRows = new Map(
-      this.database
-        .prepare(`
+  metadata(asOf = new Date()) {
+    if (!this.metadataCache) {
+      const totals = this.database
+        .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
+        .get();
+      const homeRows = new Map(
+        this.database
+          .prepare(`
           SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count
           FROM events GROUP BY home_id
         `)
-        .all()
-        .map((row) => [row.home_id, row]),
-    );
-    // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode）用到的模型名称。
-    const harnessModels = { Codex: new Set(), ZCode: new Set(), DSH: new Set(), OpenCode: new Set() };
-    for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
-      const model = String(row.model || "").trim();
-      if (!model || model.toLocaleLowerCase() === "unknown model") continue;
-      const channel = String(row.channel || "").toLowerCase();
-      const bucket = channel.startsWith("zcode")
-        ? "ZCode"
-        : channel.startsWith("dsh")
-          ? "DSH"
-          : channel.startsWith("opencode")
-            ? "OpenCode"
-            : "Codex";
-      harnessModels[bucket].add(model);
+          .all()
+          .map((row) => [row.home_id, row]),
+      );
+      // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode）用到的模型名称。
+      const harnessModels = { Codex: new Set(), ZCode: new Set(), DSH: new Set(), OpenCode: new Set() };
+      for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
+        const model = String(row.model || "").trim();
+        if (!model || model.toLocaleLowerCase() === "unknown model") continue;
+        const channel = String(row.channel || "").toLowerCase();
+        const bucket = channel.startsWith("zcode")
+          ? "ZCode"
+          : channel.startsWith("dsh")
+            ? "DSH"
+            : channel.startsWith("opencode")
+              ? "OpenCode"
+              : "Codex";
+        harnessModels[bucket].add(model);
+      }
+      this.metadataCache = {
+        generatedAt: this.generatedAt,
+        eventCount: Number(totals.event_count || 0),
+        sessionCount: Number(totals.session_count || 0),
+        homeCount: this.homes.length,
+        harnessModels: {
+          Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
+          ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
+          DSH: [...harnessModels.DSH].sort((a, b) => a.localeCompare(b)),
+          OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
+        },
+        homes: this.homes.map((home) => {
+          const row = homeRows.get(home.id);
+          return {
+            ...home,
+            status: row ? "active" : "no-events",
+            eventCount: Number(row?.event_count || 0),
+            sessionCount: Number(row?.session_count || 0),
+          };
+        }),
+        warnings: this.warnings,
+      };
     }
-    this.metadataCache = {
-      generatedAt: this.generatedAt,
-      eventCount: Number(totals.event_count || 0),
-      sessionCount: Number(totals.session_count || 0),
-      homeCount: this.homes.length,
-      harnessModels: {
-        Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
-        ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
-        DSH: [...harnessModels.DSH].sort((a, b) => a.localeCompare(b)),
-        OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
-      },
-      homes: this.homes.map((home) => {
-        const row = homeRows.get(home.id);
+    // Re-evaluate time even without new files; exclude future events before MAX.
+    const sourceKinds = homeSourceKinds(this.homes);
+    const observations = this.database
+      .prepare(`
+      SELECT channel, model, home_id, MAX(timestamp_ms) AS last_seen
+      FROM events WHERE timestamp_ms <= ? GROUP BY channel, model, home_id
+    `)
+      .all(asOf.getTime())
+      .map((row) => {
+        const group = sourceGroup(row.channel, sourceKinds.get(String(row.home_id)));
         return {
-          ...home,
-          status: row ? "active" : "no-events",
-          eventCount: Number(row?.event_count || 0),
-          sessionCount: Number(row?.session_count || 0),
+          model: row.model,
+          timestamp: Number(row.last_seen),
+          harness: ["ZCode", "DSH", "OpenCode"].includes(group) ? group : "Codex",
         };
-      }),
-      warnings: this.warnings,
-    };
-    return structuredClone(this.metadataCache);
+      });
+    return { ...structuredClone(this.metadataCache), ...buildModelActivity(observations, asOf) };
   }
 
   aggregateRange(range, excludeHomes = []) {
@@ -791,12 +813,16 @@ export class UsageStore {
     if (!allowedColumns.has(column)) {
       throw new Error(`不支持的聚合字段：${column}`);
     }
+    const dimension =
+      column === "channel" && !isQuotaPreset(range.preset) && !range.quotaWindow && !range.quotaPreset
+        ? "usage_source_group(channel, (SELECT kind FROM source_files WHERE path = events.source_path))"
+        : column;
     const scope = scopeFilterSql(excludeHomes);
     const where = eventRangeScope(range, scope);
     const rows = this.database
       .prepare(`
         SELECT
-          ${column} AS key,
+          ${dimension} AS key,
           COUNT(*) AS count,
           COUNT(DISTINCT session_id) AS sessions,
           COALESCE(SUM(total), 0) AS total,
@@ -806,7 +832,7 @@ export class UsageStore {
           COALESCE(SUM(reasoning), 0) AS reasoning
         FROM events
         WHERE ${where.sql}
-        GROUP BY ${column}
+        GROUP BY ${dimension}
         ORDER BY ${orderBy}
       `)
       .all(...where.params);
@@ -842,6 +868,7 @@ export class UsageStore {
    */
   timelineRange(range, bucket, { onEstimate, excludeHomes = [] } = {}) {
     return buildTimelineRows(this.costEventsForRange(range, excludeHomes), range, bucket, {
+      sourceKinds: homeSourceKinds(this.homes),
       estimateCost: estimateEventCost,
       onEstimate,
     });

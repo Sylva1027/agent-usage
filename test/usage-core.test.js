@@ -733,35 +733,21 @@ test("buildUsageReport and summarizeUsage aggregate totals by channel and period
   assert.equal(indexedAll.totals.total, all.totals.total);
   assert.deepEqual(
     indexedAll.channels.map((channel) => [channel.name, channel.total.total]),
-    [
-      ["JetBrains PyCharm", 300],
-      ["Codex Desktop", 200],
-      ["CLI", 100],
-    ],
+    [["Codex", 600]],
   );
   assert.deepEqual(
     all.channels.map((channel) => [channel.name, channel.total.total]),
-    [
-      ["JetBrains PyCharm", 300],
-      ["Codex Desktop", 200],
-      ["CLI", 100],
-    ],
+    [["Codex", 600]],
   );
   assert.deepEqual(
     all.timeline.find((row) => row.key === "2026-04-27").channels.map((channel) => [channel.name, channel.total.total]),
-    [
-      ["Codex Desktop", 200],
-      ["CLI", 100],
-    ],
+    [["Codex", 300]],
   );
   assert.deepEqual(
     indexedAll.timeline
       .find((row) => row.key === "2026-04-27")
       .channels.map((channel) => [channel.name, channel.total.total]),
-    [
-      ["Codex Desktop", 200],
-      ["CLI", 100],
-    ],
+    [["Codex", 300]],
   );
   assert.equal(custom.totals.total, 300);
   assert.equal(indexedCustom.totals.total, custom.totals.total);

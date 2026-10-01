@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-01",
+  "baseline": "28568ef plus working tree",
+  "test": {
+    "passed": 311,
+    "failed": 0
+  },
+  "typecheck": {
+    "exitCode": 0
+  },
+  "lint": {
+    "exitCode": 0,
+    "cssWarnings": 38,
+    "headCssWarnings": 39
+  },
+  "format": {
+    "exitCode": 0
+  },
+  "browser": {
+    "passed": 104,
+    "failed": 0,
+    "layoutCombinations": 32,
+    "pricingCombinations": 8
+  },
+  "documentation": {
+    "linksChecked": 90,
+    "todosComplete": 22,
+    "todosTotal": 22
+  },
+  "diffCheck": {
+    "exitCode": 0
+  },
+  "committed": false,
+  "personalServiceRestarted": false
+}

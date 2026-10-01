@@ -74,6 +74,9 @@ test("title, range, refresh, and timezone controls use separate compact groups",
   const refreshIndex = toolbar.indexOf('id="autoRefreshStatus" class="control-group auto-refresh-status"');
   assert.ok(rangeIndex >= 0 && dateIndex > rangeIndex && refreshIndex > dateIndex);
   const refresh = toolbar.slice(refreshIndex);
-  assert.ok(refresh.indexOf('id="lastSuccessfulCheck"') < refresh.indexOf('id="calendarZoneSelect"'));
-  assert.match(refresh, /<select id="calendarZoneSelect"[\s\S]*?<\/select>/);
+  assert.ok(refresh.indexOf('id="calendarZoneSelect"') < refresh.indexOf('id="lastSuccessfulCheck"'));
+  assert.match(refresh, /id="calendarZoneSelect"[^>]*role="combobox"[^>]*aria-controls="calendarZoneMenu"/);
+  assert.match(refresh, /class="auto-refresh-well"/);
+  assert.match(refresh, /auto-refresh-heading[\s\S]*?id="autoRefreshToggle"[\s\S]*?<\/span>/);
+  assert.doesNotMatch(header, /importButton/);
 });

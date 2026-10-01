@@ -1,0 +1,194 @@
+[
+  {
+    "prefix": "trim-1440-light-default",
+    "width": 1440,
+    "theme": "light",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1440-light-Segoe-UI",
+    "width": 1440,
+    "theme": "light",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1440-light-Arial",
+    "width": 1440,
+    "theme": "light",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1440-dark-default",
+    "width": 1440,
+    "theme": "dark",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1440-dark-Segoe-UI",
+    "width": 1440,
+    "theme": "dark",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1440-dark-Arial",
+    "width": 1440,
+    "theme": "dark",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-light-default",
+    "width": 1280,
+    "theme": "light",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-light-Segoe-UI",
+    "width": 1280,
+    "theme": "light",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-light-Arial",
+    "width": 1280,
+    "theme": "light",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-dark-default",
+    "width": 1280,
+    "theme": "dark",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-dark-Segoe-UI",
+    "width": 1280,
+    "theme": "dark",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1280-dark-Arial",
+    "width": 1280,
+    "theme": "dark",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-light-default",
+    "width": 1024,
+    "theme": "light",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-light-Segoe-UI",
+    "width": 1024,
+    "theme": "light",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-light-Arial",
+    "width": 1024,
+    "theme": "light",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-dark-default",
+    "width": 1024,
+    "theme": "dark",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-dark-Segoe-UI",
+    "width": 1024,
+    "theme": "dark",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-1024-dark-Arial",
+    "width": 1024,
+    "theme": "dark",
+    "font": "Arial",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-light-default",
+    "width": 390,
+    "theme": "light",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-light-Segoe-UI",
+    "width": 390,
+    "theme": "light",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-light-Arial",
+    "width": 390,
+    "theme": "light",
+    "font": "Arial",
+    "height": 102.90625,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-dark-default",
+    "width": 390,
+    "theme": "dark",
+    "font": "default",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-dark-Segoe-UI",
+    "width": 390,
+    "theme": "dark",
+    "font": "Segoe UI",
+    "height": 72,
+    "trim": "trim-both"
+  },
+  {
+    "prefix": "trim-390-dark-Arial",
+    "width": 390,
+    "theme": "dark",
+    "font": "Arial",
+    "height": 102.90625,
+    "trim": "trim-both"
+  }
+]

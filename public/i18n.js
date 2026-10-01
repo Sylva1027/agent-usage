@@ -149,7 +149,9 @@ const ENGLISH = new Map(
     无基准: "No baseline",
     全部范围没有可比较的上一周期: "All-time usage has no preceding period for comparison.",
     当前范围没有可比较的上一周期: "No preceding period is available for this range.",
-    流速同比: "Usage Pace vs. Prior Period",
+    同比流速: "Usage Pace vs. Prior Period",
+    "近期使用时间尚未可用，暂显示已观测模型；重启本地服务后按近一个月筛选。":
+      "Recent usage times are unavailable; showing observed models. Restart the local service to filter by the past month.",
     "此静态快照没有费用估算，请重新导出快照。": "This snapshot has no cost estimates. Export a new snapshot.",
     "费用估算暂不可用。": "Cost estimates are temporarily unavailable.",
     当前价格基准: "Current Pricing Baseline",
@@ -252,6 +254,7 @@ const ENGLISH = new Map(
     "已移除导入目录，正在刷新...": "Directory removed. Refreshing…",
     "快照已回收，正在重新冻结…": "Snapshot expired. Creating a new one…",
     限额统计暂不可用: "Limit statistics are temporarily unavailable",
+    正在检查更新: "Checking for updates",
     "正在检查更新…": "Checking for updates…",
     "检测到用量变化，正在更新…": "New usage found. Updating…",
     "正在刷新限额窗口…": "Refreshing limit window…",
@@ -334,6 +337,7 @@ const ENGLISH_PATTERNS = [
       `Sort by ${englishText(label).toLowerCase()} ${direction === "正序" ? "ascending" : "descending"}; ties follow the remaining periods in descending priority`,
   ],
   [/^按(.+)用量排序$/, (_, label) => `Sort by ${englishText(label).toLowerCase()} usage`],
+  [/^本地 Git 仓库优先；(.+)$/, (_, label) => `Local Git repositories first; ${englishText(label)}`],
   [/^统计截至 (.+)$/, (_, date) => `As of ${date}`],
   [
     /^总计 (.+) tokens(?:，(.+)：(.+))?$/,

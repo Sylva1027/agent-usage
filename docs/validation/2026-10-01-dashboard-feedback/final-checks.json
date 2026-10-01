@@ -1,0 +1,26 @@
+{
+  "baseline": "28568ef plus working tree",
+  "test": {
+    "passed": 312,
+    "failed": 0
+  },
+  "browser": {
+    "passed": 137,
+    "failed": 0
+  },
+  "liveService": {
+    "visibleModelRows": 21,
+    "harnessSections": 4,
+    "pageErrors": 0,
+    "legacyContract": true
+  },
+  "typecheckExitCode": 0,
+  "lintExitCode": 0,
+  "lintCssWarnings": 38,
+  "formatExitCode": 0,
+  "docLinksChecked": 77,
+  "todosCompleted": 27,
+  "todosTotal": 27,
+  "diffCheckExitCode": 0,
+  "personalServiceRestarted": false
+}

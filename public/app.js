@@ -1,5 +1,8 @@
 import {
   buildTimelineRows,
+  channelForRange,
+  homeSourceKinds,
+  sourceGroup,
   deriveTimelineBucket,
   MAX_TIMELINE_SLOTS,
   RECENT_SELECTIONS,
@@ -20,7 +23,7 @@ import {
   setLocale,
   translatePage,
 } from "./i18n.js";
-import { buildUsagePricingCoverage, resolvePricingModel } from "./pricing-models.js";
+import { buildModelActivity, buildUsagePricingCoverage, resolvePricingModel } from "./pricing-models.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
@@ -1070,6 +1073,7 @@ function codexHomeIdSet(report) {
 }
 
 export function summarize(report) {
+  const sourceKinds = homeSourceKinds(report.homes);
   const excluded = new Set((state.excludedHomes || []).map(String));
   const sourceEvents = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
   const range = getRange(sourceEvents, report.quota);
@@ -1101,12 +1105,14 @@ export function summarize(report) {
   let timeline = [];
   let timelineError = null;
   try {
-    if (quotaAvailable) timeline = buildTimelineRows(events, range, bucket);
+    if (quotaAvailable) timeline = buildTimelineRows(events, range, bucket, { sourceKinds });
   } catch (error) {
     if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
     timelineError = error.message;
   }
-  const channels = groupEvents(events, (event) => event.channel).sort((a, b) => b.total.total - a.total.total);
+  const channels = groupEvents(events, (event) =>
+    channelForRange(event.channel, range, sourceKinds.get(String(event.homeId))),
+  ).sort((a, b) => b.total.total - a.total.total);
   const projects = groupEvents(events, (event) => event.cwd || "Unknown cwd").sort(
     (a, b) => b.total.total - a.total.total,
   );
@@ -1572,6 +1578,10 @@ function comparisonPeriodTotal(row, period) {
 }
 
 function comparePeriodComparisonRows(left, right, kind, sort) {
+  if (kind === "repository") {
+    const gitOrder = Number(right.kind === "git") - Number(left.kind === "git");
+    if (gitOrder !== 0) return gitOrder;
+  }
   const selectedPeriod = COMPARISON_PERIOD_ORDER.includes(sort?.period) ? sort.period : "today";
   const periods = sort?.showIndicator
     ? [selectedPeriod, ...COMPARISON_PERIOD_ORDER.filter((period) => period !== selectedPeriod)]
@@ -1727,7 +1737,8 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
               const sortTitle = sort.showIndicator
                 ? `当前先按${label}${sort.direction === "asc" ? "正序" : "倒序"}；平手依次按其余周期倒序`
                 : "默认排序优先级：今日 → 本周 → 本月 → 全部（各项倒序）";
-              return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="${sortTitle}"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
+              const title = kind === "repository" ? `本地 Git 仓库优先；${sortTitle}` : sortTitle;
+              return `<th scope="col" aria-sort="${ariaSort}"><button class="comparison-sort-button" type="button" data-comparison-sort data-kind="${kind}" data-period="${period}" aria-label="${sortLabel}" title="${title}"><span>${label}</span><span class="comparison-sort-indicator" aria-hidden="true"${indicator ? "" : " hidden"}>${indicator}</span></button></th>`;
             })
             .join("")}</tr></thead>
           <tbody>${body}</tbody>
@@ -1961,7 +1972,7 @@ export function renderComparisonHtml(comparison) {
       <small>${formatPercent(comparison.percentChange)}</small>
     </article>
     <article class="comparison-item ${comparisonClass(comparison.averageDelta)}">
-      <span>流速同比</span>
+      <span>同比流速</span>
       <strong title="${formatExactDelta(comparison.averageDelta)}">${formatDelta(comparison.averageDelta)}</strong>
       <small>${formatPercent(comparison.averagePercentChange)}</small>
     </article>
@@ -2546,7 +2557,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
     .map((home) => {
       const id = escapeHtml(home.id);
       const label = escapeHtml(home.label || home.path || home.id);
-      const kind = escapeHtml(home.kind || home.type || "");
+      const kind = escapeHtml((home.kind || home.type) === "main" ? "codex" : home.kind || home.type || "");
       const status = escapeHtml(homeStatusLabel(home));
       const pathText = escapeHtml(home.path || "");
       const counts = `${formatTokens(home.eventCount || 0)} 条事件 · ${formatTokens(home.sessionCount || 0)} 个会话`;
@@ -2576,7 +2587,7 @@ export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } =
   return homes
     .map((home) => {
       const label = escapeHtml(home.label);
-      const kind = escapeHtml(home.kind || home.type || "");
+      const kind = escapeHtml((home.kind || home.type) === "main" ? "codex" : home.kind || home.type || "");
       const status = escapeHtml(homeStatusLabel(home));
       const pathText = escapeHtml(home.path);
       const reason = home.reason ? `<div class="home-reason">${escapeHtml(home.reason)}</div>` : "";
@@ -2653,8 +2664,11 @@ export function claimHarnessKeys(groups) {
   return ordered;
 }
 
-function metadataFromReport(report) {
+export function metadataFromReport(report) {
   const homeStats = new Map();
+  const sourceKinds = homeSourceKinds(report.homes);
+  const harnessForEvent = (event) =>
+    bucketForChannel(sourceGroup(event.channel, sourceKinds.get(String(event.homeId))));
   const harnessModels = newHarnessModelBuckets();
   for (const event of report.events) {
     const current = homeStats.get(event.homeId) || {
@@ -2666,7 +2680,7 @@ function metadataFromReport(report) {
     homeStats.set(event.homeId, current);
     const model = String(event.model || "").trim();
     if (model && model.toLocaleLowerCase() !== "unknown model") {
-      harnessModels[bucketForChannel(event.channel)].add(model);
+      harnessModels[harnessForEvent(event)].add(model);
     }
   }
   return {
@@ -2674,6 +2688,14 @@ function metadataFromReport(report) {
     eventCount: report.events.length,
     sessionCount: report.sessions.length,
     harnessModels: harnessModelLists(harnessModels),
+    ...buildModelActivity(
+      report.events.map((event) => ({
+        model: event.model,
+        timestamp: event.timestamp,
+        harness: harnessForEvent(event),
+      })),
+      report.asOf || report.generatedAt || Date.now(),
+    ),
     homes: report.homes.map((home) => {
       const stats = homeStats.get(home.id) || { eventCount: 0, sessions: new Set() };
       return {
@@ -2851,11 +2873,17 @@ function render() {
   translatePage();
 }
 
-function setAutoRefreshStatus(message, { error = false } = {}) {
+function setAutoRefreshStatus(message, { error = false, busy = false } = {}) {
   const node = document.querySelector("#autoRefreshError");
   if (!node) return;
-  node.textContent = message || "";
+  node.textContent = busy ? "" : message || "";
   node.classList.toggle("is-error", error);
+  const spinner = document.querySelector("#autoRefreshSpinner");
+  if (spinner) {
+    spinner.classList.toggle("is-loading", busy);
+    spinner.setAttribute("aria-hidden", String(!busy));
+    spinner.setAttribute("aria-label", getLocale() === "en-US" ? "Checking for updates" : "正在检查更新");
+  }
 }
 
 function readAutoRefreshPreference() {
@@ -2920,7 +2948,7 @@ function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}
   if (state.autoRefreshEnabled) {
     state.snapshotId = null;
     startAutoRefresh();
-    setAutoRefreshStatus(checkNow ? "已开启，正在检查…" : "");
+    setAutoRefreshStatus("", { busy: checkNow });
     if (checkNow) void loadUsage();
   } else {
     stopAutoRefresh();
@@ -3026,12 +3054,9 @@ function renderAutomaticPricingStatus(status = {}, coverage = undefined) {
   const coverageNode = $("#pricingUsageCoverage");
   if (coverageNode) {
     let resolvedCoverage = coverage ?? state.pricingCatalog?.usageCoverage;
-    if (!resolvedCoverage && state.metadata?.harnessModels) {
-      resolvedCoverage = buildUsagePricingCoverage(
-        state.metadata.harnessModels,
-        state.pricingCatalog?.models || {},
-        true,
-      );
+    const activity = pricingUsageModels();
+    if (activity.harnessModels) {
+      resolvedCoverage = buildUsagePricingCoverage(activity.harnessModels, state.pricingCatalog?.models || {}, true);
     }
     coverageNode.textContent = usagePricingCoverageText(resolvedCoverage || {}, getLocale());
   }
@@ -3154,7 +3179,7 @@ async function refreshPricingAutomatically(force = false) {
     if (state.pricingCatalog) state.pricingCatalog.automatic = result;
     if (result.changed || result.statusChanged) {
       if (state.pricingCatalog) {
-        const catalogResponse = await fetch("/api/pricing");
+        const catalogResponse = await fetch(pricingActivityUrl());
         if (!catalogResponse.ok) throw new Error(`HTTP ${catalogResponse.status}`);
         const catalog = await catalogResponse.json();
         state.pricingCatalog = catalog;
@@ -3309,11 +3334,6 @@ function updateModelPricingApplyState() {
   $("#applyModelPricingButton").disabled = !modelPricingInputsChanged(inputs);
 }
 
-// 计价条目的 harness 归属：OpenAI 价目（Codex 常用的 gpt 系）归 Codex，其余厂商归 ZCode。
-function isCodexPricingModel(model, entry) {
-  return model.startsWith("gpt-") || !entry?.source || entry.source.includes("developers.openai.com");
-}
-
 function pricingRowsForNames(names, catalog) {
   const rows = [];
   const seen = new Set();
@@ -3329,11 +3349,34 @@ function pricingRowsForNames(names, catalog) {
   return rows;
 }
 
-export function pricingHarnessRows() {
+export function pricingUsageModels() {
+  const candidates = [state.pricingCatalog?.modelActivity, state.metadata];
+  const isMap = (value) => value && typeof value === "object" && !Array.isArray(value);
+  for (const candidate of candidates) {
+    if (isMap(candidate?.activeHarnessModels)) {
+      return { harnessModels: candidate.activeHarnessModels, recent: true };
+    }
+  }
+  for (const candidate of candidates) {
+    if (!isMap(candidate?.modelLastSeen)) continue;
+    const observations = Object.entries(candidate.modelLastSeen).flatMap(([harness, models]) =>
+      isMap(models) ? Object.entries(models).map(([model, timestamp]) => ({ harness, model, timestamp })) : [],
+    );
+    const asOf =
+      candidate.modelUsageAsOf || state.summary?.range?.asOf || state.report?.asOf || state.now || Date.now();
+    const activity = buildModelActivity(observations, asOf);
+    return { harnessModels: activity.activeHarnessModels, recent: true };
+  }
+  // Older running servers serve current assets but have no activity projection.
+  // Keep observed models visible until their time-aware metadata becomes available.
+  return { harnessModels: state.metadata?.harnessModels || null, recent: false };
+}
+
+export function pricingHarnessRows({ all = false } = {}) {
   const catalog = state.pricingCatalog?.models || {};
   const groups = Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, []]));
-  const harnessModels = state.metadata?.harnessModels;
-  const hasHarnessData = HARNESS_ORDER.some((harness) => (harnessModels?.[harness]?.length || 0) > 0);
+  const harnessModels = all ? state.metadata?.harnessModels : pricingUsageModels().harnessModels;
+  const hasHarnessData = harnessModels && typeof harnessModels === "object";
 
   if (hasHarnessData) {
     const claimedCatalogKeys = new Set();
@@ -3349,19 +3392,12 @@ export function pricingHarnessRows() {
     return groups;
   }
 
-  const names = new Set();
-  for (const row of state.summary?.models || []) names.add(row.name || row.key);
-  for (const row of state.periodComparison?.models || []) names.add(row.key || row.name);
-  for (const row of pricingRowsForNames(names, catalog)) {
-    const harness = row.catalogKey && isCodexPricingModel(row.catalogKey, catalog[row.catalogKey]) ? "Codex" : "ZCode";
-    groups[harness].push(row);
-  }
+  // An explicit empty recent set is authoritative.
   return groups;
 }
 
 // 一级：在用 / 全部；在用模型下再按 Codex / ZCode / DSH 分组。
-// 在用模型优先按使用记录的实际渠道归属（metadata.harnessModels），
-// 服务端尚未提供该数据时按价目来源兜底分组，保证弹窗始终可用。
+// 在用模型使用已评估的近期名单；全历史名单仅用于全部模型。
 export function pricingHarnessGroups() {
   const rows = pricingHarnessRows();
   return Object.fromEntries(
@@ -3419,7 +3455,7 @@ function renderPricingModelList() {
         { model, catalogKey: model, matchType: "exact" },
       ]),
     );
-    for (const rows of Object.values(pricingHarnessRows())) {
+    for (const rows of Object.values(pricingHarnessRows({ all: true }))) {
       for (const row of rows) {
         if (!row.catalogKey) rowsByName.set(row.model.toLowerCase(), row);
       }
@@ -3442,7 +3478,13 @@ function renderPricingModelList() {
       .join("");
     return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
   }).join("");
-  container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
+  const activity = pricingUsageModels();
+  const notice =
+    !activity.recent && activity.harnessModels
+      ? `<p class="pricing-model-note pricing-activity-notice">${localizeText("近期使用时间尚未可用，暂显示已观测模型；重启本地服务后按近一个月筛选。")}</p>`
+      : "";
+  container.innerHTML =
+    notice + (sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`);
 }
 
 function updatePricingScopeButtons() {
@@ -3484,12 +3526,16 @@ function applyModelPricing() {
   renderPricingModelList();
 }
 
+function pricingActivityUrl() {
+  return state.snapshotId ? `/api/pricing?snapshot=${encodeURIComponent(state.snapshotId)}` : "/api/pricing";
+}
+
 async function openPricingDialog() {
   if (isStaticSnapshot()) return;
   const button = $("#updatePricingButton");
   button.disabled = true;
   try {
-    const response = await fetch("/api/pricing");
+    const response = await fetch(pricingActivityUrl());
     const catalog = await response.json();
     if (!response.ok) throw new Error(localizeServerError(catalog, response.status));
     state.pricingCatalog = catalog;
@@ -3581,7 +3627,7 @@ async function submitPricing(event) {
 }
 
 function setImportControlsDisabled(disabled) {
-  for (const selector of ["#importButton", "#addImportButton", "#pickImportDirectoryButton"]) {
+  for (const selector of ["#addImportButton", "#pickImportDirectoryButton"]) {
     const button = $(selector);
     if (!button) {
       continue;
@@ -3900,6 +3946,7 @@ function setDatePickerOpen(open) {
   }
   setRecentMenuOpen(false);
   state.datePickerDraft = { startDate: state.startDate, endDate: state.endDate };
+  setCalendarZoneMenuOpen(false);
   state.datePickerView = monthStart(parseLocalDate(state.startDate) || new Date());
   state.datePickerField = "start";
   renderDatePicker("start");
@@ -3962,7 +4009,10 @@ function setRecentMenuOpen(open) {
   if (!menu || !input || !button || !segment) {
     return;
   }
-  if (open) closeDatePickers();
+  if (open) {
+    closeDatePickers();
+    setCalendarZoneMenuOpen(false);
+  }
   menu.hidden = !open;
   input.setAttribute("aria-expanded", String(open));
   button.setAttribute("aria-expanded", String(open));
@@ -4089,10 +4139,11 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     render();
     if (!embeddedReport && !$("#pricingDialog").hidden && state.pricingCatalog) {
       try {
-        const response = await fetch("/api/pricing");
+        const response = await fetch(pricingActivityUrl());
         if (response.ok) {
           const latest = await response.json();
           state.pricingCatalog.usageCoverage = latest.usageCoverage;
+          state.pricingCatalog.modelActivity = latest.modelActivity;
           state.pricingCatalog.automatic = latest.automatic;
           renderAutomaticPricingStatus(latest.automatic, latest.usageCoverage);
           renderPricingModelList();
@@ -4102,7 +4153,7 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   } catch (error) {
     if (loadId === state.usageLoadId && error.status === 410 && state.snapshotId && !state.autoRefreshEnabled) {
       state.snapshotId = null;
-      setAutoRefreshStatus("快照已回收，正在重新冻结…");
+      setAutoRefreshStatus("", { busy: true });
       void loadUsage({ skipCheck: true, freeze: true });
       return;
     }
@@ -4129,7 +4180,7 @@ async function checkForUpdates() {
   if (isStaticSnapshot() || !state.autoRefreshEnabled || !state.fingerprint || state.autoRefreshCheckInFlight) return;
   const runId = state.autoRefreshRunId;
   state.autoRefreshCheckInFlight = true;
-  setAutoRefreshStatus("正在检查更新…");
+  setAutoRefreshStatus("", { busy: true });
   try {
     const response = await fetch(`/api/status?since=${encodeURIComponent(state.fingerprint)}`);
     if (!response.ok) throw new Error(`API ${response.status}`);
@@ -4139,7 +4190,7 @@ async function checkForUpdates() {
     setAutoRefreshStatus("");
     renderAutoRefreshControls();
     if (status.changed || isQuotaPreset(state.preset)) {
-      setAutoRefreshStatus(status.changed ? "检测到用量变化，正在更新…" : "正在刷新限额窗口…");
+      setAutoRefreshStatus("", { busy: true });
       await loadUsage();
     }
   } catch (error) {
@@ -4174,10 +4225,41 @@ function refreshViewForFilters() {
 }
 
 function updateCalendarZoneSelect() {
-  const select = $("#calendarZoneSelect");
   const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  select.querySelector('[value="local"]').textContent = localZone === "Asia/Shanghai" ? "GMT+8" : "本地时间";
-  select.value = state.calendarZone;
+  const localLabel = localZone === "Asia/Shanghai" ? "GMT+8" : localizeText("本地时间");
+  $('#calendarZoneMenu [data-calendar-zone="local"]').textContent = localLabel;
+  $("#calendarZoneValue").textContent = state.calendarZone === "utc" ? "UTC+0" : localLabel;
+  for (const option of document.querySelectorAll("[data-calendar-zone]")) {
+    option.setAttribute("aria-selected", String(option.dataset.calendarZone === state.calendarZone));
+  }
+}
+
+function setCalendarZoneMenuOpen(open, focus = false) {
+  const menu = $("#calendarZoneMenu");
+  const button = $("#calendarZoneSelect");
+  if (!menu || !button) return;
+  if (open) {
+    setRecentMenuOpen(false);
+    closeDatePickers();
+  }
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (focus) {
+    if (open) menu.querySelector('[aria-selected="true"]').focus();
+    else button.focus();
+  }
+}
+
+function selectCalendarZone(zone) {
+  setCalendarZoneMenuOpen(false, true);
+  if (!["local", "utc"].includes(zone) || zone === state.calendarZone) return;
+  state.calendarZone = zone;
+  try {
+    window.localStorage.setItem("codexUsageCalendarZoneV2", zone);
+  } catch {}
+  updateCalendarZoneSelect();
+  renderAutoRefreshControls();
+  refreshViewForFilters();
 }
 
 function toggleQuotaPreset() {
@@ -4215,16 +4297,35 @@ function bootDashboard() {
   $("#quotaPresetToggle").addEventListener("click", toggleQuotaPreset);
   $("#dateRangeButton").addEventListener("click", () => setDatePickerOpen(!state.datePickerField));
 
-  $("#calendarZoneSelect").addEventListener("change", (event) => {
-    const zone = event.target.value;
-    if (!["local", "utc"].includes(zone) || zone === state.calendarZone) return;
-    state.calendarZone = zone;
-    try {
-      window.localStorage.setItem("codexUsageCalendarZoneV2", zone);
-    } catch {}
-    updateCalendarZoneSelect();
-    renderAutoRefreshControls();
-    refreshViewForFilters();
+  $("#calendarZoneSelect").addEventListener("click", () => {
+    setCalendarZoneMenuOpen($("#calendarZoneMenu").hidden, true);
+  });
+  $("#calendarZoneMenu").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-calendar-zone]");
+    if (option) selectCalendarZone(option.dataset.calendarZone);
+  });
+  document.querySelector(".calendar-zone").addEventListener("keydown", (event) => {
+    const options = [...document.querySelectorAll("[data-calendar-zone]")];
+    const index = options.indexOf(document.activeElement);
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const wasClosed = $("#calendarZoneMenu").hidden;
+      setCalendarZoneMenuOpen(true);
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? options.length - 1
+            : wasClosed
+              ? options.findIndex((option) => option.dataset.calendarZone === state.calendarZone)
+              : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      options[next].focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setCalendarZoneMenuOpen(false, true);
+    } else if (event.key === "Tab") {
+      setCalendarZoneMenuOpen(false);
+    }
   });
 
   $("#presetButtons").addEventListener("click", (event) => {
@@ -4310,6 +4411,7 @@ function bootDashboard() {
   });
 
   document.addEventListener("click", (event) => {
+    if (!event.target.closest(".calendar-zone")) setCalendarZoneMenuOpen(false);
     if (!event.target.closest(".recent-segment")) {
       setRecentMenuOpen(false);
     }
@@ -4370,7 +4472,6 @@ function bootDashboard() {
   $("#modelPricingDialog").addEventListener("close", () => {
     state.modelPricingDraft = null;
   });
-  $("#importButton").addEventListener("click", openImportDialog);
   $("#addImportButton").addEventListener("click", openImportDialog);
   $("#repositoryComparisonSearch").addEventListener("input", (event) => {
     state.repositoryComparisonQuery = event.target.value;

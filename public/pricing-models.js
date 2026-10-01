@@ -3,6 +3,59 @@ const PRICING_MODEL_ALIASES = Object.freeze({
   "gpt-daybreak-blue-latest": "gpt-5.6-sol",
 });
 
+function activityTime(value) {
+  return value instanceof Date ? value.getTime() : typeof value === "number" ? value : Date.parse(String(value));
+}
+
+/** @param {string | number | Date} [asOf] */
+export function modelActivityCutoff(asOf = Date.now()) {
+  const date = new Date(activityTime(asOf));
+  if (!Number.isFinite(date.getTime())) throw new RangeError("Invalid model activity time");
+  const day = date.getUTCDate();
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 0)).getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() - 1);
+  date.setUTCDate(Math.min(day, lastDay));
+  return date.getTime();
+}
+
+/** @param {Iterable<any>} observations @param {string | number | Date} [asOf] */
+export function buildModelActivity(observations = [], asOf = Date.now()) {
+  const now = activityTime(asOf);
+  const cutoff = modelActivityCutoff(now);
+  const modelLastSeen = Object.fromEntries(["Codex", "ZCode", "DSH", "OpenCode"].map((harness) => [harness, {}]));
+  for (const observation of observations) {
+    const model = String(observation.model || "")
+      .trim()
+      .toLowerCase();
+    const timestamp = activityTime(observation.timestamp);
+    const harness = observation.harness;
+    if (
+      !model ||
+      model === "unknown model" ||
+      !Object.hasOwn(modelLastSeen, harness) ||
+      !Number.isFinite(timestamp) ||
+      timestamp > now
+    )
+      continue;
+    const previous = Object.hasOwn(modelLastSeen[harness], model) ? modelLastSeen[harness][model] : -Infinity;
+    Object.defineProperty(modelLastSeen[harness], model, {
+      value: Math.max(previous, timestamp),
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  const activeHarnessModels = Object.fromEntries(
+    Object.entries(modelLastSeen).map(([harness, models]) => [
+      harness,
+      Object.keys(models)
+        .filter((model) => models[model] > cutoff)
+        .sort((left, right) => left.localeCompare(right)),
+    ]),
+  );
+  return { modelUsageAsOf: new Date(now).toISOString(), modelLastSeen, activeHarnessModels };
+}
+
 function modelIndex(models) {
   if (!models || typeof models !== "object" || Array.isArray(models)) return new Map();
   return new Map(Object.keys(models).map((key) => [key.trim().toLowerCase(), key]));

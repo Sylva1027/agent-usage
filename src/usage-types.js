@@ -50,6 +50,7 @@
  * Pricing projection of an indexed SQLite event. This shape is shared by
  * timeline aggregation and the range-wide cost estimate.
  * @typedef {object} IndexedCostEvent
+ * @property {string} [homeId]
  * @property {number} timestamp
  * @property {string} sessionId
  * @property {string} channel

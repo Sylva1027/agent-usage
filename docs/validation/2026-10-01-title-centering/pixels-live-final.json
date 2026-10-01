@@ -1,0 +1,1231 @@
+{
+  "passed": true,
+  "checks": 24,
+  "maxAbsoluteCapitalOffset": 1.0,
+  "rows": [
+    {
+      "prefix": "live-header-1440-light-default",
+      "width": 1440,
+      "theme": "light",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1440-light-Segoe-UI",
+      "width": 1440,
+      "theme": "light",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        252,
+        60
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -1.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1440-light-Arial",
+      "width": 1440,
+      "theme": "light",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1440-dark-default",
+      "width": 1440,
+      "theme": "dark",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1440-dark-Segoe-UI",
+      "width": 1440,
+      "theme": "dark",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        253,
+        60
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1440-dark-Arial",
+      "width": 1440,
+      "theme": "dark",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1408,
+        "height": 72,
+        "top": 28,
+        "right": 1424,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1401,
+        "bottom": 83,
+        "left": 1263
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-light-default",
+      "width": 1280,
+      "theme": "light",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-light-Segoe-UI",
+      "width": 1280,
+      "theme": "light",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        252,
+        60
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -1.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-light-Arial",
+      "width": 1280,
+      "theme": "light",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-dark-default",
+      "width": 1280,
+      "theme": "dark",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-dark-Segoe-UI",
+      "width": 1280,
+      "theme": "dark",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        253,
+        60
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1280-dark-Arial",
+      "width": 1280,
+      "theme": "dark",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 1248,
+        "height": 72,
+        "top": 28,
+        "right": 1264,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 1241,
+        "bottom": 83,
+        "left": 1103
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-light-default",
+      "width": 1024,
+      "theme": "light",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-light-Segoe-UI",
+      "width": 1024,
+      "theme": "light",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        252,
+        60
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -1.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-light-Arial",
+      "width": 1024,
+      "theme": "light",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-dark-default",
+      "width": 1024,
+      "theme": "dark",
+      "font": "default",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "top": 50.0625,
+        "right": 264.328125,
+        "bottom": 77.921875,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        20,
+        19,
+        250,
+        61
+      ],
+      "capitalTopGap": 20,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-dark-Segoe-UI",
+      "width": 1024,
+      "theme": "dark",
+      "font": "Segoe UI",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.6875,
+        "width": 226.859375,
+        "height": 26.609375,
+        "top": 50.6875,
+        "right": 265.859375,
+        "bottom": 77.296875,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        253,
+        60
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 22,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-1024-dark-Arial",
+      "width": 1024,
+      "theme": "dark",
+      "font": "Arial",
+      "header": {
+        "x": 16,
+        "y": 28,
+        "width": 992,
+        "height": 72,
+        "top": 28,
+        "right": 1008,
+        "bottom": 100,
+        "left": 16
+      },
+      "title": {
+        "x": 39,
+        "y": 50.390625,
+        "width": 255.65625,
+        "height": 27.203125,
+        "top": 50.390625,
+        "right": 294.65625,
+        "bottom": 77.59375,
+        "left": 39
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "top": 45,
+        "right": 985,
+        "bottom": 83,
+        "left": 847
+      },
+      "fontSize": "38px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        21,
+        20,
+        281,
+        61
+      ],
+      "capitalTopGap": 21,
+      "capitalBottomGap": 21,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-light-default",
+      "width": 390,
+      "theme": "light",
+      "font": "default",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "top": 52.265625,
+        "right": 209.015625,
+        "bottom": 75.71875,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        8,
+        22,
+        201,
+        58
+      ],
+      "capitalTopGap": 23,
+      "capitalBottomGap": 23,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-light-Segoe-UI",
+      "width": 390,
+      "theme": "light",
+      "font": "Segoe UI",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.796875,
+        "width": 189.296875,
+        "height": 22.40625,
+        "top": 52.796875,
+        "right": 210.296875,
+        "bottom": 75.203125,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        9,
+        23,
+        203,
+        56
+      ],
+      "capitalTopGap": 23,
+      "capitalBottomGap": 24,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-light-Arial",
+      "width": 390,
+      "theme": "light",
+      "font": "Arial",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.546875,
+        "width": 213.546875,
+        "height": 22.90625,
+        "top": 52.546875,
+        "right": 234.546875,
+        "bottom": 75.453125,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        9,
+        22,
+        227,
+        55
+      ],
+      "capitalTopGap": 22,
+      "capitalBottomGap": 24,
+      "capitalCenterOffset": -1.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-dark-default",
+      "width": 390,
+      "theme": "dark",
+      "font": "default",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "top": 52.265625,
+        "right": 209.015625,
+        "bottom": 75.71875,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        8,
+        22,
+        201,
+        58
+      ],
+      "capitalTopGap": 23,
+      "capitalBottomGap": 23,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-dark-Segoe-UI",
+      "width": 390,
+      "theme": "dark",
+      "font": "Segoe UI",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.796875,
+        "width": 189.296875,
+        "height": 22.40625,
+        "top": 52.796875,
+        "right": 210.296875,
+        "bottom": 75.203125,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        9,
+        23,
+        203,
+        56
+      ],
+      "capitalTopGap": 24,
+      "capitalBottomGap": 24,
+      "capitalCenterOffset": 0.0,
+      "passed": true
+    },
+    {
+      "prefix": "live-header-390-dark-Arial",
+      "width": 390,
+      "theme": "dark",
+      "font": "Arial",
+      "header": {
+        "x": 10,
+        "y": 28,
+        "width": 370,
+        "height": 72,
+        "top": 28,
+        "right": 380,
+        "bottom": 100,
+        "left": 10
+      },
+      "title": {
+        "x": 21,
+        "y": 52.546875,
+        "width": 213.546875,
+        "height": 22.90625,
+        "top": 52.546875,
+        "right": 234.546875,
+        "bottom": 75.453125,
+        "left": 21
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "top": 45,
+        "right": 369,
+        "bottom": 83,
+        "left": 241
+      },
+      "fontSize": "32px",
+      "transform": "none",
+      "trim": "trim-both",
+      "edge": "cap alphabetic",
+      "compatMode": "CSS1Compat",
+      "paintBounds": [
+        9,
+        22,
+        227,
+        55
+      ],
+      "capitalTopGap": 23,
+      "capitalBottomGap": 24,
+      "capitalCenterOffset": -0.5,
+      "passed": true
+    }
+  ]
+}

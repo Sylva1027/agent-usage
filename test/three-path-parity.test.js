@@ -500,9 +500,8 @@ test("three paths agree on DSH usage, including the input/cache split and quota 
               .map((channel) => [channel.name, channel.total.total])
               .sort((a, b) => a[0].localeCompare(b[0])),
             [
-              ["CLI", 45],
-              ["DSH", 8525],
-              ["DSH Subagent", 160],
+              ["Codex", 45],
+              ["DSH", 8685],
             ],
             `${calendarZone} DSH channels`,
           );
@@ -668,7 +667,7 @@ test("three paths agree on OpenCode usage, including all three parallel-counter 
               .map((channel) => [channel.name, channel.total.total])
               .sort((a, b) => a[0].localeCompare(b[0])),
             [
-              ["CLI", 45],
+              ["Codex", 45],
               ["OpenCode", 8310],
             ],
             `${calendarZone} OpenCode channels`,

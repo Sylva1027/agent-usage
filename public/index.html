@@ -46,7 +46,6 @@
               <g class="theme-moon" transform="translate(21.4 2.4) scale(0.8)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
             </svg>
           </button>
-          <button id="importButton" type="button">导入</button>
         </div>
       </header>
 
@@ -123,14 +122,18 @@
           <div id="dateRangePicker" class="date-picker-popover" role="dialog" aria-label="日期范围日历" hidden></div>
         </div>
         <div id="autoRefreshStatus" class="control-group auto-refresh-status" aria-live="polite">
-          <span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span></span>
-          <button id="autoRefreshToggle" type="button" aria-pressed="true">开</button>
-          <span id="lastSuccessfulCheck">上次：尚无</span>
-          <select id="calendarZoneSelect" aria-label="日期范围时区">
-            <option value="local">本地时间</option>
-            <option value="utc">UTC+0</option>
-          </select>
-          <span id="autoRefreshError" class="auto-refresh-error"></span>
+          <div class="auto-refresh-well">
+            <span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span><button id="autoRefreshToggle" type="button" aria-pressed="true">开</button><span id="autoRefreshSpinner" class="auto-refresh-spinner" role="status" aria-hidden="true" aria-label="正在检查更新"></span></span>
+            <div class="calendar-zone">
+              <button id="calendarZoneSelect" class="recent-combobox" type="button" role="combobox" aria-label="日期范围时区" aria-controls="calendarZoneMenu" aria-expanded="false" aria-haspopup="listbox"><span id="calendarZoneValue">本地时间</span><span class="calendar-zone-arrow" aria-hidden="true"></span></button>
+              <div id="calendarZoneMenu" class="recent-range-menu" role="listbox" aria-label="日期范围时区" hidden>
+                <button type="button" role="option" data-calendar-zone="local" aria-selected="true">本地时间</button>
+                <button type="button" role="option" data-calendar-zone="utc" aria-selected="false">UTC+0</button>
+              </div>
+            </div>
+            <span id="lastSuccessfulCheck">上次：尚无</span>
+            <span id="autoRefreshError" class="auto-refresh-error"></span>
+          </div>
         </div>
       </section>
 
@@ -209,7 +212,7 @@
               <span id="rangeLabel"></span>
             </div>
             <!-- biome-ignore lint/a11y/useSemanticElements: 按键组样式依赖 div 布局，改用 fieldset 需重置默认边框与内边距，风险大于收益 -->
-            <div class="segmented timeline-mode-select" id="timelineModes" role="group" aria-label="时间分布方式">
+            <div class="segmented segmented-well timeline-mode-select" id="timelineModes" role="group" aria-label="时间分布方式">
               <button type="button" data-timeline-mode="channel" data-i18n-en="Source" aria-pressed="true">按渠道</button>
               <button type="button" data-timeline-mode="model" data-i18n-en="Model" aria-pressed="false">按模型</button>
               <button type="button" data-timeline-mode="cost" data-i18n-en="Cost" aria-pressed="false">按花销</button>
@@ -327,7 +330,7 @@
             <button id="restoreAutomaticRateButton" class="panel-action pricing-restore-rate" type="button" data-i18n-en="Restore automatic rate" aria-pressed="false" hidden>恢复自动汇率</button>
           </div>
           <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
-          <div class="segmented pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
+          <div class="segmented segmented-well pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
             <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
             <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>
           </div>

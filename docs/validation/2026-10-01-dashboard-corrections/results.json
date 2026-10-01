@@ -1,0 +1,4246 @@
+{
+  "date": "2026-09-30T20:20:40.653Z",
+  "phase": "audit",
+  "browser": "Microsoft Edge 154.0.4258.37",
+  "fixture": "Synthetic project logs and pricing metadata; no personal data",
+  "checks": [
+    {
+      "name": "online 1440px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "normal range merges product channels; Codex quota keeps raw channels",
+      "passed": true
+    },
+    {
+      "name": "Git stays first through descending, ascending and default UI sort",
+      "passed": true
+    },
+    {
+      "name": "timezone keyboard, persistence, dismissal and focus",
+      "passed": true
+    },
+    {
+      "name": "scan source entry replaces header import and main badge",
+      "passed": true
+    },
+    {
+      "name": "pricing and timeline use identical recessed material",
+      "passed": true
+    },
+    {
+      "name": "refresh switch adjacent text and error wraps inside inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline calendar recalculation and disabled mutation controls",
+      "passed": true
+    },
+    {
+      "name": "no browser runtime errors or external requests",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 109,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 228.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 214.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1076.171875,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1093.171875,
+          "bottom": 166.6875,
+          "left": 1076.171875
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1070.171875,
+          "bottom": 166.1875,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 109,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 228.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 214.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1100.78125,
+          "y": 146.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1123.125,
+          "bottom": 166.6875,
+          "left": 1100.78125
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1094.78125,
+          "bottom": 166.1875,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 109,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 228.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 214.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1076.171875,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1093.171875,
+          "bottom": 166.6875,
+          "left": 1076.171875
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1070.171875,
+          "bottom": 166.1875,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 109,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 228.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 214.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1100.78125,
+          "y": 146.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1123.125,
+          "bottom": 166.6875,
+          "left": 1100.78125
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1094.78125,
+          "bottom": 166.1875,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 109,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 228.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 214.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 969.5,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 986.5,
+          "bottom": 166.6875,
+          "left": 969.5
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 963.5,
+          "bottom": 166.1875,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 109,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 228.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 214.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 994.109375,
+          "y": 146.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1016.453125,
+          "bottom": 166.6875,
+          "left": 994.109375
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 988.109375,
+          "bottom": 166.1875,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 109,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 228.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 214.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 969.5,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 986.5,
+          "bottom": 166.6875,
+          "left": 969.5
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 963.5,
+          "bottom": 166.1875,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 228.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 228.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 109,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 228.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 81,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 214.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 994.109375,
+          "y": 146.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1016.453125,
+          "bottom": 166.6875,
+          "left": 994.109375
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 988.109375,
+          "bottom": 166.1875,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 466.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 81,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 452.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 129.515625,
+          "y": 384.6875,
+          "width": 17,
+          "height": 20,
+          "top": 384.6875,
+          "right": 146.515625,
+          "bottom": 404.6875,
+          "left": 129.515625
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 385.1875,
+          "width": 52,
+          "height": 19,
+          "top": 385.1875,
+          "right": 123.515625,
+          "bottom": 404.1875,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 466.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 81,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 452.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 154.125,
+          "y": 384.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 384.6875,
+          "right": 176.46875,
+          "bottom": 404.6875,
+          "left": 154.125
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 385.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 385.1875,
+          "right": 148.125,
+          "bottom": 404.1875,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 466.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 81,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 452.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 129.515625,
+          "y": 384.6875,
+          "width": 17,
+          "height": 20,
+          "top": 384.6875,
+          "right": 146.515625,
+          "bottom": 404.6875,
+          "left": 129.515625
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 385.1875,
+          "width": 52,
+          "height": 19,
+          "top": 385.1875,
+          "right": 123.515625,
+          "bottom": 404.1875,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 466.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 81,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 452.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 154.125,
+          "y": 384.6875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 384.6875,
+          "right": 176.46875,
+          "bottom": 404.6875,
+          "left": 154.125
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 385.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 385.1875,
+          "right": 148.125,
+          "bottom": 404.1875,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 596.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 81,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 579.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 123.515625,
+          "y": 511.796875,
+          "width": 17,
+          "height": 20,
+          "top": 511.796875,
+          "right": 140.515625,
+          "bottom": 531.796875,
+          "left": 123.515625
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 512.296875,
+          "width": 52,
+          "height": 19,
+          "top": 512.296875,
+          "right": 117.515625,
+          "bottom": 531.296875,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 596.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 81,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 579.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 148.125,
+          "y": 511.796875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 511.796875,
+          "right": 170.46875,
+          "bottom": 531.796875,
+          "left": 148.125
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 512.296875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 512.296875,
+          "right": 142.125,
+          "bottom": 531.296875,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 596.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 81,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 579.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 123.515625,
+          "y": 511.796875,
+          "width": 17,
+          "height": 20,
+          "top": 511.796875,
+          "right": 140.515625,
+          "bottom": 531.796875,
+          "left": 123.515625
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 512.296875,
+          "width": 52,
+          "height": 19,
+          "top": 512.296875,
+          "right": 117.515625,
+          "bottom": 531.296875,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 596.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 81,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 579.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 148.125,
+          "y": 511.796875,
+          "width": 22.34375,
+          "height": 20,
+          "top": 511.796875,
+          "right": 170.46875,
+          "bottom": 531.796875,
+          "left": 148.125
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 512.296875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 512.296875,
+          "right": 142.125,
+          "bottom": 531.296875,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 128,
+        "right": 638.796875,
+        "bottom": 247.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 128,
+        "right": 1424,
+        "bottom": 247.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 128,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 247.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 100,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 233.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1159.65625,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1176.65625,
+          "bottom": 166.6875,
+          "left": 1159.65625
+        },
+        "heading": {
+          "x": 1101.65625,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1153.65625,
+          "bottom": 166.1875,
+          "left": 1101.65625
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 147,
+        "right": 638.796875,
+        "bottom": 266.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 147,
+        "right": 1424,
+        "bottom": 266.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 147,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 266.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 119,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 252.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1240.671875,
+          "y": 146.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1264.046875,
+          "bottom": 166.6875,
+          "left": 1240.671875
+        },
+        "heading": {
+          "x": 1158.0625,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1234.671875,
+          "bottom": 166.1875,
+          "left": 1158.0625
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 128,
+        "right": 638.796875,
+        "bottom": 247.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 128,
+        "right": 1424,
+        "bottom": 247.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 128,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 247.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 100,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 233.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1159.65625,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1176.65625,
+          "bottom": 166.6875,
+          "left": 1159.65625
+        },
+        "heading": {
+          "x": 1101.65625,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1153.65625,
+          "bottom": 166.1875,
+          "left": 1101.65625
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1260,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1424,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 622.796875,
+        "height": 147,
+        "right": 638.796875,
+        "bottom": 266.6875
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 119.6875,
+        "width": 461.34375,
+        "height": 147,
+        "right": 1424,
+        "bottom": 266.6875
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 179.6875,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1314.265625,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1395,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 119.6875,
+          "width": 299.859375,
+          "height": 147,
+          "top": 119.6875,
+          "right": 950.65625,
+          "bottom": 266.6875,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 133.6875,
+          "width": 427.34375,
+          "height": 119,
+          "top": 133.6875,
+          "right": 1407,
+          "bottom": 252.6875,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1240.671875,
+          "y": 146.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1264.046875,
+          "bottom": 166.6875,
+          "left": 1240.671875
+        },
+        "heading": {
+          "x": 1158.0625,
+          "y": 147.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1234.671875,
+          "bottom": 166.1875,
+          "left": 1158.0625
+        },
+        "zone": {
+          "x": 1314.265625,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1395,
+          "bottom": 171.6875,
+          "left": 1314.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 128,
+        "right": 566.796875,
+        "bottom": 247.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 128,
+        "right": 1263.984375,
+        "bottom": 247.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 128,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 247.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 100,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 233.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1052.984375,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1069.984375,
+          "bottom": 166.6875,
+          "left": 1052.984375
+        },
+        "heading": {
+          "x": 994.984375,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1046.984375,
+          "bottom": 166.1875,
+          "left": 994.984375
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 155,
+        "right": 566.796875,
+        "bottom": 274.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 155,
+        "right": 1263.984375,
+        "bottom": 274.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 187.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 206.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 145.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 175.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 155,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 274.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 127,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 260.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1120.875,
+          "y": 150.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 150.6875,
+          "right": 1144.25,
+          "bottom": 170.6875,
+          "left": 1120.875
+        },
+        "heading": {
+          "x": 1051.390625,
+          "y": 141.6875,
+          "width": 63.484375,
+          "height": 38,
+          "top": 141.6875,
+          "right": 1114.875,
+          "bottom": 179.6875,
+          "left": 1051.390625
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 145.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 145.6875,
+          "right": 1234.984375,
+          "bottom": 175.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 128,
+        "right": 566.796875,
+        "bottom": 247.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 128,
+        "right": 1263.984375,
+        "bottom": 247.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 179.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 198.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 141.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 171.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 128,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 247.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 100,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 233.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1052.984375,
+          "y": 146.6875,
+          "width": 17,
+          "height": 20,
+          "top": 146.6875,
+          "right": 1069.984375,
+          "bottom": 166.6875,
+          "left": 1052.984375
+        },
+        "heading": {
+          "x": 994.984375,
+          "y": 147.1875,
+          "width": 52,
+          "height": 19,
+          "top": 147.1875,
+          "right": 1046.984375,
+          "bottom": 166.1875,
+          "left": 994.984375
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 141.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 141.6875,
+          "right": 1234.984375,
+          "bottom": 171.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 1100,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1264,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 550.796875,
+        "height": 155,
+        "right": 566.796875,
+        "bottom": 274.6875
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 119.6875,
+        "width": 408,
+        "height": 155,
+        "right": 1263.984375,
+        "bottom": 274.6875
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 187.6875,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 206.6875
+      },
+      "zone": {
+        "x": 1154.25,
+        "y": 145.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 175.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 119.6875,
+          "width": 265.1875,
+          "height": 155,
+          "top": 119.6875,
+          "right": 843.984375,
+          "bottom": 274.6875,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 133.6875,
+          "width": 374,
+          "height": 127,
+          "top": 133.6875,
+          "right": 1246.984375,
+          "bottom": 260.6875,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1120.875,
+          "y": 150.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 150.6875,
+          "right": 1144.25,
+          "bottom": 170.6875,
+          "left": 1120.875
+        },
+        "heading": {
+          "x": 1051.390625,
+          "y": 141.6875,
+          "width": 63.484375,
+          "height": 38,
+          "top": 141.6875,
+          "right": 1114.875,
+          "bottom": 179.6875,
+          "left": 1051.390625
+        },
+        "zone": {
+          "x": 1154.25,
+          "y": 145.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 145.6875,
+          "right": 1234.984375,
+          "bottom": 175.6875,
+          "left": 1154.25
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 485.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 100,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 471.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 213,
+          "y": 384.6875,
+          "width": 17,
+          "height": 20,
+          "top": 384.6875,
+          "right": 230,
+          "bottom": 404.6875,
+          "left": 213
+        },
+        "heading": {
+          "x": 155,
+          "y": 385.1875,
+          "width": 52,
+          "height": 19,
+          "top": 385.1875,
+          "right": 207,
+          "bottom": 404.1875,
+          "left": 155
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 485.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 100,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 471.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 294.015625,
+          "y": 384.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 384.6875,
+          "right": 317.390625,
+          "bottom": 404.6875,
+          "left": 294.015625
+        },
+        "heading": {
+          "x": 211.40625,
+          "y": 385.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 385.1875,
+          "right": 288.015625,
+          "bottom": 404.1875,
+          "left": 211.40625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 485.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 100,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 471.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 213,
+          "y": 384.6875,
+          "width": 17,
+          "height": 20,
+          "top": 384.6875,
+          "right": 230,
+          "bottom": 404.6875,
+          "left": 213
+        },
+        "heading": {
+          "x": 155,
+          "y": 385.1875,
+          "width": 52,
+          "height": 19,
+          "top": 385.1875,
+          "right": 207,
+          "bottom": 404.1875,
+          "left": 155
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 16,
+        "y": 28,
+        "width": 271.328125,
+        "height": 77.6875,
+        "right": 287.328125,
+        "bottom": 105.6875
+      },
+      "actions": {
+        "x": 844,
+        "y": 34.84375,
+        "width": 164,
+        "height": 64,
+        "right": 1008,
+        "bottom": 98.84375
+      },
+      "range": {
+        "x": 16,
+        "y": 119.6875,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 226.6875
+      },
+      "refresh": {
+        "x": 16,
+        "y": 357.6875,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 485.6875
+      },
+      "last": {
+        "x": 45,
+        "y": 417.6875,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 436.6875
+      },
+      "zone": {
+        "x": 898.265625,
+        "y": 379.6875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 979,
+        "bottom": 409.6875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 238.6875,
+          "width": 240,
+          "height": 107,
+          "top": 238.6875,
+          "right": 256,
+          "bottom": 345.6875,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 371.6875,
+          "width": 958,
+          "height": 100,
+          "top": 371.6875,
+          "right": 991,
+          "bottom": 471.6875,
+          "left": 33
+        },
+        "toggle": {
+          "x": 294.015625,
+          "y": 384.6875,
+          "width": 23.375,
+          "height": 20,
+          "top": 384.6875,
+          "right": 317.390625,
+          "bottom": 404.6875,
+          "left": 294.015625
+        },
+        "heading": {
+          "x": 211.40625,
+          "y": 385.1875,
+          "width": 76.609375,
+          "height": 19,
+          "top": 385.1875,
+          "right": 288.015625,
+          "bottom": 404.1875,
+          "left": 211.40625
+        },
+        "zone": {
+          "x": 898.265625,
+          "y": 379.6875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 379.6875,
+          "right": 979,
+          "bottom": 409.6875,
+          "left": 898.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 153,
+        "right": 380,
+        "bottom": 634.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 119,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 617.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 207,
+          "y": 511.796875,
+          "width": 17,
+          "height": 20,
+          "top": 511.796875,
+          "right": 224,
+          "bottom": 531.796875,
+          "left": 207
+        },
+        "heading": {
+          "x": 149,
+          "y": 512.296875,
+          "width": 52,
+          "height": 19,
+          "top": 512.296875,
+          "right": 201,
+          "bottom": 531.296875,
+          "left": 149
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 642.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 552.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 571.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 510.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 540.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 127,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 625.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 256.875,
+          "y": 515.796875,
+          "width": 23.375,
+          "height": 20,
+          "top": 515.796875,
+          "right": 280.25,
+          "bottom": 535.796875,
+          "left": 256.875
+        },
+        "heading": {
+          "x": 205.40625,
+          "y": 506.796875,
+          "width": 45.46875,
+          "height": 38,
+          "top": 506.796875,
+          "right": 250.875,
+          "bottom": 544.796875,
+          "left": 205.40625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 510.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 510.796875,
+          "right": 351,
+          "bottom": 540.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 153,
+        "right": 380,
+        "bottom": 634.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 544.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 563.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 506.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 536.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 119,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 617.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 207,
+          "y": 511.796875,
+          "width": 17,
+          "height": 20,
+          "top": 511.796875,
+          "right": 224,
+          "bottom": 531.796875,
+          "left": 207
+        },
+        "heading": {
+          "x": 149,
+          "y": 512.296875,
+          "width": 52,
+          "height": 19,
+          "top": 512.296875,
+          "right": 201,
+          "bottom": 531.296875,
+          "left": 149
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 506.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 506.796875,
+          "right": 351,
+          "bottom": 536.796875,
+          "left": 270.265625
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 10,
+        "y": 28,
+        "width": 226.015625,
+        "height": 66.796875,
+        "right": 236.015625,
+        "bottom": 94.796875
+      },
+      "actions": {
+        "x": 10,
+        "y": 110.796875,
+        "width": 164,
+        "height": 64,
+        "right": 174,
+        "bottom": 174.796875
+      },
+      "range": {
+        "x": 10,
+        "y": 188.796875,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 344.796875
+      },
+      "refresh": {
+        "x": 10,
+        "y": 481.796875,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 642.796875
+      },
+      "last": {
+        "x": 39,
+        "y": 552.796875,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 571.796875
+      },
+      "zone": {
+        "x": 270.265625,
+        "y": 510.796875,
+        "width": 80.734375,
+        "height": 30,
+        "right": 351,
+        "bottom": 540.796875
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 356.796875,
+          "width": 240,
+          "height": 113,
+          "top": 356.796875,
+          "right": 250,
+          "bottom": 469.796875,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 498.796875,
+          "width": 336,
+          "height": 127,
+          "top": 498.796875,
+          "right": 363,
+          "bottom": 625.796875,
+          "left": 27
+        },
+        "toggle": {
+          "x": 256.875,
+          "y": 515.796875,
+          "width": 23.375,
+          "height": 20,
+          "top": 515.796875,
+          "right": 280.25,
+          "bottom": 535.796875,
+          "left": 256.875
+        },
+        "heading": {
+          "x": 205.40625,
+          "y": 506.796875,
+          "width": 45.46875,
+          "height": 38,
+          "top": 506.796875,
+          "right": 250.875,
+          "bottom": 544.796875,
+          "left": 205.40625
+        },
+        "zone": {
+          "x": 270.265625,
+          "y": 510.796875,
+          "width": 80.734375,
+          "height": 30,
+          "top": 510.796875,
+          "right": 351,
+          "bottom": 540.796875,
+          "left": 270.265625
+        }
+      }
+    }
+  ],
+  "backgrounds": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    {
+      "label": "online",
+      "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    }
+  ],
+  "externalRequests": [],
+  "fontRequests": [],
+  "fonts": [],
+  "passed": true
+}

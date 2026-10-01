@@ -1,5 +1,41 @@
 const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
 
+/** Product ownership comes from a known home kind, then explicit legacy aliases. */
+export function sourceGroup(channel, kind = "") {
+  const homeKind = String(kind).toLowerCase();
+  if (["main", "jetbrains", "extra", "codex"].includes(homeKind)) return "Codex";
+  if (homeKind === "zcode") return "ZCode";
+  if (homeKind === "dsh") return "DSH";
+  if (homeKind === "opencode") return "OpenCode";
+  const name = String(channel || "Unknown");
+  const normalized = name.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (["zcode", "zcode subagent"].includes(normalized)) return "ZCode";
+  if (["dsh", "dsh subagent"].includes(normalized)) return "DSH";
+  if (normalized === "opencode") return "OpenCode";
+  if (
+    [
+      "codex",
+      "codex desktop",
+      "codex work desktop",
+      "codex exec",
+      "cli",
+      "editor integration",
+      "jetbrains pycharm",
+    ].includes(normalized)
+  )
+    return "Codex";
+  return name;
+}
+
+export function homeSourceKinds(homes = []) {
+  return new Map(homes.map((home) => [String(home.id ?? home.homeId ?? ""), home.kind || home.type || ""]));
+}
+
+export function channelForRange(channel, range = {}, kind = "") {
+  const quota = range.quotaWindow || range.quotaPreset || ["quota_5h", "quota_week"].includes(range.preset);
+  return quota ? String(channel || "Unknown") : sourceGroup(channel, kind);
+}
+
 export function quotaRecordValues(total, cost, sessions, rate = 1) {
   const amount = (key) =>
     Number(cost?.[`${key}Usd`] || 0) + Number(cost?.[`${key}Cny`] || 0) / (Number(rate) > 0 ? Number(rate) : 1);
@@ -497,7 +533,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
     row.count += 1;
     row.sessionsSet.add(event.sessionId || "");
     addUsage(row.total, event.total || event.usage);
-    const channelName = String(event.channel || "Unknown");
+    const channelName = channelForRange(event.channel, range, options.sourceKinds?.get(String(event.homeId)));
     const channel = row.channelGroups.get(channelName) || {
       key: channelName,
       name: channelName,

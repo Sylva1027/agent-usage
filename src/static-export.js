@@ -118,12 +118,12 @@ export function renderStaticDashboardHtml(report) {
     "",
     "dashboard date picker export",
   );
-  const bundledTimelineUtils = `const { buildTimelineRows, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } = (() => {\n${inlineTimelineUtils}\nreturn { buildTimelineRows, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues };\n})();`;
+  const bundledTimelineUtils = `const { buildTimelineRows, channelForRange, homeSourceKinds, sourceGroup, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues } = (() => {\n${inlineTimelineUtils}\nreturn { buildTimelineRows, channelForRange, homeSourceKinds, sourceGroup, deriveTimelineBucket, MAX_TIMELINE_SLOTS, RECENT_SELECTIONS, resolveNamedRecentRange, hasSelectedCodexSource, quotaRecordsForRange, quotaRecordValues };\n})();`;
   const bundledI18n = `const { ${i18nNames.join(", ")} } = (() => {\n${inlineI18n}\nreturn { ${i18nNames.join(", ")} };\n})();`;
   const bundledHtmlUtils = `const { escapeHtml, externalHttpUrl, safeChartColor } = (() => {\n${inlineHtmlUtils}\nreturn { escapeHtml, externalHttpUrl, safeChartColor };\n})();`;
   const bundledCalendar = `const { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml } = (() => {\n${inlineCalendar}\nreturn { addDays, dateKey, datePickerMonthModel, monthStart, normalizeDateInput, parseLocalDate, renderDatePickerHtml };\n})();`;
   const bundledAppState = `const { state } = (() => {\n${inlineAppState}\nreturn { state };\n})();`;
-  const bundledPricingModels = `const { buildUsagePricingCoverage, resolvePricingModel } = (() => {\n${inlinePricingModels}\nreturn { buildUsagePricingCoverage, resolvePricingModel };\n})();`;
+  const bundledPricingModels = `const { buildModelActivity, buildUsagePricingCoverage, resolvePricingModel } = (() => {\n${inlinePricingModels}\nreturn { buildModelActivity, buildUsagePricingCoverage, resolvePricingModel };\n})();`;
   const bundledPeriodComparison = `const { summarizePeriodComparison } = (() => {\n${inlineUsageFields}\n${inlinePeriodComparison}\nreturn { summarizePeriodComparison };\n})();`;
   const asOf = report.asOf || report.generatedAt || new Date().toISOString();
   const quota = selectQuotaWindows(report.rateLimitObservations || [], asOf);

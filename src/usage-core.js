@@ -30,7 +30,13 @@ import {
   parseOpencodeDb,
   streamOpencodeDbEvents,
 } from "./opencode-usage.js";
-import { buildTimelineRows, deriveTimelineBucket, resolveNamedRecentRange } from "../public/timeline-utils.js";
+import {
+  buildTimelineRows,
+  channelForRange,
+  homeSourceKinds,
+  deriveTimelineBucket,
+  resolveNamedRecentRange,
+} from "../public/timeline-utils.js";
 import {
   COMPARISON_PERIOD_KEYS,
   MS_PER_DAY,
@@ -2732,6 +2738,7 @@ function summaryRangeFields(range, bucket) {
 
 export function summarizeUsageIndex(index, filters = {}) {
   const strings = index.strings;
+  const sourceKinds = homeSourceKinds(index.homes);
   const { quota, asOf } = summaryQuotaContext(index.rateLimitObservations, filters);
   const range = indexDateRange({ ...filters, quota, now: asOf }, index.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
@@ -2772,6 +2779,7 @@ export function summarizeUsageIndex(index, filters = {}) {
         timestamp: event.t,
         sessionId: strings[event.s] || String(event.s),
         channel: strings[event.c] || "Unknown",
+        homeId: strings[event.h],
         model: strings[event.m] || "Unknown model",
         total: {
           total: event.total,
@@ -2792,6 +2800,7 @@ export function summarizeUsageIndex(index, filters = {}) {
   }
   const costAccumulator = createCostEstimateAccumulator();
   const { timeline, timelineError } = buildTimelineRowsWithLimit(timelineEvents(), range, bucket, {
+    sourceKinds,
     estimateCost: estimateEventCost,
     onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
   });
@@ -2809,7 +2818,9 @@ export function summarizeUsageIndex(index, filters = {}) {
     homeCount: new Set(events.map((event) => event.h)).size,
     timeline,
     timelineError,
-    channels: groupIndexedEvents(index, events, (event) => strings[event.c]),
+    channels: groupIndexedEvents(index, events, (event) =>
+      channelForRange(strings[event.c], range, sourceKinds.get(String(strings[event.h]))),
+    ),
     homes: groupIndexedEvents(index, events, (event) => strings[event.l]),
     models: groupIndexedEvents(index, events, (event) => strings[event.m] || "Unknown model"),
     projects: groupIndexedEvents(index, events, (event) => strings[event.p] || "Unknown cwd"),
@@ -2821,6 +2832,7 @@ export function summarizeUsageIndex(index, filters = {}) {
  * @returns {import("./usage-types.js").UsageSummary}
  */
 export function summarizeUsage(report, filters = {}) {
+  const sourceKinds = homeSourceKinds(report.homes);
   const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
   const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
@@ -2858,6 +2870,7 @@ export function summarizeUsage(report, filters = {}) {
       });
   const costAccumulator = createCostEstimateAccumulator();
   const { timeline, timelineError } = buildTimelineRowsWithLimit(events, range, bucket, {
+    sourceKinds,
     estimateCost: estimateEventCost,
     onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
   });
@@ -2875,7 +2888,9 @@ export function summarizeUsage(report, filters = {}) {
     homeCount: new Set(events.map((event) => event.homeId)).size,
     timeline,
     timelineError,
-    channels: groupByUsage(events, (event) => event.channel),
+    channels: groupByUsage(events, (event) =>
+      channelForRange(event.channel, range, sourceKinds.get(String(event.homeId))),
+    ),
     homes: groupByUsage(events, (event) => event.homeLabel),
     models: groupByUsage(events, (event) => event.model || "Unknown model"),
     projects: groupByUsage(events, (event) => event.cwd || "Unknown cwd"),

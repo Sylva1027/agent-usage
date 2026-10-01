@@ -9,10 +9,72 @@ import { zstdCompressSync } from "node:zlib";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 import { API_PRICING_VERSION } from "../src/pricing.js";
 import { buildUsageIndex, buildUsageReport, summarizeUsageIndex } from "../src/usage-core.js";
+import { metadataFromReport } from "../public/app.js";
+
+test("model activity ages without file changes, agrees with static metadata, and ignores future maxima", async () => {
+  const { homeDir, databaseFile } = await makeStoreFixture();
+  const store = new UsageStore({ homeDir, databaseFile });
+  try {
+    await store.sync();
+    const before = new Date("2026-08-12T01:00:59.999Z");
+    const boundary = new Date("2026-08-12T01:01:00.000Z");
+    assert.deepEqual(store.metadata(before).activeHarnessModels.Codex, ["gpt-6-sol"]);
+    const expired = store.metadata(boundary);
+    assert.deepEqual(expired.activeHarnessModels.Codex, []);
+    assert.deepEqual(expired.harnessModels.Codex, ["gpt-6-sol"]);
+    const report = await buildUsageReport({ homeDir });
+    const staticMetadata = metadataFromReport({ ...report, asOf: boundary.toISOString() });
+    assert.deepEqual(staticMetadata.activeHarnessModels, expired.activeHarnessModels);
+    assert.deepEqual(staticMetadata.modelLastSeen, expired.modelLastSeen);
+    const columns = store.database
+      .prepare("PRAGMA table_info(events)")
+      .all()
+      .map((row) => row.name)
+      .filter((name) => name !== "id");
+    store.database.exec(
+      `INSERT INTO events (${columns.join(", ")}) SELECT ${columns.map((name) => (name === "timestamp_ms" ? Date.parse("2027-01-01T00:00:00Z") : name)).join(", ")} FROM events LIMIT 1`,
+    );
+    assert.deepEqual(store.metadata(before).activeHarnessModels.Codex, ["gpt-6-sol"]);
+    assert.equal(store.metadata(before).modelLastSeen.Codex["gpt-6-sol"], Date.parse("2026-07-12T01:01:00Z"));
+  } finally {
+    store.close();
+  }
+});
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
+
+test("SQLite product grouping deduplicates shared sessions without rewriting raw channels", async () => {
+  const { homeDir, databaseFile } = await makeStoreFixture();
+  const store = new UsageStore({ homeDir, databaseFile });
+  try {
+    await store.sync();
+    const columns = store.database
+      .prepare("PRAGMA table_info(events)")
+      .all()
+      .map((row) => row.name)
+      .filter((name) => name !== "id");
+    store.database.exec(
+      `INSERT INTO events (${columns.join(", ")}) SELECT ${columns.map((name) => (name === "channel" ? "'Codex Exec'" : name)).join(", ")} FROM events LIMIT 1`,
+    );
+    const summary = store.summarize({ preset: "all", calendarZone: "utc" });
+    assert.equal(summary.channels.length, 1);
+    assert.equal(summary.channels[0].name, "Codex");
+    assert.equal(summary.channels[0].sessions, 1);
+    assert.equal(summary.channels[0].total.total, 246);
+    assert.equal(summary.timeline.find((row) => row.total.total > 0).channels[0].sessions, 1);
+    assert.deepEqual(
+      store.database
+        .prepare("SELECT DISTINCT channel FROM events ORDER BY channel")
+        .all()
+        .map((row) => row.channel),
+      ["CLI", "Codex Exec"],
+    );
+  } finally {
+    store.close();
+  }
+});
 
 function tokenRow(timestamp, total, input, cached, output, reasoning) {
   return {

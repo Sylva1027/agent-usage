@@ -1,0 +1,5 @@
+
+> codex-usage@0.4.0 format:check
+> biome format .
+
+Checked 47 files in 59ms. No fixes applied.

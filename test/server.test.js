@@ -544,7 +544,7 @@ test("server imports project usage log directories and refreshes usage data", as
     assert.deepEqual(
       after.summary.channels.map((channel) => [channel.name, channel.total.total]),
       [
-        ["CLI", 123],
+        ["Codex", 123],
         ["Codex OAuth", 77],
       ],
     );
@@ -925,6 +925,45 @@ test("pricing refresh endpoint updates cached values and rejects an outdated edi
   }
 });
 
+test("pricing model activity keeps historical rates and honors a frozen usage snapshot", async () => {
+  const fixture = await makeFixtureHome();
+  const projectRoot = path.join(fixture.homeDir, "activity-project");
+  const log = path.join(projectRoot, ".codex-usage", "usage.jsonl");
+  await mkdir(path.dirname(log), { recursive: true });
+  const row = (model, time) => ({
+    schema_version: "codex-usage.project-log.v1",
+    timestamp: new Date(time).toISOString(),
+    session_id: model,
+    request_id: model,
+    model,
+    cwd: projectRoot,
+    usage: { total: 1, input: 1, output: 0 },
+  });
+  const now = Date.now();
+  await writeFile(log, jsonl([row("retired-missing-model", now - 45 * 86400000), row("gpt-6-sol", now - 1000)]));
+  const server = createUsageServer({ ...fixture, importDirs: [projectRoot], automaticDiscoveryEnabled: false });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const paused = await fetch(`${base}/api/usage?preset=all&freeze=1`).then((response) => response.json());
+    assert.ok(paused.metadata.harnessModels.Codex.includes("retired-missing-model"));
+    assert.deepEqual(paused.metadata.activeHarnessModels.Codex, ["gpt-6-sol"]);
+    await appendFile(log, jsonl([row("new-active-missing", Date.now() - 1)]));
+    await fetch(`${base}/api/usage?preset=all`);
+    const latest = await fetch(`${base}/api/pricing`).then((response) => response.json());
+    assert.equal(latest.usageCoverage.usedModelCount, 2);
+    assert.ok(latest.models["gpt-6-sol"]);
+    const frozen = await fetch(`${base}/api/pricing?snapshot=${paused.snapshotId}`).then((response) => response.json());
+    assert.equal(frozen.modelActivity.modelUsageAsOf, paused.metadata.modelUsageAsOf);
+    assert.deepEqual(frozen.modelActivity.activeHarnessModels, paused.metadata.activeHarnessModels);
+    assert.equal(frozen.usageCoverage.usedModelCount, 1);
+    assert.equal((await fetch(`${base}/api/pricing?snapshot=missing`)).status, 410);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
 test("pricing coverage waits for the usage index and lists missing models", async () => {
   const fixture = await makeFixtureHome();
   const projectRoot = path.join(fixture.homeDir, "coverage-project");
@@ -934,7 +973,7 @@ test("pricing coverage waits for the usage index and lists missing models", asyn
     jsonl(
       ["gpt-daybreak-blue-latest", "mimo-v2.6-flash-free", "gpt-test-coverage"].map((model, index) => ({
         schema_version: "codex-usage.project-log.v1",
-        timestamp: `2026-05-31T12:0${index}:00.000Z`,
+        timestamp: new Date(Date.now() - (index + 1) * 1000).toISOString(),
         session_id: `coverage-${index}`,
         request_id: `coverage-request-${index}`,
         model,
@@ -977,7 +1016,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
   const usageLogPath = path.join(projectRoot, ".codex-usage", "usage.jsonl");
   const usageRow = (model, index) => ({
     schema_version: "codex-usage.project-log.v1",
-    timestamp: `2026-09-30T12:0${index}:00.000Z`,
+    timestamp: new Date(Date.now() - (index + 1) * 1000).toISOString(),
     session_id: `discovery-session-${index}`,
     request_id: `discovery-request-${index}`,
     model,

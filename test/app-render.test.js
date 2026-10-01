@@ -1,5 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildModelActivity } from "../public/pricing-models.js";
+
+test("recent aliases keep a shared catalog key active while retired missing models remain in All Models", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
+  try {
+    state.pricingCatalog = { models: { "gpt-5.6-sol": {} } };
+    state.metadata = {
+      harnessModels: {
+        Codex: ["gpt-5.6-sol", "gpt-daybreak-blue-latest", "retired-missing"],
+        ZCode: ["new-free-free"],
+        DSH: [],
+        OpenCode: [],
+      },
+      ...buildModelActivity(
+        [
+          { harness: "Codex", model: "gpt-5.6-sol", timestamp: "2026-09-01T00:00:00Z" },
+          { harness: "Codex", model: "retired-missing", timestamp: "2026-09-01T00:00:00Z" },
+          { harness: "Codex", model: "gpt-daybreak-blue-latest", timestamp: "2026-09-30T00:00:00Z" },
+          { harness: "ZCode", model: "new-free-free", timestamp: "2026-09-30T00:00:00Z" },
+        ],
+        "2026-10-01T00:00:00Z",
+      ),
+    };
+    assert.deepEqual(pricingHarnessRows().Codex, [
+      { model: "gpt-daybreak-blue-latest", catalogKey: "gpt-5.6-sol", matchType: "alias" },
+    ]);
+    assert.equal(pricingHarnessRows().ZCode[0].matchType, "free");
+    assert.ok(pricingHarnessRows({ all: true }).Codex.some((row) => row.model === "retired-missing"));
+    delete state.metadata.activeHarnessModels;
+    assert.equal(pricingUsageModels().recent, true);
+    assert.deepEqual(
+      pricingHarnessRows().Codex.map((row) => row.model),
+      ["gpt-daybreak-blue-latest"],
+      "last-seen timestamps reconstruct activity without reviving retired models",
+    );
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
+  }
+});
 
 import {
   automaticPricingStatusText,
@@ -30,6 +70,7 @@ import {
   claimHarnessKeys,
   pricingHarnessGroups,
   pricingHarnessRows,
+  pricingUsageModels,
   formatCostAmount,
   formatCostPair,
   costPairFromSlots,
@@ -83,6 +124,7 @@ test("pricingHarnessGroups 读三元 harnessModels 并去重", () => {
     };
     // 同一模型同时被 ZCode 与 DSH 使用。
     state.metadata = { harnessModels: { Codex: ["gpt-6-sol"], ZCode: ["deepseek-flash"], DSH: ["deepseek-flash"] } };
+    state.metadata.activeHarnessModels = state.metadata.harnessModels;
 
     const groups = pricingHarnessGroups();
     assert.deepEqual([...groups.Codex], ["gpt-6-sol"]);
@@ -91,6 +133,7 @@ test("pricingHarnessGroups 读三元 harnessModels 并去重", () => {
 
     // 只被 DSH 用到的模型必须出现在 DSH 分区里，而不是消失。
     state.metadata = { harnessModels: { Codex: [], ZCode: [], DSH: ["deepseek-flash"] } };
+    state.metadata.activeHarnessModels = state.metadata.harnessModels;
     const dshOnly = pricingHarnessGroups();
     assert.deepEqual([...dshOnly.DSH], ["deepseek-flash"]);
     assert.deepEqual([...dshOnly.ZCode], []);
@@ -100,10 +143,13 @@ test("pricingHarnessGroups 读三元 harnessModels 并去重", () => {
   }
 });
 
-test("pricingHarnessGroups 无使用记录时按价目来源兜底，不产生 DSH 分区", () => {
+test("pricingHarnessGroups respects an empty recent set instead of reviving historical models", () => {
   const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog, summary: state.summary };
   try {
-    state.metadata = { harnessModels: { Codex: [], ZCode: [], DSH: [] } };
+    state.metadata = {
+      activeHarnessModels: { Codex: [], ZCode: [], DSH: [] },
+      harnessModels: { Codex: ["gpt-6-sol"], ZCode: ["deepseek-flash"], DSH: [] },
+    };
     state.summary = { models: [{ name: "gpt-6-sol" }, { name: "deepseek-flash" }] };
     state.pricingCatalog = {
       models: {
@@ -113,13 +159,47 @@ test("pricingHarnessGroups 无使用记录时按价目来源兜底，不产生 D
     };
 
     const groups = pricingHarnessGroups();
-    assert.deepEqual([...groups.Codex], ["gpt-6-sol"]);
-    assert.deepEqual([...groups.ZCode], ["deepseek-flash"]);
+    assert.deepEqual([...groups.Codex], []);
+    assert.deepEqual([...groups.ZCode], []);
     assert.deepEqual([...groups.DSH], []);
+    assert.equal(pricingHarnessRows({ all: true }).Codex.length, 1);
   } finally {
     state.metadata = previous.metadata;
     state.pricingCatalog = previous.pricingCatalog;
     state.summary = previous.summary;
+  }
+});
+
+test("legacy and mixed pricing responses keep observed models visible while explicit recent emptiness wins", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
+  try {
+    state.metadata = { harnessModels: { Codex: ["gpt-6-sol", "missing-legacy"], ZCode: ["legacy-free-free"] } };
+    state.pricingCatalog = { models: { "gpt-6-sol": {} }, usageCoverage: { ready: true, usedModelCount: 3 } };
+    assert.equal(pricingUsageModels().recent, false);
+    assert.deepEqual(
+      pricingHarnessRows().Codex.map((row) => row.model),
+      ["gpt-6-sol", "missing-legacy"],
+    );
+    assert.equal(pricingHarnessRows().ZCode[0].matchType, "free");
+
+    state.pricingCatalog.modelActivity = { modelUsageAsOf: "2026-10-01T00:00:00Z" };
+    state.metadata.activeHarnessModels = { Codex: ["gpt-6-sol"] };
+    assert.equal(pricingUsageModels().recent, true, "incomplete catalog activity does not hide valid metadata");
+    assert.equal(pricingHarnessRows().Codex.length, 1);
+
+    state.pricingCatalog.modelActivity.activeHarnessModels = {};
+    assert.equal(pricingUsageModels().recent, true);
+    assert.deepEqual(
+      pricingHarnessRows().Codex,
+      [],
+      "explicit empty catalog wins over both older and historical lists",
+    );
+    delete state.pricingCatalog.modelActivity.activeHarnessModels;
+    state.metadata.activeHarnessModels = { Codex: [] };
+    assert.deepEqual(pricingHarnessRows().Codex, [], "explicit empty usage metadata cannot fall back to history");
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
   }
 });
 
@@ -139,6 +219,7 @@ test("pricingHarnessRows keeps aliases visible and exposes missing and free usag
         DSH: [],
       },
     };
+    state.metadata.activeHarnessModels = state.metadata.harnessModels;
     const rows = pricingHarnessRows();
     assert.deepEqual(rows.Codex, [
       { model: "gpt-daybreak-blue-latest", catalogKey: "gpt-5.6-sol", matchType: "alias" },
@@ -392,13 +473,13 @@ test("comparison sort cycles through descending, ascending, and default order", 
       ),
     ].map((match) => match[1]);
   const expected = ["b-today", "c-week", "d-month", "e-all", "z-zero"];
-  assert.deepEqual(rowNames(defaultSort, "repository"), expected);
-  assert.deepEqual(rowNames(cancelled, "repository"), expected);
+  assert.deepEqual(rowNames(defaultSort, "repository"), ["d-month", "z-zero", "b-today", "c-week", "e-all"]);
+  assert.deepEqual(rowNames(cancelled, "repository"), ["d-month", "z-zero", "b-today", "c-week", "e-all"]);
   assert.deepEqual(
     rowNames(defaultSort, "model"),
     expected.map((name) => `/work/${name}`),
   );
-  assert.deepEqual(rowNames(ascending, "repository"), ["z-zero", "c-week", "d-month", "e-all", "b-today"]);
+  assert.deepEqual(rowNames(ascending, "repository"), ["z-zero", "d-month", "c-week", "e-all", "b-today"]);
   assert.deepEqual(
     rowNames(ascending, "model"),
     ["z-zero", "c-week", "d-month", "e-all", "b-today"].map((name) => `/work/${name}`),
@@ -430,7 +511,18 @@ test("comparison sort cycles through descending, ascending, and default order", 
       /class="comparison-row-label"[^>]*>([^<]+)<\/span>/g,
     ),
   ].map((match) => match[1]);
-  assert.deepEqual(manualNames, ["low-week", "high-today", "low-today"]);
+  assert.deepEqual(manualNames, ["high-today", "low-week", "low-today"]);
+  assert.match(
+    renderPeriodComparisonTableHtml(rows, { kind: "repository", sort: defaultSort }),
+    /title="本地 Git 仓库优先；默认排序优先级/,
+  );
+  const queried = renderPeriodComparisonTableHtml(rows, { kind: "repository", query: "month", sort: ascending });
+  assert.match(queried, />d-month<\/span>/);
+  assert.doesNotMatch(queried, />b-today<\/span>/);
+  assert.deepEqual(
+    rows.map((row) => row.key),
+    ["directory:all", "git:month", "directory:week", "directory:today", "git:zero"],
+  );
 });
 
 test("auto refresh timestamps use the selected calendar zone and identify it", () => {
@@ -834,7 +926,7 @@ test("renderComparisonHtml renders trend, average trend, and previous totals", (
   });
 
   assert.match(html, /较上周/);
-  assert.match(html, /流速同比/);
+  assert.match(html, /同比流速/);
   assert.match(html, /上周 tokens/);
   assert.match(html, /<strong title="-25,518,704">-25\.52M<\/strong>/);
   assert.match(html, /<strong title="\+8,581,809">\+8\.58M<\/strong>/);

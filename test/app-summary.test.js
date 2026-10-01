@@ -80,10 +80,7 @@ test("summarize includes channel breakdowns for timeline buckets", () => {
 
     assert.deepEqual(
       summary.timeline[0].channels.map((channel) => [channel.name, channel.total.total]),
-      [
-        ["Codex Desktop", 200],
-        ["CLI", 100],
-      ],
+      [["Codex", 300]],
     );
   } finally {
     setSummaryFilters({ preset: "today", bucket: "hour", now: null, startDate: "", endDate: "" });

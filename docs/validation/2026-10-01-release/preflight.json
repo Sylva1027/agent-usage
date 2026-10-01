@@ -1,0 +1,11 @@
+{
+  "version": "0.5.0",
+  "tests": 312,
+  "typecheck": true,
+  "lint": true,
+  "lintWarnings": 40,
+  "format": true,
+  "localLinks": 106,
+  "stagedSnapshotMatchesRuntime": true,
+  "stagedPaths": 576
+}

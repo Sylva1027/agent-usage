@@ -279,10 +279,7 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
     assert.deepEqual(summary.totals, { total: 190, input: 160, cached: 60, output: 30, reasoning: 5 });
     assert.deepEqual(
       summary.channels.map((channel) => [channel.name, channel.total.total]),
-      [
-        ["ZCode", 120],
-        ["ZCode Subagent", 70],
-      ],
+      [["ZCode", 190]],
     );
     assert.deepEqual(summary.models.map((model) => [model.name, model.total.total]).sort(), [
       ["other-model", 70],

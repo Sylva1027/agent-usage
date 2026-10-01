@@ -448,11 +448,12 @@ export function createUsageServer(options = {}) {
       store.homes = structuredClone(usageStore.homes);
       store.serviceTierEvidence = usageStore.serviceTierEvidence;
       store.warnings = [...usageStore.warnings];
+      const asOf = new Date();
       const snapshot = {
         store,
         status: { ...status, checkedAt: usageStore.checkedAt || status.checkedAt },
-        asOf: new Date(),
-        metadata: { ...store.metadata(), imports: await listImportEntries(options) },
+        asOf,
+        metadata: { ...store.metadata(asOf), imports: await listImportEntries(options) },
         databaseFile,
       };
       snapshots.set(id, snapshot);
@@ -470,17 +471,21 @@ export function createUsageServer(options = {}) {
     }
   }
 
-  async function metadataForStore() {
+  async function metadataForStore(asOf = new Date()) {
     // The dashboard needs both active scan sources and stored imports that may currently be unsupported.
     return {
-      ...usageStore.metadata(),
+      ...usageStore.metadata(asOf),
       imports: await listImportEntries(options),
     };
   }
 
-  function usagePricingCoverage() {
-    if (storeStatus === null) return buildUsagePricingCoverage(null, getPricingCatalog().models, false);
-    return buildUsagePricingCoverage(usageStore.metadata().harnessModels, getPricingCatalog().models, true);
+  function usagePricingCoverage(metadata = undefined) {
+    if (storeStatus === null && !metadata) return buildUsagePricingCoverage(null, getPricingCatalog().models, false);
+    return buildUsagePricingCoverage(
+      (metadata || usageStore.metadata()).activeHarnessModels,
+      getPricingCatalog().models,
+      true,
+    );
   }
 
   async function loadUsageStore({ check = true } = {}) {
@@ -511,10 +516,21 @@ export function createUsageServer(options = {}) {
       await pricingReady;
       if (url.pathname === "/api/pricing") {
         if (request.method === "GET") {
+          const snapshotId = url.searchParams.get("snapshot");
+          const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
+          if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+          const metadata = snapshot?.metadata || (storeStatus === null ? undefined : usageStore.metadata());
           sendJson(response, 200, {
             ...getPricingCatalog(),
             automatic: getAutomaticPricingStatus(),
-            usageCoverage: usagePricingCoverage(),
+            usageCoverage: usagePricingCoverage(metadata),
+            modelActivity: metadata
+              ? {
+                  activeHarnessModels: metadata.activeHarnessModels,
+                  modelLastSeen: metadata.modelLastSeen,
+                  modelUsageAsOf: metadata.modelUsageAsOf,
+                }
+              : null,
           });
           return;
         }
@@ -730,7 +746,7 @@ export function createUsageServer(options = {}) {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
           snapshotId: frozen?.id || requestedSnapshotId || null,
-          metadata: frozen?.metadata || (await metadataForStore()),
+          metadata: frozen?.metadata || (await metadataForStore(asOf)),
           summary,
           quota: summary.quota,
           periodComparison: store.periodComparison({
@@ -751,7 +767,7 @@ export function createUsageServer(options = {}) {
         sendJson(response, 200, {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
-          metadata: await metadataForStore(),
+          metadata: await metadataForStore(asOf),
           summary,
           quota: summary.quota,
           periodComparison: usageStore.periodComparison({

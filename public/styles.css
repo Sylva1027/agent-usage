@@ -150,25 +150,44 @@ label {
 
 .auto-refresh-status {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  grid-template-areas:
-    "heading toggle"
-    "last zone"
-    "error error";
-  align-items: center;
-  gap: 8px 12px;
-  align-content: center;
+  align-items: stretch;
 }
-
+.auto-refresh-well {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas: "heading zone" "last last" "error error";
+  align-items: center;
+  align-content: center;
+  gap: 8px 10px;
+  min-height: 78px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset);
+}
 .auto-refresh-heading {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   grid-area: heading;
 }
-
-#autoRefreshToggle {
-  grid-area: toggle;
+.auto-refresh-spinner {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  visibility: hidden;
+}
+.auto-refresh-spinner.is-loading {
+  visibility: visible;
+  animation: auto-refresh-spin 1s steps(3, end) infinite;
+}
+@keyframes auto-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 #lastSuccessfulCheck {
@@ -194,13 +213,14 @@ label {
   cursor: pointer;
 }
 
-#calendarZoneSelect {
+.calendar-zone {
   grid-area: zone;
-  width: auto;
-  min-width: 82px;
+  position: relative;
   justify-self: end;
 }
-
+.auto-refresh-error:empty {
+  display: none;
+}
 .auto-refresh-error {
   grid-area: error;
   min-width: 0;
@@ -308,11 +328,10 @@ label {
   line-height: 1.45;
 }
 
-#importButton,
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
-.segmented button,
+.segmented > button,
 .segmented .recent-segment {
   border: 1px solid var(--line);
   background: var(--control);
@@ -323,11 +342,10 @@ label {
   cursor: pointer;
 }
 
-#importButton:hover,
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
 .dialog-actions button:hover,
-.segmented button:hover,
+.segmented > button:hover,
 .segmented .recent-segment:hover {
   border-color: var(--control-hover);
 }
@@ -369,19 +387,6 @@ label {
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 1;
-}
-
-#importButton {
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
-  flex: 0 0 64px;
-  height: 38px;
-  min-height: 38px;
-  padding-inline: 6px;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 500;
 }
 
 [data-theme="dark"] .theme-toggle {
@@ -479,37 +484,31 @@ label {
 
 #calendarZoneSelect {
   width: auto;
-  min-width: 0;
-  height: 18px;
-  min-height: 0;
-  padding: 0 2px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  box-shadow: none;
+  min-width: 112px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 28px 0 9px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 18px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  color-scheme: light dark;
 }
-
 #calendarZoneSelect:hover,
 #calendarZoneSelect:focus-visible {
   color: var(--blue);
 }
-
 #calendarZoneSelect:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
 }
-
-#calendarZoneSelect option {
-  background: var(--panel);
-  color: var(--text);
+.calendar-zone-arrow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-25%);
+  border: 4px solid transparent;
+  border-top-color: currentColor;
 }
-
 .segmented {
   display: flex;
   flex-wrap: wrap;
@@ -836,17 +835,22 @@ input[type="checkbox"]:checked::after {
   position: absolute;
   z-index: 30;
   top: calc(100% + 7px);
-  right: 4px;
+  left: -1px;
+  right: -1px;
   display: grid;
   gap: 2px;
-  width: 112px;
+  width: auto;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 15px;
   background: var(--control);
   box-shadow:
     0 14px 34px rgba(31, 41, 51, 0.14),
     0 2px 8px rgba(31, 41, 51, 0.08);
+}
+.calendar-zone .recent-range-menu {
+  left: 0;
+  right: 0;
 }
 
 .recent-range-menu[hidden] {
@@ -859,11 +863,14 @@ input[type="checkbox"]:checked::after {
   width: 100%;
   min-height: 32px;
   padding: 0 10px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
+  border: 1px solid transparent;
+  border-top-color: var(--ceramic-rim);
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
+  box-shadow: var(--neo-raised-small);
   color: var(--ink);
   font-size: 13px;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -1694,6 +1701,12 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .pricing-scope {
   align-self: start;
+  justify-self: start;
+  width: min(100%, 320px);
+}
+.pricing-scope > button {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .pricing-model-list {
@@ -2170,11 +2183,10 @@ html[lang="en-US"] #repositoryComparisonSearch {
 .chart-panel .timeline-heading {
   margin-bottom: 18px;
 }
-#importButton,
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
-.segmented button,
+.segmented > button,
 .segmented .recent-segment,
 .home-remove,
 .icon-button {
@@ -2185,11 +2197,10 @@ html[lang="en-US"] #repositoryComparisonSearch {
   box-shadow: var(--neo-raised-small);
 }
 
-#importButton:hover,
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
 .dialog-actions button:hover,
-.segmented button:hover,
+.segmented > button:hover,
 .segmented .recent-segment:hover,
 .home-remove:hover,
 .icon-button:hover {
@@ -2198,8 +2209,8 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .segmented button.active,
 .segmented .recent-segment.active,
-.chart-panel .timeline-mode-select button.active,
-.chart-panel .timeline-mode-select button[aria-pressed="true"] {
+.segmented-well button.active,
+.segmented-well button[aria-pressed="true"] {
   border-color: transparent;
   background: var(--neo-surface);
   color: var(--blue);
@@ -2394,18 +2405,27 @@ select:focus-visible {
   margin-bottom: 20px;
 }
 .topbar {
-  padding: 0;
+  padding: 16px 22px;
   margin-bottom: 14px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  border: 1px solid var(--neo-edge);
+  border-radius: 21px;
+  background: var(--neo-surface);
+  box-shadow: var(--neo-raised);
 }
 .topbar > h1 {
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
-  color: color-mix(in srgb, var(--ink) 88%, var(--neo-surface));
+  font-size: 38px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: -1px;
+  /* Center the capital-height face; descenders must not move the headline upward. */
+  text-box-trim: trim-both;
+  text-box-edge: cap alphabetic;
+  transform: none;
+  color: var(--neo-surface);
   text-shadow:
     -1px -1px 1px var(--ceramic-shade),
     1px 1px 1px var(--ceramic-rim);
@@ -2415,6 +2435,7 @@ select:focus-visible {
 .topbar-actions {
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
@@ -2459,11 +2480,10 @@ select:focus-visible {
   color: var(--record);
 }
 .theme-toggle,
-#importButton,
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
-.segmented button,
+.segmented > button,
 .segmented .recent-segment,
 .home-remove,
 .icon-button,
@@ -2513,8 +2533,8 @@ button:not(:disabled):active {
 }
 .segmented button.active,
 .segmented .recent-segment.active,
-.chart-panel .timeline-mode-select button.active,
-.chart-panel .timeline-mode-select button[aria-pressed="true"] {
+.segmented-well button.active,
+.segmented-well button[aria-pressed="true"] {
   background: var(--ceramic-well);
   color: var(--blue);
   font-weight: 700;
@@ -2722,7 +2742,7 @@ button:disabled {
   background: transparent;
   box-shadow: none;
   --range-control-height: 52px;
-  align-items: start;
+  align-items: stretch;
 }
 .date-range-controls {
   position: relative;
@@ -2908,7 +2928,7 @@ button:disabled {
   min-height: var(--range-control-height);
 }
 #presetButtons,
-.chart-panel .timeline-mode-select {
+.segmented-well {
   padding: 7px;
   gap: 7px;
   border: 1px solid transparent;
@@ -2918,7 +2938,8 @@ button:disabled {
 }
 #presetButtons > button,
 #presetButtons > .recent-segment,
-.chart-panel .timeline-mode-select > button {
+.segmented-well > button {
+  min-height: 36px;
   background: transparent;
   border: 1px solid transparent;
   box-shadow: none;
@@ -2929,8 +2950,8 @@ button:disabled {
 }
 #presetButtons > button.active,
 #presetButtons > .recent-segment.active,
-.chart-panel .timeline-mode-select > button.active,
-.chart-panel .timeline-mode-select > button[aria-pressed="true"] {
+.segmented-well > button.active,
+.segmented-well > button[aria-pressed="true"] {
   background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
   border-color: transparent;
   border-top-color: var(--ceramic-rim);
@@ -2943,7 +2964,7 @@ button:disabled {
 }
 #presetButtons > button:not(:disabled):hover,
 #presetButtons > .recent-segment:hover,
-.chart-panel .timeline-mode-select > button:not(:disabled):hover {
+.segmented-well > button:not(:disabled):hover {
   color: var(--blue);
   transform: none;
 }
@@ -3165,5 +3186,24 @@ html[lang="en-US"] #presetButtons > .recent-segment {
 @media (max-width: 720px) {
   #importDialog .dialog {
     padding: 20px;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding: 16px 10px;
+    gap: 6px;
+  }
+  .topbar-actions {
+    gap: 8px;
+  }
+  .topbar-actions .theme-toggle {
+    min-width: 60px;
+    width: 60px;
+    flex-basis: 60px;
+  }
+  .topbar > h1 {
+    font-size: 32px;
+    padding: 0;
   }
 }

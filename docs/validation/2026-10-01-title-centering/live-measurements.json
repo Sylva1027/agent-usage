@@ -1,0 +1,962 @@
+[
+  {
+    "width": 1440,
+    "theme": "light",
+    "variant": "previous",
+    "prefix": "live-1440-light-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      15,
+      250,
+      57
+    ],
+    "imageHeight": 72,
+    "topGap": 15,
+    "bottomGap": 15,
+    "centerOffset": 0.0,
+    "paintCentroidOffset": -1.6199836457416055
+  },
+  {
+    "width": 1440,
+    "theme": "light",
+    "variant": "middle",
+    "prefix": "live-1440-light-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      18,
+      250,
+      60
+    ],
+    "imageHeight": 72,
+    "topGap": 18,
+    "bottomGap": 12,
+    "centerOffset": 3.0,
+    "paintCentroidOffset": 1.3800163542583945
+  },
+  {
+    "width": 1440,
+    "theme": "light",
+    "variant": "natural",
+    "prefix": "live-1440-light-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 4.3800163542583945
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "variant": "previous",
+    "prefix": "live-1440-dark-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      8,
+      1395,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 6,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 0.4733501086583587
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "variant": "middle",
+    "prefix": "live-1440-dark-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      9,
+      1395,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 9,
+    "bottomGap": 6,
+    "centerOffset": 1.5,
+    "paintCentroidOffset": 3.126127135256233
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "variant": "natural",
+    "prefix": "live-1440-dark-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1408,
+      "height": 72,
+      "top": 28,
+      "right": 1424,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 6.3260243077308616
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "variant": "previous",
+    "prefix": "live-1280-light-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      7,
+      1236,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 7,
+    "bottomGap": 5,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.5194922552551446
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "variant": "middle",
+    "prefix": "live-1280-light-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      10,
+      1235,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 10,
+    "bottomGap": 6,
+    "centerOffset": 2.0,
+    "paintCentroidOffset": 2.0717404865876503
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "variant": "natural",
+    "prefix": "live-1280-light-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 4.3800163542583945
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "variant": "previous",
+    "prefix": "live-1280-dark-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      8,
+      1236,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 5,
+    "centerOffset": 1.5,
+    "paintCentroidOffset": 0.5023470085699344
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "variant": "middle",
+    "prefix": "live-1280-dark-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      8,
+      1235,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 6,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.743038038543034
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "variant": "natural",
+    "prefix": "live-1280-dark-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 1248,
+      "height": 72,
+      "top": 28,
+      "right": 1264,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 6.3260243077308616
+  },
+  {
+    "width": 1024,
+    "theme": "light",
+    "variant": "previous",
+    "prefix": "live-1024-light-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      7,
+      980,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 7,
+    "bottomGap": 5,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.6828551556251057
+  },
+  {
+    "width": 1024,
+    "theme": "light",
+    "variant": "middle",
+    "prefix": "live-1024-light-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      9,
+      979,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 9,
+    "bottomGap": 6,
+    "centerOffset": 1.5,
+    "paintCentroidOffset": 1.840694789081887
+  },
+  {
+    "width": 1024,
+    "theme": "light",
+    "variant": "natural",
+    "prefix": "live-1024-light-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 4.3800163542583945
+  },
+  {
+    "width": 1024,
+    "theme": "dark",
+    "variant": "previous",
+    "prefix": "live-1024-dark-previous",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 39,
+      "width": 225.328125,
+      "height": 38,
+      "top": 39,
+      "right": 264.328125,
+      "bottom": 77,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      8,
+      980,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 5,
+    "centerOffset": 1.5,
+    "paintCentroidOffset": 0.5531129930733769
+  },
+  {
+    "width": 1024,
+    "theme": "dark",
+    "variant": "middle",
+    "prefix": "live-1024-dark-middle",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 42,
+      "width": 225.328125,
+      "height": 38,
+      "top": 42,
+      "right": 264.328125,
+      "bottom": 80,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      8,
+      979,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 6,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.7184886316254193
+  },
+  {
+    "width": 1024,
+    "theme": "dark",
+    "variant": "natural",
+    "prefix": "live-1024-dark-natural",
+    "box": {
+      "x": 16,
+      "y": 28,
+      "width": 992,
+      "height": 72,
+      "top": 28,
+      "right": 1008,
+      "bottom": 100,
+      "left": 16
+    },
+    "title": {
+      "x": 39,
+      "y": 45,
+      "width": 225.328125,
+      "height": 38,
+      "top": 45,
+      "right": 264.328125,
+      "bottom": 83,
+      "left": 39
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "38px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      20,
+      21,
+      250,
+      63
+    ],
+    "imageHeight": 72,
+    "topGap": 21,
+    "bottomGap": 9,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 6.3260243077308616
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "variant": "previous",
+    "prefix": "live-390-light-previous",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 42,
+      "width": 188.015625,
+      "height": 32,
+      "top": 42,
+      "right": 211.015625,
+      "bottom": 74,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      7,
+      368,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 7,
+    "bottomGap": 5,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.9356529790055816
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "variant": "middle",
+    "prefix": "live-390-light-middle",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 45,
+      "width": 188.015625,
+      "height": 32,
+      "top": 45,
+      "right": 211.015625,
+      "bottom": 77,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      11,
+      366,
+      65
+    ],
+    "imageHeight": 72,
+    "topGap": 11,
+    "bottomGap": 7,
+    "centerOffset": 2.0,
+    "paintCentroidOffset": 1.189886384801639
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "variant": "natural",
+    "prefix": "live-390-light-natural",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 48,
+      "width": 188.015625,
+      "height": 32,
+      "top": 48,
+      "right": 211.015625,
+      "bottom": 80,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      24,
+      203,
+      60
+    ],
+    "imageHeight": 72,
+    "topGap": 24,
+    "bottomGap": 12,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 4.109395867703668
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "variant": "previous",
+    "prefix": "live-390-dark-previous",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 42,
+      "width": 188.015625,
+      "height": 32,
+      "top": 42,
+      "right": 211.015625,
+      "bottom": 74,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      8,
+      368,
+      67
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 5,
+    "centerOffset": 1.5,
+    "paintCentroidOffset": 0.482494096137728
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "variant": "middle",
+    "prefix": "live-390-dark-middle",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 45,
+      "width": 188.015625,
+      "height": 32,
+      "top": 45,
+      "right": 211.015625,
+      "bottom": 77,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      8,
+      367,
+      66
+    ],
+    "imageHeight": 72,
+    "topGap": 8,
+    "bottomGap": 6,
+    "centerOffset": 1.0,
+    "paintCentroidOffset": 2.292884440900714
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "variant": "natural",
+    "prefix": "live-390-dark-natural",
+    "box": {
+      "x": 10,
+      "y": 28,
+      "width": 370,
+      "height": 72,
+      "top": 28,
+      "right": 380,
+      "bottom": 100,
+      "left": 10
+    },
+    "title": {
+      "x": 23,
+      "y": 48,
+      "width": 188.015625,
+      "height": 32,
+      "top": 48,
+      "right": 211.015625,
+      "bottom": 80,
+      "left": 23
+    },
+    "fontFamily": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "fontSize": "32px",
+    "compatMode": "CSS1Compat",
+    "paintBounds": [
+      10,
+      24,
+      203,
+      60
+    ],
+    "imageHeight": 72,
+    "topGap": 24,
+    "bottomGap": 12,
+    "centerOffset": 6.0,
+    "paintCentroidOffset": 5.928560247329081
+  }
+]

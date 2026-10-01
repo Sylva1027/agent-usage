@@ -1,0 +1,104 @@
+PASS online 1440px light zh-CN frames and inset
+PASS online 1440px light zh-CN fits viewport
+PASS online 1440px light zh-CN range labels fit controls
+PASS online 1440px light en-US frames and inset
+PASS online 1440px light en-US fits viewport
+PASS online 1440px light en-US range labels fit controls
+PASS online 1440px dark zh-CN frames and inset
+PASS online 1440px dark zh-CN fits viewport
+PASS online 1440px dark zh-CN range labels fit controls
+PASS online 1440px dark en-US frames and inset
+PASS online 1440px dark en-US fits viewport
+PASS online 1440px dark en-US range labels fit controls
+PASS online 1280px light zh-CN frames and inset
+PASS online 1280px light zh-CN fits viewport
+PASS online 1280px light zh-CN range labels fit controls
+PASS online 1280px light en-US frames and inset
+PASS online 1280px light en-US fits viewport
+PASS online 1280px light en-US range labels fit controls
+PASS online 1280px dark zh-CN frames and inset
+PASS online 1280px dark zh-CN fits viewport
+PASS online 1280px dark zh-CN range labels fit controls
+PASS online 1280px dark en-US frames and inset
+PASS online 1280px dark en-US fits viewport
+PASS online 1280px dark en-US range labels fit controls
+PASS online 1024px light zh-CN frames and inset
+PASS online 1024px light zh-CN fits viewport
+PASS online 1024px light zh-CN range labels fit controls
+PASS online 1024px light en-US frames and inset
+PASS online 1024px light en-US fits viewport
+PASS online 1024px light en-US range labels fit controls
+PASS online 1024px dark zh-CN frames and inset
+PASS online 1024px dark zh-CN fits viewport
+PASS online 1024px dark zh-CN range labels fit controls
+PASS online 1024px dark en-US frames and inset
+PASS online 1024px dark en-US fits viewport
+PASS online 1024px dark en-US range labels fit controls
+PASS online 390px light zh-CN frames and inset
+PASS online 390px light zh-CN fits viewport
+PASS online 390px light zh-CN range labels fit controls
+PASS online 390px light en-US frames and inset
+PASS online 390px light en-US fits viewport
+PASS online 390px light en-US range labels fit controls
+PASS online 390px dark zh-CN frames and inset
+PASS online 390px dark zh-CN fits viewport
+PASS online 390px dark zh-CN range labels fit controls
+PASS online 390px dark en-US frames and inset
+PASS online 390px dark en-US fits viewport
+PASS online 390px dark en-US range labels fit controls
+PASS normal range merges product channels; Codex quota keeps raw channels
+PASS Git stays first through descending, ascending and default UI sort
+PASS timezone keyboard, persistence, dismissal and focus
+PASS scan source entry replaces header import and main badge
+PASS pricing and timeline use identical recessed material
+PASS refresh switch adjacent text and error wraps inside inset
+PASS offline 1440px light zh-CN frames and inset
+PASS offline 1440px light zh-CN fits viewport
+PASS offline 1440px light zh-CN range labels fit controls
+PASS offline 1440px light en-US frames and inset
+PASS offline 1440px light en-US fits viewport
+PASS offline 1440px light en-US range labels fit controls
+PASS offline 1440px dark zh-CN frames and inset
+PASS offline 1440px dark zh-CN fits viewport
+PASS offline 1440px dark zh-CN range labels fit controls
+PASS offline 1440px dark en-US frames and inset
+PASS offline 1440px dark en-US fits viewport
+PASS offline 1440px dark en-US range labels fit controls
+PASS offline 1280px light zh-CN frames and inset
+PASS offline 1280px light zh-CN fits viewport
+PASS offline 1280px light zh-CN range labels fit controls
+PASS offline 1280px light en-US frames and inset
+PASS offline 1280px light en-US fits viewport
+PASS offline 1280px light en-US range labels fit controls
+PASS offline 1280px dark zh-CN frames and inset
+PASS offline 1280px dark zh-CN fits viewport
+PASS offline 1280px dark zh-CN range labels fit controls
+PASS offline 1280px dark en-US frames and inset
+PASS offline 1280px dark en-US fits viewport
+PASS offline 1280px dark en-US range labels fit controls
+PASS offline 1024px light zh-CN frames and inset
+PASS offline 1024px light zh-CN fits viewport
+PASS offline 1024px light zh-CN range labels fit controls
+PASS offline 1024px light en-US frames and inset
+PASS offline 1024px light en-US fits viewport
+PASS offline 1024px light en-US range labels fit controls
+PASS offline 1024px dark zh-CN frames and inset
+PASS offline 1024px dark zh-CN fits viewport
+PASS offline 1024px dark zh-CN range labels fit controls
+PASS offline 1024px dark en-US frames and inset
+PASS offline 1024px dark en-US fits viewport
+PASS offline 1024px dark en-US range labels fit controls
+PASS offline 390px light zh-CN frames and inset
+PASS offline 390px light zh-CN fits viewport
+PASS offline 390px light zh-CN range labels fit controls
+PASS offline 390px light en-US frames and inset
+PASS offline 390px light en-US fits viewport
+PASS offline 390px light en-US range labels fit controls
+PASS offline 390px dark zh-CN frames and inset
+PASS offline 390px dark zh-CN fits viewport
+PASS offline 390px dark zh-CN range labels fit controls
+PASS offline 390px dark en-US frames and inset
+PASS offline 390px dark en-US fits viewport
+PASS offline 390px dark en-US range labels fit controls
+PASS offline calendar recalculation and disabled mutation controls
+PASS no browser runtime errors or external requests
