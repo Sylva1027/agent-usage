@@ -1,3 +1,5 @@
+import { CLAUDE_MODEL_SNAPSHOTS } from "../public/pricing-models.js";
+
 export const MODEL_PRICES_URL = "https://models.dev/api.json";
 export const LITELLM_PRICES_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
@@ -20,6 +22,9 @@ function finiteRate(value) {
 }
 
 const MODELS_DEV_SOURCE_PROVIDERS = [
+  ["platform.claude.com", "anthropic"],
+  ["claude.com", "anthropic"],
+  ["anthropic.com", "anthropic"],
   ["developers.openai.com", "openai"],
   ["openai.com", "openai"],
   ["docs.x.ai", "xai"],
@@ -179,6 +184,32 @@ function newRatesWithMetadata(cost, previous) {
   };
 }
 
+function anthropicRemoteModel(models, model) {
+  const keys = [model, ...Object.keys(CLAUDE_MODEL_SNAPSHOTS).filter((key) => CLAUDE_MODEL_SNAPSHOTS[key] === model)];
+  const matches = keys.map((key) => exactProviderModel(models, key)).filter(Boolean);
+  if (!matches.length) return null;
+  // The alias and its pinned snapshot must describe the same token prices.
+  for (const field of ["input", "output", "cache_read", "cache_write"]) {
+    const values = matches.map((entry) => entry.cost?.[field]).filter(finitePrice);
+    if (values.some((value) => Math.abs(value - values[0]) > 1e-7)) return null;
+  }
+  return matches.find((entry) => finitePrice(entry.cost?.input) && finitePrice(entry.cost?.output)) || null;
+}
+
+function providerRateResult(cost, previous, provider) {
+  if (provider !== "anthropic" || !cost) return newRatesWithMetadata(cost, previous);
+  const normalized = { ...cost };
+  // Models.dev's first-party cache_write is the 5m SKU. Inherit the local
+  // rate if an explicit TTL or the official 1.25x relationship disagrees.
+  if (
+    (cost.cache_write_ttl !== undefined && cost.cache_write_ttl !== "5m") ||
+    !finitePrice(cost.input) ||
+    Math.abs(cost.cache_write - cost.input * 1.25) > 1e-7
+  )
+    delete normalized.cache_write;
+  return newRatesWithMetadata(normalized, previous);
+}
+
 function perMillion(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value * 1_000_000 : null;
 }
@@ -301,9 +332,20 @@ export function modelsDevPricePatches(payload, catalog, { providerByModel = {} }
   const patches = {};
   for (const [model, entry] of Object.entries(catalog.models)) {
     const provider = pricingProviderFor(model, entry, providerByModel[model]);
-    const remote = provider && exactProviderModel(payload[provider]?.models, model);
+    const remote =
+      provider === "anthropic"
+        ? anthropicRemoteModel(payload.anthropic?.models, model)
+        : provider && exactProviderModel(payload[provider]?.models, model);
     if (!remote) continue;
-    const shortResult = newRatesWithMetadata(remote.cost, entry.short);
+    const remoteFast = remote.cost?.fast || remote.cost?.priority || remote.fast || remote.priority;
+    // Claude's declared catalog uses uniform rates. Do not infer a new context
+    // policy from a tiered upstream entry, including historical premium SKUs.
+    if (
+      provider === "anthropic" &&
+      (contextTiers(remote.cost).length || contextTiers(remoteFast?.cost || remoteFast).length)
+    )
+      continue;
+    const shortResult = providerRateResult(remote.cost, entry.short, provider);
     if (!shortResult) continue;
     const patch = {
       short: shortResult.rates,
@@ -315,7 +357,7 @@ export function modelsDevPricePatches(payload, catalog, { providerByModel = {} }
     const originalLong = entry.long || entry.short;
     const tiers = contextTiers(remote.cost);
     if (tiers.length === 1 && (!entry.longContextThreshold || entry.longContextThreshold === tiers[0].tier.size)) {
-      const longResult = newRatesWithMetadata(tiers[0], originalLong);
+      const longResult = providerRateResult(tiers[0], originalLong, provider);
       if (longResult) {
         patch.long = longResult.rates;
         patch.longContextThreshold = tiers[0].tier.size;
@@ -325,10 +367,10 @@ export function modelsDevPricePatches(payload, catalog, { providerByModel = {} }
       patch.long = shortResult.rates;
       patch.__metadata.long = { ...shortResult.metadata, sourceUrl: MODEL_PRICES_URL, providerId: provider };
     }
-    const fastCost = remote.cost?.fast || remote.cost?.priority || remote.fast || remote.priority;
-    if (fastCost && typeof fastCost === "object") {
+    const fastCost = remoteFast;
+    if (fastCost && typeof fastCost === "object" && (provider !== "anthropic" || entry.fast)) {
       const fastCostRates = fastCost.cost || fastCost;
-      const fastShortResult = newRatesWithMetadata(fastCostRates, entry.fast?.short || entry.short);
+      const fastShortResult = providerRateResult(fastCostRates, entry.fast?.short || entry.short, provider);
       if (fastShortResult) {
         patch.fast = { short: fastShortResult.rates };
         patch.__metadata["fast.short"] = {
@@ -342,9 +384,10 @@ export function modelsDevPricePatches(payload, catalog, { providerByModel = {} }
         fastTiers.length === 1 &&
         fastTiers[0].tier.size === (patch.longContextThreshold || entry.longContextThreshold)
       ) {
-        const fastLongResult = newRatesWithMetadata(
+        const fastLongResult = providerRateResult(
           fastTiers[0],
           entry.fast?.long || entry.fast?.short || entry.long || entry.short,
+          provider,
         );
         if (fastLongResult) {
           patch.fast ||= {};
@@ -788,6 +831,7 @@ export function parseOpenAIModelPricing(model, { modelsDevPayload, liteLLMPayloa
     .trim()
     .toLowerCase();
   if (
+    /^(claude-|anthropic[/.])/.test(normalized) ||
     !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(normalized) ||
     /(?:image|audio|transcription|\btts\b|embed|whisper|realtime|moderation)/i.test(normalized)
   ) {

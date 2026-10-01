@@ -3,6 +3,17 @@ const PRICING_MODEL_ALIASES = Object.freeze({
   "gpt-daybreak-blue-latest": "gpt-5.6-sol",
 });
 
+// Official pinned snapshots, not arbitrary numeric version suffixes.
+export const CLAUDE_MODEL_SNAPSHOTS = Object.freeze({
+  "claude-opus-4-20250514": "claude-opus-4",
+  "claude-sonnet-4-20250514": "claude-sonnet-4",
+  "claude-opus-4-1-20250805": "claude-opus-4-1",
+  "claude-opus-4-5-20251101": "claude-opus-4-5",
+  "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+  "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+  "claude-3-5-haiku-20241022": "claude-3-5-haiku",
+});
+
 function activityTime(value) {
   return value instanceof Date ? value.getTime() : typeof value === "number" ? value : Date.parse(String(value));
 }
@@ -73,12 +84,21 @@ export function resolvePricingModel(rawModel, models) {
   const exact = index.get(normalized);
   if (exact) return { rawModel: original, catalogKey: exact, matchType: "exact" };
 
-  const alias = PRICING_MODEL_ALIASES[normalized];
+  const routedClaude = normalized.startsWith("anthropic/") ? normalized.slice("anthropic/".length) : null;
+  const alias =
+    PRICING_MODEL_ALIASES[normalized] ||
+    CLAUDE_MODEL_SNAPSHOTS[normalized] ||
+    (routedClaude && (CLAUDE_MODEL_SNAPSHOTS[routedClaude] || (routedClaude.startsWith("claude-") && routedClaude)));
   const aliasKey = alias && index.get(alias);
   if (aliasKey) return { rawModel: original, catalogKey: aliasKey, matchType: "alias" };
 
   if (normalized.endsWith("-free")) {
     return { rawModel: original, catalogKey: null, matchType: "free" };
+  }
+
+  // A future version (4-9, 5-6, etc.) must never borrow an older Claude price.
+  if (normalized.startsWith("claude-") || routedClaude) {
+    return { rawModel: original, catalogKey: null, matchType: "missing" };
   }
 
   const suffixKeys = [...index.keys()]

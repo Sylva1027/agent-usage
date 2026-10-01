@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { resolvePricingModel } from "../public/pricing-models.js";
 
-// This catalog revision includes a fresh GPT-6.1 Sol check on 2026-09-30;
+// This catalog revision includes a fresh Claude check on 2026-10-01;
 // the date does not claim that every provider entry was rechecked that day.
-export const API_PRICING_CHECKED_AT = "2026-09-30";
-export const API_PRICING_VERSION = "2026-09-30";
+export const API_PRICING_CHECKED_AT = "2026-10-01";
+export const API_PRICING_VERSION = "2026-10-01";
+export const MAX_PRICING_MODELS = 256;
+export const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
 export const API_PRICING_MODE = "minimum-fallback-scenario";
 export const API_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
 export const LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
@@ -44,6 +46,8 @@ const DETAIL_INCONSISTENT = 16;
  * @property {TokenRates} [shortLongOutput]
  * @property {"USD" | "CNY"} [currency]
  * @property {string} [source]
+ * @property {"5m"} [cacheWriteTtl]
+ * @property {number} [standardContextLimit]
  * @property {number} [longContextThreshold]
  * @property {number} [outputThreshold]
  * @property {number} [offPeakMultiplier]
@@ -59,8 +63,46 @@ const DETAIL_INCONSISTENT = 16;
 //   outputThreshold       输出达到该值时短上下文改用 shortLongOutput 费率（GLM 的输出分档）
 //   offPeakMultiplier     不在 peakWindows 时段内时整体乘以该折扣（DeepSeek 谷价 5 折）
 //   peakWindows           高峰时段：按 peakTimezone 判定星期与时刻；无法识别的节假日按高峰计（略保守）
+/** @returns {PriceModel} */
+function claudePrice(input, cachedInput, output, { fast = false, standardContextLimit = undefined } = {}) {
+  const short = { input, cachedInput, cacheWrite: input * 1.25, output };
+  return Object.freeze({
+    currency: "USD",
+    source: ANTHROPIC_PRICING_SOURCE,
+    cacheWriteTtl: "5m",
+    short,
+    ...(standardContextLimit ? { standardContextLimit } : {}),
+    ...(fast
+      ? {
+          fast: {
+            short: { input: input * 2, cachedInput: cachedInput * 2, cacheWrite: input * 2.5, output: output * 2 },
+          },
+        }
+      : {}),
+  });
+}
+
 /** @type {Readonly<Record<string, PriceModel>>} */
 const MODEL_PRICES = Object.freeze({
+  // Claude API Standard, global, 5-minute cache writes. Older context SKUs are
+  // not inferred from today's base price; out-of-range records carry a caveat.
+  "claude-fable-5-1": claudePrice(10, 0.25, 50),
+  "claude-fable-5": claudePrice(10, 1, 50),
+  "claude-opus-5-5": claudePrice(4, 0.2, 20, { fast: true }),
+  "claude-opus-5": claudePrice(5, 0.5, 25, { fast: true }),
+  "claude-opus-4-8": claudePrice(5, 0.5, 25, { fast: true }),
+  "claude-opus-4-7": claudePrice(5, 0.5, 25),
+  "claude-opus-4-6": claudePrice(5, 0.5, 25),
+  "claude-opus-4-5": claudePrice(5, 0.5, 25, { standardContextLimit: 200_000 }),
+  "claude-opus-4-1": claudePrice(15, 1.5, 75, { standardContextLimit: 200_000 }),
+  "claude-opus-4": claudePrice(15, 1.5, 75, { standardContextLimit: 200_000 }),
+  "claude-sonnet-5-5": claudePrice(2, 0.2, 10),
+  "claude-sonnet-5": claudePrice(2, 0.2, 10),
+  "claude-sonnet-4-6": claudePrice(3, 0.3, 15),
+  "claude-sonnet-4-5": claudePrice(3, 0.3, 15, { standardContextLimit: 200_000 }),
+  "claude-sonnet-4": claudePrice(3, 0.3, 15, { standardContextLimit: 200_000 }),
+  "claude-haiku-4-5": claudePrice(1, 0.1, 5, { standardContextLimit: 200_000 }),
+  "claude-3-5-haiku": claudePrice(0.8, 0.08, 4, { standardContextLimit: 200_000 }),
   "gpt-6-astra": Object.freeze({
     fast: {
       short: { input: 20, cachedInput: 2, cacheWrite: 25, output: 100 },
@@ -736,11 +778,11 @@ export function validatePricingCatalog(value) {
   const keys = Object.keys(models);
   if (
     keys.length < Object.keys(MODEL_PRICES).length ||
-    keys.length > 100 ||
     Object.keys(MODEL_PRICES).some((key) => !Object.hasOwn(models, key))
   ) {
     throw new Error("All built-in models must have prices.");
   }
+  if (keys.length > MAX_PRICING_MODELS) throw new Error(`Pricing supports at most ${MAX_PRICING_MODELS} models.`);
   /** @type {Record<string, PriceModel>} */
   const normalized = {};
   for (const model of keys.sort()) {
@@ -751,6 +793,15 @@ export function validatePricingCatalog(value) {
     if (currency !== "USD" && currency !== "CNY") throw new Error(`Invalid currency for ${model}`);
     const short = validateRates(entry.short, `${model} short`);
     const result = { currency, short };
+    if (entry.cacheWriteTtl !== undefined) {
+      if (entry.cacheWriteTtl !== "5m") throw new Error(`Unsupported cache write TTL for ${model}`);
+      result.cacheWriteTtl = entry.cacheWriteTtl;
+    }
+    if (entry.standardContextLimit !== undefined) {
+      if (!Number.isInteger(entry.standardContextLimit) || entry.standardContextLimit <= 0)
+        throw new Error(`Invalid standardContextLimit for ${model}`);
+      result.standardContextLimit = entry.standardContextLimit;
+    }
     result.long = entry.long === undefined ? { ...short } : validateRates(entry.long, `${model} long`);
     if (entry.shortLongOutput !== undefined) {
       result.shortLongOutput = validateRates(entry.shortLongOutput, `${model} shortLongOutput`);
@@ -806,7 +857,15 @@ export function setPricingCatalog(value) {
 // 用户改过的费率优先保留，结构性字段缺失则从内置官方价目补齐，而不是被旧文件顶掉。
 function fillMissingStructure(saved, builtIn) {
   const merged = { ...saved };
-  for (const field of ["longContextThreshold", "outputThreshold", "offPeakMultiplier", "peakTimezone", "source"]) {
+  for (const field of [
+    "longContextThreshold",
+    "outputThreshold",
+    "offPeakMultiplier",
+    "peakTimezone",
+    "source",
+    "cacheWriteTtl",
+    "standardContextLimit",
+  ]) {
     if (merged[field] === undefined && builtIn[field] !== undefined) merged[field] = builtIn[field];
   }
   for (const field of ["long", "fast", "shortLongOutput", "peakWindows"]) {
@@ -984,9 +1043,12 @@ function estimateEventCost(event = {}) {
   const currency = currencyForEvent(model, event);
   const contextLevel = contextTierFor(entry, event, usage, model.key);
   const serviceTier = normalizeServiceTier(event.serviceTier ?? event.service_tier);
-  // 官方单独声明快速模式费率时按其计价；否则沿用 Fast/Priority 双倍标准价的兜底。
+  // Claude Fast capability is model-specific; unknown Claude IDs also keep
+  // an explicit Standard scenario instead of inheriting the generic 2x rule.
   const useFastRates = serviceTier === "fast" && Boolean(entry?.fast);
-  const multiplier = serviceTier === "fast" && !useFastRates ? 2 : 1;
+  const claude = entry?.cacheWriteTtl === "5m" || /^(?:anthropic[/.])?claude-/i.test(model.name);
+  const claudeCacheWrite = entry?.cacheWriteTtl === "5m";
+  const multiplier = serviceTier === "fast" && !useFastRates && !claude ? 2 : 1;
   const rateEntry = useFastRates
     ? {
         ...entry,
@@ -1028,14 +1090,24 @@ function estimateEventCost(event = {}) {
   let outputUsd = 0;
   let minimumEstimatedTokens = 0;
   let pricedTokens = 0;
-  const unpricedTokens = 0;
+  let unpricedTokens = 0;
+  const unsupportedWriteTtl = claudeCacheWrite && event.cacheWriteTtl !== undefined && event.cacheWriteTtl !== "5m";
+  if (claudeCacheWrite && cacheWriteTokens > 0 && event.cacheWriteTtl !== "5m") {
+    reasons.push(unsupportedWriteTtl ? "cache-write-ttl-unsupported" : "cache-write-ttl-unknown-5m-scenario");
+  }
+  if (claude && serviceTier === "fast" && !useFastRates) reasons.push("fast-pricing-unavailable-standard-scenario");
+  if (
+    entry?.standardContextLimit &&
+    (finiteNonNegative(event.requestInputTokens) || usage.input || 0) > entry.standardContextLimit
+  )
+    reasons.push("legacy-context-pricing-unverified-standard-scenario");
 
   if (!rates) {
     return {
       model: model.name,
       currency,
       priceVersion: version,
-      priceSource: entry?.source || API_PRICING_SOURCE,
+      priceSource: entry?.source || "",
       serviceTier,
       contextLevel,
       inputUsd: 0,
@@ -1058,6 +1130,10 @@ function estimateEventCost(event = {}) {
 
   function addCost(tokens, category, minimum = false) {
     if (!(tokens > 0)) return;
+    if (category === "cacheWrite" && unsupportedWriteTtl) {
+      unpricedTokens += tokens;
+      return;
+    }
     const amount = (tokens * rates[category] * multiplier) / USD_PER_MILLION_TOKENS;
     if (category === "cachedInput") cachedInputUsd += amount;
     else if (category === "cacheWrite") cacheWriteInputUsd += amount;
@@ -1110,7 +1186,7 @@ function estimateEventCost(event = {}) {
     if (usage.outputKnown) addCost(usage.output, "output");
     else reasons.push("output-detail-missing");
 
-    const remainder = Math.max(0, total - pricedTokens);
+    const remainder = Math.max(0, total - pricedTokens - unpricedTokens);
     if (usage.inputKnown && !usage.outputKnown) addCost(remainder, "output", true);
     else if (!usage.inputKnown && usage.outputKnown) addMinimum(remainder, ["input", "cachedInput", "cacheWrite"]);
     else addMinimum(remainder, allCategories);
@@ -1130,7 +1206,7 @@ function estimateEventCost(event = {}) {
     model: model.name,
     currency,
     priceVersion: version,
-    priceSource: entry?.source || API_PRICING_SOURCE,
+    priceSource: entry?.source || "",
     serviceTier,
     contextLevel,
     inputUsd,
@@ -1142,12 +1218,12 @@ function estimateEventCost(event = {}) {
     unpricedTokens,
     minimumEstimatedTokens,
     minimumRateModels: minimumModelRate ? [model.name] : [],
-    unpricedModels: [],
+    unpricedModels: unpricedTokens > 0 ? [model.name] : [],
     unpricedReasons: [...new Set(reasons)],
     serviceTierUnknownTokens,
     contextUnknownTokens,
     cacheWriteUnknownTokens,
-    pricingStatus: minimumEstimatedTokens > 0 ? "minimum-estimate" : "estimated",
+    pricingStatus: unpricedTokens > 0 ? "unpriced" : minimumEstimatedTokens > 0 ? "minimum-estimate" : "estimated",
   };
 }
 
@@ -1267,7 +1343,7 @@ function createCostSummaryState(options = {}) {
       usdToCnyRate: options.usdToCnyRate ?? activePricing.usdToCnyRate,
       priceCheckedAt: options.priceCheckedAt || activePricing.checkedAt,
       priceMode: API_PRICING_MODE,
-      priceSource: API_PRICING_SOURCE,
+      priceSource: priceSources.size === 1 ? [...priceSources][0] : "",
     };
   }
 

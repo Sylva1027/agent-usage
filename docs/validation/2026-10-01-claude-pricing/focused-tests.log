@@ -1,0 +1,39 @@
+✔ Claude catalog prices current cache-read exceptions and declared Fast SKUs independently (0.8054ms)
+✔ Claude pinned snapshots and namespace aliases resolve without future-version prefix borrowing (0.767ms)
+✔ Claude fee splits cache writes from input and marks unknown TTL; known 1h writes stay unpriced (0.6766ms)
+✔ Claude modern contexts keep uniform fees and unsupported Fast models use an explicit Standard scenario (0.2707ms)
+✔ expanded capacity accepts a savable 256-model catalog and distinguishes capacity from missing built-ins (3.3466ms)
+✔ Anthropic automatic patches isolate providers, pinned identities, 5m writes and Fast capability (1.5089ms)
+✔ Anthropic automatic refresh persists provider identity and keeps manual fields through later updates and failure (40.9017ms)
+✔ DSH and OpenCode count nonzero Claude writes once, including when the provider total is absent (0.3585ms)
+✔ v9 and v10 indexes mark only unchanged DSH files for reindexing (43.2048ms)
+✔ Claude scenario notes and source links are visible in both supported languages (0.4537ms)
+✔ a damaged automatic cache falls back to the built-in catalog (10.2692ms)
+✔ automatic prices require exact provider/model matches and compatible long tiers (1.8985ms)
+✔ official CNY source adapters cover providers with lossless catalog rates (3.0315ms)
+✔ new OpenAI discovery requires complete evidenced tiers and records provenance (0.7313ms)
+✔ new OpenAI discovery rejects uncertain, incomplete, conflicting, and non-text candidates (0.2038ms)
+✔ discovered OpenAI models persist provenance and receive later automatic updates (33.6684ms)
+✔ first-party provider identity survives the aggregated source cache on later updates (16.955ms)
+✔ failed automatic-cache writes restore the previous catalog and metadata (13.6056ms)
+✔ existing partial price updates record inherited fields, while source conflicts keep prior rates (19.1186ms)
+✔ discovery-only status changes do not report a price change and retry on the next eligible attempt (9.7287ms)
+✔ discovery accepts one complete source, respects cooldown, and force bypasses it (29.1189ms)
+✔ discovery can be disabled and reports capacity per model without dropping cached prices (26.6453ms)
+✔ automatic updates are cached and leave edited rates and exchange rate intact (23.6484ms)
+✔ restoring the automatic exchange rate is explicit and preserves manual model prices (20.5099ms)
+✔ equal official rates verify coverage while unsupported context tiers remain local (7.5723ms)
+✔ price-source timeout keeps successful matches and retries the partial update (14.8507ms)
+✔ catalog fetch reports an identifiable timeout (13.8706ms)
+✔ MiMo pricing pages are fetched as bounded HTML text (0.2281ms)
+✔ failed online updates retain local prices and retry after an hour (11.3535ms)
+✔ legacy default exchange rate does not block automatic exchange updates (9.7985ms)
+✔ a failed refresh retries after an hour even when an older cache exists (18.1781ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 350.1657

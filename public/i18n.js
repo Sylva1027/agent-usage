@@ -156,6 +156,7 @@ const ENGLISH = new Map(
     "费用估算暂不可用。": "Cost estimates are temporarily unavailable.",
     当前价格基准: "Current Pricing Baseline",
     "OpenAI 价格表": "OpenAI Pricing",
+    "Anthropic 定价": "Anthropic Pricing",
     "StepFun 定价": "StepFun Pricing",
     "MiMo 定价": "MiMo Pricing",
     "DeepSeek 定价": "DeepSeek Pricing",

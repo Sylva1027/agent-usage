@@ -1,6 +1,6 @@
 # 计价与自动更新
 
-更新：2026-10-01。由 GPT-6.1 Sol 与 UI/计价旧计划提炼，描述当前实现；历史调查和逐项执行记录见[归档](archive/2026-10-01/00-index.md)。
+更新：2026-10-01。描述当前实现，包含 Claude 价格与现有来源计费；历史调查见[归档](archive/2026-10-01/00-index.md)，本批结果见[Claude 验收](validation/2026-10-01-claude-pricing/README.md)。
 
 ## 估算范围
 
@@ -21,6 +21,8 @@
 5. 带 `-` 边界的最长已知前缀。
 6. 未匹配。
 
+Claude 的显式映射只接受已核实的日期快照和 `anthropic/` 路由前缀；未知 Claude 版本在免费规则之后直接保持 missing，不执行最长前缀借价。精确的手动自定义项仍优先。Bedrock 的点号 ID、Vertex 的 `@` ID 和未经核实的中转别名不自动等同于第一方费率。
+
 `-free` 推算匹配的四类费率为 0，不进入最低费率估算汇总；明确存在的同名价目条目仍优先。不能用 OpenCode 的原始 `cost: 0` 判断免费。免费推算、价目覆盖和上游实际免费政策是不同概念。
 
 未知付费模型按同币种各类别的最低适用费率估算，标为 `minimum-estimate`。已知模型使用目录币种；未知模型的 ZCode/DSH 渠道前缀回退为 CNY，其余回退为 USD。这个回退是场景假设，不证明真实提供商的计价币种。
@@ -30,6 +32,16 @@
 `gpt-6.1-sol` 与 `gpt-6-sol` 是独立价目项，不通过别名借价。当前前者的长上下文阈值为 272,000，单次请求输入严格大于阈值时为 long。优先使用可信 `requestInputTokens`，没有时仅采用已经确认的 `contextLevel`，否则为 unknown；不使用跨请求累计输入猜测长上下文。
 
 历史事件保留原始 Token 与记录时价格版本，展示费用按活动价目重算。修改价格会影响历史费用显示，不改写原始用量日志。
+
+## Claude 价目与场景边界
+
+内置目录增加 17 个 Claude 版本，包含 Opus 4/4.1/4.5/4.6/4.7/4.8/5/5.5、Sonnet 4/4.5/4.6/5/5.5、Haiku 3.5/4.5、Fable 5/5.1。退役条目用于已存在记录的当前价目等价估算；没有追溯完整历史生效价格，也没有覆盖所有更早版本。第一方标准价以 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing)为人工依据，模型身份以[官方 ID 说明](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions)为依据。
+
+单一 `cacheWrite` 费率采用 5 分钟写入场景，元数据 `cacheWriteTtl: "5m"` 随有效目录与静态快照保留。非零写入缺少 TTL 时，费用说明、时间图提示和价格编辑器会说明这个假设。估算器遇到明确的 1 小时或其他不支持 TTL 时，写入部分保留为 unpriced，其余已知类别正常计费。当前来源适配器没有提供已核实的 TTL 字段；本批没有扩展混合 TTL 的事件存储和编辑界面，不能宣称支持精确的 1 小时缓存账单。
+
+缓存读单价逐模型存储，不统一套基础输入价的 10%。Fast 仅为当前核实的 Opus 5.5、5、4.8 配置；其他 Claude（包括未知版本）带 Fast 标记时保留 Standard 场景及提示。4.6 及以后已收录模型的 Standard 上下文不引入额外长档费率；更旧条目在单次输入超过已核验的 200K 范围时提示历史上下文政策未建模，金额仍是基础价场景。地域、批量、工具费和中转加价不纳入普通 token 估算。
+
+OpenCode 沿用总输入重构；DSH 已依据安装包源码把非零写入并入总输入，并通过索引 v11 重新解析历史 DSH 文件。ZCode 保持当前映射，其缓存字段与输入的包含关系缺少上游写库证据；缺失或冲突明细继续使用已有估算保护。来源语义见 [DSH](data-sources/dsh.md)和 [ZCode](data-sources/zcode.md)。
 
 ## 有效价目与本地文件
 
@@ -45,7 +57,7 @@
 
 当前公开来源解析入口在 `src/pricing-auto.js`：
 
-- Models.dev：按已识别提供商与精确目录模型键更新可映射的 USD 条目。
+- Models.dev：按已识别提供商与精确目录模型键更新可映射的 USD 条目，包括 Anthropic；明确的 Claude 快照映射仍限定在 `anthropic` 提供商内。
 - LiteLLM：OpenAI 的备用来源，在适配边界转换 per-token 单位。
 - StepFun、MiMo、Kimi、GLM：对应官方页面的 CNY 适配，校验模型键、表头、单位和可表达的档位。
 - Frankfurter：USD/CNY 显示折算汇率。
@@ -53,6 +65,8 @@
 正常刷新间隔 24 小时，来源失败冷却 1 小时；价目弹窗可强制更新。价格与汇率是独立请求和失败状态，成功一侧不被另一侧失败覆盖。仅发现新模型时检查价格来源，不额外请求汇率。具体 URL 与超时以适配器常量为准。
 
 上游字段不足、结构变化或冲突时保留旧有效费率并显示原因。未知阈值、复杂时段或二维计价不通过猜测降成简单费率。当前 DeepSeek 时段/节假日规则、GLM-4.7 与 GLM-4.5-Air 的复杂二维规则保留现有本地价。
+
+Anthropic 上游写入价只有与 5 分钟口径一致时才覆盖本地字段；缺失、不支持的 TTL 或 1.25 倍关系不符时继承有效本地写入价并标注 inherited。别名与固定快照出现价格冲突时不更新该条目；上游额外上下文档位不会擅自改变 Claude 的已声明政策，未核实的 Fast 能力也不引入。
 
 来源映射数是维护范围，不能当作本次抓取成功数。2026-09-30 的 82/86 是带日期的历史覆盖快照；现行统计分别解释“实际使用的模型有价”“由自动来源维护”“本次核验与改价”。
 
@@ -66,7 +80,7 @@
 
 索引就绪后以全历史模型集合检查缺价发现候选，近期在用名单的退出不会削弱发现能力。当前仅自动创建有完整证据的 OpenAI USD 文本模型：提供商、必需费率、上下文与 Fast 档位必须可靠，不能由宽松前缀或其它厂商的同名价格推断。免费推算模型不进入收费发现候选。
 
-发现使用冷却、并发合并、缓存原子写入和失败回滚。当前整个目录上限为 100 项（包括内置与扩展），PUT 价目请求体上限为 128 KiB。`createUsageServer({ automaticDiscoveryEnabled: false })` 可禁用新模型补录；已有缓存条目仍可加载和更新，缺价提示仍保留。
+发现使用冷却、并发合并、缓存原子写入和失败回滚。整个目录上限由共享 `MAX_PRICING_MODELS` 统一为 256 项（包括 103 个内置与扩展），PUT 价目请求体上限仍为 128 KiB；常见 256 项配置及 API 保存已通过验证，超大请求仍拒绝。`createUsageServer({ automaticDiscoveryEnabled: false })` 可禁用新模型补录；已有缓存条目仍可加载和更新，缺价提示仍保留。未知 Claude 不进入 OpenAI 自动新模型创建流程。
 
 ## 汇率与保存
 
@@ -78,4 +92,4 @@
 
 联网只 GET 公开价格与汇率，不发送本机模型名、用量、路径或正文。断网继续使用自动缓存或内置值。静态快照固定导出时的价目与汇率，不调用在线发现或保存。
 
-回归见 `test/pricing.test.js`、`test/pricing-models.test.js`、`test/pricing-auto.test.js`、`test/server.test.js`、`test/three-path-parity.test.js`。真实来源在线核验、固定 fixture、浏览器模拟下载失败是不同证据，见[验证索引](validation/00-index.md)。
+回归见 `test/pricing.test.js`、`test/pricing-models.test.js`、`test/pricing-auto.test.js`、`test/claude-pricing.test.js`、`test/server.test.js`、`test/three-path-parity.test.js`。真实来源在线核验、固定 fixture、浏览器模拟下载失败是不同证据，见[验证索引](validation/00-index.md)。

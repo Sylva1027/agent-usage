@@ -1,0 +1,19 @@
+✔ Claude catalog prices current cache-read exceptions and declared Fast SKUs independently (0.9419ms)
+✔ Claude pinned snapshots and namespace aliases resolve without future-version prefix borrowing (0.8617ms)
+✔ Claude fee splits cache writes from input and marks unknown TTL; known 1h writes stay unpriced (0.7864ms)
+✔ Claude modern contexts keep uniform fees and unsupported Fast models use an explicit Standard scenario (0.8979ms)
+✔ expanded capacity accepts a savable 256-model catalog and distinguishes capacity from missing built-ins (3.0425ms)
+✔ Anthropic automatic patches isolate providers, pinned identities, 5m writes and Fast capability (1.6242ms)
+✔ Anthropic automatic refresh persists provider identity and keeps manual fields through later updates and failure (42.8886ms)
+✔ DSH and OpenCode count nonzero Claude writes once, including when the provider total is absent (0.3605ms)
+✔ v9 and v10 indexes mark only unchanged DSH files for reindexing (41.45ms)
+✔ Claude scenario notes and source links are visible in both supported languages (0.4495ms)
+✔ Claude DSH history, manual repricing and TTL notes agree between memory, SQLite and static export (48.8456ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 222.7112

@@ -524,6 +524,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       channelGroups: new Map(),
       modelGroups: new Map(),
       modelCosts: new Map(),
+      scenarioReasons: new Set(),
       sessionsSet: new Set(),
       estimatedRecords: 0,
       serviceTierUnknownTokens: 0,
@@ -585,6 +586,10 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       row.serviceTierUnknownTokens += Number(estimate.serviceTierUnknownTokens || 0);
       row.contextUnknownTokens += Number(estimate.contextUnknownTokens || 0);
       row.cacheWriteUnknownTokens += Number(estimate.cacheWriteUnknownTokens || 0);
+      for (const reason of estimate.unpricedReasons || []) {
+        if (/^(cache-write-ttl-|fast-pricing-unavailable-|legacy-context-pricing-unverified-)/.test(reason))
+          row.scenarioReasons.add(reason);
+      }
     }
     rowsByKey.set(key, row);
   }
@@ -640,6 +645,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       serviceTierUnknownTokens: row.serviceTierUnknownTokens,
       contextUnknownTokens: row.contextUnknownTokens,
       cacheWriteUnknownTokens: row.cacheWriteUnknownTokens,
+      ...(row.scenarioReasons.size ? { scenarioReasons: [...row.scenarioReasons].sort() } : {}),
       pricingStatus,
       ...(row.slotStartMs === undefined
         ? {}

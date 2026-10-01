@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 
 import { createUsageServer, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
+import { MAX_PRICING_MODELS } from "../src/pricing.js";
 import {
   GLM_PRICES_URL,
   KIMI_PRICES_URL,
@@ -1243,7 +1244,8 @@ test("pricing API validates, persists, and reprices indexed history", async () =
     assert.equal(oversizedRejected.status, 413);
 
     const atCapacity = structuredClone(original);
-    for (let index = 0; index < 14; index += 1) {
+    const remainingSlots = MAX_PRICING_MODELS - Object.keys(original.models).length;
+    for (let index = 0; index < remainingSlots; index += 1) {
       atCapacity.models[`manual-capacity-${String(index).padStart(2, "0")}`] = structuredClone(
         original.models["gpt-6-sol"],
       );
@@ -1255,11 +1257,11 @@ test("pricing API validates, persists, and reprices indexed history", async () =
     });
     assert.equal(capacitySaved.status, 200, await capacitySaved.clone().text());
     const capacityCatalog = await capacitySaved.json();
-    assert.equal(Object.keys(capacityCatalog.models).length, 100);
+    assert.equal(Object.keys(capacityCatalog.models).length, MAX_PRICING_MODELS);
 
     const overCapacity = structuredClone(original);
     overCapacity.version = capacityCatalog.version;
-    for (let index = 0; index < 15; index += 1) {
+    for (let index = 0; index <= remainingSlots; index += 1) {
       overCapacity.models[`manual-capacity-${String(index).padStart(2, "0")}`] = structuredClone(
         original.models["gpt-6-sol"],
       );

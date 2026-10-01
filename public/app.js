@@ -1259,7 +1259,7 @@ function summarizeEmbeddedCostEstimates(events, pricing = {}) {
     priceSources: [...priceSources].sort(),
     priceCheckedAt: pricing.checkedAt || "",
     priceMode: pricing.mode || "",
-    priceSource: pricing.source || "",
+    priceSource: priceSources.size === 1 ? [...priceSources][0] : "",
   };
 }
 
@@ -1297,6 +1297,7 @@ function renderCostMetrics(summary) {
   const checkedAt = estimate.priceCheckedAt ? `价格基准 ${estimate.priceCheckedAt}` : "当前价格基准";
   const totalTokens = formatTokens(summary.totals.total);
   const caveats = [];
+  caveats.push(...pricingScenarioNotes(estimate.unpricedReasons));
   if (estimate.serviceTierUnknownRecords > 0)
     caveats.push(`${formatTokens(estimate.serviceTierUnknownRecords)} 条记录的服务等级未知，按 Standard 情景估算`);
   if (estimate.contextUnknownRecords > 0)
@@ -1315,7 +1316,7 @@ function renderCostMetrics(summary) {
     );
   if (estimate.unpricedTokens > 0) caveats.push(`仍有 ${formatTokens(estimate.unpricedTokens)} tokens 无法估算`);
   const sourceLinks = renderPricingSourceLinksHtml(
-    [estimate.priceSource, ...(estimate.priceSources || [])],
+    estimate.priceSources?.length ? estimate.priceSources : [estimate.priceSource],
     estimate.currencies || [],
   );
   note.innerHTML = `
@@ -1333,6 +1334,9 @@ function renderCostMetrics(summary) {
 }
 
 const PRICING_SOURCE_LABELS = Object.freeze({
+  "platform.claude.com": "Anthropic 定价",
+  "docs.anthropic.com": "Anthropic 定价",
+  "claude.com": "Anthropic 定价",
   "developers.openai.com": "OpenAI 价格表",
   "stepfun.com": "StepFun 定价",
   "mimo.mi.com": "MiMo 定价",
@@ -1356,6 +1360,27 @@ export function renderPricingSourceLinksHtml(values = [], currencies = []) {
       return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
     })
     .join("、");
+}
+
+export function pricingScenarioNotes(reasons = [], locale = getLocale()) {
+  const english = locale === "en-US";
+  const notes = {
+    "cache-write-ttl-unknown-5m-scenario": english
+      ? "Claude cache-write TTL is unknown; the estimate uses 5-minute pricing"
+      : "Claude 缓存写入 TTL 未确认，按 5 分钟价格场景估算",
+    "cache-write-ttl-unsupported": english
+      ? "Known non-5-minute cache writes are unpriced; configure the matching TTL rates before estimating them"
+      : "已知非 5 分钟缓存写入暂未计价，需匹配相应 TTL 费率",
+    "fast-pricing-unavailable-standard-scenario": english
+      ? "This Claude model has no supported Fast price; the estimate uses Standard pricing"
+      : "该 Claude 模型没有已支持的 Fast 价目，按 Standard 场景估算",
+    "legacy-context-pricing-unverified-standard-scenario": english
+      ? "Legacy Claude usage exceeds the verified standard context range; the estimate uses base pricing"
+      : "旧版 Claude 用量超过已核验的标准上下文范围，按基础价格场景估算",
+  };
+  return Object.keys(notes)
+    .filter((reason) => reasons.includes(reason))
+    .map((reason) => notes[reason]);
 }
 
 // New Record：所选范围内的纪录期点亮对应指标卡右上角的 New 小字。
@@ -2155,6 +2180,7 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
   const pair = costPairFromSlots(row?.costByModel);
   const amountLabel = Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : "无可计价费用";
   const caveats = [];
+  caveats.push(...pricingScenarioNotes(row?.scenarioReasons));
   if (Number(row?.unpricedTokens || 0) > 0) caveats.push(`未计价 ${formatTokens(row.unpricedTokens)} tokens`);
   if (Number(row?.serviceTierUnknownTokens || 0) > 0) caveats.push("服务等级未知，金额按 Standard 情景估算");
   if (Number(row?.contextUnknownTokens || 0) > 0) caveats.push("请求上下文未知，按可用的较低上下文费率估算");
@@ -2952,7 +2978,7 @@ function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}
     if (checkNow) void loadUsage();
   } else {
     stopAutoRefresh();
-    setAutoRefreshStatus("已关闭");
+    setAutoRefreshStatus("");
     void loadUsage({ skipCheck: true, freeze: true });
   }
   renderAutoRefreshControls();
@@ -3082,7 +3108,7 @@ export function discoveryReasonText(reason, english) {
         "context-policy-unknown": "context pricing policy is unknown",
         "unsupported-context-policy": "multiple context tiers are not supported",
         conflict: "the price sources disagree",
-        "catalog-capacity": "the 100-model catalog limit was reached",
+        "catalog-capacity": "the model catalog capacity was reached",
         timeout: "price source timed out",
         "source-error": "price sources could not be read",
         "retry-after": "retry is available after one hour",
@@ -3096,7 +3122,7 @@ export function discoveryReasonText(reason, english) {
         "context-policy-unknown": "上下文计价规则不明确",
         "unsupported-context-policy": "暂不支持多个上下文档位",
         conflict: "两个价目来源存在冲突",
-        "catalog-capacity": "已达到 100 个模型上限",
+        "catalog-capacity": "已达到模型目录容量上限",
         timeout: "价目来源请求超时",
         "source-error": "无法读取价目来源",
         "retry-after": "一小时后可重试",
@@ -3253,6 +3279,18 @@ function pricingModelNoteParts(contexts) {
   if (contexts.offPeakMultiplier)
     parts.push(
       `谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`,
+    );
+  if (contexts.cacheWriteTtl === "5m")
+    parts.push(
+      getLocale() === "en-US"
+        ? "Cache writes use 5-minute rates; unknown TTL is an estimated scenario"
+        : "缓存写入使用 5 分钟费率，TTL 未确认时为场景估算",
+    );
+  if (contexts.standardContextLimit)
+    parts.push(
+      getLocale() === "en-US"
+        ? `Standard context verified through ${formatTokens(contexts.standardContextLimit)} tokens`
+        : `标准上下文已核验至 ${formatTokens(contexts.standardContextLimit)} tokens`,
     );
   return parts;
 }
@@ -4128,7 +4166,7 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
       state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
       if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
-      setAutoRefreshStatus(state.autoRefreshEnabled ? "" : "已关闭");
+      setAutoRefreshStatus("");
     }
     if (loadId !== state.usageLoadId) return;
     const previousPreset = state.preset;

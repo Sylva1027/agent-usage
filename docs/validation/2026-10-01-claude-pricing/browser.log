@@ -1,0 +1,46 @@
+PASS live-1440-light-zh-CN: fees, TTL and Anthropic source visible
+PASS live-1440-light-zh-CN: viewport fits
+PASS live-1440-light-zh-CN: editable USD rate and TTL scenario
+PASS live-1440-light-en-US: fees, TTL and Anthropic source visible
+PASS live-1440-light-en-US: viewport fits
+PASS live-1440-light-en-US: editable USD rate and TTL scenario
+PASS live-1440-dark-zh-CN: fees, TTL and Anthropic source visible
+PASS live-1440-dark-zh-CN: viewport fits
+PASS live-1440-dark-zh-CN: editable USD rate and TTL scenario
+PASS live-1440-dark-en-US: fees, TTL and Anthropic source visible
+PASS live-1440-dark-en-US: viewport fits
+PASS live-1440-dark-en-US: editable USD rate and TTL scenario
+PASS live-390-light-zh-CN: fees, TTL and Anthropic source visible
+PASS live-390-light-zh-CN: viewport fits
+PASS live-390-light-zh-CN: editable USD rate and TTL scenario
+PASS live-390-light-en-US: fees, TTL and Anthropic source visible
+PASS live-390-light-en-US: viewport fits
+PASS live-390-light-en-US: editable USD rate and TTL scenario
+PASS live-390-dark-zh-CN: fees, TTL and Anthropic source visible
+PASS live-390-dark-zh-CN: viewport fits
+PASS live-390-dark-zh-CN: editable USD rate and TTL scenario
+PASS live-390-dark-en-US: fees, TTL and Anthropic source visible
+PASS live-390-dark-en-US: viewport fits
+PASS live-390-dark-en-US: editable USD rate and TTL scenario
+PASS unknown Claude version remains missing and is not borrowed or auto-created
+PASS price editor saves manual input and reprices existing history
+PASS simulated refresh failure retains manual price and Claude metadata
+PASS offline-1440-light-zh-CN: fees, TTL and Anthropic source visible
+PASS offline-1440-light-zh-CN: viewport fits
+PASS offline-1440-light-en-US: fees, TTL and Anthropic source visible
+PASS offline-1440-light-en-US: viewport fits
+PASS offline-1440-dark-zh-CN: fees, TTL and Anthropic source visible
+PASS offline-1440-dark-zh-CN: viewport fits
+PASS offline-1440-dark-en-US: fees, TTL and Anthropic source visible
+PASS offline-1440-dark-en-US: viewport fits
+PASS offline-390-light-zh-CN: fees, TTL and Anthropic source visible
+PASS offline-390-light-zh-CN: viewport fits
+PASS offline-390-light-en-US: fees, TTL and Anthropic source visible
+PASS offline-390-light-en-US: viewport fits
+PASS offline-390-dark-zh-CN: fees, TTL and Anthropic source visible
+PASS offline-390-dark-zh-CN: viewport fits
+PASS offline-390-dark-en-US: fees, TTL and Anthropic source visible
+PASS offline-390-dark-en-US: viewport fits
+PASS offline snapshot disables saving and network refresh
+PASS no script errors or external page requests
+{"passed":45,"failed":0,"results":"browser-results.json"}

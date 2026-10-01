@@ -60,24 +60,24 @@ inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens = totalTokens
 
 | 看板字段 | 取值 |
 |---|---|
-| `input` | `inputTokens + cacheReadTokens`（总输入；样本为 8398） |
+| `input` | `inputTokens + cacheReadTokens + cacheWriteTokens`（总输入；样本为 8398） |
 | `cached` | `cacheReadTokens`（6784） |
 | `cacheWriteTokens` | `cacheWriteTokens`（0） |
 | `output` | `outputTokens`（127） |
 | `reasoning` | `0`，且**不置** detailMask 的 reasoning 位（DSH 未单列） |
 | `total` | `totalTokens`（8525） |
-| `requestInputTokens` | `inputTokens + cacheReadTokens`，用于上下文分级 |
+| `requestInputTokens` | `inputTokens + cacheReadTokens + cacheWriteTokens`，用于上下文分级 |
 | `detailMask` | input \| cached \| output \| cacheWrite = `39` |
 
 若直接把 `inputTokens` 当 `input`，会同时踩三个坑：`cached > input` 导致缓存明细被撤销并标记
 inconsistent、计价退化为「最低费率估算」、缓存命中率显示超过 100%。`test/dsh-usage.test.js`
 里有正反两条断言把这一点钉死。
 
-### 非零缓存写入待核实
+### 非零缓存写入已核实
 
-上表描述当前实现：`input` 与 `requestInputTokens` 没有并入 `cacheWriteTokens`；缺少上游总量时，`total` 却会加上写入量。历史真库写入值为 0，所以它不能证明非零写入的总输入、明细关系与计价正确。旧 OpenCode 评审已指出这个相邻疑点。
+2026-10-01 只读检查本机安装包 `E:/DeepSeek Harness/resources/app.asar`。包内 `dsh/node_modules/@deepseek-ai/dsh-token-meter/lib/index.js` 明确把 `usage.inputTokens` 视为 uncached input，并将输入、缓存读、缓存写、输出相加；`lib/types/turn-usage.js` 同时以这三类输入之和校验已知 prompt 与总量减输出。因此非零写入必须进入看板总输入和单次输入，缺少上游 total 时的兜底为重构输入加输出，不能再加一次写入。
 
-核实上游 v4 的写入语义、构造非零写入样本并比对总量与计价后，才能决定输入超集是否需要调整。此项保留在[任务清单](../02-tasks.md)，文档整理没有修改解析器。
+新增 Claude fixture 包含普通输入 1,000、缓存读 8,000、缓存写 1,000、输出 500：看板输入为 10,000，总量为 10,500，Haiku 4.5 的 5 分钟 Standard 场景为 $0.00555。有无上游 total、费用拆分及内存/SQLite/静态三路均有回归，见[本批验收](../validation/2026-10-01-claude-pricing/README.md)。这次证据来自安装包源码与合成 fixture，不是非零写入真库样本。
 
 ### 其他映射
 
@@ -101,6 +101,8 @@ inconsistent、计价退化为「最低费率估算」、缓存命中率显示�
 DSH 的用量按会话分散在**多个**日志文件里（不像 ZCode 只有一个数据库），
 因此 `UsageStore.usageFiles()` 会把每个日志文件各自纳入增量索引，
 按 `size + mtime` 判定是否需要重解析。日志是追加写入的，已完整写入的帧不会变化，整文件重解析是安全的。
+
+索引 v10→v11 将 DSH 文件指纹标为待重新解析；下一次同步会重建未变化日志中的 DSH 事件，其他来源索引保留。9→10 使用固定落点 10，避免升级时跳过这个步骤。原始日志不改写，也无需手动删除真实索引。
 
 ## 隐私口径
 

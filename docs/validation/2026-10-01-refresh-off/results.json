@@ -1,0 +1,6603 @@
+{
+  "date": "2026-10-01T06:59:02.743Z",
+  "phase": "audit",
+  "browser": "Microsoft Edge 154.0.4258.37",
+  "fixture": "Synthetic project logs and pricing metadata; no personal data",
+  "checks": [
+    {
+      "name": "online 1440px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1440px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1440px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1440px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1440px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1280px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1280px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1280px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1280px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1280px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1024px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1024px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1024px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 1024px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 1024px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 390px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 390px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 390px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "online 390px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "online 390px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pending check and changed usage show inline 3fps spinner without height growth; off ignores stale completion",
+      "passed": true,
+      "details": {
+        "duration": "1s",
+        "timing": "steps(3)",
+        "width": 13,
+        "height": 13,
+        "font": 13,
+        "gap": 6,
+        "text": ""
+      }
+    },
+    {
+      "name": "off switch alone conveys state; frozen range changes preserve empty status and height in eight layouts",
+      "passed": true
+    },
+    {
+      "name": "normal range merges product channels; Codex quota keeps raw channels",
+      "passed": true
+    },
+    {
+      "name": "Git stays first through descending, ascending and default UI sort",
+      "passed": true
+    },
+    {
+      "name": "timezone keyboard, persistence, dismissal and focus",
+      "passed": true
+    },
+    {
+      "name": "scan source entry replaces header import and main badge",
+      "passed": true
+    },
+    {
+      "name": "pricing and timeline use identical recessed material",
+      "passed": true
+    },
+    {
+      "name": "old running server contract shows observed models with a clear recency notice",
+      "passed": true
+    },
+    {
+      "name": "refresh switch adjacent text and error wraps inside inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1440px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1440px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1440px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1440px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1280px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1280px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1280px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 106,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 96,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1280px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1280px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1024px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1024px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1024px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 1024px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 1024px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 267.71875,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 257.71875,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 390px light zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 390px light en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px light en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 390px dark zh-CN frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark zh-CN both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline 390px dark en-US frames and inset",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US title cap box is centered in the connected header",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US fits viewport",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US range labels fit controls",
+      "passed": true
+    },
+    {
+      "name": "offline 390px dark en-US both dropdowns align and share option geometry",
+      "passed": true,
+      "details": [
+        {
+          "left": 0,
+          "right": 0,
+          "width": 126,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 116,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "width": 112,
+          "radius": 15,
+          "padding": 4,
+          "border": 1,
+          "items": [
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            },
+            {
+              "width": 102,
+              "radius": 10,
+              "weight": "700",
+              "size": "13px",
+              "overflow": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "offline calendar recalculation and disabled mutation controls",
+      "passed": true
+    },
+    {
+      "name": "no browser runtime errors or external requests",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 223
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 109,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 223,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 81,
+          "top": 128,
+          "right": 1407,
+          "bottom": 209,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1076.171875,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1093.171875,
+          "bottom": 161,
+          "left": 1076.171875
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1070.171875,
+          "bottom": 160.5,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 223
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 109,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 223,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 81,
+          "top": 128,
+          "right": 1407,
+          "bottom": 209,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1100.78125,
+          "y": 141,
+          "width": 22.34375,
+          "height": 20,
+          "top": 141,
+          "right": 1123.125,
+          "bottom": 161,
+          "left": 1100.78125
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 141.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 141.5,
+          "right": 1094.78125,
+          "bottom": 160.5,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 223
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 109,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 223,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 81,
+          "top": 128,
+          "right": 1407,
+          "bottom": 209,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1076.171875,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1093.171875,
+          "bottom": 161,
+          "left": 1076.171875
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1070.171875,
+          "bottom": 160.5,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 109,
+        "right": 638.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 109,
+        "right": 1424,
+        "bottom": 223
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 109,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 223,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 81,
+          "top": 128,
+          "right": 1407,
+          "bottom": 209,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1100.78125,
+          "y": 141,
+          "width": 22.34375,
+          "height": 20,
+          "top": 141,
+          "right": 1123.125,
+          "bottom": 161,
+          "left": 1100.78125
+        },
+        "heading": {
+          "x": 1018.171875,
+          "y": 141.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 141.5,
+          "right": 1094.78125,
+          "bottom": 160.5,
+          "left": 1018.171875
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 223
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 109,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 223,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 81,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 209,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 969.5,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 986.5,
+          "bottom": 161,
+          "left": 969.5
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 963.5,
+          "bottom": 160.5,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 223
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 109,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 223,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 81,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 209,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 994.109375,
+          "y": 141,
+          "width": 22.34375,
+          "height": 20,
+          "top": 141,
+          "right": 1016.453125,
+          "bottom": 161,
+          "left": 994.109375
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 141.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 141.5,
+          "right": 988.109375,
+          "bottom": 160.5,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 223
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 109,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 223,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 81,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 209,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 969.5,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 986.5,
+          "bottom": 161,
+          "left": 969.5
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 963.5,
+          "bottom": 160.5,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 109,
+        "right": 566.796875,
+        "bottom": 223
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 109,
+        "right": 1263.984375,
+        "bottom": 223
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 109,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 223,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 81,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 209,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 994.109375,
+          "y": 141,
+          "width": 22.34375,
+          "height": 20,
+          "top": 141,
+          "right": 1016.453125,
+          "bottom": 161,
+          "left": 994.109375
+        },
+        "heading": {
+          "x": 911.5,
+          "y": 141.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 141.5,
+          "right": 988.109375,
+          "bottom": 160.5,
+          "left": 911.5
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 461
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 81,
+          "top": 366,
+          "right": 991,
+          "bottom": 447,
+          "left": 33
+        },
+        "toggle": {
+          "x": 129.515625,
+          "y": 379,
+          "width": 17,
+          "height": 20,
+          "top": 379,
+          "right": 146.515625,
+          "bottom": 399,
+          "left": 129.515625
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 379.5,
+          "width": 52,
+          "height": 19,
+          "top": 379.5,
+          "right": 123.515625,
+          "bottom": 398.5,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 461
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 81,
+          "top": 366,
+          "right": 991,
+          "bottom": 447,
+          "left": 33
+        },
+        "toggle": {
+          "x": 154.125,
+          "y": 379,
+          "width": 22.34375,
+          "height": 20,
+          "top": 379,
+          "right": 176.46875,
+          "bottom": 399,
+          "left": 154.125
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 379.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 379.5,
+          "right": 148.125,
+          "bottom": 398.5,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 461
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 81,
+          "top": 366,
+          "right": 991,
+          "bottom": 447,
+          "left": 33
+        },
+        "toggle": {
+          "x": 129.515625,
+          "y": 379,
+          "width": 17,
+          "height": 20,
+          "top": 379,
+          "right": 146.515625,
+          "bottom": 399,
+          "left": 129.515625
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 379.5,
+          "width": 52,
+          "height": 19,
+          "top": 379.5,
+          "right": 123.515625,
+          "bottom": 398.5,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 109,
+        "right": 1008,
+        "bottom": 461
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 81,
+          "top": 366,
+          "right": 991,
+          "bottom": 447,
+          "left": 33
+        },
+        "toggle": {
+          "x": 154.125,
+          "y": 379,
+          "width": 22.34375,
+          "height": 20,
+          "top": 379,
+          "right": 176.46875,
+          "bottom": 399,
+          "left": 154.125
+        },
+        "heading": {
+          "x": 71.515625,
+          "y": 379.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 379.5,
+          "right": 148.125,
+          "bottom": 398.5,
+          "left": 71.515625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 522
+      },
+      "last": {
+        "x": 39,
+        "y": 470,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 489
+      },
+      "zone": {
+        "x": 239,
+        "y": 432,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 462
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 81,
+          "top": 424,
+          "right": 363,
+          "bottom": 505,
+          "left": 27
+        },
+        "toggle": {
+          "x": 123.515625,
+          "y": 437,
+          "width": 17,
+          "height": 20,
+          "top": 437,
+          "right": 140.515625,
+          "bottom": 457,
+          "left": 123.515625
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 437.5,
+          "width": 52,
+          "height": 19,
+          "top": 437.5,
+          "right": 117.515625,
+          "bottom": 456.5,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 239,
+          "y": 432,
+          "width": 112,
+          "height": 30,
+          "top": 432,
+          "right": 351,
+          "bottom": 462,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 522
+      },
+      "last": {
+        "x": 39,
+        "y": 470,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 489
+      },
+      "zone": {
+        "x": 239,
+        "y": 432,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 462
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 81,
+          "top": 424,
+          "right": 363,
+          "bottom": 505,
+          "left": 27
+        },
+        "toggle": {
+          "x": 148.125,
+          "y": 437,
+          "width": 22.34375,
+          "height": 20,
+          "top": 437,
+          "right": 170.46875,
+          "bottom": 457,
+          "left": 148.125
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 437.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 437.5,
+          "right": 142.125,
+          "bottom": 456.5,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 239,
+          "y": 432,
+          "width": 112,
+          "height": 30,
+          "top": 432,
+          "right": 351,
+          "bottom": 462,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 522
+      },
+      "last": {
+        "x": 39,
+        "y": 470,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 489
+      },
+      "zone": {
+        "x": 239,
+        "y": 432,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 462
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 81,
+          "top": 424,
+          "right": 363,
+          "bottom": 505,
+          "left": 27
+        },
+        "toggle": {
+          "x": 123.515625,
+          "y": 437,
+          "width": 17,
+          "height": 20,
+          "top": 437,
+          "right": 140.515625,
+          "bottom": 457,
+          "left": 123.515625
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 437.5,
+          "width": 52,
+          "height": 19,
+          "top": 437.5,
+          "right": 117.515625,
+          "bottom": 456.5,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 239,
+          "y": 432,
+          "width": 112,
+          "height": 30,
+          "top": 432,
+          "right": 351,
+          "bottom": 462,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "online",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 115,
+        "right": 380,
+        "bottom": 522
+      },
+      "last": {
+        "x": 39,
+        "y": 470,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 489
+      },
+      "zone": {
+        "x": 239,
+        "y": 432,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 462
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 81,
+          "top": 424,
+          "right": 363,
+          "bottom": 505,
+          "left": 27
+        },
+        "toggle": {
+          "x": 148.125,
+          "y": 437,
+          "width": 22.34375,
+          "height": 20,
+          "top": 437,
+          "right": 170.46875,
+          "bottom": 457,
+          "left": 148.125
+        },
+        "heading": {
+          "x": 65.515625,
+          "y": 437.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 437.5,
+          "right": 142.125,
+          "bottom": 456.5,
+          "left": 65.515625
+        },
+        "zone": {
+          "x": 239,
+          "y": 432,
+          "width": 112,
+          "height": 30,
+          "top": 432,
+          "right": 351,
+          "bottom": 462,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 128,
+        "right": 638.796875,
+        "bottom": 242
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 128,
+        "right": 1424,
+        "bottom": 242
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 128,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 242,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 100,
+          "top": 128,
+          "right": 1407,
+          "bottom": 228,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1159.65625,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1176.65625,
+          "bottom": 161,
+          "left": 1159.65625
+        },
+        "heading": {
+          "x": 1101.65625,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1153.65625,
+          "bottom": 160.5,
+          "left": 1101.65625
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 155,
+        "right": 638.796875,
+        "bottom": 269
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 155,
+        "right": 1424,
+        "bottom": 269
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 182,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 201
+      },
+      "zone": {
+        "x": 1283,
+        "y": 140,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 170
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 155,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 269,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 127,
+          "top": 128,
+          "right": 1407,
+          "bottom": 255,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1230.625,
+          "y": 145,
+          "width": 23.375,
+          "height": 20,
+          "top": 145,
+          "right": 1254,
+          "bottom": 165,
+          "left": 1230.625
+        },
+        "heading": {
+          "x": 1158.0625,
+          "y": 136,
+          "width": 66.5625,
+          "height": 38,
+          "top": 136,
+          "right": 1224.625,
+          "bottom": 174,
+          "left": 1158.0625
+        },
+        "zone": {
+          "x": 1283,
+          "y": 140,
+          "width": 112,
+          "height": 30,
+          "top": 140,
+          "right": 1395,
+          "bottom": 170,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 128,
+        "right": 638.796875,
+        "bottom": 242
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 128,
+        "right": 1424,
+        "bottom": 242
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 174,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1283,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 128,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 242,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 100,
+          "top": 128,
+          "right": 1407,
+          "bottom": 228,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1159.65625,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1176.65625,
+          "bottom": 161,
+          "left": 1159.65625
+        },
+        "heading": {
+          "x": 1101.65625,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1153.65625,
+          "bottom": 160.5,
+          "left": 1101.65625
+        },
+        "zone": {
+          "x": 1283,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1395,
+          "bottom": 166,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1263,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1401,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 622.796875,
+        "height": 155,
+        "right": 638.796875,
+        "bottom": 269
+      },
+      "refresh": {
+        "x": 962.65625,
+        "y": 114,
+        "width": 461.34375,
+        "height": 155,
+        "right": 1424,
+        "bottom": 269
+      },
+      "last": {
+        "x": 991.65625,
+        "y": 182,
+        "width": 403.34375,
+        "height": 19,
+        "right": 1395,
+        "bottom": 201
+      },
+      "zone": {
+        "x": 1283,
+        "y": 140,
+        "width": 112,
+        "height": 30,
+        "right": 1395,
+        "bottom": 170
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 650.796875,
+          "y": 114,
+          "width": 299.859375,
+          "height": 155,
+          "top": 114,
+          "right": 950.65625,
+          "bottom": 269,
+          "left": 650.796875
+        },
+        "well": {
+          "x": 979.65625,
+          "y": 128,
+          "width": 427.34375,
+          "height": 127,
+          "top": 128,
+          "right": 1407,
+          "bottom": 255,
+          "left": 979.65625
+        },
+        "toggle": {
+          "x": 1230.625,
+          "y": 145,
+          "width": 23.375,
+          "height": 20,
+          "top": 145,
+          "right": 1254,
+          "bottom": 165,
+          "left": 1230.625
+        },
+        "heading": {
+          "x": 1158.0625,
+          "y": 136,
+          "width": 66.5625,
+          "height": 38,
+          "top": 136,
+          "right": 1224.625,
+          "bottom": 174,
+          "left": 1158.0625
+        },
+        "zone": {
+          "x": 1283,
+          "y": 140,
+          "width": 112,
+          "height": 30,
+          "top": 140,
+          "right": 1395,
+          "bottom": 170,
+          "left": 1283
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 128,
+        "right": 566.796875,
+        "bottom": 242
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 128,
+        "right": 1263.984375,
+        "bottom": 242
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 128,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 242,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 100,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 228,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1052.984375,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1069.984375,
+          "bottom": 161,
+          "left": 1052.984375
+        },
+        "heading": {
+          "x": 994.984375,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1046.984375,
+          "bottom": 160.5,
+          "left": 994.984375
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 155,
+        "right": 566.796875,
+        "bottom": 269
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 155,
+        "right": 1263.984375,
+        "bottom": 269
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 182,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 201
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 140,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 170
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 155,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 269,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 127,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 255,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1102.859375,
+          "y": 145,
+          "width": 23.375,
+          "height": 20,
+          "top": 145,
+          "right": 1126.234375,
+          "bottom": 165,
+          "left": 1102.859375
+        },
+        "heading": {
+          "x": 1051.390625,
+          "y": 136,
+          "width": 45.46875,
+          "height": 38,
+          "top": 136,
+          "right": 1096.859375,
+          "bottom": 174,
+          "left": 1051.390625
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 140,
+          "width": 112,
+          "height": 30,
+          "top": 140,
+          "right": 1234.984375,
+          "bottom": 170,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 128,
+        "right": 566.796875,
+        "bottom": 242
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 128,
+        "right": 1263.984375,
+        "bottom": 242
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 174,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 193
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 136,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 166
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 128,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 242,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 100,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 228,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1052.984375,
+          "y": 141,
+          "width": 17,
+          "height": 20,
+          "top": 141,
+          "right": 1069.984375,
+          "bottom": 161,
+          "left": 1052.984375
+        },
+        "heading": {
+          "x": 994.984375,
+          "y": 141.5,
+          "width": 52,
+          "height": 19,
+          "top": 141.5,
+          "right": 1046.984375,
+          "bottom": 160.5,
+          "left": 994.984375
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 136,
+          "width": 112,
+          "height": 30,
+          "top": 136,
+          "right": 1234.984375,
+          "bottom": 166,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1280,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 1103,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 1241,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 550.796875,
+        "height": 155,
+        "right": 566.796875,
+        "bottom": 269
+      },
+      "refresh": {
+        "x": 855.984375,
+        "y": 114,
+        "width": 408,
+        "height": 155,
+        "right": 1263.984375,
+        "bottom": 269
+      },
+      "last": {
+        "x": 884.984375,
+        "y": 182,
+        "width": 350,
+        "height": 19,
+        "right": 1234.984375,
+        "bottom": 201
+      },
+      "zone": {
+        "x": 1122.984375,
+        "y": 140,
+        "width": 112,
+        "height": 30,
+        "right": 1234.984375,
+        "bottom": 170
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 578.796875,
+          "y": 114,
+          "width": 265.1875,
+          "height": 155,
+          "top": 114,
+          "right": 843.984375,
+          "bottom": 269,
+          "left": 578.796875
+        },
+        "well": {
+          "x": 872.984375,
+          "y": 128,
+          "width": 374,
+          "height": 127,
+          "top": 128,
+          "right": 1246.984375,
+          "bottom": 255,
+          "left": 872.984375
+        },
+        "toggle": {
+          "x": 1102.859375,
+          "y": 145,
+          "width": 23.375,
+          "height": 20,
+          "top": 145,
+          "right": 1126.234375,
+          "bottom": 165,
+          "left": 1102.859375
+        },
+        "heading": {
+          "x": 1051.390625,
+          "y": 136,
+          "width": 45.46875,
+          "height": 38,
+          "top": 136,
+          "right": 1096.859375,
+          "bottom": 174,
+          "left": 1051.390625
+        },
+        "zone": {
+          "x": 1122.984375,
+          "y": 140,
+          "width": 112,
+          "height": 30,
+          "top": 140,
+          "right": 1234.984375,
+          "bottom": 170,
+          "left": 1122.984375
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 480
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 100,
+          "top": 366,
+          "right": 991,
+          "bottom": 466,
+          "left": 33
+        },
+        "toggle": {
+          "x": 213,
+          "y": 379,
+          "width": 17,
+          "height": 20,
+          "top": 379,
+          "right": 230,
+          "bottom": 399,
+          "left": 213
+        },
+        "heading": {
+          "x": 155,
+          "y": 379.5,
+          "width": 52,
+          "height": 19,
+          "top": 379.5,
+          "right": 207,
+          "bottom": 398.5,
+          "left": 155
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 480
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 100,
+          "top": 366,
+          "right": 991,
+          "bottom": 466,
+          "left": 33
+        },
+        "toggle": {
+          "x": 294.015625,
+          "y": 379,
+          "width": 23.375,
+          "height": 20,
+          "top": 379,
+          "right": 317.390625,
+          "bottom": 399,
+          "left": 294.015625
+        },
+        "heading": {
+          "x": 211.40625,
+          "y": 379.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 379.5,
+          "right": 288.015625,
+          "bottom": 398.5,
+          "left": 211.40625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 480
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 100,
+          "top": 366,
+          "right": 991,
+          "bottom": 466,
+          "left": 33
+        },
+        "toggle": {
+          "x": 213,
+          "y": 379,
+          "width": 17,
+          "height": 20,
+          "top": 379,
+          "right": 230,
+          "bottom": 399,
+          "left": 213
+        },
+        "heading": {
+          "x": 155,
+          "y": 379.5,
+          "width": 52,
+          "height": 19,
+          "top": 379.5,
+          "right": 207,
+          "bottom": 398.5,
+          "left": 155
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 1024,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 39,
+        "y": 50.0625,
+        "width": 225.328125,
+        "height": 27.859375,
+        "right": 264.328125,
+        "bottom": 77.921875
+      },
+      "actions": {
+        "x": 847,
+        "y": 45,
+        "width": 138,
+        "height": 38,
+        "right": 985,
+        "bottom": 83
+      },
+      "range": {
+        "x": 16,
+        "y": 114,
+        "width": 992,
+        "height": 107,
+        "right": 1008,
+        "bottom": 221
+      },
+      "refresh": {
+        "x": 16,
+        "y": 352,
+        "width": 992,
+        "height": 128,
+        "right": 1008,
+        "bottom": 480
+      },
+      "last": {
+        "x": 45,
+        "y": 412,
+        "width": 934,
+        "height": 19,
+        "right": 979,
+        "bottom": 431
+      },
+      "zone": {
+        "x": 867,
+        "y": 374,
+        "width": 112,
+        "height": 30,
+        "right": 979,
+        "bottom": 404
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "38px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 16,
+          "y": 233,
+          "width": 240,
+          "height": 107,
+          "top": 233,
+          "right": 256,
+          "bottom": 340,
+          "left": 16
+        },
+        "well": {
+          "x": 33,
+          "y": 366,
+          "width": 958,
+          "height": 100,
+          "top": 366,
+          "right": 991,
+          "bottom": 466,
+          "left": 33
+        },
+        "toggle": {
+          "x": 294.015625,
+          "y": 379,
+          "width": 23.375,
+          "height": 20,
+          "top": 379,
+          "right": 317.390625,
+          "bottom": 399,
+          "left": 294.015625
+        },
+        "heading": {
+          "x": 211.40625,
+          "y": 379.5,
+          "width": 76.609375,
+          "height": 19,
+          "top": 379.5,
+          "right": 288.015625,
+          "bottom": 398.5,
+          "left": 211.40625
+        },
+        "zone": {
+          "x": 867,
+          "y": 374,
+          "width": 112,
+          "height": 30,
+          "top": 374,
+          "right": 979,
+          "bottom": 404,
+          "left": 867
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 568
+      },
+      "last": {
+        "x": 39,
+        "y": 478,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 497
+      },
+      "zone": {
+        "x": 239,
+        "y": 436,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 466
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 127,
+          "top": 424,
+          "right": 363,
+          "bottom": 551,
+          "left": 27
+        },
+        "toggle": {
+          "x": 193,
+          "y": 441,
+          "width": 17,
+          "height": 20,
+          "top": 441,
+          "right": 210,
+          "bottom": 461,
+          "left": 193
+        },
+        "heading": {
+          "x": 149,
+          "y": 432,
+          "width": 38,
+          "height": 38,
+          "top": 432,
+          "right": 187,
+          "bottom": 470,
+          "left": 149
+        },
+        "zone": {
+          "x": 239,
+          "y": 436,
+          "width": 112,
+          "height": 30,
+          "top": 436,
+          "right": 351,
+          "bottom": 466,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "light",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(207, 216, 225)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 568
+      },
+      "last": {
+        "x": 39,
+        "y": 478,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 497
+      },
+      "zone": {
+        "x": 239,
+        "y": 436,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 466
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(219, 226, 232)",
+        "titleSurface": "rgb(219, 226, 232)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(148, 163, 179, 0.54) -1px -1px 1px, rgba(255, 255, 255, 0.6) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(148, 163, 179, 0.54) 7px 9px 18px 0px, rgba(255, 255, 255, 0.6) -4px -5px 14px 0px, rgba(255, 255, 255, 0.6) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 127,
+          "top": 424,
+          "right": 363,
+          "bottom": 551,
+          "left": 27
+        },
+        "toggle": {
+          "x": 256.875,
+          "y": 441,
+          "width": 23.375,
+          "height": 20,
+          "top": 441,
+          "right": 280.25,
+          "bottom": 461,
+          "left": 256.875
+        },
+        "heading": {
+          "x": 205.40625,
+          "y": 432,
+          "width": 45.46875,
+          "height": 38,
+          "top": 432,
+          "right": 250.875,
+          "bottom": 470,
+          "left": 205.40625
+        },
+        "zone": {
+          "x": 239,
+          "y": 436,
+          "width": 112,
+          "height": 30,
+          "top": 436,
+          "right": 351,
+          "bottom": 466,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 568
+      },
+      "last": {
+        "x": 39,
+        "y": 478,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 497
+      },
+      "zone": {
+        "x": 239,
+        "y": 436,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 466
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 127,
+          "top": 424,
+          "right": 363,
+          "bottom": 551,
+          "left": 27
+        },
+        "toggle": {
+          "x": 193,
+          "y": 441,
+          "width": 17,
+          "height": 20,
+          "top": 441,
+          "right": 210,
+          "bottom": 461,
+          "left": 193
+        },
+        "heading": {
+          "x": 149,
+          "y": 432,
+          "width": 38,
+          "height": 38,
+          "top": 432,
+          "right": 187,
+          "bottom": 470,
+          "left": 149
+        },
+        "zone": {
+          "x": 239,
+          "y": 436,
+          "width": 112,
+          "height": 30,
+          "top": 436,
+          "right": 351,
+          "bottom": 466,
+          "left": 239
+        }
+      }
+    },
+    {
+      "page": "offline",
+      "theme": "dark",
+      "locale": "en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "background": "rgb(32, 37, 43)",
+      "title": {
+        "x": 21,
+        "y": 52.265625,
+        "width": 188.015625,
+        "height": 23.453125,
+        "right": 209.015625,
+        "bottom": 75.71875
+      },
+      "actions": {
+        "x": 241,
+        "y": 45,
+        "width": 128,
+        "height": 38,
+        "right": 369,
+        "bottom": 83
+      },
+      "range": {
+        "x": 10,
+        "y": 114,
+        "width": 370,
+        "height": 156,
+        "right": 380,
+        "bottom": 270
+      },
+      "refresh": {
+        "x": 10,
+        "y": 407,
+        "width": 370,
+        "height": 161,
+        "right": 380,
+        "bottom": 568
+      },
+      "last": {
+        "x": 39,
+        "y": 478,
+        "width": 312,
+        "height": 19,
+        "right": 351,
+        "bottom": 497
+      },
+      "zone": {
+        "x": 239,
+        "y": 436,
+        "width": 112,
+        "height": 30,
+        "right": 351,
+        "bottom": 466
+      },
+      "font": "Inter, \"Noto Sans SC\", \"Microsoft YaHei UI\", \"PingFang SC\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "material": {
+        "titleColor": "rgb(41, 47, 53)",
+        "titleSurface": "rgb(41, 47, 53)",
+        "titleSize": "32px",
+        "titleWeight": "850",
+        "titleShadow": "rgba(17, 22, 28, 0.72) -1px -1px 1px, rgba(109, 123, 135, 0.4) 1px 1px 1px",
+        "titleBoxShadow": "none",
+        "frameShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "actionShadow": "none",
+        "wellShadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "rangeShadow": "rgba(17, 22, 28, 0.72) 7px 9px 18px 0px, rgba(71, 81, 90, 0.396) -4px -5px 14px 0px, rgba(109, 123, 135, 0.4) 1px 1px 1px 0px inset",
+        "date": {
+          "x": 10,
+          "y": 282,
+          "width": 240,
+          "height": 113,
+          "top": 282,
+          "right": 250,
+          "bottom": 395,
+          "left": 10
+        },
+        "well": {
+          "x": 27,
+          "y": 424,
+          "width": 336,
+          "height": 127,
+          "top": 424,
+          "right": 363,
+          "bottom": 551,
+          "left": 27
+        },
+        "toggle": {
+          "x": 256.875,
+          "y": 441,
+          "width": 23.375,
+          "height": 20,
+          "top": 441,
+          "right": 280.25,
+          "bottom": 461,
+          "left": 256.875
+        },
+        "heading": {
+          "x": 205.40625,
+          "y": 432,
+          "width": 45.46875,
+          "height": 38,
+          "top": 432,
+          "right": 250.875,
+          "bottom": 470,
+          "left": 205.40625
+        },
+        "zone": {
+          "x": 239,
+          "y": 436,
+          "width": 112,
+          "height": 30,
+          "top": 436,
+          "right": 351,
+          "bottom": 466,
+          "left": 239
+        }
+      }
+    }
+  ],
+  "backgrounds": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    {
+      "label": "online",
+      "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    }
+  ],
+  "externalRequests": [],
+  "fontRequests": [],
+  "fonts": [],
+  "passed": true
+}

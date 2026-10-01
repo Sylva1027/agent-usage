@@ -286,7 +286,7 @@ test("pricing status gives total coverage and marks each price source", () => {
     pricingIssueText({ source: "Xiaomi MiMo", code: "timeout", timeoutMs: 30_000 }, false),
     "小米 MiMo 请求超时（30 秒）",
   );
-  assert.match(discoveryReasonText("catalog-capacity", false), /100 个模型上限/);
+  assert.match(discoveryReasonText("catalog-capacity", false), /模型目录容量上限/);
   assert.match(discoveryReasonText("context-policy-unknown", true), /context pricing policy is unknown/);
   const update = pricingUpdateSummaryText({
     attemptedModelCount: 49,

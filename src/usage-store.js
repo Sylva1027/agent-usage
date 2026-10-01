@@ -36,7 +36,7 @@ import {
   quotaRecordValues,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 10;
+export const STORE_SCHEMA_VERSION = 11;
 
 function localDateKey(date) {
   const year = date.getFullYear();
@@ -403,8 +403,14 @@ export class UsageStore {
     if (version === 9) {
       // v10 新增 OpenCode 数据源。同 v9，表结构没变，只抬版本号；
       // 旧索引里不存在 kind='opencode' 的行，升级后第一次 sync 会直接纳入它们。
-      migrate("SELECT 1;", STORE_SCHEMA_VERSION);
-      version = STORE_SCHEMA_VERSION;
+      migrate("SELECT 1;", 10);
+      version = 10;
+    }
+    if (version === 10) {
+      // DSH v4 input is uncached input. Re-read unchanged source files so
+      // nonzero cache writes become part of total input in historical events.
+      migrate("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE kind = 'dsh';", 11);
+      version = 11;
     }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();

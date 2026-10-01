@@ -217,11 +217,11 @@ export function dshUsageFromRaw(raw) {
   const cacheReadTokens = nonNegativeInt(raw?.cacheReadTokens);
   const cacheWriteTokens = nonNegativeInt(raw?.cacheWriteTokens);
   const outputTokens = nonNegativeInt(raw?.outputTokens);
-  const input = inputTokens + cacheReadTokens;
+  const input = inputTokens + cacheReadTokens + cacheWriteTokens;
   const total = numeric(raw?.totalTokens);
   const usage = {
     ...emptyUsage(),
-    total: total === null ? input + cacheWriteTokens + outputTokens : Math.floor(total),
+    total: total === null ? input + outputTokens : Math.floor(total),
     input,
     cached: cacheReadTokens,
     output: outputTokens,

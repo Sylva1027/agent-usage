@@ -1,0 +1,293 @@
+{
+  "date": "2026-10-01T08:20:53.949Z",
+  "fixture": "Synthetic DSH v4 logs; pinned Claude ID, nonzero writes, unknown version; isolated home and database",
+  "browser": "Microsoft Edge 154.0.4258.37",
+  "checks": [
+    {
+      "name": "live-1440-light-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-1440-light-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-1440-light-zh-CN: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-1440-light-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-1440-light-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-1440-light-en-US: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-zh-CN: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-1440-dark-en-US: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-zh-CN: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-390-light-en-US: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-zh-CN: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "live-390-dark-en-US: editable USD rate and TTL scenario",
+      "passed": true
+    },
+    {
+      "name": "unknown Claude version remains missing and is not borrowed or auto-created",
+      "passed": true
+    },
+    {
+      "name": "price editor saves manual input and reprices existing history",
+      "passed": true,
+      "details": {
+        "beforeUsd": 0.005549999999999999,
+        "afterUsd": 0.00655,
+        "tokens": 10505
+      }
+    },
+    {
+      "name": "simulated refresh failure retains manual price and Claude metadata",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-light-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-light-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-light-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-light-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-dark-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-dark-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-dark-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-1440-dark-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-390-light-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-390-light-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-390-light-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-390-light-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-390-dark-zh-CN: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-390-dark-zh-CN: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline-390-dark-en-US: fees, TTL and Anthropic source visible",
+      "passed": true
+    },
+    {
+      "name": "offline-390-dark-en-US: viewport fits",
+      "passed": true
+    },
+    {
+      "name": "offline snapshot disables saving and network refresh",
+      "passed": true
+    },
+    {
+      "name": "no script errors or external page requests",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "name": "live-1440-light-zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "live-1440-light-en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "live-1440-dark-zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "live-1440-dark-en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "live-390-light-zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "live-390-light-en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "live-390-dark-zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "live-390-dark-en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "offline-1440-light-zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "offline-1440-light-en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "offline-1440-dark-zh-CN",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "offline-1440-dark-en-US",
+      "width": 1440,
+      "documentWidth": 1440,
+      "bodyWidth": 1440
+    },
+    {
+      "name": "offline-390-light-zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "offline-390-light-en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "offline-390-dark-zh-CN",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    },
+    {
+      "name": "offline-390-dark-en-US",
+      "width": 390,
+      "documentWidth": 390,
+      "bodyWidth": 390
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "externalRequests": []
+}

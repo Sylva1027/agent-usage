@@ -32,11 +32,12 @@ import {
   mergePricingCatalog,
   setPricingCatalog,
   validatePricingCatalog,
+  MAX_PRICING_MODELS,
 } from "./pricing.js";
 import { resolvePricingModel } from "../public/pricing-models.js";
 
 const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
-export const MAX_PRICING_MODELS = 100;
+export { MAX_PRICING_MODELS };
 const PRICE_CONFLICT_TOLERANCE = 1e-7;
 
 let automatic = {};
@@ -334,6 +335,7 @@ export function getAutomaticPricingStatus() {
     partialAutomaticModelCount: autoCoverage.partialAutomaticModels.length,
     partialAutomaticModels: autoCoverage.partialAutomaticModels,
     totalModelCount,
+    maxModelCount: MAX_PRICING_MODELS,
     unmatchedModelCount: Math.max(0, totalModelCount - automaticModels.length),
     automaticModels,
     priceSourceCoverage: pricingSourceCoverage(catalog.models, knownProviders),

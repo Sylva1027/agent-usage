@@ -24,7 +24,12 @@ import {
   stepFunPricePatches,
   USD_CNY_RATE_URL,
 } from "../src/pricing-auto.js";
-import { getDefaultPricingCatalog, getPricingCatalog, resetPricingCatalog } from "../src/pricing.js";
+import {
+  getDefaultPricingCatalog,
+  getPricingCatalog,
+  resetPricingCatalog,
+  MAX_PRICING_MODELS,
+} from "../src/pricing.js";
 import {
   getAutomaticPricingStatus,
   automaticPricingFile,
@@ -191,12 +196,13 @@ test("automatic prices require exact provider/model matches and compatible long 
 test("official CNY source adapters cover providers with lossless catalog rates", () => {
   const catalog = getDefaultPricingCatalog();
   const coverage = pricingSourceCoverage(catalog.models);
-  assert.equal(coverage.totalModelCount, 86);
-  assert.equal(coverage.supportedModelCount, 82);
-  assert.equal(coverage.supportedUsdModelCount, 49);
+  assert.equal(coverage.totalModelCount, 103);
+  assert.equal(coverage.supportedModelCount, 99);
+  assert.equal(coverage.supportedUsdModelCount, 66);
   assert.equal(coverage.supportedCnyModelCount, 33);
   assert.equal(coverage.unsupportedCurrencyModelCount, 4);
   assert.deepEqual(coverage.providers, {
+    anthropic: 17,
     openai: 7,
     xai: 8,
     alibaba: 9,
@@ -709,7 +715,8 @@ test("discovery can be disabled and reports capacity per model without dropping 
 
     const catalog = getPricingCatalog();
     const sample = structuredClone(catalog.models["gpt-6-sol"]);
-    for (let index = 0; index < 13; index += 1) {
+    const remainingSlots = MAX_PRICING_MODELS - Object.keys(catalog.models).length - 1;
+    for (let index = 0; index < remainingSlots; index += 1) {
       catalog.models[`manual-test-${String(index).padStart(2, "0")}`] = sample;
     }
     await savePricingFile({ homeDir }, catalog);
@@ -766,7 +773,7 @@ test("automatic updates are cached and leave edited rates and exchange rate inta
     assert.equal(first.automaticModelCount, 34);
     assert.equal(first.totalModelCount, Object.keys(getDefaultPricingCatalog().models).length);
     assert.equal(first.unmatchedModelCount, first.totalModelCount - 34);
-    assert.equal(first.priceUpdateSummary.attemptedModelCount, 82);
+    assert.equal(first.priceUpdateSummary.attemptedModelCount, 99);
     assert.equal(first.priceUpdateSummary.verifiedModelCount, 34);
     assert.equal(first.priceUpdateSummary.unsupportedCurrencyModelCount, 4);
     assert.equal(first.priceUpdateSummary.fetchedSourceCount, 6);
