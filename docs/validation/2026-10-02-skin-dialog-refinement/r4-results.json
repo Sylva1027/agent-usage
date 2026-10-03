@@ -1,0 +1,427 @@
+{
+  "checks": 21,
+  "states": [
+    {
+      "label": "light: default",
+      "theme": "light",
+      "percent": 50,
+      "fillVariable": "50%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    },
+    {
+      "label": "light: keyboard Home",
+      "theme": "light",
+      "percent": 0,
+      "fillVariable": "0%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          198,
+          211,
+          218
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    },
+    {
+      "label": "light: keyboard step",
+      "theme": "light",
+      "percent": 1,
+      "fillVariable": "1%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          197,
+          209,
+          217
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    },
+    {
+      "label": "light: keyboard End",
+      "theme": "light",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          13,
+          129,
+          147
+        ]
+      }
+    },
+    {
+      "label": "light: palette accent",
+      "theme": "light",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#ff8800",
+      "pixels": {
+        "width": 160,
+        "left": [
+          245,
+          139,
+          16
+        ],
+        "right": [
+          245,
+          139,
+          16
+        ]
+      }
+    },
+    {
+      "label": "light: fallback restored",
+      "theme": "light",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          13,
+          129,
+          147
+        ]
+      }
+    },
+    {
+      "label": "light: programmatic",
+      "theme": "light",
+      "percent": 80,
+      "fillVariable": "80%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          15,
+          130,
+          148
+        ]
+      }
+    },
+    {
+      "label": "light: reload restore",
+      "theme": "light",
+      "percent": 80,
+      "fillVariable": "80%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          15,
+          130,
+          148
+        ]
+      }
+    },
+    {
+      "label": "dark: default",
+      "theme": "dark",
+      "percent": 50,
+      "fillVariable": "50%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          97,
+          194,
+          202
+        ],
+        "right": [
+          33,
+          41,
+          46
+        ]
+      }
+    },
+    {
+      "label": "dark: keyboard Home",
+      "theme": "dark",
+      "percent": 0,
+      "fillVariable": "0%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          32,
+          40,
+          45
+        ],
+        "right": [
+          33,
+          41,
+          46
+        ]
+      }
+    },
+    {
+      "label": "dark: keyboard step",
+      "theme": "dark",
+      "percent": 1,
+      "fillVariable": "1%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          32,
+          40,
+          45
+        ],
+        "right": [
+          33,
+          41,
+          46
+        ]
+      }
+    },
+    {
+      "label": "dark: keyboard End",
+      "theme": "dark",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          97,
+          194,
+          202
+        ],
+        "right": [
+          97,
+          194,
+          202
+        ]
+      }
+    },
+    {
+      "label": "dark: palette accent",
+      "theme": "dark",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#ff8800",
+      "pixels": {
+        "width": 160,
+        "left": [
+          226,
+          122,
+          3
+        ],
+        "right": [
+          226,
+          122,
+          3
+        ]
+      }
+    },
+    {
+      "label": "dark: fallback restored",
+      "theme": "dark",
+      "percent": 100,
+      "fillVariable": "100%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          97,
+          194,
+          202
+        ],
+        "right": [
+          97,
+          194,
+          202
+        ]
+      }
+    },
+    {
+      "label": "dark: programmatic",
+      "theme": "dark",
+      "percent": 80,
+      "fillVariable": "80%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          97,
+          194,
+          202
+        ],
+        "right": [
+          97,
+          193,
+          201
+        ]
+      }
+    },
+    {
+      "label": "dark: reload restore",
+      "theme": "dark",
+      "percent": 80,
+      "fillVariable": "80%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          97,
+          194,
+          202
+        ],
+        "right": [
+          97,
+          193,
+          201
+        ]
+      }
+    },
+    {
+      "label": "light: restored 35%",
+      "theme": "light",
+      "percent": 35,
+      "fillVariable": "35%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    },
+    {
+      "label": "dark: restored 0%",
+      "theme": "dark",
+      "percent": 0,
+      "fillVariable": "0%",
+      "computedAccent": "#6cdae2",
+      "pixels": {
+        "width": 160,
+        "left": [
+          32,
+          40,
+          45
+        ],
+        "right": [
+          33,
+          41,
+          46
+        ]
+      }
+    },
+    {
+      "label": "dark: restored character skin 50%",
+      "theme": "dark",
+      "percent": 50,
+      "fillVariable": "50%",
+      "computedAccent": "#738dce",
+      "pixels": {
+        "width": 160,
+        "left": [
+          103,
+          126,
+          185
+        ],
+        "right": [
+          77,
+          71,
+          130
+        ]
+      }
+    },
+    {
+      "label": "offline: default",
+      "theme": "light",
+      "percent": 50,
+      "fillVariable": "50%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    },
+    {
+      "label": "offline: keyboard",
+      "theme": "light",
+      "percent": 48,
+      "fillVariable": "48%",
+      "computedAccent": "#007d91",
+      "pixels": {
+        "width": 160,
+        "left": [
+          13,
+          129,
+          147
+        ],
+        "right": [
+          200,
+          212,
+          220
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "externalOfflineRequests": []
+}

@@ -1,6 +1,6 @@
 {
   "name": "codex-usage",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -15,6 +15,9 @@
     "format:check": "biome format .",
     "format": "biome format --write .",
     "export": "node src/static-export.js",
+    "skins:prepare": "node scripts/prepare-skin-assets.mjs prepare",
+    "skins:check": "node scripts/prepare-skin-assets.mjs check",
+    "skins:palette": "node scripts/check-skin-palettes.mjs",
     "summary": "node src/cli.js summary",
     "serve": "node src/cli.js run"
   },

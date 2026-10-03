@@ -43,6 +43,8 @@ const MIME_TYPES = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".svg", "image/svg+xml; charset=utf-8"],
+  // Character skin display copies are committed WebP (implementation plan 3.4).
+  [".webp", "image/webp"],
 ]);
 
 function sendJson(response, statusCode, body) {

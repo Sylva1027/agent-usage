@@ -1,0 +1,27 @@
+{
+  "checks": 518,
+  "errors": [],
+  "accents": {
+    "chatgpt.light": "#607ec7",
+    "claude.light": "#d26e46",
+    "glm.light": "#547fe4",
+    "gemini.light": "#dc97f8",
+    "deepseek.light": "#88a4dd",
+    "kimi.light": "#636080",
+    "qwen.light": "#877ad6",
+    "grok.light": "#dbc84d",
+    "muse.light": "#4687ee",
+    "mimo.light": "#ff8d3f",
+    "chatgpt.dark": "#738dce",
+    "claude.dark": "#d77f5c",
+    "glm.dark": "#698ee7",
+    "gemini.dark": "#e0a3f9",
+    "deepseek.dark": "#96afe1",
+    "kimi.dark": "#76738f",
+    "qwen.dark": "#958adb",
+    "grok.dark": "#f8e572",
+    "muse.dark": "#5c95f0",
+    "mimo.dark": "#ff9b56"
+  },
+  "externalOfflineRequests": []
+}

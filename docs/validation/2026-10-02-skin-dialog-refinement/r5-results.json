@@ -1,0 +1,454 @@
+{
+  "checks": 9,
+  "states": [
+    {
+      "label": "light: 1440 gallery",
+      "theme": "light",
+      "material": {
+        "background": "rgb(206, 216, 225)",
+        "shadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ],
+        "footSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ]
+      }
+    },
+    {
+      "label": "light: 1280 gallery",
+      "theme": "light",
+      "material": {
+        "background": "rgb(206, 216, 225)",
+        "shadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ],
+        "footSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ]
+      }
+    },
+    {
+      "label": "light: 1024 gallery",
+      "theme": "light",
+      "material": {
+        "background": "rgb(206, 216, 225)",
+        "shadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ],
+        "footSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ]
+      }
+    },
+    {
+      "label": "light: 390 gallery",
+      "theme": "light",
+      "material": {
+        "background": "rgb(206, 216, 225)",
+        "shadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ],
+        "footSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ]
+      }
+    },
+    {
+      "label": "dark: 1440 gallery",
+      "theme": "dark",
+      "material": {
+        "background": "rgb(35, 43, 50)",
+        "shadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ],
+        "footSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ]
+      }
+    },
+    {
+      "label": "dark: 1280 gallery",
+      "theme": "dark",
+      "material": {
+        "background": "rgb(35, 43, 50)",
+        "shadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ],
+        "footSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ]
+      }
+    },
+    {
+      "label": "dark: 1024 gallery",
+      "theme": "dark",
+      "material": {
+        "background": "rgb(35, 43, 50)",
+        "shadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ],
+        "footSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ]
+      }
+    },
+    {
+      "label": "dark: 390 gallery",
+      "theme": "dark",
+      "material": {
+        "background": "rgb(35, 43, 50)",
+        "shadow": "rgba(17, 22, 28, 0.72) 3px 4px 8px 0px inset, rgba(109, 123, 135, 0.4) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ],
+        "footSamples": [
+          [
+            35,
+            43,
+            50
+          ],
+          [
+            35,
+            43,
+            50
+          ]
+        ]
+      }
+    },
+    {
+      "label": "offline: gallery",
+      "theme": "light",
+      "material": {
+        "background": "rgb(206, 216, 225)",
+        "shadow": "rgba(148, 163, 179, 0.54) 3px 4px 8px 0px inset, rgba(255, 255, 255, 0.6) -1px -1px 2px 0px inset",
+        "radius": "16px"
+      },
+      "rowCounts": [
+        5,
+        5
+      ],
+      "pixels": {
+        "gapSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ],
+        "footSamples": [
+          [
+            206,
+            216,
+            225
+          ],
+          [
+            206,
+            216,
+            225
+          ]
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "externalOfflineRequests": []
+}

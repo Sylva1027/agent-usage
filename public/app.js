@@ -35,6 +35,7 @@ import {
   selectDateRange,
 } from "./calendar.js";
 import { summarizePeriodComparison } from "./period-comparison.js";
+import { createSkinPicker, createSkinRuntime, installSkinTestHook, SKINS } from "./skin-ui.js";
 
 export { datePickerMonthModel, renderDatePickerHtml };
 
@@ -149,6 +150,7 @@ function setTheme(theme, { persist = true } = {}) {
     }
   }
   updateThemeButtons();
+  state.skinRuntime?.handleThemeChange();
   render();
 }
 
@@ -4318,6 +4320,215 @@ function toggleQuotaPreset() {
   refreshViewForFilters();
 }
 
+// Native surface lighting: one actual raised surface at a time. Keeping this
+// delegated also covers comparison cards and calendar controls rebuilt by render().
+function setupFrameSpotlight(root) {
+  if (!root || typeof window.matchMedia !== "function") return;
+  const surfaces =
+    ".topbar,.toolbar > .control-group,.metric,.panel,.comparison-item,.recent-segment,.recent-range-menu,.date-picker-popover,button";
+  const recesses =
+    ".metric > strong,.comparison-item:not(.comparison-unavailable) > strong,.bar-track,.timeline-chart-well,.comparison-table-frame,.home-list,.cost-estimate-note,.auto-refresh-well,#presetButtons,.segmented-well,.recent-combobox,.date-range-button,input,select,textarea,button:disabled,.date-picker-day:is(.selected,.in-range,.range-start,.range-end)";
+  const capability = window.matchMedia("(hover: hover) and (pointer: fine)");
+  let point = null;
+  let active = null;
+  let frame = 0;
+  let maskDirty = true;
+  let lastBounds = "";
+  let lastStyle = "";
+  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(invalidate) : null;
+  let observedNodes = new Set([root]);
+
+  function observeSizes(nodes) {
+    const next = new Set([root, ...nodes]);
+    for (const node of observedNodes) if (!next.has(node)) resizeObserver?.unobserve(node);
+    for (const node of next) if (!observedNodes.has(node)) resizeObserver?.observe(node);
+    observedNodes = next;
+  }
+
+  function raised(node, css = getComputedStyle(node)) {
+    // A raised ceramic rim can itself contain an inset shadow. Only surfaces
+    // with an outer material shadow qualify; transparent rail items do not.
+    return (
+      !node.matches(recesses) &&
+      css.boxShadow !== "none" &&
+      css.boxShadow.split(/,(?![^(]*\))/).some((shadow) => !/\binset\b/.test(shadow))
+    );
+  }
+
+  function inset(css) {
+    return css.boxShadow !== "none" && css.boxShadow.split(/,(?![^(]*\))/).every((shadow) => /\binset\b/.test(shadow));
+  }
+
+  function surfaceAt(node) {
+    if (!node || !root.contains(node)) return null;
+    for (let current = node; current && current !== root; current = current.parentElement) {
+      if (current.matches(recesses)) return null;
+      if (current.matches(surfaces)) {
+        const css = getComputedStyle(current);
+        if (inset(css)) return null;
+        if (raised(current, css)) return current;
+      }
+    }
+    return null;
+  }
+
+  function clear() {
+    if (!active) return;
+    active.removeAttribute("data-spotlight-active");
+    active.removeAttribute("data-spotlight-static");
+    for (const property of ["--spotlight-x", "--spotlight-y", "--spotlight-radius", "--spotlight-mask"]) {
+      active.style.removeProperty(property);
+    }
+    active = null;
+    lastBounds = "";
+    lastStyle = "";
+    observeSizes([]);
+  }
+
+  function reset() {
+    point = null;
+    cancelAnimationFrame(frame);
+    frame = 0;
+    clear();
+  }
+
+  function schedule() {
+    if (point && !frame && capability.matches && !document.hidden) frame = requestAnimationFrame(paint);
+  }
+
+  function invalidate() {
+    maskDirty = true;
+    schedule();
+  }
+
+  function maskFor(host, bounds, css) {
+    const left = bounds.left + Number.parseFloat(css.borderLeftWidth);
+    const top = bounds.top + Number.parseFloat(css.borderTopWidth);
+    const width = bounds.width - Number.parseFloat(css.borderLeftWidth) - Number.parseFloat(css.borderRightWidth);
+    const height = bounds.height - Number.parseFloat(css.borderTopWidth) - Number.parseFloat(css.borderBottomWidth);
+    const holes = [];
+    const clips = [];
+    const observed = [];
+    for (const node of host.querySelectorAll(`${recesses},${surfaces}`)) {
+      // Remove whole wells, plus child raised surfaces, from the parent's light.
+      // A raised button inside a well can still light its own surface when hit.
+      if (observed.some((ancestor) => ancestor.contains(node))) continue;
+      const childCss = getComputedStyle(node);
+      if (!node.matches(recesses) && !inset(childCss) && !raised(node, childCss)) continue;
+      const box = node.getBoundingClientRect();
+      if (!box.width || !box.height || childCss.visibility === "hidden") continue;
+      const visible = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      // Offscreen rows inside a scroller must not cut ghost holes in the panel
+      // heading. Preserve the rounded shape, then clip it to visible ancestors.
+      for (let parent = node.parentElement; parent && parent !== host; parent = parent.parentElement) {
+        const parentCss = getComputedStyle(parent);
+        if (parentCss.overflowX === "visible" && parentCss.overflowY === "visible") continue;
+        const clip = parent.getBoundingClientRect();
+        if (parentCss.overflowX !== "visible") {
+          visible.left = Math.max(visible.left, clip.left + Number.parseFloat(parentCss.borderLeftWidth));
+          visible.right = Math.min(visible.right, clip.right - Number.parseFloat(parentCss.borderRightWidth));
+        }
+        if (parentCss.overflowY !== "visible") {
+          visible.top = Math.max(visible.top, clip.top + Number.parseFloat(parentCss.borderTopWidth));
+          visible.bottom = Math.min(visible.bottom, clip.bottom - Number.parseFloat(parentCss.borderBottomWidth));
+        }
+      }
+      if (visible.right <= visible.left || visible.bottom <= visible.top) continue;
+      const radius = Math.min(Number.parseFloat(childCss.borderTopLeftRadius) || 0, box.width / 2, box.height / 2);
+      const id = `visible-${holes.length}`;
+      clips.push(
+        `<clipPath id="${id}"><rect x="${visible.left - left}" y="${visible.top - top}" width="${visible.right - visible.left}" height="${visible.bottom - visible.top}"/></clipPath>`,
+      );
+      holes.push(
+        `<rect x="${box.left - left}" y="${box.top - top}" width="${box.width}" height="${box.height}" rx="${radius}" fill="black" clip-path="url(#${id})"/>`,
+      );
+      observed.push(node);
+    }
+    // SVG alpha masking unions overlapping cutouts. It also protects transparent
+    // wells; their background opacity and existing inner shadows stay untouched.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${clips.join("")}</defs><mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="white"/>${holes.join("")}</mask><rect width="${width}" height="${height}" fill="white" mask="url(#cut)"/></svg>`;
+    return { image: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`, observed };
+  }
+
+  function paint() {
+    frame = 0;
+    if (!point || !capability.matches || document.hidden) return reset();
+    // Re-hit-test after scrolling or template replacement, even without a new
+    // pointer event. No stale event target or enter-only coordinate cache.
+    const host = surfaceAt(document.elementFromPoint(point.x, point.y));
+    if (!host?.isConnected) return clear();
+    const css = getComputedStyle(host);
+    const bounds = host.getBoundingClientRect();
+    if (!bounds.width || !bounds.height || css.visibility === "hidden") return clear();
+    const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+    const rebuild = host !== active || maskDirty || key !== lastBounds;
+    const mask = rebuild ? maskFor(host, bounds, css) : null;
+    const x = point.x - bounds.left - Number.parseFloat(css.borderLeftWidth);
+    const y = point.y - bounds.top - Number.parseFloat(css.borderTopWidth);
+    if (host !== active) {
+      clear();
+      active = host;
+      if (css.position === "static") active.setAttribute("data-spotlight-static", "");
+      active.setAttribute("data-spotlight-active", "");
+    }
+    active.style.setProperty("--spotlight-x", `${x}px`);
+    active.style.setProperty("--spotlight-y", `${y}px`);
+    active.style.setProperty("--spotlight-radius", `${Math.min(320, Math.max(80, bounds.width * 0.65))}px`);
+    if (mask) {
+      active.style.setProperty("--spotlight-mask", mask.image);
+      observeSizes([active, ...mask.observed]);
+    }
+    lastStyle = active.getAttribute("style");
+    lastBounds = key;
+    maskDirty = false;
+  }
+
+  function move(event) {
+    if (!capability.matches || event.pointerType === "touch") return reset();
+    point = { x: event.clientX, y: event.clientY };
+    schedule();
+  }
+
+  root.addEventListener("pointermove", move, { passive: true });
+  root.addEventListener("pointerdown", move, { passive: true });
+  root.addEventListener("pointerup", move, { passive: true });
+  root.addEventListener("pointerleave", reset);
+  root.addEventListener("pointercancel", reset);
+  capability.addEventListener("change", reset);
+  window.addEventListener("blur", reset);
+  window.addEventListener("resize", invalidate, { passive: true });
+  document.addEventListener("scroll", invalidate, { capture: true, passive: true });
+  document.addEventListener("visibilitychange", reset);
+  resizeObserver?.observe(root);
+  const mutations = new MutationObserver((records) => {
+    // Coordinate writes are local CSS variables; do not feed our own writes
+    // back into the observer and create an endless animation frame loop.
+    if (
+      records.every(
+        (record) =>
+          record.type === "attributes" &&
+          record.attributeName === "style" &&
+          record.target === active &&
+          active.getAttribute("style") === lastStyle,
+      )
+    )
+      return;
+    if (active && !active.isConnected) clear();
+    invalidate();
+  });
+  mutations.observe(root, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden", "disabled", "aria-pressed", "aria-selected", "aria-expanded"],
+  });
+  // Dialogs sit outside .shell. Opening one must also clear a main-page light
+  // under its backdrop without waiting for the user to move the pointer.
+  for (const backdrop of document.querySelectorAll(".dialog-backdrop")) {
+    mutations.observe(backdrop, { attributes: true, attributeFilter: ["hidden"] });
+  }
+}
+
 function bootDashboard() {
   try {
     state.calendarZone = window.localStorage.getItem("codexUsageCalendarZoneV2") === "utc" ? "utc" : "local";
@@ -4327,7 +4538,36 @@ function bootDashboard() {
   updateCalendarZoneSelect();
   updateDateRangeControl();
   setupUsageTooltip();
+  setupFrameSpotlight($(".shell"));
   updateLanguageButton();
+
+  // Character skins: adopt the state the pre-paint bootstrap already restored,
+  // then re-apply through the DOM path so both entry points agree exactly.
+  // Programmatic preference changes (tests, future callers) must reach the
+  // picker's slider sync too, not just the decoration layer (refinement R4).
+  state.skinRuntime = createSkinRuntime({
+    registry: SKINS,
+    onChange: (preference, meta) => {
+      state.skinPicker?.syncOpacityControl();
+      // Canvas charts read CSS colours at draw time, so a palette change (the
+      // skin changed) must be followed by one re-render. Opacity and character
+      // visibility recolour nothing, and re-rendering per slider tick would be
+      // wasteful.
+      if (!meta || meta.previousSkinId !== preference.skinId) render();
+    },
+  });
+  state.skinRuntime.restore();
+  state.skinRuntime.apply();
+  state.skinPicker = createSkinPicker({
+    runtime: state.skinRuntime,
+    translate: (key) => localizeText(key, getLocale()),
+    onOpen: () => $("#skinToggle").setAttribute("aria-expanded", "true"),
+    onClose: () => $("#skinToggle").setAttribute("aria-expanded", "false"),
+  });
+  state.skinPicker.bind();
+  installSkinTestHook(state.skinRuntime, state.skinPicker);
+  $("#skinToggle").addEventListener("click", () => state.skinPicker.toggleOpen());
+
   $("#languageToggle").addEventListener("click", () => {
     setLanguage(getLocale() === "en-US" ? "zh-CN" : "en-US");
   });
@@ -4578,7 +4818,7 @@ function bootDashboard() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Tab" && !$("#modelPricingDialog").open) {
-      const dialog = [$("#pricingDialog"), $("#importDialog")].find((candidate) => !candidate.hidden);
+      const dialog = [$("#pricingDialog"), $("#importDialog"), $("#skinDialog")].find((candidate) => !candidate.hidden);
       if (dialog) trapDialogFocus(event, dialog);
     }
     if (event.key === "Escape") {
@@ -4588,6 +4828,9 @@ function bootDashboard() {
     if (event.key === "Escape" && !$("#pricingDialog").hidden && !$("#modelPricingDialog").open) closePricingDialog();
     if (event.key === "Escape" && !$("#importDialog").hidden) {
       closeImportDialog();
+    }
+    if (event.key === "Escape" && !$("#skinDialog").hidden) {
+      state.skinPicker?.close();
     }
   });
   $("#themeToggle").addEventListener("click", () => {

@@ -1,4 +1,7 @@
-:root {
+/* Base palette. The selector list lets a light preview reproduce this exact mode
+   inside a dark page (and vice versa) without duplicating any declared value. */
+:root,
+.skin-preview-scope[data-preview-theme="light"] {
   color-scheme: light;
   --ui-font-sans:
     Inter, "Noto Sans SC", "Microsoft YaHei UI", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont,
@@ -22,7 +25,8 @@
   --record: #0e93a6;
 }
 
-[data-theme="dark"] {
+[data-theme="dark"],
+.skin-preview-scope[data-preview-theme="dark"] {
   color-scheme: dark;
   --bg: #101214;
   --panel: #181c20;
@@ -331,6 +335,7 @@ label {
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
+.ceramic-toggle,
 .segmented > button,
 .segmented .recent-segment {
   border: 1px solid var(--line);
@@ -345,6 +350,7 @@ label {
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
 .dialog-actions button:hover,
+.ceramic-toggle:hover,
 .segmented > button:hover,
 .segmented .recent-segment:hover {
   border-color: var(--control-hover);
@@ -2098,7 +2104,8 @@ html[lang="en-US"] #repositoryComparisonSearch {
 }
 
 /* Ceramic instrument surfaces: one upper-left light source in both themes. */
-:root {
+:root,
+.skin-preview-scope[data-preview-theme="light"] {
   --bg: #cfd8e1;
   --panel: #edf2f7;
   --control: #edf2f7;
@@ -2114,7 +2121,8 @@ html[lang="en-US"] #repositoryComparisonSearch {
   --dialog-shadow: 0 12px 32px rgba(15, 23, 42, 0.24);
 }
 
-[data-theme="dark"] {
+[data-theme="dark"],
+.skin-preview-scope[data-preview-theme="dark"] {
   --bg: #20252b;
   --panel: #1b2229;
   --control: #1b2229;
@@ -2186,6 +2194,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
+.ceramic-toggle,
 .segmented > button,
 .segmented .recent-segment,
 .home-remove,
@@ -2200,6 +2209,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
 .dialog-actions button:hover,
+.ceramic-toggle:hover,
 .segmented > button:hover,
 .segmented .recent-segment:hover,
 .home-remove:hover,
@@ -2290,7 +2300,9 @@ select:focus-visible {
 }
 
 .recent-range-menu button[aria-selected="true"],
-.date-picker-day.selected {
+.date-picker-day.selected,
+.ceramic-toggle[aria-pressed="true"],
+.ceramic-toggle:not(:disabled):active {
   border-color: transparent;
   background: var(--neo-surface);
   color: var(--blue);
@@ -2334,7 +2346,8 @@ select:focus-visible {
 }
 
 /* Shared material tokens keep controls, readouts and dialogs physically related. */
-:root {
+:root,
+.skin-preview-scope[data-preview-theme="light"] {
   --ceramic-top: #e6ebef;
   --ceramic-bottom: #d1dae2;
   --ceramic-well: #ced8e1;
@@ -2360,7 +2373,8 @@ select:focus-visible {
   --neo-inset-small: inset 2px 2px 5px var(--ceramic-shade), inset -1px -1px 1px var(--ceramic-rim);
   --dialog-shadow: 0 18px 48px #23313c40, inset 1px 1px 1px var(--ceramic-rim);
 }
-[data-theme="dark"] {
+[data-theme="dark"],
+.skin-preview-scope[data-preview-theme="dark"] {
   --ceramic-top: #343c43;
   --ceramic-bottom: #272e34;
   --ceramic-well: #232b32;
@@ -2388,6 +2402,8 @@ select:focus-visible {
 }
 .shell {
   padding-top: 28px;
+  /* Trial strength; a single adjustment point for the whole main dashboard. */
+  --spotlight-strength: 22%;
 }
 .topbar,
 .panel,
@@ -2409,7 +2425,6 @@ select:focus-visible {
   margin-bottom: 14px;
   border: 1px solid var(--neo-edge);
   border-radius: 21px;
-  background: var(--neo-surface);
   box-shadow: var(--neo-raised);
 }
 .topbar > h1 {
@@ -2483,6 +2498,7 @@ select:focus-visible {
 #pickImportDirectoryButton,
 .panel-action,
 .dialog-actions button,
+.ceramic-toggle,
 .segmented > button,
 .segmented .recent-segment,
 .home-remove,
@@ -2948,6 +2964,12 @@ button:disabled {
   position: relative;
   transform: none;
 }
+.ceramic-toggle {
+  border-radius: 10px;
+}
+.ceramic-toggle[aria-pressed="true"] {
+  font-weight: 700;
+}
 #presetButtons > button.active,
 #presetButtons > .recent-segment.active,
 .segmented-well > button.active,
@@ -2964,7 +2986,8 @@ button:disabled {
 }
 #presetButtons > button:not(:disabled):hover,
 #presetButtons > .recent-segment:hover,
-.segmented-well > button:not(:disabled):hover {
+.segmented-well > button:not(:disabled):hover,
+.ceramic-toggle:not(:disabled):hover {
   color: var(--blue);
   transform: none;
 }
@@ -2995,6 +3018,7 @@ button:disabled {
 
 #presetButtons > button[data-preset]:not(:disabled):is(.active, :hover, :focus-visible, [aria-expanded="true"]),
 #timelineModes > button:not(:disabled):is(.active, [aria-pressed="true"], :hover, :focus-visible),
+.ceramic-toggle:not(:disabled):is([aria-pressed="true"], :hover, :focus-visible),
 .recent-range-menu button:not(:disabled):is([aria-selected="true"], :hover, :focus-visible) {
   color: var(--blue);
   text-shadow: var(--button-label-glow);
@@ -3205,5 +3229,51 @@ html[lang="en-US"] #presetButtons > .recent-segment {
   .topbar > h1 {
     font-size: 32px;
     padding: 0;
+  }
+}
+
+/* Main-page spotlight, written natively for this dashboard. The negative layer
+   sits above its host background and below content inside this local context.
+   Only the one active host gains a context; dormant hosts keep their layering. */
+@media (hover: hover) and (pointer: fine) {
+  .shell [data-spotlight-active] {
+    isolation: isolate;
+  }
+  .shell [data-spotlight-active][data-spotlight-static] {
+    position: relative;
+  }
+  .shell [data-spotlight-active]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      circle var(--spotlight-radius) at var(--spotlight-x) var(--spotlight-y),
+      color-mix(in srgb, var(--skin-active-accent, var(--blue)) var(--spotlight-strength), transparent),
+      transparent 100%
+    );
+    mask-image: var(--spotlight-mask);
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    opacity: 1;
+    transition: opacity 120ms ease;
+  }
+  /* A local context must not trap a currently open menu behind later panels. */
+  .shell [data-spotlight-active]:has(:is(.date-picker-popover, .recent-range-menu):not([hidden])) {
+    z-index: 30;
+  }
+  @starting-style {
+    .shell [data-spotlight-active]::after {
+      opacity: 0;
+    }
+  }
+}
+
+/* A: keep direct pointer feedback, remove the reveal transition. */
+@media (prefers-reduced-motion: reduce) {
+  .shell [data-spotlight-active]::after {
+    transition: none;
   }
 }

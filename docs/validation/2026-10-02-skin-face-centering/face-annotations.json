@@ -1,0 +1,165 @@
+{
+  "method": "Manual visible facial-outline horizontal bounds, normalized to source canvas; red centre / blue boundaries in guide screenshots. Hair and accessories excluded.",
+  "annotations": [
+    {
+      "skin": "chatgpt",
+      "view": "side",
+      "source": "ChatGPT-side-lineart.png",
+      "faceLeft": 0.35,
+      "faceRight": 0.46,
+      "faceX": 0.405
+    },
+    {
+      "skin": "chatgpt",
+      "view": "front",
+      "source": "ChatGPT-lineart.png",
+      "faceLeft": 0.4,
+      "faceRight": 0.51,
+      "faceX": 0.455
+    },
+    {
+      "skin": "claude",
+      "view": "side",
+      "source": "Claude-side-lineart.png",
+      "faceLeft": 0.36,
+      "faceRight": 0.48,
+      "faceX": 0.42
+    },
+    {
+      "skin": "claude",
+      "view": "front",
+      "source": "Claude-lineart.png",
+      "faceLeft": 0.425,
+      "faceRight": 0.535,
+      "faceX": 0.48
+    },
+    {
+      "skin": "glm",
+      "view": "side",
+      "source": "GLM-side-lineart.png",
+      "faceLeft": 0.32,
+      "faceRight": 0.45,
+      "faceX": 0.385
+    },
+    {
+      "skin": "glm",
+      "view": "front",
+      "source": "GLM-lineart.png",
+      "faceLeft": 0.435,
+      "faceRight": 0.545,
+      "faceX": 0.49
+    },
+    {
+      "skin": "gemini",
+      "view": "side",
+      "source": "Gemini-side-lineart.png",
+      "faceLeft": 0.38,
+      "faceRight": 0.51,
+      "faceX": 0.445
+    },
+    {
+      "skin": "gemini",
+      "view": "front",
+      "source": "Gemini-lineart.png",
+      "faceLeft": 0.43,
+      "faceRight": 0.56,
+      "faceX": 0.495
+    },
+    {
+      "skin": "deepseek",
+      "view": "side",
+      "source": "DeepSeek-side-lineart.png",
+      "faceLeft": 0.35,
+      "faceRight": 0.48,
+      "faceX": 0.415
+    },
+    {
+      "skin": "deepseek",
+      "view": "front",
+      "source": "DeepSeek-lineart.png",
+      "faceLeft": 0.42,
+      "faceRight": 0.56,
+      "faceX": 0.49
+    },
+    {
+      "skin": "kimi",
+      "view": "side",
+      "source": "Kimi-side-lineart.png",
+      "faceLeft": 0.395,
+      "faceRight": 0.485,
+      "faceX": 0.44
+    },
+    {
+      "skin": "kimi",
+      "view": "front",
+      "source": "Kimi-lineart.png",
+      "faceLeft": 0.46,
+      "faceRight": 0.57,
+      "faceX": 0.515
+    },
+    {
+      "skin": "qwen",
+      "view": "side",
+      "source": "Qwen-side-lineart.png",
+      "faceLeft": 0.38,
+      "faceRight": 0.47,
+      "faceX": 0.425
+    },
+    {
+      "skin": "qwen",
+      "view": "front",
+      "source": "Qwen-lineart.png",
+      "faceLeft": 0.42,
+      "faceRight": 0.54,
+      "faceX": 0.48
+    },
+    {
+      "skin": "grok",
+      "view": "side",
+      "source": "Grok-side-lineart.png",
+      "faceLeft": 0.35,
+      "faceRight": 0.46,
+      "faceX": 0.405
+    },
+    {
+      "skin": "grok",
+      "view": "front",
+      "source": "Grok-lineart.png",
+      "faceLeft": 0.48,
+      "faceRight": 0.62,
+      "faceX": 0.55
+    },
+    {
+      "skin": "muse",
+      "view": "side",
+      "source": "Muse-side-lineart.png",
+      "faceLeft": 0.35,
+      "faceRight": 0.48,
+      "faceX": 0.415
+    },
+    {
+      "skin": "muse",
+      "view": "front",
+      "source": "Muse-lineart.png",
+      "faceLeft": 0.42,
+      "faceRight": 0.55,
+      "faceX": 0.485
+    },
+    {
+      "skin": "mimo",
+      "view": "side",
+      "source": "Mimo-side-lineart.png",
+      "faceLeft": 0.31,
+      "faceRight": 0.42,
+      "faceX": 0.365
+    },
+    {
+      "skin": "mimo",
+      "view": "front",
+      "source": "Mimo-lineart.png",
+      "faceLeft": 0.425,
+      "faceRight": 0.535,
+      "faceX": 0.48
+    }
+  ]
+}

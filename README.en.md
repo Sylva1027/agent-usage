@@ -6,7 +6,7 @@ Agent Usage is a local dashboard for Codex, ZCode, DSH, and OpenCode usage. It r
 
 This project builds on [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage).
 
-Current release: [v0.5.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.5.0).
+Current release: [v0.6.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.6.0).
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.
 - **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates. Ordinary ranges group subagents and execution channels under Codex, ZCode, DSH, and OpenCode; Codex-only limit ranges retain channel detail. Local Git repositories appear first, followed by the selected period sort.
 - **Records and Comparisons:** Applicable ranges can highlight new highs and compare them with a preceding period. All Time has no preceding period and shows no New Record badges.
 - **Sources and Refresh:** Codex, ZCode, DSH, and OpenCode data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks; pausing auto refresh keeps the data snapshot fixed while you change ranges.
-- **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available.
+- **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available. The shirt icon opens **Waifu**, offering ChatGPT, Claude, DeepSeek, Kimi, and Muse skins plus Simple mode. Light and dark thumbnails appear side by side; desktop shows all five in one row, with a glowing dot marking the selection. Character visibility, opacity, and your skin choice are remembered.
 
 ## Data Sources and Privacy
 
@@ -66,7 +66,7 @@ node src/static-export.js     # Export standalone HTML
 node --test                   # Run tests
 ```
 
-The snapshot is written to `dist/codex-usage.html`. You can open it directly and switch languages. It retains the usage data and limit observations from export time and does not refresh; export again to include new records. The HTML embeds usage data and may contain local paths. Inspect it before sharing.
+The snapshot is written to `dist/codex-usage.html`. You can open it directly and switch languages, themes, and character skins; all character assets are embedded for offline use. It retains the usage data and limit observations from export time and does not refresh; export again to include new records. The HTML embeds usage data and may contain local paths. Inspect it before sharing.
 
 ## Documentation and Development
 

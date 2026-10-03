@@ -1,0 +1,510 @@
+/**
+ * Character skin decoration layer and (later) skin picker styles.
+ *
+ * Scope rule: nothing in this file may change the existing dashboard geometry.
+ * The decoration layer is fixed-position, anchored to the viewport, kept out of
+ * normal flow and painted above the page background but below the dashboard and
+ * every overlay. Main board layout rules stay in styles.css untouched.
+ */
+
+#skinCharacters {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+  overflow: hidden;
+  /* 50% applies to the decoration layer only, never to the artwork file or the frames. */
+  opacity: 0.5;
+}
+
+#skinCharacters[data-skin-characters="on"] {
+  display: block;
+}
+
+/* The dashboard keeps its own stacking above the decoration layer. */
+.shell {
+  position: relative;
+  z-index: 1;
+}
+
+#skinCharacters img {
+  position: absolute;
+  bottom: 0;
+  display: block;
+  max-width: none;
+  /* Hidden until the image has decoded, so no partial paint is shown. */
+  visibility: hidden;
+  /* Per-image display parameters measured from each source's ink bounding box
+     (P3.1). `--skin-scale` normalises the drawn ink height so every character
+     reads at a consistent size despite differing canvases and margins. The layer
+     is fixed and out of flow, so this never consumes layout space. */
+  height: calc(var(--skin-char-height, 78vh) * var(--skin-scale, 1));
+  transform-origin: bottom center;
+}
+
+#skinCharacters img[data-loaded="1"] {
+  visibility: visible;
+}
+
+/* The side view sits on the left, the front view on the right; each is centred
+   on its own ink box so uneven margins do not offset the character. */
+#skinCharacters img[data-view="side"] {
+  left: 0;
+  transform: translateX(calc(50% - var(--skin-anchor-x, 50%)));
+}
+
+#skinCharacters img[data-view="front"] {
+  right: 0;
+  transform: translateX(calc(var(--skin-anchor-x, 50%) - 50%));
+}
+
+/* Real page margins determine the target; translate by the source FACE anchor.
+   Keep the ink-based rules above as a fallback for unannotated/custom artwork. */
+#skinCharacters img[data-face-centered="1"] {
+  left: var(--skin-target-x);
+  right: auto;
+  transform: translateX(calc(0% - var(--skin-face-x)));
+}
+
+/* Fade only on skin change; honoring reduced motion is required by the plan. */
+#skinCharacters[data-skin-fade="1"] img {
+  transition: opacity 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #skinCharacters img {
+    transition: none;
+  }
+}
+
+/* Phones may drop the characters entirely; the functional layout is unchanged. */
+@media (max-width: 720px) {
+  #skinCharacters[data-skin-characters="on"] {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Picker entry button.
+   The button reuses .theme-toggle wholesale, so size, ceramic material, rim,
+   shadow, radius, hover, active, focus ring and the small-screen override all
+   come from the existing rules. Only the icon's own proportions are set here,
+   and the button carries no visible text (plan 2 and 4.2).
+   --------------------------------------------------------------------------- */
+.skin-toggle svg {
+  /* Matches the theme toggle's 42x23 box so the three buttons align optically. */
+  width: 26px;
+  height: 26px;
+  fill: none;
+  /* Use the same neutral colour as the language divider and inactive sun/moon. */
+  stroke: var(--toggle-muted);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Same glow recipe as neighbouring buttons, using the selected mode's accent. */
+.skin-toggle {
+  --button-glow-color: color-mix(in srgb, var(--skin-active-accent, var(--toggle-selected)) 45%, transparent);
+  --button-icon-glow: drop-shadow(0 0 3px var(--button-glow-color));
+}
+
+/* Opening the dialog is independent of selecting a character skin. */
+:root[data-skin]:not([data-skin="classic"]) .skin-toggle .skin-icon-accent {
+  stroke: var(--skin-active-accent, var(--toggle-selected));
+  filter: var(--button-icon-glow);
+}
+
+/* ---------------------------------------------------------------------------
+   Picker dialog.
+   The backdrop, ceramic material, radius and shadow come from the shared
+   .dialog-backdrop / .dialog rules; only this dialog's own width and its
+   internal matrix differ (plan 4.3).
+   --------------------------------------------------------------------------- */
+.skin-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  width: min(1120px, 100%);
+  max-height: min(900px, calc(100dvh - 40px));
+  overflow: hidden;
+}
+
+.skin-dialog > .dialog-heading,
+.skin-dialog > .dialog-actions {
+  flex-shrink: 0;
+}
+
+.skin-controls {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.skin-toggle-row,
+.skin-opacity-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* The opacity slider is a range input, not a text field: styles.css draws every
+   input as a ceramic well, so that inherited chrome is reset here and the track
+   and thumb are drawn from the same material recipes instead (refinement R4).
+   The inset belongs to the track itself; the label and readout stay plain text. */
+.skin-opacity-row input[type="range"] {
+  appearance: none;
+  width: 160px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  /* R2's accent source: the selected skin's palette accent, else the theme blue.
+     --skin-opacity-fill is the progress position; skin-picker.js keeps it in
+     sync on first open, restore, dragging and programmatic changes. */
+  --skin-slider-accent: var(--skin-active-accent, var(--blue));
+  --skin-opacity-fill: 50%;
+}
+
+.skin-opacity-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--skin-slider-accent) var(--skin-opacity-fill),
+    var(--ceramic-well) var(--skin-opacity-fill)
+  );
+  box-shadow: var(--neo-inset-small);
+}
+
+.skin-opacity-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  /* (track 8px - thumb 16px) / 2 centres the knob on the WebKit track. */
+  margin-top: -4px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  border-top-color: var(--ceramic-rim);
+  border-bottom-color: var(--ceramic-shade);
+  background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
+  box-shadow:
+    0 2px 2px var(--ceramic-shade),
+    var(--neo-raised-small);
+}
+
+/* Firefox colours progress natively; same material without the gradient stop. */
+.skin-opacity-row input[type="range"]::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset-small);
+}
+
+.skin-opacity-row input[type="range"]::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--skin-slider-accent);
+}
+
+.skin-opacity-row input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  border-top-color: var(--ceramic-rim);
+  border-bottom-color: var(--ceramic-shade);
+  background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
+  box-shadow:
+    0 2px 2px var(--ceramic-shade),
+    var(--neo-raised-small);
+}
+
+.skin-opacity-row output {
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.skin-dialog .dialog-heading > h2 {
+  min-width: 0;
+}
+
+/* The header toggle uses styles.css's shared ceramic button and selected-state
+   recipes; only its header placement belongs to the picker. */
+.skin-dialog .dialog-heading > .ceramic-toggle {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* One continuous well holds the whole comparison matrix (refinement R5): the
+   reading order is dialog shell -> gallery well -> character cards. Same recessed
+   recipe as the dashboard's comparison-table-frame. The ::after overlay keeps
+   the inset shading above the scrolling cards, so the floor stays one
+   uninterrupted surface while the grid scrolls inside it on narrow screens. */
+.skin-gallery-well {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset);
+  overflow: hidden;
+}
+
+.skin-gallery-well::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: var(--neo-inset);
+  pointer-events: none;
+}
+
+/* Five character cards: one row at >=1024px. The well follows the content height.
+   On narrow or short screens,
+   only the comparison area scrolls (inside the well); the controls remain
+   accessible. The padding lives HERE, inside the scroll container, not on the
+   well: the cards' raised shadows extend up to ~13px beyond their box, and a
+   padded scrollport is what gives that ink room instead of hard-clipping it
+   at the clip edges (sharp top-left cuts, truncated bottom shadows). */
+.skin-grid {
+  display: grid;
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  align-content: start;
+  gap: 12px;
+  overflow: auto;
+}
+
+/* Tablet layout keeps both mode previews; desktop 1024px retains five columns. */
+@media (max-width: 1023px) {
+  .skin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .skin-dialog {
+    padding: 20px;
+  }
+
+  .skin-grid {
+    padding: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.skin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  text-align: start;
+  border: 1px solid var(--neo-edge);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--ceramic-top), var(--ceramic-bottom));
+  /* A light rise above the shared well floor; selection presses it back down. */
+  box-shadow: var(--neo-raised-small);
+  cursor: pointer;
+}
+
+.skin-card.is-selected {
+  border-color: var(--blue);
+  box-shadow: var(--neo-inset-small);
+}
+
+.skin-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.skin-card-name {
+  font-weight: 700;
+}
+
+.skin-card-selected-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--record);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--record) 55%, transparent);
+}
+
+.skin-card-art {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--ceramic-well);
+}
+
+.skin-card-art > :where(img) {
+  max-height: 104px;
+  width: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Dual light/dark previews.
+
+   `.skin-preview-scope[data-preview-theme=...]` is declared in styles.css next to
+   the real theme blocks, so a scope reproduces that mode's genuine base values
+   even when the page is in the other mode. Nothing is copied here: the scope
+   inherits exactly the declarations the page itself uses, then this layer adds
+   the skin's own palette on top when the user has supplied one.
+   --------------------------------------------------------------------------- */
+.skin-card-previews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.skin-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 104px;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: inline-size;
+  border: 1px solid var(--skin-preview-border, var(--line));
+  border-radius: 10px;
+  background: var(--skin-preview-page, var(--bg));
+}
+
+.skin-preview-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skin-preview-mode {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.skin-preview-scope {
+  display: block;
+  min-width: 0;
+}
+
+/* Frame the upper body on the right (R6), using face anchors calibrated per
+   character in skin-picker.js. Skirts/tails may crop at THIS mode's stage;
+   artwork never paints into a mode label, another preview or an adjacent card.
+   The fixed comparison opacity is independent of the page's preference. */
+.skin-preview-art {
+  position: absolute;
+  top: var(--skin-preview-top, 0%);
+  left: var(--skin-preview-stage-x, 76%);
+  transform: translateX(calc(-1 * var(--skin-preview-anchor-x, 50%)));
+  /* Tiny phone cells need a width-based cap to keep the whole face/core in view.
+     cqw belongs to this mode's stage, never the dashboard or gallery width. */
+  height: min(calc(100% * var(--skin-preview-scale, 2.15)), 390cqw);
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* The shared mini interface: same title, text, panel, bars and button for all.
+   Its left-hand footprint leaves the face and main torso clear on the right.
+   No backdrop blur: even peripheral hair under the sample stays sharp. */
+.skin-preview-ui {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 40%;
+  padding: 4px 3px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--skin-preview-panel, var(--panel)) 62%, transparent);
+}
+
+.skin-preview-title {
+  height: 4px;
+  width: 58%;
+  border-radius: 2px;
+  background: var(--skin-preview-text, var(--ink));
+}
+
+.skin-preview-line {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--skin-preview-muted, var(--muted));
+}
+
+.skin-preview-line-short {
+  width: 64%;
+}
+
+.skin-preview-panel {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  margin-top: 2px;
+}
+
+.skin-preview-bar {
+  flex: 1;
+  min-width: 0;
+  height: var(--h, 60%);
+  border-radius: 2px 2px 0 0;
+  background: var(
+    --skin-preview-series-1,
+    color-mix(in srgb, var(--skin-preview-accent, var(--blue)) 70%, transparent)
+  );
+}
+
+.skin-preview-bar:nth-child(2) {
+  background: var(
+    --skin-preview-series-2,
+    color-mix(in srgb, var(--skin-preview-accent, var(--blue)) 45%, transparent)
+  );
+}
+
+.skin-preview-bar:nth-child(3) {
+  background: var(
+    --skin-preview-series-3,
+    color-mix(in srgb, var(--skin-preview-accent, var(--blue)) 25%, transparent)
+  );
+}
+
+.skin-preview-button {
+  height: 7px;
+  width: 70%;
+  margin-top: 2px;
+  border-radius: 3px;
+  background: var(--skin-preview-control, var(--control));
+  border: 1px solid var(--skin-preview-border, var(--line));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skin-card {
+    transition: none;
+  }
+}

@@ -1,0 +1,802 @@
+[
+  {
+    "file": "ChatGPT-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 23,
+      "top": 13,
+      "right": 927,
+      "bottom": 1661
+    },
+    "inkWidth": 904,
+    "inkHeight": 1648,
+    "inkLeftFraction": 0.024442,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.96068,
+    "inkHeightFraction": 0.985646,
+    "inkCenterXFraction": 0.504782,
+    "mode": "dark"
+  },
+  {
+    "file": "ChatGPT-side-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 70,
+      "top": 7,
+      "right": 936,
+      "bottom": 1670
+    },
+    "inkWidth": 866,
+    "inkHeight": 1663,
+    "inkLeftFraction": 0.074389,
+    "inkTopFraction": 0.004187,
+    "inkWidthFraction": 0.920298,
+    "inkHeightFraction": 0.994617,
+    "inkCenterXFraction": 0.534538,
+    "mode": "dark"
+  },
+  {
+    "file": "Claude-dark-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 11,
+      "top": 9,
+      "right": 937,
+      "bottom": 1668
+    },
+    "inkWidth": 926,
+    "inkHeight": 1659,
+    "inkLeftFraction": 0.01169,
+    "inkTopFraction": 0.005386,
+    "inkWidthFraction": 0.98406,
+    "inkHeightFraction": 0.992819,
+    "inkCenterXFraction": 0.503719,
+    "mode": "dark"
+  },
+  {
+    "file": "Claude-side-dark-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 11,
+      "top": 12,
+      "right": 934,
+      "bottom": 1662
+    },
+    "inkWidth": 923,
+    "inkHeight": 1650,
+    "inkLeftFraction": 0.01169,
+    "inkTopFraction": 0.007181,
+    "inkWidthFraction": 0.980871,
+    "inkHeightFraction": 0.987433,
+    "inkCenterXFraction": 0.502125,
+    "mode": "dark"
+  },
+  {
+    "file": "DeepSeek-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 29,
+      "top": 15,
+      "right": 926,
+      "bottom": 1664
+    },
+    "inkWidth": 897,
+    "inkHeight": 1649,
+    "inkLeftFraction": 0.030818,
+    "inkTopFraction": 0.008971,
+    "inkWidthFraction": 0.953241,
+    "inkHeightFraction": 0.986244,
+    "inkCenterXFraction": 0.507439,
+    "mode": "dark"
+  },
+  {
+    "file": "DeepSeek-side-dark-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 16,
+      "top": 10,
+      "right": 931,
+      "bottom": 1652
+    },
+    "inkWidth": 915,
+    "inkHeight": 1642,
+    "inkLeftFraction": 0.017003,
+    "inkTopFraction": 0.005984,
+    "inkWidthFraction": 0.97237,
+    "inkHeightFraction": 0.982645,
+    "inkCenterXFraction": 0.503188,
+    "mode": "dark"
+  },
+  {
+    "file": "GLM-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 62,
+      "top": 8,
+      "right": 977,
+      "bottom": 1533
+    },
+    "inkWidth": 915,
+    "inkHeight": 1525,
+    "inkLeftFraction": 0.060547,
+    "inkTopFraction": 0.005208,
+    "inkWidthFraction": 0.893555,
+    "inkHeightFraction": 0.992839,
+    "inkCenterXFraction": 0.507324,
+    "mode": "dark"
+  },
+  {
+    "file": "GLM-side-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 58,
+      "top": 9,
+      "right": 992,
+      "bottom": 1530
+    },
+    "inkWidth": 934,
+    "inkHeight": 1521,
+    "inkLeftFraction": 0.056641,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.912109,
+    "inkHeightFraction": 0.990234,
+    "inkCenterXFraction": 0.512695,
+    "mode": "dark"
+  },
+  {
+    "file": "Gemini-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 24,
+      "top": 8,
+      "right": 1001,
+      "bottom": 1529
+    },
+    "inkWidth": 977,
+    "inkHeight": 1521,
+    "inkLeftFraction": 0.023438,
+    "inkTopFraction": 0.005208,
+    "inkWidthFraction": 0.954102,
+    "inkHeightFraction": 0.990234,
+    "inkCenterXFraction": 0.500488,
+    "mode": "dark"
+  },
+  {
+    "file": "Gemini-side-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 10,
+      "top": 13,
+      "right": 934,
+      "bottom": 1660
+    },
+    "inkWidth": 924,
+    "inkHeight": 1647,
+    "inkLeftFraction": 0.010627,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.981934,
+    "inkHeightFraction": 0.985048,
+    "inkCenterXFraction": 0.501594,
+    "mode": "dark"
+  },
+  {
+    "file": "Grok-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 12,
+      "top": 13,
+      "right": 941,
+      "bottom": 1657
+    },
+    "inkWidth": 929,
+    "inkHeight": 1644,
+    "inkLeftFraction": 0.012752,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.987248,
+    "inkHeightFraction": 0.983254,
+    "inkCenterXFraction": 0.506376,
+    "mode": "dark"
+  },
+  {
+    "file": "Grok-side-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 21,
+      "top": 5,
+      "right": 935,
+      "bottom": 1651
+    },
+    "inkWidth": 914,
+    "inkHeight": 1646,
+    "inkLeftFraction": 0.022317,
+    "inkTopFraction": 0.00299,
+    "inkWidthFraction": 0.971307,
+    "inkHeightFraction": 0.98445,
+    "inkCenterXFraction": 0.50797,
+    "mode": "dark"
+  },
+  {
+    "file": "Kimi-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 36,
+      "top": 10,
+      "right": 1012,
+      "bottom": 1527
+    },
+    "inkWidth": 976,
+    "inkHeight": 1517,
+    "inkLeftFraction": 0.035156,
+    "inkTopFraction": 0.00651,
+    "inkWidthFraction": 0.953125,
+    "inkHeightFraction": 0.98763,
+    "inkCenterXFraction": 0.511719,
+    "mode": "dark"
+  },
+  {
+    "file": "Kimi-side-dark-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 8,
+      "top": 17,
+      "right": 940,
+      "bottom": 1645
+    },
+    "inkWidth": 932,
+    "inkHeight": 1628,
+    "inkLeftFraction": 0.008502,
+    "inkTopFraction": 0.010174,
+    "inkWidthFraction": 0.990436,
+    "inkHeightFraction": 0.974267,
+    "inkCenterXFraction": 0.503719,
+    "mode": "dark"
+  },
+  {
+    "file": "Mimo-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 224,
+      "top": 12,
+      "right": 805,
+      "bottom": 1517
+    },
+    "inkWidth": 581,
+    "inkHeight": 1505,
+    "inkLeftFraction": 0.21875,
+    "inkTopFraction": 0.007812,
+    "inkWidthFraction": 0.567383,
+    "inkHeightFraction": 0.979818,
+    "inkCenterXFraction": 0.502441,
+    "mode": "dark"
+  },
+  {
+    "file": "Mimo-side-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 258,
+      "top": 9,
+      "right": 963,
+      "bottom": 1527
+    },
+    "inkWidth": 705,
+    "inkHeight": 1518,
+    "inkLeftFraction": 0.251953,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.688477,
+    "inkHeightFraction": 0.988281,
+    "inkCenterXFraction": 0.596191,
+    "mode": "dark"
+  },
+  {
+    "file": "Muse-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 51,
+      "top": 6,
+      "right": 985,
+      "bottom": 1531
+    },
+    "inkWidth": 934,
+    "inkHeight": 1525,
+    "inkLeftFraction": 0.049805,
+    "inkTopFraction": 0.003906,
+    "inkWidthFraction": 0.912109,
+    "inkHeightFraction": 0.992839,
+    "inkCenterXFraction": 0.505859,
+    "mode": "dark"
+  },
+  {
+    "file": "Muse-side-dark-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 201,
+      "top": 9,
+      "right": 976,
+      "bottom": 1528
+    },
+    "inkWidth": 775,
+    "inkHeight": 1519,
+    "inkLeftFraction": 0.196289,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.756836,
+    "inkHeightFraction": 0.988932,
+    "inkCenterXFraction": 0.574707,
+    "mode": "dark"
+  },
+  {
+    "file": "Qwen-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 16,
+      "top": 13,
+      "right": 931,
+      "bottom": 1661
+    },
+    "inkWidth": 915,
+    "inkHeight": 1648,
+    "inkLeftFraction": 0.017003,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.97237,
+    "inkHeightFraction": 0.985646,
+    "inkCenterXFraction": 0.503188,
+    "mode": "dark"
+  },
+  {
+    "file": "Qwen-side-dark-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 39,
+      "top": 8,
+      "right": 938,
+      "bottom": 1642
+    },
+    "inkWidth": 899,
+    "inkHeight": 1634,
+    "inkLeftFraction": 0.041445,
+    "inkTopFraction": 0.004785,
+    "inkWidthFraction": 0.955367,
+    "inkHeightFraction": 0.977273,
+    "inkCenterXFraction": 0.519129,
+    "mode": "dark"
+  },
+  {
+    "file": "ChatGPT-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 23,
+      "top": 13,
+      "right": 927,
+      "bottom": 1661
+    },
+    "inkWidth": 904,
+    "inkHeight": 1648,
+    "inkLeftFraction": 0.024442,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.96068,
+    "inkHeightFraction": 0.985646,
+    "inkCenterXFraction": 0.504782,
+    "mode": "light"
+  },
+  {
+    "file": "ChatGPT-side-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 70,
+      "top": 7,
+      "right": 936,
+      "bottom": 1670
+    },
+    "inkWidth": 866,
+    "inkHeight": 1663,
+    "inkLeftFraction": 0.074389,
+    "inkTopFraction": 0.004187,
+    "inkWidthFraction": 0.920298,
+    "inkHeightFraction": 0.994617,
+    "inkCenterXFraction": 0.534538,
+    "mode": "light"
+  },
+  {
+    "file": "Claude-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 11,
+      "top": 9,
+      "right": 937,
+      "bottom": 1668
+    },
+    "inkWidth": 926,
+    "inkHeight": 1659,
+    "inkLeftFraction": 0.01169,
+    "inkTopFraction": 0.005386,
+    "inkWidthFraction": 0.98406,
+    "inkHeightFraction": 0.992819,
+    "inkCenterXFraction": 0.503719,
+    "mode": "light"
+  },
+  {
+    "file": "Claude-side-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 11,
+      "top": 12,
+      "right": 934,
+      "bottom": 1662
+    },
+    "inkWidth": 923,
+    "inkHeight": 1650,
+    "inkLeftFraction": 0.01169,
+    "inkTopFraction": 0.007181,
+    "inkWidthFraction": 0.980871,
+    "inkHeightFraction": 0.987433,
+    "inkCenterXFraction": 0.502125,
+    "mode": "light"
+  },
+  {
+    "file": "DeepSeek-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 29,
+      "top": 15,
+      "right": 926,
+      "bottom": 1664
+    },
+    "inkWidth": 897,
+    "inkHeight": 1649,
+    "inkLeftFraction": 0.030818,
+    "inkTopFraction": 0.008971,
+    "inkWidthFraction": 0.953241,
+    "inkHeightFraction": 0.986244,
+    "inkCenterXFraction": 0.507439,
+    "mode": "light"
+  },
+  {
+    "file": "DeepSeek-side-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 16,
+      "top": 10,
+      "right": 931,
+      "bottom": 1652
+    },
+    "inkWidth": 915,
+    "inkHeight": 1642,
+    "inkLeftFraction": 0.017003,
+    "inkTopFraction": 0.005984,
+    "inkWidthFraction": 0.97237,
+    "inkHeightFraction": 0.982645,
+    "inkCenterXFraction": 0.503188,
+    "mode": "light"
+  },
+  {
+    "file": "GLM-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 62,
+      "top": 8,
+      "right": 977,
+      "bottom": 1533
+    },
+    "inkWidth": 915,
+    "inkHeight": 1525,
+    "inkLeftFraction": 0.060547,
+    "inkTopFraction": 0.005208,
+    "inkWidthFraction": 0.893555,
+    "inkHeightFraction": 0.992839,
+    "inkCenterXFraction": 0.507324,
+    "mode": "light"
+  },
+  {
+    "file": "GLM-side-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 58,
+      "top": 9,
+      "right": 992,
+      "bottom": 1530
+    },
+    "inkWidth": 934,
+    "inkHeight": 1521,
+    "inkLeftFraction": 0.056641,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.912109,
+    "inkHeightFraction": 0.990234,
+    "inkCenterXFraction": 0.512695,
+    "mode": "light"
+  },
+  {
+    "file": "Gemini-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 24,
+      "top": 8,
+      "right": 1001,
+      "bottom": 1529
+    },
+    "inkWidth": 977,
+    "inkHeight": 1521,
+    "inkLeftFraction": 0.023438,
+    "inkTopFraction": 0.005208,
+    "inkWidthFraction": 0.954102,
+    "inkHeightFraction": 0.990234,
+    "inkCenterXFraction": 0.500488,
+    "mode": "light"
+  },
+  {
+    "file": "Gemini-side-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 10,
+      "top": 13,
+      "right": 934,
+      "bottom": 1660
+    },
+    "inkWidth": 924,
+    "inkHeight": 1647,
+    "inkLeftFraction": 0.010627,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.981934,
+    "inkHeightFraction": 0.985048,
+    "inkCenterXFraction": 0.501594,
+    "mode": "light"
+  },
+  {
+    "file": "Grok-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 12,
+      "top": 13,
+      "right": 941,
+      "bottom": 1657
+    },
+    "inkWidth": 929,
+    "inkHeight": 1644,
+    "inkLeftFraction": 0.012752,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.987248,
+    "inkHeightFraction": 0.983254,
+    "inkCenterXFraction": 0.506376,
+    "mode": "light"
+  },
+  {
+    "file": "Grok-side-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 21,
+      "top": 5,
+      "right": 935,
+      "bottom": 1651
+    },
+    "inkWidth": 914,
+    "inkHeight": 1646,
+    "inkLeftFraction": 0.022317,
+    "inkTopFraction": 0.00299,
+    "inkWidthFraction": 0.971307,
+    "inkHeightFraction": 0.98445,
+    "inkCenterXFraction": 0.50797,
+    "mode": "light"
+  },
+  {
+    "file": "Kimi-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 36,
+      "top": 10,
+      "right": 1012,
+      "bottom": 1527
+    },
+    "inkWidth": 976,
+    "inkHeight": 1517,
+    "inkLeftFraction": 0.035156,
+    "inkTopFraction": 0.00651,
+    "inkWidthFraction": 0.953125,
+    "inkHeightFraction": 0.98763,
+    "inkCenterXFraction": 0.511719,
+    "mode": "light"
+  },
+  {
+    "file": "Kimi-side-lineart.png",
+    "width": 941,
+    "height": 1671,
+    "empty": false,
+    "ink": {
+      "left": 8,
+      "top": 17,
+      "right": 940,
+      "bottom": 1645
+    },
+    "inkWidth": 932,
+    "inkHeight": 1628,
+    "inkLeftFraction": 0.008502,
+    "inkTopFraction": 0.010174,
+    "inkWidthFraction": 0.990436,
+    "inkHeightFraction": 0.974267,
+    "inkCenterXFraction": 0.503719,
+    "mode": "light"
+  },
+  {
+    "file": "Mimo-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 224,
+      "top": 12,
+      "right": 805,
+      "bottom": 1517
+    },
+    "inkWidth": 581,
+    "inkHeight": 1505,
+    "inkLeftFraction": 0.21875,
+    "inkTopFraction": 0.007812,
+    "inkWidthFraction": 0.567383,
+    "inkHeightFraction": 0.979818,
+    "inkCenterXFraction": 0.502441,
+    "mode": "light"
+  },
+  {
+    "file": "Mimo-side-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 258,
+      "top": 9,
+      "right": 963,
+      "bottom": 1527
+    },
+    "inkWidth": 705,
+    "inkHeight": 1518,
+    "inkLeftFraction": 0.251953,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.688477,
+    "inkHeightFraction": 0.988281,
+    "inkCenterXFraction": 0.596191,
+    "mode": "light"
+  },
+  {
+    "file": "Muse-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 51,
+      "top": 6,
+      "right": 985,
+      "bottom": 1531
+    },
+    "inkWidth": 934,
+    "inkHeight": 1525,
+    "inkLeftFraction": 0.049805,
+    "inkTopFraction": 0.003906,
+    "inkWidthFraction": 0.912109,
+    "inkHeightFraction": 0.992839,
+    "inkCenterXFraction": 0.505859,
+    "mode": "light"
+  },
+  {
+    "file": "Muse-side-lineart.png",
+    "width": 1024,
+    "height": 1536,
+    "empty": false,
+    "ink": {
+      "left": 201,
+      "top": 9,
+      "right": 976,
+      "bottom": 1528
+    },
+    "inkWidth": 775,
+    "inkHeight": 1519,
+    "inkLeftFraction": 0.196289,
+    "inkTopFraction": 0.005859,
+    "inkWidthFraction": 0.756836,
+    "inkHeightFraction": 0.988932,
+    "inkCenterXFraction": 0.574707,
+    "mode": "light"
+  },
+  {
+    "file": "Qwen-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 16,
+      "top": 13,
+      "right": 931,
+      "bottom": 1661
+    },
+    "inkWidth": 915,
+    "inkHeight": 1648,
+    "inkLeftFraction": 0.017003,
+    "inkTopFraction": 0.007775,
+    "inkWidthFraction": 0.97237,
+    "inkHeightFraction": 0.985646,
+    "inkCenterXFraction": 0.503188,
+    "mode": "light"
+  },
+  {
+    "file": "Qwen-side-lineart.png",
+    "width": 941,
+    "height": 1672,
+    "empty": false,
+    "ink": {
+      "left": 39,
+      "top": 8,
+      "right": 938,
+      "bottom": 1642
+    },
+    "inkWidth": 899,
+    "inkHeight": 1634,
+    "inkLeftFraction": 0.041445,
+    "inkTopFraction": 0.004785,
+    "inkWidthFraction": 0.955367,
+    "inkHeightFraction": 0.977273,
+    "inkCenterXFraction": 0.519129,
+    "mode": "light"
+  }
+]

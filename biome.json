@@ -6,13 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "public/**", "test/**"]
+    "includes": ["src/**", "public/**", "test/**"],
+    "ignoreUnknown": false
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 120
+    "lineWidth": 120,
+    "includes": ["src/**", "public/**", "test/**", "!public/skin-bootstrap.js"]
   },
   "javascript": {
     "formatter": {

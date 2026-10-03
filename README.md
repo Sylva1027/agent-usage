@@ -6,7 +6,7 @@ Agent Usage 是在本机运行的 Codex、ZCode、DSH 与 OpenCode 用量看板�
 
 本项目基于 [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage) 继续开发。
 
-当前版本：[v0.5.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.5.0)。
+当前版本：[v0.6.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.6.0)。
 
 ## 快速开始
 
@@ -28,7 +28,7 @@ node src/cli.js run
 - **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。模型名在界面上统一小写显示，原始模型标识仍用于聚合和计价。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
 - **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
 - **来源与刷新：** 自动发现本机 Codex、ZCode、DSH 和 OpenCode 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；暂停自动刷新后，切换范围仍使用冻结的数据快照。
-- **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。
+- **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前提供 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款皮肤及简洁模式。浅深缩略图同时预览，桌面五款一行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
 
 ## 数据来源与隐私
 
@@ -66,7 +66,7 @@ node src/static-export.js     # 导出独立 HTML
 node --test                   # 运行测试
 ```
 
-静态快照写入 `dist/codex-usage.html`，可直接打开并切换语言。它固定在导出时的数据与限额观察值，不会自动刷新；更新数据需要重新导出。HTML 内嵌用量数据，可能包含本机路径，分享前请检查。
+静态快照写入 `dist/codex-usage.html`，可直接打开并切换语言、主题和角色皮肤；角色素材全部内嵌，无需联网加载。它固定在导出时的数据与限额观察值，不会自动刷新；更新数据需要重新导出。HTML 内嵌用量数据，可能包含本机路径，分享前请检查。
 
 ## 文档与开发
 

@@ -1,0 +1,9 @@
+warn: chatgpt.light: textSecondary contrast is 2.98:1, which is low.
+warn: chatgpt.dark: textSecondary contrast is 1.89:1, which is low.
+warn: claude.dark: textSecondary contrast is 2.55:1, which is low.
+warn: gemini.dark: textSecondary contrast is 2.75:1, which is low.
+warn: deepseek.dark: textSecondary contrast is 2.60:1, which is low.
+warn: qwen.dark: textSecondary contrast is 2.73:1, which is low.
+warn: mimo.dark: textSecondary contrast is 2.62:1, which is low.
+
+palette check: PASS (20/20 mode slots filled: chatgpt.light (12 tokens), chatgpt.dark (12 tokens), claude.light (12 tokens), claude.dark (12 tokens), glm.light (12 tokens), glm.dark (12 tokens), gemini.light (12 tokens), gemini.dark (12 tokens), deepseek.light (12 tokens), deepseek.dark (12 tokens), kimi.light (12 tokens), kimi.dark (12 tokens), qwen.light (12 tokens), qwen.dark (12 tokens), grok.light (12 tokens), grok.dark (12 tokens), muse.light (12 tokens), muse.dark (12 tokens), mimo.light (12 tokens), mimo.dark (12 tokens); the rest stay "colours pending")

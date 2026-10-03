@@ -1,0 +1,2474 @@
+{
+  "generatedFrom": [
+    "lineart assets/light",
+    "lineart assets/dark"
+  ],
+  "expectedFiles": 40,
+  "foundFiles": 40,
+  "missing": [],
+  "duplicateContent": [],
+  "crossMode": {
+    "ChatGPT:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 809258,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "ChatGPT:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": true,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 800524,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Claude:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 810480,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Claude:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 859163,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "GLM:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 694219,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "GLM:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 721338,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Gemini:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 666888,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Gemini:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 733781,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "DeepSeek:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 735619,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "DeepSeek:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 798230,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Kimi:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 792412,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Kimi:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 852097,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Qwen:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 870228,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Qwen:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 870463,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Grok:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 907023,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Grok:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": true,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 875532,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Muse:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 540678,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Muse:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 492168,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Mimo:front": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 379897,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    },
+    "Mimo:side": {
+      "available": true,
+      "sizeMatches": true,
+      "alphaMaskIdentical": true,
+      "rgbIdentical": false,
+      "rgbPolarityInvertedEveryPixel": false,
+      "rgbPolarityInvertedOnInkPixels": true,
+      "inkPixelCount": 374491,
+      "lightInkIsUniformBlack": true,
+      "darkInkIsUniformWhite": true,
+      "lightInkMedian": 0.0,
+      "darkInkMedian": 255.0
+    }
+  },
+  "files": {
+    "dark:ChatGPT:front": {
+      "relativePath": "lineart assets/dark/ChatGPT-dark-lineart.png",
+      "bytes": 1016019,
+      "sha256": "661dc5cf41a98a122b663b2e8959794bb70965ab4c4d13012d0f211aba22616d",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 764094,
+        "partiallyTransparentPixels": 808887,
+        "fullyOpaquePixels": 371,
+        "transparentFraction": 0.485647,
+        "partialFraction": 0.514117,
+        "opaqueFraction": 0.000236,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          23,
+          12,
+          927,
+          1662
+        ]
+      },
+      "alphaSha256": "3e2478cd8df65fe6d6ac3e8b4ab7e387baf1062a391fa8ea933e931f9148866f",
+      "rgbSha256": "424416153f5646719d932bd7c8392a2413124eefc38502d877a0ba7fba79f9d6",
+      "ink": {
+        "count": 809258,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:ChatGPT:side": {
+      "relativePath": "lineart assets/dark/ChatGPT-side-dark-lineart.png",
+      "bytes": 878738,
+      "sha256": "e9b06bb488263afe115f9fa420b77641e6a832778a29e4c552ba984db15a077e",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 772828,
+        "partiallyTransparentPixels": 800306,
+        "fullyOpaquePixels": 218,
+        "transparentFraction": 0.491198,
+        "partialFraction": 0.508663,
+        "opaqueFraction": 0.000139,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          69,
+          6,
+          937,
+          1671
+        ]
+      },
+      "alphaSha256": "b2eb89adfebf79e5bec2b087b954974d9669c4e23412fb9139e38420194ea811",
+      "rgbSha256": "51b1097144b4b181a9eb278f12d537043aa9742abf47b28173c08aefad69299a",
+      "ink": {
+        "count": 800524,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Claude:front": {
+      "relativePath": "lineart assets/dark/Claude-dark-lineart.png",
+      "bytes": 1006062,
+      "sha256": "51ea599d978bc7d2d2378f43440ac1d78ad2c33419d84d58fc7030f99ba6db8f",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 761931,
+        "partiallyTransparentPixels": 809952,
+        "fullyOpaquePixels": 528,
+        "transparentFraction": 0.484562,
+        "partialFraction": 0.515102,
+        "opaqueFraction": 0.000336,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          8,
+          939,
+          1669
+        ]
+      },
+      "alphaSha256": "8a81d74118ef0afb3f81904e16566e628b48e2bdb85be41e12270f17946db1f5",
+      "rgbSha256": "ededeb4df46ba5e549b60c1d32f51215284541da992b5fb807737c0e09405684",
+      "ink": {
+        "count": 810480,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Claude:side": {
+      "relativePath": "lineart assets/dark/Claude-side-dark-lineart.png",
+      "bytes": 1016803,
+      "sha256": "514cfc307462a06477d30ac0e06998ab88324f4003abe32f8e4d598e001963e2",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 713248,
+        "partiallyTransparentPixels": 858869,
+        "fullyOpaquePixels": 294,
+        "transparentFraction": 0.453602,
+        "partialFraction": 0.546212,
+        "opaqueFraction": 0.000187,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          11,
+          934,
+          1662
+        ]
+      },
+      "alphaSha256": "d8ca297ae819e815bcbeff9bc07035f70e79e531a0aa78ff79570ba880aa38aa",
+      "rgbSha256": "784cefbb1af85a4ae02e5bcaf965deb5ab26eef4f85c0daf3297d4627ed766d4",
+      "ink": {
+        "count": 859163,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:DeepSeek:front": {
+      "relativePath": "lineart assets/dark/DeepSeek-dark-lineart.png",
+      "bytes": 870810,
+      "sha256": "391818b4d50b479dac9b66dfbcab98a1358fa7f2aaaa21a9520c9d8a40811ced",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 837733,
+        "partiallyTransparentPixels": 735153,
+        "fullyOpaquePixels": 466,
+        "transparentFraction": 0.532451,
+        "partialFraction": 0.467253,
+        "opaqueFraction": 0.000296,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          28,
+          15,
+          926,
+          1665
+        ]
+      },
+      "alphaSha256": "21dd6ffa997250a011c7be55a95621956ad1773a4646ad3e9b626785affc1fae",
+      "rgbSha256": "00b184bd646077d8fadf296d89bd3e8ddac66cdc13317faece619d5bf63d4df0",
+      "ink": {
+        "count": 735619,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:DeepSeek:side": {
+      "relativePath": "lineart assets/dark/DeepSeek-side-dark-lineart.png",
+      "bytes": 817718,
+      "sha256": "12027d0a6f18a2710f22628180b9513b14a7686e8f1c2d75afc8a27df9b28300",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 774181,
+        "partiallyTransparentPixels": 797965,
+        "fullyOpaquePixels": 265,
+        "transparentFraction": 0.492353,
+        "partialFraction": 0.507479,
+        "opaqueFraction": 0.000169,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          15,
+          9,
+          932,
+          1653
+        ]
+      },
+      "alphaSha256": "882e2e88dedb4445d5dc04f2d2a55e03af51b7fb222d43291546ba0da00bc906",
+      "rgbSha256": "47ae535afdfe9757f15d8308141d0b70487206b50e6d9beb1c5ce2be4efe4353",
+      "ink": {
+        "count": 798230,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:GLM:front": {
+      "relativePath": "lineart assets/dark/GLM-dark-lineart.png",
+      "bytes": 826360,
+      "sha256": "94bdd0c462c8c9025857005dc783887e80be3412a3e39d843916aae03dca6834",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 878645,
+        "partiallyTransparentPixels": 694219,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.558627,
+        "partialFraction": 0.441373,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          61,
+          8,
+          978,
+          1534
+        ]
+      },
+      "alphaSha256": "130f392045d376c414f80f91d74f8875e3ae8f00879f35487bec9b17ab9b5505",
+      "rgbSha256": "b1f9144e6c1e564e3e633d5a6f0f913ee9b3928fe62f12a43b2004fa2185accb",
+      "ink": {
+        "count": 694219,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:GLM:side": {
+      "relativePath": "lineart assets/dark/GLM-side-dark-lineart.png",
+      "bytes": 888925,
+      "sha256": "2bd8be6e58ecdecbef7fdc35145cfcd7e3ff8f556be0af29bf6c62f66e8a303c",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 851526,
+        "partiallyTransparentPixels": 721338,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.541386,
+        "partialFraction": 0.458614,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          57,
+          8,
+          993,
+          1530
+        ]
+      },
+      "alphaSha256": "dc8d735b6cc08f57e2cfb3df92dcc655822999d1426e168477d1a7a2340f9e34",
+      "rgbSha256": "cfc303c616060c050cb8028d26c17f4cc621c00d7df0e707b91846381556c4cd",
+      "ink": {
+        "count": 721338,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Gemini:front": {
+      "relativePath": "lineart assets/dark/Gemini-dark-lineart.png",
+      "bytes": 791667,
+      "sha256": "b3d73b864bf69f640a32342fdab3fc11404bf2e2fbb106d0175a378237fa3502",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 905976,
+        "partiallyTransparentPixels": 666888,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.576004,
+        "partialFraction": 0.423996,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          23,
+          8,
+          1002,
+          1530
+        ]
+      },
+      "alphaSha256": "308edd3c8de89edcf568cd8ae6527371fab5d5de35dce5466843b73dad54f459",
+      "rgbSha256": "992c2f5803ee6e166875782affdece43615bdd90716220ffa26fb0c1cc7bfaa3",
+      "ink": {
+        "count": 666888,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Gemini:side": {
+      "relativePath": "lineart assets/dark/Gemini-side-dark-lineart.png",
+      "bytes": 802463,
+      "sha256": "ad64b74f337c57f234b5a70377d735422783d65df52324138f93f33a8054a4af",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 839571,
+        "partiallyTransparentPixels": 733779,
+        "fullyOpaquePixels": 2,
+        "transparentFraction": 0.533619,
+        "partialFraction": 0.466379,
+        "opaqueFraction": 1e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          9,
+          12,
+          934,
+          1661
+        ]
+      },
+      "alphaSha256": "f6139069d1a40a7d77261cc76bd7e62f982e6685a512d9babff3fc3562f4a065",
+      "rgbSha256": "98fbba2beae675243a9c8897200f8fb7a81eda599603492ff7ed384d948ebe18",
+      "ink": {
+        "count": 733781,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Grok:front": {
+      "relativePath": "lineart assets/dark/Grok-dark-lineart.png",
+      "bytes": 1027825,
+      "sha256": "fd619dbbf86e1d1e47ce9f661491d0657d28b7ef8924a32a5935a8bd2aa62e20",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 666329,
+        "partiallyTransparentPixels": 906866,
+        "fullyOpaquePixels": 157,
+        "transparentFraction": 0.423509,
+        "partialFraction": 0.576391,
+        "opaqueFraction": 0.0001,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          12,
+          941,
+          1657
+        ]
+      },
+      "alphaSha256": "1fc4dfc8a372b9727fe9621432963bdd64f391c2d3ad813acd471008954aa54c",
+      "rgbSha256": "4f3074f3fadb02d0df567598dc35440e558c5180182f7c0f6a4e05191b262f1f",
+      "ink": {
+        "count": 907023,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Grok:side": {
+      "relativePath": "lineart assets/dark/Grok-side-dark-lineart.png",
+      "bytes": 865979,
+      "sha256": "505b1469d45f54ff1ef602672dfde4c35ae93393c941d7576b280baffeffb36e",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 697820,
+        "partiallyTransparentPixels": 875532,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.443524,
+        "partialFraction": 0.556476,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          21,
+          4,
+          935,
+          1652
+        ]
+      },
+      "alphaSha256": "883ac561b9eb73066d19d41b3570306a71bf059cc39badaa3f732b5537cb00eb",
+      "rgbSha256": "51b1097144b4b181a9eb278f12d537043aa9742abf47b28173c08aefad69299a",
+      "ink": {
+        "count": 875532,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Kimi:front": {
+      "relativePath": "lineart assets/dark/Kimi-dark-lineart.png",
+      "bytes": 919559,
+      "sha256": "8c964bd689a6a682fd86e3bd46c17b1cd8d4565546b181e2a756dbf148097333",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 780452,
+        "partiallyTransparentPixels": 792412,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.496198,
+        "partialFraction": 0.503802,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          35,
+          10,
+          1013,
+          1528
+        ]
+      },
+      "alphaSha256": "8a883a2afe3516aad05ec0efe7fb687eff8db1e0a11c1c5033f844d36040925f",
+      "rgbSha256": "2be1aaf91a83d5360f8fd2f95270a1bbffc58d251833fec0694b266049431589",
+      "ink": {
+        "count": 792412,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Kimi:side": {
+      "relativePath": "lineart assets/dark/Kimi-side-dark-lineart.png",
+      "bytes": 886761,
+      "sha256": "09308a515a91f182aa79c89e589809c6c5eacdd468888884140f507aa7842d82",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 720314,
+        "partiallyTransparentPixels": 852094,
+        "fullyOpaquePixels": 3,
+        "transparentFraction": 0.458095,
+        "partialFraction": 0.541903,
+        "opaqueFraction": 2e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          7,
+          17,
+          941,
+          1645
+        ]
+      },
+      "alphaSha256": "1b46dd43aeca0bed1b285ad7de2f51b013517f9aac028e45d034351680d8284a",
+      "rgbSha256": "458b61e603d5c8cff179ac759ab4ed4b950709480579d7d691bc60fed9e9931c",
+      "ink": {
+        "count": 852097,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Mimo:front": {
+      "relativePath": "lineart assets/dark/Mimo-dark-lineart.png",
+      "bytes": 489272,
+      "sha256": "24bfbcf7475e8629e304c85c733d703f0f304e0810133c85ad5ded2d6cfd9258",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1192967,
+        "partiallyTransparentPixels": 379897,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.758468,
+        "partialFraction": 0.241532,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          223,
+          12,
+          806,
+          1518
+        ]
+      },
+      "alphaSha256": "41c7e257611be241e27463ef1e193445b1f4e0a7a63431238b71c50c9e4c18e7",
+      "rgbSha256": "2330a77a1050b98a0c96cb9f90e3e986ed55e793c6099e22f7725fa4c48fbe98",
+      "ink": {
+        "count": 379897,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Mimo:side": {
+      "relativePath": "lineart assets/dark/Mimo-side-dark-lineart.png",
+      "bytes": 515198,
+      "sha256": "f5f26b562a6f2c7a048d140bffcc806726948067455cfe6970ce48265884e05d",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1198373,
+        "partiallyTransparentPixels": 374491,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.761905,
+        "partialFraction": 0.238095,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          254,
+          8,
+          964,
+          1527
+        ]
+      },
+      "alphaSha256": "6ff10575d4ba7fdfd1161099e373f8f8eca979314f434069f99bc49749ceeea9",
+      "rgbSha256": "d95b1d98eb714d5ce7672f065bbe66cbd125baf2dc12159f53cf51646c27eb69",
+      "ink": {
+        "count": 374491,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Muse:front": {
+      "relativePath": "lineart assets/dark/Muse-dark-lineart.png",
+      "bytes": 674405,
+      "sha256": "b4ab511f4b2fa870bb0e74f675b27e0679bdbffb9a5edd185aeb2997d795a4e5",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1032186,
+        "partiallyTransparentPixels": 540678,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.656246,
+        "partialFraction": 0.343754,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          50,
+          5,
+          986,
+          1531
+        ]
+      },
+      "alphaSha256": "a0ef36db213bd28983e0b54151d94d4da5197554b96495aae0b9bf8ffb917464",
+      "rgbSha256": "9df6d02b301e7456354d0cb392b327de5f7a04b2c06189179c1085424302f2bd",
+      "ink": {
+        "count": 540678,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Muse:side": {
+      "relativePath": "lineart assets/dark/Muse-side-dark-lineart.png",
+      "bytes": 615752,
+      "sha256": "d2f56e11c7204749107fe490386edbc579a3e6d297d6a1fea5554b84b0121587",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1080696,
+        "partiallyTransparentPixels": 492168,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.687088,
+        "partialFraction": 0.312912,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          200,
+          8,
+          976,
+          1528
+        ]
+      },
+      "alphaSha256": "418622a4eaac3b5cd7eccfb561adb3b4b62bad124b93393f6ebb27e6b265f34e",
+      "rgbSha256": "6dc21d730cd5606e112edf562789dd44a44e1f040dd914b89abc6dda84ef57b8",
+      "ink": {
+        "count": 492168,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Qwen:front": {
+      "relativePath": "lineart assets/dark/Qwen-dark-lineart.png",
+      "bytes": 928642,
+      "sha256": "ef6b0dd66d6d85d222459e1c01c27ddbe6a5cc5bb913cf696cdb53e4e17e6e2e",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 703124,
+        "partiallyTransparentPixels": 870228,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.446896,
+        "partialFraction": 0.553104,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          15,
+          13,
+          932,
+          1662
+        ]
+      },
+      "alphaSha256": "236486a8a8c2a892ca6af9f86bc95c09047439419b2386e0f613c77ba71ec6be",
+      "rgbSha256": "50bb5e95d6792f65b11d699c0a7d0e2c6ebcfa607cc923e55a9381a228b502ba",
+      "ink": {
+        "count": 870228,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "dark:Qwen:side": {
+      "relativePath": "lineart assets/dark/Qwen-side-dark-lineart.png",
+      "bytes": 897133,
+      "sha256": "04b4eb91d49ef8a1bcaedbfd43a49d45414dc3a4c79f9b21adbf982338c96aba",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 702889,
+        "partiallyTransparentPixels": 870456,
+        "fullyOpaquePixels": 7,
+        "transparentFraction": 0.446746,
+        "partialFraction": 0.553249,
+        "opaqueFraction": 4e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          39,
+          7,
+          941,
+          1643
+        ]
+      },
+      "alphaSha256": "88c8aef9350e5197afea93b49e662c08faefbd299854e8b06bcb871d7249db6f",
+      "rgbSha256": "8ded7b7bd258dac78171283c1cc98d382df47dec91000782c1ba3bf52fad5bae",
+      "ink": {
+        "count": 870463,
+        "min": 255.0,
+        "p05": 255.0,
+        "median": 255.0,
+        "p95": 255.0,
+        "max": 255.0,
+        "mean": 255.0
+      }
+    },
+    "light:ChatGPT:front": {
+      "relativePath": "lineart assets/light/ChatGPT-lineart.png",
+      "bytes": 1015632,
+      "sha256": "3c0a000b2bbc633db393e7aebcb05b7534c5ae11c264014cb2848427aecf91f1",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 764094,
+        "partiallyTransparentPixels": 808887,
+        "fullyOpaquePixels": 371,
+        "transparentFraction": 0.485647,
+        "partialFraction": 0.514117,
+        "opaqueFraction": 0.000236,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          23,
+          12,
+          927,
+          1662
+        ]
+      },
+      "alphaSha256": "3e2478cd8df65fe6d6ac3e8b4ab7e387baf1062a391fa8ea933e931f9148866f",
+      "rgbSha256": "fd348498ca9db8bff81a6b2c3ad935075d147f902eb9d480243f46ed4700217c",
+      "ink": {
+        "count": 809258,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:ChatGPT:side": {
+      "relativePath": "lineart assets/light/ChatGPT-side-lineart.png",
+      "bytes": 879942,
+      "sha256": "03866cf1437dfbce1b7d328613570408ab1452d5e0c9e4e4e5b668f227d701dd",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 772828,
+        "partiallyTransparentPixels": 800306,
+        "fullyOpaquePixels": 218,
+        "transparentFraction": 0.491198,
+        "partialFraction": 0.508663,
+        "opaqueFraction": 0.000139,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          69,
+          6,
+          937,
+          1671
+        ]
+      },
+      "alphaSha256": "b2eb89adfebf79e5bec2b087b954974d9669c4e23412fb9139e38420194ea811",
+      "rgbSha256": "599dcf8c409256c0530d7fa200e363fd4ae38f91c6b2a5c25bc604f320f0602d",
+      "ink": {
+        "count": 800524,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Claude:front": {
+      "relativePath": "lineart assets/light/Claude-lineart.png",
+      "bytes": 1005817,
+      "sha256": "f9449b337ce1df808aeff5af54ef72a9358ae21cd6b867117baa3e7722b7360f",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 761931,
+        "partiallyTransparentPixels": 809952,
+        "fullyOpaquePixels": 528,
+        "transparentFraction": 0.484562,
+        "partialFraction": 0.515102,
+        "opaqueFraction": 0.000336,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          8,
+          939,
+          1669
+        ]
+      },
+      "alphaSha256": "8a81d74118ef0afb3f81904e16566e628b48e2bdb85be41e12270f17946db1f5",
+      "rgbSha256": "1d510d7f13404918104022884ed207efbcc9cb7d29f0b50b773cdda39e4e1648",
+      "ink": {
+        "count": 810480,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Claude:side": {
+      "relativePath": "lineart assets/light/Claude-side-lineart.png",
+      "bytes": 1016293,
+      "sha256": "95d10b10366129d1fea4dda35137df76f6b80c68351f11bdf63b7d78500c62b0",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 713248,
+        "partiallyTransparentPixels": 858869,
+        "fullyOpaquePixels": 294,
+        "transparentFraction": 0.453602,
+        "partialFraction": 0.546212,
+        "opaqueFraction": 0.000187,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          11,
+          934,
+          1662
+        ]
+      },
+      "alphaSha256": "d8ca297ae819e815bcbeff9bc07035f70e79e531a0aa78ff79570ba880aa38aa",
+      "rgbSha256": "db7710df2a7ab1994de99590c76c21cec2e7116c55d0639a718c65c0d3fa5744",
+      "ink": {
+        "count": 859163,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:DeepSeek:front": {
+      "relativePath": "lineart assets/light/DeepSeek-lineart.png",
+      "bytes": 870156,
+      "sha256": "ae2a1e215aa523179146344b9ea77e160045b36c8c72e05821101d015eed0c9a",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 837733,
+        "partiallyTransparentPixels": 735153,
+        "fullyOpaquePixels": 466,
+        "transparentFraction": 0.532451,
+        "partialFraction": 0.467253,
+        "opaqueFraction": 0.000296,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          28,
+          15,
+          926,
+          1665
+        ]
+      },
+      "alphaSha256": "21dd6ffa997250a011c7be55a95621956ad1773a4646ad3e9b626785affc1fae",
+      "rgbSha256": "64604682512f1355618a48530e0aa1c6b7a9d93889e80a6fec13e33f75cb1c7d",
+      "ink": {
+        "count": 735619,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:DeepSeek:side": {
+      "relativePath": "lineart assets/light/DeepSeek-side-lineart.png",
+      "bytes": 817416,
+      "sha256": "4d04e78b98a2c0e807f135a0e6e748ce0515a749b268c34d42d3b46fbd896f40",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 774181,
+        "partiallyTransparentPixels": 797965,
+        "fullyOpaquePixels": 265,
+        "transparentFraction": 0.492353,
+        "partialFraction": 0.507479,
+        "opaqueFraction": 0.000169,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          15,
+          9,
+          932,
+          1653
+        ]
+      },
+      "alphaSha256": "882e2e88dedb4445d5dc04f2d2a55e03af51b7fb222d43291546ba0da00bc906",
+      "rgbSha256": "107984b4b1c77b76fb15736d7a370a5c230e699527e11e29c14015ef85a4d095",
+      "ink": {
+        "count": 798230,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:GLM:front": {
+      "relativePath": "lineart assets/light/GLM-lineart.png",
+      "bytes": 825428,
+      "sha256": "c835373a145ac2abb9c52d81964024f35668ed00dd649b4b4cdcfa80b4eaac06",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 878645,
+        "partiallyTransparentPixels": 694219,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.558627,
+        "partialFraction": 0.441373,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          61,
+          8,
+          978,
+          1534
+        ]
+      },
+      "alphaSha256": "130f392045d376c414f80f91d74f8875e3ae8f00879f35487bec9b17ab9b5505",
+      "rgbSha256": "68785637606193a57daf381c9e3ae1d8bc57cf890a2da25274a80910a79da51d",
+      "ink": {
+        "count": 694219,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:GLM:side": {
+      "relativePath": "lineart assets/light/GLM-side-lineart.png",
+      "bytes": 888252,
+      "sha256": "d7189f026077d3dfdc81360c8874d2d5bb973f6070207fd92adb1c9cb265434e",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 851526,
+        "partiallyTransparentPixels": 721338,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.541386,
+        "partialFraction": 0.458614,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          57,
+          8,
+          993,
+          1530
+        ]
+      },
+      "alphaSha256": "dc8d735b6cc08f57e2cfb3df92dcc655822999d1426e168477d1a7a2340f9e34",
+      "rgbSha256": "5db515312abb541d08b809566f7c28aa47f0cff4eca92eda74c5dc196eea9fc6",
+      "ink": {
+        "count": 721338,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Gemini:front": {
+      "relativePath": "lineart assets/light/Gemini-lineart.png",
+      "bytes": 784395,
+      "sha256": "516f4ab3397c2fe1f799d14b03b5fd8b55c35ee7e035f30349e93a2e8bcd5da3",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 905976,
+        "partiallyTransparentPixels": 666888,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.576004,
+        "partialFraction": 0.423996,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          23,
+          8,
+          1002,
+          1530
+        ]
+      },
+      "alphaSha256": "308edd3c8de89edcf568cd8ae6527371fab5d5de35dce5466843b73dad54f459",
+      "rgbSha256": "823e6412dd83533f6dbaaa0b39fabb5078435f26ec79da7122a5f72a19c17349",
+      "ink": {
+        "count": 666888,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Gemini:side": {
+      "relativePath": "lineart assets/light/Gemini-side-lineart.png",
+      "bytes": 802134,
+      "sha256": "353ed1a6e4602753a2469a9d846ee00ef834490d08e4da8d4331806607615bc3",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 839571,
+        "partiallyTransparentPixels": 733779,
+        "fullyOpaquePixels": 2,
+        "transparentFraction": 0.533619,
+        "partialFraction": 0.466379,
+        "opaqueFraction": 1e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          9,
+          12,
+          934,
+          1661
+        ]
+      },
+      "alphaSha256": "f6139069d1a40a7d77261cc76bd7e62f982e6685a512d9babff3fc3562f4a065",
+      "rgbSha256": "b36e43e72722a5e8fb977a607d203310e21e92acbdd2ac8d1221e45b6dc1f8a7",
+      "ink": {
+        "count": 733781,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Grok:front": {
+      "relativePath": "lineart assets/light/Grok-lineart.png",
+      "bytes": 1027491,
+      "sha256": "9069f9c4079af3b8205d53bd32e937942a44c915c596ec3055355ea0ea43dffd",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 666329,
+        "partiallyTransparentPixels": 906866,
+        "fullyOpaquePixels": 157,
+        "transparentFraction": 0.423509,
+        "partialFraction": 0.576391,
+        "opaqueFraction": 0.0001,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          11,
+          12,
+          941,
+          1657
+        ]
+      },
+      "alphaSha256": "1fc4dfc8a372b9727fe9621432963bdd64f391c2d3ad813acd471008954aa54c",
+      "rgbSha256": "358b16001ac24e6a851468406a30c0baf89a406dcfc45270486a9b0b784559f4",
+      "ink": {
+        "count": 907023,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Grok:side": {
+      "relativePath": "lineart assets/light/Grok-side-lineart.png",
+      "bytes": 866504,
+      "sha256": "fa3a78a8affba779be7b5bddd36d1e04a97e03a5c1559e9b1d64b0f4bf10e98f",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 697820,
+        "partiallyTransparentPixels": 875532,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.443524,
+        "partialFraction": 0.556476,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          21,
+          4,
+          935,
+          1652
+        ]
+      },
+      "alphaSha256": "883ac561b9eb73066d19d41b3570306a71bf059cc39badaa3f732b5537cb00eb",
+      "rgbSha256": "599dcf8c409256c0530d7fa200e363fd4ae38f91c6b2a5c25bc604f320f0602d",
+      "ink": {
+        "count": 875532,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Kimi:front": {
+      "relativePath": "lineart assets/light/Kimi-lineart.png",
+      "bytes": 918738,
+      "sha256": "fc65029d695ab644d4077542ff1c983a009c8daa10f5899481207894bf68bc66",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 780452,
+        "partiallyTransparentPixels": 792412,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.496198,
+        "partialFraction": 0.503802,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          35,
+          10,
+          1013,
+          1528
+        ]
+      },
+      "alphaSha256": "8a883a2afe3516aad05ec0efe7fb687eff8db1e0a11c1c5033f844d36040925f",
+      "rgbSha256": "760ff0db28b95034583f4d0aa428935c9f579c018ce30652433348c6f11aeaae",
+      "ink": {
+        "count": 792412,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Kimi:side": {
+      "relativePath": "lineart assets/light/Kimi-side-lineart.png",
+      "bytes": 886368,
+      "sha256": "3abc6b6540035920dfa56ad82837c917385a27ec089c80f8a2c0d39d14dd9681",
+      "header": {
+        "width": 941,
+        "height": 1671,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1671
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572411,
+        "fullyTransparentPixels": 720314,
+        "partiallyTransparentPixels": 852094,
+        "fullyOpaquePixels": 3,
+        "transparentFraction": 0.458095,
+        "partialFraction": 0.541903,
+        "opaqueFraction": 2e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          7,
+          17,
+          941,
+          1645
+        ]
+      },
+      "alphaSha256": "1b46dd43aeca0bed1b285ad7de2f51b013517f9aac028e45d034351680d8284a",
+      "rgbSha256": "6c44799c3c64a3197235c0d1aa0e4948c7e2d8d271cd09d5b88dac30ef8a5893",
+      "ink": {
+        "count": 852097,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Mimo:front": {
+      "relativePath": "lineart assets/light/Mimo-lineart.png",
+      "bytes": 488311,
+      "sha256": "1393aad74576aaab347929b1eaf6ca29a7ef4d991bd30b99f77ea428a6ab1a68",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1192967,
+        "partiallyTransparentPixels": 379897,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.758468,
+        "partialFraction": 0.241532,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          223,
+          12,
+          806,
+          1518
+        ]
+      },
+      "alphaSha256": "41c7e257611be241e27463ef1e193445b1f4e0a7a63431238b71c50c9e4c18e7",
+      "rgbSha256": "fd2ba97d21dbb18ccf016fa79db6e6e860c9ab53596f2e20a52c12a014063a22",
+      "ink": {
+        "count": 379897,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Mimo:side": {
+      "relativePath": "lineart assets/light/Mimo-side-lineart.png",
+      "bytes": 513076,
+      "sha256": "97e54ad8e79bac0d0ba782ad682ba7f2e5ec434e704fef470310c0182229a215",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1198373,
+        "partiallyTransparentPixels": 374491,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.761905,
+        "partialFraction": 0.238095,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          254,
+          8,
+          964,
+          1527
+        ]
+      },
+      "alphaSha256": "6ff10575d4ba7fdfd1161099e373f8f8eca979314f434069f99bc49749ceeea9",
+      "rgbSha256": "1034d7adcdade5ab4e754e1f810a3574b0f765aa989cc771b70b021f8d47448f",
+      "ink": {
+        "count": 374491,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Muse:front": {
+      "relativePath": "lineart assets/light/Muse-lineart.png",
+      "bytes": 673418,
+      "sha256": "bfdf04b7991cd3cf103451ab0a66ff6970d16bae7beeaa1b6fc19bebad33d413",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1032186,
+        "partiallyTransparentPixels": 540678,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.656246,
+        "partialFraction": 0.343754,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          50,
+          5,
+          986,
+          1531
+        ]
+      },
+      "alphaSha256": "a0ef36db213bd28983e0b54151d94d4da5197554b96495aae0b9bf8ffb917464",
+      "rgbSha256": "df21a99c48b629366cbcf599792af7be250ef532fb19e7251cb79dca7f1a20c5",
+      "ink": {
+        "count": 540678,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Muse:side": {
+      "relativePath": "lineart assets/light/Muse-side-lineart.png",
+      "bytes": 614546,
+      "sha256": "86bd6cfb31e3ddf8e423f69b7a5fecfb89a05824c722b5b010f803dbf0f34292",
+      "header": {
+        "width": 1024,
+        "height": 1536,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        1024,
+        1536
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1572864,
+        "fullyTransparentPixels": 1080696,
+        "partiallyTransparentPixels": 492168,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.687088,
+        "partialFraction": 0.312912,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          200,
+          8,
+          976,
+          1528
+        ]
+      },
+      "alphaSha256": "418622a4eaac3b5cd7eccfb561adb3b4b62bad124b93393f6ebb27e6b265f34e",
+      "rgbSha256": "dea0f4caf87e1ef45c4b46a2b81ac8fb80feb85f89ae3ed3607a9e2f55ff3d82",
+      "ink": {
+        "count": 492168,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Qwen:front": {
+      "relativePath": "lineart assets/light/Qwen-lineart.png",
+      "bytes": 928284,
+      "sha256": "c9df1e40925e6ebdeec30113a33e4731ca6843bd2167c1ac39aaa7b12325036f",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 703124,
+        "partiallyTransparentPixels": 870228,
+        "fullyOpaquePixels": 0,
+        "transparentFraction": 0.446896,
+        "partialFraction": 0.553104,
+        "opaqueFraction": 0.0,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          15,
+          13,
+          932,
+          1662
+        ]
+      },
+      "alphaSha256": "236486a8a8c2a892ca6af9f86bc95c09047439419b2386e0f613c77ba71ec6be",
+      "rgbSha256": "b0c41babdf432f6f70cde073f8b77d4965e9f5a428d235c4eca94b0c9f5ecf60",
+      "ink": {
+        "count": 870228,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    },
+    "light:Qwen:side": {
+      "relativePath": "lineart assets/light/Qwen-side-lineart.png",
+      "bytes": 896732,
+      "sha256": "dfeb06037448f11f4696f45f2c45b6224bda0ad3283791cfbf276ba59b659cd6",
+      "header": {
+        "width": 941,
+        "height": 1672,
+        "bitDepth": 8,
+        "colorType": 6,
+        "colorTypeName": "truecolor+alpha",
+        "interlace": 0,
+        "ihdrLength": 13,
+        "compression": 0,
+        "filterMethod": 0
+      },
+      "pillowMode": "RGBA",
+      "pillowSize": [
+        941,
+        1672
+      ],
+      "bands": [
+        "R",
+        "G",
+        "B",
+        "A"
+      ],
+      "hasAlphaChannel": true,
+      "alpha": {
+        "totalPixels": 1573352,
+        "fullyTransparentPixels": 702889,
+        "partiallyTransparentPixels": 870456,
+        "fullyOpaquePixels": 7,
+        "transparentFraction": 0.446746,
+        "partialFraction": 0.553249,
+        "opaqueFraction": 4e-06,
+        "isActuallyTransparent": true,
+        "boundingBoxOfInk": [
+          39,
+          7,
+          941,
+          1643
+        ]
+      },
+      "alphaSha256": "88c8aef9350e5197afea93b49e662c08faefbd299854e8b06bcb871d7249db6f",
+      "rgbSha256": "2cfd98722c732fec39c88d844c8bfc5a1a039674fe68c57af53921abb1c83863",
+      "ink": {
+        "count": 870463,
+        "min": 0.0,
+        "p05": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      }
+    }
+  }
+}

@@ -1,0 +1,4402 @@
+[
+  {
+    "mode": "light",
+    "character": "ChatGPT",
+    "view": "front",
+    "sourcePath": "lineart assets/light/ChatGPT-lineart.png",
+    "sourceBytes": 1015632,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 1013448,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 828802,
+        "percentOfOriginal": 81.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 488379,
+        "percentOfOriginal": 48.1,
+        "alphaMaxDelta": 93,
+        "alphaChangedPixelFraction": 0.444623,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.102197,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 236184,
+        "percentOfOriginal": 23.3,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.513766,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.140965,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 585204,
+        "percentOfOriginal": 57.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 180402,
+        "percentOfOriginal": 17.8,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.513766,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.140965,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "ChatGPT",
+    "view": "side",
+    "sourcePath": "lineart assets/light/ChatGPT-side-lineart.png",
+    "sourceBytes": 879942,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 875125,
+        "percentOfOriginal": 99.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 750831,
+        "percentOfOriginal": 85.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 468273,
+        "percentOfOriginal": 53.2,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.421078,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 226064,
+        "percentOfOriginal": 25.7,
+        "alphaMaxDelta": 177,
+        "alphaChangedPixelFraction": 0.489891,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 554450,
+        "percentOfOriginal": 63.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 173632,
+        "percentOfOriginal": 19.7,
+        "alphaMaxDelta": 177,
+        "alphaChangedPixelFraction": 0.489891,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Claude",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Claude-lineart.png",
+    "sourceBytes": 1005817,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 1004538,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 825712,
+        "percentOfOriginal": 82.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 481971,
+        "percentOfOriginal": 47.9,
+        "alphaMaxDelta": 99,
+        "alphaChangedPixelFraction": 0.453745,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.093853,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 231439,
+        "percentOfOriginal": 23.0,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.513531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.126299,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 581106,
+        "percentOfOriginal": 57.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 183090,
+        "percentOfOriginal": 18.2,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.513531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.126299,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Claude",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Claude-side-lineart.png",
+    "sourceBytes": 1016293,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 1015002,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 831404,
+        "percentOfOriginal": 81.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 489370,
+        "percentOfOriginal": 48.2,
+        "alphaMaxDelta": 97,
+        "alphaChangedPixelFraction": 0.45258,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.092489,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 236448,
+        "percentOfOriginal": 23.3,
+        "alphaMaxDelta": 189,
+        "alphaChangedPixelFraction": 0.524206,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.12653,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 583068,
+        "percentOfOriginal": 57.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 182678,
+        "percentOfOriginal": 18.0,
+        "alphaMaxDelta": 189,
+        "alphaChangedPixelFraction": 0.524206,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.12653,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "GLM",
+    "view": "front",
+    "sourcePath": "lineart assets/light/GLM-lineart.png",
+    "sourceBytes": 825428,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 824131,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 670994,
+        "percentOfOriginal": 81.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 408332,
+        "percentOfOriginal": 49.5,
+        "alphaMaxDelta": 110,
+        "alphaChangedPixelFraction": 0.374992,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.07349,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 198000,
+        "percentOfOriginal": 24.0,
+        "alphaMaxDelta": 193,
+        "alphaChangedPixelFraction": 0.433921,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.107039,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 479422,
+        "percentOfOriginal": 58.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 151388,
+        "percentOfOriginal": 18.3,
+        "alphaMaxDelta": 193,
+        "alphaChangedPixelFraction": 0.433921,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.107039,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "GLM",
+    "view": "side",
+    "sourcePath": "lineart assets/light/GLM-side-lineart.png",
+    "sourceBytes": 888252,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 887016,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 726431,
+        "percentOfOriginal": 81.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 441879,
+        "percentOfOriginal": 49.7,
+        "alphaMaxDelta": 105,
+        "alphaChangedPixelFraction": 0.397842,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.073931,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 214944,
+        "percentOfOriginal": 24.2,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.45919,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.109321,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 519986,
+        "percentOfOriginal": 58.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 163418,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.45919,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.109321,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Gemini",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Gemini-lineart.png",
+    "sourceBytes": 784395,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 783231,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 639511,
+        "percentOfOriginal": 81.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 386732,
+        "percentOfOriginal": 49.3,
+        "alphaMaxDelta": 109,
+        "alphaChangedPixelFraction": 0.345097,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.082884,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 191068,
+        "percentOfOriginal": 24.4,
+        "alphaMaxDelta": 172,
+        "alphaChangedPixelFraction": 0.411134,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.122624,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 451002,
+        "percentOfOriginal": 57.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 144256,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 172,
+        "alphaChangedPixelFraction": 0.411134,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.122624,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Gemini",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Gemini-side-lineart.png",
+    "sourceBytes": 802134,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 800933,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 656813,
+        "percentOfOriginal": 81.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 396875,
+        "percentOfOriginal": 49.5,
+        "alphaMaxDelta": 72,
+        "alphaChangedPixelFraction": 0.345077,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.051014,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 195181,
+        "percentOfOriginal": 24.3,
+        "alphaMaxDelta": 157,
+        "alphaChangedPixelFraction": 0.408825,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.07772,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 461150,
+        "percentOfOriginal": 57.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 147842,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 157,
+        "alphaChangedPixelFraction": 0.408825,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.07772,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "DeepSeek",
+    "view": "front",
+    "sourcePath": "lineart assets/light/DeepSeek-lineart.png",
+    "sourceBytes": 870156,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 868931,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 704555,
+        "percentOfOriginal": 81.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 419199,
+        "percentOfOriginal": 48.2,
+        "alphaMaxDelta": 97,
+        "alphaChangedPixelFraction": 0.381617,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.104834,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 205049,
+        "percentOfOriginal": 23.6,
+        "alphaMaxDelta": 170,
+        "alphaChangedPixelFraction": 0.44908,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.141275,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 487368,
+        "percentOfOriginal": 56.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 153192,
+        "percentOfOriginal": 17.6,
+        "alphaMaxDelta": 170,
+        "alphaChangedPixelFraction": 0.44908,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.141275,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "DeepSeek",
+    "view": "side",
+    "sourcePath": "lineart assets/light/DeepSeek-side-lineart.png",
+    "sourceBytes": 817416,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 816104,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 659984,
+        "percentOfOriginal": 80.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 395523,
+        "percentOfOriginal": 48.4,
+        "alphaMaxDelta": 111,
+        "alphaChangedPixelFraction": 0.347269,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.053138,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 194595,
+        "percentOfOriginal": 23.8,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.412336,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.074489,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 465130,
+        "percentOfOriginal": 56.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 148794,
+        "percentOfOriginal": 18.2,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.412336,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.074489,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Kimi",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Kimi-lineart.png",
+    "sourceBytes": 918738,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 917489,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 751799,
+        "percentOfOriginal": 81.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 460170,
+        "percentOfOriginal": 50.1,
+        "alphaMaxDelta": 109,
+        "alphaChangedPixelFraction": 0.412511,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.07434,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 226033,
+        "percentOfOriginal": 24.6,
+        "alphaMaxDelta": 171,
+        "alphaChangedPixelFraction": 0.486301,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.107275,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 537310,
+        "percentOfOriginal": 58.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 165968,
+        "percentOfOriginal": 18.1,
+        "alphaMaxDelta": 171,
+        "alphaChangedPixelFraction": 0.486301,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.107275,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Kimi",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Kimi-side-lineart.png",
+    "sourceBytes": 886368,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 885109,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 723502,
+        "percentOfOriginal": 81.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 428647,
+        "percentOfOriginal": 48.4,
+        "alphaMaxDelta": 81,
+        "alphaChangedPixelFraction": 0.384633,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.04721,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 208879,
+        "percentOfOriginal": 23.6,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.4531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.068032,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 509436,
+        "percentOfOriginal": 57.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 160802,
+        "percentOfOriginal": 18.1,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.4531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.068032,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Qwen",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Qwen-lineart.png",
+    "sourceBytes": 928284,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 926978,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 763548,
+        "percentOfOriginal": 82.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 450060,
+        "percentOfOriginal": 48.5,
+        "alphaMaxDelta": 76,
+        "alphaChangedPixelFraction": 0.412878,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.052374,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 217397,
+        "percentOfOriginal": 23.4,
+        "alphaMaxDelta": 158,
+        "alphaChangedPixelFraction": 0.487811,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.076897,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 539292,
+        "percentOfOriginal": 58.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 168746,
+        "percentOfOriginal": 18.2,
+        "alphaMaxDelta": 158,
+        "alphaChangedPixelFraction": 0.487811,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.076897,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Qwen",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Qwen-side-lineart.png",
+    "sourceBytes": 896732,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 895462,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 733233,
+        "percentOfOriginal": 81.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 437397,
+        "percentOfOriginal": 48.8,
+        "alphaMaxDelta": 88,
+        "alphaChangedPixelFraction": 0.394642,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.042424,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 212056,
+        "percentOfOriginal": 23.6,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.469022,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.062764,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 516258,
+        "percentOfOriginal": 57.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 164562,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.469022,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.062764,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Grok",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Grok-lineart.png",
+    "sourceBytes": 1027491,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 1026308,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 845756,
+        "percentOfOriginal": 82.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 498263,
+        "percentOfOriginal": 48.5,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.454149,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.06811,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 241792,
+        "percentOfOriginal": 23.5,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.526931,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.096542,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 595792,
+        "percentOfOriginal": 58.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 188528,
+        "percentOfOriginal": 18.3,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.526931,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.096542,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Grok",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Grok-side-lineart.png",
+    "sourceBytes": 866504,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 864043,
+        "percentOfOriginal": 99.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 737961,
+        "percentOfOriginal": 85.2,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 455533,
+        "percentOfOriginal": 52.6,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.422342,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 220850,
+        "percentOfOriginal": 25.5,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.492773,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 538540,
+        "percentOfOriginal": 62.2,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 171932,
+        "percentOfOriginal": 19.8,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.492773,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Muse",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Muse-lineart.png",
+    "sourceBytes": 673418,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 672090,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 546234,
+        "percentOfOriginal": 81.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 334479,
+        "percentOfOriginal": 49.7,
+        "alphaMaxDelta": 117,
+        "alphaChangedPixelFraction": 0.29483,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.094266,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 163478,
+        "percentOfOriginal": 24.3,
+        "alphaMaxDelta": 185,
+        "alphaChangedPixelFraction": 0.343446,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.13146,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 383424,
+        "percentOfOriginal": 56.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 119124,
+        "percentOfOriginal": 17.7,
+        "alphaMaxDelta": 185,
+        "alphaChangedPixelFraction": 0.343446,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.13146,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Muse",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Muse-side-lineart.png",
+    "sourceBytes": 614546,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 613260,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 497212,
+        "percentOfOriginal": 80.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 301401,
+        "percentOfOriginal": 49.0,
+        "alphaMaxDelta": 104,
+        "alphaChangedPixelFraction": 0.260398,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.082828,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 146750,
+        "percentOfOriginal": 23.9,
+        "alphaMaxDelta": 163,
+        "alphaChangedPixelFraction": 0.305972,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.120478,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 344408,
+        "percentOfOriginal": 56.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 106172,
+        "percentOfOriginal": 17.3,
+        "alphaMaxDelta": 163,
+        "alphaChangedPixelFraction": 0.305972,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.120478,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Mimo",
+    "view": "front",
+    "sourcePath": "lineart assets/light/Mimo-lineart.png",
+    "sourceBytes": 488311,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 486959,
+        "percentOfOriginal": 99.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 389084,
+        "percentOfOriginal": 79.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 232356,
+        "percentOfOriginal": 47.6,
+        "alphaMaxDelta": 116,
+        "alphaChangedPixelFraction": 0.199315,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.072182,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 113058,
+        "percentOfOriginal": 23.2,
+        "alphaMaxDelta": 165,
+        "alphaChangedPixelFraction": 0.229912,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.105502,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 268058,
+        "percentOfOriginal": 54.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 83306,
+        "percentOfOriginal": 17.1,
+        "alphaMaxDelta": 165,
+        "alphaChangedPixelFraction": 0.229912,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.105502,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "light",
+    "character": "Mimo",
+    "view": "side",
+    "sourcePath": "lineart assets/light/Mimo-side-lineart.png",
+    "sourceBytes": 513076,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 511837,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 407641,
+        "percentOfOriginal": 79.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 247373,
+        "percentOfOriginal": 48.2,
+        "alphaMaxDelta": 133,
+        "alphaChangedPixelFraction": 0.210761,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.097947,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 121482,
+        "percentOfOriginal": 23.7,
+        "alphaMaxDelta": 180,
+        "alphaChangedPixelFraction": 0.243814,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.138376,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 280160,
+        "percentOfOriginal": 54.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 88370,
+        "percentOfOriginal": 17.2,
+        "alphaMaxDelta": 180,
+        "alphaChangedPixelFraction": 0.243814,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.138376,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "ChatGPT",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/ChatGPT-dark-lineart.png",
+    "sourceBytes": 1016019,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 1013609,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 829185,
+        "percentOfOriginal": 81.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 528829,
+        "percentOfOriginal": 52.0,
+        "alphaMaxDelta": 93,
+        "alphaChangedPixelFraction": 0.444623,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.14592,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 257070,
+        "percentOfOriginal": 25.3,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.513766,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.219953,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 585208,
+        "percentOfOriginal": 57.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 181104,
+        "percentOfOriginal": 17.8,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.513766,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.219953,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "ChatGPT",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/ChatGPT-side-dark-lineart.png",
+    "sourceBytes": 878738,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 875266,
+        "percentOfOriginal": 99.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 750174,
+        "percentOfOriginal": 85.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 502992,
+        "percentOfOriginal": 57.2,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.421078,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.038379,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 244437,
+        "percentOfOriginal": 27.8,
+        "alphaMaxDelta": 177,
+        "alphaChangedPixelFraction": 0.489891,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.070478,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 554456,
+        "percentOfOriginal": 63.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 174164,
+        "percentOfOriginal": 19.8,
+        "alphaMaxDelta": 177,
+        "alphaChangedPixelFraction": 0.489891,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.070478,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Claude",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Claude-dark-lineart.png",
+    "sourceBytes": 1006062,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 1004566,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 825791,
+        "percentOfOriginal": 82.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 516553,
+        "percentOfOriginal": 51.3,
+        "alphaMaxDelta": 99,
+        "alphaChangedPixelFraction": 0.453745,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.143517,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 249140,
+        "percentOfOriginal": 24.8,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.513531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.209626,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 581112,
+        "percentOfOriginal": 57.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 183632,
+        "percentOfOriginal": 18.3,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.513531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.209626,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Claude",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Claude-side-dark-lineart.png",
+    "sourceBytes": 1016803,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 1015320,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 831596,
+        "percentOfOriginal": 81.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 526267,
+        "percentOfOriginal": 51.8,
+        "alphaMaxDelta": 97,
+        "alphaChangedPixelFraction": 0.45258,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.135856,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 255753,
+        "percentOfOriginal": 25.2,
+        "alphaMaxDelta": 189,
+        "alphaChangedPixelFraction": 0.524206,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.202111,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 583072,
+        "percentOfOriginal": 57.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 183214,
+        "percentOfOriginal": 18.0,
+        "alphaMaxDelta": 189,
+        "alphaChangedPixelFraction": 0.524206,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.202111,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "GLM",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/GLM-dark-lineart.png",
+    "sourceBytes": 826360,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 824874,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 673040,
+        "percentOfOriginal": 81.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 443989,
+        "percentOfOriginal": 53.7,
+        "alphaMaxDelta": 110,
+        "alphaChangedPixelFraction": 0.374992,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.142858,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 216082,
+        "percentOfOriginal": 26.1,
+        "alphaMaxDelta": 193,
+        "alphaChangedPixelFraction": 0.433921,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.2066,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 479426,
+        "percentOfOriginal": 58.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 151888,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 193,
+        "alphaChangedPixelFraction": 0.433921,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.2066,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "GLM",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/GLM-side-dark-lineart.png",
+    "sourceBytes": 888925,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 887439,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 727816,
+        "percentOfOriginal": 81.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 479540,
+        "percentOfOriginal": 53.9,
+        "alphaMaxDelta": 105,
+        "alphaChangedPixelFraction": 0.397842,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.140065,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 234175,
+        "percentOfOriginal": 26.3,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.45919,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.205481,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 519992,
+        "percentOfOriginal": 58.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 163946,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 166,
+        "alphaChangedPixelFraction": 0.45919,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.205481,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Gemini",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Gemini-dark-lineart.png",
+    "sourceBytes": 791667,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 790319,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 649078,
+        "percentOfOriginal": 82.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 420191,
+        "percentOfOriginal": 53.1,
+        "alphaMaxDelta": 109,
+        "alphaChangedPixelFraction": 0.345097,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.147211,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 211722,
+        "percentOfOriginal": 26.7,
+        "alphaMaxDelta": 172,
+        "alphaChangedPixelFraction": 0.411134,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.22184,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 451008,
+        "percentOfOriginal": 57.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 145060,
+        "percentOfOriginal": 18.3,
+        "alphaMaxDelta": 172,
+        "alphaChangedPixelFraction": 0.411134,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.22184,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Gemini",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Gemini-side-dark-lineart.png",
+    "sourceBytes": 802463,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 801056,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 656931,
+        "percentOfOriginal": 81.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 413373,
+        "percentOfOriginal": 51.5,
+        "alphaMaxDelta": 72,
+        "alphaChangedPixelFraction": 0.345077,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.073826,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 205083,
+        "percentOfOriginal": 25.6,
+        "alphaMaxDelta": 157,
+        "alphaChangedPixelFraction": 0.408825,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.1148,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 461156,
+        "percentOfOriginal": 57.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 148752,
+        "percentOfOriginal": 18.5,
+        "alphaMaxDelta": 157,
+        "alphaChangedPixelFraction": 0.408825,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.1148,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "DeepSeek",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/DeepSeek-dark-lineart.png",
+    "sourceBytes": 870810,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 869357,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 704850,
+        "percentOfOriginal": 80.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 453963,
+        "percentOfOriginal": 52.1,
+        "alphaMaxDelta": 97,
+        "alphaChangedPixelFraction": 0.381617,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.14771,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 223395,
+        "percentOfOriginal": 25.7,
+        "alphaMaxDelta": 170,
+        "alphaChangedPixelFraction": 0.44908,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.216538,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 487374,
+        "percentOfOriginal": 56.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 153916,
+        "percentOfOriginal": 17.7,
+        "alphaMaxDelta": 170,
+        "alphaChangedPixelFraction": 0.44908,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.216538,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "DeepSeek",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/DeepSeek-side-dark-lineart.png",
+    "sourceBytes": 817718,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 816230,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 660107,
+        "percentOfOriginal": 80.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 414963,
+        "percentOfOriginal": 50.7,
+        "alphaMaxDelta": 111,
+        "alphaChangedPixelFraction": 0.347269,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.082158,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 205701,
+        "percentOfOriginal": 25.2,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.412336,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.12368,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 465136,
+        "percentOfOriginal": 56.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 149382,
+        "percentOfOriginal": 18.3,
+        "alphaMaxDelta": 179,
+        "alphaChangedPixelFraction": 0.412336,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.12368,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Kimi",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Kimi-dark-lineart.png",
+    "sourceBytes": 919559,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 918108,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 752954,
+        "percentOfOriginal": 81.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 503639,
+        "percentOfOriginal": 54.8,
+        "alphaMaxDelta": 109,
+        "alphaChangedPixelFraction": 0.412511,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.148231,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 248792,
+        "percentOfOriginal": 27.1,
+        "alphaMaxDelta": 171,
+        "alphaChangedPixelFraction": 0.486301,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.21409,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 537316,
+        "percentOfOriginal": 58.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 166516,
+        "percentOfOriginal": 18.1,
+        "alphaMaxDelta": 171,
+        "alphaChangedPixelFraction": 0.486301,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.21409,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Kimi",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Kimi-side-dark-lineart.png",
+    "sourceBytes": 886761,
+    "sourceSize": [
+      941,
+      1671
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 885250,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 723518,
+        "percentOfOriginal": 81.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1253
+        ],
+        "bytes": 447752,
+        "percentOfOriginal": 50.5,
+        "alphaMaxDelta": 81,
+        "alphaChangedPixelFraction": 0.384633,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.074626,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 219977,
+        "percentOfOriginal": 24.8,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.4531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.116386,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1671
+        ],
+        "bytes": 509442,
+        "percentOfOriginal": 57.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 161462,
+        "percentOfOriginal": 18.2,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.4531,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.116386,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Qwen",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Qwen-dark-lineart.png",
+    "sourceBytes": 928642,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 927105,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 763557,
+        "percentOfOriginal": 82.2,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 475570,
+        "percentOfOriginal": 51.2,
+        "alphaMaxDelta": 76,
+        "alphaChangedPixelFraction": 0.412878,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.085504,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 231668,
+        "percentOfOriginal": 24.9,
+        "alphaMaxDelta": 158,
+        "alphaChangedPixelFraction": 0.487811,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.141202,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 539298,
+        "percentOfOriginal": 58.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 169230,
+        "percentOfOriginal": 18.2,
+        "alphaMaxDelta": 158,
+        "alphaChangedPixelFraction": 0.487811,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.141202,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Qwen",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Qwen-side-dark-lineart.png",
+    "sourceBytes": 897133,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 895659,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 733251,
+        "percentOfOriginal": 81.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 456845,
+        "percentOfOriginal": 50.9,
+        "alphaMaxDelta": 88,
+        "alphaChangedPixelFraction": 0.394642,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.070596,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 223562,
+        "percentOfOriginal": 24.9,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.469022,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.113421,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 516264,
+        "percentOfOriginal": 57.5,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 165094,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 155,
+        "alphaChangedPixelFraction": 0.469022,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.113421,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Grok",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Grok-dark-lineart.png",
+    "sourceBytes": 1027825,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 1026449,
+        "percentOfOriginal": 99.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 845799,
+        "percentOfOriginal": 82.3,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 529084,
+        "percentOfOriginal": 51.5,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.454149,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.104786,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 258627,
+        "percentOfOriginal": 25.2,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.526931,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.161304,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 595796,
+        "percentOfOriginal": 58.0,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 189238,
+        "percentOfOriginal": 18.4,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.526931,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.161304,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Grok",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Grok-side-dark-lineart.png",
+    "sourceBytes": 865979,
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 864163,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 737669,
+        "percentOfOriginal": 85.2,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          706,
+          1254
+        ],
+        "bytes": 473422,
+        "percentOfOriginal": 54.7,
+        "alphaMaxDelta": 87,
+        "alphaChangedPixelFraction": 0.422342,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.022898,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 231539,
+        "percentOfOriginal": 26.7,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.492773,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.037771,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          941,
+          1672
+        ],
+        "bytes": 538546,
+        "percentOfOriginal": 62.2,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          470,
+          836
+        ],
+        "bytes": 172566,
+        "percentOfOriginal": 19.9,
+        "alphaMaxDelta": 151,
+        "alphaChangedPixelFraction": 0.492773,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.037771,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Muse",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Muse-dark-lineart.png",
+    "sourceBytes": 674405,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 672858,
+        "percentOfOriginal": 99.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 547172,
+        "percentOfOriginal": 81.1,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 366256,
+        "percentOfOriginal": 54.3,
+        "alphaMaxDelta": 117,
+        "alphaChangedPixelFraction": 0.29483,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.161052,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 179440,
+        "percentOfOriginal": 26.6,
+        "alphaMaxDelta": 185,
+        "alphaChangedPixelFraction": 0.343446,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.22288,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 383430,
+        "percentOfOriginal": 56.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 119610,
+        "percentOfOriginal": 17.7,
+        "alphaMaxDelta": 185,
+        "alphaChangedPixelFraction": 0.343446,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.22288,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Muse",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Muse-side-dark-lineart.png",
+    "sourceBytes": 615752,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 614027,
+        "percentOfOriginal": 99.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 498358,
+        "percentOfOriginal": 80.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 327888,
+        "percentOfOriginal": 53.3,
+        "alphaMaxDelta": 104,
+        "alphaChangedPixelFraction": 0.260398,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.146323,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 160569,
+        "percentOfOriginal": 26.1,
+        "alphaMaxDelta": 163,
+        "alphaChangedPixelFraction": 0.305972,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.210411,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 344414,
+        "percentOfOriginal": 55.9,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 106640,
+        "percentOfOriginal": 17.3,
+        "alphaMaxDelta": 163,
+        "alphaChangedPixelFraction": 0.305972,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.210411,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Mimo",
+    "view": "front",
+    "sourcePath": "lineart assets/dark/Mimo-dark-lineart.png",
+    "sourceBytes": 489272,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 487730,
+        "percentOfOriginal": 99.7,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 389422,
+        "percentOfOriginal": 79.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 249578,
+        "percentOfOriginal": 51.0,
+        "alphaMaxDelta": 116,
+        "alphaChangedPixelFraction": 0.199315,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.115259,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 121788,
+        "percentOfOriginal": 24.9,
+        "alphaMaxDelta": 165,
+        "alphaChangedPixelFraction": 0.229912,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.170024,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 268062,
+        "percentOfOriginal": 54.8,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 83760,
+        "percentOfOriginal": 17.1,
+        "alphaMaxDelta": 165,
+        "alphaChangedPixelFraction": 0.229912,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.170024,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  },
+  {
+    "mode": "dark",
+    "character": "Mimo",
+    "view": "side",
+    "sourcePath": "lineart assets/dark/Mimo-side-dark-lineart.png",
+    "sourceBytes": 515198,
+    "sourceSize": [
+      1024,
+      1536
+    ],
+    "rgbChannelsEqual": true,
+    "variants": [
+      {
+        "variant": "original",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 513380,
+        "percentOfOriginal": 99.6,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-lossless",
+        "format": "PNG",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 414355,
+        "percentOfOriginal": 80.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": true,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "la-75",
+        "format": "PNG",
+        "size": [
+          768,
+          1152
+        ],
+        "bytes": 270701,
+        "percentOfOriginal": 52.5,
+        "alphaMaxDelta": 133,
+        "alphaChangedPixelFraction": 0.210761,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.157257,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "la-50",
+        "format": "PNG",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 133112,
+        "percentOfOriginal": 25.8,
+        "alphaMaxDelta": 180,
+        "alphaChangedPixelFraction": 0.243814,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.219642,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      },
+      {
+        "variant": "webp-lossless",
+        "format": "WEBP",
+        "size": [
+          1024,
+          1536
+        ],
+        "bytes": 280166,
+        "percentOfOriginal": 54.4,
+        "alphaMaxDelta": 0,
+        "alphaChangedPixelFraction": 0.0,
+        "rgbMaxDeltaVisible": 0,
+        "rgbChangedVisibleFraction": 0.0,
+        "byteIdentical": false,
+        "visuallyIdentical": true
+      },
+      {
+        "variant": "webp-q90-50",
+        "format": "WEBP",
+        "size": [
+          512,
+          768
+        ],
+        "bytes": 88946,
+        "percentOfOriginal": 17.3,
+        "alphaMaxDelta": 180,
+        "alphaChangedPixelFraction": 0.243814,
+        "rgbMaxDeltaVisible": 255,
+        "rgbChangedVisibleFraction": 0.219642,
+        "byteIdentical": false,
+        "visuallyIdentical": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,182 @@
+[
+  {
+    "light": "ChatGPT-lineart.png",
+    "dark": "ChatGPT-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "ChatGPT-side-lineart.png",
+    "dark": "ChatGPT-side-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Claude-lineart.png",
+    "dark": "Claude-dark-lineart.png",
+    "size": [
+      941,
+      1671
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Claude-side-lineart.png",
+    "dark": "Claude-side-dark-lineart.png",
+    "size": [
+      941,
+      1671
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "DeepSeek-lineart.png",
+    "dark": "DeepSeek-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "DeepSeek-side-lineart.png",
+    "dark": "DeepSeek-side-dark-lineart.png",
+    "size": [
+      941,
+      1671
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Gemini-lineart.png",
+    "dark": "Gemini-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Gemini-side-lineart.png",
+    "dark": "Gemini-side-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "GLM-lineart.png",
+    "dark": "GLM-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "GLM-side-lineart.png",
+    "dark": "GLM-side-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Grok-lineart.png",
+    "dark": "Grok-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Grok-side-lineart.png",
+    "dark": "Grok-side-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Kimi-lineart.png",
+    "dark": "Kimi-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Kimi-side-lineart.png",
+    "dark": "Kimi-side-dark-lineart.png",
+    "size": [
+      941,
+      1671
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Mimo-lineart.png",
+    "dark": "Mimo-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Mimo-side-lineart.png",
+    "dark": "Mimo-side-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Muse-lineart.png",
+    "dark": "Muse-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Muse-side-lineart.png",
+    "dark": "Muse-side-dark-lineart.png",
+    "size": [
+      1024,
+      1536
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Qwen-lineart.png",
+    "dark": "Qwen-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  },
+  {
+    "light": "Qwen-side-lineart.png",
+    "dark": "Qwen-side-dark-lineart.png",
+    "size": [
+      941,
+      1672
+    ],
+    "alphaIdentical": true
+  }
+]

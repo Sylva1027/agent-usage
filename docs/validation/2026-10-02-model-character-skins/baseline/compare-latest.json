@@ -1,0 +1,1617 @@
+{
+  "comparedAt": "2026-10-01T23:27:11.922Z",
+  "baselineCapturedAt": "2026-10-01T20:40:47.079Z",
+  "combinations": 28,
+  "baselineCombinations": 28,
+  "passed": false,
+  "mismatches": [
+    {
+      "key": "1920-light-zh-CN.rects.topbarActions.x",
+      "baseline": 1519,
+      "current": 1445,
+      "delta": -74
+    },
+    {
+      "key": "1920-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1920-light-en-US.rects.topbarActions.x",
+      "baseline": 1519,
+      "current": 1445,
+      "delta": -74
+    },
+    {
+      "key": "1920-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1920-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 1519,
+      "current": 1445,
+      "delta": -74
+    },
+    {
+      "key": "1920-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1920-dark-en-US.rects.topbarActions.x",
+      "baseline": 1519,
+      "current": 1445,
+      "delta": -74
+    },
+    {
+      "key": "1920-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1680-light-zh-CN.rects.topbarActions.x",
+      "baseline": 1399,
+      "current": 1325,
+      "delta": -74
+    },
+    {
+      "key": "1680-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1680-light-en-US.rects.topbarActions.x",
+      "baseline": 1399,
+      "current": 1325,
+      "delta": -74
+    },
+    {
+      "key": "1680-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1680-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 1399,
+      "current": 1325,
+      "delta": -74
+    },
+    {
+      "key": "1680-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1680-dark-en-US.rects.topbarActions.x",
+      "baseline": 1399,
+      "current": 1325,
+      "delta": -74
+    },
+    {
+      "key": "1680-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1440-light-zh-CN.rects.topbarActions.x",
+      "baseline": 1263,
+      "current": 1189,
+      "delta": -74
+    },
+    {
+      "key": "1440-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1440-light-en-US.rects.topbarActions.x",
+      "baseline": 1263,
+      "current": 1189,
+      "delta": -74
+    },
+    {
+      "key": "1440-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1440-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 1263,
+      "current": 1189,
+      "delta": -74
+    },
+    {
+      "key": "1440-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1440-dark-en-US.rects.topbarActions.x",
+      "baseline": 1263,
+      "current": 1189,
+      "delta": -74
+    },
+    {
+      "key": "1440-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1280-light-zh-CN.rects.topbarActions.x",
+      "baseline": 1103,
+      "current": 1029,
+      "delta": -74
+    },
+    {
+      "key": "1280-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1280-light-en-US.rects.topbarActions.x",
+      "baseline": 1103,
+      "current": 1029,
+      "delta": -74
+    },
+    {
+      "key": "1280-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1280-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 1103,
+      "current": 1029,
+      "delta": -74
+    },
+    {
+      "key": "1280-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1280-dark-en-US.rects.topbarActions.x",
+      "baseline": 1103,
+      "current": 1029,
+      "delta": -74
+    },
+    {
+      "key": "1280-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1024-light-zh-CN.rects.topbarActions.x",
+      "baseline": 847,
+      "current": 773,
+      "delta": -74
+    },
+    {
+      "key": "1024-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1024-light-en-US.rects.topbarActions.x",
+      "baseline": 847,
+      "current": 773,
+      "delta": -74
+    },
+    {
+      "key": "1024-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1024-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 847,
+      "current": 773,
+      "delta": -74
+    },
+    {
+      "key": "1024-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "1024-dark-en-US.rects.topbarActions.x",
+      "baseline": 847,
+      "current": 773,
+      "delta": -74
+    },
+    {
+      "key": "1024-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "768-light-zh-CN.rects.topbarActions.x",
+      "baseline": 591,
+      "current": 517,
+      "delta": -74
+    },
+    {
+      "key": "768-light-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "768-light-en-US.rects.topbarActions.x",
+      "baseline": 591,
+      "current": 517,
+      "delta": -74
+    },
+    {
+      "key": "768-light-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "768-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 591,
+      "current": 517,
+      "delta": -74
+    },
+    {
+      "key": "768-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "768-dark-en-US.rects.topbarActions.x",
+      "baseline": 591,
+      "current": 517,
+      "delta": -74
+    },
+    {
+      "key": "768-dark-en-US.rects.topbarActions.width",
+      "baseline": 138,
+      "current": 212,
+      "delta": 74
+    },
+    {
+      "key": "390-light-zh-CN.rects.shell.height",
+      "baseline": 5860.5,
+      "current": 5889.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.shell.bottom",
+      "baseline": 5860.5,
+      "current": 5889.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.title.y",
+      "baseline": 52.265625,
+      "current": 45,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-light-zh-CN.rects.title.bottom",
+      "baseline": 75.71875,
+      "current": 68.453125,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-light-zh-CN.rects.topbarActions.x",
+      "baseline": 241,
+      "current": 21,
+      "delta": -220
+    },
+    {
+      "key": "390-light-zh-CN.rects.topbarActions.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.topbarActions.width",
+      "baseline": 128,
+      "current": 196,
+      "delta": 68
+    },
+    {
+      "key": "390-light-zh-CN.rects.topbarActions.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-light-zh-CN.rects.topbarActions.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.languageToggle.x",
+      "baseline": 241,
+      "current": 89,
+      "delta": -152
+    },
+    {
+      "key": "390-light-zh-CN.rects.languageToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.languageToggle.right",
+      "baseline": 301,
+      "current": 149,
+      "delta": -152
+    },
+    {
+      "key": "390-light-zh-CN.rects.languageToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.themeToggle.x",
+      "baseline": 309,
+      "current": 157,
+      "delta": -152
+    },
+    {
+      "key": "390-light-zh-CN.rects.themeToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.themeToggle.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-light-zh-CN.rects.themeToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.toolbar.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.toolbar.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.rangeControls.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.rangeControls.bottom",
+      "baseline": 270,
+      "current": 299.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.presetButtons.y",
+      "baseline": 158,
+      "current": 187.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.presetButtons.bottom",
+      "baseline": 253,
+      "current": 282.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.dateRangeControls.y",
+      "baseline": 282,
+      "current": 311.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.dateRangeControls.bottom",
+      "baseline": 395,
+      "current": 424.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.dateRangeButton.y",
+      "baseline": 326,
+      "current": 355.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.dateRangeButton.bottom",
+      "baseline": 378,
+      "current": 407.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.autoRefreshStatus.y",
+      "baseline": 407,
+      "current": 436.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.autoRefreshStatus.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.autoRefreshWell.y",
+      "baseline": 424,
+      "current": 453.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.autoRefreshWell.bottom",
+      "baseline": 505,
+      "current": 534.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.metrics.y",
+      "baseline": 542,
+      "current": 571.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.metrics.bottom",
+      "baseline": 1215.5625,
+      "current": 1245.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.priceMetrics.y",
+      "baseline": 1235.5625,
+      "current": 1265.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.priceMetrics.bottom",
+      "baseline": 1909.125,
+      "current": 1938.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.comparisonSummary.y",
+      "baseline": 1929.125,
+      "current": 1958.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.comparisonSummary.bottom",
+      "baseline": 2010.96875,
+      "current": 2040.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.mainGrid.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.mainGrid.bottom",
+      "baseline": 2797.765625,
+      "current": 2827.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.chartPanel.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.chartPanel.bottom",
+      "baseline": 2463.765625,
+      "current": 2493.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.timelineChart.y",
+      "baseline": 2175.765625,
+      "current": 2205.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.timelineChart.bottom",
+      "baseline": 2413.765625,
+      "current": 2443.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.periodComparisonGrid.y",
+      "baseline": 2821.765625,
+      "current": 2851.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.periodComparisonGrid.bottom",
+      "baseline": 4108.953125,
+      "current": 4138.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.modelComparisonTable.y",
+      "baseline": 2942.359375,
+      "current": 2971.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.modelComparisonTable.bottom",
+      "baseline": 3439.359375,
+      "current": 3468.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.repositoryComparisonTable.y",
+      "baseline": 3592.953125,
+      "current": 3622.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.repositoryComparisonTable.bottom",
+      "baseline": 4089.953125,
+      "current": 4119.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.bottomGrid.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.bottomGrid.bottom",
+      "baseline": 5796.5,
+      "current": 5825.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.homesPanel.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.homesPanel.bottom",
+      "baseline": 5266.75,
+      "current": 5296.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.pricingNotePanel.y",
+      "baseline": 5280.75,
+      "current": 5310.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-zh-CN.rects.pricingNotePanel.bottom",
+      "baseline": 5796.5,
+      "current": 5825.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.shell.height",
+      "baseline": 5902.09375,
+      "current": 5931.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.shell.bottom",
+      "baseline": 5902.09375,
+      "current": 5931.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.title.y",
+      "baseline": 52.265625,
+      "current": 45,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-light-en-US.rects.title.bottom",
+      "baseline": 75.71875,
+      "current": 68.453125,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-light-en-US.rects.topbarActions.x",
+      "baseline": 241,
+      "current": 21,
+      "delta": -220
+    },
+    {
+      "key": "390-light-en-US.rects.topbarActions.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.topbarActions.width",
+      "baseline": 128,
+      "current": 196,
+      "delta": 68
+    },
+    {
+      "key": "390-light-en-US.rects.topbarActions.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-light-en-US.rects.topbarActions.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.languageToggle.x",
+      "baseline": 241,
+      "current": 89,
+      "delta": -152
+    },
+    {
+      "key": "390-light-en-US.rects.languageToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.languageToggle.right",
+      "baseline": 301,
+      "current": 149,
+      "delta": -152
+    },
+    {
+      "key": "390-light-en-US.rects.languageToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.themeToggle.x",
+      "baseline": 309,
+      "current": 157,
+      "delta": -152
+    },
+    {
+      "key": "390-light-en-US.rects.themeToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.themeToggle.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-light-en-US.rects.themeToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.toolbar.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.toolbar.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.rangeControls.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.rangeControls.bottom",
+      "baseline": 270,
+      "current": 299.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.presetButtons.y",
+      "baseline": 158,
+      "current": 187.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.presetButtons.bottom",
+      "baseline": 253,
+      "current": 282.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.dateRangeControls.y",
+      "baseline": 282,
+      "current": 311.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.dateRangeControls.bottom",
+      "baseline": 395,
+      "current": 424.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.dateRangeButton.y",
+      "baseline": 326,
+      "current": 355.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.dateRangeButton.bottom",
+      "baseline": 378,
+      "current": 407.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.autoRefreshStatus.y",
+      "baseline": 407,
+      "current": 436.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.autoRefreshStatus.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.autoRefreshWell.y",
+      "baseline": 424,
+      "current": 453.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.autoRefreshWell.bottom",
+      "baseline": 505,
+      "current": 534.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.metrics.y",
+      "baseline": 542,
+      "current": 571.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.metrics.bottom",
+      "baseline": 1215.5625,
+      "current": 1245.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.priceMetrics.y",
+      "baseline": 1235.5625,
+      "current": 1265.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.priceMetrics.bottom",
+      "baseline": 1909.125,
+      "current": 1938.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.comparisonSummary.y",
+      "baseline": 1929.125,
+      "current": 1958.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.comparisonSummary.bottom",
+      "baseline": 2010.96875,
+      "current": 2040.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.mainGrid.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.mainGrid.bottom",
+      "baseline": 2797.765625,
+      "current": 2827.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.chartPanel.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.chartPanel.bottom",
+      "baseline": 2463.765625,
+      "current": 2493.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.timelineChart.y",
+      "baseline": 2175.765625,
+      "current": 2205.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.timelineChart.bottom",
+      "baseline": 2413.765625,
+      "current": 2443.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.periodComparisonGrid.y",
+      "baseline": 2821.765625,
+      "current": 2851.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.periodComparisonGrid.bottom",
+      "baseline": 4108.953125,
+      "current": 4138.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.modelComparisonTable.y",
+      "baseline": 2942.359375,
+      "current": 2971.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.modelComparisonTable.bottom",
+      "baseline": 3439.359375,
+      "current": 3468.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.repositoryComparisonTable.y",
+      "baseline": 3592.953125,
+      "current": 3622.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.repositoryComparisonTable.bottom",
+      "baseline": 4089.953125,
+      "current": 4119.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.bottomGrid.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.bottomGrid.bottom",
+      "baseline": 5838.09375,
+      "current": 5867.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.homesPanel.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.homesPanel.bottom",
+      "baseline": 5266.75,
+      "current": 5296.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.pricingNotePanel.y",
+      "baseline": 5280.75,
+      "current": 5310.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-light-en-US.rects.pricingNotePanel.bottom",
+      "baseline": 5838.09375,
+      "current": 5867.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.shell.height",
+      "baseline": 5860.5,
+      "current": 5889.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.shell.bottom",
+      "baseline": 5860.5,
+      "current": 5889.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.title.y",
+      "baseline": 52.265625,
+      "current": 45,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-dark-zh-CN.rects.title.bottom",
+      "baseline": 75.71875,
+      "current": 68.453125,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-dark-zh-CN.rects.topbarActions.x",
+      "baseline": 241,
+      "current": 21,
+      "delta": -220
+    },
+    {
+      "key": "390-dark-zh-CN.rects.topbarActions.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.topbarActions.width",
+      "baseline": 128,
+      "current": 196,
+      "delta": 68
+    },
+    {
+      "key": "390-dark-zh-CN.rects.topbarActions.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-zh-CN.rects.topbarActions.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.languageToggle.x",
+      "baseline": 241,
+      "current": 89,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-zh-CN.rects.languageToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.languageToggle.right",
+      "baseline": 301,
+      "current": 149,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-zh-CN.rects.languageToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.themeToggle.x",
+      "baseline": 309,
+      "current": 157,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-zh-CN.rects.themeToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.themeToggle.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-zh-CN.rects.themeToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.toolbar.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.toolbar.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.rangeControls.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.rangeControls.bottom",
+      "baseline": 270,
+      "current": 299.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.presetButtons.y",
+      "baseline": 158,
+      "current": 187.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.presetButtons.bottom",
+      "baseline": 253,
+      "current": 282.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.dateRangeControls.y",
+      "baseline": 282,
+      "current": 311.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.dateRangeControls.bottom",
+      "baseline": 395,
+      "current": 424.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.dateRangeButton.y",
+      "baseline": 326,
+      "current": 355.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.dateRangeButton.bottom",
+      "baseline": 378,
+      "current": 407.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.autoRefreshStatus.y",
+      "baseline": 407,
+      "current": 436.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.autoRefreshStatus.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.autoRefreshWell.y",
+      "baseline": 424,
+      "current": 453.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.autoRefreshWell.bottom",
+      "baseline": 505,
+      "current": 534.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.metrics.y",
+      "baseline": 542,
+      "current": 571.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.metrics.bottom",
+      "baseline": 1215.5625,
+      "current": 1245.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.priceMetrics.y",
+      "baseline": 1235.5625,
+      "current": 1265.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.priceMetrics.bottom",
+      "baseline": 1909.125,
+      "current": 1938.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.comparisonSummary.y",
+      "baseline": 1929.125,
+      "current": 1958.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.comparisonSummary.bottom",
+      "baseline": 2010.96875,
+      "current": 2040.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.mainGrid.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.mainGrid.bottom",
+      "baseline": 2797.765625,
+      "current": 2827.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.chartPanel.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.chartPanel.bottom",
+      "baseline": 2463.765625,
+      "current": 2493.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.timelineChart.y",
+      "baseline": 2175.765625,
+      "current": 2205.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.timelineChart.bottom",
+      "baseline": 2413.765625,
+      "current": 2443.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.periodComparisonGrid.y",
+      "baseline": 2821.765625,
+      "current": 2851.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.periodComparisonGrid.bottom",
+      "baseline": 4108.953125,
+      "current": 4138.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.modelComparisonTable.y",
+      "baseline": 2942.359375,
+      "current": 2971.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.modelComparisonTable.bottom",
+      "baseline": 3439.359375,
+      "current": 3468.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.repositoryComparisonTable.y",
+      "baseline": 3592.953125,
+      "current": 3622.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.repositoryComparisonTable.bottom",
+      "baseline": 4089.953125,
+      "current": 4119.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.bottomGrid.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.bottomGrid.bottom",
+      "baseline": 5796.5,
+      "current": 5825.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.homesPanel.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.homesPanel.bottom",
+      "baseline": 5266.75,
+      "current": 5296.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.pricingNotePanel.y",
+      "baseline": 5280.75,
+      "current": 5310.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-zh-CN.rects.pricingNotePanel.bottom",
+      "baseline": 5796.5,
+      "current": 5825.953125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.shell.height",
+      "baseline": 5902.09375,
+      "current": 5931.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.shell.bottom",
+      "baseline": 5902.09375,
+      "current": 5931.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.title.y",
+      "baseline": 52.265625,
+      "current": 45,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-dark-en-US.rects.title.bottom",
+      "baseline": 75.71875,
+      "current": 68.453125,
+      "delta": -7.265625
+    },
+    {
+      "key": "390-dark-en-US.rects.topbarActions.x",
+      "baseline": 241,
+      "current": 21,
+      "delta": -220
+    },
+    {
+      "key": "390-dark-en-US.rects.topbarActions.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.topbarActions.width",
+      "baseline": 128,
+      "current": 196,
+      "delta": 68
+    },
+    {
+      "key": "390-dark-en-US.rects.topbarActions.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-en-US.rects.topbarActions.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.languageToggle.x",
+      "baseline": 241,
+      "current": 89,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-en-US.rects.languageToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.languageToggle.right",
+      "baseline": 301,
+      "current": 149,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-en-US.rects.languageToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.themeToggle.x",
+      "baseline": 309,
+      "current": 157,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-en-US.rects.themeToggle.y",
+      "baseline": 45,
+      "current": 74.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.themeToggle.right",
+      "baseline": 369,
+      "current": 217,
+      "delta": -152
+    },
+    {
+      "key": "390-dark-en-US.rects.themeToggle.bottom",
+      "baseline": 83,
+      "current": 112.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.toolbar.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.toolbar.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.rangeControls.y",
+      "baseline": 114,
+      "current": 143.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.rangeControls.bottom",
+      "baseline": 270,
+      "current": 299.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.presetButtons.y",
+      "baseline": 158,
+      "current": 187.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.presetButtons.bottom",
+      "baseline": 253,
+      "current": 282.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.dateRangeControls.y",
+      "baseline": 282,
+      "current": 311.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.dateRangeControls.bottom",
+      "baseline": 395,
+      "current": 424.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.dateRangeButton.y",
+      "baseline": 326,
+      "current": 355.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.dateRangeButton.bottom",
+      "baseline": 378,
+      "current": 407.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.autoRefreshStatus.y",
+      "baseline": 407,
+      "current": 436.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.autoRefreshStatus.bottom",
+      "baseline": 522,
+      "current": 551.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.autoRefreshWell.y",
+      "baseline": 424,
+      "current": 453.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.autoRefreshWell.bottom",
+      "baseline": 505,
+      "current": 534.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.metrics.y",
+      "baseline": 542,
+      "current": 571.453125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.metrics.bottom",
+      "baseline": 1215.5625,
+      "current": 1245.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.priceMetrics.y",
+      "baseline": 1235.5625,
+      "current": 1265.015625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.priceMetrics.bottom",
+      "baseline": 1909.125,
+      "current": 1938.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.comparisonSummary.y",
+      "baseline": 1929.125,
+      "current": 1958.578125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.comparisonSummary.bottom",
+      "baseline": 2010.96875,
+      "current": 2040.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.mainGrid.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.mainGrid.bottom",
+      "baseline": 2797.765625,
+      "current": 2827.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.chartPanel.y",
+      "baseline": 2026.96875,
+      "current": 2056.421875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.chartPanel.bottom",
+      "baseline": 2463.765625,
+      "current": 2493.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.timelineChart.y",
+      "baseline": 2175.765625,
+      "current": 2205.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.timelineChart.bottom",
+      "baseline": 2413.765625,
+      "current": 2443.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.periodComparisonGrid.y",
+      "baseline": 2821.765625,
+      "current": 2851.21875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.periodComparisonGrid.bottom",
+      "baseline": 4108.953125,
+      "current": 4138.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.modelComparisonTable.y",
+      "baseline": 2942.359375,
+      "current": 2971.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.modelComparisonTable.bottom",
+      "baseline": 3439.359375,
+      "current": 3468.8125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.repositoryComparisonTable.y",
+      "baseline": 3592.953125,
+      "current": 3622.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.repositoryComparisonTable.bottom",
+      "baseline": 4089.953125,
+      "current": 4119.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.bottomGrid.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.bottomGrid.bottom",
+      "baseline": 5838.09375,
+      "current": 5867.546875,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.homesPanel.y",
+      "baseline": 4132.953125,
+      "current": 4162.40625,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.homesPanel.bottom",
+      "baseline": 5266.75,
+      "current": 5296.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.pricingNotePanel.y",
+      "baseline": 5280.75,
+      "current": 5310.203125,
+      "delta": 29.453125
+    },
+    {
+      "key": "390-dark-en-US.rects.pricingNotePanel.bottom",
+      "baseline": 5838.09375,
+      "current": 5867.546875,
+      "delta": 29.453125
+    }
+  ]
+}

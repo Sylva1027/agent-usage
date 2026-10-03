@@ -29,13 +29,30 @@
         }
       })();
     </script>
+    <script src="/skin-bootstrap.js"></script>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/skins.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <h1>Agent Usage</h1>
         <div class="topbar-actions">
+          <button
+            class="theme-toggle skin-toggle"
+            id="skinToggle"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="skinDialog"
+            aria-expanded="false"
+            aria-label="选择界面风格"
+            title="选择界面风格"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path class="skin-icon-outline" d="M9 3.4a2.1 2.1 0 0 1 1.8-1h2.4a2.1 2.1 0 0 1 1.8 1l.5.9 3 .8a1.8 1.8 0 0 1 1.3 1.9l-.3 3.2a1.6 1.6 0 0 1-1.6 1.4h-1.5l.1 8.3a1.6 1.6 0 0 1-1.6 1.6h-5.8a1.6 1.6 0 0 1-1.6-1.6l.1-8.3H5.1a1.6 1.6 0 0 1-1.6-1.4l-.3-3.2a1.8 1.8 0 0 1 1.3-1.9l3-.8z" />
+              <path class="skin-icon-accent" d="M9.6 8.9h4.8" />
+            </svg>
+          </button>
           <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
             <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
           </button>
@@ -98,7 +115,7 @@
               </span>
               <div id="recentRangeMenu" class="recent-range-menu" role="listbox" hidden>
                 <button type="button" role="option" data-recent-option="上一个5h" aria-selected="false">上一个5h</button>
-                <button type="button" role="option" data-recent-option="上周" aria-selected="false">上一个week</button>
+                <button type="button" role="option" data-recent-option="上周" aria-selected="false">上一个7d</button>
                 <button type="button" role="option" data-recent-option="上个月" aria-selected="true">上个月</button>
                 <button type="button" role="option" data-recent-option="今年" aria-selected="false">今年</button>
               </div>
@@ -354,7 +371,39 @@
         <button id="applyModelPricingButton" type="button" disabled>应用</button>
       </div>
     </dialog>
+    <!-- Skin picker. A sibling of #importDialog / #pricingDialog, never nested
+         inside them, and reusing the same backdrop, material and dialog shell. -->
+    <div id="skinDialog" class="dialog-backdrop" hidden>
+      <section class="dialog skin-dialog" role="dialog" aria-modal="true" aria-labelledby="skinDialogTitle">
+        <div class="dialog-heading">
+          <h2 id="skinDialogTitle">界面风格</h2>
+          <button id="resetSkinClassicButton" class="ceramic-toggle" type="button" aria-pressed="true">简洁模式</button>
+        </div>
+        <div class="skin-controls">
+          <label class="skin-toggle-row">
+            <input id="skinCharactersToggle" type="checkbox" checked />
+            <span>显示角色</span>
+          </label>
+          <label class="skin-opacity-row">
+            <span>角色透明度</span>
+            <input id="skinOpacity" type="range" min="0" max="100" step="1" value="50" />
+            <output id="skinOpacityValue" for="skinOpacity">50%</output>
+          </label>
+        </div>
+        <div class="skin-gallery-well">
+          <div id="skinGrid" class="skin-grid"></div>
+        </div>
+        <div class="dialog-actions">
+          <button id="closeSkinDialogButton" type="button">关闭</button>
+        </div>
+      </section>
+    </div>
+
     <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>
+
+    <!-- Character skin decoration. Sits outside .shell and out of normal flow so
+         it can never consume layout space or reflow the dashboard (plan 4.1). -->
+    <div id="skinCharacters" data-skin-characters="off" aria-hidden="true"></div>
 
     <script src="/app.js" type="module"></script>
   </body>

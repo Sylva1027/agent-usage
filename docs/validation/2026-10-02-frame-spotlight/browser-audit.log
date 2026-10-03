@@ -1,0 +1,61 @@
+PASS online-2290-light-zh-CN: original geometry and materials
+PASS online-2290-light-en-US: original geometry and materials
+PASS online-2290-dark-zh-CN: original geometry and materials
+PASS online-2290-dark-en-US: original geometry and materials
+PASS online-1440-light-zh-CN: original geometry and materials
+PASS online-1440-light-en-US: original geometry and materials
+PASS online-1440-dark-zh-CN: original geometry and materials
+PASS online-1440-dark-en-US: original geometry and materials
+PASS online-1024-light-zh-CN: original geometry and materials
+PASS online-1024-light-en-US: original geometry and materials
+PASS online-1024-dark-zh-CN: original geometry and materials
+PASS online-1024-dark-en-US: original geometry and materials
+PASS online-390-light-zh-CN: original geometry and materials
+PASS online-390-light-en-US: original geometry and materials
+PASS online-390-dark-zh-CN: original geometry and materials
+PASS online-390-dark-en-US: original geometry and materials
+PASS online: all main outer surfaces, not just metrics
+PASS online: nearest raised child and actual raised selection
+PASS online: every recess clears the previous light
+PASS online: existing well interiors are pixel-identical under parent light
+PASS online: transparent and overlapping recesses really cut out parent light
+PASS online: menus remain above frames and inset choices stay dark
+PASS online: search, expansion and tooltip interaction
+PASS online: internal scrollers clip holes and update stationary pointer coordinates
+PASS online: templates rebuild under stationary cursor
+PASS online: real colours, classic fallback, both motion modes
+PASS online: scroll, resize, rapid movement and idle cleanup
+PASS online: capability changes, visibility and state changes clear light
+PASS online: independent skin dialog is unchanged
+PASS offline-2290-light-zh-CN: original geometry and materials
+PASS offline-2290-light-en-US: original geometry and materials
+PASS offline-2290-dark-zh-CN: original geometry and materials
+PASS offline-2290-dark-en-US: original geometry and materials
+PASS offline-1440-light-zh-CN: original geometry and materials
+PASS offline-1440-light-en-US: original geometry and materials
+PASS offline-1440-dark-zh-CN: original geometry and materials
+PASS offline-1440-dark-en-US: original geometry and materials
+PASS offline-1024-light-zh-CN: original geometry and materials
+PASS offline-1024-light-en-US: original geometry and materials
+PASS offline-1024-dark-zh-CN: original geometry and materials
+PASS offline-1024-dark-en-US: original geometry and materials
+PASS offline-390-light-zh-CN: original geometry and materials
+PASS offline-390-light-en-US: original geometry and materials
+PASS offline-390-dark-zh-CN: original geometry and materials
+PASS offline-390-dark-en-US: original geometry and materials
+PASS offline: all main outer surfaces, not just metrics
+PASS offline: nearest raised child and actual raised selection
+PASS offline: every recess clears the previous light
+PASS offline: existing well interiors are pixel-identical under parent light
+PASS offline: transparent and overlapping recesses really cut out parent light
+PASS offline: menus remain above frames and inset choices stay dark
+PASS offline: search, expansion and tooltip interaction
+PASS offline: internal scrollers clip holes and update stationary pointer coordinates
+PASS offline: templates rebuild under stationary cursor
+PASS offline: real colours, classic fallback, both motion modes
+PASS offline: scroll, resize, rapid movement and idle cleanup
+PASS offline: capability changes, visibility and state changes clear light
+PASS offline: independent skin dialog is unchanged
+PASS online: actual coarse touch device never lights
+PASS offline: actual coarse touch device never lights
+PASS ResizeObserver-unavailable fallback remains functional

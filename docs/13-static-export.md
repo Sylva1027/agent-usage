@@ -8,6 +8,8 @@
 
 共享浏览器模块位于 `public/`，本地服务器提供对应静态路由。`app.js` 暴露日期选择器的纯函数供测试；页面状态由 `app-state.js` 维护。导出器显式移除/绑定模块 import，不依赖浏览器联网补齐模块。
 
+角色皮肤模块 `skin-palettes.js`、`skins.js`、`skin-ui.js` 和 `skin-picker.js` 在同一闭包内绑定，`skins.css` 与预绘制 `skin-bootstrap.js` 同步内联。注册表保留完整素材，全部 40 张 WebP 以 data URL 打包；选择器按当前提供范围显示五款皮肤，在线与离线共用该过滤规则。临时配色工作台不进入快照。
+
 ## 命令与快照边界
 
 ```powershell

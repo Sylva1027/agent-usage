@@ -1,0 +1,9 @@
+{
+  "ChangedSinceR1": [
+    "public/skin-bootstrap.js",
+    "public/skin-ui.js",
+    "public/skins.css"
+  ],
+  "ProtectedFilesChecked": 112,
+  "UnchangedAssetManifest": true
+}

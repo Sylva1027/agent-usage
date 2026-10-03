@@ -28,6 +28,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `src/pricing-auto.js`、`src/pricing-store.js`：公开来源解析、刷新、发现、持久化与手动覆盖。
 - `public/pricing-models.js`、`public/usage-fields.js`、`public/timeline-utils.js`：前后端共享的纯逻辑。
 - `public/app.js`、`public/app-state.js`、`public/calendar.js`、`public/i18n.js`、`public/styles.css`：页面、状态、日期、语言和样式。
+- `public/skins.js`、`public/skin-palettes.js`、`public/skin-ui.js`、`public/skin-picker.js`、`public/skins.css`：角色注册表、配色、运行时和选择器；`scripts/prepare-skin-assets.mjs` 生成并校验资源 manifest 与首屏脚本。
 - `src/static-export.js`：显式模块内联与自包含检查，见[静态导出约定](13-static-export.md)。
 
 ## 检查命令
@@ -37,6 +38,8 @@ npm.cmd test
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd run format:check
+npm.cmd run skins:check
+npm.cmd run skins:palette
 ```
 
 按实际影响选择验证，不以旧文档中的测试数量为通过条件。
