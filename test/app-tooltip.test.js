@@ -1,7 +1,38 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { formatUsageTooltip, usageTooltipPosition } from "../public/app.js";
+
+function sourceBetween(source, startMarker, endMarker) {
+  const startIndex = source.indexOf(startMarker);
+  const endIndex = source.indexOf(endMarker, startIndex);
+  assert.notEqual(startIndex, -1, `missing ${startMarker}`);
+  assert.notEqual(endIndex, -1, `missing ${endMarker}`);
+  return source.slice(startIndex, endIndex);
+}
+
+test("tooltip bodies are only rewritten when the node does not already show them", async () => {
+  // A pointermove that keeps hitting the same row must only reposition the tooltip. Both writers
+  // hand the formatted body to one publisher, which decides by reading what the node currently
+  // holds, so an external change to the tooltip is re-asserted instead of being skipped.
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const region = sourceBetween(source, "function publishUsageTooltipBody", "function bindUsageRows");
+  assert.match(source, /const publishedTooltipBodies = new WeakMap\(\)/);
+  assert.equal(
+    (region.match(/\.innerHTML\s*=/g) || []).length,
+    1,
+    "the shared publisher must be the only tooltip-body writer",
+  );
+  assert.match(region, /published\.html === html && published\.dom === tooltip\.innerHTML/);
+  assert.match(region, /publishUsageTooltipBody\(tooltip, formatUsageTooltip\(/);
+  assert.match(region, /publishUsageTooltipBody\(tooltip, formatTimelineTooltip\(/);
+  // Visibility is re-asserted from the node's own state instead of being assigned unconditionally.
+  assert.match(region, /if \(tooltip && !tooltip\.hidden\)/);
+  assert.match(region, /if \(tooltip\.hidden\) tooltip\.hidden = false;/);
+  // The chart's accessible label is compared before it is written again.
+  assert.match(region, /chart\.getAttribute\?\.\("aria-label"\) !== label/);
+});
 
 test("usageTooltipPosition keeps the measured tooltip inside each viewport edge", () => {
   const viewportWidth = 320;

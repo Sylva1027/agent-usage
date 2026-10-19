@@ -6,7 +6,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "public/**", "test/**"],
+    "includes": [
+      "src/**",
+      "public/**",
+      "test/**",
+      "scripts/skin-palette/**",
+      "test-support/skin-palette-fixture.mjs",
+      "scripts/perf-probe.mjs",
+      "scripts/perf-probe-sources/**",
+      "test-support/perf-fixture.mjs",
+      "!!docs/validation"
+    ],
     "ignoreUnknown": false
   },
   "formatter": {
@@ -14,7 +24,17 @@
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 120,
-    "includes": ["src/**", "public/**", "test/**", "!public/skin-bootstrap.js"]
+    "includes": [
+      "src/**",
+      "public/**",
+      "test/**",
+      "scripts/skin-palette/**",
+      "test-support/skin-palette-fixture.mjs",
+      "scripts/perf-probe.mjs",
+      "scripts/perf-probe-sources/**",
+      "test-support/perf-fixture.mjs",
+      "!public/skin-bootstrap.js"
+    ]
   },
   "javascript": {
     "formatter": {

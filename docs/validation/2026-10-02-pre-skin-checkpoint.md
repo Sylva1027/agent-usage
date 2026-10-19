@@ -22,4 +22,4 @@ Windows、Node v24.19.0；当前业务代码完整执行一次检查：
 - 二十张素材的命名、PNG 格式、尺寸、RGBA 模式和文件完整性只读检查通过。
 - 暂存区的代码与文档执行空白检查；原始工具日志和生成 HTML 保留原样，未为消除日志中的空白诊断而重写历史证据。已有验收脚本两处行尾空白仅作格式清理。
 
-此次是保存点检查，未重复运行历史浏览器验收，也未启动正式皮肤实施。已有浏览器检查分别见 [Claude 验收](2026-10-01-claude-pricing/README.md)、[关闭刷新验收](2026-10-01-refresh-off/README.md)和 [ChatGPT 探索预览](2026-10-02-gpt-skin-preview/README.md)。新功能布局及比较弹窗的后续验收依据 [皮肤计划](../plans/2026-10-01-model-character-skin-plan.md)。
+此次是保存点检查，未重复运行历史浏览器验收，也未启动正式皮肤实施。已有浏览器检查分别见 [Claude 验收](2026-10-01-claude-pricing/README.md)、[关闭刷新验收](2026-10-01-refresh-off/README.md)和 [ChatGPT 探索预览](2026-10-02-gpt-skin-preview/README.md)。新功能布局及比较弹窗的后续验收依据 [皮肤计划](../archive/2026-10-03/plans/2026-10-01-model-character-skin-plan.md)。

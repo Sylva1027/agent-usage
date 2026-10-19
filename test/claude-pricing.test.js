@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
-import { runInNewContext } from "node:vm";
 
 import { CLAUDE_MODEL_SNAPSHOTS, resolvePricingModel } from "../public/pricing-models.js";
 import { pricingScenarioNotes, renderPricingSourceLinksHtml, setSummaryFilters, summarize } from "../public/app.js";
@@ -36,7 +35,7 @@ import { opencodeUsageFromTokens } from "../src/opencode-usage.js";
 import { validateUsageDetails } from "../public/usage-fields.js";
 import { UsageStore, STORE_SCHEMA_VERSION } from "../src/usage-store.js";
 import { buildUsageReport, summarizeUsage } from "../src/usage-core.js";
-import { renderStaticDashboardHtml } from "../src/static-export.js";
+import { pricedReport } from "../test-support/report-projection.js";
 
 function event(overrides = {}) {
   return {
@@ -255,7 +254,7 @@ test("DSH and OpenCode count nonzero Claude writes once, including when the prov
   );
 });
 
-test("v9 and v10 indexes mark only unchanged DSH files for reindexing", async () => {
+test("v9 and v10 indexes mark all sources for reindexing (v12 global dirtying supersedes their selective dirtying)", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "claude-index-"));
   try {
     for (const previousVersion of [9, 10]) {
@@ -272,9 +271,21 @@ test("v9 and v10 indexes mark only unchanged DSH files for reindexing", async ()
       try {
         await migrated.open();
         assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
-        for (const row of migrated.database.prepare("SELECT kind, size, mtime_ms FROM source_files").all()) {
-          assert.equal(row.size, row.kind === "dsh" ? -1 : 99);
-          assert.equal(row.mtime_ms, row.kind === "dsh" ? -1 : 123);
+        // 登记（裁定 AP-2）：v9/v10 只标脏未变化的 DSH 文件（选择性），但迁移是 open() 内的**一次性顺序链**，
+        // 会一路跑到 STORE_SCHEMA_VERSION；v12 分支的**无 WHERE** 标脏把所有来源都标脏 ⇒
+        // 中间版本的选择性语义在当前版本**不再可观测**。本用例守护的是 v12 的全量标脏语义。
+        // 正向：全部来源都被标脏。
+        for (const row of migrated.database
+          .prepare("SELECT path, kind, home_id, home_label, home_path, indexed_at, size, mtime_ms FROM source_files")
+          .all()) {
+          assert.equal(row.size, -1, `${row.path} 必须被 v12 标脏`);
+          assert.equal(row.mtime_ms, -1, `${row.path} 的 mtime_ms 必须被 v12 标脏`);
+          // 反向：标脏**只动那两列**（不是把整行洗了）—— 锚点列必须逐字等于插入时的值。
+          assert.equal(row.kind, String(row.path).replace(/\.log$/, ""), `${row.path} 的 kind 不得被标脏改写`);
+          assert.equal(row.home_id, row.kind, `${row.path} 的 home_id 不得被标脏改写`);
+          assert.equal(row.home_label, row.kind, `${row.path} 的 home_label 不得被标脏改写`);
+          assert.equal(row.home_path, homeDir, `${row.path} 的 home_path 不得被标脏改写`);
+          assert.equal(row.indexed_at, "2026-10-01", `${row.path} 的 indexed_at 不得被标脏改写`);
         }
       } finally {
         migrated.close();
@@ -292,7 +303,7 @@ test("Claude scenario notes and source links are visible in both supported langu
   assert.match(renderPricingSourceLinksHtml([ANTHROPIC_PRICING_SOURCE], ["USD"]), /Anthropic 定价/);
 });
 
-test("Claude DSH history, manual repricing and TTL notes agree between memory, SQLite and static export", async () => {
+test("Claude DSH history, manual repricing and TTL notes agree between memory, SQLite and pure browser statistics", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "claude-three-path-"));
   const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage.sqlite") });
   const asOf = new Date("2026-10-01T12:00:00Z");
@@ -343,15 +354,8 @@ test("Claude DSH history, manual repricing and TTL notes agree between memory, S
     const check = (expected) => {
       const memory = summarizeUsage(report, filters);
       const indexed = store.summarize(filters);
-      const html = renderStaticDashboardHtml({ ...report, asOf: asOf.toISOString() });
-      const data = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-        .map((match) => match[1])
-        .find((script) => script.includes("window.__CODEX_USAGE_REPORT__ ="));
-      assert.ok(data);
-      const sandbox = { window: {} };
-      runInNewContext(data, sandbox);
       setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-      const snapshot = summarize(JSON.parse(JSON.stringify(sandbox.window.__CODEX_USAGE_REPORT__)));
+      const snapshot = summarize(pricedReport(report, asOf.toISOString()));
       for (const result of [memory, indexed, snapshot]) {
         assert.equal(result.totals.input, 10_000);
         assert.equal(result.totals.total, 10_500);

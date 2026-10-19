@@ -1,6 +1,6 @@
 # 2026-10-02 · 页面两侧立绘随留白居中
 
-已按[用户确认的方案](../../plans/2026-10-02-skin-face-centering-proposal.md)实施并完成专项验证。
+已按[用户确认的方案](../../archive/2026-10-03/plans/2026-10-02-skin-face-centering-proposal.md)实施并完成专项验证。
 
 ## 实现
 

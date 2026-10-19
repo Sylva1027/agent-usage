@@ -1,0 +1,2538 @@
+{
+  "schemaVersion": 1,
+  "kind": "skin-palette-m57-final-visual-evidence-map",
+  "date": "2026-10-19",
+  "scope": {
+    "skinCount": 10,
+    "formalVisualItems": 8,
+    "itemCount": 80,
+    "sourceSetHash": "107072009ac767cc90c04d91bea5f1c5e4c66ac0b19fe447b7ad8190376b0ea6"
+  },
+  "constraints": {
+    "newImagesViewed": false,
+    "browserStarted": false,
+    "publicSourceModified": false,
+    "readinessAssigned": false,
+    "numericPassAssigned": false,
+    "largeHandoffHistoryRead": false
+  },
+  "canonicalBindings": {
+    "selectedInputs": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-aggregate-selected-20261018T205439Z-10707200/selected-inputs.json",
+    "selectedDirections": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+    "readingSummary": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/summary.json",
+    "readingSupervisor": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+    "scalingSupervisor": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+    "scalingIndependentCheck": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md"
+  },
+  "wordmarkException": {
+    "decision": "approved-design-exception",
+    "source": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+    "quote": "我本就没打算让这个地方的标题拥有很强可读性，所以，不改。",
+    "effect": "保留 Agent Usage 弱浮雕；不再提出修字标，也不把它算作普通正文可读性 PASS。"
+  },
+  "summary": {
+    "sufficientForSupervisorAcceptance": 61,
+    "pending": 19,
+    "byItem": {
+      "logotype-legible": {
+        "sufficient": 10,
+        "pending": 0,
+        "pendingSkins": []
+      },
+      "body-text-comfortable": {
+        "sufficient": 10,
+        "pending": 0,
+        "pendingSkins": []
+      },
+      "ceramic-relief-consistent": {
+        "sufficient": 5,
+        "pending": 5,
+        "pendingSkins": [
+          "chatgpt",
+          "gemini",
+          "kimi",
+          "qwen",
+          "muse"
+        ]
+      },
+      "mode-identity-consistent": {
+        "sufficient": 10,
+        "pending": 0,
+        "pendingSkins": []
+      },
+      "character-levels-unobstructed": {
+        "sufficient": 2,
+        "pending": 8,
+        "pendingSkins": [
+          "chatgpt",
+          "claude",
+          "glm",
+          "gemini",
+          "deepseek",
+          "kimi",
+          "qwen",
+          "muse"
+        ]
+      },
+      "spotlight-not-overwhelming": {
+        "sufficient": 10,
+        "pending": 0,
+        "pendingSkins": []
+      },
+      "nearest-neighbour-distinguishable": {
+        "sufficient": 4,
+        "pending": 6,
+        "pendingSkins": [
+          "glm",
+          "gemini",
+          "kimi",
+          "qwen",
+          "grok",
+          "muse"
+        ]
+      },
+      "no-geometry-workaround": {
+        "sufficient": 10,
+        "pending": 0,
+        "pendingSkins": []
+      }
+    }
+  },
+  "skins": [
+    {
+      "skinId": "chatgpt",
+      "candidateId": "chatgpt-b-98b485e3808b",
+      "candidateHash": "98b485e3808bf8dd39b389824420b04b01f5043ccba9d5b3414ede183091210e",
+      "sourceRun": "m55-user-swap-20261018T165630Z",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+        "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+        "conclusion": "主管只查看两款浅深 baseline 四图；ChatGPT 为浅薰衣草/紫灰炭黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；ChatGPT 为浅薰衣草/紫灰炭黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；ChatGPT 为浅薰衣草/紫灰炭黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/visual-parts/deepseek-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "DeepSeek B 的 S0 记录指出低彩表面层次偏平、卡片与背景边界依赖低对比描边；可读但层级余量弱。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/baseline.png"
+          ],
+          "gap": "当前最终候选缺少直接、完整的陶瓷凹凸/光源视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；ChatGPT 为浅薰衣草/紫灰炭黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/visual-parts/deepseek-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；ChatGPT 为浅薰衣草/紫灰炭黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管同批查看当前 ChatGPT 与 DeepSeek 浅深 baseline：ChatGPT 为浅薰衣草/紫灰炭黑，DeepSeek 为浅冷蓝/蓝黑；当前配对颜色方向可解释，但不等同十套全局近邻验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 DeepSeek B 整套浅深颜色给 ChatGPT；DeepSeek 使用原 ChatGPT A；24 色严格交换。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": null,
+          "nearestNeighbourSkin": "deepseek"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/narrow-150-chatgpt-light.png"
+          ],
+          "gap": null,
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "claude",
+      "candidateId": "claude-b-cced5b3fef6b",
+      "candidateHash": "cced5b3fef6b928a54334e50fd53084b7440e9040a03a8002257b93763d70bbe",
+      "sourceRun": "m53-warm-initial-20261018T114900Z",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+        "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+        "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/claude-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "ceramic-relief-consistent：已看范围为 accept；浅色暖桃与深色暖棕的高光、卡片阴影和凹槽层次一致。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/baseline.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/claude-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/claude-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "nearest-neighbour-distinguishable：本次深色对照 accept；Claude 暖棕与新版 Mimo 近中性石墨能明显区分，不扩张为十套全局结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "Claude 暖桃/暖棕，已看范围浅深可区分、正文/浮层可辨；字标弱、角色 0/50/100 与几何未全看，整体 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”，同时保持 Claude B；完整状态与视觉检查尚待完成。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": null,
+          "nearestNeighbourSkin": "mimo"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [],
+          "gap": "六张缩放截图样本未覆盖本款；只依赖 60 行布局指标，没有本款缩放画面。",
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "glm",
+      "candidateId": "glm-a-90839e4535a2",
+      "candidateHash": "90839e4535a2e3328f8d38cb54a74477d6f969fe78d617ab336a05e68b41bfcd",
+      "sourceRun": "m54-blue-initial-20261018T153704Z",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+        "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+        "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/visual-parts/glm-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "S0 记录浅深均可见卡片外边、轻微高光/阴影和内凹输入槽；深色由边框与柔和阴影抬层。增量四图补充计价弹窗与聚光层级。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/baseline.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/visual-parts/glm-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/visual-parts/glm-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "旧 S0 仅与当时 ChatGPT A 冷蓝近邻比较，认为可区分；当前 ChatGPT 已换成 DeepSeek B 紫灰，该旧对照不能关闭当前近邻项。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管看计价弹窗与详情聚光浅深四图；说明、列表、焦点、按钮、条名/数值在已看范围可辨；body/spotlight 整体与七项阅读继续 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“glm方案A，muse方案B”；这是配色偏好，不是完整视觉验收。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [],
+          "gap": "六张缩放截图样本未覆盖本款；只依赖 60 行布局指标，没有本款缩放画面。",
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "gemini",
+      "candidateId": "gemini-b-d3f98cd46f19",
+      "candidateHash": "d3f98cd46f19c2196c25a8665441dc2fb41e870c911bdae043e3e9e461cb6eed",
+      "sourceRun": "m56-violet-initial-20261018T171609Z",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+        "conclusion": "用户明确“Gemini 选 B”。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+        "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“Gemini 选 B”。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“Gemini 选 B”。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/visual-parts/gemini-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "S0 记录浅色为淡玫瑰粉叠灰紫、深色为暗梅紫；卡片与背景明度接近，层次偏平。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/baseline.png"
+          ],
+          "gap": "当前最终候选缺少直接、完整的陶瓷凹凸/光源视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“Gemini 选 B”。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/visual-parts/gemini-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“Gemini 选 B”。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/visual-parts/gemini-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "记录明确说本轮未重看当前已换色 ChatGPT，Gemini B/C 与当前 ChatGPT 的近邻区分仍待用户页面对照。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "沿用 S0 有限观察：粉调表面与暗梅紫方向，层次偏平、小字与共用字标偏弱；本轮没有新增图像审阅。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“Gemini 选 B”。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-gemini-full-selected-20261018T173817Z-55e5c485/captures/gemini-b-d3f98cd46f19/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/narrow-150-gemini-dark.png"
+          ],
+          "gap": null,
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "deepseek",
+      "candidateId": "deepseek-a-462c5bb15734",
+      "candidateHash": "462c5bb15734975932789d395d79f45ae49e5b6680631835b0b620fa00b6d5b4",
+      "sourceRun": "m55-user-swap-20261018T165630Z",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+        "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+        "conclusion": "主管只查看两款浅深 baseline 四图；DeepSeek 为浅冷蓝/蓝黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；DeepSeek 为浅冷蓝/蓝黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；DeepSeek 为浅冷蓝/蓝黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-parts/chatgpt-a-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "原 ChatGPT A 完整初筛的 ceramic-relief-consistent 为 accept：浅色冷蓝白与深色蓝黑陶瓷共用高光、内凹和阴影语言。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/baseline.png"
+          ],
+          "gap": null,
+          "caveat": "材质意见来自同一 24 色 token 的原 ChatGPT A；目标是当前 DeepSeek 身份，只能用本批 baseline 绑定目标画面。"
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；DeepSeek 为浅冷蓝/蓝黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-parts/chatgpt-a-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管只查看两款浅深 baseline 四图；DeepSeek 为浅冷蓝/蓝黑，主要文字、列表、图表在已看范围可辨；字标与七项阅读当时 pending。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "主管同批查看当前 DeepSeek 浅冷蓝/蓝黑与 ChatGPT 浅薰衣草/紫灰炭黑；当前配对颜色方向可解释，但不等同十套全局近邻验收。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户要求 ChatGPT 使用 DeepSeek B、DeepSeek 使用已选 ChatGPT A 的整套浅深配色，24 色严格交换。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/deepseek-a-462c5bb15734/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [],
+          "gap": "六张缩放截图样本未覆盖本款；只依赖 60 行布局指标，没有本款缩放画面。",
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "kimi",
+      "candidateId": "kimi-b-32c91fbbc0c5",
+      "candidateHash": "32c91fbbc0c5c8acae6bf9f668ff87ec3da3e7dbfcf6304b5596213881ce81bc",
+      "sourceRun": "m57-kimi-borderline-20261018T195924Z-32c91fbbc0c5",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+        "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+        "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-kimi-full-selected-20261018T171836Z-87529160/kimi-independent-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "前代 Kimi B 的 4 图记录显示弹窗边界、阴影和按钮层级成立，浅色聚光偏弱、深色青绿辉光明显；当前候选仅改浅色 accent 一个通道。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/baseline.png"
+          ],
+          "gap": "当前最终候选缺少直接、完整的陶瓷凹凸/光源视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-kimi-full-selected-20261018T171836Z-87529160/kimi-independent-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-steady-preview-20261018T162442Z-fd9f4fe7/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户当时指出 Kimi C 仍与 GLM A 太像并触发修正；当前 Kimi 技术修正版与当前 GLM A 没有新的并排视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新身份完整捕获数值通过，焦点缺测已独立补验；该复核明确不扩大为阅读/缩放或 M6 通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-kimi-selected-baseline-20261018T201407Z-9366209c/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“采用技术修正版，继续验收”；当前为 kimi-b-32c91fbbc0c5，只改浅色 accent 一个通道。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/kimi-b-32c91fbbc0c5/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-full-selected-20261018T160449Z-dab21865/captures/glm-a-90839e4535a2/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "glm"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [],
+          "gap": "六张缩放截图样本未覆盖本款；只依赖 60 行布局指标，没有本款缩放画面。",
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "qwen",
+      "candidateId": "qwen-b-66a9e1d238c9",
+      "candidateHash": "66a9e1d238c9b4df90c6c2eff9f6728cffe03ef6e01f964b634780f9cbb09fcd",
+      "sourceRun": "m56-qwen-metadata-correction-20261018T174141Z/generated",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+        "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+        "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": "Qwen 深色性能详情副标题/脚注为 marginal；主管可辨认且未要求强制改色。"
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/supervisor-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "主管看新版 B/C 浅深 baseline 四图；B 为较浅冰青和接近黑色石油青，主要文字、表格、图例可辨，但未给出陶瓷材质完整意见。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/baseline.png"
+          ],
+          "gap": "当前最终候选缺少直接、完整的陶瓷凹凸/光源视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/supervisor-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-C.json",
+              "kind": "reading-visual",
+              "conclusion": "C 的结果为 40 clear / 2 marginal；两条均为 Qwen 深色性能详情副标题与脚注偏弱，主管仍可逐字辨认且未要求强制改色。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/glm-a-90839e4535a2/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": "Qwen 深色性能详情聚光态仍保留同一副标题/脚注偏弱 caveat；目标文字未被聚光淹没。"
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-violet-preview-20261018T172600Z-4031049c/visual-parts/qwen-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "旧 Qwen A/B 均仍接近已换色 ChatGPT 的紫灰家族，不能宣称充分区分；新冰青/石油青 B 未重新与当前 ChatGPT 做视觉并排。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "本轮没有新增看图，沿用前一 S0 有限观察；共用字标、固定阅读与焦点缺口保留，不把完整捕获解释为全矩阵视觉通过。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-repair-preview-20261018T193118Z-7a38e399/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“我选qwen B”；目标 qwen-b-66a9e1d238c9。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m56-qwen-full-selected-20261018T193822Z-e1c50ef3/captures/qwen-b-66a9e1d238c9/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/native-125-qwen-dark.png"
+          ],
+          "gap": null,
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "grok",
+      "candidateId": "grok-a-caaed7d73f6d",
+      "candidateHash": "caaed7d73f6dc6bcd3887292de4e24222c2080b6ae82624d11683be321444ab8",
+      "sourceRun": "m52-recovery-c-pilot-preview-20261018T095533Z-67935fec",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+        "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+        "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+              "kind": "supervisor-review",
+              "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+              "kind": "supervisor-review",
+              "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-parts/grok-a-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "八项在本批抽检范围 accept；暖象牙/棕黑陶瓷高光、投影和内凹一致。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/baseline.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+              "kind": "supervisor-review",
+              "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-parts/grok-a-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "代理视觉报告明确核对 chars off / 50% / 100%；角色线稿未遮挡必要阅读或控件，但截图不能证明实现历史。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+              "kind": "supervisor-review",
+              "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/states/characters-100/state.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-parts/grok-a-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "旧近邻仅比较本批 ChatGPT A 与 Grok A，冷暖身份可解释；当前 ChatGPT 已换成 DeepSeek B，故不能关闭当前配对。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/visual-review.json",
+              "kind": "supervisor-review",
+              "conclusion": "代理八项初筛在所列范围 accept；主管合并记录称该批不是用户验收或 ready，固定阅读组合另由 m57 reading 补闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m52-recovery-c-pilot-preview-20261018T095533Z-67935fec/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“chatgpt和grok都选择方案A”；Grok A 为 grok-a-caaed7d73f6d。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/selected-a-full-20261018T110532Z-47bd5687/captures/grok-a-caaed7d73f6d/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [],
+          "gap": "六张缩放截图样本未覆盖本款；只依赖 60 行布局指标，没有本款缩放画面。",
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "muse",
+      "candidateId": "muse-a-1ae8bfc080aa",
+      "candidateHash": "1ae8bfc080aa2efc76df843230cb3b471a7168dca651347b9f9fc2aa9cbb7de6",
+      "sourceRun": "m57-muse-repair-20261018T202833Z/generated",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+        "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+        "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/supervisor-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "仅 Muse 新候选 A/B 浅深 S0 首页；A 浅底更蓝、B 更白且深底更暗，未给出陶瓷材质完整结论。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/baseline.png"
+          ],
+          "gap": "当前最终候选缺少直接、完整的陶瓷凹凸/光源视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/supervisor-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "现有报告未对该最终候选的 0/50/100 三档给出完整视觉结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/states/characters-100/state.png"
+          ],
+          "gap": "最终候选已有三档状态截图，但仍缺少主管/代理的直接视觉结论。",
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-A.json",
+              "kind": "reading-visual",
+              "conclusion": "A 的 56 张全部 clear：所有指定目标文字均可辨识，深色 toolbar 次级标签权重较低但未达费力辨认。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/chatgpt-b-98b485e3808b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "pending",
+          "sufficientForSupervisorAcceptance": false,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m54-blue-preview-20261018T155541Z-f8b1a81c/visual-parts/muse-preview.md",
+              "kind": "original-visual-report",
+              "conclusion": "旧 Muse B 与当时 ChatGPT A 的冷暖底可区分；当前 Muse 已换成新的蓝色 A，且没有与当前 ChatGPT B 的最终并排结论。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新 Muse A 完整捕获数值无 FAIL/缺测；此前仅有 S0 首页可见性记录，完整视觉八项未由该次捕获自动关闭。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-muse-preview-20261018T203118Z-e6420ca3/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“A更明确，我也觉得，同意”；选定 muse-a-1ae8bfc080aa。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-selected-full-20261018T203916Z-23d60159/captures/muse-a-1ae8bfc080aa/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m55-full-selected-20261018T165932Z-2e635d34/captures/chatgpt-b-98b485e3808b/dark/first-screen.png"
+          ],
+          "gap": "旧近邻对照未覆盖当前最终配对或已明确说未重看当前 ChatGPT；需要主管用当前首屏复核。",
+          "caveat": null,
+          "nearestNeighbourSkin": "chatgpt"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/native-100-muse-light.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/native-100-muse-dark.png"
+          ],
+          "gap": null,
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    },
+    {
+      "skinId": "mimo",
+      "candidateId": "mimo-a-c3e643906b54",
+      "candidateHash": "c3e643906b54ce03f739f22f93f5f9080e9f0a1345c42c80ca4ca042ebfea996",
+      "sourceRun": "m53-mimo-repair-20261018T144417Z/generated",
+      "targetCaptureBatch": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27",
+      "userChoice": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+        "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+      },
+      "finalSupervisorReview": {
+        "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+        "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+      },
+      "items": [
+        {
+          "id": "logotype-legible",
+          "status": "approved-design-exception",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/M5-selected-directions.md",
+              "kind": "design-exception",
+              "conclusion": "用户明确“我本就没打算让这个地方的标题拥有很强可读性，所以，不改”；保留 Agent Usage 弱浮雕，作为已批准设计例外，不再提修字标。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "窄窗复核记录同时写明：字标仍按用户明确要求保留弱浮雕效果。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/first-screen.png"
+          ],
+          "gap": "原字标可辨性问题仍保留，不作为普通正文 PASS；用户已批准弱浮雕设计例外。",
+          "caveat": null
+        },
+        {
+          "id": "body-text-comfortable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "140 张已判，138 clear / 2 marginal / 0 needs-fix / 0 coverage-gap；Qwen 两条 marginal 仍可辨认，无强制改色。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-normal/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-normal/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "ceramic-relief-consistent",
+          "status": "sufficient-with-caveat",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/mimo-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "ceramic-relief-consistent 为 accept；浅色白卡片与深色石墨卡片保持同一 bevel/inset 语言。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/baseline.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/baseline.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "mode-identity-consistent",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": "身份意见是浅深配色/材质连续性；不是 ready 或用户正式视觉签字。"
+        },
+        {
+          "id": "character-levels-unobstructed",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/mimo-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "代理视觉报告明确核对 chars off / 50% / 100%；角色线稿未遮挡必要阅读或控件，但截图不能证明实现历史。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/states/characters-100/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/states/characters-off/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/states/dense-data/state.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/states/characters-100/state.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "spotlight-not-overwhelming",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/reading-visual-B.json",
+              "kind": "reading-visual",
+              "conclusion": "B 的 42 张全部 clear：工具栏、空态和性能详情目标文字无需修复。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-reading-visual/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "固定 toolbar、空详情、性能详情的普通/聚光阅读场景已判；138 clear / 2 Qwen marginal / 0 needs-fix。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/light/performance-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-range-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/toolbar-custom-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/empty-detail-spotlight/region.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-reading-20261018T205621Z-33f2b9fa/captures/claude-b-cced5b3fef6b/dark/performance-detail-spotlight/region.png"
+          ],
+          "gap": null,
+          "caveat": null
+        },
+        {
+          "id": "nearest-neighbour-distinguishable",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/visual-parts/mimo-full-review.md",
+              "kind": "original-visual-report",
+              "conclusion": "nearest-neighbour-distinguishable：accept；与 Claude B 在页面表面、深色材质和强调色相上可区分。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/supervisor-review.md",
+              "kind": "supervisor-review",
+              "conclusion": "新版 Mimo A 有完整状态代理视觉复核；近中性/石墨/橙方向成立，但 logotype 明确 reject，body/spotlight 有 caveat。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-mimo-repair-preview-20261018T144947Z-7bc9d509/user-choice.md",
+              "kind": "user-choice",
+              "conclusion": "用户明确“mimo选A”；Mimo 新版 A 为 mimo-a-c3e643906b54。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/light/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/mimo-a-c3e643906b54/dark/first-screen.png",
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m53-full-selected-20261018T145857Z-54115e27/captures/claude-b-cced5b3fef6b/dark/first-screen.png"
+          ],
+          "gap": null,
+          "caveat": null,
+          "nearestNeighbourSkin": "claude"
+        },
+        {
+          "id": "no-geometry-workaround",
+          "status": "sufficient",
+          "sufficientForSupervisorAcceptance": true,
+          "sources": [
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/supervisor-review.md",
+              "kind": "scaling-supervisor",
+              "conclusion": "真实浏览器 100/125/150% 共 60 行；完整矩阵 findings 为空，六张修复图尺寸与 inner×DPR 一致；结论不是数值 PASS。"
+            },
+            {
+              "path": "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m57-scaling/independent-check.md",
+              "kind": "independent-check",
+              "conclusion": "60 行配置×候选×主题完整，paletteMatches/无 errors/无 findings；六张修复图仅采样，五款无逐款缩放截图。"
+            }
+          ],
+          "screenshots": [
+            "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/batches/m57-scaling-20261019T003528Z-3b65304f/native-125-mimo-light.png"
+          ],
+          "gap": null,
+          "caveat": "布局指标覆盖全十款，但视觉采样不是全十款。"
+        }
+      ]
+    }
+  ],
+  "gaps": {
+    "material": [
+      "chatgpt",
+      "gemini",
+      "kimi",
+      "qwen",
+      "muse"
+    ],
+    "characterLevels": [
+      "chatgpt",
+      "claude",
+      "glm",
+      "gemini",
+      "deepseek",
+      "kimi",
+      "qwen",
+      "muse"
+    ],
+    "nearestNeighbour": [
+      "glm",
+      "gemini",
+      "kimi",
+      "qwen",
+      "grok",
+      "muse"
+    ],
+    "geometryWithoutSkinScreenshot": [
+      "claude",
+      "glm",
+      "deepseek",
+      "kimi",
+      "grok"
+    ]
+  }
+}

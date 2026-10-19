@@ -2,7 +2,7 @@
 
 日期：2026-10-02。范围：P0.1—P0.3（已完成，第 1—6 节）、P1.1—P1.3（第 7 节）、P2.1—P2.4（第 9 节）、P3.1—P3.3（第 10 节，含 2026-10-02 复检与修复）。
 
-施工契约见 [Implementation Plan](../../plans/2026-10-02-model-character-skin-implementation-plan.md) 第 0／3／6／7 节；用户要求背景见[原方案](../../plans/2026-10-01-model-character-skin-plan.md)；逐项状态唯一维护在 [TODOs](../../plans/2026-10-01-model-character-skin-todos.md)。
+施工契约见 [Implementation Plan](../../archive/2026-10-03/plans/2026-10-02-model-character-skin-implementation-plan.md) 第 0／3／6／7 节；用户要求背景见[原方案](../../archive/2026-10-03/plans/2026-10-01-model-character-skin-plan.md)；逐项状态唯一维护在 [TODOs](../../archive/2026-10-03/plans/2026-10-01-model-character-skin-todos.md)。
 
 ## 0. 本目录的来源说明
 
@@ -15,7 +15,7 @@
 - HEAD：`0042e182bd0e62bc976393c6b664f6c4ad8c87c3`，分支 `main`（与 Implementation Plan 第 0 节要求的保存点一致）。
 - 记录时间：2026-10-02T04:39:14+08:00（Asia/Shanghai）。
 - 环境：Windows NT 10.0.26200.0；Node `v24.19.0`（契约要求 `>=23.8`）；npm `11.17.0`；PowerShell 7.6.6 Core。
-- 已阅读的适用约定：[开发与接手](../../03-development.md)、[静态导出约定](../../13-static-export.md)；工作区根 `AGENTS.md` 经 glob 检索**无命中**。
+- 已阅读的适用约定：[开发与接手](../../03-development.md)、[静态导出约定](../../03-development.md#旧-html-导出与历史验证)；工作区根 `AGENTS.md` 经 glob 检索**无命中**。
 - 已执行 `npm.cmd test`：**323 / 323 通过，exit code 0**（约 3.6s），证明当前工作区代码健康、工具链可用。
 
 ### `git status --short` 原文

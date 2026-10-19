@@ -7,6 +7,8 @@ import {
   MAX_TIMELINE_SLOTS,
   RECENT_SELECTIONS,
   resolveNamedRecentRange,
+  isPreviousWeeklyRange,
+  isPreviousQuotaRange,
   hasSelectedCodexSource,
   quotaRecordsForRange,
   quotaRecordValues,
@@ -23,8 +25,15 @@ import {
   setLocale,
   translatePage,
 } from "./i18n.js";
-import { buildModelActivity, buildUsagePricingCoverage, resolvePricingModel } from "./pricing-models.js";
+import {
+  buildModelActivity,
+  buildUsagePricingCoverage,
+  CODEX_GPT_61_CONTEXT_WINDOW,
+  isCodexAutoReview,
+  resolvePricingModel,
+} from "./pricing-models.js";
 import { state } from "./app-state.js";
+import { renderPerfCoverageHtml, renderPerfDetailHtml, renderPerfListHtml } from "./perf-ui.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
   dateKey,
@@ -34,7 +43,6 @@ import {
   renderDatePickerHtml,
   selectDateRange,
 } from "./calendar.js";
-import { summarizePeriodComparison } from "./period-comparison.js";
 import { createSkinPicker, createSkinRuntime, installSkinTestHook, SKINS } from "./skin-ui.js";
 
 export { datePickerMonthModel, renderDatePickerHtml };
@@ -53,9 +61,8 @@ const CODEX_HOME_KINDS = new Set(["main", "jetbrains", "extra", "codex"]);
 const QUOTA_UI_COPY = Object.freeze({
   unavailable: "此限额窗口当前不可用。",
   missingSnapshot: "尚无限额快照，请等待 Codex 写入限额记录。",
-  staticMissingSnapshot: "此静态快照未包含限额元数据，请重新导出。",
   waiting: "等待新的限额记录。",
-  invalidBoundaries: "导出中的限额窗口边界无效。",
+  invalidBoundaries: "限额窗口边界无效。",
   halfHourSlot: "每个图表时间槽是半小时。",
   weekSlot: "每个图表时间槽是连续 24 小时，不按本地自然日或夏令时拆分。",
   asOf: "统计数据截至",
@@ -88,8 +95,29 @@ const compactFormatter = new Intl.NumberFormat("en-US", {
 const tooltipRows = new WeakMap();
 const timelineBars = new WeakMap();
 const timelineFocusIndex = new WeakMap();
+// CSS-pixel box the canvas backing store was last sized for. The chart ResizeObserver compares
+// against it so a render that changed the chart well height (and then painted at the new size)
+// does not schedule a second whole-page render for a box that is already on screen.
+const drawnChartBox = new WeakMap();
+
+// True when repainting the chart for the current box would repeat the last draw: either the
+// canvas is not laid out (hidden view — nothing to paint, and the view toggle renders anyway) or
+// the box is the one the last draw already sized the backing store for.
+function isChartBoxDrawn(canvas) {
+  if (!canvas.clientWidth || !canvas.clientHeight) return true;
+  const drawn = drawnChartBox.get(canvas);
+  return Boolean(drawn && drawn.width === canvas.clientWidth && drawn.height === canvas.clientHeight);
+}
 
 const $ = (selector) => document.querySelector(selector);
+
+// Every region render() rewrites lives inside <main class="shell">. The dialogs, the tooltip and
+// the skin decoration are siblings of that subtree and are re-rendered (and translated) by their
+// own renderers, so a render pass only has to re-translate the dashboard subtree instead of
+// walking the whole document again. Falls back to the page root if the shell is ever absent.
+function translateRenderedDashboard() {
+  translatePage(document.querySelector("main.shell") || document.body);
+}
 
 function preferredTheme() {
   try {
@@ -136,6 +164,9 @@ function setLanguage(locale) {
   if (!$("#pricingDialog")?.hidden) renderPricingModelList();
   if (!$("#pricingDialog")?.hidden) renderAutomaticPricingStatus(state.pricingCatalog?.automatic);
   render();
+  // Whole-page on purpose: render() rewrites the dashboard subtree, but this path also re-renders
+  // the pricing dialog (:161-162) and the import dialog's source list, which are siblings of
+  // <main>. A language switch is a rare user action, so the extra walk is not a refresh cost.
   translatePage();
 }
 
@@ -152,10 +183,6 @@ function setTheme(theme, { persist = true } = {}) {
   updateThemeButtons();
   state.skinRuntime?.handleThemeChange();
   render();
-}
-
-function isStaticSnapshot() {
-  return Boolean(window.__CODEX_USAGE_REPORT__);
 }
 
 function usageValue(usage, field = "total") {
@@ -303,9 +330,23 @@ function usageTooltip() {
   return $("#usageTooltip");
 }
 
+// Body last published to a tooltip node, kept next to the value the node reported right after the
+// write (innerHTML is re-serialized, so the markup that was written is not always what the DOM
+// returns). A skip only happens while the node still reports that exact value, so an external
+// change to the tooltip invalidates the shortcut and the body is re-asserted on the next hit.
+const publishedTooltipBodies = new WeakMap();
+
+function publishUsageTooltipBody(tooltip, html) {
+  const published = publishedTooltipBodies.get(tooltip);
+  if (published && published.html === html && published.dom === tooltip.innerHTML) return false;
+  tooltip.innerHTML = html;
+  publishedTooltipBodies.set(tooltip, { html, dom: tooltip.innerHTML });
+  return true;
+}
+
 function hideUsageTooltip() {
   const tooltip = usageTooltip();
-  if (tooltip) {
+  if (tooltip && !tooltip.hidden) {
     tooltip.hidden = true;
   }
 }
@@ -363,12 +404,15 @@ function showUsageTooltip(row, anchor, options = null) {
     hideUsageTooltip();
     return;
   }
-  tooltip.innerHTML = formatUsageTooltip(row, null, options || undefined);
-  tooltip.hidden = false;
+  // A pointermove that keeps hitting the same row only has to reposition the tooltip; the body is
+  // rewritten only when the hit's content differs from what the node already shows.
+  publishUsageTooltipBody(tooltip, formatUsageTooltip(row, null, options || undefined));
+  if (tooltip.hidden) tooltip.hidden = false;
   positionUsageTooltip(anchor);
 }
 
 function timelineAccessibleLabel(row, mode, range = null) {
+  if (!["channel", "model", "cost"].includes(mode)) throw new TypeError(`unsupported timeline mode: ${mode}`);
   const quotaInfo = quotaTimelineSlotInfo(row);
   const english = getLocale() === "en-US";
   const key = quotaInfo
@@ -401,12 +445,16 @@ function showTimelineTooltip(row, anchor) {
     return;
   }
   const range = currentSummary()?.range || null;
-  tooltip.innerHTML = formatTimelineTooltip(row, state.timelineMode, range);
-  tooltip.hidden = false;
+  publishUsageTooltipBody(tooltip, formatTimelineTooltip(row, state.timelineMode, range));
+  if (tooltip.hidden) tooltip.hidden = false;
   positionUsageTooltip(anchor);
   const chart = document.querySelector("#timelineChart");
-  if (chart && document.activeElement === chart)
-    chart.setAttribute("aria-label", localizeText(timelineAccessibleLabel(row, state.timelineMode, range)));
+  if (chart && document.activeElement === chart) {
+    const label = localizeText(timelineAccessibleLabel(row, state.timelineMode, range));
+    // Re-writing an unchanged aria-label still emits a mutation record (and a translation round),
+    // so the value the chart already carries is compared before writing.
+    if (chart.getAttribute?.("aria-label") !== label) chart.setAttribute("aria-label", label);
+  }
 }
 
 function bindUsageRows(container, selector, rows, options = null) {
@@ -460,12 +508,39 @@ const MODEL_COLOR_ORDER = [
   "gpt-daybreak-blue-latest",
 ];
 const MODEL_COLOR_SLOTS = new Map(MODEL_COLOR_ORDER.map((name, index) => [name, index]));
+const LIGHT_CATEGORY_OVERFLOW_LIGHTNESS = 29;
+
+function categoryColorHex(hue, lightness) {
+  const normalizedHue = ((hue % 360) + 360) % 360;
+  const chroma = (1 - Math.abs(2 * (lightness / 100) - 1)) * 0.7;
+  const x = chroma * (1 - Math.abs(((normalizedHue / 60) % 2) - 1));
+  const match = lightness / 100 - chroma / 2;
+  const rgb =
+    normalizedHue < 60
+      ? [chroma, x, 0]
+      : normalizedHue < 120
+        ? [x, chroma, 0]
+        : normalizedHue < 180
+          ? [0, chroma, x]
+          : normalizedHue < 240
+            ? [0, x, chroma]
+            : normalizedHue < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  return `#${rgb
+    .map((channel) =>
+      Math.round((channel + match) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
 
 function categoryColor(index, dark) {
   const palette = dark ? CATEGORY_PALETTES.dark : CATEGORY_PALETTES.light;
-  return index < palette.length
-    ? palette[index]
-    : `hsl(${((index - palette.length) * 137.508 + 17) % 360} 70% ${dark ? 64 : 38}%)`;
+  if (index < palette.length) return palette[index];
+  const hue = ((index - palette.length) * 137.508 + 17) % 360;
+  return dark ? `hsl(${hue} 70% 64%)` : categoryColorHex(hue, LIGHT_CATEGORY_OVERFLOW_LIGHTNESS);
 }
 
 function categoricalColors(rows = []) {
@@ -507,11 +582,7 @@ function quotaWindowAvailability(quotaSnapshot, preset) {
     available: false,
     reason:
       (window?.reason ? localizeQuotaReason(window) : "") ||
-      (quotaSnapshot
-        ? QUOTA_UI_COPY.unavailable
-        : state.report
-          ? QUOTA_UI_COPY.staticMissingSnapshot
-          : QUOTA_UI_COPY.missingSnapshot),
+      (quotaSnapshot ? QUOTA_UI_COPY.unavailable : QUOTA_UI_COPY.missingSnapshot),
   };
 }
 
@@ -543,18 +614,30 @@ function quotaWindowBounds(range) {
 function quotaRangeAccessibleLabel(range) {
   const { start, end } = quotaWindowBounds(range);
   const mode = range?.quotaPreset || range?.preset;
-  const name = range?.recentValue || QUOTA_MODE_LABELS[mode] || "限额窗口";
+  const name = range?.recentValue ? displayRecentValue(range.recentValue) : QUOTA_MODE_LABELS[mode] || "限额窗口";
   const interval =
     start && end
       ? `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`
       : localizeText("限额窗口边界不可用");
   if (getLocale() === "en-US") {
     const asOf = range?.asOf ? `; data as of ${formatLocalDateTimeWithZone(range.asOf)}` : "";
-    const weekNote = mode === "quota_week" ? `; ${localizeText(QUOTA_UI_COPY.weekSlot)}` : "";
+    const weekNote = isPreviousWeeklyRange(range)
+      ? `; ${localizeText("仅显示有用量的日期")}`
+      : isPreviousQuotaRange(range)
+        ? `; ${localizeText("仅显示有用量的半小时")}`
+        : mode === "quota_week"
+          ? `; ${localizeText(QUOTA_UI_COPY.weekSlot)}`
+          : "";
     return `${localizeText(name)} ${interval}${asOf}${weekNote}`;
   }
   const asOf = range?.asOf ? `；${QUOTA_UI_COPY.asOf} ${formatLocalDateTimeWithZone(range.asOf)}` : "";
-  const weekNote = mode === "quota_week" ? `；${QUOTA_UI_COPY.weekSlot}` : "";
+  const weekNote = isPreviousWeeklyRange(range)
+    ? "；仅显示有用量的日期"
+    : isPreviousQuotaRange(range)
+      ? "；仅显示有用量的半小时"
+      : mode === "quota_week"
+        ? `；${QUOTA_UI_COPY.weekSlot}`
+        : "";
   return `${name} ${interval}${asOf}${weekNote}`;
 }
 
@@ -572,9 +655,7 @@ function quotaTimelineSlotInfo(row) {
       ? QUOTA_UI_COPY.weekSlot
       : QUOTA_UI_COPY.halfHourSlot,
   );
-  const asOf = asDate(
-    state.summary?.range?.asOf || state.report?.asOf || state.report?.quota?.asOf || state.quotaSnapshot?.asOf,
-  );
+  const asOf = asDate(state.summary?.range?.asOf || state.quotaSnapshot?.asOf);
   const partialNote =
     asOf && asOf.getTime() > startMs && asOf.getTime() < endMs
       ? getLocale() === "en-US"
@@ -713,7 +794,7 @@ function addCalendarDays(date, days, zone = "local") {
   return next;
 }
 
-export function getRange(events, quotaSnapshot = state.report?.quota) {
+export function getRange(events, quotaSnapshot = state.quotaSnapshot) {
   const now = state.now ? new Date(state.now) : quotaSnapshot?.asOf ? new Date(quotaSnapshot.asOf) : new Date();
   const zone = state.calendarZone;
   if (state.preset === "quota_5h" || state.preset === "quota_week") {
@@ -725,8 +806,7 @@ export function getRange(events, quotaSnapshot = state.report?.quota) {
         end: null,
         asOf: quota?.asOf ? new Date(quota.asOf) : now,
         quotaState: quotaWindow?.state || "missing",
-        quotaReason:
-          quotaWindow?.reason || (state.report ? QUOTA_UI_COPY.staticMissingSnapshot : QUOTA_UI_COPY.unavailable),
+        quotaReason: quotaWindow?.reason || QUOTA_UI_COPY.unavailable,
         preset: state.preset,
         bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
         calendarZone: zone,
@@ -837,7 +917,7 @@ export function nextQuotaPresetState(currentState = {}) {
 export function nextRecentState(_currentState = {}, value = "") {
   const recentValue = normalizeRecentValue(value);
   const parsed = parseRecentValue(recentValue);
-  const namedBucket = { 上一个5h: "quota_30m", 上周: "quota_24h", 上个月: "day", 今年: "month" }[recentValue];
+  const namedBucket = { 上一个5h: "quota_30m", 上周: "day", 上个月: "day", 今年: "month" }[recentValue];
   return { preset: "recent", recentValue, bucket: namedBucket || (parsed?.days === 1 ? "hour" : "day") };
 }
 
@@ -1032,7 +1112,7 @@ function percentChange(current, previous) {
 }
 
 function summarizeComparison(allEvents, range, currentTotals) {
-  // 静态导出没有 API 可用，因此在浏览器端复用同一套趋势口径。
+  // 纯统计辅助与服务端沿用同一套趋势口径。
   const previousRange = previousPeriodRange(range);
   if (!previousRange) {
     return {
@@ -1087,6 +1167,7 @@ export function summarize(report) {
   const bucket = deriveTimelineBucket(range, range.bucket || state.bucket);
   const events = sourceEvents.filter((event) => {
     if (!quotaAvailable) return false;
+    if (quotaPreset && isCodexAutoReview(event.model)) return false;
     if (codexHomeIds && !codexHomeIds.has(String(event.homeId))) {
       return false;
     }
@@ -1128,8 +1209,12 @@ export function summarize(report) {
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
     records: quotaPreset
       ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
-          const rows = events.filter(
-            (event) => new Date(event.timestamp) >= window.start && new Date(event.timestamp) <= window.end,
+          const rows = sourceEvents.filter(
+            (event) =>
+              codexHomeIds.has(String(event.homeId)) &&
+              !isCodexAutoReview(event.model) &&
+              new Date(event.timestamp) >= window.start &&
+              new Date(event.timestamp) <= window.end,
           );
           return {
             eventCount: rows.length,
@@ -1281,7 +1366,7 @@ function renderCostMetrics(summary) {
       $(selector).textContent = "—";
       $(selector).removeAttribute("title");
     }
-    note.textContent = isStaticSnapshot() ? "此静态快照没有费用估算，请重新导出快照。" : "费用估算暂不可用。";
+    note.textContent = "费用估算暂不可用。";
     note.title = "";
     return;
   }
@@ -1450,11 +1535,19 @@ export function rangeLabel(summary) {
   const range = summary?.range || {};
   if (isQuotaPreset(range.preset) || range.quotaWindow) {
     const mode = range.quotaPreset || range.preset;
-    const label = range.recentValue || QUOTA_MODE_LABELS[mode];
+    const label = range.recentValue ? displayRecentValue(range.recentValue) : QUOTA_MODE_LABELS[mode];
     if (range.quotaState !== "available") return `等待${label}数据`;
     const { start, end } = quotaWindowBounds(range);
     if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return `等待${label}数据`;
+    }
+    if (isPreviousWeeklyRange(range)) {
+      return `${dateKey(start, range.calendarZone)} 至 ${dateKey(end, range.calendarZone)} · 仅显示有用量的日期`;
+    }
+    if (isPreviousQuotaRange(range)) {
+      const clock = (date) =>
+        `${dateKey(date, range.calendarZone)} ${String(range.calendarZone === "utc" ? date.getUTCHours() : date.getHours()).padStart(2, "0")}:${String(range.calendarZone === "utc" ? date.getUTCMinutes() : date.getMinutes()).padStart(2, "0")}`;
+      return `${clock(start)}–${clock(end)} · 仅显示有用量的半小时`;
     }
     if (mode === "quota_week") return `${dateKey(start)} 至 ${dateKey(end)}`;
     const shortStart = dateKey(start).slice(5);
@@ -1771,23 +1864,52 @@ export function renderPeriodComparisonTableHtml(rows = [], options = {}) {
           <tbody>${body}</tbody>
         </table>
       </div>
-      ${totalsRow ? `<table class="comparison-table comparison-table-foot">${totalsRow}</table>` : ""}
+      ${totalsRow ? `<div class="comparison-table-footer"><table class="comparison-table comparison-table-foot">${totalsRow}</table></div>` : ""}
     </div>
   `;
+}
+
+// Last table published per kind. The table markup is a pure function of the filtered rows and
+// the render options, so an equal signature means the DOM already holds exactly that markup and
+// neither rebuilding the string nor re-parsing it as innerHTML can change anything.
+const periodComparisonTables = new Map();
+
+function periodComparisonTableSignature(rows, options) {
+  return JSON.stringify([
+    options.kind,
+    options.query ?? "",
+    options.expanded ?? null,
+    options.sort ?? null,
+    options.totals ?? null,
+    rows,
+  ]);
+}
+
+function publishPeriodComparisonTable(target, rows, options) {
+  const kind = options.kind;
+  const signature = periodComparisonTableSignature(rows, options);
+  const published = periodComparisonTables.get(kind);
+  if (published && published.signature === signature) return;
+  const html = renderPeriodComparisonTableHtml(rows, options);
+  // A changed signature can still render to the same markup (a query that filters nothing, a
+  // sort that is already in effect), so the produced output is compared as well: the DOM write
+  // itself stays at zero whenever the markup would not change.
+  if (!published || published.html !== html) target.innerHTML = html;
+  periodComparisonTables.set(kind, { signature, html });
 }
 
 function renderPeriodComparisons(comparison) {
   const expanded = state.expandedPeriodCell;
   const models = filterPeriodComparisonRows(comparison?.models || []);
   const repositories = filterPeriodComparisonRows(comparison?.repositories || []);
-  $("#modelComparisonTable").innerHTML = renderPeriodComparisonTableHtml(models, {
+  publishPeriodComparisonTable($("#modelComparisonTable"), models, {
     kind: "model",
     query: state.modelComparisonQuery,
     expanded,
     totals: comparison?.totals,
     sort: state.modelComparisonSort,
   });
-  $("#repositoryComparisonTable").innerHTML = renderPeriodComparisonTableHtml(repositories, {
+  publishPeriodComparisonTable($("#repositoryComparisonTable"), repositories, {
     kind: "repository",
     query: state.repositoryComparisonQuery,
     expanded,
@@ -1795,8 +1917,11 @@ function renderPeriodComparisons(comparison) {
     sort: state.repositoryComparisonSort,
   });
   const asOf = comparison?.asOf ? new Date(comparison.asOf).toLocaleString(getLocale()) : "";
+  const asOfText = asOf ? `统计截至 ${asOf}` : "";
   for (const node of document.querySelectorAll("[data-comparison-as-of]")) {
-    node.textContent = asOf ? `统计截至 ${asOf}` : "";
+    // Re-writing the same string still emits a mutation record (and a translation round), so an
+    // unchanged timestamp is left alone.
+    if (node.textContent !== asOfText) node.textContent = asOfText;
   }
 }
 
@@ -1809,6 +1934,14 @@ function shortTimelineLabel(key, bucket, range) {
     if (!Number.isFinite(timestampMs)) return text;
     const date = new Date(timestampMs);
     if (bucket === "quota_30m") {
+      if (isPreviousQuotaRange(range)) {
+        const dateText = dateKey(date, range.calendarZone);
+        const crossYear =
+          dateKey(asDate(range.start), range.calendarZone).slice(0, 4) !==
+          dateKey(asDate(range.end), range.calendarZone).slice(0, 4);
+        const clock = `${String(range.calendarZone === "utc" ? date.getUTCHours() : date.getHours()).padStart(2, "0")}:${String(range.calendarZone === "utc" ? date.getUTCMinutes() : date.getMinutes()).padStart(2, "0")}`;
+        return `${crossYear ? dateText : dateText.slice(5)} ${clock}`;
+      }
       return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
     }
     return getLocale() === "en-US"
@@ -2028,7 +2161,8 @@ function getModelColor(name) {
     hash ^= character.charCodeAt(0);
     hash = Math.imul(hash, 16777619);
   }
-  return `hsl(${(hash >>> 0) % 360} 70% ${dark ? 64 : 38}%)`;
+  const hue = (hash >>> 0) % 360;
+  return dark ? `hsl(${hue} 70% 64%)` : categoryColorHex(hue, LIGHT_CATEGORY_OVERFLOW_LIGHTNESS);
 }
 
 export function getModelColors(rows = []) {
@@ -2156,7 +2290,11 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
   if (mode === "channel") return `${formatUsageTooltip(row, slotTitle)}${quotaNote}`;
   const title = escapeHtml(slotTitle || row?.name || row?.key || "未知时间");
   if (mode === "model") {
-    const models = (row?.models || [])
+    const models = [...(row?.models || [])]
+      .sort(
+        (left, right) =>
+          usageValue(left.total, "total") - usageValue(right.total, "total") || left.name.localeCompare(right.name),
+      )
       .map(
         (model) =>
           `<span class="usage-tooltip-label">${escapeHtml(displayModelName(model.name))}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
@@ -2168,7 +2306,8 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
     .filter(([, cost]) => Number(cost.totalUsd || 0) > 0)
     .sort(
       (left, right) =>
-        scaledCost(right[1].totalUsd, right[1].currency) - scaledCost(left[1].totalUsd, left[1].currency),
+        scaledCost(left[1].totalUsd, left[1].currency) - scaledCost(right[1].totalUsd, right[1].currency) ||
+        left[0].localeCompare(right[0]),
     )
     .map(([name, cost]) => {
       const native = formatPreciseCost(cost.totalUsd, cost.currency);
@@ -2193,14 +2332,120 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
 }
 
 function updateTimelineModeButtons() {
+  const timelineActive = state.activeView !== "performance";
   for (const button of document.querySelectorAll("[data-timeline-mode]")) {
-    const selected = button.dataset.timelineMode === state.timelineMode;
+    const selected = timelineActive && button.dataset.timelineMode === state.timelineMode;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-pressed", String(selected));
+  }
+  const performanceButton = document.querySelector("[data-active-view='performance']");
+  if (performanceButton) {
+    const selected = !timelineActive;
+    performanceButton.classList.toggle("active", selected);
+    performanceButton.setAttribute("aria-pressed", String(selected));
+  }
+}
+
+function performanceHomeLabels(metadata = currentMetadata()) {
+  const labels = new Map();
+  for (const home of homeRowsFromMetadata(metadata || {})) {
+    if (home?.id) labels.set(String(home.id), home.label || home.path || String(home.id));
+  }
+  return labels;
+}
+
+function renderPerformancePanel(perf, { emptyMessage = null, focusIndex = null } = {}) {
+  const coverage = $("#perfCoverage");
+  const list = $("#perfList");
+  const details = $("#perfDetailList");
+  if (!coverage || !list || !details) return;
+  const locale = getLocale();
+  if (!perf) {
+    const message = localizeText(emptyMessage || "当前范围没有可评估的性能样本。", locale);
+    coverage.innerHTML = `<p class="perf-notice status" role="status">${escapeHtml(message)}</p>`;
+    list.innerHTML = `<p class="empty perf-empty">${escapeHtml(message)}</p>`;
+    details.innerHTML = `<p class="empty">${escapeHtml(message)}</p>`;
+    state.selectedPerfGroupKey = null;
+    return;
+  }
+  const groups = Array.isArray(perf.groups) ? perf.groups : [];
+  let selected = groups.find((group) => group.groupKey === state.selectedPerfGroupKey);
+  if (!selected) selected = groups[0] || null;
+  state.selectedPerfGroupKey = selected?.groupKey ?? null;
+  const homeLabels = performanceHomeLabels();
+  const coverageDetailsOpen = Boolean(coverage.querySelector(".perf-coverage-more")?.open);
+  coverage.innerHTML = renderPerfCoverageHtml(perf, { locale, homeLabels });
+  const coverageDetails = coverage.querySelector(".perf-coverage-more");
+  if (coverageDetails && coverageDetailsOpen) coverageDetails.open = true;
+  list.innerHTML = renderPerfListHtml(perf, {
+    locale,
+    homeLabels,
+    selectedGroupKey: state.selectedPerfGroupKey,
+  });
+  details.innerHTML = renderPerfDetailHtml(selected, perf.coverage, { locale, homeLabels });
+  if (focusIndex !== null) {
+    list.querySelector(`[data-perf-group-index="${Number(focusIndex)}"]`)?.focus();
+  }
+}
+
+const ABSENT_CANVAS_ATTRIBUTE = "__perf_attribute_absent__";
+
+function saveCanvasAttribute(canvas, attribute, key) {
+  if (canvas.dataset[key] !== undefined) return;
+  canvas.dataset[key] = canvas.hasAttribute(attribute) ? canvas.getAttribute(attribute) : ABSENT_CANVAS_ATTRIBUTE;
+}
+
+function restoreCanvasAttribute(canvas, attribute, key) {
+  const value = canvas.dataset[key];
+  if (value === undefined) return;
+  if (value === ABSENT_CANVAS_ATTRIBUTE) canvas.removeAttribute(attribute);
+  else canvas.setAttribute(attribute, value);
+}
+
+function updatePerformanceViewChrome() {
+  const performanceActive = state.activeView === "performance";
+  const panelTitle = $("#timelinePanelTitle");
+  const detailTitle = $("#detailPanelTitle");
+  const detailMode = $("#detailModeLabel");
+  const timelineWell = document.querySelector(".timeline-chart-well");
+  const timelineWarning = $("#timelineRangeWarning");
+  const legend = $("#timelineLegend");
+  const timelineDetails = $("#detailList");
+  const performancePanel = $("#perfPanel");
+  const performanceDetails = $("#perfDetailList");
+  const canvas = $("#timelineChart");
+  const focusCanvas = performanceActive && canvas && document.activeElement === canvas;
+  if (performanceActive && performancePanel) performancePanel.hidden = false;
+  if (focusCanvas) $("#perfPanelTitle")?.focus();
+  if (panelTitle) panelTitle.textContent = localizeText(performanceActive ? "模型输出吞吐" : "时间分布", getLocale());
+  if (detailTitle) detailTitle.textContent = localizeText(performanceActive ? "性能详情" : "详情", getLocale());
+  if (detailMode) {
+    const timelineModeLabel = { channel: "按渠道", model: "按模型", cost: "按花销" }[state.timelineMode] || "按渠道";
+    detailMode.textContent = localizeText(performanceActive ? "模型详情" : timelineModeLabel, getLocale());
+  }
+  if (timelineWell) timelineWell.hidden = performanceActive;
+  if (timelineWarning && performanceActive) timelineWarning.hidden = true;
+  if (legend) legend.hidden = performanceActive;
+  if (timelineDetails) timelineDetails.hidden = performanceActive;
+  if (performancePanel) performancePanel.hidden = !performanceActive;
+  if (performanceDetails) performanceDetails.hidden = !performanceActive;
+  if (!canvas) return;
+  if (performanceActive) {
+    saveCanvasAttribute(canvas, "tabindex", "perfOriginalTabindex");
+    saveCanvasAttribute(canvas, "aria-hidden", "perfOriginalAriaHidden");
+    saveCanvasAttribute(canvas, "aria-label", "perfOriginalAriaLabel");
+    canvas.setAttribute("tabindex", "-1");
+    canvas.setAttribute("aria-hidden", "true");
+    hideUsageTooltip();
+  } else {
+    restoreCanvasAttribute(canvas, "tabindex", "perfOriginalTabindex");
+    restoreCanvasAttribute(canvas, "aria-hidden", "perfOriginalAriaHidden");
+    restoreCanvasAttribute(canvas, "aria-label", "perfOriginalAriaLabel");
   }
 }
 
 export function renderTimelineLegendHtml(summary, mode, channelColors, modelColors) {
+  if (!["channel", "model", "cost"].includes(mode)) throw new TypeError(`unsupported timeline mode: ${mode}`);
   const isChannel = mode === "channel";
   const isCost = mode === "cost";
   const totalsByName = new Map();
@@ -2268,6 +2513,7 @@ export function drawTimeline(
   modelRows = [],
   modelColorsByName = getModelColors(modelRows),
 ) {
+  if (!["channel", "model", "cost"].includes(mode)) throw new TypeError(`unsupported timeline mode: ${mode}`);
   const context = canvas.getContext("2d");
   canvas.dataset.usageTooltip = "true";
   const modeLabel = { channel: "按渠道", model: "按模型", cost: "按花销" }[mode] || "按渠道";
@@ -2294,25 +2540,44 @@ export function drawTimeline(
   const chartText = styles.getPropertyValue("--chart-text").trim() || "#607080";
   const blue = styles.getPropertyValue("--blue").trim() || "#2364aa";
   const green = styles.getPropertyValue("--green").trim() || "#2f855a";
-  const width = canvas.clientWidth * ratio;
-  const height = canvas.clientHeight * ratio;
+  // Read the CSS box once, before touching the backing store: canvas.width/height cannot change
+  // the layout box (styles.css pins the canvas with position:absolute + width/height:100%), so
+  // re-reading clientWidth/clientHeight after those writes would only force a second synchronous
+  // layout for the same numbers.
+  const cssWidth = canvas.clientWidth;
+  const cssHeight = canvas.clientHeight;
+  const width = cssWidth * ratio;
+  const height = cssHeight * ratio;
   canvas.width = width;
   canvas.height = height;
   context.clearRect(0, 0, width, height);
   context.scale(ratio, ratio);
+  drawnChartBox.set(canvas, { width: cssWidth, height: cssHeight });
 
-  const cssWidth = canvas.clientWidth;
-  const cssHeight = canvas.clientHeight;
   const padding = { top: 18, right: 18, bottom: 42, left: 64 };
   const chartWidth = cssWidth - padding.left - padding.right;
   const chartHeight = cssHeight - padding.top - padding.bottom;
+  const axisPath = [
+    [padding.left, padding.top],
+    [padding.left, padding.top + chartHeight],
+    [padding.left + chartWidth, padding.top + chartHeight],
+  ];
   context.strokeStyle = chartLine;
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(padding.left, padding.top);
-  context.lineTo(padding.left, padding.top + chartHeight);
-  context.lineTo(padding.left + chartWidth, padding.top + chartHeight);
-  context.stroke();
+  context.moveTo(...axisPath[0]);
+  context.lineTo(...axisPath[1]);
+  context.lineTo(...axisPath[2]);
+  const chartDrawKey = "__codexUsageChartDraw";
+  const hadChartDraw = Object.hasOwn(context, chartDrawKey);
+  const previousChartDraw = hadChartDraw ? context[chartDrawKey] : undefined;
+  try {
+    context[chartDrawKey] = { roleId: "chart.axis-line", points: axisPath };
+    context.stroke();
+  } finally {
+    if (hadChartDraw) context[chartDrawKey] = previousChartDraw;
+    else delete context[chartDrawKey];
+  }
 
   if (!rows.length) {
     const emptyMessage =
@@ -2332,7 +2597,7 @@ export function drawTimeline(
 
   const breakdownReady = timelineBreakdownReady(rows, mode);
   if (!breakdownReady) {
-    const action = isStaticSnapshot() ? "请重新导出快照" : "请重启服务";
+    const action = "请重启服务";
     const message = `${mode === "model" ? "模型" : "费用"}明细不可用，${action}`;
     context.fillStyle = chartText;
     context.font = timelineLabelFont;
@@ -2374,6 +2639,10 @@ export function drawTimeline(
         ...segment,
         color: modelColorsByName.get(segment.name) || getModelColor(segment.name),
       }));
+    }
+    if (mode === "model" || mode === "cost") {
+      // 从柱底向上绘制，按当前时间槽的用量或折算花销由大到小堆叠。
+      segments.sort((left, right) => right.value - left.value || left.name.localeCompare(right.name));
     }
     let y = padding.top + chartHeight;
     if (mode === "channel" && value > 0 && !segments.length) {
@@ -2737,28 +3006,7 @@ export function metadataFromReport(report) {
   };
 }
 
-let staticSummaryCache = null;
-
 function currentSummary() {
-  if (state.report) {
-    const nowKey = state.now ? new Date(state.now).getTime() : Math.floor(Date.now() / 60_000);
-    const excludedKey = [...(state.excludedHomes || [])].map(String).sort().join(",");
-    const key = [
-      state.preset,
-      state.bucket,
-      state.startDate,
-      state.endDate,
-      state.recentValue,
-      state.calendarZone,
-      excludedKey,
-      nowKey,
-    ].join("|");
-    if (staticSummaryCache?.report === state.report && staticSummaryCache.key === key)
-      return staticSummaryCache.summary;
-    const summary = summarize(state.report);
-    staticSummaryCache = { report: state.report, key, summary };
-    return summary;
-  }
   return state.summary;
 }
 
@@ -2777,6 +3025,8 @@ function renderUnavailableQuota(reason, range = null) {
     bucket: state.preset === "quota_5h" ? "quota_30m" : "quota_24h",
   };
   unavailableRange.quotaReason = message;
+  state.emptySummaryMessage = message;
+  state.emptySummaryRange = unavailableRange;
   const rangeNode = $("#rangeLabel");
   if (rangeNode) {
     rangeNode.textContent = rangeLabel({ range: unavailableRange });
@@ -2821,16 +3071,45 @@ function renderUnavailableQuota(reason, range = null) {
   if (legend) legend.innerHTML = "";
   const detailList = $("#detailList");
   if (detailList) detailList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
-  drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
+  updatePerformanceViewChrome();
   updateTimelineModeButtons();
+  if (state.activeView === "performance") {
+    renderPerformancePanel(null, { emptyMessage: message });
+    updateQuotaPresetButton();
+    updateDateRangeControl();
+    return;
+  }
+  drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
   updateQuotaPresetButton();
   updateDateRangeControl();
+}
+
+function renderEmptySummaryState() {
+  hideUsageTooltip();
+  updatePerformanceViewChrome();
+  updateTimelineModeButtons();
+  const message = state.emptySummaryMessage || "用量摘要暂不可用。";
+  if (state.activeView === "performance") {
+    renderPerformancePanel(null, { emptyMessage: message });
+    return;
+  }
+  const warning = $("#timelineRangeWarning");
+  if (warning) {
+    warning.hidden = true;
+    warning.textContent = "";
+  }
+  const legend = $("#timelineLegend");
+  if (legend) legend.innerHTML = "";
+  const details = $("#detailList");
+  if (details) details.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+  drawTimeline($("#timelineChart"), [], [], new Map(), state.emptySummaryRange, state.timelineMode);
 }
 
 function render() {
   const summary = currentSummary();
   const metadata = currentMetadata();
   if (!summary || !metadata) {
+    renderEmptySummaryState();
     return;
   }
   const quotaWindow = summary.quota?.windows?.[state.preset];
@@ -2846,8 +3125,9 @@ function render() {
       quotaReason: quotaReason || QUOTA_UI_COPY.waiting,
     });
     renderPeriodComparisons(state.periodComparison);
-    renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot(), excludedIds: state.excludedHomes });
-    translatePage();
+    renderHomes(homeRowsFromMetadata(metadata), { canModify: true, excludedIds: state.excludedHomes });
+    // Every region written above (metrics, comparison tables, homes) is inside <main>.
+    translateRenderedDashboard();
     return;
   }
   hideUsageTooltip();
@@ -2879,10 +3159,21 @@ function render() {
   const channelColors = getChannelColors(summary.channels);
   const allPeriodModels = state.periodComparison?.models || [];
   const modelColors = getModelColors([...allPeriodModels, ...summary.models]);
+  updatePerformanceViewChrome();
+  updateTimelineModeButtons();
+  if (state.activeView === "performance") {
+    renderPerformancePanel(summary.perf || null);
+    renderHomes(homeRowsFromMetadata(metadata), { canModify: true, excludedIds: state.excludedHomes });
+    if (!$("#importDialog")?.hidden) renderSourceOptions();
+    updateQuotaPresetButton();
+    translateRenderedDashboard();
+    // The import dialog sits outside <main>, so its re-rendered source list is translated here.
+    if (!$("#importDialog")?.hidden) translatePage($("#importDialog"));
+    return;
+  }
   renderTimelineDetails(summary, channelColors, modelColors);
   renderTimelineLegend(summary, channelColors, modelColors);
-  updateTimelineModeButtons();
-  renderHomes(homeRowsFromMetadata(metadata), { canModify: !isStaticSnapshot(), excludedIds: state.excludedHomes });
+  renderHomes(homeRowsFromMetadata(metadata), { canModify: true, excludedIds: state.excludedHomes });
   if (!$("#importDialog")?.hidden) {
     // 数据先于弹窗就绪时，让弹窗里的来源多选同步最新列表。
     renderSourceOptions();
@@ -2898,7 +3189,8 @@ function render() {
     modelColors,
   );
   updateQuotaPresetButton();
-  translatePage();
+  translateRenderedDashboard();
+  if (!$("#importDialog")?.hidden) translatePage($("#importDialog"));
 }
 
 function setAutoRefreshStatus(message, { error = false, busy = false } = {}) {
@@ -2933,14 +3225,10 @@ function persistAutoRefreshPreference(enabled) {
 function renderAutoRefreshControls() {
   const button = document.querySelector("#autoRefreshToggle");
   if (!button) return;
-  const staticSnapshot = isStaticSnapshot();
-  button.disabled = staticSnapshot;
-  button.textContent = state.autoRefreshEnabled && !staticSnapshot ? "开" : "关";
-  button.setAttribute("aria-pressed", String(state.autoRefreshEnabled && !staticSnapshot));
-  button.title = staticSnapshot ? "静态快照不能启动轮询" : "切换自动刷新";
-  document.querySelector("#autoRefreshInterval").textContent = staticSnapshot
-    ? "静态快照，不轮询"
-    : `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
+  button.textContent = state.autoRefreshEnabled ? "开" : "关";
+  button.setAttribute("aria-pressed", String(state.autoRefreshEnabled));
+  button.title = "切换自动刷新";
+  document.querySelector("#autoRefreshInterval").textContent = `${AUTO_REFRESH_INTERVAL_MS / 1000}s`;
   const checked = state.lastSuccessfulCheck ? new Date(state.lastSuccessfulCheck) : null;
   document.querySelector("#lastSuccessfulCheck").textContent =
     checked && !Number.isNaN(checked.getTime())
@@ -2963,11 +3251,6 @@ export function formatAutoRefreshTimestamp(value, locale = "zh-CN", calendarZone
 }
 
 function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}) {
-  if (isStaticSnapshot()) {
-    state.autoRefreshEnabled = false;
-    renderAutoRefreshControls();
-    return;
-  }
   state.autoRefreshEnabled = Boolean(enabled);
   state.autoRefreshRunId += 1;
   state.autoRefreshCheckInFlight = false;
@@ -2987,11 +3270,8 @@ function setAutoRefreshEnabled(enabled, { persist = true, checkNow = true } = {}
 }
 
 function initializeAutoRefresh() {
-  state.autoRefreshEnabled = isStaticSnapshot() ? false : readAutoRefreshPreference();
+  state.autoRefreshEnabled = readAutoRefreshPreference();
   renderAutoRefreshControls();
-  if (isStaticSnapshot()) {
-    setAutoRefreshStatus("此静态快照不会轮询；运行 npm run export 可生成新快照");
-  }
 }
 
 const PRICING_FIELDS = [
@@ -3191,7 +3471,7 @@ export function pricingProvenanceText(metadata = {}, locale = "zh-CN") {
 }
 
 async function refreshPricingAutomatically(force = false) {
-  if (isStaticSnapshot() || (state.pricingCatalog && !force)) return;
+  if (state.pricingCatalog && !force) return;
   const button = $("#refreshPricingButton");
   if (button) button.disabled = true;
   if (force && state.pricingCatalog)
@@ -3272,10 +3552,22 @@ async function refreshPricingAutomatically(force = false) {
   }
 }
 
-function pricingModelNoteParts(contexts) {
+export function pricingModelNoteParts(contexts, model) {
   const parts = [];
+  if (model === "gpt-6.1-sol")
+    parts.push(
+      getLocale() === "en-US"
+        ? `Codex / ChatGPT Work: ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K context; short-context rates apply at every length. Fast uses Fast short-context rates`
+        : `Codex / ChatGPT Work：上下文 ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K，所有长度均按短上下文价；Fast 使用快速短上下文价`,
+    );
   if (Number.isInteger(contexts.longContextThreshold))
-    parts.push(`单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`);
+    parts.push(
+      model === "gpt-6.1-sol"
+        ? getLocale() === "en-US"
+          ? `Other sources / API: long-context rates apply above ${formatTokens(contexts.longContextThreshold)} input tokens per request`
+          : `其他来源 / API：单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`
+        : `单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`,
+    );
   if (Number.isInteger(contexts.outputThreshold))
     parts.push(`输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`);
   if (contexts.offPeakMultiplier)
@@ -3297,10 +3589,16 @@ function pricingModelNoteParts(contexts) {
   return parts;
 }
 
-function pricingModelHint(contexts) {
+function pricingModelHint(contexts, model) {
   const short = contexts.short || {};
   const parts = [`${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}（入/缓/出）`];
-  if (Number.isInteger(contexts.longContextThreshold))
+  if (model === "gpt-6.1-sol")
+    parts.push(
+      getLocale() === "en-US"
+        ? `Codex / Work: ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K context, no context surcharge`
+        : `Codex / Work：${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K 上下文，无长上下文加价`,
+    );
+  else if (Number.isInteger(contexts.longContextThreshold))
     parts.push(`上下文 ${formatTokens(contexts.longContextThreshold)} 分档`);
   if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出 ${formatTokens(contexts.outputThreshold)} 分档`);
   if (contexts.offPeakMultiplier) parts.push(`谷时 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折`);
@@ -3326,7 +3624,11 @@ function pricingContextsHtml(model, contexts) {
     .map((context) =>
       contextBlock(
         context,
-        { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context],
+        context === "long" && model === "gpt-6.1-sol"
+          ? getLocale() === "en-US"
+            ? "Other sources / API · Long Context"
+            : "其他来源 / API·长上下文"
+          : { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context],
         contexts[context],
       ),
     )
@@ -3341,7 +3643,11 @@ function pricingContextsHtml(model, contexts) {
         .map((context) =>
           contextBlock(
             `fast.${context}`,
-            { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context],
+            context === "long" && model === "gpt-6.1-sol"
+              ? getLocale() === "en-US"
+                ? "Other sources / API · Fast Long Context"
+                : "其他来源 / API·快速长上下文"
+              : { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context],
             contexts.fast[context],
           ),
         )
@@ -3402,8 +3708,7 @@ export function pricingUsageModels() {
     const observations = Object.entries(candidate.modelLastSeen).flatMap(([harness, models]) =>
       isMap(models) ? Object.entries(models).map(([model, timestamp]) => ({ harness, model, timestamp })) : [],
     );
-    const asOf =
-      candidate.modelUsageAsOf || state.summary?.range?.asOf || state.report?.asOf || state.now || Date.now();
+    const asOf = candidate.modelUsageAsOf || state.summary?.range?.asOf || state.now || Date.now();
     const activity = buildModelActivity(observations, asOf);
     return { harnessModels: activity.activeHarnessModels, recent: true };
   }
@@ -3471,9 +3776,10 @@ function renderPricingModelList() {
       </div>`;
     }
     if (row.matchType === "free") {
+      const autoReview = isCodexAutoReview(row.model);
       return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
-        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${english ? "Free rule" : "免费规则"}</span></span>
-        <span class="pricing-model-hint">${english ? "Estimated as free by the -free rule." : "按 -free 规则估算为免费。"}</span>
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${autoReview ? (english ? "Officially free" : "官方免费") : english ? "Free rule" : "免费规则"}</span></span>
+        <span class="pricing-model-hint">${autoReview ? (english ? "ChatGPT auto-review is free and does not count toward plan usage limits." : "ChatGPT 自动安全审核免费，不消耗套餐用量。") : english ? "Estimated as free by the -free rule." : "按 -free 规则估算为免费。"}</span>
       </div>`;
     }
     const contexts = catalog.models[row.catalogKey];
@@ -3484,16 +3790,13 @@ function renderPricingModelList() {
         : `<span class="pricing-model-hint">${english ? "Priced as" : "计价名称"} ${escapeHtml(row.catalogKey)}</span>`;
     return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
       <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span>${badges}</span>
-      <span class="pricing-model-hint">${priceName || escapeHtml(pricingModelHint(contexts))}</span>
+      <span class="pricing-model-hint">${priceName || escapeHtml(pricingModelHint(contexts, row.catalogKey))}</span>
     </button>`;
   };
 
   if (state.pricingScope === "all") {
     const rowsByName = new Map(
-      Object.keys(catalog.models).map((model) => [
-        model.toLowerCase(),
-        { model, catalogKey: model, matchType: "exact" },
-      ]),
+      pricingRowsForNames(Object.keys(catalog.models), catalog.models).map((row) => [row.model.toLowerCase(), row]),
     );
     for (const rows of Object.values(pricingHarnessRows({ all: true }))) {
       for (const row of rows) {
@@ -3542,7 +3845,7 @@ function openModelPricing(model) {
   $("#modelPricingTitle").innerHTML =
     `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
   const provenance = pricingProvenanceText(state.pricingCatalog?.automatic?.modelMetadata?.[model], getLocale());
-  $("#modelPricingNote").textContent = [...pricingModelNoteParts(entry), provenance].filter(Boolean).join("；");
+  $("#modelPricingNote").textContent = [...pricingModelNoteParts(entry, model), provenance].filter(Boolean).join("；");
   $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
   updateModelPricingApplyState();
   // 原生顶层弹窗：showModal 负责置顶、焦点圈定，关闭时焦点自动还原。
@@ -3571,7 +3874,6 @@ function pricingActivityUrl() {
 }
 
 async function openPricingDialog() {
-  if (isStaticSnapshot()) return;
   const button = $("#updatePricingButton");
   button.disabled = true;
   try {
@@ -3666,23 +3968,7 @@ async function submitPricing(event) {
   }
 }
 
-function setImportControlsDisabled(disabled) {
-  for (const selector of ["#addImportButton", "#pickImportDirectoryButton"]) {
-    const button = $(selector);
-    if (!button) {
-      continue;
-    }
-    button.disabled = disabled;
-    button.title = disabled ? "静态快照不能编辑数据来源" : "";
-  }
-}
-
 async function pickImportDirectory() {
-  if (isStaticSnapshot()) {
-    setImportMessage("静态快照不能选择目录，请启动本地服务或手动输入路径。", true);
-    return;
-  }
-
   const pickButton = $("#pickImportDirectoryButton");
   pickButton.disabled = true;
   setImportMessage("正在打开文件夹选择器...");
@@ -3732,10 +4018,6 @@ function saveExcludedHomes() {
 }
 
 function openImportDialog() {
-  if (isStaticSnapshot()) {
-    setAutoRefreshStatus("静态快照不能编辑数据来源，请启动本地服务后再操作");
-    return;
-  }
   const dialog = $("#importDialog");
   importDialogOpener = document.activeElement;
   dialog.hidden = false;
@@ -3819,11 +4101,6 @@ async function submitImportDirectory(event) {
 }
 
 async function removeImportDirectory(importPath) {
-  // Removing an import mutates local service state, so static snapshots refuse it.
-  if (isStaticSnapshot()) {
-    setAutoRefreshStatus("静态快照不能移除导入目录，请启动本地服务后再操作");
-    return;
-  }
   setAutoRefreshStatus("正在移除导入目录...");
   const response = await fetch(`/api/imports?path=${encodeURIComponent(importPath)}`, {
     method: "DELETE",
@@ -3870,7 +4147,7 @@ function updateQuotaPresetButton() {
   if (!button) return;
   const enabled = selectedCodexAvailable();
   button.disabled = !enabled;
-  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || state.report?.quota || null;
+  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || null;
   const quotaActive = isQuotaPreset(state.preset);
   const currentStatus = quotaActive ? quotaWindowAvailability(quotaSnapshot, state.preset) : null;
   const preferred = QUOTA_PRESETS.includes(state.lastQuotaPreset) ? state.lastQuotaPreset : "quota_5h";
@@ -3879,7 +4156,7 @@ function updateQuotaPresetButton() {
   const currentName = quotaActive
     ? QUOTA_MODE_LABELS[state.preset]
     : state.preset === "recent"
-      ? state.recentValue
+      ? displayRecentValue(state.recentValue)
       : state.preset === "week"
         ? "本周"
         : COMPARISON_PERIOD_LABELS[state.preset] || state.preset;
@@ -3928,7 +4205,7 @@ function updateRecentControls() {
   }
   for (const option of document.querySelectorAll("[data-recent-option]")) {
     const mode = { 上一个5h: "quota_5h", 上周: "quota_week" }[option.dataset.recentOption];
-    const quota = state.quotaSnapshot || state.summary?.quota || state.report?.quota;
+    const quota = state.quotaSnapshot || state.summary?.quota;
     option.disabled = Boolean(
       mode && (!selectedCodexAvailable() || quota?.previousWindows?.[mode]?.state !== "available"),
     );
@@ -4115,69 +4392,42 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
   return `?${params.toString()}`;
 }
 
-// 静态快照没有服务端可用：对比数据直接用内嵌事件在浏览器里重算，
-// 并沿用 localStorage 中持久化的来源排除，保证与在线面板同一口径。
-export function staticPeriodComparison(report, calendarZone = state.calendarZone) {
-  const excluded = new Set((state.excludedHomes || []).map(String));
-  const events = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
-  const now = state.now || report.asOf || report.quota?.asOf || report.generatedAt || undefined;
-  return summarizePeriodComparison(events, { now, calendarZone });
-}
-
 async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   const loadId = ++state.usageLoadId;
-  const embeddedReport = window.__CODEX_USAGE_REPORT__;
 
   try {
-    if (embeddedReport) {
-      state.autoRefreshEnabled = false;
-      state.report = embeddedReport;
-      state.quotaSnapshot = embeddedReport.quota || null;
-      state.now = embeddedReport.asOf || embeddedReport.quota?.asOf || embeddedReport.generatedAt || null;
-      state.metadata = metadataFromReport(embeddedReport);
-      state.summary = null;
-      state.periodComparison = staticPeriodComparison(embeddedReport);
-      state.fingerprint = "static";
-      if (Number(embeddedReport.pricing?.usdToCnyRate) > 0)
-        state.usdToCnyRate = Number(embeddedReport.pricing.usdToCnyRate);
-      state.costScaleTarget = (embeddedReport.events || []).some((event) => event.costEstimate?.currency === "CNY")
-        ? "CNY"
-        : "USD";
-      setAutoRefreshStatus("此静态快照不会轮询；运行 npm run export 可生成新快照");
-    } else {
-      const response = await fetch(
-        `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
-      );
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        const error = new Error(localizeServerError(data, response.status));
-        error.status = response.status;
-        error.body = data;
-        throw error;
-      }
-      if (loadId !== state.usageLoadId) return;
-      state.report = null;
-      state.metadata = data.metadata;
-      state.summary = data.summary;
-      state.quotaSnapshot = data.summary?.quota || data.quota || null;
-      clearQuotaNotice();
-      state.periodComparison = data.periodComparison || null;
-      state.fingerprint = data.fingerprint || "";
-      state.snapshotId = data.snapshotId || null;
-      const costEstimate = data.summary?.costEstimate;
-      if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
-      state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
-      if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
-      setAutoRefreshStatus("");
+    const response = await fetch(
+      `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
+    );
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(localizeServerError(data, response.status));
+      error.status = response.status;
+      error.body = data;
+      throw error;
     }
     if (loadId !== state.usageLoadId) return;
+    state.metadata = data.metadata;
+    state.summary = data.summary;
+    state.emptySummaryMessage = null;
+    state.emptySummaryRange = null;
+    state.quotaSnapshot = data.summary?.quota || data.quota || null;
+    clearQuotaNotice();
+    state.periodComparison = data.periodComparison || null;
+    state.fingerprint = data.fingerprint || "";
+    state.snapshotId = data.snapshotId || null;
+    const costEstimate = data.summary?.costEstimate;
+    if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
+    state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
+    if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
+    setAutoRefreshStatus("");
     const previousPreset = state.preset;
     reconcileQuotaSourceSelection();
-    if (!embeddedReport && previousPreset !== state.preset) return loadUsage({ skipCheck: true });
+    if (previousPreset !== state.preset) return loadUsage({ skipCheck: true });
     renderAutoRefreshControls();
     updateQuotaPresetButton();
     render();
-    if (!embeddedReport && !$("#pricingDialog").hidden && state.pricingCatalog) {
+    if (!$("#pricingDialog").hidden && state.pricingCatalog) {
       try {
         const response = await fetch(pricingActivityUrl());
         if (response.ok) {
@@ -4201,7 +4451,6 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       if (isQuotaPreset(state.preset) && [409, 413].includes(error.status)) {
         if (error.body?.quota) state.quotaSnapshot = error.body.quota;
         state.summary = null;
-        state.report = null;
         const windowStatus = quotaWindowAvailability(state.quotaSnapshot, state.preset);
         const reason = windowStatus.available
           ? localizeServerError(error.body, error.status)
@@ -4217,12 +4466,16 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
 }
 
 async function checkForUpdates() {
-  if (isStaticSnapshot() || !state.autoRefreshEnabled || !state.fingerprint || state.autoRefreshCheckInFlight) return;
+  if (!state.autoRefreshEnabled || state.autoRefreshCheckInFlight) return;
   const runId = state.autoRefreshRunId;
   state.autoRefreshCheckInFlight = true;
   setAutoRefreshStatus("", { busy: true });
   try {
-    const response = await fetch(`/api/status?since=${encodeURIComponent(state.fingerprint)}`);
+    // 没有指纹基线（例如首轮取数失败）时**照样探测**：服务器对无 `since` 的探测一律回
+    // `changed: true`（`src/server.js:620`），于是下一个 60 秒周期就能自愈 —— 不需要手动
+    // 刷新，也不需要另造强校验定时器；仍然是一次周期一次来源检查。
+    const since = state.fingerprint;
+    const response = await fetch(`/api/status${since ? `?since=${encodeURIComponent(since)}` : ""}`);
     if (!response.ok) throw new Error(`API ${response.status}`);
     const status = await response.json();
     if (!state.autoRefreshEnabled || runId !== state.autoRefreshRunId) return;
@@ -4246,7 +4499,7 @@ async function checkForUpdates() {
 }
 
 function startAutoRefresh() {
-  if (isStaticSnapshot() || !state.autoRefreshEnabled || state.autoRefreshTimer) return;
+  if (!state.autoRefreshEnabled || state.autoRefreshTimer) return;
   state.autoRefreshTimer = window.setInterval(() => void checkForUpdates(), AUTO_REFRESH_INTERVAL_MS);
 }
 
@@ -4256,11 +4509,6 @@ function stopAutoRefresh() {
 }
 
 function refreshViewForFilters() {
-  if (isStaticSnapshot()) {
-    state.periodComparison = staticPeriodComparison(state.report || window.__CODEX_USAGE_REPORT__);
-    render();
-    return;
-  }
   void loadUsage({ skipCheck: true });
 }
 
@@ -4304,7 +4552,7 @@ function selectCalendarZone(zone) {
 
 function toggleQuotaPreset() {
   if (!selectedCodexAvailable()) return;
-  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || state.report?.quota || null;
+  const quotaSnapshot = state.quotaSnapshot || state.summary?.quota || null;
   const next = nextQuotaPresetState(state);
   state.preset = next.preset;
   state.bucket = next.bucket;
@@ -4314,20 +4562,23 @@ function toggleQuotaPreset() {
   updateRecentControls();
   const availability = quotaWindowAvailability(quotaSnapshot, next.preset);
   const reason = availability.available ? "正在加载限额窗口…" : availability.reason;
-  if (!isStaticSnapshot()) state.summary = null;
+  state.summary = null;
   renderUnavailableQuota(reason);
   if (!availability.available) showQuotaNotice(`${QUOTA_MODE_LABELS[next.preset]}：${reason}`);
   refreshViewForFilters();
 }
 
 // Native surface lighting: one actual raised surface at a time. Keeping this
-// delegated also covers comparison cards and calendar controls rebuilt by render().
+// delegated also covers comparison cards rebuilt by render(). The whole calendar
+// is exempt, including its raised navigation buttons and gaps between dates.
 function setupFrameSpotlight(root) {
   if (!root || typeof window.matchMedia !== "function") return;
   const surfaces =
-    ".topbar,.toolbar > .control-group,.metric,.panel,.comparison-item,.recent-segment,.recent-range-menu,.date-picker-popover,button";
+    ".topbar,.toolbar > .control-group,.metric,.panel,.comparison-item,.recent-segment,.recent-range-menu,button";
+  // Detail tracks/fills belong to the panel's continuous light: neither hit
+  // testing nor the parent mask should treat them as separate wells.
   const recesses =
-    ".metric > strong,.comparison-item:not(.comparison-unavailable) > strong,.bar-track,.timeline-chart-well,.comparison-table-frame,.home-list,.cost-estimate-note,.auto-refresh-well,#presetButtons,.segmented-well,.recent-combobox,.date-range-button,input,select,textarea,button:disabled,.date-picker-day:is(.selected,.in-range,.range-start,.range-end)";
+    ".metric > strong,.comparison-item:not(.comparison-unavailable) > strong,.bar-track:not(.detail-panel .bar-track),.timeline-chart-well,.comparison-table-frame,.home-list,.cost-estimate-note,.auto-refresh-well,#presetButtons,.segmented-well,.recent-combobox,.date-range-button,input,select,textarea,button:disabled,.date-picker-popover";
   const capability = window.matchMedia("(hover: hover) and (pointer: fine)");
   let point = null;
   let active = null;
@@ -4361,6 +4612,7 @@ function setupFrameSpotlight(root) {
 
   function surfaceAt(node) {
     if (!node || !root.contains(node)) return null;
+    if (node.closest(".date-picker-popover")) return null;
     for (let current = node; current && current !== root; current = current.parentElement) {
       if (current.matches(recesses)) return null;
       if (current.matches(surfaces)) {
@@ -4700,10 +4952,27 @@ function bootDashboard() {
 
   $("#autoRefreshToggle").addEventListener("click", () => setAutoRefreshEnabled(!state.autoRefreshEnabled));
   $("#timelineModes").addEventListener("click", (event) => {
+    const performanceButton = event.target.closest("[data-active-view='performance']");
+    if (performanceButton) {
+      if (state.activeView === "performance") return;
+      state.activeView = "performance";
+      render();
+      return;
+    }
     const button = event.target.closest("[data-timeline-mode]");
-    if (!button || button.dataset.timelineMode === state.timelineMode) return;
+    if (!button || (state.activeView !== "performance" && button.dataset.timelineMode === state.timelineMode)) return;
+    state.activeView = "timeline";
     state.timelineMode = button.dataset.timelineMode;
     render();
+  });
+  $("#perfList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-perf-group-index]");
+    if (!button) return;
+    const index = Number(button.dataset.perfGroupIndex);
+    const group = Number.isSafeInteger(index) ? state.summary?.perf?.groups?.[index] : null;
+    if (!group) return;
+    state.selectedPerfGroupKey = group.groupKey;
+    renderPerformancePanel(state.summary.perf, { focusIndex: index });
   });
 
   $("#updatePricingButton").addEventListener("click", openPricingDialog);
@@ -4837,21 +5106,30 @@ function bootDashboard() {
     setTheme(state.theme === "dark" ? "light" : "dark");
   });
   let resizeRenderQueued = false;
-  window.addEventListener("resize", () => {
+  const scheduleResizeRender = () => {
     if (resizeRenderQueued) return;
     resizeRenderQueued = true;
     requestAnimationFrame(() => {
       resizeRenderQueued = false;
       render();
     });
-  });
-  // 图表高度随容器（右侧详情行数、窗口/面板拖拽）变化：观察到尺寸变化就按新尺寸重绘。
+  };
+  window.addEventListener("resize", scheduleResizeRender);
+  // 图表高度随容器（右侧详情行数、窗口/面板拖拽）变化：只有出现「还没在这个尺寸上画过」的盒子才重绘。
+  // 一次窗口缩放会同时惊动上面的 window 监听和这个 observer；render() 自己又会改变图表井的高度，
+  // 所以按「已画过的盒子」判定，才能让同一手势只跑一轮整页 render，而不是两轮。
   const chartCanvas = $("#timelineChart");
   if (chartCanvas && typeof ResizeObserver !== "undefined") {
     let chartResizeTimer = null;
     const chartResizeObserver = new ResizeObserver(() => {
+      if (isChartBoxDrawn(chartCanvas)) return;
       clearTimeout(chartResizeTimer);
-      chartResizeTimer = setTimeout(() => render(), 60);
+      chartResizeTimer = setTimeout(() => {
+        chartResizeTimer = null;
+        // A render may have painted at this size while the debounce was pending (the window
+        // resize path runs on rAF), which makes this observation redundant too.
+        if (!isChartBoxDrawn(chartCanvas)) render();
+      }, 60);
     });
     chartResizeObserver.observe(chartCanvas);
   }
@@ -4866,14 +5144,11 @@ function bootDashboard() {
   state.excludedHomes = readExcludedHomes();
   initializeAutoRefresh();
   updateRecentControls();
-  $("#updatePricingButton").disabled = isStaticSnapshot();
-  $("#updatePricingButton").title = isStaticSnapshot() ? "静态快照无法更新计价标准；请启动本地服务" : "";
-  setImportControlsDisabled(isStaticSnapshot());
   void loadUsage().then(() => {
     startAutoRefresh();
     void refreshPricingAutomatically();
   });
-  if (!isStaticSnapshot()) setInterval(() => void refreshPricingAutomatically(), 60 * 60 * 1000);
+  setInterval(() => void refreshPricingAutomatically(), 60 * 60 * 1000);
 }
 
 if (typeof document !== "undefined") {

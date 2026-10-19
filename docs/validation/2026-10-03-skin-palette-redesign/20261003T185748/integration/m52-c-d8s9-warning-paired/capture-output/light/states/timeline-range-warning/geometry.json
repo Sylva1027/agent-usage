@@ -1,0 +1,90 @@
+{
+  "unitId": "timeline-range-warning",
+  "stateId": "timeline-range-warning",
+  "mode": "light",
+  "skinId": "chatgpt",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dpr": 1
+  },
+  "scroll": {
+    "x": 0,
+    "y": 0
+  },
+  "documentHeight": 2037,
+  "elements": {
+    "topbar": {
+      "rect": {
+        "x": 240,
+        "y": 28,
+        "width": 1440,
+        "height": 72
+      },
+      "style": {
+        "background-color": "rgba(0, 0, 0, 0)",
+        "background-image": "linear-gradient(135deg, rgb(228, 234, 249), rgb(220, 228, 247) 45%, rgb(201, 213, 242))"
+      }
+    },
+    "firstMetric": {
+      "rect": {
+        "x": 240,
+        "y": 243,
+        "width": 223.328125,
+        "height": 111.1875
+      },
+      "style": {
+        "background-color": "rgba(0, 0, 0, 0)",
+        "background-image": "linear-gradient(135deg, rgb(228, 234, 249), rgb(220, 228, 247) 45%, rgb(201, 213, 242))"
+      }
+    },
+    "firstPanel": {
+      "rect": {
+        "x": 240,
+        "y": 603.21875,
+        "width": 953.328125,
+        "height": 411
+      },
+      "style": {
+        "background-color": "rgba(0, 0, 0, 0)",
+        "background-image": "linear-gradient(135deg, rgb(228, 234, 249), rgb(220, 228, 247) 45%, rgb(201, 213, 242))",
+        "border-color": "rgb(220, 228, 247)"
+      }
+    },
+    "chart": {
+      "rect": {
+        "x": 264,
+        "y": 695.21875,
+        "width": 905.328125,
+        "height": 238
+      },
+      "style": {
+        "background-color": "rgba(0, 0, 0, 0)"
+      }
+    }
+  },
+  "artwork": [
+    {
+      "view": "side",
+      "src": "/assets/skins/light/ChatGPT-side-lineart.webp",
+      "loaded": "1",
+      "rect": {
+        "x": -72.00796508789062,
+        "y": 237.609375,
+        "width": 474.09375,
+        "height": 842.390625
+      }
+    },
+    {
+      "view": "front",
+      "src": "/assets/skins/light/ChatGPT-lineart.webp",
+      "loaded": "1",
+      "rect": {
+        "x": 1582.3251953125,
+        "y": 229.9375,
+        "width": 478.40625,
+        "height": 850.0625
+      }
+    }
+  ]
+}

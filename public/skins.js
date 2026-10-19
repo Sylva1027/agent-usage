@@ -634,9 +634,8 @@ function derivePaletteDeclarations(tokens, mode) {
   put("--ink", textPrimary);
   put("--muted", tokens.textSecondary ?? null);
   put("--chart-text", tokens.chartText ?? null);
-  // Chart gridlines sit between the surface and the ink on both modes, because
-  // textPrimary flips with the mode (dark ink on light pages, and vice versa).
-  put("--chart-line", mixPaletteColours(panelBackground, textPrimary, 0.35));
+  // Lowest shared mix that clears 3:1 for the verified T4 and current official palettes.
+  put("--chart-line", mixPaletteColours(panelBackground, textPrimary, 0.85));
   // Hover darkens a light surface but lightens a dark one; highlight/shadow
   // flip with the mode exactly the same way.
   put(
@@ -671,6 +670,24 @@ function derivePaletteDeclarations(tokens, mode) {
 }
 
 /**
+ * Derive the inline declarations for one mode straight from a flat token
+ * object, without going through the skin registry. The raw tokens pass
+ * through the same normalizePalette whitelist and cleaning as the
+ * hand-written input file (callers must NOT pre-wrap them as `{ tokens }`),
+ * so unknown layout keys are dropped and blank values never reach CSS.
+ * Null when the mode is unknown or nothing usable remains — the honest
+ * "colours pending" state — while partial token sets keep the existing
+ * partial-declaration behaviour. Frozen: the runtime, the generated
+ * bootstrap and dev previews must never mutate the result.
+ */
+export function derivePaletteDeclarationsFromTokens(rawTokens, mode) {
+  if (!isKnownMode(mode)) return null;
+  const normalized = normalizePalette(rawTokens);
+  if (!normalized || !Object.keys(normalized.tokens).length) return null;
+  return deepFreeze(derivePaletteDeclarations(normalized.tokens, mode).map((pair) => deepFreeze(pair)));
+}
+
+/**
  * The inline declarations for one skin/mode, or null when there is nothing to
  * apply (classic, unknown id, or a palette without usable colour tokens).
  * Frozen: the runtime and the generated bootstrap must never mutate them.
@@ -679,7 +696,5 @@ export function paletteDeclarations(skinId, mode) {
   if (!isKnownSkinId(skinId) || !isKnownMode(mode)) return null;
   const skin = findSkin(skinId);
   if (!skin || skin.isClassic) return null;
-  const tokens = paletteTokens(skinId, mode);
-  if (!Object.keys(tokens).length) return null;
-  return deepFreeze(derivePaletteDeclarations(tokens, mode).map((pair) => deepFreeze(pair)));
+  return derivePaletteDeclarationsFromTokens(paletteTokens(skinId, mode), mode);
 }

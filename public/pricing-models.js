@@ -3,6 +3,17 @@ const PRICING_MODEL_ALIASES = Object.freeze({
   "gpt-daybreak-blue-latest": "gpt-5.6-sol",
 });
 
+export const CODEX_AUTO_REVIEW_MODEL = "codex-auto-review";
+export const CODEX_GPT_61_CONTEXT_WINDOW = 500_000;
+
+export function isCodexAutoReview(model) {
+  return (
+    String(model ?? "")
+      .trim()
+      .toLowerCase() === CODEX_AUTO_REVIEW_MODEL
+  );
+}
+
 // Official pinned snapshots, not arbitrary numeric version suffixes.
 export const CLAUDE_MODEL_SNAPSHOTS = Object.freeze({
   "claude-opus-4-20250514": "claude-opus-4",
@@ -67,15 +78,35 @@ export function buildModelActivity(observations = [], asOf = Date.now()) {
   return { modelUsageAsOf: new Date(now).toISOString(), modelLastSeen, activeHarnessModels };
 }
 
+// Cached per catalog-object identity, because the resolving index only depends on the
+// catalog's key set. Contract (do not break): a catalog object's key set is never mutated
+// in place. Every replacement path hands over a brand-new object -- setPricingCatalog()
+// re-validates into a fresh `models` object (src/pricing.js) and the pricing store's
+// overlay()/structuredClone() paths always assign a new object -- so the identity changes
+// exactly when the keys can change. That makes this cache self-invalidating and means no
+// explicit invalidation hook is needed or wanted. Re-using an identity
+// (resetPricingCatalog() returns to the built-in MODEL_PRICES object) legitimately re-hits
+// that object's earlier entry; that stays correct only while nothing mutates its key set,
+// which test/pricing-models.test.js pins down.
+const MODEL_INDEX_CACHE = new WeakMap();
+
 function modelIndex(models) {
   if (!models || typeof models !== "object" || Array.isArray(models)) return new Map();
-  return new Map(Object.keys(models).map((key) => [key.trim().toLowerCase(), key]));
+  const cached = MODEL_INDEX_CACHE.get(models);
+  if (cached) return cached;
+  const index = new Map(Object.keys(models).map((key) => [key.trim().toLowerCase(), key]));
+  MODEL_INDEX_CACHE.set(models, index);
+  return index;
 }
 
 /** Resolve an observed model ID against a supplied pricing catalog. */
 export function resolvePricingModel(rawModel, models) {
   const original = String(rawModel ?? "").trim();
   const normalized = original.toLowerCase();
+  // ChatGPT auto-review is exempt from billing, including stale local rates.
+  if (isCodexAutoReview(normalized)) {
+    return { rawModel: original, catalogKey: null, matchType: "free" };
+  }
   const index = modelIndex(models);
   if (!normalized || normalized === "unknown model") {
     return { rawModel: original, catalogKey: null, matchType: "missing" };

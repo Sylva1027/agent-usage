@@ -16,6 +16,7 @@ import {
   SKIN_PREFERENCE_VERSION,
   SKINS,
   clampOpacity,
+  derivePaletteDeclarationsFromTokens,
   enumerateSkinAssets,
   enumerateSourceAssets,
   findSkin,
@@ -35,6 +36,7 @@ import {
   skinPalette,
   withSkinPreference,
 } from "../public/skins.js";
+import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
@@ -366,7 +368,7 @@ test("preview scopes reuse the real theme declarations instead of copying them",
   assert.ok(scopeBlocks.length >= 6, `expected at least 6 scoped variable blocks, found ${scopeBlocks.length}`);
 });
 
-test("preview scoping is present in the shipped stylesheet and survives export", () => {
+test("preview scoping is present in the shipped stylesheet", () => {
   const styles = readFileSync(path.join(root, "public/styles.css"), "utf8");
   assert.match(styles, /\.skin-preview-scope\[data-preview-theme="light"\]/);
   assert.match(styles, /\.skin-preview-scope\[data-preview-theme="dark"\]/);
@@ -411,9 +413,6 @@ test("the colour input channel exists, is validated and stays separate from code
     /normalizePalette\(SKIN_PALETTES\[id\]\?\.\[mode\]\)/,
     "palettes must come from the input file",
   );
-  // The offline exporter must inline the input file too, or the snapshot loses it.
-  const exporter = readFileSync(path.join(root, "src/static-export.js"), "utf8");
-  assert.match(exporter, /skin-palettes\.js/, "the exporter must inline the colour input");
 });
 
 test("palette wiring derives root-cause variables only, with colour-only geometry-safe values", () => {
@@ -461,6 +460,133 @@ test("palette wiring derives root-cause variables only, with colour-only geometr
   assert.equal(paletteDeclarations("not-a-skin", "light"), null);
 });
 
+test("derivePaletteDeclarationsFromTokens: ten skins × two modes match the official API and generated bootstrap", () => {
+  // The default bootstrap is generated from the current official registry; keep
+  // the runtime API and first-paint declarations in lockstep.
+  const bootstrapSource = readFileSync(path.join(root, "public/skin-bootstrap.js"), "utf8");
+  const config = JSON.parse(bootstrapSource.match(/const CONFIG = (\{[^\n]*\});/)[1]);
+  const baked = new Map();
+  for (const entry of config.registry) {
+    for (const mode of ["light", "dark"]) {
+      baked.set(`${entry.id}.${mode}`, entry.palette ? entry.palette[mode] : null);
+    }
+  }
+  for (const skin of SKINS) {
+    for (const mode of ["light", "dark"]) {
+      const fromTokens = derivePaletteDeclarationsFromTokens(paletteTokens(skin.id, mode), mode);
+      const official = paletteDeclarations(skin.id, mode);
+      assert.deepEqual(fromTokens, official, `${skin.id}.${mode}: pure entry must match the official API`);
+      assert.deepEqual(
+        fromTokens,
+        baked.get(`${skin.id}.${mode}`) ?? null,
+        `${skin.id}.${mode}: pure entry must match the generated bootstrap`,
+      );
+    }
+  }
+});
+
+test("derivePaletteDeclarationsFromTokens: D6c preserves all other declarations and fixes T4 ChatGPT chart-line contrast", () => {
+  // Historical T4 ChatGPT a tokens from the sample measured in D6b5; inline to keep this unit test independent of run artifacts.
+  const tokens = {
+    light: {
+      accent: "#3252AD",
+      chartText: "#4A505A",
+      controlBackground: "#F0F6FF",
+      controlBorder: "#E2E6ED",
+      controlText: "#1A1F28",
+      pageBackground: "#E2ECFC",
+      panelBackground: "#F0F6FF",
+      panelBorder: "#E2E6ED",
+      panelHighlight: "#FCFDFF",
+      panelShadow: "#B0B8C4",
+      textPrimary: "#1A1F28",
+      textSecondary: "#080C13",
+    },
+    dark: {
+      accent: "#96B6FF",
+      chartText: "#B0B8C3",
+      controlBackground: "#21252D",
+      controlBorder: "#2C2F34",
+      controlText: "#E8EFFB",
+      pageBackground: "#141B26",
+      panelBackground: "#21252D",
+      panelBorder: "#2C2F34",
+      panelHighlight: "#37393D",
+      panelShadow: "#010308",
+      textPrimary: "#E8EFFB",
+      textSecondary: "#D6DBE3",
+    },
+  };
+
+  const unchangedHashes = {
+    light: "749a41871e8ede6b1e408083691e54bf4df2bbaa05df9c2c6f6deca9f51f2d52",
+    dark: "4c1ec6a06c53d58d46ba2daeea5e0094ffb1243e11c218eaf7e103435a0ceee1",
+  };
+  const expectedChartLines = { light: "#3a3f48", dark: "#cad1dc" };
+  for (const mode of ["light", "dark"]) {
+    const declarations = derivePaletteDeclarationsFromTokens(tokens[mode], mode);
+    assert.equal(declarations.length, 20, `${mode}: the full declaration set must remain present`);
+    const values = Object.fromEntries(declarations);
+    assert.equal(values["--chart-line"], expectedChartLines[mode]);
+    assert.ok(
+      contrastRatio(values["--chart-line"], values["--ceramic-well"]) >= 3,
+      `${mode}: the derived chart line must meet 3:1 against the derived ceramic well`,
+    );
+    assert.equal(
+      sha256(JSON.stringify(declarations.filter(([name]) => name !== "--chart-line"))),
+      unchangedHashes[mode],
+      `${mode}: the other 19 declarations must match their pre-D6c values`,
+    );
+  }
+});
+
+test("derivePaletteDeclarationsFromTokens: invalid input, unknown modes and token-less payloads return null", () => {
+  for (const bad of [null, undefined, 42, "accent", [], {}]) {
+    assert.equal(derivePaletteDeclarationsFromTokens(bad, "light"), null, `input ${String(bad)}`);
+  }
+  assert.equal(derivePaletteDeclarationsFromTokens({ accent: "#3870ff" }, "noon"), null);
+  assert.equal(derivePaletteDeclarationsFromTokens({ accent: "#3870ff" }, null), null);
+  // chartSeries alone carries no tokens: same "nothing to derive" verdict as
+  // the registry path, and the dev-candidate 12-key rule must not leak here.
+  assert.equal(derivePaletteDeclarationsFromTokens({ chartSeries: ["#111213"] }, "light"), null);
+});
+
+test("derivePaletteDeclarationsFromTokens: partial tokens keep partial declarations, layout keys are ignored", () => {
+  const partial = derivePaletteDeclarationsFromTokens(
+    { accent: " #3870ff ", position: "fixed", fontSize: "44px" },
+    "light",
+  );
+  assert.deepEqual(
+    partial.map(([name]) => name),
+    ["--blue", "--record", "--skin-active-accent", "--active-ink"],
+    "accent-only input derives exactly its dependent variables, in the fixed order",
+  );
+  const byName = Object.fromEntries(partial);
+  assert.equal(byName["--blue"], "#3870ff", "values are trimmed like the input-file path");
+  assert.ok(byName["--active-ink"] === "#10151a" || byName["--active-ink"] === "#ffffff");
+  // Whitelisted-but-unwired control fields stay accepted-but-not-applied.
+  const controlOnly = derivePaletteDeclarationsFromTokens(
+    { controlText: "#52407d", controlBorder: "#dce4f7", controlBackground: "#dce4f7" },
+    "light",
+  );
+  assert.deepEqual(
+    controlOnly.map(([name]) => name),
+    ["--control"],
+    "controlBackground maps to --control; controlText/controlBorder derive nothing",
+  );
+});
+
+test("derivePaletteDeclarationsFromTokens: results are frozen and ordered like the official API", () => {
+  const derived = derivePaletteDeclarationsFromTokens(paletteTokens("chatgpt", "dark"), "dark");
+  assert.ok(Object.isFrozen(derived), "the pair list is frozen");
+  for (const pair of derived) assert.ok(Object.isFrozen(pair), "each pair is frozen");
+  assert.deepEqual(
+    derived.map(([name]) => name),
+    paletteDeclarations("chatgpt", "dark").map(([name]) => name),
+    "declaration order is the original derivation order, unchanged",
+  );
+});
+
 test("palettes stay honest to the input file: pending slots stay pending, filled slots are colour tokens only", async () => {
   const registry = await import(pathToFileURL(path.join(root, "public/skins.js")).href);
   assert.ok(registry.PALETTE_TOKEN_KEYS.includes("pageBackground"));
@@ -500,23 +626,11 @@ test("webp mime type is registered so the copies are served correctly", () => {
   assert.match(server, /\["\.webp",\s*"image\/webp"\]/);
 });
 
-test("offline snapshot resolves every skin asset through the inlined map", () => {
-  // Regression: the picker and the decoration layer once wrote the registry's
-  // `/assets/...` URL straight into an <img src>, so the exported single file
-  // requested sibling files that do not exist next to it. Every render path must
-  // resolve through window.__CODEX_USAGE_SKIN_ASSETS__ when it is present.
+test("skin artwork URLs come from the shared runtime registry", () => {
   const skinUi = readFileSync(path.join(root, "public/skin-ui.js"), "utf8");
-  assert.match(skinUi, /__CODEX_USAGE_SKIN_ASSETS__/, "skin-ui must consult the inlined asset map");
-  assert.match(skinUi, /function resolveAssetUrl/, "skin-ui must expose one resolution point");
-  // urlsFor must actually route both views through the resolver. Checking only
-  // that the helper exists would pass while the bug is present.
   const urlsForBody = skinUi.slice(skinUi.indexOf("function urlsFor"), skinUi.indexOf("function ensureLayer"));
-  assert.match(urlsForBody, /resolveAssetUrl\(variant\.assets\.side\)/, "urlsFor must resolve the side view");
-  assert.match(urlsForBody, /resolveAssetUrl\(variant\.assets\.front\)/, "urlsFor must resolve the front view");
-  assert.ok(
-    !/return\s*\{\s*side:\s*variant\.assets\.side/.test(urlsForBody),
-    "urlsFor must not return raw registry paths",
-  );
+  assert.match(urlsForBody, /side: variant\.assets\.side/);
+  assert.match(urlsForBody, /front: variant\.assets\.front/);
 
   // urlsFor must be the single source of resolved URLs used by both consumers.
   const picker = readFileSync(path.join(root, "public/skin-picker.js"), "utf8");
@@ -525,11 +639,6 @@ test("offline snapshot resolves every skin asset through the inlined map", () =>
     "the picker must not build /assets/skins paths itself; it must ask the runtime",
   );
   assert.match(picker, /runtime\.urlsFor\(/, "the picker must obtain artwork through the runtime");
-
-  // The exporter must inline all 40 URLs so the map is complete offline.
-  const exporter = readFileSync(path.join(root, "src/static-export.js"), "utf8");
-  assert.match(exporter, /__CODEX_USAGE_SKIN_ASSETS__/, "the exporter must emit the inlined asset map");
-  assert.match(exporter, /Expected 40 inlined skin assets/, "the exporter must assert the full asset set");
 });
 
 test("skin module stays free of browser globals so Node can import it", () => {

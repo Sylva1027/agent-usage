@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildModelActivity } from "../public/pricing-models.js";
+import { pricingModelNoteParts } from "../public/app.js";
+import { getLocale, setLocale } from "../public/i18n.js";
+
+test("GPT-6.1 pricing notes distinguish the 500K Codex policy from the API tier in both languages", () => {
+  const locale = getLocale();
+  try {
+    setLocale("zh-CN");
+    const chinese = pricingModelNoteParts({ longContextThreshold: 272_000 }, "gpt-6.1-sol").join("；");
+    assert.match(chinese, /500K.*所有长度均按短上下文价/);
+    assert.match(chinese, /其他来源 \/ API.*272,000/);
+    setLocale("en-US");
+    const english = pricingModelNoteParts({ longContextThreshold: 272_000 }, "gpt-6.1-sol").join("; ");
+    assert.match(english, /500K context; short-context rates apply at every length/);
+    assert.match(english, /Other sources \/ API.*272,000/);
+    assert.ok(!pricingModelNoteParts({ longContextThreshold: 272_000 }, "gpt-6-sol").join(" ").includes("500K"));
+  } finally {
+    setLocale(locale);
+  }
+});
 
 test("recent aliases keep a shared catalog key active while retired missing models remain in All Models", () => {
   const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
@@ -86,6 +105,7 @@ import {
 } from "../public/app.js";
 import { state } from "../public/app-state.js";
 import { selectDateRange } from "../public/calendar.js";
+import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
 
 // ---------------------------------------------------------------- harness 归组（DSH）
 
@@ -696,6 +716,111 @@ test("timeline model and channel legends assign distinct colors in both themes",
   }
 });
 
+test("light overflow chart colors meet the derived surfaces and keep fixed/dark colors", () => {
+  const oldDocument = globalThis.document;
+  const fixedNames = [
+    "gpt-5.6-luna",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-6-sol",
+    "gpt-6-astra",
+    "codex-auto-review",
+    "Unknown model",
+    "gpt-5.6-terra",
+    "gpt-5.5",
+    "gpt-5.6",
+    "gpt-daybreak-blue-latest",
+  ];
+  const overflowNames = ["overflow-model-a", "overflow-model-b", "overflow-model-c"];
+  const rows = [...fixedNames, ...overflowNames].map((name, index) => ({
+    name,
+    total: { total: fixedNames.length + overflowNames.length - index },
+  }));
+  const lightFixed = [
+    "#2563eb",
+    "#c2410c",
+    "#7c3aed",
+    "#0f766e",
+    "#be185d",
+    "#4d7c0f",
+    "#6b7280",
+    "#b91c1c",
+    "#0e7490",
+    "#4338ca",
+    "#15803d",
+    "#9f1239",
+  ];
+  const darkFixed = [
+    "#60a5fa",
+    "#fb923c",
+    "#c084fc",
+    "#2dd4bf",
+    "#f472b6",
+    "#a3e635",
+    "#cbd5e1",
+    "#f87171",
+    "#22d3ee",
+    "#818cf8",
+    "#4ade80",
+    "#fda4af",
+  ];
+  const candidateBackgrounds = ["#D7E1F0", "#DEE5F1", "#E6DFD2", "#E9E4DA", "#E3DACB"];
+
+  try {
+    for (const theme of ["light", "dark"]) {
+      globalThis.document = { documentElement: { dataset: { theme } } };
+      const modelColors = getModelColors(rows);
+      const modelColorsReordered = getModelColors([...rows].reverse());
+      const channelColors = getChannelColors(rows);
+      const channelColorsReordered = getChannelColors([...rows].reverse());
+      const expectedFixed = theme === "light" ? lightFixed : darkFixed;
+
+      assert.deepEqual(
+        [...fixedNames.map((name) => modelColors.get(name)), modelColors.get(overflowNames[0])],
+        expectedFixed,
+      );
+      for (const row of rows) {
+        assert.equal(modelColors.get(row.name), modelColorsReordered.get(row.name));
+        assert.equal(channelColors.get(row.name), channelColorsReordered.get(row.name));
+      }
+
+      if (theme === "light") {
+        assert.equal(modelColors.get(overflowNames[1]), "#7e3416");
+        assert.equal(modelColors.get(overflowNames[2]), "#167e52");
+        assert.equal(channelColors.get(overflowNames[1]), "#7e3416");
+        assert.equal(channelColors.get(overflowNames[2]), "#167e52");
+        for (const color of [modelColors.get(overflowNames[1]), modelColors.get(overflowNames[2])]) {
+          for (const background of candidateBackgrounds) assert.ok(contrastRatio(color, background) >= 3);
+        }
+
+        const fallbackHtml = renderCostDetailHtml([
+          { name: "overflow-hash-232", totalUsd: 1, currency: "USD", scaleValue: 1 },
+        ]);
+        const fallbackColor = /background: (#[0-9a-f]{6});/i.exec(fallbackHtml)?.[1];
+        assert.equal(fallbackColor, "#7e7e16");
+        for (const background of candidateBackgrounds) assert.ok(contrastRatio(fallbackColor, background) >= 3);
+
+        const channelHtml = renderBarListHtml(rows, channelColors);
+        assert.ok(channelHtml.includes(`background: ${channelColors.get(overflowNames[2])};`));
+        assert.doesNotMatch(channelHtml, /background: var\(--green\)/);
+        const timeline = [{ models: rows.map((row, index) => ({ name: row.name, total: { total: index + 1 } })) }];
+        const legendHtml = renderTimelineLegendHtml({ timeline }, "model", new Map(), modelColors);
+        assert.ok(legendHtml.includes(`style="background:${modelColors.get(overflowNames[2])}"`));
+      } else {
+        assert.equal(modelColors.get(overflowNames[1]), "hsl(17 70% 64%)");
+        assert.equal(modelColors.get(overflowNames[2]), "hsl(154.508 70% 64%)");
+        const fallbackHtml = renderCostDetailHtml([
+          { name: "overflow-hash-232", totalUsd: 1, currency: "USD", scaleValue: 1 },
+        ]);
+        assert.match(fallbackHtml, /background: hsl\(60 70% 64%\);/);
+      }
+    }
+  } finally {
+    if (oldDocument === undefined) delete globalThis.document;
+    else globalThis.document = oldDocument;
+  }
+});
+
 test("timeline legend shows every model directly without a heading or expand control", () => {
   const oldDocument = globalThis.document;
   globalThis.document = { documentElement: { dataset: { theme: "dark" } } };
@@ -1199,6 +1324,63 @@ test("drawTimeline does not draw visible bars for zero-token rows", () => {
   }
 });
 
+test("drawTimeline marks the exact axis path only during stroke and restores prior metadata", () => {
+  const calls = [];
+  const strokeMarkers = [];
+  let throwOnStroke = false;
+  const context = {
+    clearRect: () => {},
+    scale: () => {},
+    beginPath: () => calls.push(["beginPath"]),
+    moveTo: (...point) => calls.push(["moveTo", ...point]),
+    lineTo: (...point) => calls.push(["lineTo", ...point]),
+    stroke() {
+      strokeMarkers.push(this.__codexUsageChartDraw);
+      if (throwOnStroke) throw new Error("axis stroke failed");
+    },
+    fillText: () => {},
+    measureText: () => ({ width: 20 }),
+  };
+  const canvas = {
+    clientWidth: 960,
+    clientHeight: 320,
+    dataset: {},
+    getContext: () => context,
+  };
+  globalThis.window = { devicePixelRatio: 1 };
+  globalThis.document = { documentElement: {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+
+  try {
+    drawTimeline(canvas, [], [], new Map(), null, "channel");
+    const expectedPoints = [
+      [64, 18],
+      [64, 278],
+      [942, 278],
+    ];
+    const pathCalls = calls
+      .filter(([method]) => method === "moveTo" || method === "lineTo")
+      .map(([, ...point]) => point);
+    assert.deepEqual(pathCalls, expectedPoints, "当前轴线的三点调用次序和坐标不变");
+    assert.equal(strokeMarkers.length, 1, "轴线 stroke 仅调用一次");
+    assert.deepEqual(strokeMarkers[0], { roleId: "chart.axis-line", points: expectedPoints });
+    assert.equal(Object.hasOwn(context, "__codexUsageChartDraw"), false, "无旧值时返回后删除临时标签");
+    context.stroke();
+    assert.equal(strokeMarkers[1], undefined, "后续 stroke 不继承轴线标签");
+
+    const previousMarker = { roleId: "preexisting", points: [[1, 2]] };
+    context.__codexUsageChartDraw = previousMarker;
+    throwOnStroke = true;
+    assert.throws(() => drawTimeline(canvas, [], [], new Map(), null, "channel"), /axis stroke failed/);
+    assert.equal(context.__codexUsageChartDraw, previousMarker, "throw 后恢复此前自有值");
+    assert.deepEqual(strokeMarkers.at(-1), { roleId: "chart.axis-line", points: expectedPoints });
+  } finally {
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.getComputedStyle;
+  }
+});
+
 test("drawTimeline renders model and cost stacks and rejects missing breakdowns", () => {
   const calls = [];
   let currentFillStyle = "";
@@ -1539,4 +1721,60 @@ test("timelineSlotRangeTitle expands week and month keys into covered date range
     { bucket: "day", start: "2026-03-15T00:00:00", end: "2026-03-15T23:59:59.999" },
   );
   assert.equal(dayBucket, null);
+});
+
+test("drawTimeline measures the canvas box once, before writing the backing store", () => {
+  // styles.css pins the canvas with position:absolute + width/height:100%, so writing
+  // canvas.width/height cannot change clientWidth/clientHeight. Reading them again after the
+  // writes only forces a second synchronous layout for the same numbers.
+  const reads = { clientWidth: 0, clientHeight: 0 };
+  const writes = { width: [], height: [] };
+  const context = {
+    clearRect: () => {},
+    scale: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    fillRect: () => {},
+    fillText: () => {},
+    save: () => {},
+    translate: () => {},
+    rotate: () => {},
+    restore: () => {},
+    measureText: () => ({ width: 20 }),
+  };
+  const canvas = { dataset: {}, setAttribute: () => {}, getContext: () => context };
+  Object.defineProperty(canvas, "clientWidth", {
+    get: () => {
+      reads.clientWidth += 1;
+      return 960;
+    },
+  });
+  Object.defineProperty(canvas, "clientHeight", {
+    get: () => {
+      reads.clientHeight += 1;
+      return 320;
+    },
+  });
+  Object.defineProperty(canvas, "width", {
+    set: (value) => writes.width.push(value),
+  });
+  Object.defineProperty(canvas, "height", {
+    set: (value) => writes.height.push(value),
+  });
+  globalThis.window = { devicePixelRatio: 1 };
+  globalThis.document = { documentElement: {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+  try {
+    drawTimeline(canvas, [], [], new Map(), null, "channel");
+    assert.equal(reads.clientWidth, 1, "clientWidth must be measured exactly once per draw");
+    assert.equal(reads.clientHeight, 1, "clientHeight must be measured exactly once per draw");
+    assert.deepEqual(writes.width, [960]);
+    assert.deepEqual(writes.height, [320]);
+  } finally {
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.getComputedStyle;
+  }
 });

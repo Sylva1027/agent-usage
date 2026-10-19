@@ -1,6 +1,6 @@
 # 2026-10-01 模型列表与连续顶部框体反馈修正
 
-受测版本：`28568ef` 加前一批及本次未提交工作区修改。对应 [Implementation Plan 的追加要求](../../plans/2026-10-01-dashboard-corrections-implementation-plan.md#用户追加要求优先于原-r1) 与 [TODO 22–26](../../plans/2026-10-01-dashboard-corrections-todos.md#m6-用户追加反馈修正)。前批截图和 104 项结果保留在[原验收](../2026-10-01-dashboard-corrections/README.md)，不覆盖成当前版本。
+受测版本：`28568ef` 加前一批及本次未提交工作区修改。对应 [Implementation Plan 的追加要求](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-implementation-plan.md#用户追加要求优先于原-r1) 与 [TODO 22–26](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-todos.md#m6-用户追加反馈修正)。前批截图和 104 项结果保留在[原验收](../2026-10-01-dashboard-corrections/README.md)，不覆盖成当前版本。
 
 ## 原因与修复
 

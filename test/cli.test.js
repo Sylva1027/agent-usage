@@ -148,7 +148,34 @@ test("cli summary --json returns lightweight summary metadata without full repor
 
   assert.equal(parsed.summary.totals.total, 77);
   assert.equal(parsed.metadata.eventCount, 1);
+  // M4.3 返工1（复核 §1）：原来只检查**单数** `parsed.report === undefined`，
+  // 所以用**复数** `reports` 导出全部事件仍会假绿。这里改为钉住完整顶层键集合。
+  assert.deepEqual(Object.keys(parsed).sort(), ["metadata", "summary"], "轻量摘要必须恰好输出 metadata 与 summary");
   assert.equal(parsed.report, undefined);
+  assert.equal(parsed.reports, undefined);
+  assert.equal(parsed.results, undefined);
+  // 摘要**不得**携带任何完整历史报告：事件明细只可能出现在 `report(s)` 里
+  assert.ok(!output.includes('"events"'), "摘要输出不得包含完整事件数组");
+  assert.ok(!output.includes('"rollout'), "摘要输出不得包含会话文件名");
+  // 索引摘要仍然要给出公开的 `summary.perf`（12 键）
+  assert.deepEqual(
+    Object.keys(parsed.summary.perf).sort(),
+    [
+      "coverage",
+      "degradedHomeIds",
+      "groups",
+      "indexVersion",
+      "indexedAt",
+      "methodVersion",
+      "meta",
+      "rankedHomeIds",
+      "ready",
+      "sourceWarnings",
+      "state",
+      "unsupportedSources",
+    ].sort(),
+    "摘要仍须公开完整 summary.perf",
+  );
   assert.ok((await stat(path.join(homeDir, ".codex-usage", "usage-index.sqlite"))).size > 0);
 });
 

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createInterface } from "node:readline";
 
 import { createRepositoryResolver } from "./repository-identity.js";
+import { readRolloutLines, plainRolloutPath } from "./codex-rollout.js";
 import {
   createCostEstimateAccumulator,
   estimateCostForEvents,
@@ -14,6 +14,7 @@ import {
   pricingVersionForTimestamp,
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
+import { isCodexAutoReview } from "../public/pricing-models.js";
 import {
   USAGE_DETAIL_MASK,
   USAGE_FIELDS,
@@ -30,12 +31,32 @@ import {
   parseOpencodeDb,
   streamOpencodeDbEvents,
 } from "./opencode-usage.js";
+// ── M4.1：内存性能候选载体需要 M1 的冻结口径与 M3 的来源调度器（**只读导入**）──────────
+// ⚠️ 这里**只导入**、**不修改** M3 拥有的 `perf-sources/index.js`（其注册表就是"哪些来源已启用"
+// 的**唯一**判据）；也不修改 M3 的 `usage-store.js`（该文件正在第三轮外部复验，
+// 改动会作废已提交的 `E0A3BA46…` 哈希）。
+import {
+  canonicalPerfSourceKind,
+  PERF_METHOD_VERSION,
+  PERF_SOURCE_WARNING_CODES,
+  summarizePerf,
+} from "./perf-stats.js";
+import { classifyPerfSources, isPerfSourceEnabled, streamPerfSamplesForFile } from "./perf-sources/index.js";
+import {
+  buildCodexThreadPerfSamples,
+  codexSampleAllowed,
+  createCodexPublishFilter,
+  decodeCodexPublicationPolicy,
+  encodeCodexPublicationPolicy,
+  planCodexHomeThreads,
+} from "./perf-sources/codex-thread.js";
 import {
   buildTimelineRows,
   channelForRange,
   homeSourceKinds,
   deriveTimelineBucket,
   resolveNamedRecentRange,
+  completedQuotaWindows,
 } from "../public/timeline-utils.js";
 import {
   COMPARISON_PERIOD_KEYS,
@@ -662,8 +683,11 @@ export async function discoverUsageSources(options = {}) {
 }
 
 async function walkJsonlFiles(root, files = []) {
-  if (!(await exists(root))) {
-    return files;
+  try {
+    await stat(root);
+  } catch (error) {
+    if (error?.code === "ENOENT") return files;
+    throw error;
   }
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const fullPath = path.join(root, entry.name);
@@ -672,7 +696,7 @@ async function walkJsonlFiles(root, files = []) {
         continue;
       }
       await walkJsonlFiles(fullPath, files);
-    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+    } else if (entry.isFile() && (entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zst"))) {
       files.push(fullPath);
     }
   }
@@ -681,7 +705,10 @@ async function walkJsonlFiles(root, files = []) {
 
 export async function discoverSessionFiles(homePath) {
   const groups = await Promise.all(SESSION_DIRS.map((dir) => walkJsonlFiles(path.join(homePath, dir), [])));
-  return groups.flat().sort();
+  const files = groups.flat().sort();
+  const key = (file) => (process.platform === "win32" ? file.toLowerCase() : file);
+  const paths = new Set(files.map(key));
+  return files.filter((file) => file === plainRolloutPath(file) || !paths.has(key(plainRolloutPath(file))));
 }
 
 export async function buildUsageFingerprint(options = {}) {
@@ -800,7 +827,7 @@ export function classifyChannel({ originator, source, homeLabel }) {
 }
 
 function fallbackSessionId(filePath) {
-  const base = path.basename(filePath, ".jsonl");
+  const base = path.basename(plainRolloutPath(filePath), ".jsonl");
   return base.replace(/^rollout-/, "") || filePath;
 }
 
@@ -1058,41 +1085,18 @@ export function selectQuotaWindows(observations = [], asOfValue = new Date()) {
   }
   const previousWindows = {};
   for (const [preset, minutes] of Object.entries(QUOTA_WINDOW_MINUTES)) {
-    const cutoff = windows[preset]?.state === "available" ? Date.parse(windows[preset].windowStart) : asOfMs;
-    const candidates = (buckets.get(limitId)?.observations || []).filter((row) => {
-      const observed = Number(observationValue(row, "observedAtMs", "observed_at_ms"));
-      const end = Number(observationValue(row, "resetsAtMs", "resets_at_ms"));
-      return (
-        Number(row.windowMinutes ?? row.window_minutes) === minutes &&
-        observed <= asOfMs &&
-        observed < end &&
-        end <= cutoff
-      );
-    });
-    if (!candidates.length || bucketAmbiguous || windows[preset]?.state === "ambiguous") {
-      previousWindows[preset] = unavailableQuotaWindow("missing", "尚未发现上一限额窗口的 Codex 记录。");
-      continue;
-    }
-    const latestTime = candidates.reduce(
-      (max, row) => Math.max(max, Number(observationValue(row, "observedAtMs", "observed_at_ms"))),
-      -Infinity,
-    );
-    const latest = candidates.filter(
-      (row) => Number(observationValue(row, "observedAtMs", "observed_at_ms")) === latestTime,
-    );
-    const ends = new Set(latest.map((row) => Number(observationValue(row, "resetsAtMs", "resets_at_ms"))));
-    if (ends.size !== 1) {
-      previousWindows[preset] = unavailableQuotaWindow("ambiguous", "同一观察时刻存在相互冲突的限额重置时间。");
-      continue;
-    }
-    const end = [...ends][0];
-    previousWindows[preset] = {
-      state: "available",
-      reason: null,
-      windowStart: new Date(end - minutes * MS_PER_MINUTE).toISOString(),
-      windowEndExclusive: new Date(end).toISOString(),
-      observedAt: new Date(latestTime).toISOString(),
-    };
+    const completed = bucketAmbiguous
+      ? null
+      : completedQuotaWindows(buckets.get(limitId)?.observations, limitId, asOfMs, minutes);
+    previousWindows[preset] =
+      completed === null
+        ? unavailableQuotaWindow(
+            "ambiguous",
+            preset === "quota_week"
+              ? "上一周限额记录存在冲突，无法确认周期边界。"
+              : "同一观察时刻存在相互冲突的限额重置时间。",
+          )
+        : completed.at(-1) || unavailableQuotaWindow("missing", "尚未发现上一限额窗口的 Codex 记录。");
   }
   return { asOf, limitId, ignoredBucketCount, windows, previousWindows };
 }
@@ -1228,6 +1232,7 @@ export async function parseSessionFile(filePath, home, options = {}) {
       homeLabel: home.homeLabel || home.label,
       homePath: home.homePath || home.path,
       channel,
+      sourceKind: home.kind,
       source: meta.source,
       originator: meta.originator,
       cwd: meta.cwd,
@@ -1286,13 +1291,8 @@ export async function parseSessionFile(filePath, home, options = {}) {
 }
 
 async function* readJsonlRows(filePath, { withLineNumbers = false } = {}) {
-  const lines = createInterface({
-    input: createReadStream(filePath, { encoding: "utf8" }),
-    crlfDelay: Infinity,
-  });
-
   let lineNumber = 0;
-  for await (const line of lines) {
+  for await (const line of readRolloutLines(filePath)) {
     lineNumber += 1;
     if (!line.trim()) {
       continue;
@@ -1301,6 +1301,7 @@ async function* readJsonlRows(filePath, { withLineNumbers = false } = {}) {
       const row = JSON.parse(line);
       yield withLineNumbers ? { row, lineNumber } : row;
     } catch {
+      if (filePath.endsWith(".jsonl.zst")) throw new Error(`Invalid compressed rollout JSON at line ${lineNumber}`);
       // Ignore malformed JSONL rows from interrupted writes.
     }
   }
@@ -1593,6 +1594,7 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       homeId: home.homeId || home.id,
       homeLabel: home.homeLabel || home.label,
       channel,
+      sourceKind: home.kind,
       project: meta.cwd,
       repositoryKey: repository.key,
       repositoryPath: repository.path,
@@ -1891,7 +1893,828 @@ async function parseOpencodeDbForIndex(dbFile, source, intern, resolveRepository
   return events;
 }
 
-/** @returns {Promise<import("./usage-types.js").UsageReport>} */
+// ─────────────────────────────────────────────────────────────────────────────
+// M4.1：内存报告的性能候选载体（`UsageReport.perfSamples` / `UsageReport.perfMeta`）
+//
+// 卡片 `M4-summary-and-api.md:7,9` 的硬约束，逐条落到本段：
+//   ① 与用量事件**同一份 `homes` 列表**、沿用既有物理文件发现逻辑 ⇒ **不发明新 home**；
+//   ② use the M3 source registry; M7 reads Codex through one thread aggregation, not per file;
+//   ③ 某个 home 报错**只**把该 home 标 `degraded`，**其他来源继续**；
+//   ④ `UsageReport` **增加**两个字段，`report.events` 与旧 CLI JSON 字段**一个都不动**；
+//   ⑤ 候选读取**前后**各算一次 `buildUsageFingerprint`（同一 homes 列表）：相同才允许把该
+//      指纹当作 `perfMeta.indexVersion`；不同则 `state='degraded'` + `LIVE_SOURCE_CHANGED`；
+//   ⑥ 独立再次只读扫描源：**不复用**旧 reader 的可写兜底 —— 本段只经 `streamPerfSamplesForFile`
+//      （M2 的 `readOnly: true` reader），本层**不写库、不碰索引**。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * M4.1：原始 kind → **规范 perf kind**（`extra`/`main` → `codex`）。
+ *
+ * ⚠️ 与 `usage-store.js:761` 的私有同名实现**同源重复**：M3 的文件正在第三轮外部复验，
+ * 本卡**不得**改动它（会作废已提交的 `E0A3BA46…`）。两者的差异由 M4.2 的跨路径 parity 用例兜住；
+ * 未来 M3 若有计划内变更，可把该函数提升为共享导出以消除重复。
+ * @param {unknown} kindRaw
+ */
+function canonicalPerfKind(kindRaw) {
+  try {
+    return canonicalPerfSourceKind(kindRaw);
+  } catch {
+    return String(kindRaw ?? "");
+  }
+}
+
+/**
+ * M4.1：失败 → **冻结码域内**的归因码。与 `usage-store.js:749` 同源重复（理由同上）。
+ *
+ * reader 自带的冻结码优先（它比本层更懂失败原因）；其余兜底 `READ_ONLY_OPEN_FAILED`。
+ * ⚠️ 该兜底的**语义偏差**（约束类错误并非严格"open failed"）已由 M3.2 登记，本层**沿用不另立**。
+ * @param {any} error
+ */
+function perfWarningCodeForError(error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  if (PERF_SOURCE_WARNING_CODES.has(code)) return code;
+  return "READ_ONLY_OPEN_FAILED";
+}
+
+/**
+ * M4.1：源告警**只保留四要素** —— 结构上保证不把路径/正文/线程 ID 带进 `perfMeta`。
+ * @param {any} entry
+ */
+function normalizePerfWarningEntry(entry) {
+  return {
+    sourceKind: String(entry?.sourceKind ?? "").trim(),
+    homeId: String(entry?.homeId ?? "").trim(),
+    code: String(entry?.code ?? "").trim(),
+    count: Number.isFinite(Number(entry?.count)) ? Number(entry.count) : 0,
+  };
+}
+
+/**
+ * M4.1：源告警投影 —— **按 `(sourceKind, homeId, code)` 聚合计数**；
+ * `reader 的物理文件 count 按记录数累加，与 store 告警投影保持一致（跨路径 parity 的前提）。
+ *
+ * ⚠️ 与 M3.4 一致：**取不到 homeId 的条目直接跳过**（"宁缺勿错"，AN-6）——下游不得看到
+ * 一条**无法归因**的告警。本函数因此可能**吞掉**极边缘的"全局指纹变了但没有任何已启用 home
+ * 可归因"的 `LIVE_SOURCE_CHANGED`（详见 `collectMemoryPerfCarrier` 的登记注释）。
+ * @param {any[]} failures
+ */
+function projectPerfSourceFailures(failures) {
+  if (!failures || failures.length === 0) return [];
+  const counts = new Map();
+  for (const failure of failures) {
+    const homeId = String(failure?.homeId ?? "").trim();
+    const sourceKind = String(failure?.sourceKind ?? "").trim();
+    const code = String(failure?.code ?? "").trim();
+    if (homeId === "" || sourceKind === "" || code === "") continue;
+    const key = `${sourceKind}\u0000${homeId}\u0000${code}`;
+    // Reader warnings may already summarize several records in one physical file;
+    // read failures are emitted with count=1. Preserve either count shape.
+    const rawCount = Number(failure?.count ?? 1);
+    const count = Number.isSafeInteger(rawCount) && rawCount > 0 ? rawCount : 1;
+    counts.set(key, (counts.get(key) || 0) + count);
+  }
+  return [...counts.entries()]
+    .map(([key, count]) => {
+      const [sourceKind, homeId, code] = key.split("\u0000");
+      return { sourceKind, homeId, code, count };
+    })
+    .sort((a, b) => {
+      if (a.sourceKind !== b.sourceKind) return a.sourceKind < b.sourceKind ? -1 : 1;
+      if (a.homeId !== b.homeId) return a.homeId < b.homeId ? -1 : 1;
+      if (a.code !== b.code) return a.code < b.code ? -1 : 1;
+      return 0;
+    });
+}
+
+/**
+ * M4.1：一个 home 的**物理 perf 文件** —— 沿用既有发现逻辑，**不发明新 home**。
+ *
+ * 只对**已启用**来源调用：未启用来源既不读文件，也不得因文件不可读而令 perf 退化
+ * （M3.4 BB-2 的明文："未启用来源…不令其他来源退化"）。
+ * @param {any} home
+ * @returns {Promise<string[]>}
+ */
+async function perfPhysicalFilesForHome(home) {
+  // project-log 是**结构上不支持**性能观测的终态（方案 `:60`）；正常不会走到这里（未启用），
+  // 这里显式返回空集，避免将来"顺手注册"后拿它的 `usageLogPath` 去当目录扫。
+  if (home.kind === "project-log") return [];
+  if (home.kind === "zcode") return home.usageLogPath ? [home.usageLogPath] : [];
+  if (home.kind === "dsh") return await dshSessionFiles(home.path);
+  if (home.kind === "opencode") return await opencodeDatabaseFiles(home.path);
+  return await discoverSessionFiles(home.path);
+}
+
+/**
+ * M4.1 返工1（复核 P2）：已启用来源的**内容探测宽度** —— **首尾各 64KiB**。
+ *
+ * 与 `usage-store.js:577` 的 `CONTENT_PROBE_BYTES` **同值同义**（见下方镜像说明）。
+ */
+const PERF_CONTENT_PROBE_BYTES = 64 * 1024;
+
+/**
+ * M4.1 返工1（复核 P2）：**已启用来源的单个物理文件内容指纹**。
+ *
+ * ⚠️ 这是 `usage-store.js:599` `enabledPerfSourceStat()` 的**逐字镜像**（同 `-wal` 折叠、
+ * 同首尾 64KiB 摘要、同 `size:mtimeMs:digest.slice(0,32)` 串形、同"不可读 ⇒ null"）。
+ *
+ * **为什么不直接 import**：该函数是 `usage-store.js` 的**私有**函数，而该文件是 M3 的所有物、
+ * 已在第四轮外部复核**通过**（受测哈希 `e0a3ba46…`）。为它加一个 `export` 会改变已验收产物
+ * ⇒ 需重开 M3 复核。按模块边界串行交接的成本高于本次收益，故**镜像**并配**防漂移对拍**：
+ * `test/perf-summary-parity.test.js` 的 `★M4.1-e` 把本地镜像与 **store 实际发布的
+ * `perf_file_fingerprints`**（由 M3 同一函数产出）逐字比较 ⇒ 两实现一旦分歧即转红。
+ * 已登记待办：M4 收口时把该函数提升为共享导出以消除镜像（需与 M3 所有者串行交接并重记哈希）。
+ *
+ * **同步**实现（`node:fs` 同步 API）：前/后两次快照必须在**同一处**取得，不能被 `await`
+ * 让出而插入别的写入者 —— 那正是本检测要抓的情形。
+ *
+ * @param {string} kind 规范来源 kind
+ * @param {string} filePath 物理文件路径
+ * @returns {string | null} 指纹串；未启用/不可 stat/不可读 ⇒ `null`（**不编造**）
+ */
+function perfContentFingerprint(kind, filePath) {
+  if (!isPerfSourceEnabled(kind)) return null;
+  try {
+    const main = statSync(filePath);
+    let size = main.size;
+    let mtimeMs = main.mtimeMs;
+    const walPath = `${filePath}-wal`;
+    const wal = statSync(walPath, { throwIfNoEntry: false });
+    const walSize = wal === undefined ? 0 : wal.size;
+    if (wal !== undefined) {
+      // 与 `zcodeSourceStat` / M3 镜像同一算法：`-wal` 计入大小、mtime 取较大者。
+      size += wal.size;
+      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
+    }
+    const digest = createHash("sha256");
+    /** @type {[string, number][]} */
+    const contentParts = [
+      [filePath, main.size],
+      [walPath, walSize],
+    ];
+    for (const [file, fileSize] of contentParts) {
+      if (fileSize <= 0) continue;
+      const headLength = Math.min(fileSize, PERF_CONTENT_PROBE_BYTES);
+      const handle = openSync(file, "r");
+      try {
+        const buffer = Buffer.alloc(headLength);
+        const read = readSync(handle, buffer, 0, headLength, 0);
+        digest.update(buffer.subarray(0, read));
+        if (fileSize > PERF_CONTENT_PROBE_BYTES) {
+          // 尾部（可能正是新追加/改写的页所在）
+          const tailLength = Math.min(fileSize, PERF_CONTENT_PROBE_BYTES);
+          const tailBuffer = Buffer.alloc(tailLength);
+          const tailRead = readSync(handle, tailBuffer, 0, tailLength, fileSize - tailLength);
+          digest.update(tailBuffer.subarray(0, tailRead));
+        }
+      } finally {
+        closeSync(handle);
+      }
+    }
+    return `${size}:${mtimeMs}:${digest.digest("hex").slice(0, 32)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * M4.1 返工1：一个已启用 home 的**内容指纹**（覆盖它**全部**物理文件，含文件增删）。
+ *
+ * 逐文件用 `perfContentFingerprint`；文件路径排序后参与摘要 ⇒ 与发现顺序无关、可复现。
+ * `complete=false` 表示有文件取不到指纹（不可读）⇒ 该 home 的版本分量不可证。
+ *
+ * @param {any} home
+ * @param {string[]} files
+ * @returns {{ fingerprint: string, complete: boolean, fileFingerprints: Record<string, string> }}
+ */
+function perfHomeContentFingerprint(home, files) {
+  const hash = createHash("sha256");
+  let complete = true;
+  /** @type {Record<string, string>} */
+  const fileFingerprints = {};
+  for (const filePath of [...files].sort()) {
+    const fingerprint = perfContentFingerprint(home?.kind, filePath);
+    if (fingerprint === null) complete = false;
+    else fileFingerprints[filePath] = fingerprint;
+    hash.update(`${filePath}\t${fingerprint ?? "!"}\n`);
+  }
+  return { fingerprint: hash.digest("hex"), complete, fileFingerprints };
+}
+
+/**
+ * M4.1 返工1（复核 P1）：**已启用性能来源**的内容指纹聚合 —— 内存 `indexVersion` 的唯一来源。
+ *
+ * 与 M3.4 的 `buildPublishedSourcesFingerprint`（`usage-store.js:664`）**同口径**：
+ * 只聚合**已启用**来源（该函数注释明文"未启用来源不影响：其 kind 不满足 isPerfSourceEnabled
+ * ⇒ 不入聚合"），按 `homes` 顺序取身份 + 逐 home 内容指纹 ⇒ 内容变则版本变。
+ * ⚠️ 与索引路径**不承诺逐字相等**（索引聚合"已提交的逐文件指纹"，内存聚合"当前内容指纹"；
+ * 构造不同）—— M4.2 的 parity 范围不含 `indexVersion`。
+ *
+ * @param {any[]} homes 只传**已启用** home
+ * @param {Map<string, string>} fingerprints homeId → 内容指纹
+ */
+function aggregatePerfContentFingerprint(homes, fingerprints) {
+  const hash = createHash("sha256");
+  for (const home of homes) {
+    const homeId = String(home?.id ?? "");
+    hash.update(`${homeId}\t${canonicalPerfKind(home?.kind)}\t${fingerprints.get(homeId) ?? "!"}\n`);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * M4.1 返工2（复核2 P2）：**整轮基线 / 整轮结束**用的逐 home 内容指纹 —— **重新发现**文件集合。
+ *
+ * ⚠️ 复核2 明文："后续多文件来源的后置文件集合也应重新发现，不能用旧列表声称覆盖文件增删。"
+ * ⇒ 本函数每次都重新走 `perfPhysicalFilesForHome`，**不复用**局部窗口的 `files` 列表。
+ *
+ * @param {any} home
+ * @returns {Promise<{ fingerprint: string, complete: boolean } | null>} 发现失败/取不到 ⇒ null
+ */
+async function perfHomeRoundFingerprint(home) {
+  try {
+    const files = await perfPhysicalFilesForHome(home);
+    return perfHomeContentFingerprint(home, files);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Plan one complete Codex home inside a discovery/content stability window.
+ * The fingerprint deliberately covers the existing first/last 64 KiB probe per
+ * file, not unread bytes in the middle; the file set itself is compared exactly.
+ *
+ * @param {any} home
+ * @param {string[] | undefined} [expectedFilePaths] optional caller discovery to detect drift since its scan
+ * @returns {Promise<{ok: boolean, stable: boolean, code: string|null, files: string[], plan: any|null, before: any|null, after: any|null}>}
+ */
+export async function planStableCodexHome(home, expectedFilePaths) {
+  let files = [];
+  let before = null;
+  let plan = null;
+  let afterFiles = null;
+  let after = null;
+  let planningError = null;
+  let scanError = null;
+
+  try {
+    files = (await perfPhysicalFilesForHome(home)).slice().sort();
+    before = perfHomeContentFingerprint(home, files);
+  } catch (error) {
+    scanError = error;
+  }
+
+  if (scanError === null) {
+    try {
+      // C3 卡：把**同一窗口的"读取前"内容指纹**（`before.fileFingerprints`）与实例私有投影缓存
+      // 交给 planner ⇒ 指纹未变的文件**在全文读取之前**就命中标准化投影，不再打开文件。
+      // ⚠️ 缓存**不通过新增形参**传递：`planStableCodexHome(home, expectedFilePaths)` 这一行是
+      // B2 的 26 个锚点之一（`tools/lib/instrument.mjs:440`），逐字节不可改 ⇒ 它挂在 `home` 对象上
+      // （store 侧用浅拷贝传入，不改动 store 持有的 home，也不引入任何模块级/全局状态）。
+      // `projectionCache` 缺省 ⇒ planner 与今日行为逐字节等价（永远真读）。
+      plan = await planCodexHomeThreads(String(home?.id ?? ""), files, {
+        projectionCache: home?.projectionCache,
+        fingerprints: before?.fileFingerprints,
+        kind: home?.kind,
+      });
+    } catch (error) {
+      planningError = error;
+    }
+    try {
+      afterFiles = (await perfPhysicalFilesForHome(home)).slice().sort();
+      after = perfHomeContentFingerprint(home, afterFiles);
+    } catch (error) {
+      scanError = error;
+    }
+  }
+
+  if (scanError !== null || before === null || after === null || afterFiles === null) {
+    return {
+      ok: false,
+      stable: false,
+      code: perfWarningCodeForError(scanError ?? planningError),
+      files,
+      plan,
+      before,
+      after,
+    };
+  }
+
+  const samePaths = (left, right) =>
+    left.length === right.length && left.every((filePath, index) => filePath === right[index]);
+  const expected = Array.isArray(expectedFilePaths) ? expectedFilePaths.slice().sort() : null;
+  if (!before.complete || !after.complete) {
+    return { ok: false, stable: false, code: "READ_ONLY_OPEN_FAILED", files, plan, before, after };
+  }
+  if (
+    !samePaths(files, afterFiles) ||
+    (expected !== null && !samePaths(expected, files)) ||
+    before.fingerprint !== after.fingerprint
+  ) {
+    return { ok: false, stable: false, code: "LIVE_SOURCE_CHANGED", files, plan, before, after };
+  }
+  if (planningError !== null) {
+    return {
+      ok: false,
+      stable: true,
+      code: perfWarningCodeForError(planningError),
+      files,
+      plan,
+      before,
+      after,
+    };
+  }
+  if (!plan?.ok) {
+    const code = plan?.homeBlocking?.[0]?.code ?? plan?.unownedFiles?.[0]?.code ?? "UNKEYABLE_RECORD";
+    return {
+      ok: false,
+      stable: true,
+      code: PERF_SOURCE_WARNING_CODES.has(code) ? code : "READ_ONLY_OPEN_FAILED",
+      files,
+      plan,
+      before,
+      after,
+    };
+  }
+  return { ok: true, stable: true, code: null, files, plan, before, after };
+}
+
+/**
+ * M4.2：内存路径版的"非 Codex home"集合 —— 与 `UsageStore#nonCodexHomeIds()` **同口径**
+ *（store 侧是 SQL `source_files.kind NOT IN ('main','jetbrains','extra','codex')`）。
+ * 卡片明文："限额筛选继续使用现有 `quotaPreset` 判定与非 Codex home 排除。"
+ * @param {any[]} homes
+ * @returns {string[]} 排序去重的 homeId（空 id 不计）
+ */
+function perfNonCodexHomeIds(homes) {
+  const ids = new Set();
+  for (const home of homes || []) {
+    const id = String(home?.id ?? "");
+    if (id === "") continue;
+    if (canonicalPerfSourceKind(home?.kind) === "codex") continue;
+    ids.add(id);
+  }
+  return [...ids].sort();
+}
+
+/**
+ * M4.2：把 `resolveDateRange` 的结果转成 **M1 的边界键名**（`{startMs, endMs, windowEndExclusiveMs}`）。
+ *
+ * ⚠️ **为什么必须是"同一个转换"**：M1 的 `perfTsInRange` 只认这三个键名；而 SQL 侧
+ * `perfCandidatesForRange` 也走同一套键。卡片明文"两端 `summary.perf` 的计数完全相同"，
+ * 这只有在两条路径收到**同一个范围的同一份表达**时才成立 —— 若内存侧漏了
+ * `windowEndExclusiveMs`（配额范围同时带 `end` 与更晚的 `windowEndExclusive`），SQL 有界而
+ * M1 无界，计数必然分叉（M3 的 `perfRangeBounds` 注释记录了同一实测成因）。
+ *
+ * 接受 `Date` 或有限数字；**非有限值响亮抛错**（`ts < NaN` 恒 false 会静默禁用边界）。
+ *
+ * @param {any} range `resolveDateRange` 的输出，或已是 M1 键名的对象，或 null
+ * @returns {{ startMs: number | null, endMs: number | null, windowEndExclusiveMs: number | null }}
+ */
+export function perfStatsRangeBounds(range) {
+  if (range === null || range === undefined) {
+    return { startMs: null, endMs: null, windowEndExclusiveMs: null };
+  }
+  if (typeof range !== "object" || range instanceof Date) {
+    throw new TypeError("perf range must be an object with startMs/endMs/windowEndExclusiveMs");
+  }
+  // 已转换的形状优先；否则读 usage-core 的原始键名（`start`/`end`/`windowEndExclusive`）。
+  const rawStart = range.startMs !== undefined ? range.startMs : range.start;
+  const rawEnd = range.endMs !== undefined ? range.endMs : range.end;
+  const rawWindow = range.windowEndExclusiveMs !== undefined ? range.windowEndExclusiveMs : range.windowEndExclusive;
+  return {
+    startMs: perfStatsBoundMs(rawStart),
+    endMs: perfStatsBoundMs(rawEnd),
+    windowEndExclusiveMs: perfStatsBoundMs(rawWindow),
+  };
+}
+
+/** @param {unknown} value @returns {number | null} */
+function perfStatsBoundMs(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const time = value.getTime();
+    if (!Number.isFinite(time)) {
+      throw new TypeError("perf range bounds must be finite millisecond numbers or Dates");
+    }
+    return time;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  throw new TypeError("perf range bounds must be finite millisecond numbers or Dates");
+}
+
+/**
+ * M4.2：**两条生产汇总路径唯一的 perf 统计入口**（卡片明文"调用同一函数"）。
+ *
+ * 内存路径（`summarizeUsage`）与索引路径（`UsageStore.summarizeInReadTransaction`）都调它，
+ * 因此分位、pooled、coverage 与排序**不可能**出现第二套实现。
+ *
+ * ⚠️ 输入 `bounds` 必须已由 {@link perfStatsRangeBounds} 转换过（索引路径的 SQL 与这里收到
+ * **同一个对象**，见 M3 `perfRangeBounds` 的注释）。
+ *
+ * `state='rebuilding'`（含 store 的读取投影专有值 `uninitialized`）时**不返回部分排名**
+ * （卡片明文）：候选集合是中途快照，给出 `rank` 就是把不完整数据当干净排名。此时仍返回
+ * `coverage` 与 `meta`（诊断用），但 `groups` 为空数组。
+ *
+ * ⚠️ `sourceWarnings` 先经冻结码域过滤：M1.3 的 `summarizePerf` 对域外码**抛错**（有意 fail-loud），
+ * 但读路径不得因**自己库里的坏元数据**而整体失败（M3.4 对指纹表已定同一条"读取路径不得因元数据
+ * 坏掉而失败"的规矩）。
+ *
+ * @param {{ samples: any[], bounds: {startMs: number|null, endMs: number|null, windowEndExclusiveMs: number|null}, excludedHomeIds?: string[] | Set<string>, knownSources?: any[], meta?: any }} input
+ * @returns {{ groups: any[], coverage: any, meta: any }}
+ */
+export function buildPerfStatsBlock(input) {
+  const meta = input?.meta ?? {};
+  const rawState = meta.state;
+  // `uninitialized` 是 M3.4 读取投影的专有取值（键缺失），不属于 M1 的三态 ⇒ 映射成 `rebuilding`
+  // （两者同义：还没有可信排名）。M1 会校验 `state` 取值，直接传 `uninitialized` 会抛 TypeError。
+  const state =
+    rawState === undefined || rawState === null || rawState === "" || rawState === "uninitialized"
+      ? "rebuilding"
+      : rawState;
+  const sourceWarnings = Array.isArray(meta.sourceWarnings)
+    ? meta.sourceWarnings.filter((entry) => PERF_SOURCE_WARNING_CODES.has(entry?.code))
+    : [];
+  const result = summarizePerf(input?.samples ?? [], {
+    range: input?.bounds ?? null,
+    excludedHomeIds: input?.excludedHomeIds ?? [],
+    knownSources: input?.knownSources ?? [],
+    meta: { ...meta, state, sourceWarnings },
+  });
+  return {
+    groups: state === "rebuilding" ? [] : result.groups,
+    coverage: result.coverage,
+    meta: result.meta,
+  };
+}
+
+/**
+ * M4.1：收集内存报告的 perf 候选与元数据。**不抛错**（任何来源失败都降级为状态/告警）。
+ *
+ * **两个指纹、两个轴**（M4.1 返工1，复核 P1/P2 要求"区分用量全局指纹和已启用性能来源的指纹"）：
+ *
+ * 1. **用量全局指纹**（`buildUsageFingerprint`，size/mtime，覆盖**全部** homes 含未启用来源）
+ *    —— 卡片明文要求的"同一 `homes` 列表前后各算一次"仍然保留，但**只用来表达"整份报告的上游
+ *    在读取期间动过"**：写入 `usageFingerprintStable`。它**不**产生受阻 home、**不**产生
+ *    `LIVE_SOURCE_CHANGED`、**不**影响 `state` 与排名。
+ *    ⚠️ 复核 P1 明确否定了上一版的"兜底连坐"（全局变了但无已启用 home 能定位 ⇒ 给每个已启用
+ *    home 合成 `LIVE_SOURCE_CHANGED`）：那会把 unsupported 来源的变化错误归因
+ *    给稳定的 ZCode，令正常排名消失。**归因必须有该 home 自己的证据。**
+ *
+ * 2. **已启用性能来源内容指纹**（`perfContentFingerprint`，含首尾 64KiB 摘要）—— `state`、
+ *    `degradedHomeIds`、`LIVE_SOURCE_CHANGED`、排名与 `indexVersion` 的**唯一依据**：
+ *    - **整轮核对**（复核2 P2 明文要求）：在**整轮候选读取开始前**与**全部读取结束后**，
+ *      对每个已启用 home 各取一次内容指纹（`perfHomeRoundFingerprint`，**结束时重新发现**文件
+ *      集合），两者不同 ⇒ **只标该 home** `degraded` + `LIVE_SOURCE_CHANGED`。这覆盖
+ *      "先读完的 home 在后续读取期间被改写"——局部窗口对此**必然漏检**（它的后置指纹早已取完）；
+ *    - **局部窗口**（保留，用于更紧的归因）：每个 home 在它自己的读取前后各取一次，同样只标它；
+ *    - `indexVersion` = **整轮结束**时的内容指纹聚合（`aggregatePerfContentFingerprint`，只含已启用
+ *      来源，与 M3.4 `buildPublishedSourcesFingerprint` 同口径）⇒ **内容变则版本变**；
+ *    - 任一已启用 home 的指纹不可取得或任一核对发现不同 ⇒ `indexVersion=null`（版本不可证）。
+ *    ⚠️ 复核 P2 明确否定了上一版只比 `size+mtime`：**同尺寸 + 同 mtime 的原地改写会漏检**
+ *    （SQLite 经常原地改写页面），使两份报告共用同一版本号。
+ *    ⚠️ 但**读取失败**（文件不可读但内容稳定）**不**使版本失效：版本描述**上游快照**，
+ *    "完整性受损"由 `state`/`degradedHomeIds` 承担 —— 两者是**不同的轴**（实测 `★M4.1-b`）。
+ *
+ * 极端情形：本轮**一个已启用 home 都没有**（纯 Codex 安装）⇒ 无候选、无可归因对象，
+ * `state='ready'` 且 `indexVersion` = 空集聚合（此时没有候选会被误当干净排名，也没有被连坐的
+ * 正常来源）。
+ *
+ * @param {any} homes
+ * @param {any} [options]
+ * @returns {Promise<{ perfSamples: any[], perfMeta: any }>}
+ */
+async function collectMemoryPerfCarrier(homes, options = {}) {
+  /** @type {any[]} */
+  const perfSamples = [];
+  /** @type {any[]} */
+  const rawWarnings = [];
+  const degradedHomeIds = new Set();
+  const wholeHomeCodexBlocks = new Set();
+  /** @type {{homeId: string, blockedThreadIds: string[]}[]} */
+  const partialHomes = [];
+  const enabledHomes = (homes || []).filter((home) => isPerfSourceEnabled(home?.kind));
+
+  // ① 用量全局指纹（卡片明文：同一 homes 列表，**含未启用来源**）—— 只表达"整份报告的上游动过"。
+  const usageFingerprintBefore = await buildUsageFingerprint({ ...options, homes });
+
+  /** 已启用 home → **整轮结束**时的内容指纹（`indexVersion` 的分量）。 */
+  const perfFingerprintsAfter = new Map();
+  /** 本轮已记录过 `LIVE_SOURCE_CHANGED` 的 home（避免整轮核对与局部窗口重复计数）。 */
+  const liveChangedHomes = new Set();
+  let perfFingerprintStable = true;
+
+  // ② 整轮**基线**（复核2 P2）：在候选读取开始前，对每个已启用 home 取一次可归因的内容指纹。
+  //    没有它就无法发现"先读完的 home 在后续读取期间被改写"。
+  /** @type {Map<string, { fingerprint: string, complete: boolean } | null>} */
+  const roundStart = new Map();
+  for (const home of enabledHomes) {
+    roundStart.set(String(home.id ?? ""), await perfHomeRoundFingerprint(home));
+  }
+
+  // ③ 逐已启用 home：Codex 先完整规划再 build；其他来源沿用原逐文件读取窗口。
+  for (const home of enabledHomes) {
+    const homeId = String(home.id ?? "");
+    const kind = canonicalPerfKind(home.kind);
+
+    let files = null;
+    let before = null;
+    let after = null;
+
+    if (kind === "codex") {
+      const window = await planStableCodexHome(home);
+      files = window.files;
+      before = window.before;
+      after = window.after;
+      if (!window.stable) perfFingerprintStable = false;
+      if (!window.ok) {
+        degradedHomeIds.add(homeId);
+        wholeHomeCodexBlocks.add(homeId);
+        const code = String(window.code ?? "READ_ONLY_OPEN_FAILED");
+        if (code === "LIVE_SOURCE_CHANGED") {
+          if (!liveChangedHomes.has(homeId)) {
+            liveChangedHomes.add(homeId);
+            rawWarnings.push({ sourceKind: kind, homeId, code, count: 1 });
+          }
+        } else {
+          const counts = new Map();
+          const failures = [...(window.plan?.homeBlocking ?? []), ...(window.plan?.unownedFiles ?? [])];
+          for (const failure of failures) {
+            const failureCode = PERF_SOURCE_WARNING_CODES.has(failure.code) ? failure.code : "READ_ONLY_OPEN_FAILED";
+            counts.set(failureCode, (counts.get(failureCode) ?? 0) + 1);
+          }
+          if (counts.size === 0) counts.set(code, 1);
+          for (const [failureCode, count] of counts) {
+            rawWarnings.push({ sourceKind: kind, homeId, code: failureCode, count });
+          }
+        }
+      } else {
+        const stagedSamples = [];
+        const stagedWarnings = [];
+        try {
+          for (const thread of window.plan.threads) {
+            const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts);
+            stagedSamples.push(...built.samples);
+            stagedWarnings.push(...built.warnings);
+          }
+          if (window.plan.failedThreads.length > 0) {
+            const blockedThreadIds = window.plan.failedThreads.map((thread) => thread.threadId).sort();
+            const failedFileCount = window.plan.failedThreads.reduce(
+              (count, thread) => count + thread.failedFilePaths.length,
+              0,
+            );
+            degradedHomeIds.add(homeId);
+            partialHomes.push({ homeId, blockedThreadIds });
+            rawWarnings.push({ sourceKind: kind, homeId, code: "MALFORMED_JSON", count: failedFileCount });
+          }
+          perfSamples.push(...stagedSamples);
+          rawWarnings.push(...stagedWarnings);
+        } catch (error) {
+          degradedHomeIds.add(homeId);
+          wholeHomeCodexBlocks.add(homeId);
+          rawWarnings.push({
+            sourceKind: kind,
+            homeId,
+            code: perfWarningCodeForError(error),
+            count: 1,
+          });
+        }
+      }
+    } else {
+      try {
+        files = await perfPhysicalFilesForHome(home);
+      } catch (error) {
+        degradedHomeIds.add(homeId);
+        rawWarnings.push({
+          sourceKind: kind,
+          homeId,
+          code: perfWarningCodeForError(error),
+          count: 1,
+        });
+      }
+
+      // ⚠️ 前置内容指纹只覆盖每文件首尾各 64KiB 摘要，不是未读取字节的全文件哈希。
+      before = files === null ? null : perfHomeContentFingerprint(home, files);
+      for (const filePath of files || []) {
+        try {
+          await streamPerfSamplesForFile(
+            filePath,
+            // ⚠️ 与 `usage-store.js:1536` **同一手法**：把 `source.path` 覆盖成**物理文件路径**，
+            //    使归一化样本的 `sourcePath` 与 SQLite 路径的 `source_path` **逐字一致** ——
+            //    这是 M4.2 跨路径 parity 的前提（`sourcePath` 参与 M1 的重复候选取舍）。
+            { ...home, path: filePath },
+            (sample) => {
+              perfSamples.push(sample);
+            },
+            {
+              onWarning: (warning) => {
+                // 卡片明文："收集 perfSamples 与**编码** perfWarnings"。
+                // 非致命告警不把 home 标退化。M4.5 的 DSH 完整性告警由 dispatcher
+                // 转成带冻结码的异常，走下面的 catch，与索引回滚路径同源。
+                rawWarnings.push(normalizePerfWarningEntry(warning));
+              },
+            },
+          );
+        } catch (error) {
+          degradedHomeIds.add(homeId);
+          rawWarnings.push({
+            sourceKind: kind,
+            homeId,
+            code: perfWarningCodeForError(error),
+            count: 1,
+          });
+        }
+      }
+      after = files === null ? null : perfHomeContentFingerprint(home, files);
+    }
+
+    if (kind !== "codex" && before !== null && after !== null) {
+      if (!before.complete || !after.complete) perfFingerprintStable = false;
+      if (before.fingerprint !== after.fingerprint) {
+        // **该 home 自己的**变化证据 ⇒ 只标它（复核 P1：不连坐无关来源）。
+        degradedHomeIds.add(homeId);
+        if (!liveChangedHomes.has(homeId)) {
+          liveChangedHomes.add(homeId);
+          rawWarnings.push({ sourceKind: kind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
+        }
+        perfFingerprintStable = false;
+      }
+    } else if (kind !== "codex" && (before === null || after === null)) {
+      // 取不到指纹（发现失败 / 文件不可读）⇒ 该 home 的版本分量不可证。
+      perfFingerprintStable = false;
+    }
+  }
+
+  // ④ **整轮结束核对**（复核2 P2）：全部读取结束后，对每个已启用 home **重新发现**文件集合并再取
+  //    一次内容指纹，与整轮基线比较。局部窗口无法覆盖"先读完的 home 在后续读取期间被改写"
+  //    （它的后置指纹早已取完）—— 这正是复核2 复现的漏检。
+  //    ⚠️ 只阻断**实际变化**的 home；**不**恢复"全局变化连坐所有 home"（复核 P1 已否决）。
+  for (const home of enabledHomes) {
+    const homeId = String(home.id ?? "");
+    const kind = canonicalPerfKind(home.kind);
+    const start = roundStart.get(homeId) ?? null;
+    const end = await perfHomeRoundFingerprint(home);
+
+    if (end !== null) {
+      perfFingerprintsAfter.set(homeId, end.fingerprint);
+      if (!end.complete) perfFingerprintStable = false;
+    } else {
+      // 整轮结束仍取不到 ⇒ 无法核对，版本不可证（**不**据此阻断 home：没有"它变了"的证据）。
+      perfFingerprintStable = false;
+    }
+    if (start === null || end === null) {
+      perfFingerprintStable = false;
+      if (kind === "codex") {
+        degradedHomeIds.add(homeId);
+        wholeHomeCodexBlocks.add(homeId);
+        if (!liveChangedHomes.has(homeId)) {
+          liveChangedHomes.add(homeId);
+          rawWarnings.push({ sourceKind: kind, homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 });
+        }
+      }
+    } else {
+      if (!start.complete || (kind === "codex" && !end.complete)) {
+        perfFingerprintStable = false;
+        if (kind === "codex") {
+          degradedHomeIds.add(homeId);
+          wholeHomeCodexBlocks.add(homeId);
+          if (!liveChangedHomes.has(homeId)) {
+            liveChangedHomes.add(homeId);
+            rawWarnings.push({ sourceKind: kind, homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 });
+          }
+        }
+      }
+      if (start.fingerprint !== end.fingerprint) {
+        degradedHomeIds.add(homeId);
+        if (kind === "codex") wholeHomeCodexBlocks.add(homeId);
+        if (!liveChangedHomes.has(homeId)) {
+          liveChangedHomes.add(homeId);
+          rawWarnings.push({ sourceKind: kind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
+        }
+        perfFingerprintStable = false;
+      }
+    }
+  }
+
+  // ⑤ 用量全局后置指纹。⚠️ **必须比 `.fingerprint` 字段，不能比整个返回值**：
+  //    `buildUsageFingerprint` 返回 `{ fingerprint, fileCount, homeCount, checkedAt }`，其中
+  //    `checkedAt` **每次调用都变**、对象身份也每次不同 ⇒ 比整个对象会把"没变化"永远判成
+  //    "变化"（本卡实测：`★M4.1-a` 由此转红，探针 `review/M4/probe-m41-fingerprint.mjs`）。
+  //    它只影响 `usageFingerprintStable`，**不**影响归因/排名/版本（复核 P1）。
+  const usageFingerprintAfter = await buildUsageFingerprint({ ...options, homes });
+  const usageFingerprintStable = usageFingerprintBefore.fingerprint === usageFingerprintAfter.fingerprint;
+
+  const degradedList = [...degradedHomeIds].sort();
+  const state = degradedList.length > 0 ? "degraded" : "ready";
+  const classified = classifyPerfSources(homes);
+  const finalPartialHomes = partialHomes.filter((entry) => !wholeHomeCodexBlocks.has(entry.homeId));
+  const publicationFilter = createCodexPublishFilter(degradedList, finalPartialHomes);
+  const rankedHomeIds = [
+    ...new Set(
+      perfSamples
+        .filter((sample) => {
+          const homeId = String(sample?.homeId ?? "");
+          if (homeId === "") return false;
+          return sample?.sourceKind === "codex"
+            ? codexSampleAllowed(publicationFilter, sample)
+            : !degradedHomeIds.has(homeId);
+        })
+        .map((sample) => String(sample.homeId)),
+    ),
+  ].sort();
+  const codexPublicationPolicy = encodeCodexPublicationPolicy(finalPartialHomes);
+
+  return {
+    perfSamples,
+    perfMeta: {
+      state,
+      ready: state === "ready",
+      methodVersion: PERF_METHOD_VERSION,
+      // 已启用性能来源**内容**指纹的聚合（与 M3.4 `buildPublishedSourcesFingerprint` 同口径：
+      // 只含已启用来源）⇒ **内容变则版本变**；任一已启用 home 的指纹不可取得或前后不同 ⇒ `null`
+      //（一个描述不了所载候选的版本号就是"元数据说谎"，同 M3.4 BC-2 的裁决）。
+      indexVersion: perfFingerprintStable ? aggregatePerfContentFingerprint(enabledHomes, perfFingerprintsAfter) : null,
+      indexedAt: new Date().toISOString(),
+      degradedHomeIds: degradedList,
+      sourceWarnings: projectPerfSourceFailures(rawWarnings),
+      // 与 M3.4 的 `perf_unsupported_sources` 同形同源（`{kind, homeId}[]`，规范 kind）。
+      unsupportedSources: [...classified.notEnabled, ...classified.unsupported],
+      // 供 M4.2 直接传给 `summarizePerf({ knownSources })`：AH-5 要求**对象数组**。
+      knownSources: (homes || []).map((home) => ({
+        kind: canonicalPerfKind(home?.kind),
+        homeId: String(home?.id ?? ""),
+      })),
+      // 与 M3.4 读投影同义：库/载体里出现过、且**未**受阻的 home（D4 的默认排名集合）。
+      rankedHomeIds,
+      codexPublicationPolicy,
+      // ⚠️ 复核 P1/P2 的"两个轴"：**用量全局指纹**（含未启用来源）是否稳定。
+      //    `false` ⇒ 整份报告的上游在读取期间动过（**整体**版本是否可证由此字段单独表达）；
+      //    **不**意味着任何已启用 home 受阻 —— 那只看 `degradedHomeIds`（归因必须有该 home 的证据）。
+      usageFingerprintStable,
+      // **已启用性能来源**的内容指纹是否全部可取得且前后一致（`indexVersion` 的发布条件，显式化）。
+      perfFingerprintStable,
+    },
+  };
+}
+
+/**
+ * M4.3：**公开投影白名单** —— 原 `UsageReport` 只恰好有 6 个字段；M4.1 往 `report` 上挂了
+ * `perfSamples`（含 `sampleKey`/`sourcePath`/`sessionId`/`turnKey` 与**物理会话路径**）与 `perfMeta`。
+ * 公开序列化必须**显式投影**，不得再靠对象展开。
+ *
+ * 脱敏依据（冻结契约 §3 第 10 条，`source-contract.md:515`）：持久/公开产物**不含**
+ * thread/response/item 原始 ID、**会话路径**、标题、content、args、item_json；上游方案
+ * `docs/plans/2026-10-03-model-latency-throughput-plan.md:73` 明文"`/api/usage?detail=full`
+ * 与 CLI `json` 的公开 report 须在汇总后投影原有公开字段，**不序列化内部
+ * `perfSamples/sampleKey/sourcePath`**"。
+ *
+ * ⚠️ 这是**白名单**：将来往 `UsageReport` 加字段必须同时改这里，否则字段不公开 ——
+ * 这正是本卡要的语义：内部载体默认不可见。
+ * @param {any} report
+ * @returns {any} 只含既有公开字段的浅投影（数组按引用共享，不深拷贝）
+ */
+export function toPublicUsageReport(report) {
+  if (!report || typeof report !== "object") {
+    return report;
+  }
+  return {
+    events: report.events,
+    generatedAt: report.generatedAt,
+    homes: report.homes,
+    rateLimitObservations: report.rateLimitObservations,
+    sessions: report.sessions,
+    warnings: report.warnings,
+  };
+}
+
+/**
+ * M4.3：取 `report.perfSamples` **按 home 排除**后的副本，用于内存路径的 `detail=full`。
+ *
+ * 为什么必须有这一步（M4.3-R1）：`summarizeUsage` 会把 `filters.excludeHomes` 传给
+ * `summarizePerf` ⇒ 上游方案 `docs/plans/2026-10-03-model-latency-throughput-plan.md:66`
+ * 要求"两条生产汇总路径使用**同一候选过滤**…对同一 fixture 的 `summary.perf` 一致"。
+ * 若内存路径把**未过滤**的候选交给汇总，则同一 `preset=all&exclude=<home>` 在
+ * `/api/usage`（索引）与 `/api/usage?detail=full`（内存）会给出**不同的 perf**。
+ * 卡片明文："`withoutExcludedHomes()` 必须**同时过滤内部 `perfSamples` 或把过滤严格传给统计函数**"。
+ * @param {any} report
+ * @param {string[]} [excludeHomes]
+ * @returns {any} `perfSamples` 已排除的浅拷贝（仍含内部载体，调用方需自行投影）
+ */
+export function withoutExcludedPerfSources(report, excludeHomes = []) {
+  if (!report || typeof report !== "object" || !Array.isArray(report.perfSamples)) {
+    return report;
+  }
+  const excluded = new Set((excludeHomes || []).map(String));
+  if (excluded.size === 0) {
+    return report;
+  }
+  return {
+    ...report,
+    perfSamples: report.perfSamples.filter((sample) => !excluded.has(String(sample?.homeId ?? ""))),
+  };
+}
+
+/** @returns {Promise<import("./usage-types.js").UsageReport & { perfSamples: any[], perfMeta: any }>} */
 export async function buildUsageReport(options = {}) {
   const homes = options.homes || (await discoverUsageSources(options));
   const repositoryResolver = createRepositoryResolver();
@@ -2000,6 +2823,12 @@ export async function buildUsageReport(options = {}) {
   events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   sessions.sort((a, b) => Date.parse(a.lastAt) - Date.parse(b.lastAt));
 
+  // ── M4.1：内存性能候选载体 ─────────────────────────────────────────────────
+  // 位置刻意在**用量事件全部收集完之后**（卡片明文"完成现有事件收集后"）：这样
+  // `perfMeta.indexVersion` 的"读取前后"窗口只覆盖 perf 读取本身，不含用量解析。
+  // ⚠️ 该函数**不抛错**（逐来源失败降级为状态/告警）⇒ 内存报告不会因 perf 失败而整体失败。
+  const { perfSamples, perfMeta } = await collectMemoryPerfCarrier(homes, options);
+
   return {
     generatedAt: new Date().toISOString(),
     homes,
@@ -2007,6 +2836,9 @@ export async function buildUsageReport(options = {}) {
     events,
     rateLimitObservations,
     warnings,
+    // 新增两个字段；上面六个（含旧 CLI JSON 依赖的 `events`）**逐字未动**。
+    perfSamples,
+    perfMeta,
   };
 }
 
@@ -2295,7 +3127,8 @@ function resolveDateRangeFromTimestamps(filters = {}, timestamps = []) {
   if (preset === "recent") {
     const named = resolveNamedRecentRange(filters.recentValue, now, filters.quota, zone);
     if (named) {
-      if (named.quotaState === "missing") throw new QuotaWindowUnavailableError(named.quotaPreset, filters.quota);
+      if ("quotaState" in named && named.quotaState === "missing")
+        throw new QuotaWindowUnavailableError(named.quotaPreset, filters.quota);
       return { ...named, calendarZone: zone };
     }
     const range = recentDateRange(filters.recentValue, now, zone);
@@ -2731,6 +3564,9 @@ function summaryRangeFields(range, bucket) {
           limitId: range.limitId,
           quotaState: range.quotaState,
           quotaReason: range.quotaReason,
+          ...(range.durationMinutes === undefined
+            ? {}
+            : { durationMinutes: range.durationMinutes, plannedResetAt: range.plannedResetAt }),
         }
       : {}),
   };
@@ -2748,6 +3584,7 @@ export function summarizeUsageIndex(index, filters = {}) {
   );
   const now = range.asOf || asOf;
   const events = index.events.filter((event) => {
+    if (quotaPreset && isCodexAutoReview(strings[event.m])) return false;
     if (!Number.isFinite(event.t)) {
       return false;
     }
@@ -2780,6 +3617,7 @@ export function summarizeUsageIndex(index, filters = {}) {
         sessionId: strings[event.s] || String(event.s),
         channel: strings[event.c] || "Unknown",
         homeId: strings[event.h],
+        sourceKind: sourceKinds.get(String(strings[event.h])),
         model: strings[event.m] || "Unknown model",
         total: {
           total: event.total,
@@ -2833,6 +3671,14 @@ export function summarizeUsageIndex(index, filters = {}) {
  */
 export function summarizeUsage(report, filters = {}) {
   const sourceKinds = homeSourceKinds(report.homes);
+  // M4.3（M4.3-R1）：来源排除必须**先**作用于候选、再进入统计 —— 卡片明文"范围和来源过滤
+  // **先统一作用于候选**，再作分组"，上游方案 :66 要求两条生产路径用**同一候选过滤**。
+  // 索引路径的 SQL 候选查询天生带 `scopeExclusions`；内存路径此前只把 `excludeHomes` 当作
+  // `summarizePerf` 的排除参数，候选**没有**先过滤。对计数等价，但违反了明文顺序。这里显式对齐。
+  const perfReport = withoutExcludedPerfSources(
+    report,
+    Array.isArray(filters.excludeHomes) ? filters.excludeHomes : [],
+  );
   const { quota, asOf } = summaryQuotaContext(report.rateLimitObservations, filters);
   const range = resolveDateRange({ ...filters, quota, now: asOf }, report.events);
   const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
@@ -2842,6 +3688,7 @@ export function summarizeUsage(report, filters = {}) {
   );
   const now = range.asOf || asOf;
   const events = report.events.filter((event) => {
+    if (quotaPreset && isCodexAutoReview(event.model)) return false;
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -2876,7 +3723,8 @@ export function summarizeUsage(report, filters = {}) {
   });
   const costEstimate = timelineError ? estimateCostForEvents(events) : costAccumulator.result();
 
-  return {
+  /** @type {import("./usage-types.js").UsageSummary & { perf?: any }} */
+  const summary = {
     generatedAt: report.generatedAt,
     range: summaryRangeFields(range, bucket),
     totals,
@@ -2896,4 +3744,90 @@ export function summarizeUsage(report, filters = {}) {
     projects: groupByUsage(events, (event) => event.cwd || "Unknown cwd"),
     repositories: groupRepositories(events),
   };
+
+  // ── M4.2：`summary.perf` ────────────────────────────────────────────────────
+  //
+  // 形状 = M3.4 读投影字段的**同义等价物**（`state/ready/methodVersion/indexVersion/
+  // indexedAt/degradedHomeIds/sourceWarnings/unsupportedSources/rankedHomeIds`）
+  // **加上冻结的 `PerfSummary` 三件套 `{groups, coverage, meta}`**（`usage-types.js:178`）。
+  //
+  // ⚠️ **契约冲突与裁定（M4.2-R1）**：M1 冻结的 typedef 只描述 `{groups, coverage, meta}`，
+  //   而 M3.4 已验收的索引路径把 `summary.perf` 实现成**状态投影**（且 M3 的
+  //   `test/perf-state.test.js:278,557` 断言 `summary.perf.state`，那些测试文件属 M3、
+  //   本卡**不得改**）。⇒ 裁定为**加法超集**：既有键**一个不改**，只新增三件套，
+  //   两条路径产出**同一组键**。下游按冻结形状读 `groups/coverage/meta` 即可。
+  if (Array.isArray(perfReport.perfSamples)) {
+    // `perfMeta` 尚未并入 `UsageReport` typedef（M4.1 已登记的边界：`src/usage-types.js` 属 M3）
+    // ⇒ 本卡用局部交叉类型读取，不改 M3 文件。
+    const perfMeta = /** @type {any} */ (perfReport).perfMeta ?? {};
+    const degraded = Array.isArray(perfMeta.degradedHomeIds) ? perfMeta.degradedHomeIds : [];
+    const decodedPolicy = decodeCodexPublicationPolicy(perfMeta.codexPublicationPolicy);
+    const partialHomes = decodedPolicy.usable ? decodedPolicy.partialHomes : [];
+    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
+    const publishFilter = createCodexPublishFilter(degraded, partialHomes);
+    // 卡片明文："**范围和来源过滤先统一作用于候选**，再作分组" —— 索引路径的候选由
+    // `perfCandidatesForRange(range, scopeExclusions)` 过滤，内存路径必须在同一处对齐：
+    // ① 显式 `excludeHomes`（索引侧 `scopeExclusions` 的第一项）；
+    // ② 普通 degraded home 整体排除；经 policy 许可的 Codex partial home 只排 blockedThreadIds；
+    // ③ 配额范围下的**非 Codex home**（索引侧 `nonCodexHomeIds()`，卡片明文沿用该判定）。
+    // ⚠️ 只作用于 `summary.perf`，**不**改 `totals/channels/models/timeline`（卡片明文）。
+    const excludeHomes = Array.isArray(filters.excludeHomes) ? filters.excludeHomes : [];
+    const perfExclusions = [
+      ...new Set([
+        ...excludeHomes,
+        ...degraded.filter((homeId) => !partialHomeIds.has(homeId)),
+        ...(quotaPreset ? perfNonCodexHomeIds(report.homes) : []),
+      ]),
+    ];
+    const publishableSamples = perfReport.perfSamples.filter(
+      (sample) => codexSampleAllowed(publishFilter, sample) && (!quotaPreset || !isCodexAutoReview(sample.model)),
+    );
+    const degradedHomeIds = new Set(degraded);
+    const rankedHomeIds = [
+      ...new Set(
+        report.perfSamples
+          .filter((sample) => {
+            const homeId = String(sample?.homeId ?? "");
+            return sample?.sourceKind === "codex"
+              ? codexSampleAllowed(publishFilter, sample)
+              : !degradedHomeIds.has(homeId);
+          })
+          .map((sample) => String(sample?.homeId ?? ""))
+          .filter(Boolean),
+      ),
+    ].sort();
+    const perfStats = buildPerfStatsBlock({
+      samples: publishableSamples,
+      bounds: perfStatsRangeBounds(range),
+      excludedHomeIds: perfExclusions,
+      knownSources: perfMeta.knownSources ?? [],
+      meta: {
+        methodVersion: perfMeta.methodVersion,
+        state: perfMeta.state,
+        indexVersion: perfMeta.indexVersion ?? null,
+        indexedAt: perfMeta.indexedAt ?? null,
+        sourceWarnings: perfMeta.sourceWarnings ?? [],
+      },
+    });
+    summary.perf = {
+      state: perfMeta.state ?? "ready",
+      ready: perfMeta.ready ?? perfMeta.state === "ready",
+      methodVersion: perfMeta.methodVersion ?? PERF_METHOD_VERSION,
+      indexVersion: perfMeta.indexVersion ?? null,
+      indexedAt: perfMeta.indexedAt ?? null,
+      degradedHomeIds: degraded,
+      // M4.3 返工1（复核 §3，M4.2 复核 R3 遗留项）：顶层与 `meta.sourceWarnings` 必须是**同一份
+      // 规范结果**。此前顶层直接用原始状态告警（`perfMeta.sourceWarnings`），而内核会按冻结码域
+      // 过滤并补算 `AGGREGATE_OVERFLOW` ⇒ 实测出现"meta 有 overflow 告警、顶层却是 `[]`"。
+      // 这里复用内核输出，**不**另写过滤/排序/合并逻辑；12 键形状不变。
+      sourceWarnings: perfStats.meta.sourceWarnings,
+      unsupportedSources: perfMeta.unsupportedSources ?? [],
+      rankedHomeIds,
+      groups: perfStats.groups,
+      coverage: perfStats.coverage,
+      meta: perfStats.meta,
+    };
+  }
+
+  return summary;
 }

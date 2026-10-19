@@ -161,19 +161,6 @@ export function createSkinRuntime({ registry, onChange } = {}) {
   }
 
   /**
-   * Resolve a public asset URL to whatever the current build can actually load.
-   * The offline snapshot inlines all 40 files as data URLs under
-   * `window.__CODEX_USAGE_SKIN_ASSETS__`; the live server serves the real path.
-   * Everything that renders artwork must go through here, or the exported
-   * snapshot would request sibling files that do not exist next to it.
-   */
-  function resolveAssetUrl(url) {
-    if (!url) return null;
-    const inlined = typeof window !== "undefined" ? window.__CODEX_USAGE_SKIN_ASSETS__ : null;
-    return inlined?.[url] || url;
-  }
-
-  /**
    * Resolve the two image URLs for a skin/mode pair, or null when the layer must
    * stay empty. Classic deliberately has no assets and therefore no requests.
    */
@@ -185,8 +172,8 @@ export function createSkinRuntime({ registry, onChange } = {}) {
     const variant = skin.variants?.[theme];
     if (!variant?.assets) return null;
     return {
-      side: resolveAssetUrl(variant.assets.side),
-      front: resolveAssetUrl(variant.assets.front),
+      side: variant.assets.side,
+      front: variant.assets.front,
     };
   }
 

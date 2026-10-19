@@ -208,7 +208,7 @@ label {
   border: 0;
   border-radius: 3px;
   background: transparent;
-  /* 开=主题青（--record），关=主题橙（--red 在本主题中为橙色） */
+  /* 开=主题青（--record），关=关闭状态色（--red） */
   color: var(--record);
   font-size: inherit;
   font-weight: 650;
@@ -707,7 +707,6 @@ label {
 
 .date-picker-day.outside-month {
   color: var(--muted);
-  opacity: 0.58;
 }
 
 .date-picker-day.selected {
@@ -1136,6 +1135,13 @@ html[lang="en-US"] #repositoryComparisonSearch {
   height: 460px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.comparison-table-footer {
+  /* Reserve the same native scrollbar width as the body, even with few rows. */
+  overflow: hidden;
+  scrollbar-gutter: stable;
 }
 
 .comparison-table-foot {
@@ -1391,6 +1397,404 @@ html[lang="en-US"] #repositoryComparisonSearch {
   overflow: auto;
 }
 
+/* Performance view stays semantic HTML and follows the existing recessed bar-list palette. */
+.chart-panel .timeline-chart-well[hidden],
+.chart-panel .timeline-legend[hidden],
+.chart-panel .perf-panel[hidden],
+.detail-panel .bar-list[hidden],
+.detail-panel .perf-detail-list[hidden] {
+  display: none;
+}
+
+.perf-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  max-height: min(720px, 75vh);
+  overflow: auto;
+  padding: 2px 4px 4px;
+}
+
+.perf-panel > h3,
+.perf-coverage h3,
+.perf-list h3,
+.perf-detail h3 {
+  margin: 0;
+}
+
+.perf-coverage,
+.perf-list,
+.perf-detail-list {
+  min-width: 0;
+}
+
+.perf-coverage-block,
+.perf-source-coverage,
+.perf-diagnostics,
+.perf-detail-coverage {
+  display: grid;
+  gap: 8px;
+}
+
+.perf-coverage-block > section,
+.perf-source-coverage {
+  min-width: 0;
+}
+
+.perf-source-coverages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.perf-coverage-overview,
+.perf-coverage-rates {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.perf-coverage-overview {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.perf-coverage-note {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.perf-coverage-rates {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+}
+
+.perf-coverage-overview > div,
+.perf-coverage-rates > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.perf-coverage-overview dt,
+.perf-coverage-rates dt {
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.perf-coverage-overview dd,
+.perf-coverage-rates dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.perf-coverage-rates dd {
+  color: var(--blue);
+}
+
+.perf-coverage-more {
+  border-top: 1px solid var(--line);
+  padding-top: 5px;
+}
+
+.perf-coverage-more > summary {
+  width: fit-content;
+  color: var(--blue);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.perf-coverage-breakdown {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0 2px;
+}
+
+.perf-coverage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.perf-coverage-table th,
+.perf-coverage-table td {
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.perf-coverage-table td {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.perf-overlap-note,
+.perf-method-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.perf-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+}
+
+.perf-notice.warning {
+  color: var(--red);
+}
+
+.perf-notice.status {
+  color: var(--blue);
+}
+
+.perf-list {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.perf-source-group,
+.perf-agent-group,
+.perf-measure-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.perf-source-group > h3,
+.perf-agent-group > h4,
+.perf-measure-group > h5 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.perf-source-group > h3 {
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.perf-agent-group {
+  padding-left: 10px;
+}
+
+.perf-agent-group > h4 {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.perf-measure-group {
+  padding-left: 10px;
+}
+
+.perf-measure-group > h5 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.perf-model-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.1fr) minmax(70px, 0.8fr) minmax(145px, auto);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--ceramic-well);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.perf-model-row:hover,
+.perf-model-row.selected {
+  border-color: var(--blue);
+}
+
+.perf-model-row.selected {
+  box-shadow: var(--neo-inset-small);
+}
+
+.perf-model-row:focus-visible,
+#perfPanelTitle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+.perf-model-name,
+.perf-model-tags,
+.perf-model-result {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.perf-model-name {
+  font-weight: 650;
+}
+
+.perf-model-tags,
+.perf-model-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.perf-model-result {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-model-result strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.perf-rank {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.perf-rank.muted {
+  color: var(--muted);
+}
+
+.perf-diagnostic,
+.perf-detail-coverage {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--ceramic-well) 75%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.perf-diagnostic > span,
+.perf-diagnostic-counts,
+.perf-flag-list {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.perf-diagnostic-counts,
+.perf-flag-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.perf-diagnostic-counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.perf-era-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.perf-detail-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.perf-detail {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.perf-detail-meta,
+.perf-detail-stats {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.8fr) minmax(0, 1.2fr);
+  gap: 6px 10px;
+  margin: 0;
+}
+
+.perf-detail-meta > div,
+.perf-detail-stats > div {
+  display: contents;
+}
+
+.perf-detail dt {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.perf-detail dd {
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.perf-detail-stats {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-detail-stats dd {
+  font-weight: 700;
+}
+
+.perf-detail-coverage {
+  border-left-color: var(--blue);
+}
+
+@media (max-width: 720px) {
+  .perf-coverage-grid,
+  .perf-source-coverages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .perf-coverage-overview {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .perf-model-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .perf-model-tags {
+    grid-column: 1;
+  }
+
+  .perf-model-result {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
 .bar-list,
 .home-list {
   display: grid;
@@ -1623,7 +2027,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .source-option.excluded .source-option-label strong,
 .source-option.excluded .source-option-path {
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .home-excluded {
@@ -1635,7 +2039,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .home-row.excluded .home-label strong,
 .home-row.excluded .home-path {
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .pricing-dialog {
@@ -2400,6 +2804,13 @@ select:focus-visible {
   --neo-inset-small: inset 2px 2px 5px var(--ceramic-shade), inset -1px -1px 1px var(--ceramic-rim);
   --dialog-shadow: 0 18px 48px #080d16a0, inset 1px 1px 1px var(--ceramic-rim);
 }
+/* M1.4 受限状态色：--green/--red 不由 palette token 派生，而非 classic 皮肤浅色的
+   陶瓷面板/凹槽令原固定值对必要小字不足 4.5:1，这里只对角色浅色模式收紧两个值；
+   classic 与深色保持上方原定义，残余失败组合由 M2 表面修正与 M3 实测兜底。 */
+:root[data-skin]:not([data-skin="classic"]):not([data-theme="dark"]) {
+  --green: #1a5233;
+  --red: #74270d;
+}
 .shell {
   padding-top: 28px;
   /* Trial strength; a single adjustment point for the whole main dashboard. */
@@ -2638,23 +3049,39 @@ button:disabled {
 /* Recessed selector rails; only the selected item rises above the track. */
 .comparison-table-frame {
   position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   border: 0;
   border-radius: 16px;
+  /* The footer exposes the panel's continuous surface, including its gradient. */
+  background: transparent;
+  box-shadow: none;
+}
+.comparison-table-scroll {
+  grid-area: 1 / 1;
+  border-radius: inherit;
   background: var(--ceramic-well);
-  box-shadow: var(--neo-inset);
+}
+.comparison-table-footer {
+  grid-area: 2 / 1;
 }
 .comparison-table-frame::after {
   content: "";
   position: absolute;
+  grid-area: 1 / 1 / 2 / 2;
   inset: 0;
   z-index: 4;
   border-radius: inherit;
   box-shadow: var(--neo-inset);
   pointer-events: none;
 }
-.comparison-table-frame .comparison-table th,
-.comparison-table-frame .comparison-table-foot {
+.comparison-table-frame .comparison-table th {
   background: var(--ceramic-well);
+}
+.comparison-table-frame .comparison-table-foot tfoot th,
+.comparison-table-frame .comparison-table-foot tfoot td {
+  background: transparent;
+  border-bottom: 0;
 }
 .detail-panel .bar-track {
   height: calc(10px * 4 / 3);
@@ -3259,6 +3686,17 @@ html[lang="en-US"] #presetButtons > .recent-segment {
     mask-repeat: no-repeat;
     opacity: 1;
     transition: opacity 120ms ease;
+  }
+  /* Detail bars share the panel's one light, above their opaque tracks/fills.
+     Keep text above it without giving each bar a separate radius or reveal. */
+  .shell .detail-panel[data-spotlight-active]::after {
+    z-index: 0;
+  }
+  .shell .detail-panel[data-spotlight-active] > .panel-heading,
+  .shell .detail-panel[data-spotlight-active] .bar-label,
+  .shell .detail-panel[data-spotlight-active] .empty {
+    position: relative;
+    z-index: 1;
   }
   /* A local context must not trap a currently open menu behind later panels. */
   .shell [data-spotlight-active]:has(:is(.date-picker-popover, .recent-range-menu):not([hidden])) {

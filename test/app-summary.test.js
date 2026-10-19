@@ -798,3 +798,55 @@ test("custom summarize with a monthly bucket appends the month-merge label", () 
     setSummaryFilters({ preset: "today", recentValue: "1个月", bucket: "hour", now: null, startDate: "", endDate: "" });
   }
 });
+
+test("summarize turns a final timeline merge overflow into the warning payload", () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = "Asia/Shanghai";
+  try {
+    setSummaryFilters({
+      preset: "all",
+      bucket: "day",
+      calendarZone: "local",
+      now: new Date("2026-10-13T04:00:00.000Z"),
+      startDate: "",
+      endDate: "",
+      excludedHomes: [],
+    });
+    const summary = summarize({
+      events: [
+        {
+          timestamp: "1860-02-01T00:00:00.000Z",
+          sessionId: "oldest",
+          channel: "CLI",
+          model: "test",
+          total: { total: 1, input: 1, cached: 0, output: 0, reasoning: 0 },
+        },
+        {
+          timestamp: "2026-10-03T00:30:00.000Z",
+          sessionId: "latest",
+          channel: "CLI",
+          model: "test",
+          total: { total: 1, input: 1, cached: 0, output: 0, reasoning: 0 },
+        },
+      ],
+    });
+
+    assert.equal(summary.range.bucket, "month");
+    assert.equal(summary.timelineError, "Time range exceeds 2000 timeline slots.");
+    assert.deepEqual(summary.timeline, []);
+    assert.equal(summary.totals.total, 2);
+  } finally {
+    setSummaryFilters({
+      preset: "today",
+      recentValue: "1个月",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      startDate: "",
+      endDate: "",
+      excludedHomes: [],
+    });
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+});

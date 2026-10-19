@@ -3,17 +3,158 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { DatabaseSync } from "node:sqlite";
-import { runInNewContext } from "node:vm";
+import { backup, DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 
-import { setSummaryFilters, staticPeriodComparison, summarize } from "../public/app.js";
+import { setSummaryFilters, summarize } from "../public/app.js";
 import { getPricingCatalog, resetPricingCatalog, setPricingCatalog } from "../src/pricing.js";
-import { renderStaticDashboardHtml } from "../src/static-export.js";
-import { buildUsageReport, summarizePeriodComparison, summarizeUsage } from "../src/usage-core.js";
+import { periodComparisonForReport, pricedReport } from "../test-support/report-projection.js";
+import {
+  buildUsageIndex,
+  buildUsageReport,
+  summarizePeriodComparison,
+  summarizeUsage,
+  summarizeUsageIndex,
+} from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
 
 const AS_OF = "2026-07-12T12:00:00.000Z";
+
+test("auto-review stays in activity but is excluded from current and previous quota statistics", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-auto-review-policy-"));
+  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const asOf = "2026-10-08T04:00:00.000Z";
+  try {
+    for (const [name, time, total, review] of [
+      ["current-main", "2026-10-08T03:00:00Z", 100, false],
+      ["current-review", "2026-10-08T03:10:00Z", 1000, true],
+      ["previous-main", "2026-10-07T23:00:00Z", 50, false],
+      ["previous-review", "2026-10-07T23:10:00Z", 2000, true],
+      ["old-main", "2026-10-02T12:00:00Z", 25, false],
+      ["old-review", "2026-10-02T12:10:00Z", 3000, true],
+    ]) {
+      const model = review ? "CODEX-AUTO-REVIEW" : "gpt-6-sol";
+      const identity = { thread_id: name, turn_id: `${name}-turn` };
+      const completed = Date.parse(time);
+      await writeSession(homeDir, name, model, "/work", [
+        { type: "turn_context", timestamp: time, payload: { ...identity, model } },
+        tokenRow(time, total, total - 10, 0, 10, 2),
+        {
+          type: "token_usage_record",
+          timestamp: time,
+          payload: {
+            ...identity,
+            response_id: `${name}-response`,
+            usage: { output_tokens: 10 },
+            turn_token_usage: { output_tokens: 10 },
+          },
+        },
+        {
+          type: "event_msg",
+          payload: {
+            type: "item_completed",
+            ...identity,
+            started_at_ms: completed - 1000,
+            completed_at_ms: completed,
+            item: { id: `${name}-item`, type: "AgentMessage" },
+          },
+        },
+        {
+          type: "event_msg",
+          payload: {
+            type: "task_complete",
+            ...identity,
+            started_at: (completed - 1000) / 1000,
+            completed_at: completed / 1000,
+            duration_ms: 1000,
+          },
+        },
+      ]);
+    }
+    const current = quotaRow("2026-10-08T03:55:00Z", "2026-10-08T06:00:00Z");
+    current.payload.rate_limits.secondary = {
+      window_minutes: 10080,
+      resets_at: Date.parse("2026-10-12T00:00:00Z") / 1000,
+      used_percent: 55,
+    };
+    const old = quotaRow("2026-10-02T12:55:00Z", "2026-10-02T15:00:00Z");
+    old.payload.rate_limits.secondary = {
+      window_minutes: 10080,
+      resets_at: Date.parse("2026-10-05T00:00:00Z") / 1000,
+      used_percent: 80,
+    };
+    await writeSession(homeDir, "limits", "gpt-6-sol", "/work", [
+      old,
+      quotaRow("2026-10-07T23:55:00Z", "2026-10-08T01:00:00Z"),
+      current,
+    ]);
+    await store.sync({ env: {} });
+    const report = await buildUsageReport({ homeDir, env: {} });
+    const index = await buildUsageIndex({ homes: report.homes });
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(report.perfSamples.length, 6, "real performance candidates include reviewer turns");
+    assert.equal(report.events.filter((event) => event.model.toLowerCase() === "codex-auto-review").length, 3);
+    for (const [preset, recentValue, expectedTotal, expectedSessions] of [
+      ["all", "", 6175, 6],
+      ["quota_5h", "", 100, 1],
+      ["quota_week", "", 150, 2],
+      ["recent", "上一个5h", 50, 1],
+      ["recent", "上周", 25, 1],
+    ]) {
+      const filters = { preset, recentValue, now: asOf, bucket: "day", calendarZone: "utc" };
+      const memory = summarizeUsage(report, filters);
+      const indexed = store.summarize(filters);
+      assert.equal(memory.perf.coverage.eligible, expectedSessions);
+      assert.equal(indexed.perf.coverage.eligible, expectedSessions);
+      assert.deepEqual(indexed.perf.coverage, memory.perf.coverage);
+      const compact = summarizeUsageIndex(index, filters);
+      setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "" });
+      const browser = summarize(snapshot);
+      for (const summary of [memory, indexed, compact, browser]) {
+        assert.equal(summary.totals.total, expectedTotal, `${preset}/${recentValue}`);
+        assert.equal(summary.sessionCount, expectedSessions);
+        assert.equal(summary.eventCount, expectedSessions);
+        assert.equal(
+          summary.timeline.reduce((sum, row) => sum + row.total.total, 0),
+          expectedTotal,
+        );
+        assert.equal(summary.models.length, preset === "all" ? 2 : 1);
+        assert.equal(summary.quota.windows.quota_5h.usedPercent, 42.5, "keep observed quota percentage");
+        assert.equal(summary.costEstimate.minimumRateModels.length, 0);
+      }
+      assert.deepEqual(summaryFields(indexed), summaryFields(memory));
+      assert.deepEqual(summaryFields(compact), summaryFields(memory));
+      assert.deepEqual(summaryFields(browser), summaryFields(memory));
+      if (preset.startsWith("quota_")) {
+        assert.equal(
+          indexed.records.totalTokens.value,
+          expectedTotal,
+          "previous free tokens cannot inflate record baseline",
+        );
+        assert.equal(browser.records.totalTokens.value, expectedTotal);
+      }
+    }
+    const reviewOnly = summarizeUsage(
+      { ...report, events: report.events.filter((event) => event.model === "CODEX-AUTO-REVIEW") },
+      { preset: "all" },
+    );
+    assert.equal(reviewOnly.costEstimate.totalUsd, 0);
+    assert.equal(reviewOnly.costEstimate.minimumEstimatedRecords, 0);
+  } finally {
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
 
 function tokenRow(timestamp, total, input, cached, output, reasoning) {
   return {
@@ -43,7 +184,7 @@ function quotaRow(timestamp, resetsAt) {
   return row;
 }
 
-async function writeSession(root, name, model, cwd, rows) {
+async function writeSession(root, name, model, cwd, rows, client = { source: "cli", originator: "codex-tui" }) {
   const [year, month, day] = rows[0].timestamp.slice(0, 10).split("-");
   const sessionDir = path.join(root, ".codex", "sessions", year, month, day);
   await mkdir(sessionDir, { recursive: true });
@@ -51,7 +192,7 @@ async function writeSession(root, name, model, cwd, rows) {
     {
       timestamp: rows[0].timestamp,
       type: "session_meta",
-      payload: { id: name, source: "cli", originator: "codex-tui", cwd },
+      payload: { id: name, ...client, cwd },
     },
     { type: "turn_context", payload: { model } },
     ...rows,
@@ -150,16 +291,6 @@ async function writeDshSession(root, session, usage, timeIso, delegationDepth = 
   );
 }
 
-function embeddedSnapshot(html) {
-  const dataScript = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-    .map((match) => match[1])
-    .find((script) => script.includes("window.__CODEX_USAGE_REPORT__ ="));
-  assert.ok(dataScript, "static export must embed a data script");
-  const sandbox = { window: {} };
-  runInNewContext(dataScript, sandbox);
-  return JSON.parse(JSON.stringify(sandbox.window));
-}
-
 function iso(value) {
   return value == null ? null : new Date(value).toISOString();
 }
@@ -213,7 +344,7 @@ function comparisonFields(comparison) {
   };
 }
 
-test("memory, SQLite, and exported snapshot agree for local and UTC usage", async () => {
+test("memory, SQLite, and pure browser statistics agree for local and UTC usage", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-parity-"));
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {
@@ -230,14 +361,14 @@ test("memory, SQLite, and exported snapshot agree for local and UTC usage", asyn
     const report = await buildUsageReport({ homeDir });
     assert.equal(report.events.length, 3);
     assert.equal(report.rateLimitObservations.length, 1);
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf: AS_OF }));
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, report.events.length);
+    const snapshot = pricedReport(report, AS_OF);
+    assert.equal(snapshot.events.length, report.events.length);
 
     for (const calendarZone of ["local", "utc"]) {
       const periodOptions = { now: AS_OF, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison = staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone);
+      const snapshotComparison = periodComparisonForReport(snapshot, calendarZone);
       assert.deepEqual(
         comparisonFields(indexedComparison),
         comparisonFields(memoryComparison),
@@ -254,7 +385,7 @@ test("memory, SQLite, and exported snapshot agree for local and UTC usage", asyn
         const memorySummary = summarizeUsage(report, filters);
         const indexedSummary = store.summarize(filters);
         setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-        const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+        const snapshotSummary = summarize(snapshot);
         if (preset === "all") assert.equal(memorySummary.totals.total, 275);
         if (preset === "quota_5h") assert.equal(memorySummary.totals.total, 75);
         if (calendarZone === "utc" && preset === "today") assert.equal(memorySummary.totals.total, 155);
@@ -314,10 +445,10 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
     const zcodeHome = report.homes.find((home) => home.kind === "zcode");
     assert.ok(zcodeHome);
     assert.equal(report.events.filter((event) => event.channel === "ZCode").length, 1);
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.pricing.checkedAt, "2026-09-01");
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, 4);
-    const pricedCodexEvent = snapshot.__CODEX_USAGE_REPORT__.events.find((event) => event.sessionId === "tuesday");
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(snapshot.pricing.checkedAt, "2026-09-01");
+    assert.equal(snapshot.events.length, 4);
+    const pricedCodexEvent = snapshot.events.find((event) => event.sessionId === "tuesday");
     assert.ok(pricedCodexEvent);
     assert.ok(
       Math.abs(pricedCodexEvent.costEstimate.outputUsd - 0.0004) < 1e-12,
@@ -371,7 +502,7 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
           recentValue: "",
         });
         assert.deepEqual(
-          comparisonFields(staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone)),
+          comparisonFields(periodComparisonForReport(snapshot, calendarZone)),
           comparisonFields(expectedComparison),
           `${calendarZone}/${scope} snapshot period comparison`,
         );
@@ -381,7 +512,7 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
           const memorySummary = summarizeUsage(filteredReport, filters);
           const indexedSummary = store.summarize({ ...filters, excludeHomes: excludedHomes });
           setSummaryFilters({ ...filters, excludedHomes, startDate: "", endDate: "", recentValue: "" });
-          const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+          const snapshotSummary = summarize(snapshot);
           if (calendarZone === "utc") {
             const expected = excludedHomes.length
               ? { all: 180, week: 140, month: 80 }
@@ -459,14 +590,14 @@ test("three paths agree on DSH usage, including the input/cache split and quota 
     const subEvent = report.events.find((event) => event.sessionId === "session-sub");
     assert.equal(subEvent.channel, "DSH Subagent");
 
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, report.events.length);
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(snapshot.events.length, report.events.length);
 
     for (const calendarZone of ["local", "utc"]) {
       const periodOptions = { now: asOf, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison = staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone);
+      const snapshotComparison = periodComparisonForReport(snapshot, calendarZone);
       assert.deepEqual(
         comparisonFields(indexedComparison),
         comparisonFields(memoryComparison),
@@ -490,7 +621,7 @@ test("three paths agree on DSH usage, including the input/cache split and quota 
         const memorySummary = summarizeUsage(scopedReport, filters);
         const indexedSummary = store.summarize(filters);
         setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-        const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+        const snapshotSummary = summarize(snapshot);
 
         if (preset === "all") {
           // 8525 + 160 + 45
@@ -628,14 +759,14 @@ test("three paths agree on OpenCode usage, including all three parallel-counter 
     assert.equal(ocEvent.channel, "OpenCode");
     assert.equal(ocEvent.repositoryKey, "directory:/work/oc");
 
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, report.events.length);
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(snapshot.events.length, report.events.length);
 
     for (const calendarZone of ["local", "utc"]) {
       const periodOptions = { now: asOf, calendarZone };
       const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
       const indexedComparison = store.periodComparison(periodOptions);
-      const snapshotComparison = staticPeriodComparison(snapshot.__CODEX_USAGE_REPORT__, calendarZone);
+      const snapshotComparison = periodComparisonForReport(snapshot, calendarZone);
       assert.deepEqual(
         comparisonFields(indexedComparison),
         comparisonFields(memoryComparison),
@@ -657,7 +788,7 @@ test("three paths agree on OpenCode usage, including all three parallel-counter 
         const memorySummary = summarizeUsage(scopedReport, filters);
         const indexedSummary = store.summarize(filters);
         setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-        const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+        const snapshotSummary = summarize(snapshot);
 
         if (preset === "all") {
           // 8310 + 45
@@ -728,15 +859,15 @@ test("three paths agree on week-bucket escalation for a half-year all-time range
     await store.sync();
     const report = await buildUsageReport({ homeDir });
     assert.equal(report.events.length, 2);
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
-    assert.equal(snapshot.__CODEX_USAGE_REPORT__.events.length, 2);
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(snapshot.events.length, 2);
 
     for (const calendarZone of ["local", "utc"]) {
       const filters = { preset: "all", bucket: "day", now: asOf, calendarZone };
       const memorySummary = summarizeUsage(report, filters);
       const indexedSummary = store.summarize(filters);
       setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-      const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+      const snapshotSummary = summarize(snapshot);
 
       assert.equal(memorySummary.range.bucket, "week", `${calendarZone} span escalation to week`);
       assert.equal(memorySummary.timeline.length, 26, `${calendarZone} week slot count`);
@@ -783,12 +914,12 @@ test("three paths use the independent GPT-6.1 Sol catalog entry", async () => {
     ]);
     await store.sync();
     const report = await buildUsageReport({ homeDir });
-    const snapshot = embeddedSnapshot(renderStaticDashboardHtml({ ...report, asOf }));
+    const snapshot = pricedReport(report, asOf);
     const filters = { preset: "all", bucket: "day", now: asOf, calendarZone: "utc" };
     const memorySummary = summarizeUsage(report, filters);
     const indexedSummary = store.summarize(filters);
     setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
-    const snapshotSummary = summarize(snapshot.__CODEX_USAGE_REPORT__);
+    const snapshotSummary = summarize(snapshot);
 
     assert.ok(Math.abs(memorySummary.costEstimate.totalUsd - 0.0205) < 1e-12);
     assert.deepEqual(summaryFields(indexedSummary), summaryFields(memorySummary));
@@ -796,6 +927,165 @@ test("three paths use the independent GPT-6.1 Sol catalog entry", async () => {
     assert.deepEqual(memorySummary.costEstimate.minimumRateModels, []);
   } finally {
     resetPricingCatalog();
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("long GPT-6.1 requests agree across Codex, Work, external imports, compact indexes and frozen stores", async () => {
+  resetPricingCatalog();
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-context-policy-"));
+  const imported = path.join(homeDir, "external-project");
+  const options = { homeDir, env: {}, importDirs: [imported] };
+  const store = new UsageStore({ ...options, databaseFile: path.join(homeDir, "index.sqlite") });
+  const frozen = new UsageStore({ databaseFile: path.join(homeDir, "frozen.sqlite") });
+  const asOf = "2026-10-12T08:00:00Z";
+  const filters = { preset: "all", bucket: "day", now: asOf, calendarZone: "utc" };
+  const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} != ${expected}`);
+  try {
+    const native = tokenRow("2026-10-09T10:00:00Z", 300_100, 300_000, 100_000, 100, 0);
+    native.payload.service_tier = "standard";
+    native.payload.info.total_token_usage.cache_write_input_tokens = 0;
+    native.payload.info.last_token_usage = native.payload.info.total_token_usage;
+    await writeSession(homeDir, "native", "gpt-6.1-sol", homeDir, [native]);
+    const work = tokenRow("2026-10-10T10:00:00Z", 600_100, 600_000, 100_000, 100, 0);
+    work.payload.service_tier = "fast";
+    work.payload.info.total_token_usage.cache_write_input_tokens = 50_000;
+    work.payload.info.last_token_usage = work.payload.info.total_token_usage;
+    await writeSession(homeDir, "work", "gpt-6.1-sol", homeDir, [work], {
+      source: { subagent: { thread_spawn: { parent_thread_id: "native", depth: 1 } } },
+      originator: "codex_work_desktop",
+    });
+    await mkdir(path.join(imported, ".codex-usage"), { recursive: true });
+    await writeFile(
+      path.join(imported, ".codex-usage", "usage.jsonl"),
+      `${JSON.stringify({
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: "2026-10-11T10:00:00Z",
+        session_id: "external",
+        request_id: "external-request",
+        project_root: imported,
+        cwd: imported,
+        source: "codex-oauth",
+        channel: "Codex Desktop",
+        auth: "codex-oauth",
+        model: "gpt-6.1-sol",
+        service_tier: "standard",
+        usage: { total: 300_100, input: 300_000, cached: 100_000, output: 100, cache_write_input_tokens: 0 },
+      })}\n`,
+    );
+    await store.sync();
+    const report = await buildUsageReport(options);
+    assert.equal(report.events.length, 3);
+    assert.equal(report.events.find((event) => event.sessionId === "work").originator, "codex_work_desktop");
+    assert.ok(report.events.every((event) => event.contextLevel === "long"));
+    const raw = JSON.stringify(report.events);
+    const browserReport = pricedReport(report, asOf);
+    closeTo(browserReport.events.find((event) => event.sessionId === "native").costEstimate.totalUsd, 0.411);
+    closeTo(browserReport.events.find((event) => event.sessionId === "work").costEstimate.totalUsd, 2.072);
+    closeTo(browserReport.events.find((event) => event.sessionId === "external").costEstimate.totalUsd, 0.8215);
+    const memory = summarizeUsage(report, filters);
+    const indexed = store.summarize(filters);
+    const compact = summarizeUsageIndex(await buildUsageIndex(options), filters);
+    setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
+    for (const summary of [memory, indexed, compact, summarize(browserReport)]) {
+      closeTo(summary.costEstimate.totalUsd, 3.3045);
+      assert.deepEqual(summaryFields(summary), summaryFields(memory));
+    }
+    closeTo(store.costEstimateRange({ preset: "all", start: null, end: new Date(asOf) }).totalUsd, 3.3045);
+    const champions = store.buildRecordChampions("utc", "", [], 6.72);
+    closeTo(champions.day.totalCost.value, 2.072 * 6.72);
+    await backup(store.database, frozen.databaseFile);
+    await frozen.open();
+    frozen.homes = store.homes;
+    frozen.serviceTierEvidence = store.serviceTierEvidence;
+    assert.deepEqual(summaryFields(frozen.summarize(filters)), summaryFields(indexed));
+    assert.equal(JSON.stringify(report.events), raw, "pricing must not mutate original context or token data");
+  } finally {
+    frozen.close();
+    store.close();
+    resetPricingCatalog();
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("D2 · 非限额 New Record 只在 SQLite 路径产生（有意差异不得被抹平）+ 历史冠军 memo 不改变日/周/月包含判定", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-d2-parity-"));
+  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  try {
+    // 日冠军 07-12（900）与周冠军 07-13 起的那一周（7×200=1400）**不同周** ⇒ 三个单位都能被观察到。
+    const days = [
+      ["2026-07-12", 900],
+      ...["13", "14", "15", "16", "17", "18", "19"].map((day) => [`2026-07-${day}`, 200]),
+    ];
+    for (const [date, total] of days) {
+      await writeSession(homeDir, `d2-${date}`, "gpt-6-sol", "/work", [
+        tokenRow(`${date}T02:00:00.000Z`, total, total - 1, 0, 1, 0),
+      ]);
+    }
+    await store.sync({ env: {} });
+    const report = await buildUsageReport({ homeDir, env: {} });
+    const index = await buildUsageIndex({ homes: report.homes });
+    const snapshot = pricedReport(report, AS_OF);
+    for (const [startDate, endDate, expected] of [
+      ["2026-07-12", "2026-07-12", { unit: "day", period: "2026-07-12", value: 900 }],
+      ["2026-07-13", "2026-07-19", { unit: "week", period: "2026-07-13", value: 1400 }],
+      ["2026-07-14", "2026-07-19", null],
+    ]) {
+      const filters = { preset: "custom", startDate, endDate, bucket: "day", calendarZone: "local", now: AS_OF };
+      const indexed = store.summarize(filters).records.totalTokens;
+      const memoryRecords = summarizeUsage(report, filters).records;
+      const compactRecords = summarizeUsageIndex(index, filters).records;
+      setSummaryFilters({
+        preset: "custom",
+        startDate,
+        endDate,
+        bucket: "day",
+        calendarZone: "local",
+        now: AS_OF,
+        excludedHomes: [],
+        recentValue: "",
+      });
+      const browserRecords = summarize(snapshot).records;
+      const scope = `${startDate}..${endDate}`;
+      for (const [label, value] of [
+        ["memory", memoryRecords],
+        ["compact", compactRecords],
+        ["browser", browserRecords],
+      ]) {
+        assert.deepEqual(value ?? {}, {}, `${label} 路径按设计不产非限额 records（${scope}）`);
+      }
+      if (expected) {
+        assert.equal(indexed.unit, expected.unit, `${scope} 单位`);
+        assert.equal(indexed.period, expected.period, `${scope} 冠军期`);
+        assert.equal(indexed.value, expected.value, `${scope} 冠军值`);
+      } else {
+        assert.equal(indexed, undefined, `${scope} 跨周/跨月不完整包含 ⇒ 不点亮`);
+      }
+      // 同一 store 连续两次（第二次必然吃 D2 的历史冠军 memo）结论必须逐字不变。
+      assert.deepEqual(store.summarize(filters).records, store.summarize(filters).records, `${scope} 暖 memo 一致`);
+    }
+  } finally {
     setSummaryFilters({
       preset: "today",
       bucket: "hour",

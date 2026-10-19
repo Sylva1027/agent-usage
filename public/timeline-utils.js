@@ -55,6 +55,73 @@ export function quotaRecordValues(total, cost, sessions, rate = 1) {
   };
 }
 
+export function completedQuotaWindows(observations, limitId, asOfMs, minutes) {
+  const duration = minutes * 60000;
+  const tolerance = 2 * 60000;
+  const byObservation = new Map();
+  for (const row of observations || []) {
+    const observed = Number(row.observedAtMs ?? row.observed_at_ms);
+    const end = Number(row.resetsAtMs ?? row.resets_at_ms);
+    if (
+      (row.limitId ?? row.limit_id) !== limitId ||
+      Number(row.windowMinutes ?? row.window_minutes) !== minutes ||
+      !Number.isFinite(observed) ||
+      !Number.isFinite(end) ||
+      observed > asOfMs ||
+      observed < end - duration - tolerance ||
+      observed >= end
+    )
+      continue;
+    const ends = byObservation.get(observed) || new Set();
+    ends.add(end);
+    byObservation.set(observed, ends);
+  }
+  const support = new Map();
+  for (const [observed, ends] of byObservation) {
+    if (Math.max(...ends) - Math.min(...ends) > tolerance) return null;
+    for (const end of ends) {
+      const point = support.get(end) || { end, count: 0, first: observed };
+      point.count += 1;
+      point.first = Math.min(point.first, observed);
+      support.set(end, point);
+    }
+  }
+  const clusters = [];
+  for (const point of [...support.values()].sort((a, b) => a.end - b.end)) {
+    if (!clusters.length || point.end - clusters.at(-1)[0].end > tolerance) clusters.push([]);
+    clusters.at(-1).push(point);
+  }
+  const cycles = clusters.map((cluster) => {
+    const point = cluster.toSorted((a, b) => b.count - a.count || b.end - a.end)[0];
+    return { start: point.end - duration, plannedReset: point.end, first: Math.min(...cluster.map((x) => x.first)) };
+  });
+  const completed = [];
+  for (let i = 1; i < cycles.length; i += 1) {
+    const previous = cycles[i - 1];
+    const next = cycles[i];
+    if (next.start > asOfMs || previous.first >= next.start) return null;
+    // A later write of an old snapshot must not turn the cycle clock backwards.
+    completed.push({
+      state: "available",
+      reason: null,
+      windowStart: new Date(previous.start).toISOString(),
+      windowEndExclusive: new Date(next.start).toISOString(),
+      plannedResetAt: new Date(previous.plannedReset).toISOString(),
+      observedAt: new Date(previous.first).toISOString(),
+      durationMinutes: (next.start - previous.start) / 60000,
+    });
+  }
+  return completed;
+}
+
+export function isPreviousWeeklyRange(range) {
+  return range?.preset === "recent" && range?.quotaWindow && range?.quotaPreset === "quota_week";
+}
+
+export function isPreviousQuotaRange(range) {
+  return range?.preset === "recent" && range?.quotaWindow && ["quota_5h", "quota_week"].includes(range?.quotaPreset);
+}
+
 // Compare earlier observed reset windows of the same quota bucket. One real
 // window can have several reset timestamps a few seconds apart; use its most
 // frequently observed endpoint instead of discarding the entire cluster.
@@ -111,10 +178,16 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
     const withCurrent = { score: before.score + support.get(candidates[i]), ends: [...before.ends, candidates[i]] };
     best.push(withCurrent.score > without.score ? withCurrent : without);
   }
-  const previous = best
-    .at(-1)
-    .ends.map((end) => summarizeWindow({ start: new Date(end - duration), end: new Date(end - 1) }))
-    .filter((value) => value.eventCount > 0);
+  const previousWindows = isPreviousQuotaRange(range)
+    ? (completedQuotaWindows(observations, quota.limitId, asOf, minutes) || [])
+        .filter((window) => Date.parse(window.windowEndExclusive) <= start)
+        .map((window) => ({
+          start: new Date(window.windowStart),
+          end: new Date(Date.parse(window.windowEndExclusive) - 1),
+          quotaWindow: true,
+        }))
+    : best.at(-1).ends.map((end) => ({ start: new Date(end - duration), end: new Date(end - 1), quotaWindow: true }));
+  const previous = previousWindows.map(summarizeWindow).filter((value) => value.eventCount > 0);
   if (!previous.length) return {};
   const current = summarizeWindow(range);
   if (!current.eventCount) return {};
@@ -185,12 +258,8 @@ export function resolveNamedRecentRange(value, now, quota, calendarZone = "local
   const window = quota?.previousWindows?.[mode];
   const start = new Date(window?.windowStart || NaN);
   const endExclusive = new Date(window?.windowEndExclusive || NaN);
-  const duration = (mode === "quota_5h" ? 5 : 168) * 60 * 60 * 1000;
   const available =
-    window?.state === "available" &&
-    Number.isFinite(start.getTime()) &&
-    endExclusive.getTime() - start.getTime() === duration &&
-    endExclusive <= now;
+    window?.state === "available" && Number.isFinite(start.getTime()) && endExclusive > start && endExclusive <= now;
   return {
     preset: "recent",
     recentValue: value,
@@ -202,8 +271,11 @@ export function resolveNamedRecentRange(value, now, quota, calendarZone = "local
     end: available ? new Date(endExclusive.getTime() - 1) : null,
     windowStart: available ? start : null,
     windowEndExclusive: available ? endExclusive : null,
+    ...(available
+      ? { plannedResetAt: window.plannedResetAt, durationMinutes: (endExclusive.getTime() - start.getTime()) / 60000 }
+      : {}),
     asOf: now,
-    bucket: mode === "quota_5h" ? "quota_30m" : "quota_24h",
+    bucket: mode === "quota_5h" ? "quota_30m" : "day",
     rolling: true,
   };
 }
@@ -284,6 +356,8 @@ export const TIMELINE_BAR_LIMIT = 31;
 export const TIMELINE_WEEK_SPAN_LIMIT_DAYS = TIMELINE_BAR_LIMIT * 7;
 
 export function deriveTimelineBucket(range, requested = "day") {
+  if (isPreviousWeeklyRange(range)) return "day";
+  if (isPreviousQuotaRange(range)) return "quota_30m";
   // 非 day 桶都是显式选择（今日小时柱、今年月柱、限额窗口固定槽位），不参与跨度升档。
   if (requested !== "day") return requested;
   const start = asDate(range?.start);
@@ -303,12 +377,16 @@ export function deriveTimelineBucket(range, requested = "day") {
 
 export const MAX_TIMELINE_SLOTS = 2_000;
 
+function timelineRangeTooLargeError(limit) {
+  /** @type {RangeError & { code?: string }} */
+  const error = new RangeError(`Time range exceeds ${limit} timeline slots.`);
+  error.code = "TIMELINE_RANGE_TOO_LARGE";
+  return error;
+}
+
 function appendCalendarKey(keys, key, limit) {
   if (keys.length >= limit) {
-    /** @type {RangeError & { code?: string }} */
-    const error = new RangeError(`Time range exceeds ${limit} timeline slots.`);
-    error.code = "TIMELINE_RANGE_TOO_LARGE";
-    throw error;
+    throw timelineRangeTooLargeError(limit);
   }
   keys.push(key);
 }
@@ -502,22 +580,50 @@ function materializeSegments(groups) {
 
 /** @param {Iterable<any>} events */
 export function buildTimelineRows(events = [], range = {}, bucket = "day", options = {}) {
+  const sparseRange = isPreviousQuotaRange(range);
+  const sparseHalfHour = sparseRange && bucket === "quota_30m";
+  const startMs = asDate(range.start)?.getTime();
+  const endMs = asDate(range.windowEndExclusive || range.end)?.getTime();
   const hasBoundedRange = Boolean(asDate(range?.start) && asDate(range?.end));
   const quotaSlots =
-    bucket === "quota_30m" || bucket === "quota_24h" ? generateQuotaTimelineSlots(range, bucket) : null;
+    !sparseRange && (bucket === "quota_30m" || bucket === "quota_24h")
+      ? generateQuotaTimelineSlots(range, bucket)
+      : null;
   const rangedKeys = quotaSlots
     ? quotaSlots.map((slot) => slot.key)
-    : hasBoundedRange
+    : hasBoundedRange && !sparseRange
       ? slotKeys(range, bucket, [])
       : null;
   const quotaSlotsByKey = quotaSlots ? new Map(quotaSlots.map((slot) => [slot.key, slot])) : null;
   const rowsByKey = new Map();
   const estimateCost = options.estimateCost || ((event) => event.costEstimate || null);
   for (const event of events) {
-    const slot = quotaSlots ? quotaSlotForEvent(event, quotaSlots, range, bucket) : null;
-    const key = quotaSlots
-      ? slot?.key
-      : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
+    if (sparseRange) {
+      const timestamp = new Date(event.timestamp ?? event.timestampMs).getTime();
+      if (
+        !Number.isFinite(timestamp) ||
+        timestamp < new Date(range.start).getTime() ||
+        timestamp > new Date(range.end).getTime()
+      )
+        continue;
+    }
+    const slotStartMs = sparseHalfHour
+      ? startMs + Math.floor((new Date(event.timestamp ?? event.timestampMs).getTime() - startMs) / 1800000) * 1800000
+      : null;
+    const slot = sparseHalfHour
+      ? {
+          key: String(slotStartMs),
+          slotStartMs,
+          slotEndExclusiveMs: Math.min(slotStartMs + 1800000, endMs),
+          future: false,
+        }
+      : quotaSlots
+        ? quotaSlotForEvent(event, quotaSlots, range, bucket)
+        : null;
+    const key =
+      quotaSlots || sparseHalfHour
+        ? slot?.key
+        : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
     if (!key) continue;
     const row = rowsByKey.get(key) || {
       ...emptyRow(key, slot || {}),
@@ -662,11 +768,18 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       : a.key.localeCompare(b.key),
   );
 
+  if (sparseRange) return rows.filter((row) => row.total.total > 0);
+
   const byKey = new Map(rows.map((row) => [row.key, row]));
   const ordered = (rangedKeys || slotKeys(range, bucket, rows)).map(
     (key) => byKey.get(key) || emptyRow(key, quotaSlotsByKey?.get(key) || {}),
   );
+  if (ordered.length > MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
   const included = new Set(ordered.map((row) => row.key));
-  for (const row of rows) if (!included.has(row.key)) ordered.push(row);
+  for (const row of rows) {
+    if (included.has(row.key)) continue;
+    if (ordered.length >= MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
+    ordered.push(row);
+  }
   return ordered;
 }

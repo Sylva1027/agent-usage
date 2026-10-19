@@ -4,7 +4,6 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { backup } from "node:sqlite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import v8 from "node:v8";
@@ -17,9 +16,12 @@ import {
   selectQuotaWindows,
   summarizePeriodComparison,
   summarizeUsage,
+  toPublicUsageReport,
   USAGE_PRESETS,
 } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
+import { createUsageExecutor } from "./usage-executor.js";
+import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { buildUsagePricingCoverage } from "../public/pricing-models.js";
 import { AUTO_RETRY_INTERVAL_MS } from "./pricing-auto.js";
 import { getPricingCatalog, pricingVersionForTimestamp, validatePricingCatalog } from "./pricing.js";
@@ -113,7 +115,12 @@ function requestFilters(url) {
   return { preset, bucket, startDate, endDate, recentValue, excludeHomes, calendarZone };
 }
 
-function withoutExcludedHomes(report, excludeHomes = []) {
+/**
+ * M4.3：把来源排除**同时**作用到公开报告的三段（`events`/`sessions`）与**内部候选载体**
+ *（`perfSamples`）。导出以便直接对本函数做定向变异（只看黑盒响应无法区分"这一层过滤"
+ * 与"下游 `summarizePerf` 的排除参数"—— 两者对计数等价）。
+ */
+export function withoutExcludedHomes(report, excludeHomes = []) {
   const excluded = new Set(excludeHomes.map(String));
   if (!excluded.size) {
     return report;
@@ -122,6 +129,9 @@ function withoutExcludedHomes(report, excludeHomes = []) {
     ...report,
     events: report.events.filter((event) => !excluded.has(String(event.homeId))),
     sessions: report.sessions.filter((session) => !excluded.has(String(session.homeId))),
+    // M4.3（卡片明文）：来源排除必须**同时**作用于内部 `perfSamples`，否则内存路径
+    //（`detail=full`）与索引路径对同一个 `exclude=` 会算出不同的 `summary.perf`。
+    perfSamples: report.perfSamples?.filter((sample) => !excluded.has(String(sample.homeId))),
   };
 }
 
@@ -311,7 +321,9 @@ async function serveStatic(requestPath, response) {
 }
 
 export function createUsageServer(options = {}) {
-  const usageStore = new UsageStore(options);
+  // W1：阻塞工作（`sync`/`summarize`/`periodComparison`/`snapshot`）移入**唯一**持有
+  // `DatabaseSync` 的执行器；主线程只保留读侧快照与轻量端点（`/api/status` 就地扫 fs）。
+  const usageStore = createUsageExecutor(options);
   const pricingReady = loadPricingFile(options);
   let pricingRefreshPromise = null;
   let pricingRefreshOptions = null;
@@ -444,18 +456,22 @@ export function createUsageServer(options = {}) {
     const id = randomUUID();
     const databaseFile = path.join(snapshotDirectory, `${id}.sqlite`);
     try {
-      await backup(usageStore.database, databaseFile);
+      // `id` / `asOf` / `snapshots.set(...)` 是**纯主线程簿记**（快照句柄与淘汰策略属 HTTP 层）；
+      // 连接归执行器独占 ⇒ 备份只能在执行器内做，它返回绑定该 `asOf` 的读侧状态。
+      const asOf = new Date();
+      const frozen = await usageStore.snapshot({ databaseFile, asOf: asOf.getTime() });
       const store = new UsageStore({ databaseFile });
       await store.open();
-      store.homes = structuredClone(usageStore.homes);
-      store.serviceTierEvidence = usageStore.serviceTierEvidence;
-      store.warnings = [...usageStore.warnings];
-      const asOf = new Date();
+      store.homes = structuredClone(frozen.homes ?? []);
+      // 证据 resolver 是**类实例**（`resolve()`），过不了跨线程 JSON ⇒ 在冻结副本自己的
+      // homes 上重建一份（与执行器 `sync` 时用的是同一个工厂与同一份输入，语义等价）。
+      store.serviceTierEvidence = loadServiceTierEvidence(store.homes);
+      store.warnings = [...(frozen.warnings ?? [])];
       const snapshot = {
         store,
-        status: { ...status, checkedAt: usageStore.checkedAt || status.checkedAt },
+        status: { ...status, checkedAt: frozen.checkedAt || status.checkedAt },
         asOf,
-        metadata: { ...store.metadata(asOf), imports: await listImportEntries(options) },
+        metadata: { ...frozen.metadata, imports: await listImportEntries(options) },
         databaseFile,
       };
       snapshots.set(id, snapshot);
@@ -475,8 +491,9 @@ export function createUsageServer(options = {}) {
 
   async function metadataForStore(asOf = new Date()) {
     // The dashboard needs both active scan sources and stored imports that may currently be unsupported.
+    // `metadata` 的时点必须**按请求的 `asOf`** 现算（主线程的读侧快照只是"最后一次发布"，忽略时点）。
     return {
-      ...usageStore.metadata(asOf),
+      ...(await usageStore.metadataFor(asOf)),
       imports: await listImportEntries(options),
     };
   }
@@ -492,10 +509,10 @@ export function createUsageServer(options = {}) {
 
   async function loadUsageStore({ check = true } = {}) {
     const currentUsageOptions = await usageOptions(options);
+    if (!check && storeStatus) return storeStatus;
     if (syncPromise) {
       return syncPromise;
     }
-    if (!check && storeStatus) return storeStatus;
     if (!syncPromise) {
       syncPromise = usageStore
         .sync({ options: currentUsageOptions })
@@ -683,17 +700,40 @@ export function createUsageServer(options = {}) {
         return;
       }
 
-      if (url.pathname === "/api/usage") {
+      if (url.pathname === "/api/usage" || url.pathname === "/api/summary") {
         const filters = requestFilters(url);
-        const detail = url.searchParams.get("detail");
-        if (detail === "full" && !isQuotaPreset(filters.preset)) {
+        const check = url.searchParams.get("skipCheck") !== "1";
+        // 已有快照先查找并校验；新快照只在请求组合受支持时创建。
+        const requestedSnapshotId = url.searchParams.get("snapshot");
+        const requestedFreeze = url.searchParams.get("freeze") === "1";
+        let frozen = requestedSnapshotId ? snapshots.get(requestedSnapshotId) : null;
+        if (requestedSnapshotId && !frozen) {
+          throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        }
+        const wantsFullDetail =
+          url.pathname === "/api/usage" && url.searchParams.get("detail") === "full" && !isQuotaPreset(filters.preset);
+        const snapshotCoupled = Boolean(frozen) || requestedFreeze;
+
+        if (wantsFullDetail) {
+          // M4.3 返工1：`detail=full` 走的是**内存**报告路径（`buildUsageReport`），它读的是当前
+          // 文件系统，无法与某个已冻结的 SQLite/`asOf` 对齐。冻结请求**不得**用 live 结果冒充 ⇒
+          // 明确拒绝并登记该参数组合（卡片允许"提供同一冻结数据"或"明确拒绝"二选一）。
+          // 未知 snapshot 的 410 校验已在上面完成，这里只处理"与冻结组合"。
+          if (snapshotCoupled) {
+            sendJson(response, 400, {
+              code: "SNAPSHOT_FULL_DETAIL_UNSUPPORTED",
+              error:
+                "detail=full cannot be combined with snapshot= or freeze=1: the full report is built from in-memory sources and cannot be bound to a frozen snapshot.",
+            });
+            return;
+          }
           if (!isFullDetailHeapAvailable()) {
             await loadUsageStore();
-            const summary = usageStore.summarize({ ...filters, now: new Date() });
+            const summary = await usageStore.summarize({ ...filters, now: new Date() });
             sendJson(response, 413, {
               code: "FULL_DETAIL_UNAVAILABLE",
               error:
-                "Full detail report is disabled in low-memory gateway mode. Restart with codex-usage gateway --memory-mb 512, or use npm run export for a static snapshot.",
+                "Full detail report is disabled in low-memory gateway mode. Restart with codex-usage gateway --memory-mb 512.",
               quota: summary.quota,
             });
             return;
@@ -719,7 +759,7 @@ export function createUsageServer(options = {}) {
               imports: await listImportEntries(options),
               warnings: fullReport.warnings,
             },
-            report,
+            report: toPublicUsageReport(report),
             summary,
             quota: summary.quota,
             periodComparison: summarizePeriodComparison(report.events, {
@@ -730,20 +770,35 @@ export function createUsageServer(options = {}) {
           return;
         }
 
-        const check = url.searchParams.get("skipCheck") !== "1";
-        const requestedSnapshotId = url.searchParams.get("snapshot");
-        const frozen = requestedSnapshotId
-          ? snapshots.get(requestedSnapshotId)
-          : url.searchParams.get("freeze") === "1"
-            ? await createSnapshot({ check })
-            : null;
-        if (requestedSnapshotId && !frozen)
-          throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        // 拒绝全文组合后再分配名额，避免失败请求创建不可用快照并淘汰旧快照。
+        if (!frozen && requestedFreeze) frozen = await createSnapshot({ check });
+
+        // 默认聚合入口与 `/api/summary` 共用同一套冻结选择：冻结时 summary、metadata、quota、
+        // periodComparison 与 `asOf` **全部**绑定该冻结 store（不能只冻结 perf、其余字段走 live）。
         const usage = frozen?.status || (await loadUsageStore({ check }));
         const store = frozen?.store || usageStore;
         const asOf = frozen?.asOf || new Date();
         Object.assign(filters, { now: asOf });
-        const summary = store.summarize(filters, { includeDetails: url.searchParams.get("view") !== "dashboard" });
+        if (!frozen) {
+          const result = await usageStore.dashboard(filters, {
+            includeDetails: url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard",
+          });
+          const published = result.status || usage;
+          sendJson(response, 200, {
+            fingerprint: clientFingerprint(published.fingerprint),
+            checkedAt: published.checkedAt,
+            snapshotId: requestedSnapshotId || null,
+            metadata: { ...result.metadata, imports: await listImportEntries(options) },
+            summary: result.summary,
+            quota: result.summary.quota,
+            periodComparison: result.periodComparison,
+          });
+          return;
+        }
+        const summary =
+          url.pathname === "/api/usage"
+            ? await store.summarize(filters, { includeDetails: url.searchParams.get("view") !== "dashboard" })
+            : await store.summarize(filters);
         sendJson(response, 200, {
           fingerprint: clientFingerprint(usage.fingerprint),
           checkedAt: usage.checkedAt,
@@ -751,28 +806,7 @@ export function createUsageServer(options = {}) {
           metadata: frozen?.metadata || (await metadataForStore(asOf)),
           summary,
           quota: summary.quota,
-          periodComparison: store.periodComparison({
-            now: asOf,
-            excludeHomes: filters.excludeHomes,
-            calendarZone: filters.calendarZone,
-          }),
-        });
-        return;
-      }
-
-      if (url.pathname === "/api/summary") {
-        const filters = requestFilters(url);
-        const usage = await loadUsageStore();
-        const asOf = new Date();
-        Object.assign(filters, { now: asOf });
-        const summary = usageStore.summarize(filters);
-        sendJson(response, 200, {
-          fingerprint: clientFingerprint(usage.fingerprint),
-          checkedAt: usage.checkedAt,
-          metadata: await metadataForStore(asOf),
-          summary,
-          quota: summary.quota,
-          periodComparison: usageStore.periodComparison({
+          periodComparison: await store.periodComparison({
             now: asOf,
             excludeHomes: filters.excludeHomes,
             calendarZone: filters.calendarZone,
@@ -794,16 +828,46 @@ export function createUsageServer(options = {}) {
       });
     }
   });
+  let executorClosePromise = null;
+  function closeUsageExecutor() {
+    executorClosePromise ||= Promise.resolve(usageStore.close()).catch(() => {});
+    return executorClosePromise;
+  }
   server.on("close", () => {
     serverClosed = true;
     clearDiscoveryTimer();
-    usageStore.close();
+    void closeUsageExecutor();
     for (const snapshot of snapshots.values()) snapshot.store.close();
     snapshots.clear();
     if (snapshotDirectoryPromise) {
       void snapshotDirectoryPromise.then((directory) => rm(directory, { recursive: true, force: true }));
     }
   });
+  // W1：执行器独占数据库连接 ⇒ `server.close(cb)` 的回调必须等它**真正退出**再触发，
+  // 否则调用方（测试 / CLI）随后删除临时目录会在 Windows 上 EBUSY。
+  // W1-b：补**显式 Promise/flush 语义** —— `server.close()`（**无**回调）返回 Promise，且只有在执行器
+  // 释放连接之后才 settle，调用方可以直接 `await server.close()` 再删库目录；带回调形式保持兼容
+  // （仍返回 `server`，`test/server.test.js` 逐字节不变）。
+  const closeHttpServer = server.close.bind(server);
+  // `checkJs` 里 `Server#close` 的声明只允许返回 `Server`，而 W1-b 的**无回调**形式**故意**返回 Promise
+  // （调用方 `await server.close()`）；用一次 JSDoc 断言保留该契约，**运行期逐字不变**。
+  /** @type {(callback?: (err?: Error) => void) => unknown} */
+  const closeWithExecutorRelease = (callback) => {
+    const done = new Promise((resolve) => closeHttpServer(() => resolve())).then(async () => {
+      await closeUsageExecutor();
+      // A refresh can start its merged successor in a fulfillment continuation.
+      while (pricingRefreshPromise) await pricingRefreshPromise.catch(() => {});
+    });
+    if (typeof callback === "function") {
+      done.then(
+        () => callback(),
+        () => callback(),
+      );
+      return server;
+    }
+    return done;
+  };
+  server.close = /** @type {typeof server.close} */ (closeWithExecutorRelease);
   return server;
 }
 

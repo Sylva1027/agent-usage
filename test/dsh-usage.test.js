@@ -416,6 +416,43 @@ test("坏 JSON 行被跳过", async () => {
   assert.equal(rows[0].type, "session");
 });
 
+// M2.2：坏行**仍然静默跳过**（用量事件行为不变），只把计数编进一条新增告警。
+// 该前缀是 `src/perf-sources/dsh.js` 把告警映射为 `{code:MALFORMED_JSON,count}` 的锚点，
+// 因此这里同时锁住「有坏行 → 恰好一条、数字为真实行数」与「无坏行 → 不新增」两侧。
+test("坏行计数编入 onWarning：有坏行时新增一条 MALFORMED_JSON:<count>，合法行照旧解析", async () => {
+  const { homeDir } = await makeDshHome({ frames: [[sessionHeader()]] });
+  const sessionDir = path.join(homeDir, "sessions", "--E-work-dshproj--", "session-test-0001");
+  const filePath = path.join(sessionDir, `session.v${DSH_SESSION_FORMAT_VERSION}.jsonl.zstd`);
+  const good = JSON.stringify(requestHeader());
+  const goodTail = JSON.stringify(assistantMessage({ seq: 3 }));
+  await writeFile(
+    filePath,
+    Buffer.concat([
+      zstdCompressSync(Buffer.from(`${JSON.stringify(sessionHeader())}\n{ 坏行\n`, "utf8")),
+      zstdCompressSync(Buffer.from(`"又是坏行\n${good}\n${goodTail}\n`, "utf8")),
+    ]),
+  );
+
+  const warnings = [];
+  const rows = await readDshSessionRows(filePath, { onWarning: (warning) => warnings.push(warning) });
+  assert.equal(rows.length, 3, "两个合法行必须照旧解析出来");
+  const malformed = warnings.filter((warning) => warning.startsWith("MALFORMED_JSON:"));
+  assert.equal(malformed.length, 1, "只新增一条坏行告警");
+  assert.equal(malformed[0].startsWith("MALFORMED_JSON:2 "), true, `计数必须是真实坏行数：${malformed[0]}`);
+});
+
+test("没有坏行时不新增任何告警（行为未变）", async () => {
+  const { homeDir } = await makeDshHome({ frames: [[sessionHeader()]] });
+  const sessionDir = path.join(homeDir, "sessions", "--E-work-dshproj--", "session-test-0001");
+  const filePath = path.join(sessionDir, `session.v${DSH_SESSION_FORMAT_VERSION}.jsonl.zstd`);
+  await writeFile(filePath, zstdCompressSync(Buffer.from(`${JSON.stringify(sessionHeader())}\n`, "utf8")));
+
+  const warnings = [];
+  const rows = await readDshSessionRows(filePath, { onWarning: (warning) => warnings.push(warning) });
+  assert.equal(rows.length, 1);
+  assert.deepEqual(warnings, [], "无坏行时 onWarning 一次都不应被调用");
+});
+
 test("格式版本不是 v4 时跳过并告警", async () => {
   const { filePath } = await makeDshHome({
     frames: [[sessionHeader({ version: 3 })], [requestHeader(), assistantMessage()]],

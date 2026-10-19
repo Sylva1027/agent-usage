@@ -59,6 +59,39 @@ test("pricing model resolution normalizes names and follows exact, alias, free, 
   assert.equal(resolvePricingModel("Unknown model", models).matchType, "missing");
 });
 
+test("cached model indexes stay bound to the catalog object that produced them", () => {
+  const catalogA = { "mimo-v2.6": {}, "mimo-v2.6-flash": {}, "gpt-6-sol": {} };
+  const catalogB = { "other-model": {} };
+  const raw = "mimo-v2.6-flash-202612";
+
+  const first = resolvePricingModel(raw, catalogA); // builds A's index; longest suffix wins
+  assert.deepEqual(first, { rawModel: raw, catalogKey: "mimo-v2.6-flash", matchType: "suffix" });
+  assert.deepEqual(resolvePricingModel(raw, catalogB), { rawModel: raw, catalogKey: null, matchType: "missing" });
+  // Interleaving again must reuse A's cached index rather than B's.
+  assert.deepEqual(resolvePricingModel(raw, catalogA), first);
+  assert.equal(resolvePricingModel("gpt-6-sol", catalogA).matchType, "exact");
+  assert.equal(resolvePricingModel("gpt-6-sol", catalogB).matchType, "missing");
+  // The same raw ID hits in one catalog object and misses in the other.
+  assert.equal(resolvePricingModel("other-model", catalogB).catalogKey, "other-model");
+  assert.equal(resolvePricingModel("other-model", catalogA).matchType, "missing");
+});
+
+test("a replaced catalog object is indexed immediately, including added key sets", () => {
+  const before = { "gpt-6-sol": {} };
+  const after = { "gpt-6-sol": {}, "gpt-7-preview": {} }; // new object, one added key
+  assert.equal(resolvePricingModel("gpt-7-preview", before).matchType, "missing");
+  assert.deepEqual(resolvePricingModel(" GPT-7-PREVIEW ", after), {
+    rawModel: "GPT-7-PREVIEW",
+    catalogKey: "gpt-7-preview",
+    matchType: "exact",
+  });
+  // Neither object borrows the other's index, so no stale cross-talk either way.
+  assert.equal(resolvePricingModel(" GPT-7-PREVIEW ", before).matchType, "missing");
+  assert.equal(resolvePricingModel("gpt-6-sol", after).matchType, "exact");
+  // A frozen catalog object is still cacheable and resolvable.
+  assert.equal(resolvePricingModel("gpt-6-sol", Object.freeze({ "gpt-6-sol": {} })).matchType, "exact");
+});
+
 test("usage coverage counts normalized model IDs once across harnesses", () => {
   const coverage = buildUsagePricingCoverage(
     {
@@ -76,4 +109,19 @@ test("usage coverage counts normalized model IDs once across harnesses", () => {
     missingUsedModels: [{ model: "Mystery", harnesses: ["Codex", "ZCode"] }],
   });
   assert.equal(buildUsagePricingCoverage(null, {}, false).ready, false);
+});
+
+test("auto-review policy overrides old catalog entries and counts as covered free usage", () => {
+  const models = { "codex-auto-review": {} };
+  assert.deepEqual(resolvePricingModel(" CODEX-AUTO-REVIEW ", models), {
+    rawModel: "CODEX-AUTO-REVIEW",
+    catalogKey: null,
+    matchType: "free",
+  });
+  assert.equal(resolvePricingModel("codex-auto-review", {}).matchType, "free");
+  assert.equal(resolvePricingModel("codex-auto-review-other", {}).matchType, "missing");
+  const coverage = buildUsagePricingCoverage({ Codex: ["codex-auto-review"] }, models);
+  assert.equal(coverage.matchedUsedModelCount, 1);
+  assert.equal(coverage.freeRuleUsedModelCount, 1);
+  assert.deepEqual(coverage.missingUsedModels, []);
 });

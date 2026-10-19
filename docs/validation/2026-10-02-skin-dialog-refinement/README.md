@@ -1,6 +1,6 @@
 # 皮肤视觉修改：0—R8 验证
 
-日期：2026-10-02。受测基底 HEAD：`0042e182bd0e62bc976393c6b664f6c4ad8c87c3` 加当前未提交的 P1／P2／P3 与计划工作区。用户按 [施工计划](../../plans/2026-10-02-skin-dialog-refinement-implementation-plan.md) 分阶段执行第 0 节—R8；各阶段完成后停下。本记录不表示 P4 已完成。唯一进度见 [TODOs](../../plans/2026-10-01-model-character-skin-todos.md)。
+日期：2026-10-02。受测基底 HEAD：`0042e182bd0e62bc976393c6b664f6c4ad8c87c3` 加当前未提交的 P1／P2／P3 与计划工作区。用户按 [施工计划](../../archive/2026-10-03/plans/2026-10-02-skin-dialog-refinement-implementation-plan.md) 分阶段执行第 0 节—R8；各阶段完成后停下。本记录不表示 P4 已完成。唯一进度见 [TODOs](../../archive/2026-10-03/plans/2026-10-01-model-character-skin-todos.md)。
 
 ## 第 0 节：当前基线
 

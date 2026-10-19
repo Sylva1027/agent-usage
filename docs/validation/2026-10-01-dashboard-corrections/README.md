@@ -1,6 +1,6 @@
 # 2026-10-01 看板九项修正验收
 
-受测版本：`28568ef` 加本批工作区修改，未创建提交。保留了实施前已有的文档重组和其他未提交内容。需求与拆分见 [Implementation Plan](../../plans/2026-10-01-dashboard-corrections-implementation-plan.md) 和 [TODOs](../../plans/2026-10-01-dashboard-corrections-todos.md)。
+受测版本：`28568ef` 加本批工作区修改，未创建提交。保留了实施前已有的文档重组和其他未提交内容。需求与拆分见 [Implementation Plan](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-implementation-plan.md) 和 [TODOs](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-todos.md)。
 
 ## 最终结果
 

@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "kind": "skin-palette-capture-checks",
+  "unitId": "timeline-range-warning",
+  "stateId": "timeline-range-warning",
+  "mode": "light",
+  "candidateId": "official-source",
+  "status": "captured",
+  "counts": {
+    "pass": 1,
+    "fail": 0,
+    "unmeasured": 0,
+    "notApplicable": 0
+  },
+  "diagnostics": {
+    "environmentBlocked": false,
+    "mode": "light",
+    "stateId": "timeline-range-warning",
+    "candidateId": "official-source",
+    "roles": 1,
+    "counts": {
+      "pass": 1,
+      "fail": 0,
+      "unmeasured": 0,
+      "notApplicable": 0
+    },
+    "restoration": {
+      "styleDifferences": [],
+      "rectDifferences": [],
+      "canvasDifferences": [],
+      "scrollDifferences": [],
+      "inlineRestoreFailures": [],
+      "statePixelDiff": {
+        "identical": true,
+        "differingPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "spotlightStability": {
+        "budgetMs": 500,
+        "before": {
+          "stable": true,
+          "reason": null,
+          "budgetMs": 500,
+          "waitedMs": 13,
+          "frameCount": 4,
+          "transitionsWaited": 0,
+          "initial": [
+            {
+              "id": null,
+              "tag": "BUTTON",
+              "className": "active",
+              "x": "43.61688232421875px",
+              "y": "17.5px",
+              "radius": "80px",
+              "mask": "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2287.234375%22%20height%3D%2235%22%20viewBox%3D%220%200%2087.234375%2035%22%3E%3Cdefs%3E%3C%2Fdefs%3E%3Cmask%20id%3D%22cut%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%2287.234375%22%20height%3D%2235%22%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%2F%3E%3C%2Fmask%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%20mask%3D%22url(%23cut)%22%2F%3E%3C%2Fsvg%3E\")",
+              "opacity": "1"
+            }
+          ],
+          "settled": [
+            {
+              "id": null,
+              "tag": "BUTTON",
+              "className": "active",
+              "x": "43.61688232421875px",
+              "y": "17.5px",
+              "radius": "80px",
+              "mask": "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2287.234375%22%20height%3D%2235%22%20viewBox%3D%220%200%2087.234375%2035%22%3E%3Cdefs%3E%3C%2Fdefs%3E%3Cmask%20id%3D%22cut%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%2287.234375%22%20height%3D%2235%22%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%2F%3E%3C%2Fmask%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%20mask%3D%22url(%23cut)%22%2F%3E%3C%2Fsvg%3E\")",
+              "opacity": "1"
+            }
+          ]
+        },
+        "after": {
+          "stable": true,
+          "reason": null,
+          "budgetMs": 500,
+          "waitedMs": 12,
+          "frameCount": 4,
+          "transitionsWaited": 0,
+          "initial": [
+            {
+              "id": null,
+              "tag": "BUTTON",
+              "className": "active",
+              "x": "43.61688232421875px",
+              "y": "17.5px",
+              "radius": "80px",
+              "mask": "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2287.234375%22%20height%3D%2235%22%20viewBox%3D%220%200%2087.234375%2035%22%3E%3Cdefs%3E%3C%2Fdefs%3E%3Cmask%20id%3D%22cut%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%2287.234375%22%20height%3D%2235%22%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%2F%3E%3C%2Fmask%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%20mask%3D%22url(%23cut)%22%2F%3E%3C%2Fsvg%3E\")",
+              "opacity": "1"
+            }
+          ],
+          "settled": [
+            {
+              "id": null,
+              "tag": "BUTTON",
+              "className": "active",
+              "x": "43.61688232421875px",
+              "y": "17.5px",
+              "radius": "80px",
+              "mask": "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2287.234375%22%20height%3D%2235%22%20viewBox%3D%220%200%2087.234375%2035%22%3E%3Cdefs%3E%3C%2Fdefs%3E%3Cmask%20id%3D%22cut%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%2287.234375%22%20height%3D%2235%22%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%2F%3E%3C%2Fmask%3E%3Crect%20width%3D%2287.234375%22%20height%3D%2235%22%20fill%3D%22white%22%20mask%3D%22url(%23cut)%22%2F%3E%3C%2Fsvg%3E\")",
+              "opacity": "1"
+            }
+          ]
+        },
+        "stable": true
+      }
+    },
+    "dpr": 1,
+    "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "scrollX": 0,
+      "scrollY": 0,
+      "dpr": 1
+    },
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "notes": [
+      "截图约定：视口坐标 + 视口内 clip（sticky 元素不能用 fullPage 分带截取）、scale=css（1 图像像素 = 1 CSS 像素）、dpr=1、初始 scroll=(0, 0)"
+    ]
+  },
+  "records": [
+    {
+      "candidateId": "official-source",
+      "mode": "light",
+      "roleId": "warning.timeline-range",
+      "stateId": "timeline-range-warning",
+      "result": "pass",
+      "ratio": 7.702667141633311,
+      "threshold": 4.5,
+      "method": "browser-text-pixels",
+      "evidence": "{\"kind\":\"browser-text-pixels\",\"selector\":\".timeline-range-warning\",\"elementSelector\":\".timeline-range-warning\",\"pseudo\":null,\"nodes\":[{\"index\":0,\"identity\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"hasValue\":false,\"hasPlaceholder\":false,\"style\":{\"opacity\":\"1\",\"backgroundColor\":\"rgba(0, 0, 0, 0)\",\"backgroundImage\":\"none\"},\"pseudo\":null,\"geometry\":{\"rect\":{\"x\":263,\"y\":934.21875,\"width\":907.328125,\"height\":24},\"client\":{\"left\":0,\"top\":0,\"width\":907,\"height\":24},\"textRects\":[{\"x\":263,\"y\":934.21875,\"width\":479.140625,\"height\":24}]},\"decorationIsolation\":null,\"placeholder\":false,\"colorValue\":\"rgb(116, 39, 13)\",\"parsed\":{\"rgb\":[0.4549019607843137,0.15294117647058825,0.050980392156862744],\"alpha\":1,\"readBack\":\"#74270d\"},\"fontSize\":\"16px\",\"fontWeight\":\"400\",\"textRects\":1,\"bands\":[{\"scroll\":{\"x\":0,\"y\":406},\"clip\":{\"x\":263,\"y\":528.21875,\"width\":479.140625,\"height\":24},\"scanScale\":{\"x\":0.9997065057883581,\"y\":1},\"capture\":0,\"rects\":1,\"sampleRects\":[{\"x\":263,\"y\":528.21875,\"width\":479.140625,\"height\":24}],\"occlusion\":{\"identityValid\":true,\"scroll\":{\"x\":0,\"y\":406},\"rects\":[{\"rectIndex\":0,\"points\":[{\"kind\":\"center\",\"x\":502.5703125,\"y\":540.21875,\"top\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"withinHost\":true},{\"kind\":\"topLeft\",\"x\":265,\"y\":530.21875,\"top\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"withinHost\":true},{\"kind\":\"topRight\",\"x\":740.140625,\"y\":530.21875,\"top\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"withinHost\":true},{\"kind\":\"bottomLeft\",\"x\":265,\"y\":550.21875,\"top\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"withinHost\":true},{\"kind\":\"bottomRight\",\"x\":740.140625,\"y\":550.21875,\"top\":{\"identityId\":1,\"tag\":\"p\",\"id\":\"timelineRangeWarning\",\"className\":\"timeline-range-warning\",\"hostType\":null,\"inputType\":null},\"withinHost\":true}]}]},\"worst\":{\"ratio\":7.702667141633311,\"x\":741.1403314196242,\"y\":546.21875,\"background\":[213,223,245,255]}}]}],\"notApplicableNodes\":[],\"unmeasuredNodes\":[],\"notApplicableCount\":0,\"notApplicableReasons\":[],\"notRenderedNodes\":[],\"measuredCount\":1,\"unmeasuredCount\":0,\"unmeasuredReasons\":[],\"notRenderedCount\":0,\"notRenderedReasons\":[],\"worst\":{\"node\":0,\"ratio\":7.702667141633311,\"position\":{\"x\":741.1403314196242,\"y\":546.21875},\"background\":[213,223,245,255],\"foreground\":{\"rgb\":[0.4549019607843137,0.15294117647058825,0.050980392156862744],\"alpha\":1}}}",
+      "reason": ""
+    }
+  ],
+  "captureIndex": [
+    {
+      "index": 0,
+      "roleId": "warning.timeline-range",
+      "kind": "background",
+      "file": "captures/000-warning.timeline-range.png"
+    }
+  ]
+}

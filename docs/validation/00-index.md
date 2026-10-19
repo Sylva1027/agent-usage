@@ -1,6 +1,36 @@
 # 验证资料索引
 
-更新：2026-10-03。现行合同见专题说明，任务状态见 [02](../02-tasks.md)。本页按日期组织证据，不用审查意见或计划勾选替代实际验收。
+更新：2026-10-14。现行合同见专题说明，任务状态见 [02](../02-tasks.md)。本页按日期组织证据，不用审查意见或计划勾选替代实际验收。
+
+## 2026-10-12：GPT-6.1 Sol Codex / Work 计费
+
+[实施验收](2026-10-12-codex-work-billing/README.md)：可靠来源类型、500K 能力说明、全长度短档和 Fast 计费；同一历史快照逐事件金额、费用纪录、Token 与性能对比，保留测试及环境限制。无需索引迁移或历史重解析。
+
+[皮肤配色 M5.2.C-D8g 实测交接](2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8g-badge-live.md)：源码与 fixture 预检通过；浏览器在日期动作前拒绝旧 ready 选择器，没有测量浅/深色。主管接受其阻断执行与清理记录，不代表颜色结论。
+
+[皮肤配色 M5.2.C-D8h ready 修复](2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8h-ready-fix.md)：修复嵌套 `:has()` 并将 roles/policy 升至 9；Edge 原生编译 30 个 ready selector，状态回归、47+5+1 项专项及 Biome 通过。保持 `NEEDS_REVIEW`；真实徽标浅/深色测量尚未运行。
+
+[皮肤配色 M5.2.C-D8u28-R3 几何夹具复核](2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8u28-R3-geometry-fixtures.md)：原生几何前提门禁在唯一 Edge 执行中发现 G5/G7/G8/G10/G11 夹具关系不成立，生产 probe、守卫与 R1 均未运行；清理和源码冻结通过，保持 `NEEDS_REVIEW`。
+
+## 2026-10-09：刷新性能回归诊断
+
+[诊断与方案目录](2026-10-09-refresh-performance/refresh-performance-diagnosis.md)：在活动服务（`127.0.0.1:3765`）与源码副本 A/B 上复测，独立复现[既有诊断](../plans/2026-10-08-dashboard-perf-regression-diagnosis.md)的三条根因并纠正其索引迁移要求（无需抬 schema 版本）；新增 `isPeakPricingTime` 每事件构造 `Intl.DateTimeFormat`（占读路径 36.8%）、`modelIndex` 每事件重建价目 Map、`recordsForRange` 全历史计价（占“今日”查询 78%，而“今日”本身仅 62 ms）与 `loadUsageStore` 无节流四项，并直接测得同步期间静态文件被阻塞 6,035 ms。四个机械修复的 A/B：`preset=today` 22.0→11.3 s、`skipCheck=1` 2.0→1.0 s。[客户端实测](2026-10-09-refresh-performance/client-audit.md)用 headless Edge + CDP 确认主线程仅 25–31 ms/刷新（约 99% 在服务端），并实测出周期对比表占 809 元素中的 798 个且与范围无关、`translatePage` 占 JS 46%、性能视图 337 次 `Intl` 构造加 ResizeObserver 二次整渲染。
+
+[对实施计划的复核](2026-10-09-refresh-performance/plan-review-2026-10-09.md)：逐点核对源码后确认[实施计划](../plans/2026-10-09-dashboard-refresh-performance-plan.md)在 9 处正确而本目录原诊断有误（含 `i18n.js:488-489` 实为 `WeakMap`、`server.js:504` 使 `skipCheck` 在同步期间等待 `syncPromise`、按范围裁剪全历史纪录会算错），并指出计划 10 处缺口。新增两个一致快照探针（`VACUUM INTO`，135–170 ms）：内容探针 827–828 次/轮（397–455 ms，占基线 sync 3%）；**P1 + 解码边车复用 + rollout 投影复用后暖 sync 仍 2.49–2.51 s**（`replaceFile` 9 次/轮），据此指出 ≤1 s 目标缺少中间刻度且内容探针是规模限制项。诊断文首已加更正记录，`ab/` 的取样方式已改为 `VACUUM INTO`。
+
+只读诊断与复核，未改动产品代码。
+
+## 2026-10-08：模型输出吞吐（TPS）最终审核包
+
+[最终审核包](2026-10-04-perf-metrics/20261004T035100/final-audit.md)与[M8 模块报告](2026-10-04-perf-metrics/20261004T035100/handoffs/M8.md)：M0–M8与TPS G4已通过[主审最终独立复核](2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)。分别绑定全仓1320/0/2、capture专项、345文件真实Codex API→DOM，以及当前CLI增量和TPS模块604/604定向、固定四源整链路；不拼成新全仓。来源坏线程隔离、degraded、可选SQLite未启用及历史跳过边界保留。
+
+## 2026-10-03：文档融合与归档
+
+[整理记录](2026-10-03-documentation-cleanup/README.md)：四份分享稿融合为唯一现行计划，15 份原稿归档，旧导出说明并入开发文档；保留原始验收资料并检查引用和归档正文。
+
+## 2026-10-03：旧 HTML 导出移除
+
+[清理验收](2026-10-03-export-removal/README.md)：347 项完整测试和 28 项隔离桌面 UI 检查通过。暂停自动刷新的服务端冻结快照、导入、计价与皮肤保留，旧 HTML 导出和离线分支删除；新分享图片尚未实现。
 
 ## 2026-10-03：v0.6.0 发布验收
 

@@ -9,12 +9,11 @@
     "cud": "./src/cli.js"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.checkjs.json",
     "lint": "biome check --formatter-enabled=false .",
     "format:check": "biome format .",
     "format": "biome format --write .",
-    "export": "node src/static-export.js",
     "skins:prepare": "node scripts/prepare-skin-assets.mjs prepare",
     "skins:check": "node scripts/prepare-skin-assets.mjs check",
     "skins:palette": "node scripts/check-skin-palettes.mjs",

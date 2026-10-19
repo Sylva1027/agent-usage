@@ -2,7 +2,7 @@
 
 日期：2026-10-02（Asia/Shanghai）。用途：用户要求暂停施工，先审阅已完成范围、已偏离契约之处与遗留缺口。
 
-基线：HEAD `0042e18`，分支 `main`。施工契约见 [Implementation Plan](../../plans/2026-10-02-model-character-skin-implementation-plan.md)，逐项状态唯一维护在 [TODOs](../../plans/2026-10-01-model-character-skin-todos.md)，P0 证据见 [P0 基线](2026-10-02-model-character-skins/README.md)。
+基线：HEAD `0042e18`，分支 `main`。施工契约见 [Implementation Plan](../../archive/2026-10-03/plans/2026-10-02-model-character-skin-implementation-plan.md)，逐项状态唯一维护在 [TODOs](../../archive/2026-10-03/plans/2026-10-01-model-character-skin-todos.md)，P0 证据见 [P0 基线](README.md)。
 
 ---
 

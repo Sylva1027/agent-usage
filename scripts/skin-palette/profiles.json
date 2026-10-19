@@ -1,0 +1,162 @@
+{
+  "chatgpt": {
+    "skinId": "chatgpt",
+    "version": 1,
+    "styleTitle": "冷蓝雪青瓷",
+    "rationale": "浅色与深色共用 #607EC7 冷蓝雪青身份锚，页面明度变化不更换身份。按 M5.1 首版以 260°、surfaceC 0.025 的冷调表面和 accentC 0.150 起搜。与 GLM 的近中性低彩表面、Muse 的暖瓷底，以及 DeepSeek 更灰、更低彩度的薰衣草蓝区分。本数值是搜索起点，不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#607EC7",
+    "identitySource": "public/skin-palettes.js:98 的“源四色（深→浅）”注释，第 2 项 #607ec7；该项目源色组是身份锚，不是官方品牌标准。装饰图路径由 public/skin-bootstrap.js:5 注册：ChatGPT-lineart.webp 与 ChatGPT-dark-lineart.webp。",
+    "surfaceH": 260,
+    "surfaceC": 0.025,
+    "pageL": {
+      "light": 0.94,
+      "dark": 0.22
+    },
+    "accentC": 0.15,
+    "lockedFields": []
+  },
+  "claude": {
+    "skinId": "claude",
+    "version": 1,
+    "styleTitle": "暖赤陶瓷",
+    "rationale": "浅色与深色共用 #D26E46 赤陶身份锚；surfaceH=55、surfaceC=0.030 让大面积暖土表面保持低彩度，pageL=0.940/0.230 建立明亮浅底与深色模式，accentC=0.150 是围绕身份色继续求解的起点。相较 Mimo 的 #FF8D3F 明快橙锚（H=40），Claude 更偏赤陶与红棕；相较 Grok 的 #F7E25F 金黄锚（H=80），不依赖黄色区分。这些数值是搜索起点，不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#D26E46",
+    "identitySource": "public/skin-palettes.js:130 的“源四色（深→浅）”注释中第 3 项为 #d26e46；public/skins.js:264 以 claude 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组是身份锚，不代表官方品牌标准。",
+    "surfaceH": 55,
+    "surfaceC": 0.03,
+    "pageL": {
+      "light": 0.94,
+      "dark": 0.23
+    },
+    "accentC": 0.15,
+    "lockedFields": []
+  },
+  "glm": {
+    "skinId": "glm",
+    "version": 1,
+    "styleTitle": "中性蓝白瓷",
+    "rationale": "浅色与深色共用 #547FE4 蓝色身份锚；surfaceH=270、surfaceC=0.006 将大面积表面保持近中性，pageL=0.930/0.200，accentC=0.190 作为保留清晰蓝色强调的搜索起点。与 Muse 的暖白釉底（surfaceH=90、surfaceC=0.025）相比，GLM 不给底色明显暖染；与 ChatGPT 的冷蓝雪青底（surfaceH=260、surfaceC=0.025、身份锚 #607EC7）相比，GLM 以近中性底和自身的 #547FE4 蓝色锚分开。这些参数是首版搜索起点，不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#547FE4",
+    "identitySource": "public/skin-palettes.js:162 的“源四色（深→浅）”注释中第 3 项为 #547FE4；public/skins.js:265 以 glm 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组只作身份锚，不代表官方品牌标准。",
+    "surfaceH": 270,
+    "surfaceC": 0.006,
+    "pageL": {
+      "light": 0.93,
+      "dark": 0.2
+    },
+    "accentC": 0.19,
+    "lockedFields": []
+  },
+  "gemini": {
+    "skinId": "gemini",
+    "version": 1,
+    "styleTitle": "柔粉紫瓷",
+    "rationale": "浅色与深色共用 #DC97F8 粉紫身份锚；surfaceH=340、surfaceC=0.025 配合 pageL=0.960/0.240，accentC=0.160 是偏柔和粉紫表面的首版搜索起点。相较 Qwen 的 #877AD6 紫灰锚（surfaceH=310、pageL light=0.950），Gemini 定位更偏粉、底色更明亮；相较 DeepSeek 灰蓝 #7279AC 与 ChatGPT 冷蓝 #607EC7，Gemini 保留粉紫方向。实际渲染后是否足够区分仍需候选页面比较；这些数值不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#DC97F8",
+    "identitySource": "public/skin-palettes.js:194 的“源四色（深→浅）”注释中第 3 项为 #DC97F8；public/skins.js:266 以 gemini 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组只作身份锚，不代表官方品牌标准。",
+    "surfaceH": 340,
+    "surfaceC": 0.025,
+    "pageL": {
+      "light": 0.96,
+      "dark": 0.24
+    },
+    "accentC": 0.16,
+    "lockedFields": []
+  },
+  "deepseek": {
+    "skinId": "deepseek",
+    "version": 1,
+    "styleTitle": "灰蓝薰衣草瓷",
+    "rationale": "浅色与深色共用 #7279AC 灰蓝身份锚；surfaceH=295、surfaceC=0.025 配合 pageL=0.940/0.230，accentC=0.100 用作沉稳、低彩度强调的搜索起点。相比 ChatGPT 的 #607EC7 冷蓝锚（surfaceH=260），DeepSeek 更偏柔和灰蓝/薰衣草；相比 Qwen 的 #877AD6 紫锚（surfaceH=310），它保留蓝灰方向，不把整套推向明显紫色。这些参数是首版搜索起点，不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#7279AC",
+    "identitySource": "public/skin-palettes.js:226 的“源四色（深→浅）”注释中第 2 项为 #7279ac；public/skins.js:267 以 deepseek 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组只作身份锚，不代表官方品牌标准。",
+    "surfaceH": 295,
+    "surfaceC": 0.025,
+    "pageL": {
+      "light": 0.94,
+      "dark": 0.23
+    },
+    "accentC": 0.1,
+    "lockedFields": []
+  },
+  "kimi": {
+    "skinId": "kimi",
+    "version": 2,
+    "styleTitle": "雾玉绿炭瓷",
+    "rationale": "浅色使用低彩度雾玉绿浅底，深色使用墨绿炭黑；共用自主设计锚 #287C64（非官方品牌色），surfaceH=155、surfaceC=0.018，pageL=0.960/0.200，accentC=0.115 提供克制的玉绿强调。方向用于避开 GLM 蓝灰并拉开 Kimi 辨识度；文字对比度仍交给现有求解器，本数值不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#287C64",
+    "identitySource": "主管依据用户要求与GLM拉开差异，于2026-10-19选用的自主设计锚#287C64，非官方品牌标准",
+    "surfaceH": 155,
+    "surfaceC": 0.018,
+    "pageL": {
+      "light": 0.96,
+      "dark": 0.2
+    },
+    "accentC": 0.115,
+    "lockedFields": []
+  },
+  "qwen": {
+    "skinId": "qwen",
+    "version": 2,
+    "styleTitle": "冰青石油青瓷",
+    "rationale": "第二版明确退出粉紫灰家族：浅色以低彩度冰青/青瓷底承托整套页面，深色转为深石油青，surfaceH=205、surfaceC=0.024 同时作用于大面积表面，而不是只换按钮；pageL=0.950/0.220、accentC=0.130。相较 Kimi 玉绿的 h155，本方向落在更冷的青蓝区间；相较当前 DeepSeek 已选冷蓝，以及当前 ChatGPT 已换入的紫灰，本方向以青瓷/石油青表面和 #087F8C 身份锚拉开。渲染后的区分度仍待候选比较；这些参数不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#087F8C",
+    "identitySource": "主管依据用户“与已换色 ChatGPT 拉开差异”的要求，于2026-10-19选用自主设计锚#087F8C；非用户指定 HEX、非官方品牌标准。",
+    "surfaceH": 205,
+    "surfaceC": 0.024,
+    "pageL": {
+      "light": 0.95,
+      "dark": 0.22
+    },
+    "accentC": 0.13,
+    "lockedFields": []
+  },
+  "grok": {
+    "skinId": "grok",
+    "version": 1,
+    "styleTitle": "暖灰金黄瓷",
+    "rationale": "浅色与深色共用 #F7E25F 暖金黄身份锚，材质以 H=80°、surfaceC 0.020 的暖灰金黄瓷呈现。M5.1 的浅色目标偏可读的金/赭，深色保留亮金，accentC 0.140 只作为搜索起点。与 Claude 的赤陶（H=55°、surfaceC 0.030）及 Mimo 的橙米（H=40°、surfaceC 0.030）分开。本数值不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#F7E25F",
+    "identitySource": "public/skin-palettes.js:322 的“源四色（深→浅）”注释，第 3 项 #f7e25f；该项目源色组是身份锚，不是官方品牌标准。装饰图路径由 public/skin-bootstrap.js:5 注册：Grok-lineart.webp 与 Grok-dark-lineart.webp。",
+    "surfaceH": 80,
+    "surfaceC": 0.02,
+    "pageL": {
+      "light": 0.94,
+      "dark": 0.21
+    },
+    "accentC": 0.14,
+    "lockedFields": []
+  },
+  "muse": {
+    "skinId": "muse",
+    "version": 2,
+    "styleTitle": "冰蓝白深海蓝瓷",
+    "rationale": "用户认为 Muse 与 Grok 的浅深底色过于接近，且原 beige 缺少项目关联。第二版以冰蓝白/深海蓝重做同一 #4687EE 项目源锚：surfaceH=235、surfaceC=0.030，pageL=0.970/0.160，accentC=0.170。相较 DeepSeek 的灰蓝紫（H=295、pageL=0.940/0.230）与 GLM 的近中性蓝白（H=270、surfaceC=0.006），本方向更冷且浅深分离更大；相较 Qwen 的冰青/石油青（H=205、pageL=0.950/0.220），保留更偏蓝的表面。以上为候选搜索起点，不是最终 HEX 或视觉通过结论。",
+    "identityHex": "#4687EE",
+    "identitySource": "public/skin-palettes.js:354 的“源四色（深→浅）”注释中第 3 项为 #4687EE；public/skins.js:271 以 muse 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组只作身份锚，不代表官方品牌标准。2026-10-19 用户反馈后，主管批准以冰蓝白/深海蓝作为本轮设计输入；identityHex 仍保留项目源锚。",
+    "surfaceH": 235,
+    "surfaceC": 0.03,
+    "pageL": {
+      "light": 0.97,
+      "dark": 0.16
+    },
+    "accentC": 0.17,
+    "lockedFields": []
+  },
+  "mimo": {
+    "skinId": "mimo",
+    "version": 2,
+    "styleTitle": "米白石墨橙瓷",
+    "rationale": "用户认为当前方案与 Claude 过于近似。本版以低彩中性米白/石墨底承托橙色强调，消掉大面积桃粉棕，而不是把所有文字染亮橙；surfaceH=40、surfaceC=0.006、pageL=0.960/0.200，accentC=0.210，用 #FF6900 的小米橙方向作为本项目设计锚。相较 Claude 的赤陶暖桃底，本方案应主要依靠近中性表面与高彩度橙强调拉开，而不复刻棕色表面。",
+    "identityHex": "#FF6900",
+    "identitySource": "public/skin-palettes.js:386 的“源四色（深→浅）”注释中第 3 项为 #FF8D3F；public/skins.js:272 以 mimo 注册该装饰图组，public/skin-bootstrap.js:5 派生其 front/side 路径。项目现有源色组是身份锚，不代表官方品牌标准。2026-10-18 用户要求小米方向，主管批准新锚 #FF6900 作为本项目设计输入；官方归属参考 https://mimo.xiaomi.com/（Xiaomi MiMo Team），不标作官方 HEX 规范。",
+    "surfaceH": 40,
+    "surfaceC": 0.006,
+    "pageL": {
+      "light": 0.96,
+      "dark": 0.2
+    },
+    "accentC": 0.21,
+    "lockedFields": []
+  }
+}

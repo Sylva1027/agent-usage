@@ -1,6 +1,6 @@
 # DSH（DeepSeek Harness）数据源
 
-更新：2026-10-01。本文维护 DSH 的现行存储、字段与边界；共同规则见[数据来源](../10-data-sources.md)，原实施过程见[历史计划](../archive/2026-10-01/dsh-adaptation-plan.md)。
+更新：2026-10-08。本文维护 DSH 的现行存储、字段与边界；共同规则见[数据来源](../10-data-sources.md)，原实施过程见[历史计划](../archive/2026-10-01/dsh-adaptation-plan.md)。
 
 ## 存储布局
 
@@ -95,6 +95,14 @@ inconsistent、计价退化为「最低费率估算」、缓存命中率显示�
 
 只按 `formatVersion === 4` 解析。遇到其它版本**显式跳过并告警**，不按 v4 硬解 ——
 宁可少统计，也不要静默算错。
+
+## 输出吞吐（TPS）
+
+性能 reader 按稳定的 session/turn/step 身份构造 step 候选，输出只取 `assistant/message` 的 `data.usage.outputTokens`；同 step 多条消息若计数或请求上下文冲突，保留冲突诊断，不自行求和。`step/start` 与对应 assistant message 提供时窗两端，只有两端都是可比较的 epoch 毫秒才计算 `message.time - start.time`。终态必须有文件顺序严格晚于该 step 最后一条 message 的 `step/end`；缺少终态或时长仍保留诊断候选，缺稳定身份只报 warning。一个 turn 有多个 step 时分别计样本，不把整轮当单一请求。明确非 v4 格式拒绝，不将未知字段猜成已验证数据。
+
+口径为 `window=step`、`timingKind=request_e2e`、`tokenScope=reported_output_unspecified`；这里的“请求端到端”指日志提供的 step 时窗，不保证覆盖 UI 或网络之外的时间。模型/provider 取对应请求上下文；冲突或含糊上下文标记诊断，不靠最近配置猜测。`delegationDepth > 0` 是唯一明确子代理类别证据；否则代理类别为 `unknown`。长时窗只作为提示，不单独剔除；输出/时长必须满足公共统计内核的正值规则。
+
+坏帧/坏 JSON 可产生读取诊断，但增量发布不会用文件的可读部分替换完整旧结果：事务回滚保留旧事件、候选与发布指纹，标记 dirty/degraded，修复后重采。实现与回归见 [TPS reader](../../src/perf-sources/dsh.js)、[性能测试](../../test/perf-dsh.test.js)和[索引测试](../../test/perf-store.test.js)。
 
 ## 增量索引
 

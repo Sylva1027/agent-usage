@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createUsageServer } from "./server.js";
-import { buildUsageReport, summarizeUsage } from "./usage-core.js";
+import { buildUsageReport, summarizeUsage, toPublicUsageReport } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
 import { loadPricingFile } from "./pricing-store.js";
 
@@ -266,7 +266,10 @@ async function printSummary(command, args) {
   if (command === "json") {
     const report = await buildUsageReport(reportOptions(args));
     const summary = summarizeUsage(report, { preset: "all", bucket: "month" });
-    console.log(JSON.stringify({ report, summary }, null, 2));
+    // M4.3（卡片明文）：公开 report 必须**投影原有公开字段** ⇒ 内部载体的
+    // `perfSamples`（含 `sampleKey`/`sourcePath`/会话路径）与 `perfMeta` 不得被序列化出去。
+    // `summary.perf` 是刻意的公开契约，照常输出。
+    console.log(JSON.stringify({ report: toPublicUsageReport(report), summary }, null, 2));
     return;
   }
 
@@ -276,6 +279,11 @@ async function printSummary(command, args) {
     await store.sync();
     const summary = store.summarize({ preset: "all", bucket: "month" });
     if (hasFlag(args, "--json")) {
+      // M4.3 返工1（复核 §1）：这里**只**输出索引摘要 —— `{metadata, summary}`。
+      // 曾试过额外导出逐来源的完整报告（`reports[]`/`results[]`）：实测输出从 20683 字节膨胀到
+      // 684127 字节（≈33 倍），且要把每个 home 的全部历史事件同时留在内存里，直接违背上面那行
+      // 注释的承诺。上游方案要求的"两条生产路径同 fixture 统计一致"由各自的 `summary.perf` 承担，
+      // 不需要索引 CLI 顺带导出另一条路径。
       console.log(JSON.stringify({ metadata: store.metadata(), summary }, null, 2));
       return;
     }

@@ -1,62 +1,53 @@
 # Agent Usage 文档入口
 
-更新：2026-10-03。按阅读目的选择入口；功能状态与专项进度从[任务清单](02-tasks.md)进入，本页只负责导航。
+更新：2026-10-14（新增 D8u28-R4 几何裁切诊断记录）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
-## 日常入口
+## 使用与接手
 
-- [使用与启动](../README.md)：快速开始、看板操作、数据来源和隐私摘要；另有 [English](../README.en.md)。
-- [路线图与项目边界](01-roadmap.md)：已交付的能力、现有限制和后续工作的判断依据。
-- [任务清单](02-tasks.md)：当前工作、已交付批次以及仍需核实的边界。
-- [开发与接手](03-development.md)：代码位置、开发命令、验证方法和文档维护规则。
+- [使用与启动](../README.md)与 [English](../README.en.md)：快速开始、看板功能、来源与隐私。
+- [路线图与项目边界](01-roadmap.md)：已交付能力与后续工作的范围。
+- [任务清单](02-tasks.md)：当前规划、尚未验证的边界与维护候选。
+- [开发与接手](03-development.md)：代码入口、检查、PC 界面基准与历史验证规则。
 
-## 当前专项计划
+## 当前计划
 
-- [皮肤系统视觉修改 Implementation Plan](plans/2026-10-02-skin-dialog-refinement-implementation-plan.md)：P1／P2／P3 之后的最新施工入口，八项反馈的代码位置、图标状态、十卡五列两行／共享凹槽、预览构图、控件及按钮规范和新验收契约。
-- [角色皮肤 Implementation Plan](plans/2026-10-02-model-character-skin-implementation-plan.md)：交接实施入口，定义浅深四资源、配置与首屏、同款按钮、独立比较弹窗、在线／离线内联、P0—P4 步骤和实际验收。
-- [模型娘化角色皮肤方案](plans/2026-10-01-model-character-skin-plan.md)：保留用户要求背景，默认透明度 50%、功能布局固定、浅深原图与配色同屏比较；具体颜色由用户逐套指定。
-- [角色皮肤 TODOs](plans/2026-10-01-model-character-skin-todos.md)：与 Implementation Plan P0—P4 对应的唯一进度清单，历史探索与待实施功能分开维护。
-- [主界面框体 SpotlightCard 专项](plans/2026-10-02-spotlight-metric-cards-plan.md)：追加 S1 已实施、专项验证通过；全部实际凸起框体聚光、透明／重叠／滚动凹槽隔离、主题色跟随、输入降级与菜单保护。当前 A／22% 试用，最终强度目检与 P4 联合回归保留；见[独立证据](validation/2026-10-02-frame-spotlight/README.md)。
-- [页面两侧立绘随留白居中方案](plans/2026-10-02-skin-face-centering-proposal.md)：已实施、专项验证通过；实际看板边界、正／侧面部锚点、仅横向平移及窄窗口面部保护／允许遮挡。
-- [Claude 价格与现有来源计费接入计划](plans/2026-10-01-claude-pricing-plan.md)：已确认范围、Anthropic 价目、来源字段与验收规格。
-- [Claude 接入 TODOs](plans/2026-10-01-claude-pricing-todos.md)：本批实时实施进度与实际验证结果。
-- [2026-10-01 看板修正 Implementation Plan](plans/2026-10-01-dashboard-corrections-implementation-plan.md)：本轮九项要求的实施规格、依赖与验收条件。
-- [看板修正 TODOs](plans/2026-10-01-dashboard-corrections-todos.md)：本批详细进度，按每项实际完成和验证实时更新。
+GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10-12 实施，规则见[计价说明](11-pricing.md)，前后影响与验证限制见[验收记录](validation/2026-10-12-codex-work-billing/README.md)，原[实施计划](archive/2026-10-12/gpt-6.1-sol-codex-work-billing-plan.md)保留归档。
 
-## 现行专题说明
+[看板刷新性能修复方案与验收规格](plans/2026-10-09-dashboard-refresh-performance-plan.md)保留两轮复核的性能预算、早期容量验证、可恢复还原点及告警/历史/冻结约束。其 [Implementation Plan](plans/2026-10-09-dashboard-refresh-performance-implementation-plan.md)拆为 28 个基础单元、5 个条件单元，按 1 名主审与最多 3 名 worker 并发实施；共享文件单写者，每单元交审通过再释放依赖，不达标及时返工，容量/执行器只在实测触发时启用。状态：**已实施并逐卡验收**（2026-10-10 收口；`G_BASE`/`G_CAP`/`G_RESP` 三门口禁见账本，墙钟延迟 `:59`/`:77` 未达、`:60` 部分未达）。唯一施工进度表在 Implementation Plan 中；最终报告见[看板刷新性能修复最终报告](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/FINAL-REPORT.md)。
 
-- [10 数据来源与统计口径](10-data-sources.md)：目录发现、导入、增量索引、限额范围和数据边界。
-  - [Codex](data-sources/codex.md)：会话 JSONL、累计计数与请求增量、限额观察值。
-  - [ZCode](data-sources/zcode.md)：SQLite 用量记录、子代理渠道与 WAL 指纹。
-  - [DSH](data-sources/dsh.md)：多帧 zstd、已核实的输入/缓存重构、版本守护与索引升级。
-  - [OpenCode](data-sources/opencode.md)：消息级用量、并列计数折叠、能力探测和版本守护。
-- [11 计价与自动更新](11-pricing.md)：模型解析、免费规则、缺价估算、来源更新、手动覆盖和汇率。
-- [12 看板行为](12-dashboard.md)：时间范围、排序、刷新、语言、主题和交互约定。
-- [13 静态导出约定](13-static-export.md)：模块内联、自包含 HTML、冻结快照与离线检查。
-- [14 项目日志接入](14-project-log.md)：其他项目生成可导入的 JSONL、字段规范与最小校验。
+[模型输出吞吐指标（TPS）计划](plans/2026-10-03-model-latency-throughput-plan.md)是已实现功能的规格入口。按来源/代理/模型展示历史输出吞吐及样本覆盖率，ZCode、DSH、OpenCode 使用请求端到端时长，Codex 使用明确标注的轮级 item 时窗估算；不交付 TTFT。M0–M8及TPS G4已于2026-10-08完成[最终独立审核](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)，见[M8 总览](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.md)与[最终审核包](validation/2026-10-04-perf-metrics/20261004T035100/final-audit.md)。旧调查和改判过程见[历史归档](archive/2026-10-04/model-tps-investigation-history.md)。
 
-这些文档描述现有实现。价格、上游数据结构、真实日志数量和测试总数会变化，具体代码、受测版本和日期记录仍需分别核对。
+其[Implementation Plan](plans/2026-10-04-model-tps-implementation-plan.md)共9个模块、37张小卡，已实施并在原路径标完成；保留施工接口、证据和历史链接，不将正文的原施工顺序恢复成新任务。
 
-## 验证资料与历史
+用户于2026-10-08否决原TPS界面；新任务为[独立模型吞吐区域重构](plans/2026-10-08-tps-ui-restructure.md)，目前完整交互原型已完成，具体布局待用户审阅。旧 G4 是原受测版本的技术证据，不代替新设计接受。
 
-- [2026-10-03 v0.6.0 发布验收](validation/2026-10-03-release/README.md)：五款皮肤的最新交付范围、完整检查、在线／禁网离线预览及发布流程。
-- [验证索引](validation/00-index.md)：区分本地自动检查、合成数据浏览器验收、历史真库对照与尚未验证的路径。
-- [2026-10-01 Claude 验收](validation/2026-10-01-claude-pricing/README.md)：价格、缓存场景、DSH 修正、三路重算与页面验证。
-- [2026-10-01 看板九项修正验收](validation/2026-10-01-dashboard-corrections/README.md)：本批检查、结果、截图与重跑入口。
-- [2026-10-01 关闭状态验收](validation/2026-10-01-refresh-off/README.md)：关闭及冻结范围切换保持高度。
-- [2026-10-01 v0.5.0 发布](validation/2026-10-01-release/README.md)：提交/标签/正式Release与远端CI证据。
-- [2026-10-01 加载圈与下拉框验收](validation/2026-10-01-refresh-dropdowns/README.md)：状态高度稳定、双菜单对齐及材质统一。
-- [2026-10-01 标题最终居中验收](validation/2026-10-01-title-centering/README.md)：真实截图字面居中、手机和字体回退验证。
-- [2026-10-01 模型列表与顶部框体反馈验收](validation/2026-10-01-dashboard-feedback/README.md)：旧契约兼容、真实模型恢复与连续框体截图。
-- [2026-09-30 UI 与计价验收](validation/2026-09-30-ui-pricing/README.md)：原始脚本、结果、日志和截图。
-- [2026-10-01 合并检查与文档整理](validation/2026-10-01.md)：提交基线、整理范围和本轮检查。
-- [历史归档索引](archive/00-index.md)：已完成或被取代的计划、调查、评审和交接记录。
+[分享图片融合计划](plans/2026-10-03-mobile-share-card-consolidated-plan.md)是分享功能的唯一现行入口，状态为只做计划、未实施。生成界面面向 PC，产物面向普通读者；已确认总用量与常用模型优先、费用默认关闭且保持次要、有限自定义与缓存命中率可选，跟随当前皮肤统一浅色出图。人物位于角部或侧边、保持数据快速判读，隐藏后保留主题色；不设独立文案标题。完整十角色范围为 21 种主题组合；推荐 3:4 竖版和本地 PNG 保存。独立新名称、品牌标识与版式待收敛，不将设计方向确认视为已获实施或改名授权。
 
-## 文档放置规则
+[皮肤配色融合方案](plans/2026-10-03-skin-palette-consolidated-plan.md)是配色工作的唯一现行入口，状态为只做方案、未实施。用户明确十套角色全部重设配色，已发布五套同样调整。融合风格策划、OKLCH 候选求解、实际背景可读性门槛与真实页面评审，推荐先试点 ChatGPT、Grok，再完成其余八套并统一协调；原两份草案已合并清理。
 
-- 根目录 README 面向使用者，保留快速开始和功能摘要。
-- `00`—`03` 是导航、方向、状态和接手入口；`10`—`14` 是长期维护的现行说明。
-- `data-sources/` 保存各来源的格式与映射，公共规则只在 10 中维护。
-- `validation/` 保存按日期组织的实际检查证据，不用旧结果替代新版本验收。
-- `plans/` 保存当前专项实施计划和对应 TODO；02 提供任务入口，专项详细进度仅在对应 TODO 中维护，完成后提炼有效规则再归档。
-- `archive/` 保留旧计划和决策过程；有效规则先提炼到现行说明，未解决项进入 02，再归档原文。
-- `docs/README.md` 与根目录 `log-README.md` 保留为导航兼容页，不复制专题正文。
+其[Implementation Plan](plans/2026-10-03-skin-palette-implementation-plan.md)已拆为 7 个模块、32 张任务卡，供其他 agent 按卡执行；包含文件归属、固定数据/API 契约、求解细节、真实页面检查和交接模板。实施计划已成文，工具与正式配色接入仍未执行。
+
+## 现行专题
+
+- [10 数据来源与统计口径](10-data-sources.md)：发现、导入、索引、范围、隐私与 TPS；各来源细节见 [Codex](data-sources/codex.md)、[ZCode](data-sources/zcode.md)、[DSH](data-sources/dsh.md)、[OpenCode](data-sources/opencode.md)。
+- [11 计价与自动更新](11-pricing.md)：模型解析、免费/缺价、缓存场景、来源更新、手动覆盖与汇率。
+- [12 看板行为](12-dashboard.md)：周期、排序、刷新、语言、主题、角色和聚光。
+- [14 项目日志接入](14-project-log.md)：其他项目的 JSONL 字段、语义与最小校验。
+
+旧 HTML 导出说明已融入[开发说明](03-development.md#旧-html-导出与历史验证)，不再维护独立专题。以上专题描述现有实现，TPS已完成最终审核；分享与配色方案状态仍由各自任务入口维护。
+
+## 验证与归档
+
+- [验证索引](validation/00-index.md)：按日期查看实际检查、脚本、截图和未测条件。
+- [皮肤配色 M5.2.C-D8u28-R4 固定夹具验证](validation/2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8u28-R4-fixed-fixtures.md)：31 条几何前提、G1–G11 和三个守卫通过；R1 的采样裁切断言疑似混用滚动前后坐标，完整验收保持 `NEEDS_REVIEW`。
+- [看板刷新性能修复最终报告](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/FINAL-REPORT.md)：逐卡交付/证据路径/复跑命令/未达标清单/已知限制；证据树唯一权威入口是同目录 [README.md](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/README.md)（主审账本）。
+- [旧导出清理验收](validation/2026-10-03-export-removal/README.md)：清理后在线冻结、导入、计价和皮肤回归。
+- [v0.6.0 发布验收](validation/2026-10-03-release/README.md)：该次发布的五款皮肤与原在线/离线范围。
+- [历史归档索引](archive/00-index.md)：已完成、已取消或被替代的计划与调查。
+- [本轮文档整理](validation/2026-10-03-documentation-cleanup/README.md)：融合、迁移、删除与链接检查结果。
+
+## 放置与维护
+
+README 面向使用者；00—03 管导航、方向、任务与接手；专题描述长期行为。`plans/` 只放当前计划，状态由 02 指向，详细规格不多处复制。完成或被取代后，先提炼规则、转移遗留项，再归档原文并记录原因。
+
+`validation/` 保留日期证据，不能用旧结果替代新版本验收；历史脚本按其对应 revision 使用。`archive/` 保留决策过程，归档不等于旧清单全部完成。`docs/README.md` 与根目录 `log-README.md` 保留为有引用的兼容导航页。

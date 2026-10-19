@@ -172,6 +172,7 @@ export async function readDshSessionRows(filePath, { onWarning } = {}) {
   }
 
   const rows = [];
+  let malformedLines = 0;
   for (const line of chunks.join("").split("\n")) {
     if (!line.trim()) {
       continue;
@@ -179,8 +180,21 @@ export async function readDshSessionRows(filePath, { onWarning } = {}) {
     try {
       rows.push(JSON.parse(line));
     } catch {
-      // 写入中断可能留下半行，跳过即可。
+      // 写入中断可能留下半行：仍然跳过（用量事件行为不变），只把**行数**单独计数。
+      malformedLines += 1;
     }
+  }
+  if (malformedLines) {
+    // ⚠️ 前缀是**妥协通道**：M2.2 reader（`src/perf-sources/dsh.js`）靠锚定前缀
+    // `^MALFORMED_JSON:(\d+)\b` 把它映射为 `{code:MALFORMED_JSON,count}`。之所以只能走字符串：
+    // 告警文本里除了这个数字**没有**别处能拿到坏行数，而 `rows` 的数组形状与「帧告警不含数字」
+    // 的性质都被已冻结的 `scripts/perf-probe-sources/dsh.mjs` 依赖，改成对象式告警或元组
+    // 返回值都会外溢。**技术债**：后续卡若需要该计数，应让本函数返回**结构化计数**或提供
+    // 结构化诊断回调，届时本前缀应删除；在此之前 M3/M4 **不得**依赖字符串解析取数。
+    // 原帧级告警文本保持不变；本行只新增，不改变任何既有调用方的行为。
+    onWarning?.(
+      `MALFORMED_JSON:${malformedLines} DSH 会话日志 ${filePath} 有 ${malformedLines} 行 JSON 无法解析被跳过`,
+    );
   }
   return rows;
 }

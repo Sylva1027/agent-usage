@@ -10,6 +10,7 @@ import {
   estimateCostForGroups,
   estimateEventCost,
   getPricingCatalog,
+  isPeakPricingTime,
   setPricingCatalog,
   resetPricingCatalog,
   LONG_CONTEXT_INPUT_THRESHOLD,
@@ -92,6 +93,79 @@ test("GPT-6.1 Sol prices cache writes and selects context from one request only"
   const unknown = estimateEventCost({ ...contextEvent, requestInputTokens: undefined, contextLevel: "unknown" });
   assert.equal(unknown.contextLevel, "unknown");
   assert.ok(unknown.unpricedReasons.includes("request-context-unknown-minimum-scenario"));
+});
+
+test("Codex and Work GPT-6.1 Sol use short rates at every length without rewriting request context", () => {
+  const base = {
+    model: "gpt-6.1-sol",
+    serviceTier: "standard",
+    cacheWriteKnown: true,
+    cacheWriteTokens: 50_000,
+    contextLevel: "long",
+    total: { total: 601_000, input: 600_000, cached: 100_000, output: 1_000 },
+  };
+  const shortPrice = (450_000 * 2 + 100_000 * 0.1 + 50_000 * 2.5 + 1_000 * 10) / 1_000_000;
+  for (const sourceKind of ["main", "jetbrains", "extra", "codex"]) {
+    for (const requestInputTokens of [272_000, 272_001, 300_000, 500_000, 500_001, 600_000]) {
+      const event = { ...base, sourceKind, requestInputTokens };
+      const standard = estimateEventCost(event);
+      assert.ok(Math.abs(standard.totalUsd - shortPrice) < 1e-12);
+      assert.equal(standard.contextLevel, requestInputTokens > 272_000 ? "long" : "short");
+      assert.ok(Math.abs(estimateEventCost({ ...event, serviceTier: "fast" }).totalUsd - shortPrice * 2) < 1e-12);
+      assert.ok(Math.abs(estimateEventCost({ ...event, serviceTier: "priority" }).totalUsd - shortPrice * 2) < 1e-12);
+    }
+    const unknown = estimateEventCost({ ...base, sourceKind, contextLevel: "unknown" });
+    assert.equal(unknown.contextLevel, "unknown");
+    assert.equal(unknown.contextUnknownTokens, 0);
+    assert.ok(!unknown.unpricedReasons.includes("request-context-unknown-minimum-scenario"));
+    assert.ok(Math.abs(unknown.totalUsd - shortPrice) < 1e-12);
+  }
+  for (const sourceKind of [undefined, "project-log", "zcode", "dsh", "opencode", "unknown"]) {
+    const external = estimateEventCost({
+      ...base,
+      sourceKind,
+      requestInputTokens: 600_000,
+      channel: "Codex Desktop",
+      source: "codex-oauth",
+    });
+    assert.ok(Math.abs(external.totalUsd - 2.085) < 1e-12, `${sourceKind} must keep API long pricing`);
+  }
+  assert.equal(
+    estimateEventCost({ ...base, sourceKind: "main", model: "gpt-6-sol" }).totalUsd,
+    estimateEventCost({ ...base, model: "gpt-6-sol" }).totalUsd,
+  );
+  assert.ok(
+    Math.abs(
+      estimateEventCost({ ...base, sourceKind: "main", model: "GPT-6.1-SOL-2026-10-12" }).totalUsd - shortPrice,
+    ) < 1e-12,
+  );
+});
+
+test("Codex context policy survives saved and updated API long rates and preserves manual short rates", () => {
+  const original = getPricingCatalog();
+  try {
+    const changed = structuredClone(original);
+    changed.models["gpt-6.1-sol"].short = { input: 3, cachedInput: 0.3, cacheWrite: 3.75, output: 12 };
+    changed.models["gpt-6.1-sol"].long = { input: 99, cachedInput: 9.9, cacheWrite: 100, output: 99 };
+    changed.models["gpt-6.1-sol"].longContextThreshold = 1;
+    setPricingCatalog(changed);
+    const event = {
+      model: "gpt-6.1-sol",
+      sourceKind: "main",
+      requestInputTokens: 600_000,
+      serviceTier: "standard",
+      cacheWriteKnown: true,
+      cacheWriteTokens: 0,
+      total: { total: 600_100, input: 600_000, cached: 0, output: 100 },
+    };
+    assert.ok(Math.abs(estimateEventCost(event).totalUsd - 1.8012) < 1e-12);
+    assert.ok(Math.abs(estimateEventCost({ ...event, sourceKind: "project-log" }).totalUsd - 59.4099) < 1e-12);
+    changed.models["gpt-6.1-sol"].long.input = 199;
+    setPricingCatalog(changed);
+    assert.ok(Math.abs(estimateEventCost(event).totalUsd - 1.8012) < 1e-12);
+  } finally {
+    setPricingCatalog(original);
+  }
 });
 
 test("unknown prices and incomplete details use minimum catalog rates", () => {
@@ -276,6 +350,52 @@ test("DeepSeek 谷时段按 5 折计价", () => {
   assert.ok(weekend.unpricedReasons.includes("off-peak-pricing-applied"));
 });
 
+test("峰谷区间端点为左闭右开，跨日区间不命中", () => {
+  const entry = {
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: [{ days: [2], ranges: [["09:00", "12:00"]] }],
+  };
+  // 2026-09-22 是周二；UTC+8 下 01:00Z = 09:00、04:00Z = 12:00。
+  assert.equal(isPeakPricingTime(entry, Date.parse("2026-09-22T01:00:00.000Z")), true); // start 闭
+  assert.equal(isPeakPricingTime(entry, Date.parse("2026-09-22T03:59:00.000Z")), true);
+  assert.equal(isPeakPricingTime(entry, Date.parse("2026-09-22T04:00:00.000Z")), false); // end 开
+  assert.equal(isPeakPricingTime(entry, Date.parse("2026-09-22T00:59:00.000Z")), false); // start 之前
+
+  // 现状不支持跨日区间（start > end ⇒ 恒不命中）；本卡不修，仅锁定行为。
+  const overnight = {
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Asia/Shanghai",
+    peakWindows: [{ days: [2, 3], ranges: [["22:00", "06:00"]] }],
+  };
+  assert.equal(isPeakPricingTime(overnight, Date.parse("2026-09-22T15:00:00.000Z")), false); // 周二 23:00
+  assert.equal(isPeakPricingTime(overnight, Date.parse("2026-09-22T20:00:00.000Z")), false); // 周三 04:00
+});
+
+test("复用峰谷 formatter 不串用不同 peakWindows 的判定结果", () => {
+  const base = { offPeakMultiplier: 0.5, peakTimezone: "Asia/Shanghai" };
+  const morning = { ...base, peakWindows: [{ days: [2], ranges: [["09:00", "12:00"]] }] };
+  const evening = { ...base, peakWindows: [{ days: [2], ranges: [["13:00", "18:00"]] }] };
+  const ts = Date.parse("2026-09-22T01:00:00.000Z"); // 周二 09:00
+  assert.equal(isPeakPricingTime(morning, ts), true);
+  assert.equal(isPeakPricingTime(evening, ts), false);
+  assert.equal(isPeakPricingTime(evening, ts), false); // 反向顺序再跑，确认缓存只作用于 formatter
+  assert.equal(isPeakPricingTime(morning, ts), true);
+  assert.equal(isPeakPricingTime({ ...morning, peakTimezone: "UTC" }, ts), false); // 同一 peakWindows、换时区
+});
+
+test("非法 peakTimezone 在构造处抛 RangeError，失败不被缓存", () => {
+  const entry = {
+    offPeakMultiplier: 0.5,
+    peakTimezone: "Not/AZone",
+    peakWindows: [{ days: [2], ranges: [["09:00", "12:00"]] }],
+  };
+  const ts = Date.parse("2026-09-22T01:00:00.000Z");
+  assert.throws(() => isPeakPricingTime(entry, ts), RangeError);
+  assert.throws(() => isPeakPricingTime(entry, ts), RangeError); // 第二次仍抛：失败路径不入缓存
+  assert.equal(isPeakPricingTime({ ...entry, peakTimezone: "UTC" }, ts), false); // 合法时区不受污染
+});
+
 test("GLM-4.7 按输入上下文与输出长度分档计价", () => {
   const build = (input, output) => ({
     model: "glm-4.7",
@@ -358,6 +478,64 @@ test("未知模型按事件渠道决定回退币种", () => {
   assert.equal(usd.currency, "USD");
   assert.equal(cny.pricingStatus, "minimum-estimate");
   assert.deepEqual(cny.minimumRateModels, ["mystery-model"]);
+});
+
+test("codex-auto-review is free despite stale rates, missing details, and Fast mode", () => {
+  const catalog = getPricingCatalog();
+  const unknownEvent = {
+    model: "unknown-billable",
+    detailMask: 15,
+    cacheWriteKnown: true,
+    cacheWriteTokens: 0,
+    serviceTier: "standard",
+    contextLevel: "short",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  };
+  const unknownCost = estimateEventCost(unknownEvent).totalUsd;
+  setPricingCatalog({
+    ...catalog,
+    models: {
+      ...catalog.models,
+      "codex-auto-review": {
+        short: { input: 0.000001, cachedInput: 0.000001, cacheWrite: 0.000001, output: 0.000001 },
+      },
+    },
+  });
+  try {
+    assert.equal(
+      estimateEventCost(unknownEvent).totalUsd,
+      unknownCost,
+      "exempt stale rates cannot lower paid-model fallback costs",
+    );
+    for (const model of ["codex-auto-review", " CODEX-AUTO-REVIEW "]) {
+      for (const details of [{}, { detailMask: 15, cacheWriteKnown: true, cacheWriteTokens: 0, serviceTier: "fast" }]) {
+        const event = { model, total: { total: 110, input: 100, cached: 20, output: 10 }, ...details };
+        const estimate = estimateEventCost(event);
+        assert.equal(estimate.totalUsd, 0);
+        assert.equal(estimate.pricedTokens, 110);
+        assert.equal(estimate.unpricedTokens, 0);
+        assert.equal(estimate.minimumEstimatedTokens, 0);
+        assert.equal(estimate.pricingStatus, "estimated");
+        assert.deepEqual(estimate.unpricedReasons, []);
+        assert.deepEqual(estimate.minimumRateModels, []);
+        assert.equal(estimate.serviceTierUnknownTokens, 0);
+        assert.equal(estimate.contextUnknownTokens, 0);
+        assert.equal(estimate.cacheWriteUnknownTokens, 0);
+        assert.ok(estimate.priceSource.includes("help.openai.com"));
+        const accumulator = createCostEstimateAccumulator();
+        accumulator.add(event, estimate);
+        assert.equal(accumulator.result().minimumEstimatedRecords, 0);
+      }
+    }
+    assert.equal(estimateEventCost({ model: "codex-auto-review", total: { total: 0 } }).totalUsd, 0);
+    assert.ok(estimateEventCost({ model: "gpt-6-sol", total: { total: 110 } }).totalUsd > 0);
+    assert.equal(
+      estimateEventCost({ model: "codex-auto-review-other", total: { total: 110 } }).pricingStatus,
+      "minimum-estimate",
+    );
+  } finally {
+    resetPricingCatalog();
+  }
 });
 
 test("-free 后缀的未收录模型按零费率估算", () => {
@@ -551,6 +729,10 @@ test("旧版价目文件加载时补齐新增内置模型并保留自定义价",
           short: { input: 9, cachedInput: 9, cacheWrite: 9, output: 9 },
           long: { input: 9, cachedInput: 9, cacheWrite: 9, output: 9 },
         },
+        "gpt-6.1-sol": {
+          short: { input: 3, cachedInput: 0.3, cacheWrite: 3.75, output: 12 },
+          long: { input: 99, cachedInput: 99, cacheWrite: 99, output: 99 },
+        },
       },
     }),
   );
@@ -564,7 +746,62 @@ test("旧版价目文件加载时补齐新增内置模型并保留自定义价",
     assert.deepEqual(catalog.models["gpt-6-sol"].fast.short, { input: 4, cachedInput: 0.4, cacheWrite: 5, output: 20 });
     assert.equal(catalog.models["deepseek-flash"].currency, "CNY");
     assert.equal(catalog.models["glm-4.7"].outputThreshold, 200);
+    const event = {
+      model: "gpt-6.1-sol",
+      sourceKind: "main",
+      serviceTier: "standard",
+      contextLevel: "long",
+      requestInputTokens: 600_000,
+      detailMask: 15,
+      cacheWriteKnown: true,
+      cacheWriteTokens: 0,
+      total: { total: 600_100, input: 600_000, cached: 0, output: 100, reasoning: 0 },
+    };
+    assert.ok(Math.abs(estimateEventCost(event).totalUsd - 1.8012) < 1e-12);
+    assert.ok(Math.abs(estimateEventCost({ ...event, sourceKind: "project-log" }).totalUsd - 59.4099) < 1e-12);
   } finally {
     resetPricingCatalog();
   }
+});
+
+test("模型索引按 models 对象身份缓存：改键集合后立即命中，重置后不串用", () => {
+  const base = {
+    contextLevel: "short",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10, reasoning: 0 },
+  };
+  const model = "zz-r2-cache-probe-model"; // 内置价目无此前缀，只能靠新键命中
+  const before = estimateEventCost({ ...base, model });
+  assert.equal(before.pricingStatus, "minimum-estimate");
+  assert.ok(before.unpricedReasons.includes("unknown-model-price-minimum-scenario"));
+  assert.equal(before.minimumEstimatedTokens, 110);
+
+  const catalog = getPricingCatalog();
+  assert.equal(Object.keys(catalog.models).length, 103);
+  catalog.models[model] = structuredClone(catalog.models["gpt-6-sol"]);
+  try {
+    // setPricingCatalog 走 validatePricingCatalog，产出全新 models 对象；
+    // 新增的键必须在同一进程内立刻命中，不能命中旧索引。
+    setPricingCatalog({ checkedAt: catalog.checkedAt, models: catalog.models });
+    const priced = estimateEventCost({ ...base, model });
+    assert.equal(priced.pricingStatus, "estimated");
+    assert.deepEqual(priced.unpricedReasons, []);
+    assert.ok(Math.abs(priced.totalUsd - 0.000264) < 1e-12);
+    // 同一个输入对象再 set 一次：activePricing.models 仍是全新对象，索引必须重建后立即命中。
+    setPricingCatalog({ checkedAt: catalog.checkedAt, models: catalog.models });
+    assert.equal(estimateEventCost({ ...base, model }).pricingStatus, "estimated");
+  } finally {
+    resetPricingCatalog();
+  }
+
+  // resetPricingCatalog 复用内置 MODEL_PRICES 对象身份（缓存条目"复活"），
+  // 但索引仍是该对象键集合的索引：新键回到 missing，行为与改前一致。
+  const reset = estimateEventCost({ ...base, model });
+  assert.equal(reset.pricingStatus, "minimum-estimate");
+  assert.ok(reset.unpricedReasons.includes("unknown-model-price-minimum-scenario"));
+  // 内置模型在 reset 后仍按内置价目计价（复活的索引没有指向被替换的目录）。
+  assert.equal(estimateEventCost({ ...base, model: "gpt-6-sol" }).pricingStatus, "estimated");
 });

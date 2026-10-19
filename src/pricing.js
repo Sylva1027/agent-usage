@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { resolvePricingModel } from "../public/pricing-models.js";
+import { isCodexAutoReview, resolvePricingModel } from "../public/pricing-models.js";
 
 // This catalog revision includes a fresh Claude check on 2026-10-01;
 // the date does not claim that every provider entry was rechecked that day.
 export const API_PRICING_CHECKED_AT = "2026-10-01";
-export const API_PRICING_VERSION = "2026-10-01";
+export const API_PRICING_VERSION = "2026-10-12";
 export const MAX_PRICING_MODELS = 256;
 export const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
 export const API_PRICING_MODE = "minimum-fallback-scenario";
@@ -682,6 +682,7 @@ const MODEL_PRICES = Object.freeze({
 });
 
 const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
+const CODEX_SOURCE_KINDS = new Set(["main", "jetbrains", "extra", "codex"]);
 
 // 名称以 -free 结尾的未收录模型按免费处理：零费率，不参与最低费率兜底。
 const ZERO_RATES = Object.freeze({ input: 0, cachedInput: 0, cacheWrite: 0, output: 0 });
@@ -848,7 +849,11 @@ export function validatePricingCatalog(value) {
 
 export function setPricingCatalog(value) {
   const catalog = validatePricingCatalog(value);
-  const hash = createHash("sha256").update(JSON.stringify(catalog)).digest("hex").slice(0, 12);
+  const hash = createHash("sha256")
+    .update(API_PRICING_VERSION)
+    .update(JSON.stringify(catalog))
+    .digest("hex")
+    .slice(0, 12);
   activePricing = { ...catalog, version: `${catalog.checkedAt}-${hash}` };
   return getPricingCatalog();
 }
@@ -963,22 +968,79 @@ function timeOfDayMinutes(value) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 }
 
-export function isPeakPricingTime(entry, timestampMs) {
-  if (!entry?.offPeakMultiplier || !Array.isArray(entry.peakWindows)) return true;
-  if (!Number.isFinite(timestampMs)) return true;
+// 峰谷 formatter 的构造只取决于时区，按实际生效的时区字符串复用即可。
+// 键用 timezone 而不是价目条目对象：validatePricingCatalog 每次重建 entry，
+// 缓存条目对象会在换价目/重置价目时全冷，而时区字符串跨价目替换仍然有效。
+// 非法时区在构造处同步抛 RangeError；本表只记录构造成功的结果，失败不缓存、也不回落默认时区。
+const PEAK_TIME_FORMATTERS = new Map();
+
+function peakTimeFormatter(timeZone) {
+  const cached = PEAK_TIME_FORMATTERS.get(timeZone);
+  if (cached) return cached;
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: entry.peakTimezone || "Asia/Shanghai",
+    timeZone,
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
-  const parts = Object.fromEntries(
-    formatter.formatToParts(new Date(timestampMs)).map((part) => [part.type, part.value]),
-  );
-  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday);
-  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  PEAK_TIME_FORMATTERS.set(timeZone, formatter);
+  return formatter;
+}
+
+export function isPeakPricingTime(entry, timestampMs) {
+  if (!entry?.offPeakMultiplier || !Array.isArray(entry.peakWindows)) return true;
+  if (!Number.isFinite(timestampMs)) return true;
+  const { weekdayIndex, minutes } = peakLocalTuple(entry.peakTimezone || "Asia/Shanghai", timestampMs);
   if (weekdayIndex < 0 || !Number.isFinite(minutes)) return true;
+  return peakWindowsHit(entry, weekdayIndex, minutes);
+}
+
+/**
+ * W4-b1 / D4：**峰谷窗口的预解析表**。
+ *
+ * 为什么：`peakWindowsHit` 原本对**每个事件**都跑 `timeOfDayMinutes(range[0]/range[1])`（两次正则解析），
+ * 实测每次 ~0.6 µs —— 在 37,964 行的全历史扫描里就是 ~20-45 ms 的纯重复劳动。窗口数组在**一次价目
+ * 版本内是不变的**，所以按数组身份（`WeakMap`）预解析一次：`days` → `Set`，`ranges` → `[start,end]`。
+ *
+ * 语义与改动前**逐字节一致**：`start === null || end === null` 的非法区间**仍然不命中**；`days` 缺失
+ * 视作空；`weekdayIndex === 0 → 7`（ISO，周日=7）的换算保留在 `peakWindowsHit` 里。
+ * `WeakMap` 的键是价目目录里的数组对象 ⇒ 目录被替换后旧条目自然被 GC，不会跨版本泄漏。
+ */
+const PEAK_WINDOW_PLANS = new WeakMap();
+
+function peakWindowPlan(peakWindows) {
+  const cached = PEAK_WINDOW_PLANS.get(peakWindows);
+  if (cached) return cached;
+  const plan = peakWindows.map((window) => ({
+    days: new Set(window.days || []),
+    ranges: (window.ranges || []).map((range) => [timeOfDayMinutes(range[0]), timeOfDayMinutes(range[1])]),
+  }));
+  PEAK_WINDOW_PLANS.set(peakWindows, plan);
+  return plan;
+}
+
+/** 峰谷判定的**最后一步**（与改动前同语义）：窗口命中与否只取决于 (星期, 分钟)。 */
+function peakWindowsHit(entry, weekdayIndex, minutes) {
+  const plan = peakWindowPlan(entry.peakWindows);
+  const isoWeekday = weekdayIndex === 0 ? 7 : weekdayIndex;
+  for (const window of plan) {
+    if (!window.days.has(isoWeekday)) continue;
+    for (const range of window.ranges) {
+      const [start, end] = range;
+      if (start !== null && end !== null && minutes >= start && minutes < end) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * W4-b1 / D4：与改动前**等价的朴素实现**，只作等价性判据（不进产品路径）。
+ * @param {any} entry
+ * @param {number} weekdayIndex
+ * @param {number} minutes
+ */
+function peakWindowsHitNaive(entry, weekdayIndex, minutes) {
   return entry.peakWindows.some(
     (window) =>
       (window.days || []).includes(weekdayIndex === 0 ? 7 : weekdayIndex) &&
@@ -988,6 +1050,123 @@ export function isPeakPricingTime(entry, timestampMs) {
         return start !== null && end !== null && minutes >= start && minutes < end;
       }),
   );
+}
+
+/**
+ * W4-b1 / D4：**改动前**的逐事件 ICU 实现，保留为等价性判据（只被测试引用，不进产品路径）。
+ * @param {any} entry
+ * @param {number} timestampMs
+ */
+export function isPeakPricingTimeExact(entry, timestampMs) {
+  if (!entry?.offPeakMultiplier || !Array.isArray(entry.peakWindows)) return true;
+  if (!Number.isFinite(timestampMs)) return true;
+  const { weekdayIndex, minutes } = peakLocalTupleExact(entry.peakTimezone || "Asia/Shanghai", timestampMs);
+  if (weekdayIndex < 0 || !Number.isFinite(minutes)) return true;
+  return peakWindowsHitNaive(entry, weekdayIndex, minutes);
+}
+
+// ── W4-b1 / D4：本地时区格式化的**复用**（R3："逐事件一次 ICU"） ─────────────────────────────────
+//
+// `peakTimeFormatter` 本就按**时区**复用 formatter；这里再把"瞬时 → 本地 (星期, 分钟)"从
+// **逐事件一次 `formatToParts`** 压到**每个 UTC 日两次探针**：
+//   * 一个 UTC 日内的时区偏移量是常量（时区库的偏移量一年至多变两次，从不在同一个 UTC 日内变两次），
+//     ⇒ 之后用 `ts + 偏移量` 走 **UTC 取数**（纯整数运算，无 ICU）；
+//   * **自证式护栏**：候选偏移量必须 ① 在该 UTC 日 00:00 与 23:59 两点相等，且 ② 用算术得到的
+//     (星期, 分钟) 与**改动前实现**在这两点上**逐字段相同**；否则该日整体回退到逐事件 ICU
+//     （与改动前逐字节同语义）。任何 ICU 怪异取值（例如某些版本把午夜格式化成 "24"）都会让自证
+//     失败 ⇒ 自动回退，绝不静默改变峰谷判定。判据由 `test/w4-event-cost-memo.test.js` 逐日抽样复核。
+const MS_PER_MINUTE = 60_000;
+const MS_PER_DAY = 86_400_000;
+const PEAK_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** UTC 日 → 偏移量（分钟）；`null` = 该日自证失败 ⇒ 逐事件 ICU。 */
+const PEAK_DAY_OFFSETS = new Map();
+/** 条目 ~50 B；上限只为"长时间运行也不无界"（纯函数表，清空只损失速度）。 */
+const PEAK_DAY_OFFSET_LIMIT = 4_096;
+
+function peakLocalTupleExact(timeZone, timestampMs) {
+  const formatter = peakTimeFormatter(timeZone);
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(timestampMs)).map((part) => [part.type, part.value]),
+  );
+  return {
+    weekdayIndex: PEAK_WEEKDAYS.indexOf(parts.weekday),
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+  };
+}
+
+function peakLocalTupleFromOffset(offsetMinutes, timestampMs) {
+  // 纯整数运算（不分配 `Date`、不调 ICU）：`ts + 偏移量` 后的 UTC 日序与日内分钟。
+  // 1970-01-01 是**星期四** ⇒ 日序 0 对应 `weekdayIndex = 4`（与 `getUTCDay()` 同口径）。
+  const local = timestampMs + offsetMinutes * MS_PER_MINUTE;
+  const dayIndex = Math.floor(local / MS_PER_DAY);
+  return {
+    weekdayIndex: (((dayIndex + 4) % 7) + 7) % 7,
+    minutes: Math.floor((local - dayIndex * MS_PER_DAY) / MS_PER_MINUTE),
+  };
+}
+
+/** 该瞬时在 `timeZone` 的期望偏移量（分钟）= 本地墙钟 − UTC（分钟精度）。
+ *
+ * 用**独立的** formatter（含年月日）：`peakTimeFormatter` 只请求了 `weekday/hour/minute`，拿不到
+ * 年月日 ⇒ 无法还原"本地墙钟当 UTC 看"的整数。独立 formatter 也保证**改动前的判定路径**逐字节不变。
+ * 每个 UTC 日只用它两次（00:00 / 23:59 探针）。
+ */
+const PEAK_OFFSET_FORMATTERS = new Map();
+
+function peakOffsetFormatter(timeZone) {
+  const cached = PEAK_OFFSET_FORMATTERS.get(timeZone);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  PEAK_OFFSET_FORMATTERS.set(timeZone, formatter);
+  return formatter;
+}
+
+function peakOffsetMinutes(timeZone, timestampMs) {
+  const formatter = peakOffsetFormatter(timeZone);
+  const parts = {};
+  for (const part of formatter.formatToParts(new Date(timestampMs))) parts[part.type] = part.value;
+  const rawHour = Number(parts.hour);
+  const dayShift = rawHour >= 24 ? 1 : 0;
+  const wall = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day) + dayShift,
+    rawHour % 24,
+    Number(parts.minute),
+  );
+  return Math.round((wall - Math.floor(timestampMs / MS_PER_MINUTE) * MS_PER_MINUTE) / MS_PER_MINUTE);
+}
+
+function peakDayOffset(timeZone, utcDay) {
+  const key = `${timeZone}\u0000${utcDay}`;
+  const cached = PEAK_DAY_OFFSETS.get(key);
+  if (cached !== undefined) return cached;
+  const startMs = utcDay * MS_PER_DAY;
+  const endMs = startMs + MS_PER_DAY - MS_PER_MINUTE;
+  const candidate = peakOffsetMinutes(timeZone, startMs);
+  const sameTuple = (left, right) => left.weekdayIndex === right.weekdayIndex && left.minutes === right.minutes;
+  const constant =
+    peakOffsetMinutes(timeZone, endMs) === candidate &&
+    sameTuple(peakLocalTupleFromOffset(candidate, startMs), peakLocalTupleExact(timeZone, startMs)) &&
+    sameTuple(peakLocalTupleFromOffset(candidate, endMs), peakLocalTupleExact(timeZone, endMs));
+  const offset = constant ? candidate : null;
+  if (PEAK_DAY_OFFSETS.size >= PEAK_DAY_OFFSET_LIMIT) PEAK_DAY_OFFSETS.clear();
+  PEAK_DAY_OFFSETS.set(key, offset);
+  return offset;
+}
+
+/** 本地 (星期, 分钟)：多数 UTC 日走算术快路，自证失败的日子逐事件 ICU。 */
+function peakLocalTuple(timeZone, timestampMs) {
+  const offset = peakDayOffset(timeZone, Math.floor(timestampMs / MS_PER_DAY));
+  return offset === null ? peakLocalTupleExact(timeZone, timestampMs) : peakLocalTupleFromOffset(offset, timestampMs);
 }
 
 function contextTierFor(entry, event, usage, modelKey) {
@@ -1024,7 +1203,9 @@ function currencyForEvent(model, event) {
 function minimumRatesFor(modelKey, contextLevel, currency) {
   const catalogs = modelKey
     ? [activePricing.models[modelKey]]
-    : Object.values(activePricing.models).filter((entry) => (entry.currency || "USD") === currency);
+    : Object.entries(activePricing.models)
+        .filter(([model, entry]) => !isCodexAutoReview(model) && (entry.currency || "USD") === currency)
+        .map(([, entry]) => entry);
   const contexts = contextLevel === "unknown" ? ["short", "long"] : [contextLevel];
   const candidates = catalogs.flatMap((catalog) => contexts.map((context) => catalog?.[context]).filter(Boolean));
   return minimumRateSets(candidates);
@@ -1042,7 +1223,35 @@ function estimateEventCost(event = {}) {
   const entry = model.key ? activePricing.models[model.key] : null;
   const currency = currencyForEvent(model, event);
   const contextLevel = contextTierFor(entry, event, usage, model.key);
+  // Product policy changes the price tier, not the recorded request context.
+  const codexShortContext = model.key === "gpt-6.1-sol" && CODEX_SOURCE_KINDS.has(event.sourceKind);
   const serviceTier = normalizeServiceTier(event.serviceTier ?? event.service_tier);
+  // A policy exemption needs no token split, context tier, or fallback price.
+  if (isCodexAutoReview(model.name)) {
+    return {
+      model: model.name,
+      currency,
+      priceVersion: version,
+      priceSource: "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan",
+      serviceTier,
+      contextLevel,
+      inputUsd: 0,
+      cachedInputUsd: 0,
+      cacheWriteInputUsd: 0,
+      outputUsd: 0,
+      totalUsd: 0,
+      pricedTokens: total,
+      unpricedTokens: 0,
+      minimumEstimatedTokens: 0,
+      minimumRateModels: [],
+      unpricedModels: [],
+      unpricedReasons: [],
+      serviceTierUnknownTokens: 0,
+      contextUnknownTokens: 0,
+      cacheWriteUnknownTokens: 0,
+      pricingStatus: "estimated",
+    };
+  }
   // Claude Fast capability is model-specific; unknown Claude IDs also keep
   // an explicit Standard scenario instead of inheriting the generic 2x rule.
   const useFastRates = serviceTier === "fast" && Boolean(entry?.fast);
@@ -1061,7 +1270,7 @@ function estimateEventCost(event = {}) {
   const peak = entry ? isPeakPricingTime(entry, timestampMs) : true;
   const offPeakMultiplier = entry && !peak ? entry.offPeakMultiplier : 1;
   let rates = entry
-    ? minimumRateSets(rateSetsFor(rateEntry, contextLevel, usage))
+    ? minimumRateSets(rateSetsFor(rateEntry, codexShortContext ? "short" : contextLevel, usage))
     : minimumRatesFor("", contextLevel, currency);
   // 免费模型不参与最低费率兜底：费率全零，金额恒为 0。
   if (model.free) rates = ZERO_RATES;
@@ -1197,9 +1406,9 @@ function estimateEventCost(event = {}) {
     minimumEstimatedTokens = pricedTokens;
   }
   const serviceTierUnknownTokens = serviceTier === "unknown" ? pricedTokens : 0;
-  const contextUnknownTokens = contextLevel === "unknown" ? pricedTokens : 0;
+  const contextUnknownTokens = contextLevel === "unknown" && !codexShortContext ? pricedTokens : 0;
   if (serviceTier === "unknown") reasons.push("service-tier-unknown-standard-scenario");
-  if (contextLevel === "unknown") reasons.push("request-context-unknown-minimum-scenario");
+  if (contextLevel === "unknown" && !codexShortContext) reasons.push("request-context-unknown-minimum-scenario");
   if (entry && !peak) reasons.push("off-peak-pricing-applied");
   const totalUsd = inputUsd + cachedInputUsd + cacheWriteInputUsd + outputUsd;
   return {
@@ -1357,7 +1566,13 @@ export function createCostEstimateAccumulator(options = {}) {
 /** @param {Iterable<any>} items */
 function summarizeCostItems(items = [], options = {}) {
   const summary = createCostSummaryState(options);
-  for (const item of items) summary.add(item);
+  // W4-b1 / D1：允许注入"逐事件计价"实现（默认就是 `estimateEventCost`）。注入点只改**谁去算**，
+  // 不改 `add()` 的累加语义 —— 传 `undefined` 时 `add()` 仍走它自己的默认参数。
+  const priceEvent = options.estimateEventCost || null;
+  for (const item of items) {
+    if (priceEvent) summary.add(item, priceEvent(item));
+    else summary.add(item);
+  }
   return summary.result();
 }
 
@@ -1368,6 +1583,226 @@ function modelNameIsKnown(value) {
 /** @param {Iterable<any>} events */
 export function estimateCostForEvents(events = [], options = {}) {
   return summarizeCostItems(events, options);
+}
+
+// ── W4-b1 / D1：有界的"内容键 → 派生值"memo（通用原语 + 事件计价实例） ─────────────────────────
+//
+// 为什么要有通用原语：D1（事件级计价 memo）是 W4-b1 的交付；D2（规范化时间线分桶）与
+// D3（排名扫描）在 **W4-b2**，它们需要同一套"有界 + 轮次语义 + 显式失效"的护栏（键函数不同）。
+// 所以这里把护栏做成 `createBoundedKeyMemo`，`createEventCostMemo` 只是它的一个实例 —— 接缝在此。
+
+/** memo 的**方法版本**：键的形状或语义一旦变化必须改这个串（沿用 C3 投影缓存的惯例）。 */
+export const BOUNDED_KEY_MEMO_METHOD_VERSION = "w4-bounded-key-memo-v1";
+
+/** D1：事件计价 memo 的**默认**字节预算（与 C3 投影缓存同为 64 MiB）。 */
+export const DEFAULT_EVENT_COST_MEMO_BYTES = 64 * 1024 * 1024;
+
+/** D1：**单轮内**的硬上限（规格 `:159` 的"首轮上限 192 MiB"）。轮末回落 `maxBytes`。 */
+export const DEFAULT_EVENT_COST_MEMO_HARD_BYTES = 192 * 1024 * 1024;
+
+/** 条目数上限：防止"每个条目都极小"时 `Map` 自身的开销无界增长。 */
+export const DEFAULT_EVENT_COST_MEMO_MAX_ENTRIES = 262_144;
+
+/**
+ * 计费用的**字节估计**：`JSON.stringify(value)` 的 UTF-16 码元长度。
+ *
+ * 与 C3 `projectionByteEstimate`（`perf-sources/codex-thread.js:307`）**同一口径**，
+ * 便于两处预算互相比较；它**不是**常驻堆的字节数（真实堆更大，容量裁定的口径见报告 §容量）。
+ */
+function valueByteEstimate(value) {
+  try {
+    return JSON.stringify(value)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 有界的**内容键 → 派生值** memo。语义（全部可测）：
+ *   * 键 → 值：同一个键**只算一次**，直到被失效；
+ *   * **有界**：`bytes > maxBytes`（轮外）或 `> hardMaxBytes`（轮内）时按键的**插入顺序**逐出最旧
+ *     条目（FIFO/LRU-by-insertion，与 C3 投影缓存同型）。逐出**只影响成本**，不影响正确性；
+ *   * **轮次**：`beginRound()`/`endRound()` 期间放宽到 `hardMaxBytes`（一轮内不要把刚算出来的东西
+ *     立刻逐出），轮末收敛回 `maxBytes`；
+ *   * **失效**：`clear(reason)` 由调用方在"输入世代"变化时显式调用（本卡：`storeRevision` 前进）；
+ *     键里已经包含"输入内容 + 价目版本"，所以失效**只影响内存**，不会造成陈旧命中。
+ *
+ * @param {{ keyOf: (input: any) => string, maxBytes?: number, hardMaxBytes?: number, maxEntries?: number,
+ *   valueBytes?: (value: any) => number, methodVersion?: string }} options
+ */
+export function createBoundedKeyMemo({
+  keyOf,
+  maxBytes = DEFAULT_EVENT_COST_MEMO_BYTES,
+  hardMaxBytes = DEFAULT_EVENT_COST_MEMO_HARD_BYTES,
+  maxEntries = DEFAULT_EVENT_COST_MEMO_MAX_ENTRIES,
+  valueBytes = valueByteEstimate,
+  methodVersion = BOUNDED_KEY_MEMO_METHOD_VERSION,
+}) {
+  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : Number.POSITIVE_INFINITY;
+  const hard = Number.isFinite(hardMaxBytes) && hardMaxBytes > Math.max(0, limit) ? Math.floor(hardMaxBytes) : limit;
+  const entryLimit = Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : Number.POSITIVE_INFINITY;
+  /** @type {Map<string, { value: any, bytes: number }>} */
+  const entries = new Map();
+  let bytes = 0;
+  let roundDepth = 0;
+  const stats = {
+    methodVersion,
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    clears: 0,
+    lastClearReason: "",
+    peakBytes: 0,
+    peakSize: 0,
+    entries: 0,
+    bytes: 0,
+    maxBytes: limit,
+    hardMaxBytes: hard,
+  };
+
+  const evictTo = (target) => {
+    while (bytes > target && entries.size > 0) {
+      const oldest = entries.keys().next().value;
+      const evicted = entries.get(oldest);
+      entries.delete(oldest);
+      bytes -= evicted?.bytes ?? 0;
+      stats.evictions += 1;
+    }
+  };
+
+  return {
+    methodVersion,
+    /** 读/写：命中直接返回；未命中调用 `compute` 并记入。 */
+    get(input, compute) {
+      const key = keyOf(input);
+      const found = entries.get(key);
+      if (found !== undefined) {
+        stats.hits += 1;
+        return found.value;
+      }
+      stats.misses += 1;
+      const value = compute(input);
+      const size = key.length + (valueBytes(value) || 0);
+      entries.set(key, { value, bytes: size });
+      bytes += size;
+      if (bytes > stats.peakBytes) stats.peakBytes = bytes;
+      if (entries.size > stats.peakSize) stats.peakSize = entries.size;
+      evictTo(roundDepth > 0 ? hard : limit);
+      while (entries.size > entryLimit) {
+        const oldest = entries.keys().next().value;
+        const evicted = entries.get(oldest);
+        entries.delete(oldest);
+        bytes -= evicted?.bytes ?? 0;
+        stats.evictions += 1;
+      }
+      return value;
+    },
+    has(input) {
+      return entries.has(keyOf(input));
+    },
+    beginRound() {
+      roundDepth += 1;
+    },
+    endRound() {
+      roundDepth = Math.max(0, roundDepth - 1);
+      if (roundDepth === 0) evictTo(limit);
+    },
+    clear(reason = "") {
+      entries.clear();
+      bytes = 0;
+      stats.clears += 1;
+      stats.lastClearReason = String(reason);
+    },
+    stats() {
+      stats.entries = entries.size;
+      stats.bytes = bytes;
+      return { ...stats };
+    },
+    size() {
+      return entries.size;
+    },
+    retainedBytes() {
+      return bytes;
+    },
+  };
+}
+
+/**
+ * D1 的**键**：把 `estimateEventCost` 读到的**每一个**输入编成一条字符串。
+ *
+ * 完备性论证（逐条对应 `pricing.js` 的实际读取点）：
+ *   * `activePricing.version`（=`checkedAt`+目录内容哈希）—— 覆盖**生效价目**（含 `models` 增删改）；
+ *   * `event.model` —— `normalizeModel`；
+ *   * `event.sourceKind` —— Codex / Work 的 GPT-6.1 Sol 上下文计费规则；
+ *   * `event.channel`/`event.source` —— **仅当模型不在价目目录里**时用于币种兜底（`currencyForEvent`）；
+ *   * `event.serviceTier`/`service_tier` —— `normalizeServiceTier`；
+ *   * `event.cacheWriteTokens`/`cacheWriteKnown`/`detailMask`(bit32)/`cacheWriteTtl`、`event.requestInputTokens`
+ *     —— 缓存写与长上下文档；
+ *   * `event.contextLevel` —— 上下文档；
+ *   * `event.timestamp`/`timestampMs`/`timestamp_ms` —— `isPeakPricingTime` 的峰谷判定；
+ *   * `event.total`/`usage`（含 **属性是否 own**）与 5 个用量数 —— `usageFields`（`has()` 走 `detailMask`
+ *     或 `Object.hasOwn`，所以 **null / undefined / 不存在**三态必须分开编码）。
+ * 任何一条不同 ⇒ 键不同（保守：**多**区分只会降低命中率，不会产生错误命中）。
+ */
+export function eventCostMemoKey(event = {}) {
+  const enc = (value) => {
+    if (value === undefined) return "u";
+    if (value === null) return "z";
+    if (typeof value === "string") return `s:${value}`;
+    if (value instanceof Date) return `d:${Number(value)}`;
+    const number = Number(value);
+    return Number.isFinite(number) ? `n:${number}` : `o:${String(value)}`;
+  };
+  const usage = event.total || event.usage || event;
+  const source = event.total ? 1 : event.usage ? 2 : 0;
+  const own = (key) => (Object.hasOwn(usage, key) ? 1 : 0);
+  const mask = Number.isInteger(event.detailMask) ? `i:${event.detailMask}` : enc(event.detailMask);
+  return [
+    activePricing.version,
+    enc(event.model),
+    enc(event.sourceKind),
+    enc(event.channel ?? event.source),
+    enc(event.serviceTier ?? event.service_tier),
+    `s${source}`,
+    enc(event.cacheWriteTokens),
+    event.cacheWriteKnown === true ? "1" : "0",
+    mask,
+    enc(event.cacheWriteTtl),
+    enc(event.requestInputTokens),
+    enc(event.contextLevel),
+    enc(event.timestamp ?? event.timestampMs ?? event.timestamp_ms),
+    `${own("total")}${own("input")}${own("cached")}${own("output")}`,
+    enc(usage.total),
+    enc(usage.input),
+    enc(usage.cached),
+    enc(usage.output),
+    enc(usage.reasoning),
+  ].join("\u0000");
+}
+
+/**
+ * D1：**事件级计价 memo**（跨形状共享）。
+ *
+ * 为什么能跨形状共享：键**只**含"事件内容 + 生效价目"，**不含** `preset`/`bucket`/`calendarZone`/
+ * `excludeHomes`/`now` —— 那些是**范围**参数，而金额是**逐事件**的函数。所以同一份事件在
+ * `today` 与 `all` 两个形状里只算一次（这正是 R1 "命中也在付" 的止血点）。
+ *
+ * @param {{ maxBytes?: number, hardMaxBytes?: number, maxEntries?: number, estimate?: (event: any) => any }} [options]
+ */
+export function createEventCostMemo({
+  maxBytes = DEFAULT_EVENT_COST_MEMO_BYTES,
+  hardMaxBytes = DEFAULT_EVENT_COST_MEMO_HARD_BYTES,
+  maxEntries = DEFAULT_EVENT_COST_MEMO_MAX_ENTRIES,
+  estimate = estimateEventCost,
+} = {}) {
+  const memo = createBoundedKeyMemo({ keyOf: eventCostMemoKey, maxBytes, hardMaxBytes, maxEntries });
+  return {
+    ...memo,
+    /** @param {any} event */
+    estimate(event) {
+      return memo.get(event, estimate);
+    },
+  };
 }
 
 export function estimateCostForGroups(groups = [], options = {}) {

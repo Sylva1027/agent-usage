@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "readability": {
+    "bodyTextMin": 4.5,
+    "primaryTextPreferred": 7,
+    "necessaryGraphicMin": 3
+  },
+  "solver": {
+    "bodyTextTarget": 4.7,
+    "primaryTextTarget": 7.2
+  },
+  "searchBudget": {
+    "maxTrialsPerTokenPerRound": 1024,
+    "maxCouplingRounds": 4,
+    "maxBackgroundAttemptsPerVariant": 3
+  },
+  "srgbGamutEpsilon": 1e-7,
+  "colourDistance": {
+    "version": "oklab-distance-v1"
+  },
+  "versions": {
+    "roles": 39,
+    "colourMath": 1,
+    "fixture": 3
+  }
+}

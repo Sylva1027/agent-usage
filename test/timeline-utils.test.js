@@ -3,6 +3,7 @@ import test from "node:test";
 import { spawnSync } from "node:child_process";
 
 import {
+  MAX_TIMELINE_SLOTS,
   buildTimelineRows,
   channelForRange,
   deriveTimelineBucket,
@@ -66,6 +67,22 @@ const event = (timestamp, total, model = "gpt-6-sol", extra = {}) => ({
   total,
   ...extra,
 });
+
+const utcMonthRange = (slotCount) => ({
+  preset: "custom",
+  start: new Date(Date.UTC(1900, 0, 1)).toISOString(),
+  end: new Date(Date.UTC(1900, slotCount, 0, 23, 59, 59, 999)).toISOString(),
+  calendarZone: "utc",
+});
+
+const expectTimelineRangeTooLarge = (fn) => {
+  assert.throws(fn, (error) => {
+    assert.ok(error instanceof RangeError);
+    assert.equal(error.code, "TIMELINE_RANGE_TOO_LARGE");
+    assert.equal(error.message, `Time range exceeds ${MAX_TIMELINE_SLOTS} timeline slots.`);
+    return true;
+  });
+};
 
 test("today fills 24 local hour slots without adding future usage to totals", () => {
   const start = dateAt(2026, 9, 23);
@@ -340,4 +357,43 @@ test("buildTimelineRows with a derived week bucket merges half a year into Monda
   assert.equal(rows[0].total.total, 40);
   assert.equal(rows.at(-1).total.total, 80);
   assert.ok(rows.slice(1, -1).every((row) => row.total.total === 0));
+});
+
+test("bounded non-sparse month timelines retain an out-of-range event at the exact 2000-row limit", () => {
+  const retained = buildTimelineRows(
+    [event("2066-08-15T12:00:00.000Z", { total: 9 })],
+    utcMonthRange(MAX_TIMELINE_SLOTS - 1),
+    "month",
+  );
+
+  assert.equal(retained.length, MAX_TIMELINE_SLOTS);
+  assert.equal(retained.at(-1).key, "2066-08");
+  assert.equal(retained.at(-1).total.total, 9);
+});
+
+test("bounded non-sparse timelines reject an extra row but do not duplicate events already in range", () => {
+  const maxRange = utcMonthRange(MAX_TIMELINE_SLOTS);
+  const inRange = buildTimelineRows([event("1900-01-15T12:00:00.000Z", { total: 4 })], maxRange, "month");
+
+  assert.equal(inRange.length, MAX_TIMELINE_SLOTS);
+  assert.equal(inRange.filter((row) => row.key === "1900-01").length, 1);
+  assert.equal(inRange[0].total.total, 4);
+  expectTimelineRangeTooLarge(() =>
+    buildTimelineRows([event("2066-09-15T12:00:00.000Z", { total: 1 })], maxRange, "month"),
+  );
+});
+
+test("the calendar-key generation stage still rejects a range above 2000 slots", () => {
+  expectTimelineRangeTooLarge(() => buildTimelineRows([], utcMonthRange(MAX_TIMELINE_SLOTS + 1), "month"));
+});
+
+test("unbounded non-sparse timelines allow 2000 rows and reject 2001", () => {
+  const monthlyEvents = (count) =>
+    Array.from({ length: count }, (_, month) => event(new Date(Date.UTC(1900, month, 15)).toISOString(), { total: 1 }));
+
+  const legal = buildTimelineRows(monthlyEvents(MAX_TIMELINE_SLOTS), { calendarZone: "utc" }, "month");
+  assert.equal(legal.length, MAX_TIMELINE_SLOTS);
+  expectTimelineRangeTooLarge(() =>
+    buildTimelineRows(monthlyEvents(MAX_TIMELINE_SLOTS + 1), { calendarZone: "utc" }, "month"),
+  );
 });

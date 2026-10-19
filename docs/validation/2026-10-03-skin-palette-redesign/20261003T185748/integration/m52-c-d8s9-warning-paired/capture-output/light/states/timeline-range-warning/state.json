@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "kind": "skin-palette-capture-state",
+  "unitId": "timeline-range-warning",
+  "group": "S8",
+  "groupLabel": "超长时间线范围告警（独立 fixture）",
+  "unitKind": "catalog",
+  "stateId": "timeline-range-warning",
+  "mode": "light",
+  "skinId": "chatgpt",
+  "attempt": 1,
+  "status": "captured",
+  "blockers": [],
+  "durations": {
+    "measureBrowserRoles": 887
+  },
+  "screenshots": {
+    "state": "state.png",
+    "region": {
+      "file": "region.png",
+      "clip": {
+        "x": 263,
+        "y": 934,
+        "width": 908,
+        "height": 25
+      }
+    }
+  },
+  "captures": [
+    {
+      "index": 0,
+      "roleId": "warning.timeline-range",
+      "kind": "background",
+      "file": "captures/000-warning.timeline-range.png"
+    }
+  ],
+  "files": {
+    "stateScreenshot": {
+      "file": "state.png",
+      "sha256": "c46d831f9cb23887b1ab4900c163dbfbdcf7c54dea3ac6d5b43143779e1997cc",
+      "bytes": 942190
+    },
+    "region": {
+      "file": "region.png",
+      "sha256": "314e28cdf794dead85176c6c51c16ec685ef3f68d7f510f7172e9752728950d2",
+      "bytes": 16328
+    },
+    "geometry": "geometry.json",
+    "capture000": {
+      "file": "captures/000-warning.timeline-range.png",
+      "sha256": "2880dbdd9f8096a5e8853b27498f075bb7b82830c20ff4bed4e7ec24503ac90b",
+      "bytes": 1793
+    },
+    "checks": "checks.json",
+    "state": "state.json"
+  },
+  "measurementVariants": {},
+  "trace": {
+    "unitId": "timeline-range-warning",
+    "group": "S8",
+    "groupLabel": "超长时间线范围告警（独立 fixture）",
+    "kind": "catalog",
+    "stateId": "timeline-range-warning",
+    "note": null,
+    "stepRewrites": null,
+    "mode": "light",
+    "attempt": 1,
+    "startedAt": "2026-10-12T22:31:09.845Z",
+    "steps": [
+      {
+        "phase": "trigger",
+        "action": "click",
+        "selector": "#presetButtons button[data-preset=\"today\"]",
+        "rewrittenFrom": null,
+        "until": "body:has(#presetButtons button[data-preset=\"today\"].active) #timelineRangeWarning[hidden]",
+        "ok": true
+      },
+      {
+        "phase": "trigger",
+        "action": "click",
+        "selector": "#presetButtons button[data-preset=\"all\"]",
+        "rewrittenFrom": null,
+        "ok": true
+      }
+    ],
+    "ready": {
+      "ok": true,
+      "kind": "matches",
+      "selector": "#timelineRangeWarning:not([hidden])",
+      "ms": 7
+    },
+    "restore": [
+      {
+        "phase": "restore",
+        "action": "click",
+        "selector": "#presetButtons button[data-preset=\"today\"]",
+        "rewrittenFrom": null,
+        "ok": true
+      }
+    ],
+    "recovery": {
+      "expectGone": "#timelineRangeWarning:not([hidden])",
+      "steps": [],
+      "errorCleared": true
+    },
+    "rebaseline": {
+      "dialogsClosed": [],
+      "preset": "all",
+      "nonZero": true,
+      "warning": null,
+      "failures": [],
+      "ok": true
+    },
+    "declarations": {
+      "post": {
+        "--bg": "#B9C9EE",
+        "--neo-surface": "#dce4f7",
+        "--control": "#dce4f7",
+        "--neo-edge": "#dce4f7",
+        "--line": "#dce4f7",
+        "--chart-line": "#67598f",
+        "--ink": "#52407d",
+        "--muted": "#807eb0",
+        "--chart-text": "#807eb0",
+        "--control-hover": "#b7b9d8",
+        "--blue": "#3870ff",
+        "--record": "#3870ff",
+        "--skin-active-accent": "#3870ff",
+        "--active-ink": "#10151a",
+        "--ceramic-top": "#e4eaf9",
+        "--ceramic-bottom": "#c9d5f2",
+        "--ceramic-well": "#a9b4dd",
+        "--ceramic-light": "rgba(243, 246, 252, 0.6)",
+        "--ceramic-shade": "rgba(113, 105, 159, 0.54)",
+        "--ceramic-rim": "rgba(243, 246, 252, 0.6)"
+      },
+      "postMatches": true
+    },
+    "verification": null,
+    "durations": {
+      "measureBrowserRoles": 887
+    },
+    "readiness": {},
+    "fixtureRequirement": {
+      "name": "timeline-range-warning",
+      "expectedHash": "9fb0760dd7d4301fd158e4f22d5420786f6228fd83684a6bec17cca0990e557f",
+      "actualHash": "9fb0760dd7d4301fd158e4f22d5420786f6228fd83684a6bec17cca0990e557f",
+      "match": true
+    },
+    "entryReady": false,
+    "roleScopeAdaptation": [],
+    "roleScopeGaps": []
+  },
+  "errors": {
+    "pageErrors": [],
+    "consoleErrors": [],
+    "requestFailed": [],
+    "resourceFailures": [],
+    "blockedExternal": []
+  }
+}

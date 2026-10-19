@@ -14,7 +14,7 @@
 - [适配计划与实施记录](dsh-adaptation-plan.md)：保留多帧日志调查、M1/M2 与真库对照；正文顶部旧 M2 状态不代表现在。
 - [提交交接清单](dsh-change-summary.md)：保留共享工作区背景与修复记录，按文件/hunk 提交的命令已失效。
 
-当前字段规则见 [DSH 数据源](../../data-sources/dsh.md)；非零缓存写入疑点仍待核实。
+当前字段规则见 [DSH 数据源](../../data-sources/dsh.md)；非零缓存写入疑点已在后续 Claude 批次通过上游源码核实并修正，原文保留此前状态。
 
 ## OpenCode
 

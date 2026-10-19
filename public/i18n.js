@@ -10,6 +10,91 @@ const ENGLISH = new Map(
     "上次：尚无": "Last check: none yet",
     切换主题: "Switch Theme",
     切换语言: "Switch Language",
+    查看方式: "View",
+    按性能: "Performance",
+    模型输出吞吐: "Model output throughput",
+    性能详情: "Performance details",
+    模型详情: "Model details",
+    "选择一组模型查看详情。": "Select a model group to view its details.",
+    "统计更新中，当前不展示部分排名。": "The performance index is rebuilding. Partial rankings are hidden.",
+    "部分数据来源不可用，当前结果可能不完整。": "Some sources are unavailable, so results may be incomplete.",
+    "存在适用候选，但当前没有可计算的 TPS 样本。":
+      "Eligible records exist, but none has a usable TPS sample in this range.",
+    "当前范围没有可评估的性能样本。": "There are no eligible performance records in this range.",
+    "用量摘要暂不可用。": "The usage summary is not currently available.",
+    "有不支持性能统计的来源，未纳入 TPS 样本。":
+      "Some sources do not support performance statistics and are excluded from TPS samples.",
+    "未形成 TPS 的候选": "Eligible records without a TPS sample",
+    覆盖情况: "Coverage",
+    覆盖明细与诊断: "Coverage details and diagnostics",
+    "存在来源告警，展开覆盖明细可查看。": "Source warnings are present. Expand coverage details to inspect them.",
+    有跨度率: "Timed-output rate",
+    完整跨度率: "Complete-timing rate",
+    有效样本率: "Valid-sample rate",
+    适用候选: "Eligible",
+    有效输出: "Positive output",
+    已计时输出: "Timed output",
+    完整计时输出: "Complete timed output",
+    已采样: "Sampled",
+    丢弃: "Dropped",
+    等待中: "Pending",
+    近期: "Recent",
+    历史: "History",
+    时间未定位: "Unplaced in time",
+    "时间未定位统计所选来源的全历史记录，不计入当前范围的适用候选分母。":
+      "Unplaced counts include all history for the selected sources and are excluded from the eligible-record denominator for the current range.",
+    "缺少输出/输出无效": "Missing or invalid output",
+    "缺少时长/时长无效": "Missing or invalid duration",
+    记录冲突: "Conflicting records",
+    模型不明确: "Ambiguous model",
+    终态未验证: "Terminal state unverified",
+    轮级时窗不完整: "Incomplete turn window",
+    轮级时窗重叠: "Overlapping turn windows",
+    来源计时语义不匹配: "Source timing semantics mismatch",
+    源过滤: "Source-filtered",
+    "诊断标记可能相互重叠，不要把它们相加为丢弃数。":
+      "Diagnostic flags can overlap; do not add them up as dropped records.",
+    诊断标记: "Diagnostic flags",
+    丢弃原因: "Drop reasons",
+    不支持来源: "Unsupported sources",
+    来源告警: "Source warnings",
+    未归类来源: "Unclassified source",
+    渠道未知: "Unknown channel",
+    未知来源: "Unknown source",
+    未提供: "Not provided",
+    主代理: "Main agent",
+    子代理: "Subagent",
+    代理未知: "Unknown agent",
+    模型未知: "Unknown model",
+    计时方式未知: "Unknown timing method",
+    "Token 范围未知": "Unknown token scope",
+    "报告的输出 tokens（范围未注明）": "Reported output tokens (scope unspecified)",
+    "可见输出与推理 tokens": "Visible output and reasoning tokens",
+    "报告的输出 tokens（含推理）": "Reported output tokens (including reasoning)",
+    "请求端到端 TPS（含请求等待）": "Request end-to-end TPS (includes request waiting)",
+    "轮级 item 时窗 TPS 估算": "Turn-level item-window TPS estimate",
+    样本不足: "Insufficient samples",
+    聚合溢出: "Aggregate overflow",
+    排名: "Rank",
+    推理强度: "Reasoning effort",
+    提供方: "Provider",
+    "p10（慢端）": "p10 (slower end)",
+    "p90（快端）": "p90 (faster end)",
+    "合并样本 TPS": "Pooled-sample TPS",
+    "耗时 p50": "Duration p50",
+    "耗时 p90": "Duration p90",
+    来源: "Source",
+    来源目录: "Home",
+    代理: "Agent",
+    渠道名称: "Channel",
+    模型名称: "Model",
+    "Token 范围": "Token scope",
+    计时口径: "Timing method",
+    "样本数 n": "Sample count n",
+    此组覆盖诊断: "Coverage diagnostics for this group",
+    "此组没有覆盖诊断。": "No coverage diagnostics are available for this group.",
+    "p10 表示较慢端，p90 表示较快端；合并样本 TPS 不代表日历时间整体效率。":
+      "p10 represents the slower end and p90 the faster end. Pooled-sample TPS does not measure overall calendar-time efficiency.",
     选择界面风格: "Choose Waifu",
     界面风格: "Waifu",
     显示角色: "Show characters",
@@ -34,6 +119,10 @@ const ENGLISH = new Map(
     最近: "Recent",
     上一个5h: "Last 5h",
     上一个7d: "Last 7d",
+    仅显示有用量的日期: "Only dates with usage are shown",
+    仅显示有用量的半小时: "Only half-hour slots with usage are shown",
+    "上一周限额记录存在冲突，无法确认周期边界。":
+      "Weekly limit records conflict; the cycle boundaries cannot be confirmed.",
     上周: "Last Week",
     今年: "This Year",
     "尚未发现上一限额窗口的 Codex 记录。": "No Codex record was found for the previous limit window.",
@@ -82,7 +171,6 @@ const ENGLISH = new Map(
     缓存命中率: "Cache Hit Rate",
     模型数量: "Models",
     模型: "Models",
-    渠道: "Sources",
     费用: "Cost",
     费用估算: "Estimated Cost",
     趋势变化: "Usage Trend",
@@ -133,10 +221,8 @@ const ENGLISH = new Map(
     限额窗口: "Limit Window",
     "此限额窗口当前不可用。": "This limit window is currently unavailable.",
     "尚无限额快照，请等待 Codex 写入限额记录。": "No limit snapshot is available yet. Wait for Codex to record one.",
-    "此静态快照未包含限额元数据，请重新导出。": "This snapshot has no limit window data. Export a new snapshot.",
     "等待新的限额记录。": "Waiting for a new limit record.",
     等待新的限额记录: "Waiting for a new limit record",
-    "导出中的限额窗口边界无效。": "The exported limit window boundaries are invalid.",
     "每个图表时间槽是半小时。": "Each chart interval spans 30 minutes.",
     "每个图表时间槽是连续 24 小时，不按本地自然日或夏令时拆分。":
       "Each chart interval spans 24 continuous hours; it does not follow local calendar days or daylight saving changes.",
@@ -162,7 +248,6 @@ const ENGLISH = new Map(
     同比流速: "Usage Pace vs. Prior Period",
     "近期使用时间尚未可用，暂显示已观测模型；重启本地服务后按近一个月筛选。":
       "Recent usage times are unavailable; showing observed models. Restart the local service to filter by the past month.",
-    "此静态快照没有费用估算，请重新导出快照。": "This snapshot has no cost estimates. Export a new snapshot.",
     "费用估算暂不可用。": "Cost estimates are temporarily unavailable.",
     当前价格基准: "Current Pricing Baseline",
     "OpenAI 价格表": "OpenAI Pricing",
@@ -232,12 +317,8 @@ const ENGLISH = new Map(
     "没有发现 Codex、ZCode、DSH 或 OpenCode 目录": "No Codex, ZCode, DSH, or OpenCode directories found",
     移除: "Remove",
     不计入统计: "Excluded from totals",
-    静态快照不能启动轮询: "Auto refresh is unavailable in a static snapshot",
     切换自动刷新: "Toggle auto refresh",
-    "静态快照，不轮询": "Static snapshot; no polling",
     已关闭: "Off",
-    "此静态快照不会轮询；运行 npm run export 可生成新快照":
-      "This static snapshot does not refresh. Run npm run export to create a new one.",
     快速模式价: "Fast Mode Rates",
     短上下文: "Short Context",
     短上下文·长输出: "Short Context · Long Output",
@@ -251,16 +332,11 @@ const ENGLISH = new Map(
     暂无模型: "No models available",
     暂无已用到的模型: "No used models found",
     "正在保存并重算…": "Saving and recalculating…",
-    静态快照不能编辑数据来源: "Data sources cannot be edited in a static snapshot",
-    "静态快照不能选择目录，请启动本地服务或手动输入路径。":
-      "A static snapshot cannot open the folder picker. Start the local server or enter a path manually.",
     "正在打开文件夹选择器...": "Opening folder picker…",
     "已选择目录，可继续导入。": "Folder selected. You can import it now.",
     "没有选择目录。": "No folder selected.",
-    "静态快照不能编辑数据来源，请启动本地服务后再操作": "Start the local server to edit data sources.",
     "请输入目录路径。": "Enter a directory path.",
     "正在识别目录...": "Checking directory…",
-    "静态快照不能移除导入目录，请启动本地服务后再操作": "Start the local server to remove an imported directory.",
     "正在移除导入目录...": "Removing imported directory…",
     "已移除导入目录，正在刷新...": "Directory removed. Refreshing…",
     "快照已回收，正在重新冻结…": "Snapshot expired. Creating a new one…",
@@ -272,9 +348,7 @@ const ENGLISH = new Map(
     "正在加载限额窗口…": "Loading limit window…",
     "最近范围格式无效。请使用数字和天、周、月或年。":
       "Invalid recent range. Enter a number followed by days, weeks, months, or years.",
-    请重新导出快照: "Export a new snapshot",
     请重启服务: "Restart the local service",
-    "静态快照无法更新计价标准；请启动本地服务": "Start the local server to update pricing rates.",
     時間分布圖: "Usage over time chart",
     "存在多个无法区分的 Codex 限额桶。": "Multiple Codex limit buckets cannot be distinguished.",
     "尚未发现 Codex 限额记录。": "No Codex limit records were found.",
@@ -285,6 +359,35 @@ const ENGLISH = new Map(
       "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project containing .codex-usage/usage.jsonl.",
   }),
 );
+
+// Constructing an Intl.DateTimeFormat dominates formatting cost while format() is
+// stateless, so one instance per (options object, locale) pair is reused. Callers pass
+// module-level constant option objects, which keeps the lookup allocation-free.
+const dateTimeFormatters = new WeakMap();
+
+function cachedDateTimeFormat(locale, options) {
+  let byLocale = dateTimeFormatters.get(options);
+  if (!byLocale) {
+    byLocale = new Map();
+    dateTimeFormatters.set(options, byLocale);
+  }
+  let formatter = byLocale.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options);
+    byLocale.set(locale, formatter);
+  }
+  return formatter;
+}
+
+const LOCAL_DATE_TIME_OPTIONS = {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+};
+const ENGLISH_MONTH_OPTIONS = { month: "long", year: "numeric", timeZone: "UTC" };
 
 const englishText = (value) => localizeText(value, "en-US");
 
@@ -300,7 +403,7 @@ const ENGLISH_PATTERNS = [
   [
     /^(.+)年(\d{2})月$/,
     (_, year, month) =>
-      new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+      cachedDateTimeFormat("en-US", ENGLISH_MONTH_OPTIONS).format(
         new Date(Date.UTC(Number(year), Number(month) - 1, 1)),
       ),
   ],
@@ -415,6 +518,13 @@ const ENGLISH_PATTERNS = [
 
 let activeLocale = "zh-CN";
 let observer = null;
+let translationScheduled = false;
+let fullPageScheduled = false;
+// Nodes queued for the next microtask, mapped to "subtree" or "attributes" work.
+const pendingRoots = new Map();
+// Pathological guard only: an attributes/text batch this wide is cheaper as one
+// whole-page pass. Self-inflicted records are filtered before they reach this cap.
+const MAX_PENDING_ROOTS = 512;
 const nodeSources = new WeakMap();
 const attributeSources = new WeakMap();
 const SKIP_USER_DATA =
@@ -485,6 +595,9 @@ export function canonicalRecentValue(value) {
     .trim()
     .replace(/\s+/g, " ");
   const named = {
+    上一个7d: "上周",
+    "上一个 7d": "上周",
+    "last 7d": "上周",
     上一个5h: "上一个5h",
     上周: "上周",
     上个月: "上个月",
@@ -509,6 +622,7 @@ export function canonicalRecentValue(value) {
 }
 
 export function displayRecentValue(value, locale = activeLocale) {
+  if (value === "上周") return localizeText("上一个7d", locale);
   if (["上一个5h", "上周", "上个月", "今年"].includes(value)) return localizeText(value, locale);
   if (locale !== "en-US") return String(value || "");
   const canonical = canonicalRecentValue(value);
@@ -525,14 +639,7 @@ export function displayRecentValue(value, locale = activeLocale) {
 export function formatLocalDateTime(value, locale = activeLocale) {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(date.getTime())) return localizeText("未知时间", locale);
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
+  return cachedDateTimeFormat(locale, LOCAL_DATE_TIME_OPTIONS).format(date);
 }
 
 export function localizeServerError(body, status = 0, locale = activeLocale) {
@@ -572,45 +679,137 @@ export function localizeQuotaReason(window, locale = activeLocale) {
   return reasons[window?.reasonCode] || localizeText(window?.reason || "此限额窗口当前不可用。", locale);
 }
 
+function isSkippedElement(element) {
+  return element.matches("script, style, code, pre, textarea, input, [data-i18n-skip]") && element.tagName !== "INPUT";
+}
+
+function applyAttributeTranslations(element) {
+  let attributes = attributeSources.get(element);
+  if (!attributes) {
+    attributes = new Map();
+    attributeSources.set(element, attributes);
+  }
+  for (const name of TRANSLATED_ATTRIBUTES) {
+    if (!element.hasAttribute(name)) continue;
+    const current = element.getAttribute(name) || "";
+    const entry = attributes.get(name);
+    const source = entry && current === entry.output ? entry.source : current;
+    const output = localizeText(source);
+    attributes.set(name, { source, output });
+    if (current !== output) element.setAttribute(name, output);
+  }
+}
+
+function translateTextNode(node) {
+  const parent = node.parentElement;
+  if (!parent || parent.closest(`script, style, code, pre, textarea, input, [data-i18n-skip], ${SKIP_USER_DATA}`))
+    return;
+  const current = node.nodeValue || "";
+  const entry = nodeSources.get(node);
+  const source = entry && current === entry.output ? entry.source : current;
+  const output = activeLocale === "en-US" && parent.dataset.i18nEn ? parent.dataset.i18nEn : localizeText(source);
+  nodeSources.set(node, { source, output });
+  if (current !== output) node.nodeValue = output;
+}
+
+function translateElementAttributes(element) {
+  if (isSkippedElement(element) || element.closest(SKIP_USER_DATA)) return;
+  applyAttributeTranslations(element);
+}
+
 function translateNode(node) {
   if (node.nodeType === 3) {
-    const parent = node.parentElement;
-    if (!parent || parent.closest(`script, style, code, pre, textarea, input, [data-i18n-skip], ${SKIP_USER_DATA}`))
-      return;
-    const current = node.nodeValue || "";
-    const entry = nodeSources.get(node);
-    const source = entry && current === entry.output ? entry.source : current;
-    const output = activeLocale === "en-US" && parent.dataset.i18nEn ? parent.dataset.i18nEn : localizeText(source);
-    nodeSources.set(node, { source, output });
-    if (current !== output) node.nodeValue = output;
+    translateTextNode(node);
     return;
   }
   if (node.nodeType !== 1) return;
   const element = node;
-  if (element.matches("script, style, code, pre, textarea, input, [data-i18n-skip]") && element.tagName !== "INPUT")
-    return;
-  if (!element.closest(SKIP_USER_DATA)) {
-    let attributes = attributeSources.get(element);
-    if (!attributes) {
-      attributes = new Map();
-      attributeSources.set(element, attributes);
-    }
-    for (const name of TRANSLATED_ATTRIBUTES) {
-      if (!element.hasAttribute(name)) continue;
-      const current = element.getAttribute(name) || "";
-      const entry = attributes.get(name);
-      const source = entry && current === entry.output ? entry.source : current;
-      const output = localizeText(source);
-      attributes.set(name, { source, output });
-      if (current !== output) element.setAttribute(name, output);
-    }
-  }
+  if (isSkippedElement(element)) return;
+  if (!element.closest(SKIP_USER_DATA)) applyAttributeTranslations(element);
   for (const child of element.childNodes) translateNode(child);
 }
 
 export function translatePage(root = globalThis.document?.body) {
   if (!root) return;
   translateNode(root);
+}
+
+function isTextAtCachedOutput(node) {
+  const entry = nodeSources.get(node);
+  return Boolean(entry && (node.nodeValue || "") === entry.output);
+}
+
+// mode "subtree" translates the node and its descendants, "attributes" only the node's
+// translated attributes (what an attributes record can actually have changed).
+function queueTranslationRoot(node, mode) {
+  if (!node || (node.nodeType !== 1 && node.nodeType !== 3)) return;
+  // A detached subtree carries no visible text and its user-data ancestors cannot be
+  // resolved yet; inserting it later queues it again through the observer.
+  if (!node.isConnected) return;
+  if (mode === "subtree") {
+    for (const [root, rootMode] of pendingRoots) {
+      if (root === node) {
+        if (rootMode !== "subtree") pendingRoots.set(root, "subtree");
+        return;
+      }
+      if (root.contains(node)) {
+        // An attributes-only pass on an ancestor cannot cover a descendant subtree.
+        if (rootMode !== "subtree") pendingRoots.set(root, "subtree");
+        return;
+      }
+    }
+    for (const root of pendingRoots.keys()) {
+      if (node.contains(root)) pendingRoots.delete(root);
+    }
+    pendingRoots.set(node, "subtree");
+  } else {
+    for (const [root, rootMode] of pendingRoots) {
+      if (root === node || (rootMode === "subtree" && root.contains(node))) return;
+    }
+    pendingRoots.set(node, "attributes");
+  }
+  if (pendingRoots.size > MAX_PENDING_ROOTS) fullPageScheduled = true;
+}
+
+function queueMutation(mutation) {
+  const target = mutation?.target;
+  if (!target) {
+    fullPageScheduled = true;
+    return;
+  }
+  if (mutation.type === "characterData") {
+    // A record whose text still equals our own last output is already translated;
+    // re-queueing those records is what used to make the observer re-walk the page.
+    if (!isTextAtCachedOutput(target)) queueTranslationRoot(target, "subtree");
+    return;
+  }
+  if (mutation.type === "attributes") {
+    queueTranslationRoot(target, "attributes");
+    return;
+  }
+  if (mutation.type === "childList") {
+    for (const node of mutation.addedNodes) queueTranslationRoot(node, "subtree");
+    return;
+  }
+  // Unknown record shape: fall back to a whole-page pass instead of silently skipping work.
+  fullPageScheduled = true;
+}
+
+function flushTranslationQueue() {
+  const roots = [...pendingRoots];
+  const fullPage = fullPageScheduled;
+  pendingRoots.clear();
+  fullPageScheduled = false;
+  // Safety net: unclassifiable work (or a pathologically wide batch) keeps the previous
+  // "translate the whole page" behaviour, so nothing translatable is ever left behind.
+  if (fullPage) {
+    translatePage();
+    return;
+  }
+  for (const [root, mode] of roots) {
+    if (mode === "attributes") translateElementAttributes(root);
+    else translatePage(root);
+  }
 }
 
 export function setLocale(locale, { persist = true } = {}) {
@@ -636,13 +835,13 @@ export function initializeLocale() {
   if (globalThis.document) {
     document.documentElement.removeAttribute("data-i18n-pending");
     if (typeof MutationObserver !== "undefined" && !observer) {
-      let scheduled = false;
-      observer = new MutationObserver(() => {
-        if (scheduled) return;
-        scheduled = true;
+      observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) queueMutation(mutation);
+        if (translationScheduled) return;
+        translationScheduled = true;
         queueMicrotask(() => {
-          scheduled = false;
-          translatePage();
+          translationScheduled = false;
+          flushTranslationQueue();
         });
       });
       observer.observe(document.body, {

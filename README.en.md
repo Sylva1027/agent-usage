@@ -23,8 +23,8 @@ Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.
 ## Dashboard
 
 - **Time and Trends:** Explore Today, This Week, This Month, All Time, custom dates, and recent ranges. View the timeline by source, model, or estimated cost. Longer All Time, custom, and recent ranges automatically merge daily bars into weekly or monthly bars; the subtitle and tooltips show the grouping and covered dates. This Week follows the calendar week.
-- **Recent Ranges:** Last 5h and Last Week select the previous completed Codex five-hour and weekly limit reset windows. Last Month is the previous full calendar month; This Year runs from January 1 through today. Last Week here is a limit window, not a calendar week.
-- **Codex Limits:** The `5h / week` control switches between the current five-hour and weekly limit windows. These limit ranges, Last 5h, and Last Week count Codex sources only; ordinary ranges such as Today, This Week, and This Month still count all selected sources. Boundaries come from local Codex limit observations; the five-hour chart uses 30-minute slots and the weekly chart uses consecutive 24-hour slots. The dashboard does not guess missing boundaries. With no Codex source selected, the limit control and the corresponding recent range options are disabled.
+- **Recent Ranges:** Last 5h and Last 7d run from the actual start of the preceding respective allowance to the actual start of its replacement, so they may span less or more than five hours or seven days. Expiry alone does not replace a cycle. Last Month is the previous full calendar month; This Year runs from January 1 through today.
+- **Codex Limits:** The `5h / week` control switches between the current five-hour and weekly limit windows. These limit ranges, Last 5h, and Last 7d count Codex sources only; ordinary ranges such as Today, This Week, and This Month still count all selected sources. Boundaries come from local Codex limit observations. The current five-hour chart uses 30-minute slots and the current weekly chart uses consecutive 24-hour slots. Last 5h shows only half-hour slots with usage, clipping the final slot at the replacement start. Last 7d shows only calendar dates with usage. Both retain the complete timestamps and duration. The dashboard does not guess missing boundaries. With no Codex source selected, the limit control and the corresponding recent range options are disabled.
 - **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates. Ordinary ranges group subagents and execution channels under Codex, ZCode, DSH, and OpenCode; Codex-only limit ranges retain channel detail. Local Git repositories appear first, followed by the selected period sort.
 - **Records and Comparisons:** Applicable ranges can highlight new highs and compare them with a preceding period. All Time has no preceding period and shows no New Record badges.
 - **Sources and Refresh:** Codex, ZCode, DSH, and OpenCode data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks; pausing auto refresh keeps the data snapshot fixed while you change ranges.
@@ -45,6 +45,8 @@ Adapters extract usage and necessary metadata without including message content 
 
 Codex, ZCode, DSH, and OpenCode all count toward ordinary ranges. The **5-hour and weekly limit windows measure Codex usage only**; the other sources have no limit records and never take part in them.
 
+`codex-auto-review` has zero cost under the [official free policy](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) and is excluded from current and previous limit windows. Ordinary ranges retain its actual tokens and activity. Stale manual rates cannot override this exemption.
+
 An incremental SQLite index stays on your computer at `~/.codex-usage/usage-index.sqlite` by default. Subsequent scans process only changed files.
 
 ## Cost Estimates
@@ -55,18 +57,15 @@ Claude usage in existing sources supports 17 built-in versions, official dated s
 
 The local dashboard checks public model rates and USD/CNY exchange rates, normally every 24 hours, retrying an hour after a failure. Existing sources include Models.dev, LiteLLM, and official StepFun, MiMo, Kimi, and GLM pages. New model discovery currently requires complete evidence for an OpenAI USD text model. Models in Use includes only models seen within the last rolling calendar month; older models remain available under All Models for historical pricing. Missing models remain visible; uncatalogued `-free` models use the free rule, while other missing rates retain minimum-estimate labels.
 
-Automatic results live in `~/.codex-usage/pricing-auto.json`; manual changes live in `~/.codex-usage/pricing.json` and take precedence. Offline use falls back to cached or built-in values. Public price requests do not upload local usage or model names. Amounts retain their original currency, with an adjustable rate for mixed-currency charts. See the [pricing reference](docs/11-pricing.md) for matching, source limits, and overrides. Provider rates can change; verify the source links in the active catalog.
+Automatic results live in `~/.codex-usage/pricing-auto.json`; manual changes live in `~/.codex-usage/pricing.json` and take precedence over rates, except for official billing exemptions. Offline use falls back to cached or built-in values. Public price requests do not upload local usage or model names. Amounts retain their original currency, with an adjustable rate for mixed-currency charts. See the [pricing reference](docs/11-pricing.md) for matching, source limits, and overrides. Provider rates can change; verify the source links in the active catalog.
 
-## Commands and Static Snapshot
+## Commands
 
 ```bash
 node src/cli.js summary       # Terminal summary
 node src/cli.js summary --json
-node src/static-export.js     # Export standalone HTML
 node --test                   # Run tests
 ```
-
-The snapshot is written to `dist/codex-usage.html`. You can open it directly and switch languages, themes, and character skins; all character assets are embedded for offline use. It retains the usage data and limit observations from export time and does not refresh; export again to include new records. The HTML embeds usage data and may contain local paths. Inspect it before sharing.
 
 ## Documentation and Development
 

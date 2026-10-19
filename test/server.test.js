@@ -243,15 +243,20 @@ test("server accepts named recent reset windows and calendar ranges", async () =
     fixture.sessionFile,
     jsonl([
       quotaTokenRow(observed, { resetsAtMs: end }),
+      quotaTokenRow(new Date(end + 30_000).toISOString(), { resetsAtMs: end + 30_000 + 300 * 60_000 }),
       quotaTokenRow(observed, { resetsAtMs: end, windowMinutes: 10080 }),
+      quotaTokenRow(new Date(end + 30_000).toISOString(), {
+        resetsAtMs: end + 30_000 + 10080 * 60_000,
+        windowMinutes: 10080,
+      }),
     ]),
   );
   const server = createUsageServer(fixture);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     for (const [value, bucket, slots] of [
-      ["上一个5h", "quota_30m", 10],
-      ["上周", "quota_24h", 7],
+      ["上一个5h", "quota_30m", null],
+      ["上周", "day", null],
       ["上个月", "day", null],
       ["今年", "month", null],
     ]) {
@@ -260,6 +265,10 @@ test("server accepts named recent reset windows and calendar ranges", async () =
       const body = await response.json();
       assert.equal(response.status, 200, JSON.stringify(body));
       assert.equal(body.summary.range.bucket, bucket);
+      if (["上周", "上一个5h"].includes(value)) {
+        assert.equal(body.summary.range.windowEndExclusive, new Date(end + 30_000).toISOString());
+        assert.ok(body.summary.timeline.every((row) => row.total.total > 0));
+      }
       if (slots) {
         assert.equal(body.summary.timeline.length, slots);
         assert.deepEqual(body.summary.records, {});
@@ -1027,15 +1036,16 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
   await writeFile(usageLogPath, jsonl([usageRow("gpt-test-discovery", 0)]));
   const calls = [];
   const timers = [];
-  let holdNextDiscovery = false;
-  let signalDiscoveryStarted;
-  let releaseDiscovery;
-  const discoveryStarted = new Promise((resolve) => {
-    signalDiscoveryStarted = resolve;
-  });
-  const blockedDiscovery = new Promise((resolve) => {
-    releaseDiscovery = resolve;
-  });
+  const deferred = () => {
+    /** @type {() => void} */
+    let resolve;
+    const promise = new Promise((settle) => {
+      resolve = settle;
+    });
+    return { promise, resolve };
+  };
+  const blockedDiscoveries = [];
+  let nextDiscoveryGate = null;
   const pricePayload = {
     openai: {
       models: {
@@ -1061,6 +1071,10 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     },
   };
   pricePayload.openai.models["gpt-next-discovery"] = structuredClone(pricePayload.openai.models["gpt-test-discovery"]);
+  pricePayload.openai.models["gpt-after-close-discovery"] = structuredClone(
+    pricePayload.openai.models["gpt-test-discovery"],
+  );
+  pricePayload.openai.models["gpt-close-successor"] = structuredClone(pricePayload.openai.models["gpt-test-discovery"]);
   const server = createUsageServer({
     ...fixture,
     importDirs: [projectRoot, laterProjectRoot, afterCloseProjectRoot],
@@ -1075,10 +1089,11 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     },
     pricingFetcher: async (url) => {
       calls.push(url);
-      if (holdNextDiscovery && url === MODEL_PRICES_URL) {
-        holdNextDiscovery = false;
-        signalDiscoveryStarted();
-        await blockedDiscovery;
+      if (nextDiscoveryGate && url === MODEL_PRICES_URL) {
+        const gate = nextDiscoveryGate;
+        nextDiscoveryGate = null;
+        gate.started.resolve();
+        await gate.released.promise;
       }
       if (url === MIMO_PRICES_URL)
         return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
@@ -1099,6 +1114,8 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  let closePromise = null;
+  const closeDiscoveries = [];
   try {
     const waiting = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     assert.equal(waiting.usageCoverage.ready, false);
@@ -1124,9 +1141,11 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
       GLM_PRICES_URL,
       USD_CNY_RATE_URL,
     ]);
-    holdNextDiscovery = true;
+    const firstGate = { started: deferred(), released: deferred() };
+    blockedDiscoveries.push(firstGate);
+    nextDiscoveryGate = firstGate;
     const firstDiscovery = timers[0].callback();
-    await discoveryStarted;
+    await firstGate.started.promise;
 
     await writeFile(
       path.join(laterProjectRoot, ".codex-usage", "usage.jsonl"),
@@ -1139,7 +1158,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
       "gpt-test-discovery",
     ]);
     assert.equal(timers.length, 2);
-    releaseDiscovery();
+    firstGate.released.resolve();
     await firstDiscovery;
 
     const firstAdded = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
@@ -1179,12 +1198,73 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
       jsonl([usageRow("gpt-after-close-discovery", 2)]),
     );
     await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const firstCloseTimer = timers.at(-1);
+    const closeFirstGate = { started: deferred(), released: deferred() };
+    blockedDiscoveries.push(closeFirstGate);
+    nextDiscoveryGate = closeFirstGate;
+    const firstCloseDiscovery = firstCloseTimer.callback();
+    closeDiscoveries.push(firstCloseDiscovery);
+    await closeFirstGate.started.promise;
+
+    await writeFile(
+      path.join(laterProjectRoot, ".codex-usage", "usage.jsonl"),
+      jsonl([usageRow("gpt-next-discovery", 1), usageRow("gpt-close-successor", 3)]),
+    );
+    await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const mergedTimer = timers.at(-1);
+    assert.notEqual(mergedTimer, firstCloseTimer);
+    const closeSuccessorGate = { started: deferred(), released: deferred() };
+    blockedDiscoveries.push(closeSuccessorGate);
+    nextDiscoveryGate = closeSuccessorGate;
+    const mergedCloseDiscovery = mergedTimer.callback();
+    closeDiscoveries.push(mergedCloseDiscovery);
+
+    await writeFile(
+      path.join(afterCloseProjectRoot, ".codex-usage", "usage.jsonl"),
+      jsonl([usageRow("gpt-after-close-discovery", 2), usageRow("gpt-close-cancelled", 4)]),
+    );
+    await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     const pendingTimer = timers.at(-1);
+    const timerCountAtClose = timers.length;
     assert.equal(pendingTimer.cancelled, undefined);
-    await new Promise((resolve) => server.close(resolve));
+
+    const httpClosed = new Promise((resolve) => server.once("close", resolve));
+    let closeSettled = false;
+    closePromise = server.close();
+    closePromise.then(
+      () => {
+        closeSettled = true;
+      },
+      () => {
+        closeSettled = true;
+      },
+    );
+    assert.ok(closePromise instanceof Promise);
+    await httpClosed;
+    await new Promise(setImmediate);
+    assert.equal(closeSettled, false, "close waits while an automatic pricing refresh is in flight");
     assert.equal(pendingTimer.cancelled, true);
+
+    closeFirstGate.released.resolve();
+    await closeSuccessorGate.started.promise;
+    await new Promise(setImmediate);
+    assert.equal(closeSettled, false, "close also waits for a coalesced successor refresh");
+    closeSuccessorGate.released.resolve();
+    await Promise.all([closePromise, firstCloseDiscovery, mergedCloseDiscovery]);
+    assert.equal(closeSettled, true);
+    assert.equal(timers.length, timerCountAtClose, "closed server schedules no further discovery timers");
+
+    let callbackResolve;
+    const callbackClosed = new Promise((resolve) => {
+      callbackResolve = resolve;
+    });
+    assert.strictEqual(server.close(callbackResolve), server);
+    await callbackClosed;
   } finally {
-    if (server.listening) await new Promise((resolve) => server.close(resolve));
+    for (const gate of blockedDiscoveries) gate.released.resolve();
+    await Promise.allSettled(closeDiscoveries);
+    if (closePromise) await closePromise.catch(() => {});
+    else if (server.listening) await new Promise((resolve) => server.close(resolve));
     await rm(fixture.homeDir, { recursive: true, force: true });
   }
 });
@@ -1338,4 +1418,216 @@ test("usage API 按 exclude 参数过滤数据来源", async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// ── D3 · server 侧：quota 的"当前时刻"语义不被复用冻结（先申请文件锁） ──────────────────────────
+//
+// 卡面明文：**server 测试先申请文件锁**。锁是 `%TEMP%` 下的 `.lock` 目录（原子 `mkdir`），
+// 带过期回收（陈旧锁自动接管）；跑完删除，并用 `stat()` 证明**无残留**。
+const D3_SERVER_LOCK_DIR = path.join(tmpdir(), "codex-usage-d3-server-test.lock");
+const D3_LOCK_STALE_MS = 120_000;
+
+async function acquireD3ServerLock(label) {
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      await mkdir(D3_SERVER_LOCK_DIR, { recursive: false });
+      await writeFile(
+        path.join(D3_SERVER_LOCK_DIR, "owner.json"),
+        JSON.stringify({ label, pid: process.pid, at: new Date().toISOString() }),
+      );
+      return {
+        dir: D3_SERVER_LOCK_DIR,
+        release: async () => {
+          await rm(D3_SERVER_LOCK_DIR, { recursive: true, force: true });
+        },
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const info = await stat(D3_SERVER_LOCK_DIR).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > D3_LOCK_STALE_MS) {
+        await rm(D3_SERVER_LOCK_DIR, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() > deadline) throw new Error(`D3 server 测试文件锁等待超时：${D3_SERVER_LOCK_DIR}`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
+test("D3 · quota API 的时刻语义：过期/新鲜随 asOf 现算，freeze 快照不被 live 新观测改写", async () => {
+  const lock = await acquireD3ServerLock("d3-quota-clock");
+  const { homeDir, importStoreFile, databaseFile, sessionFile } = await makeFixtureHome();
+  const quotaFile = path.join(path.dirname(sessionFile), "quota-clock.jsonl");
+  const estimateNow = Date.now();
+  // ① 陈旧观测（11 分钟前 > 10 分钟阈值）但在窗口内 ⇒ 状态可用 + percentStale=true。
+  const staleObservedAtMs = estimateNow - 11 * 60_000;
+  const staleResetsAtMs = estimateNow + 240 * 60_000;
+  await writeFile(
+    quotaFile,
+    jsonl([
+      {
+        type: "session_meta",
+        timestamp: new Date(staleObservedAtMs - 1_000).toISOString(),
+        payload: { id: "quota-clock" },
+      },
+      quotaTokenRow(new Date(staleObservedAtMs).toISOString(), {
+        resetsAtMs: staleResetsAtMs,
+        usedPercent: 42.5,
+      }),
+    ]),
+  );
+  const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const live1 = await fetch(`${baseUrl}/api/usage?preset=quota_5h&bucket=month`).then((response) => response.json());
+    const window1 = live1.quota.windows.quota_5h;
+    assert.equal(window1.state, "available");
+    assert.equal(window1.usedPercent, 42.5);
+    assert.equal(window1.percentStale, true, "① 观测已超 10 分钟 ⇒ percentStale=true（按请求时刻现算）");
+    assert.equal(window1.windowStart, new Date(staleResetsAtMs - 300 * 60_000).toISOString());
+    assert.equal(window1.windowEndExclusive, new Date(staleResetsAtMs).toISOString());
+    assert.equal(live1.summary.range.asOf, live1.quota.asOf, "范围 asOf 与 quota.asOf 同源");
+    assert.equal(
+      live1.summary.range.end,
+      new Date(Date.parse(live1.quota.asOf) - 1).toISOString(),
+      "① 范围末端 = min(asOf, 窗口末端) − 1ms（时间派生字段随请求走）",
+    );
+
+    const paused = await fetch(`${baseUrl}/api/usage?preset=quota_5h&freeze=1`).then((response) => response.json());
+    assert.ok(paused.snapshotId);
+    const frozen1 = await fetch(`${baseUrl}/api/usage?preset=quota_5h&snapshot=${paused.snapshotId}&bucket=month`).then(
+      (response) => response.json(),
+    );
+    assert.deepEqual(frozen1.quota, paused.quota, "冻结快照与暂停时刻逐字一致");
+
+    // ② live 源出现**新观测**（新鲜：5 秒前）⇒ live 读数必须立即更新；冻结快照必须原样。
+    const freshObservedAtMs = estimateNow - 5_000;
+    const freshResetsAtMs = estimateNow + 300 * 60_000;
+    await appendFile(
+      quotaFile,
+      jsonl([
+        quotaTokenRow(new Date(freshObservedAtMs).toISOString(), { resetsAtMs: freshResetsAtMs, usedPercent: 88 }),
+      ]),
+    );
+    const live2 = await fetch(`${baseUrl}/api/usage?preset=quota_5h&bucket=month`).then((response) => response.json());
+    const window2 = live2.quota.windows.quota_5h;
+    assert.equal(window2.usedPercent, 88, "② 新观测立即生效（沿 D1 修订机制）");
+    assert.equal(
+      window2.percentStale,
+      false,
+      "② 新观测新鲜 ⇒ percentStale 由 true 变 false（同一份源、不同 asOf 现算）",
+    );
+    assert.equal(window2.windowEndExclusive, new Date(freshResetsAtMs).toISOString());
+    assert.notEqual(window2.windowEndExclusive, window1.windowEndExclusive);
+
+    const frozen2 = await fetch(`${baseUrl}/api/usage?preset=quota_5h&snapshot=${paused.snapshotId}&bucket=month`).then(
+      (response) => response.json(),
+    );
+    assert.deepEqual(frozen2.quota, paused.quota, "② 冻结快照**不被** live 新观测改写（自己的库 + 自己的 asOf）");
+    assert.equal(frozen2.quota.windows.quota_5h.percentStale, true, "② 冻结快照保持暂停时刻的 stale 语义");
+    assert.equal(frozen2.quota.windows.quota_5h.usedPercent, 42.5);
+    assert.equal(frozen2.summary.range.asOf, paused.summary?.range?.asOf ?? paused.quota.asOf);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await lock.release();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+  assert.equal(await stat(D3_SERVER_LOCK_DIR).catch(() => null), null, "文件锁已释放（无残留）");
+});
+
+// ── D4 · server 侧：周期响应的 asOf 必须是"本次请求"的时刻（先申请文件锁） ────────────────────────
+//
+// 卡面明文：server 测试先申请文件锁（复用 D3 的锁实现，见文件上方）。判别力要点：
+//   * 两次请求之间插入 ≥30ms 间隔 ⇒ 第二次的 `periodComparison.asOf` 必须落在**第二次请求**的时间窗
+//     内（若命中路径把缓存的 asOf 原样返回，它就落在间隔之前 ⇒ 被抓）；
+//   * 命中复用的静态部分（同一自然日 ⇒ 日历边界与合计）逐字不变；
+//   * 新数据到达 ⇒ 合计增长（缓存按**实际变更**失效，而不是被命中键冻住）。
+
+/** D4：本文件里最简的 `token_count` 行（`test/server.test.js` 只自带 `quotaTokenRow`）。 */
+function d4TokenRow(timestamp, total) {
+  return {
+    timestamp,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: {
+        total_token_usage: {
+          total_tokens: total,
+          input_tokens: Math.max(total - 20, 1),
+          cached_input_tokens: 0,
+          output_tokens: 20,
+          reasoning_output_tokens: 0,
+        },
+      },
+    },
+  };
+}
+
+test("D4 · 周期 API 的 asOf 仍新鲜 + 改数据立即失效（server，先申请文件锁）", async () => {
+  const lock = await acquireD3ServerLock("d4-period-freshness");
+  const { homeDir, importStoreFile, databaseFile, sessionFile } = await makeFixtureHome();
+  const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const first = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const p1 = first.periodComparison;
+    assert.ok(p1.totals.all.total > 0, "夹具的事件计入 all 周期");
+    assert.ok(Date.parse(p1.asOf) > 0);
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const requestStart = Date.now();
+    const second = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const requestEnd = Date.now();
+    const p2 = second.periodComparison;
+    assert.ok(
+      Date.parse(p2.asOf) >= requestStart,
+      `第二次请求的 asOf 必须落在本次请求窗口内（缓存时刻会是 ${p1.asOf}）`,
+    );
+    assert.ok(Date.parse(p2.asOf) <= requestEnd);
+    assert.deepEqual(p2.periods, p1.periods, "同一自然日 ⇒ 日历边界逐字复用");
+    assert.deepEqual(p2.totals, p1.totals, "命中路径复用静态合计");
+    assert.deepEqual(p2.models, p1.models);
+
+    // 新数据到达（下一次请求触发 sync）⇒ 合计必须立即增长。
+    // ⚠️ 实测：`token_count` 的**累计总量必须递增**（夹具首行 123），否则产品按"陈旧快照"忽略该行。
+    await appendFile(
+      sessionFile,
+      jsonl([{ type: "turn_context", payload: { model: "gpt-6-sol" } }, d4TokenRow("2026-05-01T02:02:00.000Z", 300)]),
+    );
+    const third = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    const p3 = third.periodComparison;
+    assert.ok(
+      p3.totals.all.total > p1.totals.all.total,
+      `新数据 ⇒ 周期缓存按实际变更失效（${p1.totals.all.total} → ${p3.totals.all.total}）`,
+    );
+
+    // 冻结快照：asOf 与合计都绑在冻结时刻，不被随后的 live 变化改写。
+    const paused = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
+    assert.ok(paused.snapshotId);
+    await appendFile(
+      sessionFile,
+      jsonl([{ type: "turn_context", payload: { model: "gpt-6-mini" } }, d4TokenRow("2026-05-01T02:03:00.000Z", 400)]),
+    );
+    const frozenAgain = await fetch(`${baseUrl}/api/usage?preset=all&snapshot=${paused.snapshotId}`).then((response) =>
+      response.json(),
+    );
+    assert.deepEqual(
+      frozenAgain.periodComparison,
+      paused.periodComparison,
+      "冻结快照的周期响应逐字不变（asOf 也钉住）",
+    );
+    const liveAgain = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    assert.ok(
+      liveAgain.periodComparison.totals.all.total > paused.periodComparison.totals.all.total,
+      "live 继续增长，冻结侧不动",
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await lock.release();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+  assert.equal(await stat(D3_SERVER_LOCK_DIR).catch(() => null), null, "文件锁已释放（无残留）");
 });
