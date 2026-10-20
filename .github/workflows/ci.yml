@@ -13,17 +13,11 @@ env:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            node-version: 22
-          - os: windows-latest
-            node-version: 24
-          - os: ubuntu-latest
-            node-version: 24
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,13 +26,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Use canonical Windows temp paths
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
           "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
       - name: Set up browser checks
-        if: runner.os == 'Windows'
         shell: bash
         env:
           AGENT_USAGE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/agent-usage-browser/node_modules/playwright/index.mjs
@@ -46,19 +38,8 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/agent-usage-browser" --no-package-lock --no-save playwright@1.62.1
           echo "AGENT_USAGE_PLAYWRIGHT_MODULE=$AGENT_USAGE_PLAYWRIGHT_MODULE" >> "$GITHUB_ENV"
       - name: Run full Windows suite
-        if: runner.os == 'Windows'
         timeout-minutes: 20
         run: node --test --test-reporter=spec --test-concurrency=4 --test-timeout=600000 "test/**/*.test.js"
-      - name: Run Linux core regressions
-        if: runner.os == 'Linux'
-        timeout-minutes: 10
-        run: >-
-          node --test --test-reporter=spec --test-concurrency=4 --test-timeout=120000
-          test/app-autorefresh.test.js test/claude-code-usage.test.js
-          test/codex-rollout-compression.test.js test/cli.test.js test/server.test.js
-          test/usage-core.test.js test/usage-store.test.js test/pricing.test.js
-          test/pricing-auto.test.js test/pricing-models.test.js
-          test/timeline-utils.test.js test/recent-selections.test.js test/w1-executor.test.js
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
