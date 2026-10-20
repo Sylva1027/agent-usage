@@ -8108,6 +8108,7 @@ test("M5.2.C-E1d：聚光稳定探针等待有限淡入、取消重查、超时�
       getAnimations: () => [],
     };
   };
+  let scheduleAnimation = setTimeout;
   const makeAnimation = (host, { delayMs, cancel = false, duration = 120 } = {}) => {
     const animation = {
       playState: "running",
@@ -8123,7 +8124,7 @@ test("M5.2.C-E1d：聚光稳定探针等待有限淡入、取消重查、超时�
       get() {
         if (!finished) {
           finished = new Promise((resolve, reject) => {
-            setTimeout(() => {
+            scheduleAnimation(() => {
               animation.playState = cancel ? "idle" : "finished";
               if (!cancel) host.opacity = "1";
               if (cancel) reject(new Error("transition canceled"));
@@ -8137,19 +8138,47 @@ test("M5.2.C-E1d：聚光稳定探针等待有限淡入、取消重查、超时�
     return animation;
   };
   const runProbe = async (hosts, budgetMs = 500, documentAnimations = []) => {
-    const clockStart = Date.now();
+    let now = 0;
+    const timers = [];
+    const schedule = (callback, delay = 0) => {
+      const timer = { callback, at: now + delay, canceled: false };
+      timers.push(timer);
+      return timer;
+    };
+    scheduleAnimation = schedule;
     const sandbox = {
       document: {
         querySelectorAll: (selector) => (selector === ".shell [data-spotlight-active]" ? hosts : []),
         getAnimations: () => documentAnimations,
       },
       getComputedStyle: (host) => ({ opacity: host.opacity }),
-      performance: { now: () => Date.now() - clockStart },
-      requestAnimationFrame: (callback) => setTimeout(() => callback(Date.now()), 4),
-      setTimeout,
-      clearTimeout,
+      performance: { now: () => now },
+      requestAnimationFrame: (callback) => schedule(() => callback(now), 4),
+      setTimeout: schedule,
+      clearTimeout: (timer) => {
+        if (timer) timer.canceled = true;
+      },
     };
-    return runInNewContext(buildProbeSource("spotlight-stability", budgetMs), sandbox);
+    let done = false;
+    const result = runInNewContext(buildProbeSource("spotlight-stability", budgetMs), sandbox);
+    result.finally(() => {
+      done = true;
+    });
+    try {
+      for (let turn = 0; !done && turn < 10000; turn += 1) {
+        for (let tick = 0; tick < 12; tick += 1) await Promise.resolve();
+        if (done) break;
+        timers.sort((left, right) => left.at - right.at);
+        const timer = timers.shift();
+        if (!timer || timer.canceled) continue;
+        now = timer.at;
+        timer.callback();
+      }
+      assert.equal(done, true, "虚拟时钟下探针必须有界结算");
+      return await result;
+    } finally {
+      scheduleAnimation = setTimeout;
+    }
   };
 
   const beforeHost = makeHost("0.4");

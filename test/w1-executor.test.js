@@ -294,18 +294,21 @@ test("W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不�
     const isComplete = (state) =>
       state !== null && state !== undefined && Boolean(state.harnessModels) && Array.isArray(state.homes);
     const samples = [];
-    let settled = false;
-    const inFlight = executor.sync({ options: { force: true } }).then((status) => {
-      settled = true;
-      return status;
-    });
-    // **必须让出事件环**：执行器发布的消息只有让出后才到得了主线程。原先的紧循环
-    // 一次都不让出 ⇒ 半发布消息到不了主线程 ⇒ 这条不变量实际上没被钉住（突变 MISSED）。
-    while (!settled && samples.length < 5000) {
-      await new Promise((resolve) => setImmediate(resolve));
-      samples.push(executor.metadata());
+    // 多轮发布各自采样，避免单次同步太快而把正确实现误判为空转。
+    for (let round = 0; round < 5; round += 1) {
+      let settled = false;
+      const inFlight = executor.sync({ options: { force: true } }).then((status) => {
+        settled = true;
+        return status;
+      });
+      // **必须让出事件环**：执行器发布的消息只有让出后才到得了主线程。原先的紧循环
+      // 一次都不让出 ⇒ 半发布消息到不了主线程 ⇒ 这条不变量实际上没被钉住（突变 MISSED）。
+      while (!settled && samples.length < 5000) {
+        samples.push(executor.metadata());
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      await inFlight;
     }
-    await inFlight;
     const half = samples.filter((item) => item !== null && !isComplete(item));
     assert.equal(
       half.length,

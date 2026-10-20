@@ -655,7 +655,16 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     `;
     const child = await execFile(
       process.execPath,
-      ["--input-type=module", "-e", childSource, sandboxRoot, originRunDir, manifestRunDir, formalIndexPath],
+      [
+        "--disable-warning=ExperimentalWarning",
+        "--input-type=module",
+        "-e",
+        childSource,
+        sandboxRoot,
+        originRunDir,
+        manifestRunDir,
+        formalIndexPath,
+      ],
       { cwd: sandboxRoot, maxBuffer: 32 * 1024 * 1024 },
     );
     const result = JSON.parse(child.stdout.trim());
@@ -717,7 +726,15 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     `;
       const assemblyChild = await execFile(
         process.execPath,
-        ["--input-type=module", "-e", assemblyChildSource, sandboxRoot, originRunDir, formalShardPath],
+        [
+          "--disable-warning=ExperimentalWarning",
+          "--input-type=module",
+          "-e",
+          assemblyChildSource,
+          sandboxRoot,
+          originRunDir,
+          formalShardPath,
+        ],
         { cwd: sandboxRoot, maxBuffer: 1024 * 1024 },
       );
       assert.equal(assemblyChild.stderr, "");
