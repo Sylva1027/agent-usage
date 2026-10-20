@@ -615,8 +615,8 @@ function installDomGlobals(harnessId, values) {
   for (const [key, value] of Object.entries(values)) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
     saved.set(key, descriptor);
-    // Node 24 的 `navigator` 等是只读访问器 ⇒ 只给能改的装；能读到的（含 Node 内置值）就照用。
-    if (descriptor && (!descriptor.configurable || (!descriptor.writable && descriptor.set === undefined))) {
+    // configurable 的只读访问器（如 Node navigator）也可替换，避免宿主语言污染夹具。
+    if (descriptor && !descriptor.configurable) {
       skipped.push(key);
       continue;
     }
@@ -1846,7 +1846,20 @@ if (!HARNESS_ONLY) {
   // 确定性周期矩阵：一次跑完 today / quota_5h / quota_week，逐条判据都有**具名**消息
   // （`u4.<id>: <期望> | 实测 …`），变异脚本据此判定"哪条判据抓住了变体"。
   test("U4 deterministic 60s cycles: source check, skipCheck policy, quota clock recompute", async () => {
-    const { checks, evidence } = await runCycleMatrix({});
+    const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      get: () => ({ language: "en-US", languages: ["en-US"] }),
+    });
+    let checks;
+    let evidence;
+    try {
+      ({ checks, evidence } = await runCycleMatrix({}));
+      assert.equal(globalThis.navigator.language, "en-US", "夹具结束后恢复宿主只读 navigator");
+    } finally {
+      if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+      else delete globalThis.navigator;
+    }
     const failed = checks.filter((check) => !check.ok);
     assert.equal(
       failed.length,
