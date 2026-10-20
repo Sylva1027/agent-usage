@@ -257,8 +257,8 @@ test("核心颜色逐字节匹配声明色：一字节灰度差不能被算作�
   const fixture = makeFixture({ color: [90, 90, 90, 255] });
   const expectedRatio = contrastRatio(srgb8([90, 90, 90, 255]), srgb8(BACKGROUND));
   const actualRatio = contrastRatio(srgb8([89, 89, 89, 255]), srgb8(BACKGROUND));
-  assert.equal(expectedRatio, 3.0448346617620263);
-  assert.equal(actualRatio, 2.9979745649422775);
+  assert.ok(Math.abs(expectedRatio - 3.0448346617620263) < 1e-12);
+  assert.ok(Math.abs(actualRatio - 2.9979745649422775) < 1e-12);
   assert.equal(analyzeFocusOutlinePixels(fixture.input).result, "pass");
 
   const sample = fixture.corePixels[0];
@@ -514,7 +514,7 @@ test("A58 adjacent: 2.990... 不得舍入为 3:1", () => {
   const fixture = makeFixture({ color: [90, 90, 90, 255] });
   writePixel(fixture.input.focused, WIDTH, 36, 3, [3, 3, 3, 255]);
   const knownRatio = contrastRatio(srgb8([90, 90, 90, 255]), srgb8([3, 3, 3, 255]));
-  assert.equal(knownRatio, 2.9903750899186705);
+  assert.ok(Math.abs(knownRatio - 2.9903750899186705) < 1e-12);
   assert.equal(Math.round(knownRatio), 3);
 
   const result = analyzeFocusOutlineAdjacentPixels(fixture.input);

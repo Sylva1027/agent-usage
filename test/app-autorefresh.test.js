@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { selectQuotaWindows, summarizeUsage } from "../src/usage-core.js";
 
 // =====================================================================================
 // U4 —— 自动刷新 60 秒周期：运行时周期夹具
@@ -30,18 +31,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..");
 const APP_PATH = path.join(REPO_ROOT, "public", "app.js");
 const INDEX_PATH = path.join(REPO_ROOT, "public", "index.html");
-const RESPONSES_DIR = path.join(
-  REPO_ROOT,
-  "docs",
-  "validation",
-  "2026-10-09-refresh-performance-fix",
-  "2026-10-09T0525+0800",
-  "baseline",
-  "reports",
-  "responses",
-  "original",
-  "pristine",
-);
 
 /** `U4_HARNESS_ONLY=1` ⇒ 只导出夹具、不注册 test()（供 U4 脚本复用）。 */
 export const HARNESS_ONLY = process.env.U4_HARNESS_ONLY === "1";
@@ -1096,7 +1085,7 @@ export async function createCycleHarness(options = {}) {
 }
 
 // =====================================================================================
-// §B4 载荷夹具：直接复用**归档的真实 /api/usage 响应**（baseline pristine 抓包）
+// §B4 载荷夹具：默认生成隔离数据；历史测量脚本仍可显式传入抓包目录。
 // =====================================================================================
 
 const FIXTURE_FILES = {
@@ -1105,7 +1094,56 @@ const FIXTURE_FILES = {
   quota_week: "11-quota_week.json",
 };
 
-export async function loadRecordedPayloads({ dir = RESPONSES_DIR } = {}) {
+export async function loadRecordedPayloads({ dir } = {}) {
+  if (!dir) {
+    const now = new Date("2026-10-09T00:00:00.000Z");
+    const homes = [{ id: "fixture-codex", label: "Codex", kind: "main", status: "active", path: "/fixture/.codex" }];
+    const rateLimitObservations = [300, 10080].map((windowMinutes) => ({
+      limitId: "codex",
+      windowMinutes,
+      role: windowMinutes === 300 ? "primary" : "secondary",
+      observedAtMs: now.getTime(),
+      resetsAtMs: now.getTime() + windowMinutes * 60000,
+      usedPercent: 10,
+      sourcePath: "/fixture/rollout.jsonl",
+      lineNumber: 1,
+    }));
+    const report = {
+      generatedAt: now.toISOString(),
+      homes,
+      warnings: [],
+      rateLimitObservations,
+      sessions: [],
+      events: [
+        {
+          timestamp: now.toISOString(),
+          sessionId: "fixture-session",
+          homeId: homes[0].id,
+          homeLabel: "Codex",
+          channel: "CLI",
+          model: "gpt-6-sol",
+          cwd: "/fixture/project",
+          total: { total: 1100, input: 1000, cached: 400, output: 100, reasoning: 0 },
+        },
+      ],
+    };
+    const quota = selectQuotaWindows(rateLimitObservations, now);
+    return Object.fromEntries(
+      Object.keys(FIXTURE_FILES).map((preset) => [
+        preset,
+        {
+          checkedAt: now.toISOString(),
+          fingerprint: "f".repeat(64),
+          quota,
+          metadata: { homes, imports: [], warnings: [] },
+          summary: summarizeUsage(
+            { ...report, quota },
+            { preset, now, bucket: preset === "today" ? "hour" : preset === "quota_5h" ? "quota_30m" : "quota_24h" },
+          ),
+        },
+      ]),
+    );
+  }
   const payloads = {};
   for (const [key, file] of Object.entries(FIXTURE_FILES)) {
     payloads[key] = JSON.parse(await readFile(path.join(dir, file), "utf8"));

@@ -4,7 +4,9 @@
 
 ## 验证范围
 
-发布检查覆盖完整测试、类型、Lint、格式及皮肤资产／配色；[CI](https://github.com/Sylva1027/codex-usage/actions/workflows/ci.yml) 的 Node.js 22 / 24 两个任务作为正式发布门槛。浏览器检查显式配置 Playwright 与 Chromium 路径，不以缺失浏览器跳过必需检查。
+发布检查覆盖完整测试、类型、Lint、格式及皮肤资产／配色；[CI](https://github.com/Sylva1027/codex-usage/actions/workflows/ci.yml) 在 Windows Node.js 22 / 24 上运行完整套件，另在 Linux Node.js 24 上运行核心来源、统计、服务端和刷新回归。浏览器检查显式配置 Playwright，使用 Windows runner 的 Edge，不以缺失浏览器跳过必需检查。测试设有超时，避免单项卡住后无限等待。
+
+首次 Linux 全量运行暴露了历史套件中的 Windows 文件锁、AppData 来源、路径大小写及字体几何假设，尚不能作为 Linux 全量验收。自动刷新夹具已改为从合成事件生成，不再依赖本机未入库的验收抓包；浮点数断言允许 1e-12 的平台数值差异，3:1 阈值判断保持不变。Linux 全量兼容仍是保留边界，不以核心回归通过替代。
 
 旧测试修正为当前合同：上一轮限额持续至下一轮实际开始，稀疏时间图只保留有用量的时间段，皮肤矩阵包含 45 个单模式状态。历史迁移测试使用已有的迁移前 picker fixture 和对应源码摘要，保留转换、来源稳定性和篡改拒绝检查；不为当前产品增加旧迁移兼容层。
 
