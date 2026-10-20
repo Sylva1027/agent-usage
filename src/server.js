@@ -205,7 +205,9 @@ export async function describeImportEntry(importPath) {
           ? `DSH ${name}`
           : classified.type === "opencode-home"
             ? `OpenCode ${name}`
-            : `Imported ${name}`;
+            : classified.type === "claude-home"
+              ? `Claude Code ${name}`
+              : `Imported ${name}`;
   return {
     type: classified.type,
     path: classified.path,

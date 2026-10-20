@@ -1,4 +1,8 @@
-# 当前状态（截至 2026-10-14）
+# 当前状态（2026-10-20）
+
+M5.7及M6前两步完成；[第3步](M6-step3.md)自动验收 **10/10，900/900**，关键几何 **120/120**，十套浅深共20图视觉复查完成，无该范围must-fix；classic、picker 51/51、在线冻结浅深各16/16均通过。[本轮最终记录](../integration/m62-reaccept-20261020/final-assessments.json)自动技术pass、整体incomplete，当前 **AWAITING_MANUAL_SCALE**。目标机真实OS缩放/browser zoom仍缺证据；最终全仓工程门禁未跑，不宣称M6整体完成或可发布。
+
+## 历史状态（截至 2026-10-14）
 
 D8u14 已由主管限定范围接受。D8u15 指定截图边界组仍为 `NEEDS_REVIEW`：首次运行 23 项（15 个顶层用例、8 个子用例）11 通过/12 失败；按授权只适配 `quality.test.js` 的一个共享模拟器构造器后复跑，8 通过/15 失败/0 跳过。复跑指出模拟输入节点缺少 `getBoundingClientRect`，导致截图异常断言被提前的几何错误遮蔽。生产源码未改；已按卡停止，不进行第三次运行。详见 [D8u15 handoff](M5.2.C-D8u15-screenshot-regression.md) 和 [evidence index](../integration/m52-c-d8u15-screenshot-regression/evidence-index.json)。
 

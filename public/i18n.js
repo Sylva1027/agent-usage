@@ -11,10 +11,6 @@ const ENGLISH = new Map(
     切换主题: "Switch Theme",
     切换语言: "Switch Language",
     查看方式: "View",
-    按性能: "Performance",
-    模型输出吞吐: "Model output throughput",
-    性能详情: "Performance details",
-    模型详情: "Model details",
     "选择一组模型查看详情。": "Select a model group to view its details.",
     "统计更新中，当前不展示部分排名。": "The performance index is rebuilding. Partial rankings are hidden.",
     "部分数据来源不可用，当前结果可能不完整。": "Some sources are unavailable, so results may be incomplete.",
@@ -314,7 +310,8 @@ const ENGLISH = new Map(
     无用量记录: "No usage found",
     可扫描: "Ready to scan",
     没有可统计的来源: "No sources available",
-    "没有发现 Codex、ZCode、DSH 或 OpenCode 目录": "No Codex, ZCode, DSH, or OpenCode directories found",
+    "没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录":
+      "No Codex, ZCode, DSH, OpenCode, or Claude Code directories found",
     移除: "Remove",
     不计入统计: "Excluded from totals",
     切换自动刷新: "Toggle auto refresh",
@@ -355,8 +352,8 @@ const ENGLISH = new Map(
     "同一观察时刻存在相互冲突的限额重置时间。": "Conflicting reset times were recorded at the same observation time.",
     "尚未发现当前限额窗口的 Codex 记录。": "No Codex record was found for the current limit window.",
     "限额窗口边界无效。": "The limit window boundaries are invalid.",
-    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录，或包含 .codex-usage/usage.jsonl":
-      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project containing .codex-usage/usage.jsonl.",
+    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home，或包含 .codex-usage/usage.jsonl":
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, or a project containing .codex-usage/usage.jsonl.",
   }),
 );
 
@@ -655,7 +652,7 @@ export function localizeServerError(body, status = 0, locale = activeLocale) {
     QUOTA_WINDOW_UNAVAILABLE: "This limit window is not available yet.",
     SNAPSHOT_EXPIRED: "This snapshot has expired.",
     INVALID_IMPORT_DIRECTORY:
-      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, or a project with a usage log.",
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, or a project with a usage log.",
     INVALID_PRICING: "Check the pricing rates and exchange rate, then try again.",
   };
   if (body?.code && known[body.code]) return known[body.code];

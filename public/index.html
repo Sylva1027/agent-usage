@@ -233,17 +233,11 @@
               <button type="button" data-timeline-mode="channel" data-i18n-en="Source" aria-pressed="true">按渠道</button>
               <button type="button" data-timeline-mode="model" data-i18n-en="Model" aria-pressed="false">按模型</button>
               <button type="button" data-timeline-mode="cost" data-i18n-en="Cost" aria-pressed="false">按花销</button>
-              <button type="button" id="perfModeButton" data-active-view="performance" aria-pressed="false">按性能</button>
             </div>
           </div>
           <div class="timeline-chart-well">
             <canvas id="timelineChart" width="960" height="320" tabindex="0" role="img" aria-label="时间分布柱状图；聚焦后可查看用量详情"></canvas>
           </div>
-          <section id="perfPanel" class="perf-panel" aria-labelledby="perfPanelTitle" hidden>
-            <h3 id="perfPanelTitle" tabindex="-1">模型输出吞吐</h3>
-            <div id="perfCoverage" class="perf-coverage"></div>
-            <div id="perfList" class="perf-list"></div>
-          </section>
           <p id="timelineRangeWarning" class="timeline-range-warning" role="status" hidden></p>
           <!-- biome-ignore lint/a11y/useSemanticElements: 图例由 JS 渲染 span 列表，改用 ul 需同步重置列表默认样式与缩进 -->
           <div id="timelineLegend" class="timeline-legend" role="list" aria-label="图表图例"></div>
@@ -255,7 +249,6 @@
             <span id="detailModeLabel">按渠道</span>
           </div>
           <div id="detailList" class="bar-list"></div>
-          <div id="perfDetailList" class="perf-detail-list" hidden></div>
         </section>
       </section>
 

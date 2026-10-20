@@ -171,7 +171,8 @@ function convertLineEndings(text, lineEnding) {
 }
 
 function generatedColourTokens(lineEnding) {
-  return convertLineEndings(`const COLOUR_TOKENS = ${JSON.stringify(COLOUR_TOKENS, null, 2)};`, lineEnding);
+  const entries = Object.entries(COLOUR_TOKENS).map(([key, value]) => `  ${key}: ${JSON.stringify(value)},`);
+  return ["const COLOUR_TOKENS = {", ...entries, "};"].join(lineEnding);
 }
 
 function generatedPreviewFunction(lineEnding) {

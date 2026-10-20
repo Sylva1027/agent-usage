@@ -1,6 +1,6 @@
 # Agent Usage 文档入口
 
-更新：2026-10-14（新增 D8u28-R4 几何裁切诊断记录）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-10-20（皮肤配色当前代码重新验收）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
 ## 使用与接手
 
@@ -23,13 +23,13 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 
 [分享图片融合计划](plans/2026-10-03-mobile-share-card-consolidated-plan.md)是分享功能的唯一现行入口，状态为只做计划、未实施。生成界面面向 PC，产物面向普通读者；已确认总用量与常用模型优先、费用默认关闭且保持次要、有限自定义与缓存命中率可选，跟随当前皮肤统一浅色出图。人物位于角部或侧边、保持数据快速判读，隐藏后保留主题色；不设独立文案标题。完整十角色范围为 21 种主题组合；推荐 3:4 竖版和本地 PNG 保存。独立新名称、品牌标识与版式待收敛，不将设计方向确认视为已获实施或改名授权。
 
-[皮肤配色融合方案](plans/2026-10-03-skin-palette-consolidated-plan.md)是配色工作的唯一现行入口，状态为只做方案、未实施。用户明确十套角色全部重设配色，已发布五套同样调整。融合风格策划、OKLCH 候选求解、实际背景可读性门槛与真实页面评审，推荐先试点 ChatGPT、Grok，再完成其余八套并统一协调；原两份草案已合并清理。
+[皮肤配色融合方案](plans/2026-10-03-skin-palette-consolidated-plan.md)是配色工作的现行规格入口。十套角色的浅深 20 个模式已按用户选定颜色接入正式 `public/skin-palettes.js`，当前 picker 仍只开放原五款。2026-10-20 当前代码重新验收取得自动技术矩阵 900/900、关键几何 120/120，20 图 dense-data 复查及 classic、五款 picker、在线冻结通过；大视口整页高度差 +16px 限制保留。整体仍为 incomplete：目标机真实 OS 显示缩放/browser zoom 经用户确认未测。最终全仓工程门禁待独立登记，发布不在本轮范围。证据见[新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)；旧正式 production CLI 只绑定旧迁移来源，见[CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)，不作为本轮通过门禁。
 
-其[Implementation Plan](plans/2026-10-03-skin-palette-implementation-plan.md)已拆为 7 个模块、32 张任务卡，供其他 agent 按卡执行；包含文件归属、固定数据/API 契约、求解细节、真实页面检查和交接模板。实施计划已成文，工具与正式配色接入仍未执行。
+其[Implementation Plan](plans/2026-10-03-skin-palette-implementation-plan.md)中的候选生成、十套选择与 20 模式正式接入已完成；实施顺序和固定契约仍保留。M6 整体仍未完成，旧 `--production` 不能写成当前新轮通过。
 
 ## 现行专题
 
-- [10 数据来源与统计口径](10-data-sources.md)：发现、导入、索引、范围、隐私与 TPS；各来源细节见 [Codex](data-sources/codex.md)、[ZCode](data-sources/zcode.md)、[DSH](data-sources/dsh.md)、[OpenCode](data-sources/opencode.md)。
+- [10 数据来源与统计口径](10-data-sources.md)：发现、导入、索引、范围、隐私与 TPS；各来源细节见 [Codex](data-sources/codex.md)、[ZCode](data-sources/zcode.md)、[DSH](data-sources/dsh.md)、[OpenCode](data-sources/opencode.md)、[Claude Code](data-sources/claude-code.md)。
 - [11 计价与自动更新](11-pricing.md)：模型解析、免费/缺价、缓存场景、来源更新、手动覆盖与汇率。
 - [12 看板行为](12-dashboard.md)：周期、排序、刷新、语言、主题、角色和聚光。
 - [14 项目日志接入](14-project-log.md)：其他项目的 JSONL 字段、语义与最小校验。
@@ -39,6 +39,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 ## 验证与归档
 
 - [验证索引](validation/00-index.md)：按日期查看实际检查、脚本、截图和未测条件。
+- [皮肤配色当前代码重新验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)：十套 900/900、关键几何 120/120、20 图 dense-data 复查及 classic、五款 picker、在线冻结通过；整体 `incomplete`，真实 OS 缩放/browser zoom 未测，+16px 大视口高度差单列保留。旧 production CLI 绑定旧迁移来源，不能作为本轮通过门禁。
 - [皮肤配色 M5.2.C-D8u28-R4 固定夹具验证](validation/2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8u28-R4-fixed-fixtures.md)：31 条几何前提、G1–G11 和三个守卫通过；R1 的采样裁切断言疑似混用滚动前后坐标，完整验收保持 `NEEDS_REVIEW`。
 - [看板刷新性能修复最终报告](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/FINAL-REPORT.md)：逐卡交付/证据路径/复跑命令/未达标清单/已知限制；证据树唯一权威入口是同目录 [README.md](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/README.md)（主审账本）。
 - [旧导出清理验收](validation/2026-10-03-export-removal/README.md)：清理后在线冻结、导入、计价和皮肤回归。

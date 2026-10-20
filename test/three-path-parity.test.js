@@ -844,6 +844,185 @@ test("three paths agree on OpenCode usage, including all three parallel-counter 
   }
 });
 
+/**
+ * Claude Code 转录 fixture。主转录里同一 `message.id` 写两次（真实格式是"每内容块一行"），
+ * 子代理目录里先零用量占位块、再真实块；按产品口径子代理并入主渠道、会话 id 用父会话。
+ */
+async function writeClaudeSession(root, { sessionId, rows, subagentRows = [] }) {
+  const projectDir = path.join(root, ".claude", "projects", "E--work-claude");
+  await mkdir(projectDir, { recursive: true });
+  const encode = (list) => `${list.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  await writeFile(path.join(projectDir, `${sessionId}.jsonl`), encode(rows));
+  if (subagentRows.length > 0) {
+    const subagentsDir = path.join(projectDir, sessionId, "subagents");
+    await mkdir(subagentsDir, { recursive: true });
+    await writeFile(path.join(subagentsDir, "agent-a1.jsonl"), encode(subagentRows));
+  }
+}
+
+/** @param {Record<string, any>} [usage] */
+function claudeRow(sessionId, messageId, timeIso, usage, { cwd = "/work/claude", model = "claude-sonnet-4-5" } = {}) {
+  return {
+    type: "assistant",
+    uuid: `uuid-${messageId}`,
+    timestamp: timeIso,
+    sessionId,
+    cwd,
+    requestedModel: model,
+    message: { id: messageId, model, usage },
+  };
+}
+
+test("three paths agree on Claude Code usage, including message.id dedup and subagent merge", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-claude-"));
+  // env: {} 保证只发现 fixture 目录，不撞上本机真实的 ~/.claude。
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const asOf = "2026-07-12T12:00:00.000Z";
+  try {
+    // Codex 会话提供限额窗口（Claude 没有限额数据）。
+    await writeSession(homeDir, "codex-quota", "gpt-6-sol", "/work/codex", [
+      tokenRow("2026-07-12T11:30:00.000Z", 45, 40, 0, 5, 1),
+      quotaRow("2026-07-12T11:59:00.000Z", "2026-07-12T14:37:00.000Z"),
+    ]);
+    // 主转录：100 + 10 cache_read + 5 cache_write = 115 输入，20 输出 ⇒ 135；
+    // 同一 message.id 的第二块不得重复计数。
+    await writeClaudeSession(homeDir, {
+      sessionId: "session-claude",
+      rows: [
+        { type: "custom-title", customTitle: "Claude 会话", sessionId: "session-claude" },
+        claudeRow("session-claude", "msg-main", "2026-07-12T10:00:00.000Z", {
+          input_tokens: 100,
+          cache_read_input_tokens: 10,
+          cache_creation_input_tokens: 5,
+          output_tokens: 20,
+        }),
+        claudeRow("session-claude", "msg-main", "2026-07-12T10:00:00.000Z", {
+          input_tokens: 100,
+          cache_read_input_tokens: 10,
+          cache_creation_input_tokens: 5,
+          output_tokens: 20,
+        }),
+      ],
+      // 子代理：零用量占位块 + 真实块 5 + 0 + 0 输入、3 输出 ⇒ 8。
+      subagentRows: [
+        claudeRow("session-claude", "msg-sub", "2026-07-12T10:05:00.000Z", {
+          input_tokens: 0,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          output_tokens: 0,
+        }),
+        claudeRow("session-claude", "msg-sub", "2026-07-12T10:05:00.000Z", {
+          input_tokens: 5,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          output_tokens: 3,
+        }),
+      ],
+    });
+
+    await store.sync();
+    const report = await buildUsageReport({ homeDir, env: {} });
+    assert.equal(report.events.length, 3, "Codex 1 + Claude 主转录 1 + 子代理 1");
+    const claudeHome = report.homes.find((home) => home.kind === "claude");
+    assert.ok(claudeHome, "应发现 Claude Code 来源");
+
+    const mainEvent = report.events.find((event) => event.id === "msg-main");
+    assert.deepEqual(mainEvent.total, { total: 135, input: 115, cached: 10, output: 20, reasoning: 0 });
+    assert.equal(mainEvent.requestInputTokens, 115);
+    assert.equal(mainEvent.channel, "Claude Code");
+    assert.equal(mainEvent.repositoryKey, "directory:/work/claude");
+    assert.equal(mainEvent.conversationName, "Claude 会话");
+    // 子代理事件合并到主渠道、父会话 id。
+    const subEvent = report.events.find((event) => event.id === "msg-sub");
+    assert.equal(subEvent.channel, "Claude Code");
+    assert.equal(subEvent.sessionId, "session-claude");
+
+    const snapshot = pricedReport(report, asOf);
+    assert.equal(snapshot.events.length, report.events.length);
+
+    for (const calendarZone of ["local", "utc"]) {
+      const periodOptions = { now: asOf, calendarZone };
+      const memoryComparison = summarizePeriodComparison(report.events, periodOptions);
+      const indexedComparison = store.periodComparison(periodOptions);
+      const snapshotComparison = periodComparisonForReport(snapshot, calendarZone);
+      assert.deepEqual(
+        comparisonFields(indexedComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} SQLite period comparison`,
+      );
+      assert.deepEqual(
+        comparisonFields(snapshotComparison),
+        comparisonFields(memoryComparison),
+        `${calendarZone} snapshot period comparison`,
+      );
+
+      for (const preset of ["today", "all", "quota_5h"]) {
+        const filters = { preset, bucket: preset === "quota_5h" ? "quota_30m" : "day", now: asOf, calendarZone };
+        // 限额窗口只统计 Codex，内存版需显式过滤 Claude 事件才可比。
+        const scopedReport =
+          preset === "quota_5h"
+            ? { ...report, events: report.events.filter((event) => event.homeId !== claudeHome.id) }
+            : report;
+        const memorySummary = summarizeUsage(scopedReport, filters);
+        const indexedSummary = store.summarize(filters);
+        setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
+        const snapshotSummary = summarize(snapshot);
+
+        if (preset === "all") {
+          // 135 + 8 + 45
+          assert.equal(memorySummary.totals.total, 188, `${calendarZone} all-time total`);
+          assert.deepEqual(
+            memorySummary.channels
+              .map((channel) => [channel.name, channel.total.total])
+              .sort((a, b) => a[0].localeCompare(b[0])),
+            [
+              ["Claude", 143],
+              ["Codex", 45],
+            ],
+            `${calendarZone} Claude channels`,
+          );
+          assert.deepEqual(memorySummary.models.map((model) => model.name).sort(), ["claude-sonnet-4-5", "gpt-6-sol"]);
+        }
+        if (preset === "quota_5h") {
+          assert.equal(memorySummary.totals.total, 45, `${calendarZone} quota window Codex-only total`);
+          const unfiltered = summarizeUsage(report, filters);
+          assert.equal(unfiltered.totals.total, 188, `${calendarZone} unfiltered window would include Claude`);
+          assert.equal(indexedSummary.totals.total, 45, `${calendarZone} store quota must exclude Claude itself`);
+          assert.equal(snapshotSummary.totals.total, 45, `${calendarZone} snapshot quota must exclude Claude itself`);
+          assert.ok(
+            !snapshotSummary.channels.some((channel) => channel.name.startsWith("Claude")),
+            `${calendarZone} snapshot quota must not list Claude`,
+          );
+        }
+
+        assert.deepEqual(
+          summaryFields(indexedSummary),
+          summaryFields(memorySummary),
+          `${calendarZone}/${preset} SQLite summary`,
+        );
+        assert.deepEqual(
+          summaryFields(snapshotSummary),
+          summaryFields(memorySummary),
+          `${calendarZone}/${preset} snapshot summary`,
+        );
+      }
+    }
+  } finally {
+    setSummaryFilters({
+      preset: "today",
+      bucket: "hour",
+      calendarZone: "local",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("three paths agree on week-bucket escalation for a half-year all-time range", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-halfyear-"));
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });

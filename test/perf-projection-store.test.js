@@ -169,8 +169,8 @@ test("T1 · schema 13 → 14 只建表 + 索引、不回填（表存在且为空
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 14, "本卡唯一的 schema 变化就是 13 → 14");
-    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 14);
+    assert.equal(STORE_SCHEMA_VERSION, 16, "本卡唯一的 schema 变化就是 13 → 14");
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 16);
     assert.deepEqual(columnNames(store.database, TABLE), [
       "path",
       "home_id",
@@ -220,7 +220,7 @@ test("T1 · 迁移幂等：重复 open 不再建、不清表；已存在的行�
   const second = new UsageStore({ homeDir, databaseFile });
   try {
     await second.open();
-    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 14);
+    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 16);
     assert.equal(rowCount(second.database), 1, "重复 open 不得清表");
     assert.equal(storeRows(second.database)[0].path, "c:\\t1\\sentinel.jsonl");
   } finally {
@@ -256,7 +256,7 @@ test("T1 · 迁移中断可重入：未提交的建表 + v13 版本号 ⇒ 重�
   const retried = new UsageStore({ homeDir, databaseFile });
   try {
     await retried.open();
-    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 14, "重开必须重试成功");
+    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 16, "重开必须重试成功");
     assert.deepEqual(columnNames(retried.database, TABLE).length, 8);
   } finally {
     retried.close();
@@ -282,7 +282,7 @@ test("T1 · v13 → v14 不标脏全库：既有 source_files 不被标 -1，首
   const migrated = new UsageStore({ homeDir, databaseFile });
   try {
     await migrated.open();
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 14);
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 16);
     assert.equal(
       Number(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE size = -1 OR mtime_ms = -1").get().n,
@@ -561,7 +561,7 @@ test("T1 · 未提交即中断（关连接）⇒ 重开后无半行（模拟进�
   try {
     await reopened.open();
     assert.equal(rowCount(reopened.database), 0, "未提交的写必须被回滚 ⇒ 库里没有半行");
-    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 14);
+    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 16);
   } finally {
     reopened.close();
     await rm(homeDir, { recursive: true, force: true });

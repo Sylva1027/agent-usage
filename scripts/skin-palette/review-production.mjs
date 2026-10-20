@@ -2051,7 +2051,8 @@ export function resolveProductionSelection({ verifiedModel, selections, candidat
   }
 
   const candidateSet = verifiedModel?.candidateSet;
-  assertValid(validateCandidateSet(candidateSet, { expectedSkinIds: SKIN_IDS }), "verifiedModel.candidateSet");
+  // Final selections may retain one candidate per skin; createSelectionExport below enforces all ten choices.
+  assertValid(validateCandidateSet(candidateSet, { expectedSkinIds: [] }), "verifiedModel.candidateSet");
   const container = verifiedModel?.container;
   if (selections.candidateSetHash !== candidateSet.candidateSetHash) {
     throw new TypeError("selections.candidateSetHash 与 verifiedModel.candidateSet 不一致");
@@ -2214,7 +2215,7 @@ export async function writeProductionCaptureBinding({
     label: "candidates.json",
   });
   assertValid(
-    validateCandidateSet(candidateFile.value, { expectedSkinIds: SKIN_IDS }),
+    validateCandidateSet(candidateFile.value, { expectedSkinIds: [] }),
     "runDir candidates.json candidate set",
   );
   if (candidateFile.value.candidateSetHash !== selectionBinding.candidateSetHash) {
@@ -2280,7 +2281,7 @@ export async function readProductionCaptureBinding({ runDir, outDir, verifiedMod
     label: "candidates.json",
   });
   assertValid(
-    validateCandidateSet(candidateFile.value, { expectedSkinIds: SKIN_IDS }),
+    validateCandidateSet(candidateFile.value, { expectedSkinIds: [] }),
     "runDir candidates.json candidate set",
   );
   if (candidateFile.value.candidateSetHash !== selectionBinding.candidateSetHash) {
@@ -2456,7 +2457,7 @@ export async function readProductionCaptureIndex({ runDir, capturesIndexPath, ve
     label: "candidates.json",
   });
   assertValid(
-    validateCandidateSet(candidateFile.value, { expectedSkinIds: SKIN_IDS }),
+    validateCandidateSet(candidateFile.value, { expectedSkinIds: [] }),
     "runDir candidates.json candidate set",
   );
   if (candidateFile.value.candidateSetHash !== selectionBinding.candidateSetHash) {

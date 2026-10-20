@@ -13,6 +13,7 @@
  *     stays in the registry and remains reachable through its separate button.
  */
 
+import { derivePaletteDeclarationsFromTokens } from "./skins.js";
 const PICKER_SKIN_IDS = new Set(["chatgpt", "claude", "deepseek", "kimi", "muse"]);
 
 // Thumbnail framing only. anchorX is a SOURCE-canvas percentage at the
@@ -37,21 +38,17 @@ const previewComposition = {
  * typography and spacing keys are deliberately absent so a palette can never
  * resize or reflow anything (plan 3.3).
  */
-const COLOUR_TOKENS = [
-  "pageBackground",
-  "panelBackground",
-  "controlBackground",
-  "text",
-  "mutedText",
-  "border",
-  "accent",
-  "chartText",
-  "chartLine",
-  "series1",
-  "series2",
-  "series3",
-  "chartSeries",
-];
+const COLOUR_TOKENS = {
+  pageBackground: "--bg",
+  panelBackground: "--neo-surface",
+  controlBackground: "--control",
+  text: "--ink",
+  mutedText: "--muted",
+  border: "--line",
+  accent: "--blue",
+  chartText: "--chart-text",
+  chartLine: "--chart-line",
+};
 
 /** Maps a palette token onto the CSS variable the mini template reads. */
 const TOKEN_TO_CSS = {
@@ -81,9 +78,13 @@ function element(id) {
 function previewTokens(runtime, skinId, mode) {
   const palette = runtime.paletteFor?.(skinId, mode);
   if (!palette?.tokens) return null;
+
+  const declarations = derivePaletteDeclarationsFromTokens(palette.tokens, mode);
+  if (!declarations) return null;
+  const byCssVariable = Object.fromEntries(declarations);
   const tokens = {};
-  for (const key of COLOUR_TOKENS) {
-    const value = palette.tokens[key];
+  for (const [key, cssVariable] of Object.entries(COLOUR_TOKENS)) {
+    const value = byCssVariable[cssVariable];
     if (typeof value === "string" && value) tokens[key] = value;
   }
   return Object.keys(tokens).length ? tokens : null;

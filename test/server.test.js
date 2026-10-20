@@ -742,6 +742,78 @@ test("server imports an OpenCode data dir and labels it as OpenCode", async () =
   }
 });
 
+test("server imports a Claude Code home and labels it as Claude Code", async () => {
+  const { homeDir, importStoreFile } = await makeFixtureHome();
+  // 造一个独立的 Claude Code home（不放在 fakeHome/.claude 下，避免被自动发现路径撞上）。
+  const claudeRoot = path.join(homeDir, "external-claude");
+  const projectDir = path.join(claudeRoot, "projects", "E--work-claude");
+  await mkdir(projectDir, { recursive: true });
+  await writeFile(
+    path.join(projectDir, "session-srv-claude.jsonl"),
+    jsonl([
+      { type: "custom-title", customTitle: "server claude", sessionId: "session-srv-claude" },
+      {
+        type: "assistant",
+        uuid: "uuid-srv-claude",
+        timestamp: "2026-05-31T12:00:02.000Z",
+        sessionId: "session-srv-claude",
+        cwd: "/work/claude",
+        requestedModel: "claude-sonnet-4-5",
+        message: {
+          id: "msg-srv-claude",
+          model: "claude-sonnet-4-5",
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 10,
+            cache_creation_input_tokens: 5,
+            output_tokens: 20,
+          },
+        },
+      },
+    ]),
+  );
+
+  const server = createUsageServer({ homeDir, importStoreFile });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    const imported = await fetch(`${baseUrl}/api/imports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: claudeRoot }),
+    }).then((response) => response.json());
+
+    assert.equal(imported.import.type, "claude-home");
+    assert.equal(imported.import.path, claudeRoot);
+    assert.equal(imported.import.label, "Claude Code external-claude");
+    // Claude Code 按 home 导入，没有单一数据库文件，不应带 dbFile / usageLogPath。
+    assert.equal(imported.import.dbFile, undefined);
+    assert.equal(imported.import.usageLogPath, undefined);
+
+    const after = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(after.summary.totals.total, before.summary.totals.total + 135);
+    assert.ok(after.summary.channels.some((channel) => channel.name === "Claude"));
+    assert.equal(
+      after.metadata.homes.some((home) => home.kind === "claude" && home.path === claudeRoot),
+      true,
+    );
+    assert.deepEqual(after.metadata.harnessModels.Claude, ["claude-sonnet-4-5"]);
+
+    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(claudeRoot)}`, { method: "DELETE" });
+    const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(
+      removed.metadata.homes.some((home) => home.kind === "claude" && home.path === claudeRoot),
+      false,
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("server returns a picked directory from the local directory picker", async () => {
   const { homeDir, importStoreFile } = await makeFixtureHome();
   const pickedPath = path.join(homeDir, "picked-project");

@@ -30,6 +30,9 @@ test("product channel groups honor home evidence and preserve quota and custom c
   assert.equal(sourceGroup("DSH Subagent"), "DSH");
   assert.equal(sourceGroup("unrecognized-client", "main"), "Codex");
   assert.equal(sourceGroup("CLI", "opencode"), "OpenCode");
+  assert.equal(sourceGroup("Claude Code"), "Claude");
+  assert.equal(sourceGroup("claude_code_subagent"), "Claude");
+  assert.equal(sourceGroup("custom-client", "claude"), "Claude");
   assert.equal(sourceGroup("custom-agent", "project-log"), "custom-agent");
   assert.equal(sourceGroup("Unknown"), "Unknown");
   assert.equal(homeSourceKinds([{ id: "one", kind: "dsh" }]).get("one"), "dsh");

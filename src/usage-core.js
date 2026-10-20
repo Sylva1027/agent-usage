@@ -25,6 +25,12 @@ import {
 import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles, dshHomeLooksUsable, parseDshSessions, streamDshSessionEvents } from "./dsh-usage.js";
 import {
+  claudeHomeLooksUsable,
+  claudeSessionFiles,
+  parseClaudeSessions,
+  streamClaudeSessionEvents,
+} from "./claude-code-usage.js";
+import {
   opencodeDatabaseFiles,
   opencodeHomeLooksUsable,
   opencodeSourceStat,
@@ -326,9 +332,9 @@ function optionImportDirs(options = {}) {
 
 export async function classifyImportDirectory(importPath) {
   const resolved = path.resolve(importPath);
-  // ZCode、DSH 与 OpenCode 的判据更具体，必须先于 Codex 判断。
-  // codexHomeLooksUsable 只看「有没有 sessions 目录」，而 ~/.dsh/sessions 恰好同名，
-  // 若先判 Codex，DSH home 会被误判成 codex-home。
+  // ZCode、DSH、OpenCode 与 Claude Code 的判据更具体，必须先于 Codex 判断。
+  // codexHomeLooksUsable 只看「有没有 sessions 目录」，而 ~/.dsh/sessions 与 ~/.claude/sessions
+  // 恰好同名，若先判 Codex，DSH/Claude home 会被误判成 codex-home。
   const zcodeDbFile = await zcodeDatabaseFile(resolved);
   if (zcodeDbFile) {
     return {
@@ -348,6 +354,13 @@ export async function classifyImportDirectory(importPath) {
   if (await opencodeHomeLooksUsable(resolved)) {
     return {
       type: "opencode-home",
+      path: resolved,
+    };
+  }
+
+  if (await claudeHomeLooksUsable(resolved)) {
+    return {
+      type: "claude-home",
       path: resolved,
     };
   }
@@ -380,7 +393,7 @@ export async function classifyImportDirectory(importPath) {
   return {
     type: "unsupported",
     path: resolved,
-    reason: `目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
+    reason: `目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
   };
 }
 
@@ -569,6 +582,48 @@ export async function discoverOpencodeHomes(options = {}) {
   return homes;
 }
 
+export async function discoverClaudeHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const envHomes = options.extraClaudeHomes || env.CODEX_USAGE_CLAUDE_HOMES || "";
+  const homes = [];
+  const seen = new Set();
+
+  if (env.CODEX_USAGE_CLAUDE === "0") {
+    return homes;
+  }
+
+  async function addHome(label, homePath) {
+    const resolved = path.resolve(homePath);
+    if (seen.has(resolved) || !(await claudeHomeLooksUsable(resolved))) {
+      return;
+    }
+    seen.add(resolved);
+    // 用量分散在 projects/**/*.jsonl（含 subagents），不像 ZCode 那样有单一数据库。
+    homes.push({
+      id: sourceId("claude", resolved),
+      label,
+      path: resolved,
+      kind: "claude",
+    });
+  }
+
+  await addHome("Main Claude Code", path.join(homeDir, ".claude"));
+  // CLAUDE_CONFIG_DIR 是 Claude Code 自己的 home 覆盖变量，与默认位置并存时都要发现。
+  if (env.CLAUDE_CONFIG_DIR) {
+    await addHome(
+      `Claude Code ${path.basename(env.CLAUDE_CONFIG_DIR) || env.CLAUDE_CONFIG_DIR}`,
+      env.CLAUDE_CONFIG_DIR,
+    );
+  }
+
+  for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
+    await addHome(`Claude Code ${path.basename(extraHome) || extraHome}`, extraHome);
+  }
+
+  return homes;
+}
+
 export async function discoverUsageSources(options = {}) {
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
@@ -596,6 +651,14 @@ export async function discoverUsageSources(options = {}) {
     }
     seenPaths.add(opencodeHome.path);
     sources.push(opencodeHome);
+  }
+
+  for (const claudeHome of await discoverClaudeHomes(options)) {
+    if (seenPaths.has(claudeHome.path)) {
+      continue;
+    }
+    seenPaths.add(claudeHome.path);
+    sources.push(claudeHome);
   }
 
   for (const importDir of optionImportDirs(options)) {
@@ -656,6 +719,21 @@ export async function discoverUsageSources(options = {}) {
         label: `OpenCode ${path.basename(classified.path) || classified.path}`,
         path: classified.path,
         kind: "opencode",
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "claude-home") {
+      if (seenPaths.has(classified.path)) {
+        continue;
+      }
+      seenPaths.add(classified.path);
+      sources.push({
+        id: sourceId("claude", classified.path),
+        label: `Claude Code ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "claude",
         imported: true,
       });
       continue;
@@ -779,6 +857,17 @@ export async function buildUsageFingerprint(options = {}) {
           hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
         }
       }
+      continue;
+    }
+    if (home.kind === "claude") {
+      let sessionFiles;
+      try {
+        sessionFiles = await claudeSessionFiles(home.path);
+      } catch (error) {
+        hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+        continue;
+      }
+      for (const file of sessionFiles) await addFile(file);
       continue;
     }
     let files;
@@ -1681,6 +1770,10 @@ export async function streamUsageFileEvents(filePath, source, onEvent, options =
     await streamOpencodeDbEvents(filePath, source, onEvent, options);
     return;
   }
+  if (source.kind === "claude") {
+    await streamClaudeSessionEvents(filePath, source, onEvent, options);
+    return;
+  }
   await streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
@@ -1762,6 +1855,43 @@ async function parseProjectUsageLogFileForIndex(filePath, source, intern, resolv
       });
     },
     { repositoryResolver: resolveRepository },
+  );
+  return events;
+}
+
+async function parseClaudeForIndex(filePath, source, intern, resolveRepository, onWarning) {
+  const events = [];
+  await streamClaudeSessionEvents(
+    filePath,
+    source,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: intern(event.priceVersion),
+      });
+    },
+    { repositoryResolver: resolveRepository, onWarning },
   );
   return events;
 }
@@ -2776,6 +2906,20 @@ export async function buildUsageReport(options = {}) {
       continue;
     }
 
+    if (home.kind === "claude") {
+      try {
+        const parsed = await parseClaudeSessions(home.path, home, {
+          repositoryResolver,
+          onWarning: (warning) => warnings.push(warning),
+        });
+        sessions.push(...parsed.sessions);
+        events.push(...parsed.events);
+      } catch (error) {
+        warnings.push(`无法解析 ${home.path}: ${error.message}`);
+      }
+      continue;
+    }
+
     const threadNames = await readSessionThreadNames(home.path);
     const previousBySession = new Map();
     let files = [];
@@ -2890,6 +3034,21 @@ export async function buildUsageIndex(options = {}) {
           );
         } catch (error) {
           warnings.push(`无法解析 ${dbFile}: ${error.message}`);
+        }
+      }
+      continue;
+    }
+
+    if (home.kind === "claude") {
+      for (const filePath of await claudeSessionFiles(home.path)) {
+        try {
+          events.push(
+            ...(await parseClaudeForIndex(filePath, home, interner.intern, repositoryResolver, (warning) =>
+              warnings.push(warning),
+            )),
+          );
+        } catch (error) {
+          warnings.push(`无法解析 ${filePath}: ${error.message}`);
         }
       }
       continue;

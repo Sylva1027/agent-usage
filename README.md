@@ -2,7 +2,7 @@
 
 简体中文 · [English](README.en.md)
 
-Agent Usage 是在本机运行的 Codex、ZCode、DSH 与 OpenCode 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
+Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode 与 Claude Code 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
 
 本项目基于 [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage) 继续开发。
 
@@ -25,14 +25,14 @@ node src/cli.js run
 - **时间与趋势：** 支持今日、本周、本月、全部、自定义日期及最近范围。“本周”按自然周计算。时间分布可按渠道、模型或估算花销查看；较长的“全部”、自定义和最近范围会自动从日柱合并为周柱或月柱，副标题和悬浮提示会标出合并粒度与覆盖日期。
 - **最近范围：** “上一个5h”和“上一个7d”分别从上一轮对应额度实际开始统计到下一轮实际开始，跨度可以不足或超过五小时、七天；额度到期但下一轮尚未开始时，不切换上一轮。“上个月”是上一个完整自然月；“今年”从本年 1 月 1 日统计至今。
 - **Codex 限额：** `5h / week` 在当前 5 小时与每周限额窗口之间切换。这两个限额范围以及“上一个5h”“上一个7d”只统计 Codex 来源；普通的今日、本周、本月等范围仍统计所有已选来源。窗口边界取自本机 Codex 限额观察值。当前5小时图按半小时、当前每周图按连续24小时显示；上一个5h只画有用量的半小时，最后一段截止到下一轮开始；上一个7d只画有用量的日历日期。后台保留完整起止时间和时长。没有可靠记录时不会推测边界。未选中 Codex 数据来源时，限额按钮及对应的最近范围选项会置灰。
-- **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。模型名在界面上统一小写显示，原始模型标识仍用于聚合和计价。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
+- **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。模型名在界面上统一小写显示，原始模型标识仍用于聚合和计价。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode/Claude；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
 - **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
-- **来源与刷新：** 自动发现本机 Codex、ZCode、DSH 和 OpenCode 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；暂停自动刷新后，切换范围仍使用冻结的数据快照。
+- **来源与刷新：** 自动发现本机 Codex、ZCode、DSH、OpenCode 和 Claude Code 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录、Claude Code home，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；暂停自动刷新后，切换范围仍使用冻结的数据快照。
 - **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前提供 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款皮肤及简洁模式。浅深缩略图同时预览，桌面五款一行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
 
 ## 数据来源与隐私
 
-Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `~/.zcode/cli/db/db.sqlite`；DSH（DeepSeek Harness）来自 `~/.dsh/sessions`；OpenCode 来自数据目录（如 `~/.local/share/opencode`）下的 `opencode*.db`。未记录、也未通过项目日志导入的请求不会出现在统计中。
+Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `~/.zcode/cli/db/db.sqlite`；DSH（DeepSeek Harness）来自 `~/.dsh/sessions`；OpenCode 来自数据目录（如 `~/.local/share/opencode`）下的 `opencode*.db`；Claude Code 来自 `~/.claude/projects` 下的会话转录（含 `subagents`，按 `message.id` 去重）。未记录、也未通过项目日志导入的请求不会出现在统计中。
 
 适配器提取用量和必要元数据，不把正文作为统计事件字段。SQLite 优先只读打开，失败时现有实现会退回普通打开，可能触发恢复或辅助文件操作；应用不主动改写上游业务记录。格式、导入和读取边界见[数据来源说明](docs/10-data-sources.md)。
 
@@ -42,6 +42,8 @@ Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `
 - `CODEX_USAGE_DSH=0`：关闭 DSH 自动发现。
 - `CODEX_USAGE_OPENCODE_HOMES`：追加 OpenCode 数据目录，路径分隔符同上。
 - `CODEX_USAGE_OPENCODE=0`：关闭 OpenCode 自动发现。
+- `CODEX_USAGE_CLAUDE_HOMES`：追加 Claude Code home，路径分隔符同上（`CLAUDE_CONFIG_DIR` 会自动发现）。
+- `CODEX_USAGE_CLAUDE=0`：关闭 Claude Code 自动发现。
 
 普通范围统计全部已选来源；**5 小时与每周限额窗口只衡量 Codex 用量**，其余来源不参与。
 

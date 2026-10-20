@@ -33,7 +33,6 @@ import {
   resolvePricingModel,
 } from "./pricing-models.js";
 import { state } from "./app-state.js";
-import { renderPerfCoverageHtml, renderPerfDetailHtml, renderPerfListHtml } from "./perf-ui.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
   dateKey,
@@ -2332,115 +2331,10 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
 }
 
 function updateTimelineModeButtons() {
-  const timelineActive = state.activeView !== "performance";
   for (const button of document.querySelectorAll("[data-timeline-mode]")) {
-    const selected = timelineActive && button.dataset.timelineMode === state.timelineMode;
+    const selected = button.dataset.timelineMode === state.timelineMode;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-pressed", String(selected));
-  }
-  const performanceButton = document.querySelector("[data-active-view='performance']");
-  if (performanceButton) {
-    const selected = !timelineActive;
-    performanceButton.classList.toggle("active", selected);
-    performanceButton.setAttribute("aria-pressed", String(selected));
-  }
-}
-
-function performanceHomeLabels(metadata = currentMetadata()) {
-  const labels = new Map();
-  for (const home of homeRowsFromMetadata(metadata || {})) {
-    if (home?.id) labels.set(String(home.id), home.label || home.path || String(home.id));
-  }
-  return labels;
-}
-
-function renderPerformancePanel(perf, { emptyMessage = null, focusIndex = null } = {}) {
-  const coverage = $("#perfCoverage");
-  const list = $("#perfList");
-  const details = $("#perfDetailList");
-  if (!coverage || !list || !details) return;
-  const locale = getLocale();
-  if (!perf) {
-    const message = localizeText(emptyMessage || "当前范围没有可评估的性能样本。", locale);
-    coverage.innerHTML = `<p class="perf-notice status" role="status">${escapeHtml(message)}</p>`;
-    list.innerHTML = `<p class="empty perf-empty">${escapeHtml(message)}</p>`;
-    details.innerHTML = `<p class="empty">${escapeHtml(message)}</p>`;
-    state.selectedPerfGroupKey = null;
-    return;
-  }
-  const groups = Array.isArray(perf.groups) ? perf.groups : [];
-  let selected = groups.find((group) => group.groupKey === state.selectedPerfGroupKey);
-  if (!selected) selected = groups[0] || null;
-  state.selectedPerfGroupKey = selected?.groupKey ?? null;
-  const homeLabels = performanceHomeLabels();
-  const coverageDetailsOpen = Boolean(coverage.querySelector(".perf-coverage-more")?.open);
-  coverage.innerHTML = renderPerfCoverageHtml(perf, { locale, homeLabels });
-  const coverageDetails = coverage.querySelector(".perf-coverage-more");
-  if (coverageDetails && coverageDetailsOpen) coverageDetails.open = true;
-  list.innerHTML = renderPerfListHtml(perf, {
-    locale,
-    homeLabels,
-    selectedGroupKey: state.selectedPerfGroupKey,
-  });
-  details.innerHTML = renderPerfDetailHtml(selected, perf.coverage, { locale, homeLabels });
-  if (focusIndex !== null) {
-    list.querySelector(`[data-perf-group-index="${Number(focusIndex)}"]`)?.focus();
-  }
-}
-
-const ABSENT_CANVAS_ATTRIBUTE = "__perf_attribute_absent__";
-
-function saveCanvasAttribute(canvas, attribute, key) {
-  if (canvas.dataset[key] !== undefined) return;
-  canvas.dataset[key] = canvas.hasAttribute(attribute) ? canvas.getAttribute(attribute) : ABSENT_CANVAS_ATTRIBUTE;
-}
-
-function restoreCanvasAttribute(canvas, attribute, key) {
-  const value = canvas.dataset[key];
-  if (value === undefined) return;
-  if (value === ABSENT_CANVAS_ATTRIBUTE) canvas.removeAttribute(attribute);
-  else canvas.setAttribute(attribute, value);
-}
-
-function updatePerformanceViewChrome() {
-  const performanceActive = state.activeView === "performance";
-  const panelTitle = $("#timelinePanelTitle");
-  const detailTitle = $("#detailPanelTitle");
-  const detailMode = $("#detailModeLabel");
-  const timelineWell = document.querySelector(".timeline-chart-well");
-  const timelineWarning = $("#timelineRangeWarning");
-  const legend = $("#timelineLegend");
-  const timelineDetails = $("#detailList");
-  const performancePanel = $("#perfPanel");
-  const performanceDetails = $("#perfDetailList");
-  const canvas = $("#timelineChart");
-  const focusCanvas = performanceActive && canvas && document.activeElement === canvas;
-  if (performanceActive && performancePanel) performancePanel.hidden = false;
-  if (focusCanvas) $("#perfPanelTitle")?.focus();
-  if (panelTitle) panelTitle.textContent = localizeText(performanceActive ? "模型输出吞吐" : "时间分布", getLocale());
-  if (detailTitle) detailTitle.textContent = localizeText(performanceActive ? "性能详情" : "详情", getLocale());
-  if (detailMode) {
-    const timelineModeLabel = { channel: "按渠道", model: "按模型", cost: "按花销" }[state.timelineMode] || "按渠道";
-    detailMode.textContent = localizeText(performanceActive ? "模型详情" : timelineModeLabel, getLocale());
-  }
-  if (timelineWell) timelineWell.hidden = performanceActive;
-  if (timelineWarning && performanceActive) timelineWarning.hidden = true;
-  if (legend) legend.hidden = performanceActive;
-  if (timelineDetails) timelineDetails.hidden = performanceActive;
-  if (performancePanel) performancePanel.hidden = !performanceActive;
-  if (performanceDetails) performanceDetails.hidden = !performanceActive;
-  if (!canvas) return;
-  if (performanceActive) {
-    saveCanvasAttribute(canvas, "tabindex", "perfOriginalTabindex");
-    saveCanvasAttribute(canvas, "aria-hidden", "perfOriginalAriaHidden");
-    saveCanvasAttribute(canvas, "aria-label", "perfOriginalAriaLabel");
-    canvas.setAttribute("tabindex", "-1");
-    canvas.setAttribute("aria-hidden", "true");
-    hideUsageTooltip();
-  } else {
-    restoreCanvasAttribute(canvas, "tabindex", "perfOriginalTabindex");
-    restoreCanvasAttribute(canvas, "aria-hidden", "perfOriginalAriaHidden");
-    restoreCanvasAttribute(canvas, "aria-label", "perfOriginalAriaLabel");
   }
 }
 
@@ -2878,7 +2772,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
 export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } = {}) {
   // Render paths and labels as escaped text because they may come from imported logs.
   if (!homes.length) {
-    return `<div class="empty">没有发现 Codex、ZCode、DSH 或 OpenCode 目录</div>`;
+    return `<div class="empty">没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录</div>`;
   }
   const excluded = new Set(excludedIds || []);
   return homes
@@ -2921,14 +2815,15 @@ function renderHomes(homes, options = {}) {
 }
 
 // harness 归组顺序。Codex 优先，便于 gpt 系模型归到最相关一侧。
-const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode"];
+const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude"];
 
-/** 渠道名 → harness 桶名。ZCode、DSH 与 OpenCode 都用自己的渠道前缀，其余归 Codex。 */
+/** 渠道名 → harness 桶名。ZCode、DSH、OpenCode 与 Claude 都用自己的渠道前缀，其余归 Codex。 */
 function bucketForChannel(channel) {
   const name = String(channel || "").toLowerCase();
   if (name.startsWith("zcode")) return "ZCode";
   if (name.startsWith("dsh")) return "DSH";
   if (name.startsWith("opencode")) return "OpenCode";
+  if (name.startsWith("claude")) return "Claude";
   return "Codex";
 }
 
@@ -3071,14 +2966,7 @@ function renderUnavailableQuota(reason, range = null) {
   if (legend) legend.innerHTML = "";
   const detailList = $("#detailList");
   if (detailList) detailList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
-  updatePerformanceViewChrome();
   updateTimelineModeButtons();
-  if (state.activeView === "performance") {
-    renderPerformancePanel(null, { emptyMessage: message });
-    updateQuotaPresetButton();
-    updateDateRangeControl();
-    return;
-  }
   drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
   updateQuotaPresetButton();
   updateDateRangeControl();
@@ -3086,13 +2974,8 @@ function renderUnavailableQuota(reason, range = null) {
 
 function renderEmptySummaryState() {
   hideUsageTooltip();
-  updatePerformanceViewChrome();
   updateTimelineModeButtons();
   const message = state.emptySummaryMessage || "用量摘要暂不可用。";
-  if (state.activeView === "performance") {
-    renderPerformancePanel(null, { emptyMessage: message });
-    return;
-  }
   const warning = $("#timelineRangeWarning");
   if (warning) {
     warning.hidden = true;
@@ -3159,18 +3042,7 @@ function render() {
   const channelColors = getChannelColors(summary.channels);
   const allPeriodModels = state.periodComparison?.models || [];
   const modelColors = getModelColors([...allPeriodModels, ...summary.models]);
-  updatePerformanceViewChrome();
   updateTimelineModeButtons();
-  if (state.activeView === "performance") {
-    renderPerformancePanel(summary.perf || null);
-    renderHomes(homeRowsFromMetadata(metadata), { canModify: true, excludedIds: state.excludedHomes });
-    if (!$("#importDialog")?.hidden) renderSourceOptions();
-    updateQuotaPresetButton();
-    translateRenderedDashboard();
-    // The import dialog sits outside <main>, so its re-rendered source list is translated here.
-    if (!$("#importDialog")?.hidden) translatePage($("#importDialog"));
-    return;
-  }
   renderTimelineDetails(summary, channelColors, modelColors);
   renderTimelineLegend(summary, channelColors, modelColors);
   renderHomes(homeRowsFromMetadata(metadata), { canModify: true, excludedIds: state.excludedHomes });
@@ -4952,27 +4824,10 @@ function bootDashboard() {
 
   $("#autoRefreshToggle").addEventListener("click", () => setAutoRefreshEnabled(!state.autoRefreshEnabled));
   $("#timelineModes").addEventListener("click", (event) => {
-    const performanceButton = event.target.closest("[data-active-view='performance']");
-    if (performanceButton) {
-      if (state.activeView === "performance") return;
-      state.activeView = "performance";
-      render();
-      return;
-    }
     const button = event.target.closest("[data-timeline-mode]");
-    if (!button || (state.activeView !== "performance" && button.dataset.timelineMode === state.timelineMode)) return;
-    state.activeView = "timeline";
+    if (!button || button.dataset.timelineMode === state.timelineMode) return;
     state.timelineMode = button.dataset.timelineMode;
     render();
-  });
-  $("#perfList").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-perf-group-index]");
-    if (!button) return;
-    const index = Number(button.dataset.perfGroupIndex);
-    const group = Number.isSafeInteger(index) ? state.summary?.perf?.groups?.[index] : null;
-    if (!group) return;
-    state.selectedPerfGroupKey = group.groupKey;
-    renderPerformancePanel(state.summary.perf, { focusIndex: index });
   });
 
   $("#updatePricingButton").addEventListener("click", openPricingDialog);

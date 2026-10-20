@@ -33,6 +33,7 @@ import { buildModelActivity, CODEX_AUTO_REVIEW_MODEL, isCodexAutoReview } from "
 import { zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
 import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
+import { claudeSessionFiles } from "./claude-code-usage.js";
 import { isPerfSourceEnabled, streamPerfSamplesForFile, classifyPerfSources } from "./perf-sources/index.js";
 import {
   buildCodexThreadPerfSamples,
@@ -56,7 +57,7 @@ import {
   quotaRecordValues,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 14;
+export const STORE_SCHEMA_VERSION = 16;
 const CODEX_ROLLOUT_READER_VERSION = "zstd-jsonl-v1";
 
 /**
@@ -2196,6 +2197,21 @@ export class UsageStore {
       migrate(PERF_CODEX_PROJECTIONS_DDL, 14, () => assertPerfCodexProjectionsSchema(this.database));
       version = 14;
     }
+    if (version === 14) {
+      // v15 新增 Claude Code 数据源。同 v9（DSH）、v10（OpenCode）：表结构没变，只抬版本号；
+      // 旧索引里不存在 kind='claude' 的行，升级后第一次 sync 会直接纳入它们。
+      // 落点同样用字面量，避免后续抬版本时静默跳过新迁移。
+      migrate("SELECT 1;", 15);
+      version = 15;
+    }
+    if (version === 15) {
+      // v16：Claude Code 的模型身份从 requestedModel（harness 别名/网关路由名）改为
+      // message.model（API 实际服务的线路模型）。事件表结构没变，但已索引的 Claude 事件
+      // 带着旧身份 ⇒ 必须重读这些转录，否则旧行会一直停在别名上。
+      // 只标脏 kind = 'claude'：其它来源的解析语义未变，不为其付出全量重读。
+      migrate("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE kind = 'claude';", 16);
+      version = 16;
+    }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
@@ -2812,6 +2828,14 @@ export class UsageStore {
           // 逐个纳入增量索引（含 -wal 指纹）。
           for (const filePath of await opencodeDatabaseFiles(home.path)) {
             files.push({ filePath, source: home, info: await opencodeSourceStat(filePath) });
+          }
+          continue;
+        }
+        if (home.kind === "claude") {
+          // Claude Code 的用量按会话转录分散在 projects/**/*.jsonl（含 subagents），
+          // 每个文件各自按 size+mtime 判定是否需要重解析。
+          for (const filePath of await claudeSessionFiles(home.path)) {
+            files.push({ filePath, source: home, info: await stat(filePath) });
           }
           continue;
         }
@@ -4448,8 +4472,14 @@ export class UsageStore {
           .all()
           .map((row) => [row.home_id, row]),
       );
-      // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode）用到的模型名称。
-      const harnessModels = { Codex: new Set(), ZCode: new Set(), DSH: new Set(), OpenCode: new Set() };
+      // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode / Claude）用到的模型名称。
+      const harnessModels = {
+        Codex: new Set(),
+        ZCode: new Set(),
+        DSH: new Set(),
+        OpenCode: new Set(),
+        Claude: new Set(),
+      };
       for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
         const model = String(row.model || "").trim();
         if (!model || model.toLocaleLowerCase() === "unknown model") continue;
@@ -4460,7 +4490,9 @@ export class UsageStore {
             ? "DSH"
             : channel.startsWith("opencode")
               ? "OpenCode"
-              : "Codex";
+              : channel.startsWith("claude")
+                ? "Claude"
+                : "Codex";
         harnessModels[bucket].add(model);
       }
       builtMetadata = {
@@ -4473,6 +4505,7 @@ export class UsageStore {
           ZCode: [...harnessModels.ZCode].sort((a, b) => a.localeCompare(b)),
           DSH: [...harnessModels.DSH].sort((a, b) => a.localeCompare(b)),
           OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
+          Claude: [...harnessModels.Claude].sort((a, b) => a.localeCompare(b)),
         },
         homes: this.homes.map((home) => {
           const row = homeRows.get(home.id);
@@ -4528,7 +4561,7 @@ export class UsageStore {
       return {
         model: row.model,
         timestamp: Number(row.last_seen),
-        harness: ["ZCode", "DSH", "OpenCode"].includes(group) ? group : "Codex",
+        harness: ["ZCode", "DSH", "OpenCode", "Claude"].includes(group) ? group : "Codex",
       };
     });
     // D1：可缓存时用实例级缓存（同一对象、可被 C5 用例按引用断言）；写事务内用本次快照。

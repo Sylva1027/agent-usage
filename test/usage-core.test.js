@@ -10,6 +10,7 @@ import {
   buildUsageReport,
   buildUsageFingerprint,
   classifyImportDirectory,
+  discoverClaudeHomes,
   discoverCodexHomes,
   discoverOpencodeHomes,
   discoverUsageSources,
@@ -1155,4 +1156,146 @@ test("streamUsageFileEvents 按 kind 分派到 OpenCode 解析", async () => {
   await streamUsageFileEvents(dbFile, opencodeHome(dataDir), (event) => events.push(event), {});
   assert.equal(events.length, 1);
   assert.equal(events[0].channel, "OpenCode");
+});
+
+const CLAUDE_FIXTURE_TIME = "2026-09-21T10:00:00.000Z";
+
+async function makeClaudeHome(homeDir) {
+  const claudeHome = path.join(homeDir, ".claude");
+  const projectDir = path.join(claudeHome, "projects", "E--work-claude");
+  await mkdir(projectDir, { recursive: true });
+  // 与 Codex 同名的 sessions 目录：分类必须先判 Claude，否则会被误判成 codex-home。
+  await mkdir(path.join(claudeHome, "sessions"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "session-1.jsonl"),
+    jsonl([
+      {
+        type: "custom-title",
+        customTitle: "Claude 接入",
+        sessionId: "session-1",
+      },
+      {
+        type: "assistant",
+        uuid: "uuid-1",
+        timestamp: CLAUDE_FIXTURE_TIME,
+        sessionId: "session-1",
+        cwd: "/work/claude",
+        requestedModel: "claude-sonnet-4-5",
+        message: {
+          id: "msg-1",
+          model: "claude-sonnet-4-5",
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 10,
+            cache_creation_input_tokens: 5,
+            output_tokens: 20,
+          },
+        },
+      },
+      // 同一 message.id 的第二个内容块：不得重复计数。
+      {
+        type: "assistant",
+        uuid: "uuid-2",
+        timestamp: CLAUDE_FIXTURE_TIME,
+        sessionId: "session-1",
+        cwd: "/work/claude",
+        requestedModel: "claude-sonnet-4-5",
+        message: {
+          id: "msg-1",
+          model: "claude-sonnet-4-5",
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 10,
+            cache_creation_input_tokens: 5,
+            output_tokens: 20,
+          },
+        },
+      },
+    ]),
+  );
+  return claudeHome;
+}
+
+function claudeHome(homePath) {
+  return { id: "claude-test", label: "Main Claude Code", path: homePath, kind: "claude" };
+}
+
+test("classifyImportDirectory 识别 Claude Code home，且优先于同名的 Codex sessions", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const classified = await classifyImportDirectory(claudeHomePath);
+  assert.equal(classified.type, "claude-home");
+  assert.equal(classified.path, path.resolve(claudeHomePath));
+});
+
+test("discoverClaudeHomes 发现默认目录，支持关闭、CLAUDE_CONFIG_DIR 与追加", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const homes = await discoverClaudeHomes({ homeDir, env: {} });
+  assert.equal(homes.length, 1);
+  assert.equal(homes[0].kind, "claude");
+  assert.equal(homes[0].path, path.resolve(claudeHomePath));
+
+  assert.deepEqual(await discoverClaudeHomes({ homeDir, env: { CODEX_USAGE_CLAUDE: "0" } }), []);
+  assert.deepEqual(await discoverClaudeHomes({ homeDir: path.join(homeDir, "empty"), env: {} }), []);
+
+  const configDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-config-"));
+  await makeClaudeHome(configDir);
+  const withConfig = await discoverClaudeHomes({
+    homeDir,
+    env: { CLAUDE_CONFIG_DIR: path.join(configDir, ".claude") },
+  });
+  assert.equal(withConfig.length, 2);
+});
+
+test("discoverUsageSources 把 Claude Code 作为来源并入", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const sources = await discoverUsageSources({ homeDir, env: {} });
+  const found = sources.filter((source) => source.kind === "claude");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].path, path.resolve(claudeHomePath));
+});
+
+test("buildUsageReport 汇总 Claude Code 事件并按 message.id 去重", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const report = await buildUsageReport({ homes: [claudeHome(claudeHomePath)] });
+  assert.equal(report.events.length, 1);
+  assert.equal(report.events[0].channel, "Claude Code");
+  assert.equal(report.events[0].model, "claude-sonnet-4-5");
+  assert.deepEqual(report.events[0].total, { total: 135, input: 115, cached: 10, output: 20, reasoning: 0 });
+  assert.equal(report.events[0].cacheWriteTokens, 5);
+  assert.equal(report.sessions.length, 1);
+  assert.equal(report.sessions[0].conversationName, "Claude 接入");
+});
+
+test("buildUsageIndex 产出 Claude Code 索引事件", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const index = await buildUsageIndex({ homes: [claudeHome(claudeHomePath)] });
+  assert.equal(index.events.length, 1);
+  const [event] = index.events;
+  assert.equal(event.total, 135);
+  assert.equal(event.input, 115);
+  assert.equal(event.cached, 10);
+  assert.equal(event.output, 20);
+});
+
+test("buildUsageFingerprint 把 Claude Code 转录计入指纹", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const status = await buildUsageFingerprint({ homes: [claudeHome(claudeHomePath)] });
+  assert.equal(status.fileCount, 1);
+  assert.equal(status.homeCount, 1);
+});
+
+test("streamUsageFileEvents 按 kind 分派到 Claude Code 解析", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-core-claude-"));
+  const claudeHomePath = await makeClaudeHome(homeDir);
+  const filePath = path.join(claudeHomePath, "projects", "E--work-claude", "session-1.jsonl");
+  const events = [];
+  await streamUsageFileEvents(filePath, claudeHome(claudeHomePath), (event) => events.push(event), {});
+  assert.equal(events.length, 1);
+  assert.equal(events[0].channel, "Claude Code");
 });

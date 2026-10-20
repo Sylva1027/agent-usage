@@ -1,6 +1,18 @@
 # 验证资料索引
 
-更新：2026-10-14。现行合同见专题说明，任务状态见 [02](../02-tasks.md)。本页按日期组织证据，不用审查意见或计划勾选替代实际验收。
+更新：2026-10-20。现行合同见专题说明，任务状态见 [02](../02-tasks.md)。本页按日期组织证据，不用审查意见或计划勾选替代实际验收。
+
+## 2026-10-20：Claude Code 数据源
+
+[验收](2026-10-20-claude-code-source/README.md)：本机 `~/.claude` 真实转录接入为第五个来源；后端 `GET /api/usage` 与 headless Chromium 截图核对渠道归组、模型归组、计价弹窗「缺少费率」、限额按钮排除与 TPS「不支持来源」。记录子代理占比、完整套件 2,605/2,633 与 8 项 HEAD 既有失败。规格见 [Claude Code 数据源](../data-sources/claude-code.md)。
+
+## 2026-10-20：Claude Code 模型身份改为线路模型
+
+[验收](2026-10-20-claude-model-identity/README.md)：用转录 `message.id` = 网关账本 `response_id` 与逐项 token 计数两条独立连接，证明 `mythos-magpie-*` 与 `claude-haiku-5-5` 的真实上游是 `deepseek-v4.1-flash` / `-sg`；记录 `claude-code-guide` 子代理的 tier 别名来源、账本比转录多出的 14 行及判定依据、schema 15→16 只标脏 Claude、真实数据 1,498 事件全部计价。
+
+## 2026-10-20：皮肤配色当前代码重新验收
+
+[验收](2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)：十套 20 模式 900/900、关键几何 120/120；每套浅深 dense-data 共 20 图视觉复查、classic、五款 picker 51/51 与在线冻结通过。最终记录绑定 31 项源冻结和原始证据，整体 `incomplete`；目标机真实 OS 显示缩放/browser zoom 经用户确认未测，大视口整页高度差 +16px 单列保留。最终全仓工程门禁待独立登记；旧 [production CLI 兼容调查](2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)表明旧命令绑定旧迁移来源，不作为本轮通过门禁。
 
 ## 2026-10-12：GPT-6.1 Sol Codex / Work 计费
 

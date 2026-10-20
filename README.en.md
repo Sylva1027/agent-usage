@@ -2,7 +2,7 @@
 
 [简体中文](README.md) · English
 
-Agent Usage is a local dashboard for Codex, ZCode, DSH, and OpenCode usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
+Agent Usage is a local dashboard for Codex, ZCode, DSH, OpenCode, and Claude Code usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
 
 This project builds on [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage).
 
@@ -25,14 +25,14 @@ Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.
 - **Time and Trends:** Explore Today, This Week, This Month, All Time, custom dates, and recent ranges. View the timeline by source, model, or estimated cost. Longer All Time, custom, and recent ranges automatically merge daily bars into weekly or monthly bars; the subtitle and tooltips show the grouping and covered dates. This Week follows the calendar week.
 - **Recent Ranges:** Last 5h and Last 7d run from the actual start of the preceding respective allowance to the actual start of its replacement, so they may span less or more than five hours or seven days. Expiry alone does not replace a cycle. Last Month is the previous full calendar month; This Year runs from January 1 through today.
 - **Codex Limits:** The `5h / week` control switches between the current five-hour and weekly limit windows. These limit ranges, Last 5h, and Last 7d count Codex sources only; ordinary ranges such as Today, This Week, and This Month still count all selected sources. Boundaries come from local Codex limit observations. The current five-hour chart uses 30-minute slots and the current weekly chart uses consecutive 24-hour slots. Last 5h shows only half-hour slots with usage, clipping the final slot at the replacement start. Last 7d shows only calendar dates with usage. Both retain the complete timestamps and duration. The dashboard does not guess missing boundaries. With no Codex source selected, the limit control and the corresponding recent range options are disabled.
-- **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates. Ordinary ranges group subagents and execution channels under Codex, ZCode, DSH, and OpenCode; Codex-only limit ranges retain channel detail. Local Git repositories appear first, followed by the selected period sort.
+- **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates. Ordinary ranges group subagents and execution channels under Codex, ZCode, DSH, OpenCode, and Claude; Codex-only limit ranges retain channel detail. Local Git repositories appear first, followed by the selected period sort.
 - **Records and Comparisons:** Applicable ranges can highlight new highs and compare them with a preceding period. All Time has no preceding period and shows no New Record badges.
-- **Sources and Refresh:** Codex, ZCode, DSH, and OpenCode data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks; pausing auto refresh keeps the data snapshot fixed while you change ranges.
+- **Sources and Refresh:** Codex, ZCode, DSH, OpenCode, and Claude Code data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, a Claude Code home, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks; pausing auto refresh keeps the data snapshot fixed while you change ranges.
 - **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available. The shirt icon opens **Waifu**, offering ChatGPT, Claude, DeepSeek, Kimi, and Muse skins plus Simple mode. Light and dark thumbnails appear side by side; desktop shows all five in one row, with a glowing dot marking the selection. Character visibility, opacity, and your skin choice are remembered.
 
 ## Data Sources and Privacy
 
-Codex usage comes from session logs in homes such as `~/.codex`; ZCode defaults to `~/.zcode/cli/db/db.sqlite`; DSH (DeepSeek Harness) uses `~/.dsh/sessions`; OpenCode uses `opencode*.db` in its data directory, such as `~/.local/share/opencode`. Requests absent from these records or an imported project log do not appear in the dashboard.
+Codex usage comes from session logs in homes such as `~/.codex`; ZCode defaults to `~/.zcode/cli/db/db.sqlite`; DSH (DeepSeek Harness) uses `~/.dsh/sessions`; OpenCode uses `opencode*.db` in its data directory, such as `~/.local/share/opencode`; Claude Code uses session transcripts under `~/.claude/projects` (including `subagents`, deduplicated by `message.id`). Requests absent from these records or an imported project log do not appear in the dashboard.
 
 Adapters extract usage and necessary metadata without including message content in statistical events. SQLite databases are opened read-only first; the current fallback uses a regular open and can trigger recovery or auxiliary file operations. The app does not intentionally rewrite upstream business records. See the [data-source reference](docs/10-data-sources.md) for formats, imports, and read boundaries.
 
@@ -42,8 +42,10 @@ Adapters extract usage and necessary metadata without including message content 
 - `CODEX_USAGE_DSH=0`: Disable automatic DSH discovery.
 - `CODEX_USAGE_OPENCODE_HOMES`: Add OpenCode data directories, using the same path separator.
 - `CODEX_USAGE_OPENCODE=0`: Disable automatic OpenCode discovery.
+- `CODEX_USAGE_CLAUDE_HOMES`: Add Claude Code homes, using the same path separator (`CLAUDE_CONFIG_DIR` is discovered automatically).
+- `CODEX_USAGE_CLAUDE=0`: Disable automatic Claude Code discovery.
 
-Codex, ZCode, DSH, and OpenCode all count toward ordinary ranges. The **5-hour and weekly limit windows measure Codex usage only**; the other sources have no limit records and never take part in them.
+Codex, ZCode, DSH, OpenCode, and Claude Code all count toward ordinary ranges. The **5-hour and weekly limit windows measure Codex usage only**; the other sources have no limit records and never take part in them.
 
 `codex-auto-review` has zero cost under the [official free policy](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) and is excluded from current and previous limit windows. Ordinary ranges retain its actual tokens and activity. Stale manual rates cannot override this exemption.
 

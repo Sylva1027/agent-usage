@@ -37,6 +37,7 @@ import {
   withSkinPreference,
 } from "../public/skins.js";
 import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
+import { createSkinPicker } from "../public/skin-picker.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
@@ -440,10 +441,10 @@ test("palette wiring derives root-cause variables only, with colour-only geometr
   // Direct tokens pass through untouched; derived roles follow the documented
   // formulas and the single-accent design keeps --record equal to --blue.
   const byName = Object.fromEntries(declarations);
-  assert.equal(byName["--bg"], "#B9C9EE");
-  assert.equal(byName["--neo-surface"], "#dce4f7");
-  assert.equal(byName["--ink"], "#52407d");
-  assert.equal(byName["--muted"], "#807eb0");
+  assert.equal(byName["--bg"], "#F1EEFC");
+  assert.equal(byName["--neo-surface"], "#FAF9FF");
+  assert.equal(byName["--ink"], "#15131B");
+  assert.equal(byName["--muted"], "#3A3742");
   assert.equal(byName["--blue"], paletteTokens("chatgpt", "light").accent);
   assert.equal(byName["--record"], byName["--blue"]);
   assert.equal(byName["--skin-active-accent"], byName["--blue"]);
@@ -451,8 +452,8 @@ test("palette wiring derives root-cause variables only, with colour-only geometr
   assert.match(byName["--ceramic-well"], /^#[0-9a-f]{6}$/);
   // Modes stay independent: dark derives from the dark tokens only.
   const dark = Object.fromEntries(paletteDeclarations("chatgpt", "dark"));
-  assert.equal(dark["--bg"], "#52407d");
-  assert.equal(dark["--ink"], "#B9C9EE");
+  assert.equal(dark["--bg"], "#18161F");
+  assert.equal(dark["--ink"], "#EFEDFA");
   assert.equal(dark["--blue"], paletteTokens("chatgpt", "dark").accent);
   // Classic and unknown ids never derive colours.
   assert.equal(paletteDeclarations("classic", "light"), null);
@@ -618,6 +619,60 @@ test("palettes stay honest to the input file: pending slots stay pending, filled
         `${skin.id}.${mode} filled palette must not report pending`,
       );
     }
+  }
+});
+
+test("picker mini previews derive all nine colors from production tokens in both modes", () => {
+  const originalDocument = globalThis.document;
+  const grid = { innerHTML: "", setAttribute() {} };
+  globalThis.document = { getElementById: (id) => (id === "skinGrid" ? grid : null) };
+  const runtime = {
+    getPreference: () => ({ skinId: "chatgpt", showCharacters: true, opacity: 0.5 }),
+    getSelectableSkins: () => SKINS,
+    isCharacter: isCharacterSkin,
+    paletteFor: skinPalette,
+    urlsFor: () => null,
+  };
+  const mapping = {
+    "--skin-preview-page": "--bg",
+    "--skin-preview-panel": "--neo-surface",
+    "--skin-preview-control": "--control",
+    "--skin-preview-text": "--ink",
+    "--skin-preview-muted": "--muted",
+    "--skin-preview-border": "--line",
+    "--skin-preview-accent": "--blue",
+    "--skin-preview-chart-text": "--chart-text",
+    "--skin-preview-chart-line": "--chart-line",
+  };
+  try {
+    const picker = createSkinPicker({ runtime, translate: (text) => text });
+    picker.render();
+    const cards = [...grid.innerHTML.matchAll(/data-skin-id="([a-z]+)"([\s\S]*?)(?=<button|$)/g)];
+    assert.deepEqual(
+      cards.map((card) => card[1]),
+      ["chatgpt", "claude", "deepseek", "kimi", "muse"],
+    );
+    for (const [, skinId, html] of cards) {
+      const previews = [...html.matchAll(/class="skin-preview" style="([^"]+)"/g)];
+      assert.equal(previews.length, 2);
+      for (const [index, mode] of ["light", "dark"].entries()) {
+        const expected = Object.fromEntries(paletteDeclarations(skinId, mode));
+        const actual = Object.fromEntries(previews[index][1].split(";").map((pair) => pair.split(":")));
+        assert.deepEqual(
+          actual,
+          Object.fromEntries(Object.entries(mapping).map(([mini, css]) => [mini, expected[css]])),
+        );
+      }
+    }
+    runtime.paletteFor = () => null;
+    picker.render();
+    assert.equal(grid.innerHTML.includes('class="skin-preview" style='), false);
+    runtime.paletteFor = () => ({ tokens: {} });
+    picker.render();
+    assert.equal(grid.innerHTML.includes('class="skin-preview" style='), false);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
   }
 });
 
@@ -872,5 +927,383 @@ test("missing or invalid face geometry retains the static fallback", () => {
     [face, Number.POSITIVE_INFINITY, 1000, 200],
   ]) {
     assert.equal(skinFaceTarget(...args), null);
+  }
+});
+
+// Frozen user-selected M5.7 colors; independent of local validation artifacts.
+test("M6.1.2: all twenty production palettes exactly match the reviewed selections", () => {
+  const rows = [
+    [
+      "chatgpt",
+      "light",
+      [
+        "#F1EEFC",
+        "#FAF9FF",
+        "#EBEAF0",
+        "#FEFEFF",
+        "#BCBAC4",
+        "#15131B",
+        "#3A3742",
+        "#50578E",
+        "#FAF9FF",
+        "#EBEAF0",
+        "#15131B",
+        "#504E59",
+      ],
+    ],
+    [
+      "chatgpt",
+      "dark",
+      [
+        "#18161F",
+        "#222127",
+        "#2B2B2F",
+        "#353538",
+        "#020204",
+        "#EFEDFA",
+        "#B7B5C2",
+        "#A9B2F1",
+        "#222127",
+        "#2B2B2F",
+        "#EFEDFA",
+        "#B7B5C2",
+      ],
+    ],
+    [
+      "claude",
+      "light",
+      [
+        "#FDEDE2",
+        "#FFF9F5",
+        "#F0EAE6",
+        "#FFFEFE",
+        "#C5BAB2",
+        "#191310",
+        "#403732",
+        "#9A3D12",
+        "#FFF9F5",
+        "#F0EAE6",
+        "#191310",
+        "#584D46",
+      ],
+    ],
+    [
+      "claude",
+      "dark",
+      [
+        "#1F140D",
+        "#27201C",
+        "#2F2A27",
+        "#383533",
+        "#040100",
+        "#F9ECE4",
+        "#C1B4AC",
+        "#FF9971",
+        "#27201C",
+        "#2F2A27",
+        "#F9ECE4",
+        "#C1B4AC",
+      ],
+    ],
+    [
+      "glm",
+      "light",
+      [
+        "#E6E8EC",
+        "#F1F2F4",
+        "#E2E3E4",
+        "#FAFAFB",
+        "#B3B4B7",
+        "#0F1013",
+        "#343536",
+        "#224BC1",
+        "#F1F2F4",
+        "#E2E3E4",
+        "#0F1013",
+        "#4E4F53",
+      ],
+    ],
+    [
+      "glm",
+      "dark",
+      [
+        "#151619",
+        "#202022",
+        "#2A2A2B",
+        "#343435",
+        "#010202",
+        "#EDEEF3",
+        "#B5B7BB",
+        "#94B6FF",
+        "#202022",
+        "#2A2A2B",
+        "#EDEEF3",
+        "#B5B7BB",
+      ],
+    ],
+    [
+      "gemini",
+      "light",
+      [
+        "#FFF3FA",
+        "#FFFEFF",
+        "#F3EEF1",
+        "#FFFEFF",
+        "#C9BFC5",
+        "#1C1519",
+        "#433940",
+        "#82459A",
+        "#FFFEFF",
+        "#F3EEF1",
+        "#1C1519",
+        "#574C53",
+      ],
+    ],
+    [
+      "gemini",
+      "dark",
+      [
+        "#1F161C",
+        "#282226",
+        "#312C2F",
+        "#3A3739",
+        "#050204",
+        "#F8EAF2",
+        "#BFB3BB",
+        "#DB99F5",
+        "#282226",
+        "#312C2F",
+        "#F8EAF2",
+        "#BFB3BB",
+      ],
+    ],
+    [
+      "deepseek",
+      "light",
+      [
+        "#E2ECFC",
+        "#F0F6FF",
+        "#E2E6ED",
+        "#FCFDFF",
+        "#B0B8C4",
+        "#121212",
+        "#313740",
+        "#3252AD",
+        "#F0F6FF",
+        "#E2E6ED",
+        "#121212",
+        "#4A505A",
+      ],
+    ],
+    [
+      "deepseek",
+      "dark",
+      [
+        "#141B26",
+        "#21252D",
+        "#2C2F34",
+        "#37393D",
+        "#010308",
+        "#E8EFFB",
+        "#B0B8C3",
+        "#96B6FF",
+        "#21252D",
+        "#2C2F34",
+        "#E8EFFB",
+        "#B0B8C3",
+      ],
+    ],
+    [
+      "kimi",
+      "light",
+      [
+        "#F0FAF3",
+        "#FDFFFD",
+        "#EDF0EE",
+        "#FDFFFD",
+        "#BEC4C0",
+        "#171717",
+        "#3C3C3C",
+        "#3F6659",
+        "#FDFFFD",
+        "#EDF0EE",
+        "#171717",
+        "#4A524C",
+      ],
+    ],
+    [
+      "kimi",
+      "dark",
+      [
+        "#0C120E",
+        "#181C19",
+        "#222523",
+        "#2C2E2D",
+        "#000100",
+        "#E8F2EB",
+        "#B1BAB3",
+        "#6CCDAE",
+        "#181C19",
+        "#222523",
+        "#E8F2EB",
+        "#B1BAB3",
+      ],
+    ],
+    [
+      "qwen",
+      "light",
+      [
+        "#E6F7F9",
+        "#FAFEFF",
+        "#E9F0F1",
+        "#FDFFFF",
+        "#B6C2C3",
+        "#0F1718",
+        "#3A3A3A",
+        "#2E656C",
+        "#FAFEFF",
+        "#E9F0F1",
+        "#0F1718",
+        "#445354",
+      ],
+    ],
+    [
+      "qwen",
+      "dark",
+      [
+        "#0B1719",
+        "#192122",
+        "#252A2A",
+        "#303334",
+        "#000202",
+        "#E2F2F4",
+        "#ABBBBC",
+        "#43CCDE",
+        "#192122",
+        "#252A2A",
+        "#E2F2F4",
+        "#ABBBBC",
+      ],
+    ],
+    [
+      "grok",
+      "light",
+      [
+        "#F2EADD",
+        "#F9F4EC",
+        "#E9E6E0",
+        "#FFFDFA",
+        "#BCB7AD",
+        "#171109",
+        "#383634",
+        "#5C5942",
+        "#F9F4EC",
+        "#E9E6E0",
+        "#171109",
+        "#554F45",
+      ],
+    ],
+    [
+      "grok",
+      "dark",
+      [
+        "#1D170E",
+        "#26221C",
+        "#2F2C28",
+        "#383634",
+        "#040200",
+        "#F5EEE2",
+        "#BDB6AB",
+        "#CCB93E",
+        "#26221C",
+        "#2F2C28",
+        "#F5EEE2",
+        "#BDB6AB",
+      ],
+    ],
+    [
+      "muse",
+      "light",
+      [
+        "#EBF7FF",
+        "#FEFEFF",
+        "#E8F1F6",
+        "#FEFEFF",
+        "#B4C4CE",
+        "#13171A",
+        "#373C40",
+        "#1759BD",
+        "#FEFEFF",
+        "#E8F1F6",
+        "#13171A",
+        "#465158",
+      ],
+    ],
+    [
+      "muse",
+      "dark",
+      [
+        "#010F18",
+        "#0F191E",
+        "#1B2125",
+        "#272B2D",
+        "#000001",
+        "#E4F1F9",
+        "#ADB9C1",
+        "#8CB9FF",
+        "#0F191E",
+        "#1B2125",
+        "#E4F1F9",
+        "#ADB9C1",
+      ],
+    ],
+    [
+      "mimo",
+      "light",
+      [
+        "#F6F0EF",
+        "#FEFBFA",
+        "#EEECEB",
+        "#FFFEFE",
+        "#C0BDBB",
+        "#181413",
+        "#3B3939",
+        "#9C3D00",
+        "#FEFBFA",
+        "#EEECEB",
+        "#181413",
+        "#534F4D",
+      ],
+    ],
+    [
+      "mimo",
+      "dark",
+      [
+        "#191514",
+        "#22201F",
+        "#2B2A29",
+        "#353433",
+        "#020201",
+        "#F2EDEC",
+        "#BBB6B4",
+        "#FF996C",
+        "#22201F",
+        "#2B2A29",
+        "#F2EDEC",
+        "#BBB6B4",
+      ],
+    ],
+  ];
+  assert.equal(rows.length, 20);
+  assert.equal(new Set(rows.map(([skinId, mode]) => `${skinId}/${mode}`)).size, 20);
+  for (const [skinId, mode, values] of rows) {
+    assert.equal(values.length, PALETTE_TOKEN_KEYS.length);
+    const selected = Object.fromEntries(PALETTE_TOKEN_KEYS.map((key, index) => [key, values[index]]));
+    assert.deepEqual(paletteTokens(skinId, mode), selected, `${skinId}/${mode}`);
+    assert.deepEqual(
+      paletteDeclarations(skinId, mode),
+      derivePaletteDeclarationsFromTokens(selected, mode),
+      `${skinId}/${mode} declarations`,
+    );
   }
 });

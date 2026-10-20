@@ -45,7 +45,9 @@ export function modelActivityCutoff(asOf = Date.now()) {
 export function buildModelActivity(observations = [], asOf = Date.now()) {
   const now = activityTime(asOf);
   const cutoff = modelActivityCutoff(now);
-  const modelLastSeen = Object.fromEntries(["Codex", "ZCode", "DSH", "OpenCode"].map((harness) => [harness, {}]));
+  const modelLastSeen = Object.fromEntries(
+    ["Codex", "ZCode", "DSH", "OpenCode", "Claude"].map((harness) => [harness, {}]),
+  );
   for (const observation of observations) {
     const model = String(observation.model || "")
       .trim()

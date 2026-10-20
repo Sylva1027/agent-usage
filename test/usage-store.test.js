@@ -1136,6 +1136,178 @@ test("UsageStore metadata 把 OpenCode 用量归入 harnessModels.OpenCode", asy
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Claude Code：主转录 + subagents 都进索引，按 message.id 去重，harness 归组独立。
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** @param {Record<string, any>} [usage] */
+function claudeAssistantRow({ messageId, model = "claude-sonnet-4-5", timestamp = "2026-07-12T02:01:00.000Z", usage }) {
+  return {
+    type: "assistant",
+    uuid: `uuid-${messageId}`,
+    timestamp,
+    sessionId: "session-claude-1",
+    cwd: "/work/claudeproj",
+    requestedModel: model,
+    message: {
+      id: messageId,
+      model,
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 10,
+        cache_creation_input_tokens: 5,
+        output_tokens: 20,
+        ...(usage || {}),
+      },
+    },
+  };
+}
+
+async function makeClaudeStoreFixture() {
+  const { homeDir, sessionFile } = await makeStoreFixture();
+  const claudeHome = path.join(homeDir, ".claude");
+  const projectDir = path.join(claudeHome, "projects", "E--work-claudeproj");
+  const subagentsDir = path.join(projectDir, "session-claude-1", "subagents");
+  await mkdir(subagentsDir, { recursive: true });
+  const mainFile = path.join(projectDir, "session-claude-1.jsonl");
+  const subagentFile = path.join(subagentsDir, "agent-a1.jsonl");
+  // 主转录：同一 message.id 的两个内容块（只算一次）。
+  await writeFile(
+    mainFile,
+    jsonl([
+      { type: "custom-title", customTitle: "Claude 会话", sessionId: "session-claude-1" },
+      claudeAssistantRow({ messageId: "msg-claude-main" }),
+      claudeAssistantRow({ messageId: "msg-claude-main" }),
+    ]),
+  );
+  // 子代理：零用量占位块 + 真实块（取真实块，并合并到主渠道）。
+  await writeFile(
+    subagentFile,
+    jsonl([
+      claudeAssistantRow({
+        messageId: "msg-claude-sub",
+        usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 },
+      }),
+      claudeAssistantRow({
+        messageId: "msg-claude-sub",
+        timestamp: "2026-07-12T02:02:00.000Z",
+        usage: { input_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 3 },
+      }),
+    ]),
+  );
+  return {
+    homeDir,
+    sessionFile,
+    mainFile,
+    subagentFile,
+    databaseFile: path.join(homeDir, ".codex-usage", "usage-index.sqlite"),
+  };
+}
+
+test("UsageStore 索引 Claude Code 主转录与子代理，且只在文件变化后重建", async () => {
+  const { homeDir, mainFile, databaseFile } = await makeClaudeStoreFixture();
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    const first = await store.sync();
+    assert.equal(first.updatedFileCount, 3, "Codex + Claude 主转录 + 子代理");
+
+    const summary = store.summarize({ preset: "all", bucket: "day" });
+    const claude = summary.channels.find((channel) => channel.name === "Claude");
+    assert.ok(claude, "摘要里应出现 Claude Code 渠道");
+    // 主转录 135 + 子代理 8；重复块与零用量占位块都不得计数。
+    assert.deepEqual(claude.total, { total: 143, input: 120, cached: 10, output: 23, reasoning: 0 });
+
+    const repository = summary.repositories.find((row) => row.key === "directory:/work/claudeproj");
+    assert.ok(repository, "Claude 会话应归到 cwd 对应的仓库");
+    assert.equal(repository.total.total, 143);
+
+    const second = await store.sync();
+    assert.equal(second.updatedFileCount, 0, "文件未变化时不应重建");
+
+    await appendFile(
+      mainFile,
+      jsonl([claudeAssistantRow({ messageId: "msg-claude-2", timestamp: "2026-07-12T02:03:00.000Z" })]),
+    );
+    const third = await store.sync();
+    // 主转录变化会按会话级联到子代理文件：子代理事件并入父 `sessionId`（产品口径"合并到主渠道"），
+    // 而 C5 的 `earlierFileChanged` 级联规定"同一 session 的较早文件变了 ⇒ 后续文件重提取"。
+    // 这是既有语义，不是重复索引 —— 下面的事件计数仍为 3。
+    assert.equal(third.updatedFileCount, 2, "主转录变化 + 同会话子代理级联重提取");
+
+    const after = store.summarize({ preset: "all", bucket: "day" });
+    assert.equal(after.channels.find((channel) => channel.name === "Claude").total.total, 278);
+    assert.equal(
+      Number(store.database.prepare("SELECT COUNT(*) AS count FROM events WHERE home_id LIKE 'claude%'").get().count),
+      3,
+      "重解析后不应残留重复事件",
+    );
+  } finally {
+    store.close();
+  }
+});
+
+test("UsageStore upgrades v15 → v16 by re-reading Claude sources only", async () => {
+  const { homeDir, mainFile, databaseFile } = await makeClaudeStoreFixture();
+  const initial = new UsageStore({ homeDir, databaseFile });
+  await initial.sync();
+  // 模拟 v15 库：Claude 事件带着旧的 requestedModel 身份（测试夹具两者相同，直接改写即可）。
+  initial.database.prepare("UPDATE events SET model = 'mythos-magpie-3145220055' WHERE home_id LIKE 'claude%'").run();
+  initial.database.exec("PRAGMA user_version = 15");
+  initial.close();
+
+  const migrated = new UsageStore({ homeDir, databaseFile });
+  try {
+    await migrated.open();
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), STORE_SCHEMA_VERSION);
+    const dirty = migrated.database
+      .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
+      .all();
+    assert.ok(dirty.length > 0, "v16 必须标脏 Claude 来源");
+    assert.ok(
+      dirty.every((row) => row.kind === "claude"),
+      "只标脏 kind='claude'，其它来源不因本次迁移重读",
+    );
+
+    const result = await migrated.sync();
+    assert.equal(result.updatedFileCount, dirty.length, "首个 sync 重读全部被标脏的 Claude 转录");
+    const models = migrated.database
+      .prepare("SELECT DISTINCT model FROM events WHERE home_id LIKE 'claude%' ORDER BY model")
+      .all()
+      .map((row) => row.model);
+    assert.deepEqual(models, ["claude-sonnet-4-5"], "重读后事件恢复为线路模型身份");
+    assert.equal((await migrated.sync()).updatedFileCount, 0, "重读后文件不再变化");
+    assert.ok(mainFile);
+  } finally {
+    migrated.close();
+  }
+});
+
+test("UsageStore metadata 把 Claude 用量归入 harnessModels.Claude，且不进 Codex 限额窗口", async () => {
+  const { homeDir, sessionFile, databaseFile } = await makeClaudeStoreFixture();
+  await appendFile(sessionFile, jsonl([quotaTokenRow("2026-07-12T01:00:00.000Z", "2026-07-12T06:00:00.000Z")]));
+  const store = new UsageStore({ homeDir, databaseFile });
+
+  try {
+    await store.sync();
+    const metadata = store.metadata();
+    assert.deepEqual(metadata.harnessModels.Claude, ["claude-sonnet-4-5"]);
+    assert.ok(!metadata.harnessModels.Codex.includes("claude-sonnet-4-5"));
+
+    const claudeHome = metadata.homes.find((home) => home.kind === "claude");
+    assert.ok(claudeHome, "应发现 Claude Code 来源");
+    assert.equal(claudeHome.status, "active");
+    assert.equal(claudeHome.eventCount, 2, "主转录 1 + 子代理 1");
+    assert.equal(claudeHome.sessionCount, 1, "子代理并入父会话");
+    assert.ok(store.nonCodexHomeIds().includes(claudeHome.id));
+
+    const quota = store.summarize({ preset: "quota_5h", bucket: "quota_30m", now: "2026-07-12T02:00:00.000Z" });
+    assert.ok(!quota.channels.some((channel) => channel.name.startsWith("Claude")), "限额窗口里不应出现 Claude 渠道");
+  } finally {
+    store.close();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // C5 卡：无实际变更的同步轮 —— 不空发布、不改写候选、不无条件清空派生缓存，
 // 仍按契约更新检查时刻；`earlierFileChanged/changedSessions` 级联保留；失败提交后可重试。
 //

@@ -253,22 +253,25 @@ test("pricingHarnessRows keeps aliases visible and exposes missing and free usag
   }
 });
 
-test("空状态文案包含 DSH 与 OpenCode", () => {
+test("空状态文案包含 DSH、OpenCode 与 Claude Code", () => {
   const html = renderHomesHtml([]);
-  assert.match(html, /没有发现 Codex、ZCode、DSH 或 OpenCode 目录/);
+  assert.match(html, /没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录/);
 });
 
-test("claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode 的优先级认领", () => {
+test("claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode → Claude 的优先级认领", () => {
   const claimed = claimHarnessKeys({
     Codex: new Set(["gpt-6-sol"]),
     ZCode: new Set(["deepseek-flash"]),
     DSH: new Set(["deepseek-flash", "test-model"]),
     OpenCode: new Set(["test-model", "oc-model"]),
+    Claude: new Set(["oc-model", "claude-sonnet-4-5"]),
   });
   assert.deepEqual([...claimed.Codex], ["gpt-6-sol"]);
   assert.deepEqual([...claimed.ZCode], ["deepseek-flash"]);
   assert.deepEqual([...claimed.DSH], ["test-model"]);
   assert.deepEqual([...claimed.OpenCode], ["oc-model"]);
+  // Claude 排在最后：与前面重复的模型名不重复认领，只保留自己独有的。
+  assert.deepEqual([...claimed.Claude], ["claude-sonnet-4-5"]);
 });
 
 test("pricing status gives total coverage and marks each price source", () => {

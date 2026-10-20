@@ -419,10 +419,6 @@ test("every fixed performance label has an explicit English copy entry", () => {
   const english = new Map(englishCopyEntries());
   const labels = [
     "查看方式",
-    "按性能",
-    "模型输出吞吐",
-    "性能详情",
-    "模型详情",
     "选择一组模型查看详情。",
     "统计更新中，当前不展示部分排名。",
     "部分数据来源不可用，当前结果可能不完整。",

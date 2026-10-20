@@ -33,13 +33,15 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `src/usage-core.js`：来源发现与分类、标准事件、内存报告、时间与周期统计。
 - `src/usage-store.js`：SQLite 增量索引、迁移、查询、元数据与限额聚合。
 - `src/usage-executor.js`：**唯一**持有 `DatabaseSync` 的 worker 执行器（2026-10-10 引入）；主线程只从它发布的读侧快照应答轻量端点。
-- `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`：各来源适配器。
+- `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`、`src/claude-code-usage.js`：各来源适配器。
 - `src/repository-identity.js`、`src/service-tier-evidence.js`：仓库身份和服务档位证据。
 - `src/pricing.js`：有效价目、费用估算与不确定性标记。
 - `src/pricing-auto.js`、`src/pricing-store.js`：公开来源解析、刷新、发现、持久化与手动覆盖。
 - `public/pricing-models.js`、`public/usage-fields.js`、`public/timeline-utils.js`：前后端共享的纯逻辑。
 - `public/app.js`、`public/app-state.js`、`public/calendar.js`、`public/i18n.js`、`public/styles.css`：页面、状态、日期、语言和样式。
 - `public/skins.js`、`public/skin-palettes.js`、`public/skin-ui.js`、`public/skin-picker.js`、`public/skins.css`：角色注册表、配色、运行时和选择器；`scripts/prepare-skin-assets.mjs` 生成并校验资源 manifest 与首屏脚本。
+
+皮肤配色的唯一手写源是 `public/skin-palettes.js`（10 套 × 浅深 × 12 个 token）；`public/skin-bootstrap.js` 与 `public/skin-assets.json` 只能由 `npm.cmd run skins:prepare` 从当前源生成，`npm.cmd run skins:check` 只读核对源、资产和生成物。候选生成→捕获→报告→选择→production 的准确 CLI、隔离参数和输出位置以 [B 的 CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)为准；旧轮 `--production` 只绑定旧迁移来源，不能写成当前新轮通过或据此新增兼容层。任何源字节变化都会使旧摘要/capture 过期，须按受影响范围重测；本轮证据根为 [新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)。本轮全仓工程门禁独立登记，不以旧 CLI 或本段生成/核对命令代替。
 
 ## 单执行器与读侧快照（2026-10-10）
 
@@ -61,6 +63,8 @@ npm.cmd run format:check
 npm.cmd run skins:check
 npm.cmd run skins:palette
 ```
+
+有意修改配色源后，先运行 `npm.cmd run skins:palette`，再用新 Node 进程运行 `npm.cmd run skins:prepare`，最后运行 `npm.cmd run skins:check`；日常只读核对不要执行 prepare。
 
 按实际影响选择验证，不以旧文档中的测试数量为通过条件。
 

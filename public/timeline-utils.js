@@ -7,11 +7,13 @@ export function sourceGroup(channel, kind = "") {
   if (homeKind === "zcode") return "ZCode";
   if (homeKind === "dsh") return "DSH";
   if (homeKind === "opencode") return "OpenCode";
+  if (homeKind === "claude") return "Claude";
   const name = String(channel || "Unknown");
   const normalized = name.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (["zcode", "zcode subagent"].includes(normalized)) return "ZCode";
   if (["dsh", "dsh subagent"].includes(normalized)) return "DSH";
   if (normalized === "opencode") return "OpenCode";
+  if (["claude", "claude code", "claude code subagent"].includes(normalized)) return "Claude";
   if (
     [
       "codex",
@@ -282,7 +284,7 @@ export function resolveNamedRecentRange(value, now, quota, calendarZone = "local
 
 // 限额窗口只衡量 Codex 用量：ZCode / DSH / 项目日志来源没有 Codex 限额数据，
 // 选中它们不应点亮限额按钮。
-const NON_CODEX_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "project-log", "unsupported"]);
+const NON_CODEX_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "claude", "project-log", "unsupported"]);
 
 export function hasSelectedCodexSource(homes = [], excludedIds = []) {
   const excluded = new Set(excludedIds.map(String));

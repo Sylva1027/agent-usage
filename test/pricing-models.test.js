@@ -22,9 +22,16 @@ test("model activity expires at one UTC calendar month and clamps month ends", (
     { harness: "ZCode", model: "future", timestamp: Date.parse(now) + 1 },
     { harness: "ZCode", model: "bad", timestamp: "invalid" },
     { harness: "DSH", model: "unknown model", timestamp: cutoff + 1 },
+    { harness: "Claude", model: "claude-sonnet-4-5", timestamp: cutoff + 1 },
   ];
   const activity = buildModelActivity(observations, now);
-  assert.deepEqual(activity.activeHarnessModels, { Codex: ["recent"], ZCode: [], DSH: [], OpenCode: [] });
+  assert.deepEqual(activity.activeHarnessModels, {
+    Codex: ["recent"],
+    ZCode: [],
+    DSH: [],
+    OpenCode: [],
+    Claude: ["claude-sonnet-4-5"],
+  });
   assert.equal(activity.modelLastSeen.Codex.recent, cutoff + 1);
   const returned = buildModelActivity([...observations, { harness: "ZCode", model: "old", timestamp: now }], now);
   assert.deepEqual(returned.activeHarnessModels.ZCode, ["old"]);

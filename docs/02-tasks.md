@@ -1,6 +1,16 @@
 # 任务清单
 
-更新：2026-10-09（刷新性能并发 Implementation Plan）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-20（新增 Claude Code 数据源）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+
+## 当前：Claude Code 数据源
+
+状态：**已实现，本机真实来源已验收（2026-10-20）**。规格见[Claude Code 数据源](data-sources/claude-code.md)，证据见[验收记录](validation/2026-10-20-claude-code-source/README.md)。
+
+- 适配器 `src/claude-code-usage.js`：`~/.claude/projects/**/*.jsonl`（含 `subagents`），按 `message.id` 去重取 token 最大者，子代理并入主渠道 `Claude Code`，`input` 重构成 `input_tokens + cache_read + cache_creation` 超集。
+- 接线：`usage-core` 发现/分类/指纹/分派/报告/索引；`usage-store` schema 14→15（表结构不变）、`usageFiles`、`harnessModels.Claude`；`server` 导入标签；前端 `sourceGroup` / `HARNESS_ORDER` / `bucketForChannel` / 限额排除 / i18n。
+- 已确认口径：不借用旧 Claude 价，也不为 Claude 改 `src/pricing.js`。2026-10-20 起模型身份取**线路模型** `message.model`（`requestedModel` 只是 harness 别名/网关路由名），因此本机的 `mythos-magpie-*` 与 `claude-haiku-5-5` 都按真实上游 `deepseek-v4.1-flash`（含 `-sg` 后缀命中）计价，不再走未知模型回退；识别依据是转录 `message.id` = 网关账本 `response_id`（1,498/1,499，0 分歧）与逐项 token 计数（1,498/1,498 精确相等）两项独立核对，见[验收记录](validation/2026-10-20-claude-model-identity/README.md)。子代理计入并合并；不做 TPS（转录无请求时长）。
+- 验证：`test/claude-code-usage.test.js` 10 项、`usage-core` 7 项、`usage-store` 3 项（含 v15→16 只标脏 Claude 的迁移）、三路一致 1 项、服务端导入 1 项，均通过；typecheck 通过；改动文件 lint/format 通过。完整套件 2,633 项：2,605 通过 / 8 失败 / 20 跳过，8 项均为既有问题（配额窗口 3 项 + 皮肤套件 5 项，见来源接入验收）。
+- **验收（2026-10-20）**：本机 `~/.claude` 接入后，`GET /api/usage` 显示 `Main Claude Code` 活跃（1,167 事件 / 7 会话），`harnessModels.Claude` 4 个模型，渠道 `Claude` 独立成组，限额通道为空；headless Chromium 截图核对图例、模型视图、计价弹窗「缺少费率」、只选 Claude 时限额按钮禁用、TPS 列为「不支持来源」。子代理占事件 25.4% / tokens 24.2%。未点「重新匹配/保存并重算」（会写 `~/.codex-usage/pricing.json`）。另：`test/recent-selections.test.js` 3 项与 5 项皮肤套件在 HEAD 上即失败，属既有问题，未在本次修复。
 
 ## 当前：看板刷新性能修复
 
@@ -16,6 +26,8 @@
 
 ## 当前：模型输出吞吐（TPS）
 
+**2026-10-20 入口已删除：** 用户确认“按性能”不是 TPS 项目的实现路径，只是早期遗留入口；`#perfModeButton`、`#perfPanel`、`#perfDetailList`、对应渲染分支/样式/状态与浏览器性能视图测试已移除，时间图只剩渠道/模型/花销。数据侧（`summary.perf.groups`、`src/perf-stats.js`、`src/perf-sources/*`、`public/perf-ui.js` 及其测试）保持不变，等独立吞吐区域方案恢复后再接 UI。
+
 **界面后续：** 用户于2026-10-08否决原入口与信息布局，已选独立模型吞吐区域。[重构方案与交互原型](plans/2026-10-08-tps-ui-restructure.md)已完成，具体布局待用户审阅；正式页面尚未替换。下列 G4 结果保留原受测版本归属，不表示用户接受原 UI，也不覆盖新界面。
 
 状态：**功能已实现，M0–M8 收口，M8.3与TPS G4于2026-10-08通过最终独立审核**，见[主审裁定](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)。规格入口为[模型输出吞吐指标（TPS）计划](plans/2026-10-03-model-latency-throughput-plan.md)，实现细节见[来源与统计口径](10-data-sources.md)、来源专题与[看板行为](12-dashboard.md)。功能按来源、代理、模型展示 p10/p50/p90、样本量与覆盖率；ZCode/DSH/OpenCode 使用请求端到端时长，Codex 单列轮级 item 时窗估算；不交付 TTFT。
@@ -28,19 +40,19 @@
 
 下一步仍是方案与视觉样稿收敛。已建议人物/费用开关及八个辅助指标候选，具体集合、人物角位/边位、新品牌名称与标识、入口和格式数量尚待确定；费用默认关闭且次要、统一浅色、缓存命中率可选与无独立标题不再列为待定。此处不把产品取舍转为编码任务，也不执行项目改名或修改许可信息。
 
-## 当前：皮肤配色规划
+## 当前：皮肤配色实施与验收
 
-状态：**只做方案，未实施**。唯一规格入口为[皮肤配色融合方案](plans/2026-10-03-skin-palette-consolidated-plan.md)，已合并并清理原约束求解与流水线草案。用户明确全部十套角色重新设计配色，已发布的 ChatGPT、Claude、DeepSeek、Kimi、Muse 也要调整；浅深共 20 个模式槽位采用同等候选生成、选择和验收流程。由代理策划、生成与初筛，用户比较少量真实页面候选。
+状态：**十套 20 模式已接入，M6 整体仍未完成**。唯一规格入口为[皮肤配色融合方案](plans/2026-10-03-skin-palette-consolidated-plan.md)。产品 picker 仍只有 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款。2026-10-20 当前代码新轮自动技术矩阵 900/900、关键几何 120/120，20 图 dense-data 视觉复查、classic、五款 picker 与在线冻结通过；大视口整页高度差 +16px 限制保留。目标机实际 OS 显示缩放/browser zoom 经用户确认未测，最终全仓工程门禁待独立登记，发布不在本轮。证据见[新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)；旧正式 production CLI 只绑定旧迁移来源，见[CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)，不作为本轮通过门禁。
 
-推荐先用 ChatGPT、Grok 进行完整配色试点，再重设其余八套，并将十套新配色统一协调。现有正式配色只作诊断与比较基线，不默认保留已发布五套的色值或气质。普通文字采用 4.5:1 硬门槛；材质与差异度辅助排序，不替代真实页面评审。已有候选报告保留为探索资料，不能将其 fail=0 当作生产页面已经验收。
+试点、十套候选生成、用户选择与正式接入均已完成；旧已发布五套的色值只保留为历史诊断/回退材料。十套正式色源与“picker 只开放五款”必须分开表述，不能把内部十套颜色写成十款已上线。候选报告仍不能替代本轮正式页面证据。
 
-已完成[Implementation Plan](plans/2026-10-03-skin-palette-implementation-plan.md)：7 个模块、32 张任务卡，明确十套配方、共享派生、求解预算、质量门禁、真实页面报告与定稿接入，供后续 agent 按卡交接。当前仅方案与实施计划成文；生成器、工作台升级、正式色值替换及延期皮肤恢复均未实施。自定义编辑器仍不接入主程序，PC 基准及已移除的旧 HTML 导出边界保持一致。
+[Implementation Plan](plans/2026-10-03-skin-palette-implementation-plan.md)中的候选工具、十套选择、正式色值替换和首屏生成物已完成；延期五套仍不开放。剩余验收缺口是真机 OS 缩放/browser zoom，其余收口以本轮证据与独立工程门禁为准。自定义编辑器仍不接入主程序，PC 基准及已移除的旧 HTML 导出边界保持一致。
 
 ## 保留的视觉复核
 
 - **聚光最终强度。** 当前 22% 与 reduced-motion 行为已有专项实现和验证，最终观感/强度仍待用户实际检查。归档未将该主观项标为已定稿；见[聚光证据](validation/2026-10-02-frame-spotlight/README.md)。
 - **当前范围的联合复核。** v0.6.0 五款皮肤已交付，较早旧 P4 的十卡/离线/手机页面矩阵被后续范围取代；不宣称原整项已完成。后续若做联合复核，按五款皮肤、PC 缩放/侧栏/并排窗口及角色/聚光组合记录实际覆盖。已有发布与专项证据从[验证索引](validation/00-index.md)进入。
-- **次要文字对比度。** 2026-10-03 配色检查仍有七条既有 textSecondary 告警，作为十套配色重设前的基线保留记录；不因校验退出 0 宣称全部文字对比度达标。后续按融合方案统一调整十套配色并检查实际背景，见[发布配色记录](validation/2026-10-03-release/palettes.log)。
+- **对比度与保留字标。** 旧 2026-10-03 的七条 textSecondary 告警仅作历史基线；当前 Agent Usage 弱对比字标经用户确认保留，不作为待修项。新轮自动技术矩阵不包含最终全仓工程门禁，不能据此写成全部对比度门禁通过。
 
 自定义配色编辑器已被用户取消正式接入，不再列为实施任务；本地临时工作台不纳入主程序。十角色的内部素材/注册表仍保留，不据此扩展当前五款选择器范围。
 

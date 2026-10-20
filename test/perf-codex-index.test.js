@@ -50,13 +50,13 @@ function assertCodexSummary(perf, expected) {
   assert.equal(group.agentKind, "unknown", "a vscode/session source is not evidence of a main agent");
 }
 
-test("M7 migration creates v13 rollout/dependency tables and rolls back atomically (lands on the current schema v14)", async () => {
+test("M7 migration creates v13 rollout/dependency tables and rolls back atomically (lands on the current schema v15)", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 14);
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 14);
+    assert.equal(STORE_SCHEMA_VERSION, 16);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 16);
     assert.deepEqual(
       store.database
         .prepare("PRAGMA table_info(perf_sample_sources)")
@@ -112,7 +112,7 @@ test("M7 migration creates v13 rollout/dependency tables and rolls back atomical
   const retry = new UsageStore(fixture.serverOptions);
   try {
     await retry.open();
-    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 14);
+    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 16);
     assert.equal(
       retry.database.prepare("SELECT size FROM source_files WHERE path LIKE '%legacy.jsonl'").get().size,
       -1,
@@ -3667,7 +3667,7 @@ test("C3 · 发布事务回滚：投影不因回滚失效（文件内容没变�
   }
 });
 
-test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、schema 已抬到 14 且不新增任何 meta 键", async () => {
+test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、schema 已抬到 16 且不新增任何 meta 键", async () => {
   const fixture = makeC3Home();
   const store = new UsageStore(fixture.serverOptions);
   try {
@@ -3682,7 +3682,7 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
       false,
       "投影缓存不得落盘（持久化属 T1，仅 C6 触发后才做）",
     );
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 14, "T1 已把 schema 抬到 14");
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 16, "T1 已把 schema 抬到 16");
     const tables = store.database
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all()

@@ -524,7 +524,17 @@ function expectedPickerSource(sourceText) {
     {
       start: colourTokensStatement.getStart(sourceFile),
       end: colourTokensStatement.getEnd(),
-      text: `const COLOUR_TOKENS = ${JSON.stringify(EXPECTED_PICKER_PREVIEW_CSS_VARS, null, 2).replace(/\n/g, lineEnding)};`,
+      text: `const COLOUR_TOKENS = {
+  pageBackground: "--bg",
+  panelBackground: "--neo-surface",
+  controlBackground: "--control",
+  text: "--ink",
+  mutedText: "--muted",
+  border: "--line",
+  accent: "--blue",
+  chartText: "--chart-text",
+  chartLine: "--chart-line",
+};`.replace(/\n/g, lineEnding),
     },
     {
       start: previewFunction.getStart(sourceFile),
@@ -671,6 +681,9 @@ const SOURCE_PREIMAGE_FILES = ["public/skin-palettes.js", "public/skin-picker.js
 function makeProductionSourceTransitionInputs({ useCurrentPalette = false } = {}) {
   const beforeSourceBytes = Object.fromEntries(
     SOURCE_FILES.map((file) => [file, fs.readFileSync(path.join(REPO_ROOT, ...file.split("/")))]),
+  );
+  beforeSourceBytes["public/skin-picker.js"] = fs.readFileSync(
+    path.join(REPO_ROOT, "test-support", "skin-picker-before-migration.txt"),
   );
   const beforeSourceHashes = Object.fromEntries(SOURCE_FILES.map((file) => [file, hashBytes(beforeSourceBytes[file])]));
   const sourceSnapshot = Object.fromEntries(
@@ -2382,7 +2395,8 @@ test("picker preview preserves pending, classic, and partial-palette semantics",
 });
 
 test("builds picker source by inserting one import and replacing only two AST spans", () => {
-  const pickerPath = path.join(REPO_ROOT, "public", "skin-picker.js");
+  const pickerPath = path.join(REPO_ROOT, "test-support", "skin-picker-before-migration.txt");
+  const actualPickerBefore = fs.readFileSync(path.join(REPO_ROOT, "public", "skin-picker.js"));
   const beforeSource = fs.readFileSync(pickerPath);
   const beforeBytes = Buffer.from(beforeSource);
   const beforeText = beforeSource.toString("utf8");
@@ -2421,11 +2435,15 @@ test("builds picker source by inserting one import and replacing only two AST sp
   }
   assert.deepEqual(buildProductionPickerSource({ beforeSource }), output, "same input produces identical bytes");
   assert.deepEqual(beforeSource, beforeBytes);
-  assert.deepEqual(fs.readFileSync(pickerPath), beforeBytes, "the actual public picker remains unchanged");
+  assert.deepEqual(
+    fs.readFileSync(path.join(REPO_ROOT, "public", "skin-picker.js")),
+    actualPickerBefore,
+    "the actual public picker remains unchanged",
+  );
 });
 
 test("picker source construction preserves CRLF and emits the same function source", () => {
-  const pickerPath = path.join(REPO_ROOT, "public", "skin-picker.js");
+  const pickerPath = path.join(REPO_ROOT, "test-support", "skin-picker-before-migration.txt");
   const sourceText = fs.readFileSync(pickerPath, "utf8").replace(/\r?\n/g, "\r\n");
   const beforeSource = Buffer.from(sourceText, "utf8");
   const output = buildProductionPickerSource({ beforeSource });
@@ -2532,6 +2550,7 @@ test("selected bootstrap bytes use actual palette values and the canonical expli
 
 test("production source transition accepts only complete constructor bytes and returns independent hashes", () => {
   const inputs = makeProductionSourceTransitionInputs();
+  const actualPickerBefore = fs.readFileSync(path.join(REPO_ROOT, "public", "skin-picker.js"));
   assert.equal(SOURCE_FILES.length, 31, "the authoritative capture source registry includes timeline-utils.js");
   assert.ok(SOURCE_FILES.includes("public/timeline-utils.js"));
   const originalHashes = { ...inputs.beforeSourceHashes };
@@ -2569,7 +2588,7 @@ test("production source transition accepts only complete constructor bytes and r
   for (const file of SOURCE_FILES) {
     assert.deepEqual(
       fs.readFileSync(path.join(REPO_ROOT, ...file.split("/"))),
-      inputs.beforeSourceBytes[file],
+      file === "public/skin-picker.js" ? actualPickerBefore : inputs.beforeSourceBytes[file],
       `${file} remains unchanged by the pure transition check`,
     );
   }
@@ -2815,7 +2834,7 @@ test("bootstrap builder rejects incomplete or stale reviewed selections without 
 });
 
 test("rejects invalid picker buffers, source targets, signatures, and derive import conflicts", () => {
-  const pickerPath = path.join(REPO_ROOT, "public", "skin-picker.js");
+  const pickerPath = path.join(REPO_ROOT, "test-support", "skin-picker-before-migration.txt");
   const sourceText = fs.readFileSync(pickerPath, "utf8");
   const colourDeclaration = (ast) => ast.colourTokensStatement.declarationList.declarations[0];
   const cases = [
@@ -2956,6 +2975,52 @@ test("a complete synthetic selection returns the selected candidate and exact in
   );
 });
 
+test("final ten-candidate selections feed the palette builder without retaining unused variants", () => {
+  const verifiedModel = makeVerifiedModel();
+  const candidateSet = verifiedModel.candidateSet;
+  candidateSet.candidates = candidateSet.candidates.filter(
+    (candidate) => candidate.variant === ["a", "b", "c"][SKIN_IDS.indexOf(candidate.skinId) % 3],
+  );
+  candidateSet.candidateSetHash = hashCandidateSet(candidateSet);
+  const selectedIds = new Set(candidateSet.candidates.map((candidate) => candidate.id));
+  const container = verifiedModel.container;
+  container.candidateSetHash = candidateSet.candidateSetHash;
+  container.assessments = container.assessments.filter((assessment) => selectedIds.has(assessment.candidateId));
+  container.assessmentHash = sha256Canonical({
+    schemaVersion: container.schemaVersion,
+    candidateSetHash: container.candidateSetHash,
+    assessments: container.assessments,
+  });
+  verifiedModel.selectableCandidateIds = [...selectedIds];
+  verifiedModel.images.units = verifiedModel.images.units.filter((unit) => selectedIds.has(unit.candidateId));
+  const { record: selections } = createSelectionExport({
+    verifiedModel,
+    choices: Object.fromEntries(
+      candidateSet.candidates.map((candidate) => [
+        candidate.skinId,
+        { candidateId: candidate.id, candidateHash: candidate.candidateHash },
+      ]),
+    ),
+    decisionSource: "Final selection regression fixture",
+    recordedAt: "2026-10-19T00:00:00.000Z",
+  });
+  const candidateId = candidateSet.candidates[0].id;
+  assert.equal(candidateSet.candidates.length, 10);
+  const beforeSource = fs.readFileSync(path.join(REPO_ROOT, "public/skin-palettes.js"));
+  const output = buildProductionPaletteSource({
+    beforeSource,
+    verifiedModel,
+    selections,
+  });
+  assertExactPaletteReplacement(beforeSource, output, verifiedModel, selections);
+  const missingChoice = structuredClone(selections);
+  delete missingChoice.choices[SKIN_IDS[9]];
+  assertRejectedWithoutMutation({ verifiedModel, selections: missingChoice, candidateId });
+  const missingMode = structuredClone(verifiedModel);
+  delete missingMode.candidateSet.candidates[0].modes.dark;
+  assertRejectedWithoutMutation({ verifiedModel: missingMode, selections, candidateId });
+});
+
 test("a valid candidate in the set is rejected unless the record selected its exact id and hash", () => {
   const verifiedModel = makeVerifiedModel();
   const selections = makeSelections(verifiedModel);
@@ -3003,13 +3068,15 @@ test("stale summaries and malformed or draft selection records are rejected with
   }
 });
 
-test("the model must have a complete candidate set and container summary bound to its content", () => {
+test("the model must contain every selected candidate and a container summary bound to its content", () => {
   const baseModel = makeVerifiedModel();
   const baseSelections = makeSelections(baseModel);
   const candidateId = baseModel.candidateSet.candidates[0].id;
 
   const incompleteSet = structuredClone(baseModel);
-  incompleteSet.candidateSet.candidates.pop();
+  incompleteSet.candidateSet.candidates = incompleteSet.candidateSet.candidates.filter(
+    (candidate) => candidate.skinId !== SKIN_IDS[9],
+  );
   incompleteSet.candidateSet.candidateSetHash = hashCandidateSet(incompleteSet.candidateSet);
   incompleteSet.container.candidateSetHash = incompleteSet.candidateSet.candidateSetHash;
   incompleteSet.container.assessmentHash = sha256Canonical({
@@ -3017,7 +3084,11 @@ test("the model must have a complete candidate set and container summary bound t
     candidateSetHash: incompleteSet.container.candidateSetHash,
     assessments: incompleteSet.container.assessments,
   });
-  const incompleteSelections = makeSelections(incompleteSet);
+  const incompleteSelections = {
+    ...baseSelections,
+    candidateSetHash: incompleteSet.candidateSet.candidateSetHash,
+    assessmentHash: incompleteSet.container.assessmentHash,
+  };
   assertRejectedWithoutMutation({ verifiedModel: incompleteSet, selections: incompleteSelections, candidateId });
 
   const setHashDrift = structuredClone(baseModel);
@@ -3597,6 +3668,49 @@ test("formal result identity, output path, matrix modes, and metadata shape are 
   });
 });
 
+test("production bindings and indexes accept the final ten selected candidates without unused variants", async () => {
+  await withProductionRun(async ({ candidate, outDir, runDir, verifiedModel }) => {
+    const candidateSet = verifiedModel.candidateSet;
+    candidateSet.candidates = candidateSet.candidates.filter((entry) => entry.variant === "a");
+    candidateSet.candidateSetHash = hashCandidateSet(candidateSet);
+    const ids = new Set(candidateSet.candidates.map((entry) => entry.id));
+    verifiedModel.container.candidateSetHash = candidateSet.candidateSetHash;
+    verifiedModel.container.assessments = verifiedModel.container.assessments.filter((entry) =>
+      ids.has(entry.candidateId),
+    );
+    const { schemaVersion, candidateSetHash, assessments } = verifiedModel.container;
+    verifiedModel.container.assessmentHash = sha256Canonical({ schemaVersion, candidateSetHash, assessments });
+    const selections = makeSelections(verifiedModel);
+    await fs.promises.writeFile(path.join(runDir, "candidates.json"), JSON.stringify(candidateSet));
+    const captureResult = makeProductionMatrixResult({ skinId: candidate.skinId, outDir });
+    await writeMatrixFiles(outDir, captureResult);
+    await writeProductionCaptureBinding({
+      runDir,
+      verifiedModel,
+      selections,
+      candidateId: candidate.id,
+      captureResult,
+    });
+    const args = { runDir, outDir, verifiedModel, selections, candidateId: candidate.id };
+    const binding = await readProductionCaptureBinding(args);
+    assert.equal(binding.binding.selectionBinding.candidateSetHash, candidateSet.candidateSetHash);
+    const shard = await writeProductionCaptureIndexShard(args);
+    const capturesIndexPath = path.join(runDir, "production-captures-index.json");
+    await fs.promises.writeFile(capturesIndexPath, JSON.stringify(shard.index));
+    const index = await readProductionCaptureIndex({
+      runDir,
+      capturesIndexPath,
+      verifiedModel,
+      selections,
+    });
+    assert.deepEqual(Object.keys(index.captures), [candidate.skinId]);
+    assert.equal(index.gaps.length, SKIN_IDS.length - 1);
+    const incomplete = structuredClone(selections);
+    delete incomplete.choices[SKIN_IDS.at(-1)];
+    await assert.rejects(readProductionCaptureBinding({ ...args, selections: incomplete }), TypeError);
+  });
+});
+
 test("writes an exact production binding with raw file hashes and idempotently preserves its bytes", async () => {
   await withProductionRun(async ({ candidate, outDir, runDir, selections, verifiedModel }) => {
     const captureResult = makeProductionMatrixResult({ skinId: candidate.skinId, outDir });
@@ -3698,7 +3812,7 @@ test("rejects stale selection, local or drifted candidate set, and non-productio
     await fs.promises.writeFile(path.join(runDir, "candidates.json"), `${JSON.stringify(localSet)}\n`, "utf8");
     await assert.rejects(
       writeProductionCaptureBinding({ runDir, verifiedModel, selections, candidateId: candidate.id, captureResult }),
-      /缺少 .*（半套候选不接受）/,
+      /candidateSetHash does not match the original selection/,
     );
     assert.equal(fs.existsSync(bindingPath), false);
 
@@ -9848,6 +9962,9 @@ function makeD9cFixture(historicalStatus = "pass") {
   const { evidence, historicalEvidence } = makeD5cHistoricalFixture(historicalStatus);
   const sourceBytes = Object.fromEntries(
     SOURCE_FILES.map((file) => [file, fs.readFileSync(path.join(REPO_ROOT, ...file.split("/")))]),
+  );
+  sourceBytes["public/skin-picker.js"] = fs.readFileSync(
+    path.join(REPO_ROOT, "test-support", "skin-picker-before-migration.txt"),
   );
   const sourceHashes = Object.fromEntries(SOURCE_FILES.map((file) => [file, hashBytes(sourceBytes[file])]));
   const sourceSnapshot = Object.fromEntries(
