@@ -217,6 +217,7 @@ test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样�
       .catch(() => {
         settled = true;
       });
+    samples.push(executor.state);
     const crashStarted = performance.now();
     const crash = executor.crashWorkerForTest();
     while (!settled && samples.length < 5000) {
