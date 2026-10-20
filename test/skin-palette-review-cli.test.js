@@ -2299,7 +2299,7 @@ describe("review CLI direct execution", () => {
       "}",
     ].join("\n");
     try {
-      const result = await runNode(["--input-type=module", "-e", source], cwd);
+      const result = await runNode(["--disable-warning=ExperimentalWarning", "--input-type=module", "-e", source], cwd);
       assert.equal(result.timedOut, false);
       assert.equal(result.code, 0);
       assert.equal(result.signal, null);

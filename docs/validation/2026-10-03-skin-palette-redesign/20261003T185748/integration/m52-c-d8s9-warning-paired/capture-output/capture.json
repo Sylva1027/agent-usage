@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "kind": "skin-palette-capture-matrix",
+  "tool": "scripts/skin-palette/capture.mjs",
+  "createdAt": "2026-10-12T22:31:12.546Z",
+  "candidate": {
+    "production": true,
+    "skinId": "chatgpt"
+  },
+  "fixtureHash": "9fb0760dd7d4301fd158e4f22d5420786f6228fd83684a6bec17cca0990e557f",
+  "policyHash": "bd647f40c0a87927e7fc2a6708bc07bf6a4d4a9fd0d5d34c258414f517985173",
+  "sourceHashes": {
+    "public/index.html": "69e38dd284e63911ea3c3e26f3b1d8ac5294ddb5d3a8663cf57997a29f4a389f",
+    "public/skin-palettes.js": "02c12ba36ca64c67d44e1aea7af17dad681094706dae574b9c297ae5fe7065e7",
+    "public/skin-bootstrap.js": "b35a1fb2e4e3cc59a0973387e54708d860ddaafc6086e3c096cc54822c6979cd",
+    "public/styles.css": "1da9f377e4cb152d3e11aa6d58765aec9974db0eb1cb3beaadd762883697b7f4",
+    "public/skins.css": "df7e461d51eeeb69db02479ea6ae0d0dfbc18e8b49bcb2d15a5d6fcce55ebc76",
+    "public/app.js": "bd335a45007b243d07c81307a2f043b116f2fd869cf110b6ebec52bcb33ab9cb",
+    "public/app-state.js": "07f30f96467da9cb7bd78610d8aafa6563db4a7417a25cb7db92191c69b6f446",
+    "public/timeline-utils.js": "8334e0722973ebf697d2d2214829a63e22e77f85c8f534600e68d81e506fdf0f",
+    "public/i18n.js": "9248bc2605024c312e02cb7b81bc61611ff9e2247e7c6325bede5268d27b247f",
+    "public/skin-ui.js": "57f56acff97eebf5a8c9c95bb2625c5ba8732491899fa9beb7fc9b6b44a63c7d",
+    "public/skin-picker.js": "f748d5ecc6473e6d117af0804e214a5299c36baf7d77395f6c606c7c60153bdf",
+    "public/skins.js": "f00f5d7d8710aab42e55b565e385871e144a01c8e76b34a3d949272b84da2b37",
+    "scripts/skin-palette/contracts.mjs": "d77687950b427ca07b66dcc9b60461360176b44a58ce24f0a7189a0ee02178b5",
+    "scripts/skin-palette/roles.mjs": "506c13e918fa70a63063adf9717752a73f7a707dd43e0a1e52d7d509fe8c4734",
+    "scripts/skin-palette/policy.json": "ba4c0f80d2964858e06c2e22d8e1743a90c58a15c20101464b410fec44dee9d9",
+    "scripts/skin-palette/color-math.mjs": "71fa83370dbf3198253357fc0af37e61c2e79ae8cd231890544141a9f854dd79",
+    "scripts/skin-palette/bootstrap-source.mjs": "8d707e42ec3ed22f9f2f52f769083736bf9b8803b02da9af0c3644810742257c",
+    "scripts/skin-palette/browser-measure.mjs": "f8382e9d88f079a4d3d9abc5fbff91c6c9be7115766e30e2c643252fcb96bedf",
+    "scripts/skin-palette/evaluate.mjs": "08fa2ab9fc4660bcf1f1fb08578feabf1277a8d86dc49ae4dbc045a5ebf7d1ed",
+    "scripts/skin-palette/diagnostics.mjs": "cd9339b497fe42105fda60decf84787c5324f0112ba62e8345571922c6c2958c",
+    "scripts/skin-palette/assess.mjs": "4b101da2c1db8a9c701e961d68f9be00b56338954628d6d3e446084813b37c66",
+    "scripts/skin-palette/preview-server.mjs": "aaed0dd39c5c0d5c75f3bbe42f6fc9df3aee8c1f11426502c751373dc52bf1cc",
+    "scripts/skin-palette/capture.mjs": "3019e92c3e1b4944d4a2d1b335c98ccadba47fc477e53ddbd522cd1b07eb51e8"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "browser": "155.0.4283.45",
+    "viewports": [
+      {
+        "width": 1920,
+        "height": 1080
+      },
+      {
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "width": 1280,
+        "height": 720
+      }
+    ],
+    "deviceScaleFactor": 1,
+    "locale": "zh-CN",
+    "timezoneId": "Asia/Shanghai",
+    "reducedMotion": "reduce",
+    "baselineStateId": "dashboard-default"
+  },
+  "stateTimeoutMs": 15000,
+  "baselineTimeoutMs": 15000,
+  "retryPolicy": {
+    "version": 1,
+    "maxAttemptsPerUnit": 2
+  },
+  "measureBaseline": false,
+  "groups": [
+    "S8"
+  ],
+  "coverage": {
+    "timeline-range-warning": [
+      "timeline-range-warning"
+    ]
+  },
+  "untested": [
+    "目标机器的实际显示缩放 / 浏览器 zoom 人工复核（卡面要求记录一次；本矩阵只覆盖 CSS 视口与 deviceScaleFactor=1，人工项未执行）"
+  ],
+  "modes": {
+    "light": {
+      "status": "captured",
+      "blockers": [],
+      "gaps": [],
+      "baseline": {
+        "status": "captured",
+        "blockers": [],
+        "moduleRequestCount": 1,
+        "pricingRefreshInterceptions": 1,
+        "firstScreenMatches": false,
+        "runtimeMatches": true,
+        "durationMs": 407,
+        "evidence": null
+      },
+      "states": {
+        "timeline-range-warning": {
+          "status": "captured",
+          "blockers": []
+        }
+      }
+    },
+    "dark": {
+      "status": "captured",
+      "blockers": [],
+      "gaps": [],
+      "baseline": {
+        "status": "captured",
+        "blockers": [],
+        "moduleRequestCount": 1,
+        "pricingRefreshInterceptions": 1,
+        "firstScreenMatches": false,
+        "runtimeMatches": true,
+        "durationMs": 193,
+        "evidence": null
+      },
+      "states": {
+        "timeline-range-warning": {
+          "status": "captured",
+          "blockers": []
+        }
+      }
+    }
+  }
+}

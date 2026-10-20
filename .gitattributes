@@ -1,2 +1,3 @@
+* text=auto eol=lf
 # Preserve raw bytes of hash-bound validation fixtures and records.
 /docs/validation/** -text

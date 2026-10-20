@@ -31,6 +31,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..");
 const APP_PATH = path.join(REPO_ROOT, "public", "app.js");
 const INDEX_PATH = path.join(REPO_ROOT, "public", "index.html");
+const RESPONSES_DIR = path.join(
+  REPO_ROOT,
+  "docs/validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/baseline/reports/responses/original/pristine",
+);
 
 /** `U4_HARNESS_ONLY=1` ⇒ 只导出夹具、不注册 test()（供 U4 脚本复用）。 */
 export const HARNESS_ONLY = process.env.U4_HARNESS_ONLY === "1";

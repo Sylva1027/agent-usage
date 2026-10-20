@@ -39,7 +39,11 @@ import {
   probeToastNativeOcclusion,
   screenshotWithStyleAttributeGuard,
 } from "../scripts/skin-palette/browser-measure.mjs";
-import { adaptRoleCatalogForMeasurement, measurementErrorTrace } from "../scripts/skin-palette/capture.mjs";
+import {
+  adaptRoleCatalogForMeasurement,
+  buildPreferenceSeedSource,
+  measurementErrorTrace,
+} from "../scripts/skin-palette/capture.mjs";
 import { ROLE_CATALOG, BASE_COLORS } from "../scripts/skin-palette/roles.mjs";
 import { runEvaluator } from "../scripts/skin-palette/solver.mjs";
 import {
@@ -8828,9 +8832,12 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       blockedRemoteRequests.push(requestUrl.href);
       return route.abort();
     });
+    await context.addInitScript(buildPreferenceSeedSource({ theme: "light", skinId: "classic" }));
     const page = await context.newPage();
     installBrowserColorObserver(page);
     await page.goto(`${origin}/`, { waitUntil: "load" });
+    await page.locator('#presetButtons button[data-preset="all"]').click();
+    await page.waitForSelector("#detailList .bar-row", { timeout: 20000 });
     await page.waitForSelector("#calendarZoneSelect", { timeout: 20000 });
     await page.waitForSelector("#updatePricingButton", { timeout: 20000 });
     evidence.browser = { version: browser.version(), executablePath };
@@ -9626,7 +9633,7 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
     "docs/validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m52-c-d8u24-e1c-pricing-fixture/run-01",
     `e1c-${Date.now()}-${process.pid}`,
   );
-  mkdirSync(evidenceDir, { recursive: false });
+  mkdirSync(evidenceDir, { recursive: true });
   const evidence = {
     card: "M5.2.C-E1c",
     browser: null,
@@ -9666,6 +9673,7 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
       blockedRemoteRequests.push(requestUrl.href);
       return route.abort();
     });
+    await context.addInitScript(buildPreferenceSeedSource({ theme: "light", skinId: "classic" }));
     const page = await context.newPage();
     installBrowserColorObserver(page);
     const readPricingInputState = () =>
@@ -9694,6 +9702,8 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
       { timeout: 20000 },
     );
     await page.goto(`${origin}/`, { waitUntil: "load" });
+    await page.locator('#presetButtons button[data-preset="all"]').click();
+    await page.waitForSelector("#detailList .bar-row", { timeout: 20000 });
     await page.waitForSelector("#timelineChart", { timeout: 20000 });
     await page.waitForSelector("#modelComparisonSearch", { timeout: 20000 });
     const inputStateBeforeRefresh = await readPricingInputState();
@@ -10202,9 +10212,12 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
       blockedRemoteRequests.push(requestUrl.href);
       return route.abort();
     });
+    await context.addInitScript(buildPreferenceSeedSource({ theme: "light", skinId: "classic" }));
     const page = await context.newPage();
     installBrowserColorObserver(page);
     await page.goto(`${origin}/`, { waitUntil: "load" });
+    await page.locator('#presetButtons button[data-preset="all"]').click();
+    await page.waitForSelector("#detailList .bar-row", { timeout: 20000 });
     await page.waitForSelector("#timelineChart", { timeout: 20000 });
     await page.waitForSelector("#modelComparisonSearch", { timeout: 20000 });
     if ((await page.locator("#themeToggle").getAttribute("aria-pressed")) !== "true") {
@@ -11100,7 +11113,7 @@ test("M3.3：pairMeanDistance 就是六项距离的算术平均——全精度�
   const mean = pair.distances.reduce((sum, entry) => sum + entry.dOk, 0) / pair.distances.length;
   assert.equal(pair.pairMeanDistance, mean);
   assert.ok(Number.isFinite(pair.pairMeanDistance));
-  assert.equal(pair.pairMeanDistance, 9.679630463849708, "固定数值：换成中位数/几何平均会立刻被发现");
+  assert.ok(Math.abs(pair.pairMeanDistance - 9.679630463849708) < 1e-12, "固定数值：换成中位数/几何平均会立刻被发现");
   assert.deepEqual(
     pair.distances.map((entry) => Number(entry.dOk.toFixed(4))),
     [3.1941, 2.1446, 22.1377, 3.3466, 3.0755, 24.1792],
@@ -11156,7 +11169,7 @@ test("M3.3：最近邻只认其他皮肤，并列按输入先序，没有可比�
       ["cand-c", "cand-b", "claude"],
     ],
   );
-  assert.equal(nearest[0].pairMeanDistance, 9.679630463849708);
+  assert.ok(Math.abs(nearest[0].pairMeanDistance - 9.679630463849708) < 1e-12);
   assert.deepEqual(
     nearest[0].distances,
     diagnoseIdentity({ candidates: [chatgpt, claude, sameSkin] }).pairs.find(

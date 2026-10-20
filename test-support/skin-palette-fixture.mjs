@@ -347,6 +347,7 @@ export function createPaletteServerOptions(fixture) {
     databaseFile: fixture.databaseFile,
     env: {},
     automaticDiscoveryEnabled: false,
+    pricingFetcher: async () => new Response("Offline palette fixture", { status: 503 }),
     pickDirectory: async () => fixture.pickedPath,
   };
 }
