@@ -2448,18 +2448,18 @@ function d5Instrument(store) {
             )),
       0,
     );
-  const record = (sql, rows) => {
+  const record = (sql, rows, executed = true) => {
     const bucket = phases[phase];
-    bucket.executions += 1;
+    if (executed) bucket.executions += 1;
     if (sql.startsWith(D5_FULL_PREFIX)) {
-      bucket.fullSampleExecutions += 1;
+      if (executed) bucket.fullSampleExecutions += 1;
       bucket.decodedSamples += rows.length;
       bucket.decodedBytes += bytesOf(rows);
-      if (bucket.fullSampleSqls) bucket.fullSampleSqls.push(sql);
+      if (executed && bucket.fullSampleSqls) bucket.fullSampleSqls.push(sql);
     } else if (sql === D5_IDENTITY_SQL) {
-      bucket.identityExecutions += 1;
+      if (executed) bucket.identityExecutions += 1;
       bucket.identityRows += rows.length;
-      if (bucket.identitySqls) bucket.identitySqls.push(sql);
+      if (executed && bucket.identitySqls) bucket.identitySqls.push(sql);
     }
   };
   store.database.prepare = (sql) => {
@@ -2484,8 +2484,9 @@ function d5Instrument(store) {
       iterate: (...args) => {
         const iterator = statement.iterate(...args);
         return (function* iterateWrapped() {
+          record(text, []);
           for (const row of iterator) {
-            record(text, [row]);
+            record(text, [row], false);
             yield row;
           }
         })();

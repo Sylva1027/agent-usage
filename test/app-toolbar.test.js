@@ -77,6 +77,7 @@ test("title, range, refresh, and timezone controls use separate compact groups",
   assert.ok(refresh.indexOf('id="calendarZoneSelect"') < refresh.indexOf('id="lastSuccessfulCheck"'));
   assert.match(refresh, /id="calendarZoneSelect"[^>]*role="combobox"[^>]*aria-controls="calendarZoneMenu"/);
   assert.match(refresh, /class="auto-refresh-well"/);
+  assert.match(refresh, /<button id="autoRefreshError"[^>]*type="button"/);
   assert.match(refresh, /auto-refresh-heading[\s\S]*?id="autoRefreshToggle"[\s\S]*?<\/span>/);
   assert.doesNotMatch(header, /importButton/);
 });

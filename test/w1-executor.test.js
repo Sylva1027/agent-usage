@@ -20,6 +20,42 @@ import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+test("dashboard skipCheck reinitializes the executor after a crash", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "executor-dashboard-recovery-"));
+  const fixture = createPerfCodexIntegrationFixture();
+  const originalPostMessage = Worker.prototype.postMessage;
+  let activeWorker;
+  Worker.prototype.postMessage = function (message, ...args) {
+    if (message.type === "dashboard") activeWorker = this;
+    return originalPostMessage.call(this, message, ...args);
+  };
+  const server = createUsageServer({
+    homeDir: root,
+    databaseFile: path.join(root, "usage-index.sqlite"),
+    importDirs: [fixture.codexHome],
+    automaticDiscoveryEnabled: false,
+  });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`;
+    const before = await fetch(url);
+    assert.equal(before.status, 200);
+    const expected = await before.json();
+    assert.ok(activeWorker);
+    await activeWorker.terminate();
+    const after = await fetch(`${url}&skipCheck=1`);
+    const actual = await after.json();
+    assert.equal(after.status, 200, JSON.stringify(actual));
+    assert.deepEqual(actual.summary.totals, expected.summary.totals);
+    assert.ok(actual.metadata.harnessModels);
+  } finally {
+    Worker.prototype.postMessage = originalPostMessage;
+    await server.close();
+    fixture.close();
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 async function withExecutor(body) {
   const root = await mkdtemp(path.join(tmpdir(), "w1-executor-"));
   const fixture = createPerfCodexIntegrationFixture();

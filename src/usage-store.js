@@ -2746,10 +2746,8 @@ export class UsageStore {
 
     const sql = `${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`;
     // 全列解码，**不得**跳过：AP-4 已实测 STRICT 会把 `'7'` 无损换算成 7 ⇒ 信任库中值会出错。
-    return this.database
-      .prepare(sql)
-      .all(...params)
-      .map((row) => decodePerfSample(row));
+    // Decode as rows arrive so raw SQL rows and decoded samples never coexist in full.
+    return Array.from(this.database.prepare(sql).iterate(...params), decodePerfSample);
   }
 
   /**
@@ -2768,10 +2766,12 @@ export class UsageStore {
       predicates.push("home_id <> ?");
       params.push(homeId);
     }
-    return this.database
-      .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`)
-      .all(...params)
-      .map((row) => decodePerfSample(row));
+    return Array.from(
+      this.database
+        .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`)
+        .iterate(...params),
+      decodePerfSample,
+    );
   }
 
   /**
@@ -2790,14 +2790,14 @@ export class UsageStore {
    * @returns {ReadonlyArray<{ sampleKey: string, sourceKind: string, homeId: string }>}
    */
   perfSampleIdentities() {
-    return this.database
-      .prepare("SELECT sample_key, source_kind, home_id FROM perf_samples")
-      .all()
-      .map((row) => ({
+    return Array.from(
+      this.database.prepare("SELECT sample_key, source_kind, home_id FROM perf_samples").iterate(),
+      (row) => ({
         sampleKey: String(row.sample_key ?? ""),
         sourceKind: String(row.source_kind ?? ""),
         homeId: String(row.home_id ?? ""),
-      }));
+      }),
+    );
   }
 
   async usageFiles(homes) {

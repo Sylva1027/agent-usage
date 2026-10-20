@@ -47,6 +47,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 
 重活（`sync`、`summarize`、`periodComparison`）全部在 `src/usage-executor.js` 的 worker 里执行，**数据库连接只在执行器内**；主线程不打开库，只用执行器 `postMessage` 发布的**已提交读侧快照**应答 `/api/status`、`/api/pricing`、`/api/imports`、`/index.html`（判据 p95 ≤ 100 ms / max ≤ 250 ms）。要点：
 
+- **内存预算**：后台 `gateway` / `restart` 默认使用 `--max-old-space-size=512`，可通过 `--memory-mb` 或 `CODEX_USAGE_MEMORY_MB` 覆盖。这是 V8 老生代堆预算，不是整个进程的内存上限；Worker 也继承该参数。此前默认 256 MiB 在同步投影缓存、计价缓存及大范围性能查询叠加时可耗尽。性能候选现在逐行解码，避免同时保留完整 SQL 原始行和解码数组。
 - **并发合并**：`src/server.js` 的 `loadUsageStore()` 用 `syncPromise` 把并发重请求合并成一次同步（"两轮并发只允许发出一次 `sync` 消息"由 `test/w1-executor.test.js` 的计数断言把守）。
 - **故障恢复**：执行器崩溃 ⇒ 在途请求以 `EXECUTOR_EXITED`（`retryable: true`）结算而不挂死；下一次请求就地重启一次（**无重试循环**）；`close()` 幂等且显式等待 flush/退出（`test/w3-fault.test.js`）。
 - **发布原子性**：读侧快照要么为空、要么完整；发布中途不得出现半成品（`F2-half-publish` 突变机械钉住）。

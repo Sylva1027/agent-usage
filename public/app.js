@@ -159,6 +159,8 @@ function setLanguage(locale) {
   updateRecentControls();
   updateDateRangeControl();
   renderAutoRefreshControls();
+  const errorText = $("#autoRefreshErrorText");
+  errorText.value = localizeText(errorText.dataset.message || "", getLocale());
   if (state.datePickerField) renderDatePicker(state.datePickerField);
   if (!$("#pricingDialog")?.hidden) renderPricingModelList();
   if (!$("#pricingDialog")?.hidden) renderAutomaticPricingStatus(state.pricingCatalog?.automatic);
@@ -3065,10 +3067,27 @@ function render() {
   if (!$("#importDialog")?.hidden) translatePage($("#importDialog"));
 }
 
+function setAutoRefreshErrorDetails(open) {
+  const trigger = $("#autoRefreshError");
+  const details = $("#autoRefreshErrorDetails");
+  const hadFocus = details.contains(document.activeElement);
+  details.hidden = !open;
+  $(".auto-refresh-well").classList.toggle("is-showing-error", open);
+  trigger.setAttribute("aria-expanded", String(open));
+  if (open) $("#autoRefreshErrorText").focus({ preventScroll: true });
+  else if (hadFocus) (trigger.disabled ? $("#autoRefreshToggle") : trigger).focus({ preventScroll: true });
+}
+
 function setAutoRefreshStatus(message, { error = false, busy = false } = {}) {
   const node = document.querySelector("#autoRefreshError");
   if (!node) return;
-  node.textContent = busy ? "" : message || "";
+  const text = busy ? "" : message || "";
+  node.textContent = error && text ? localizeText("异常 · 详情 ›", getLocale()) : text;
+  node.disabled = !error;
+  const details = $("#autoRefreshErrorText");
+  details.dataset.message = text;
+  details.value = localizeText(text, getLocale());
+  if (!error || !text) setAutoRefreshErrorDetails(false);
   node.classList.toggle("is-error", error);
   const spinner = document.querySelector("#autoRefreshSpinner");
   if (spinner) {
@@ -4332,6 +4351,8 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
         setAutoRefreshStatus(expectedWait ? "" : "限额统计暂不可用", { error: !expectedWait });
         return;
       }
+      // A failed range still needs a retry even when the source files have not changed.
+      state.fingerprint = "";
       setAutoRefreshStatus(`加载失败：${error.message}`, { error: true });
     }
   }
@@ -4823,6 +4844,13 @@ function bootDashboard() {
   });
 
   $("#autoRefreshToggle").addEventListener("click", () => setAutoRefreshEnabled(!state.autoRefreshEnabled));
+  $("#autoRefreshError").addEventListener("click", () => setAutoRefreshErrorDetails(true));
+  $("#autoRefreshErrorBack").addEventListener("click", () => setAutoRefreshErrorDetails(false));
+  $("#autoRefreshErrorDetails").addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    setAutoRefreshErrorDetails(false);
+  });
   $("#timelineModes").addEventListener("click", (event) => {
     const button = event.target.closest("[data-timeline-mode]");
     if (!button || button.dataset.timelineMode === state.timelineMode) return;

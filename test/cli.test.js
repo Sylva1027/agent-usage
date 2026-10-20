@@ -214,8 +214,8 @@ test("cli gateway uses a safer default heap budget for dashboard refreshes", asy
     const service = state.services[0];
     assert.ok(service, "expected gateway service to be registered");
     assert.ok(
-      service.nodeExecArgv.includes("--max-old-space-size=256"),
-      `expected gateway Node args to include a 256MB heap budget, got ${JSON.stringify(service.nodeExecArgv)}`,
+      service.nodeExecArgv.includes("--max-old-space-size=512"),
+      `expected gateway Node args to include a 512MB heap budget, got ${JSON.stringify(service.nodeExecArgv)}`,
     );
   } finally {
     await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));

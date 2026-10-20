@@ -511,7 +511,7 @@ export function createUsageServer(options = {}) {
 
   async function loadUsageStore({ check = true } = {}) {
     const currentUsageOptions = await usageOptions(options);
-    if (!check && storeStatus) return storeStatus;
+    if (!check && storeStatus && usageStore.status) return storeStatus;
     if (syncPromise) {
       return syncPromise;
     }

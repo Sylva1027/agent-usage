@@ -14,7 +14,7 @@ import { loadPricingFile } from "./pricing-store.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3765;
-const DEFAULT_GATEWAY_MEMORY_MB = 256;
+const DEFAULT_GATEWAY_MEMORY_MB = 512;
 const DEFAULT_STATE_FILE = path.join(homedir(), ".codex-usage", "services.json");
 const SERVICE_LOCK_WAIT_MS = 5000;
 const SERVICE_LOCK_STALE_MS = 15000;

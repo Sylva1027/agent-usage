@@ -1835,6 +1835,59 @@ if (!HARNESS_ONLY) {
     );
   });
 
+  test("a failed range reload retries on the next cycle even with unchanged sources", async () => {
+    const payloads = await loadRecordedPayloads();
+    let failNext = false;
+    const month = clone(payloads.today);
+    month.summary.range.preset = "month";
+    const router = createRouter({
+      payloads,
+      status: ({ request }) => ({
+        payload: {
+          fingerprint: payloads.today.fingerprint,
+          changed: request.params.since !== payloads.today.fingerprint,
+        },
+      }),
+      usage: ({ request }) => {
+        if (failNext) {
+          failNext = false;
+          return { status: 500, payload: { error: "Worker terminated due to reaching memory limit" } };
+        }
+        return { payload: request.params.preset === "month" ? month : payloads.today };
+      },
+    });
+    const harness = await createCycleHarness({
+      response: router,
+      storage: { codexUsageAutoRefresh: "on" },
+      initial: { preset: "today" },
+    });
+    try {
+      await harness.settle();
+      assert.equal(harness.state.fingerprint, payloads.today.fingerprint);
+      harness.state.preset = "month";
+      failNext = true;
+      await harness.api.loadUsage({ skipCheck: true });
+      assert.equal(harness.state.fingerprint, "");
+      assert.match(harness.dom.byId.get("autoRefreshError").textContent, /详情/);
+      assert.match(harness.dom.byId.get("autoRefreshErrorText").value, /加载失败/);
+      harness.dom.byId.get("autoRefreshError").click();
+      assert.equal(harness.dom.byId.get("autoRefreshErrorDetails").hidden, false);
+      assert.equal(harness.dom.byId.get("autoRefreshError").getAttribute("aria-expanded"), "true");
+      harness.dom.byId.get("autoRefreshErrorBack").click();
+      assert.equal(harness.dom.byId.get("autoRefreshErrorDetails").hidden, true);
+      harness.resetCounts();
+      await harness.tick();
+      assert.equal(harness.counts.statusChecks, 1);
+      assert.equal(harness.counts.usageSyncs, 1);
+      assert.equal(harness.state.summary.range.preset, "month");
+      assert.equal(harness.state.fingerprint, payloads.today.fingerprint);
+      assert.equal(harness.dom.byId.get("autoRefreshError").textContent, "");
+      assert.equal(harness.dom.byId.get("autoRefreshErrorDetails").hidden, true);
+    } finally {
+      harness.dispose();
+    }
+  });
+
   if (REAL_CYCLE) {
     test("U4 real 60s cycle: the product's own interval actually probes once per period", async () => {
       const payloads = await loadRecordedPayloads();

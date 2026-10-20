@@ -157,9 +157,10 @@ label {
   align-items: stretch;
 }
 .auto-refresh-well {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
-  grid-template-areas: "heading zone" "last last" "error error";
+  grid-template-areas: "heading zone" "last last";
   align-items: center;
   align-content: center;
   gap: 8px 10px;
@@ -194,8 +195,13 @@ label {
   }
 }
 
-#lastSuccessfulCheck {
+.auto-refresh-info {
   grid-area: last;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 19px;
 }
 
 .auto-refresh-label {
@@ -226,9 +232,70 @@ label {
   display: none;
 }
 .auto-refresh-error {
-  grid-area: error;
+  all: unset;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.auto-refresh-error:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.auto-refresh-details {
+  position: absolute;
+  inset: 8px 12px;
+  display: grid;
+  grid-template-rows: 20px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.auto-refresh-details[hidden] {
+  display: none;
+}
+
+.auto-refresh-well.is-showing-error > :not(.auto-refresh-details) {
+  visibility: hidden;
+}
+
+.auto-refresh-details-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auto-refresh-details-heading button {
+  all: unset;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.auto-refresh-error-text {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  resize: none;
+  overflow: auto;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.auto-refresh-error:focus-visible,
+.auto-refresh-details button:focus-visible,
+.auto-refresh-error-text:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 #autoRefreshToggle[aria-pressed="false"] {
@@ -247,11 +314,15 @@ label {
 }
 
 #lastSuccessfulCheck {
+  flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .auto-refresh-error.is-error {
+  flex-shrink: 0;
   color: var(--red);
 }
 
