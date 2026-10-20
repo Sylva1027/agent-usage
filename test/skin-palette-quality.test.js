@@ -10243,8 +10243,21 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
       assert.ok(box && box.width > 0 && box.height > 0, `${id} must be visible in the R3-equivalent state`);
       writeFileSync(path.join(evidenceDir, `${id}.png`), await page.screenshot({ clip: box }));
     }
-    animationInspection = await page.evaluate(() =>
-      Array.from(document.querySelectorAll(".shell [data-spotlight-active]"), (host) => {
+    await page.locator("#detailPanel > .panel-heading").scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    animationInspection = await page.evaluate(async () => {
+      const panel = document.querySelector("#detailPanel");
+      const box = panel.querySelector(".panel-heading").getBoundingClientRect();
+      panel.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerType: "mouse",
+          clientX: box.x + 8,
+          clientY: box.y + 8,
+        }),
+      );
+      await new Promise(requestAnimationFrame);
+      const inspection = Array.from(document.querySelectorAll(".shell [data-spotlight-active]"), (host) => {
         const inspect = (subtree) =>
           host.getAnimations({ subtree }).map((animation) => {
             const effect = animation.effect;
@@ -10267,8 +10280,19 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
           subtreeFalse: inspect(false),
           subtreeTrue: inspect(true),
         };
-      }),
-    );
+      });
+      const transition = panel
+        .getAnimations({ subtree: true })
+        .find(
+          (animation) => animation.transitionProperty === "opacity" && animation.effect?.pseudoElement === "::after",
+        );
+      if (!transition) throw new Error("E1d requires the real spotlight opacity transition");
+      // 暂停真实过渡，直到探针入口才恢复，避免 CI 调度耗尽 120ms 动画。
+      transition.pause();
+      transition.currentTime = 30;
+      window.__e1dTransition = transition;
+      return inspection;
+    });
     const role = ROLE_CATALOG.find((entry) => entry.id === "input.placeholder");
     assert.ok(role?.states.includes("dashboard-default"));
     await page.addStyleTag({
@@ -10280,8 +10304,15 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
         }
       `,
     });
+    let revealResumed = false;
     const measurementPage = {
-      evaluate: (source, argument) => page.evaluate(source, argument),
+      evaluate: (source, argument) => {
+        if (!revealResumed && String(source).startsWith("// skinProbe: spotlight-stability")) {
+          revealResumed = true;
+          return page.evaluate(`(() => { window.__e1dTransition.play(); return (\n${source}\n); })()`);
+        }
+        return page.evaluate(source, argument);
+      },
       context: () => ({
         newCDPSession: async (target) => {
           assert.equal(target, measurementPage, "CDP target must map to the measurement page");

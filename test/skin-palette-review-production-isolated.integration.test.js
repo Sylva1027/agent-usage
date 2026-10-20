@@ -883,7 +883,15 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     const cliStartedAt = Date.now();
     const cli = await execFileWithExitCode(
       process.execPath,
-      [cliPath, "verify", "--production", "--run", "docs/validation/origin-run", "--require-selections"],
+      [
+        "--disable-warning=ExperimentalWarning",
+        cliPath,
+        "verify",
+        "--production",
+        "--run",
+        "docs/validation/origin-run",
+        "--require-selections",
+      ],
       { cwd: foreignCwd, maxBuffer: 32 * 1024 * 1024 },
     );
     const cliElapsedMs = Date.now() - cliStartedAt;
@@ -914,7 +922,15 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     const consumerStartedAt = Date.now();
     const assembledIndexCli = await execFileWithExitCode(
       process.execPath,
-      [cliPath, "verify", "--production", "--run", "docs/validation/origin-run", "--require-selections"],
+      [
+        "--disable-warning=ExperimentalWarning",
+        cliPath,
+        "verify",
+        "--production",
+        "--run",
+        "docs/validation/origin-run",
+        "--require-selections",
+      ],
       { cwd: foreignCwd, maxBuffer: 32 * 1024 * 1024 },
     );
     const consumerElapsedMs = Date.now() - consumerStartedAt;
