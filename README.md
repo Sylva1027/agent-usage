@@ -6,7 +6,9 @@ Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode 与 Claude Code
 
 本项目基于 [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage) 继续开发。
 
-当前版本：[v0.6.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.6.0)。
+当前版本：[v0.7.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.7.0)。
+
+![DeepSeek 浅色皮肤看板，16:9，示例数据](docs/images/dashboard-deepseek-light.png)
 
 ## 快速开始
 
@@ -27,8 +29,10 @@ node src/cli.js run
 - **Codex 限额：** `5h / week` 在当前 5 小时与每周限额窗口之间切换。这两个限额范围以及“上一个5h”“上一个7d”只统计 Codex 来源；普通的今日、本周、本月等范围仍统计所有已选来源。窗口边界取自本机 Codex 限额观察值。当前5小时图按半小时、当前每周图按连续24小时显示；上一个5h只画有用量的半小时，最后一段截止到下一轮开始；上一个7d只画有用量的日历日期。后台保留完整起止时间和时长。没有可靠记录时不会推测边界。未选中 Codex 数据来源时，限额按钮及对应的最近范围选项会置灰。
 - **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。模型名在界面上统一小写显示，原始模型标识仍用于聚合和计价。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode/Claude；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
 - **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
-- **来源与刷新：** 自动发现本机 Codex、ZCode、DSH、OpenCode 和 Claude Code 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录、Claude Code home，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；暂停自动刷新后，切换范围仍使用冻结的数据快照。
-- **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前提供 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款皮肤及简洁模式。浅深缩略图同时预览，桌面五款一行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
+- **来源与刷新：** 自动发现本机 Codex、ZCode、DSH、OpenCode 和 Claude Code 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录、Claude Code home，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；失败后下次检查会重试，错误详情在原刷新框内切换查看。暂停自动刷新后，切换范围仍使用冻结的数据快照。
+- **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前提供 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款皮肤及简洁模式，采用更新的整页配色。浅深缩略图同时预览，桌面五款一行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
+
+![界面风格选择器，五款皮肤与浅深配色预览](docs/images/skin-picker.png)
 
 ## 数据来源与隐私
 

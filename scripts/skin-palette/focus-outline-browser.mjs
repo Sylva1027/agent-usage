@@ -1,7 +1,4 @@
-import {
-  analyzeFocusOutlineAdjacentPixels,
-  analyzeFocusOutlinePixels,
-} from "./focus-outline-pixels.mjs";
+import { analyzeFocusOutlineAdjacentPixels, analyzeFocusOutlinePixels } from "./focus-outline-pixels.mjs";
 
 const SELECTORS = new Set(["#addImportButton", "#pricingSearch"]);
 
@@ -164,11 +161,9 @@ async function disposeHandles(handles) {
 
 function operationFailure({ hasPrimaryError, primaryError, disposeErrors, evidence }) {
   if (hasPrimaryError && disposeErrors.length > 0) {
-    const error = new AggregateError(
-      [primaryError, ...disposeErrors],
-      "焦点单帧捕获失败且 handle 清理失败",
-      { cause: primaryError },
-    );
+    const error = new AggregateError([primaryError, ...disposeErrors], "焦点单帧捕获失败且 handle 清理失败", {
+      cause: primaryError,
+    });
     error.focusOutlineEvidence = evidence;
     return error;
   }
@@ -179,11 +174,7 @@ function operationFailure({ hasPrimaryError, primaryError, disposeErrors, eviden
     if (disposeErrors.length === 1) {
       return attachEvidence(disposeErrors[0], evidence, "焦点单帧 handle 清理失败（原始错误保留在 cause）");
     }
-    const error = new AggregateError(
-      disposeErrors,
-      "焦点单帧 handle 清理失败",
-      { cause: disposeErrors[0] },
-    );
+    const error = new AggregateError(disposeErrors, "焦点单帧 handle 清理失败", { cause: disposeErrors[0] });
     error.focusOutlineEvidence = evidence;
     return error;
   }
@@ -235,12 +226,7 @@ export async function measureFocusOutlineAdjacentPixels({ page, selector }) {
       const { rect, viewport } = before;
       const clip = clipFor(rect);
       captures.clip = clip;
-      if (
-        clip.x < 0 ||
-        clip.y < 0 ||
-        clip.x + clip.width > viewport.width ||
-        clip.y + clip.height > viewport.height
-      ) {
+      if (clip.x < 0 || clip.y < 0 || clip.x + clip.width > viewport.width || clip.y + clip.height > viewport.height) {
         reason = "clip-outside-viewport";
       } else {
         captures.focused = await page.screenshot({

@@ -135,6 +135,7 @@ const PLAYWRIGHT_CANDIDATES = Object.freeze(
 );
 
 const EDGE_CANDIDATES = Object.freeze([
+  ...(process.env.AGENT_USAGE_EDGE_PATH ? [process.env.AGENT_USAGE_EDGE_PATH] : []),
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
   "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
   "/usr/bin/microsoft-edge",

@@ -3426,7 +3426,7 @@ test("D5：autorefresh-on 只接受独立状态证据，缺测不借用基线 PA
     assert.equal(unit.kind, "catalog");
     assert.equal(unit.stateId, "autorefresh-on");
     assert.equal("preSteps" in unit, false);
-    assert.equal(STATE_MATRIX_GROUPS.flatMap((group) => group.units).length, 44);
+    assert.equal(STATE_MATRIX_GROUPS.flatMap((group) => group.units).length, 45);
 
     const onPath = checkRelativePath("light", unit);
     const onFile = path.join(outDir, ...onPath.split("/"));

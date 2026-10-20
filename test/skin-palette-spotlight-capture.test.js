@@ -153,6 +153,7 @@ test("evidence viewport helper preserves only explicit opt-ins, settles after sc
       .map((unit) => unit.id),
     [
       "button-hover",
+      "spotlight-language-selected",
       "spotlight-metric-label",
       "spotlight-timeline-heading",
       "spotlight-detail-bars",

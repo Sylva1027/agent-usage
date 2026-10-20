@@ -44,7 +44,7 @@ test("quota records reject ties, missing history and conflicting observations, w
     summary(window === range ? 3 : 2),
   );
   assert.equal(records.totalCost.value, 3);
-  const conflict = { ...earlier, resetsAtMs: earlier.resetsAtMs + 60000, lineNumber: 9 };
+  const conflict = { ...earlier, resetsAtMs: earlier.resetsAtMs + 180000, lineNumber: 9 };
   assert.deepEqual(
     quotaRecordsForRange(range, quota, [...observations, earlier, conflict], (window) =>
       summary(window === range ? 3 : 2),
@@ -89,12 +89,12 @@ test("previous reset selections use observed completed windows, including gaps b
   const quota = selectQuotaWindows(observations, now);
   const five = resolveNamedRecentRange("上一个5h", now, quota);
   assert.equal(five.start.toISOString(), "2026-09-25T02:00:00.000Z");
-  assert.equal(five.end.toISOString(), "2026-09-25T06:59:59.999Z");
+  assert.equal(five.end.toISOString(), "2026-09-26T08:59:59.999Z");
   assert.equal(five.bucket, "quota_30m");
   const week = resolveNamedRecentRange("上周", now, quota);
   assert.equal(week.start.toISOString(), "2026-09-13T14:00:00.000Z");
   assert.equal(week.windowEndExclusive.toISOString(), "2026-09-20T14:00:00.000Z");
-  assert.equal(week.bucket, "quota_24h");
+  assert.equal(week.bucket, "day");
   assert.equal(
     resolveNamedRecentRange("上一个5h", now, selectQuotaWindows([observations[1]], now)).quotaState,
     "missing",
@@ -114,13 +114,13 @@ test("calendar selections respect month/year boundaries and leap years", () => {
   assert.equal(nextRecentState({}, "This Year").bucket, "month");
 });
 
-test("live and static previous-window summaries agree and exclude the reset endpoint", () => {
+test("server and browser previous-window summaries agree and exclude the next cycle start", () => {
   const quota = selectQuotaWindows(observations, now);
   const events = [
     "2026-09-25T01:59:59.999Z",
     "2026-09-25T02:00:00Z",
     "2026-09-25T06:59:59.999Z",
-    "2026-09-25T07:00:00Z",
+    "2026-09-26T09:00:00Z",
   ].map((timestamp, index) => ({
     timestamp,
     sessionId: "s",
@@ -148,8 +148,8 @@ test("live and static previous-window summaries agree and exclude the reset endp
     const snapshot = summarize(report);
     assert.equal(live.totals.total, 5);
     assert.equal(snapshot.totals.total, 5);
-    assert.equal(live.timeline.length, 10);
-    assert.equal(snapshot.timeline.length, 10);
+    assert.equal(live.timeline.length, 2);
+    assert.equal(snapshot.timeline.length, 2);
     assert.equal(live.comparison, null);
     assert.equal(snapshot.comparison, null);
   } finally {

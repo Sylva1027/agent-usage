@@ -22,6 +22,14 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - name: Set up browser checks
+        env:
+          AGENT_USAGE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/agent-usage-browser/node_modules/playwright/index.mjs
+        run: |
+          npm install --prefix "$RUNNER_TEMP/agent-usage-browser" --no-package-lock --no-save playwright@1.62.1
+          "$RUNNER_TEMP/agent-usage-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "AGENT_USAGE_PLAYWRIGHT_MODULE=$AGENT_USAGE_PLAYWRIGHT_MODULE" >> "$GITHUB_ENV"
+          node --input-type=module -e 'const { chromium } = await import(process.env.AGENT_USAGE_PLAYWRIGHT_MODULE); console.log(`AGENT_USAGE_EDGE_PATH=${chromium.executablePath()}`)' >> "$GITHUB_ENV"
       - run: npm test
       - run: npm run typecheck
       - run: npm run lint

@@ -393,10 +393,7 @@ test("A58 adjacent: 输入验证与支持边界", () => {
   assert.throws(() => analyzeFocusOutlineAdjacentPixels(null), TypeError);
   assert.throws(() => analyzeFocusOutlineAdjacentPixels({ ...input, width: Number.NaN }), TypeError);
   assert.throws(() => analyzeFocusOutlineAdjacentPixels({ ...input, focused: new Uint8Array(4) }), TypeError);
-  assert.throws(
-    () => analyzeFocusOutlineAdjacentPixels({ ...input, rect: { ...input.rect, width: 0 } }),
-    TypeError,
-  );
+  assert.throws(() => analyzeFocusOutlineAdjacentPixels({ ...input, rect: { ...input.rect, width: 0 } }), TypeError);
   assert.throws(
     () =>
       analyzeFocusOutlineAdjacentPixels({

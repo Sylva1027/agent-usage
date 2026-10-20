@@ -266,10 +266,7 @@ export function analyzeFocusOutlineAdjacentPixels(input) {
         }
       }
 
-      if (
-        distance < ADJACENT_DISTANCE_MIN - GEOMETRY_EPSILON ||
-        distance > ADJACENT_DISTANCE_MAX + GEOMETRY_EPSILON
-      ) {
+      if (distance < ADJACENT_DISTANCE_MIN - GEOMETRY_EPSILON || distance > ADJACENT_DISTANCE_MAX + GEOMETRY_EPSILON) {
         continue;
       }
       backgroundPixelCount += 1;
@@ -282,9 +279,7 @@ export function analyzeFocusOutlineAdjacentPixels(input) {
       }
       const sample = { ...contrastSample(outlineColor, focusedPixel, x, y), region };
       regions[region].minRatio =
-        regions[region].minRatio === null
-          ? sample.ratio
-          : Math.min(regions[region].minRatio, sample.ratio);
+        regions[region].minRatio === null ? sample.ratio : Math.min(regions[region].minRatio, sample.ratio);
       regions[region].worstBackground = keepWorst(regions[region].worstBackground, sample);
       worstBackground = keepWorst(worstBackground, sample);
     }

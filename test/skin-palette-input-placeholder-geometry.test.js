@@ -125,9 +125,7 @@ function parseCssColor(value) {
     const channels =
       digits.length === 3
         ? [...digits].map((digit) => Number.parseInt(digit + digit, 16) / 255)
-        : [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 6)].map(
-            (pair) => Number.parseInt(pair, 16) / 255,
-          );
+        : [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 6)].map((pair) => Number.parseInt(pair, 16) / 255);
     return [...channels, 1];
   }
   const functional = /^rgba?\(([^)]+)\)$/i.exec(text);
@@ -164,7 +162,15 @@ function stableFunctionResult(callback) {
     return { missing: false, released: true, ok: true, errors: [] };
   }
   if (source.includes("const metrics = (element)")) {
-    const metrics = { clientWidth: 1280, clientHeight: 800, offsetWidth: 1280, offsetHeight: 800, scrollWidth: 1280, scrollHeight: 800, rect: { x: 0, y: 0, width: 1280, height: 800 } };
+    const metrics = {
+      clientWidth: 1280,
+      clientHeight: 800,
+      offsetWidth: 1280,
+      offsetHeight: 800,
+      scrollWidth: 1280,
+      scrollHeight: 800,
+      rect: { x: 0, y: 0, width: 1280, height: 800 },
+    };
     return {
       viewport: {
         innerWidth: 1280,
@@ -517,7 +523,8 @@ function createInputPlaceholderPage({
           const stage = nextNativeStage ?? NATIVE_STAGES[stageIndexes.get(`${attempt}:${currentIndex}`) ?? 0];
           assert.ok(stage, `native placeholder stage overflow for input ${currentIndex}`);
           if (nextNativeStage) nextNativeStage = null;
-          else stageIndexes.set(`${attempt}:${currentIndex}`, (stageIndexes.get(`${attempt}:${currentIndex}`) ?? 0) + 1);
+          else
+            stageIndexes.set(`${attempt}:${currentIndex}`, (stageIndexes.get(`${attempt}:${currentIndex}`) ?? 0) + 1);
           stageCalls.push({ attempt, index: currentIndex, stage });
           return sessionFor(currentIndex, stage);
         },

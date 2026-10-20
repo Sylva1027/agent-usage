@@ -285,6 +285,7 @@ async function resolvePlaywrightRuntime() {
 test("D8u11：Edge 默认截图后恢复原无 style 输入的属性边界", async (t) => {
   const runtime = await resolvePlaywrightRuntime();
   const edgeCandidates = [
+    ...(process.env.AGENT_USAGE_EDGE_PATH ? [process.env.AGENT_USAGE_EDGE_PATH] : []),
     "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
     "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
     "/usr/bin/microsoft-edge",

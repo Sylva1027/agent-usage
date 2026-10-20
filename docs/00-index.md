@@ -43,6 +43,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 - [皮肤配色 M5.2.C-D8u28-R4 固定夹具验证](validation/2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8u28-R4-fixed-fixtures.md)：31 条几何前提、G1–G11 和三个守卫通过；R1 的采样裁切断言疑似混用滚动前后坐标，完整验收保持 `NEEDS_REVIEW`。
 - [看板刷新性能修复最终报告](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/FINAL-REPORT.md)：逐卡交付/证据路径/复跑命令/未达标清单/已知限制；证据树唯一权威入口是同目录 [README.md](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/README.md)（主审账本）。
 - [旧导出清理验收](validation/2026-10-03-export-removal/README.md)：清理后在线冻结、导入、计价和皮肤回归。
+- [v0.7.0 发布验收](validation/2026-10-21-release/README.md)：来源、配色、刷新恢复及 README 示例图。
 - [v0.6.0 发布验收](validation/2026-10-03-release/README.md)：该次发布的五款皮肤与原在线/离线范围。
 - [历史归档索引](archive/00-index.md)：已完成、已取消或被替代的计划与调查。
 - [本轮文档整理](validation/2026-10-03-documentation-cleanup/README.md)：融合、迁移、删除与链接检查结果。

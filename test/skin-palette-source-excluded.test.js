@@ -182,8 +182,8 @@ test("D12-A2 成功：回调仅在排除态运行，原测量结果透传，随�
   const allUnits = STATE_MATRIX_GROUPS.flatMap((group) => group.units);
   const role = ROLE_CATALOG.find((entry) => entry.id === "status.home-excluded");
 
-  assert.equal(allUnits.length, 44);
-  assert.equal(allUnits.length * 2, 88);
+  assert.equal(allUnits.length, 45);
+  assert.equal(allUnits.length * 2, 90);
   assert.deepEqual(
     s3.units.map((entry) => entry.id),
     [

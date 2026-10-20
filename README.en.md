@@ -6,7 +6,9 @@ Agent Usage is a local dashboard for Codex, ZCode, DSH, OpenCode, and Claude Cod
 
 This project builds on [DhWU-coder/codex-usage](https://github.com/DhWU-coder/codex-usage).
 
-Current release: [v0.6.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.6.0).
+Current release: [v0.7.0](https://github.com/Sylva1027/codex-usage/releases/tag/v0.7.0).
+
+![DeepSeek light dashboard, 16:9, with sample data](docs/images/dashboard-deepseek-light.png)
 
 ## Quick Start
 
@@ -27,8 +29,10 @@ Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.
 - **Codex Limits:** The `5h / week` control switches between the current five-hour and weekly limit windows. These limit ranges, Last 5h, and Last 7d count Codex sources only; ordinary ranges such as Today, This Week, and This Month still count all selected sources. Boundaries come from local Codex limit observations. The current five-hour chart uses 30-minute slots and the current weekly chart uses consecutive 24-hour slots. Last 5h shows only half-hour slots with usage, clipping the final slot at the replacement start. Last 7d shows only calendar dates with usage. Both retain the complete timestamps and duration. The dashboard does not guess missing boundaries. With no Codex source selected, the limit control and the corresponding recent range options are disabled.
 - **Usage and Costs:** Inspect Total Input, Cache Hit, Cache Miss, Output, Reasoning Tokens, and Cache Hit Rate. Compare usage by source, model, and Git repository; search and sort the details. Model names appear in lowercase in the interface, while aggregation and pricing retain their original model keys. Cache-hit and cache-miss input use separate pricing rates. Ordinary ranges group subagents and execution channels under Codex, ZCode, DSH, OpenCode, and Claude; Codex-only limit ranges retain channel detail. Local Git repositories appear first, followed by the selected period sort.
 - **Records and Comparisons:** Applicable ranges can highlight new highs and compare them with a preceding period. All Time has no preceding period and shows no New Record badges.
-- **Sources and Refresh:** Codex, ZCode, DSH, OpenCode, and Claude Code data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, a Claude Code home, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks; pausing auto refresh keeps the data snapshot fixed while you change ranges.
-- **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available. The shirt icon opens **Waifu**, offering ChatGPT, Claude, DeepSeek, Kimi, and Muse skins plus Simple mode. Light and dark thumbnails appear side by side; desktop shows all five in one row, with a glowing dot marking the selection. Character visibility, opacity, and your skin choice are remembered.
+- **Sources and Refresh:** Codex, ZCode, DSH, OpenCode, and Claude Code data are discovered locally. You can import another Codex, ZCode, or DSH directory, an OpenCode data directory, a Claude Code home, or a project with `.codex-usage/usage.jsonl`. Choose which sources count in the Edit dialog. Add sources through Scan Directories. The page checks for new records every 60 seconds by default, showing a spinner beside the switch during checks. Failed loads retry on the next check, and error details open inside the existing refresh frame. Pausing auto refresh keeps the data snapshot fixed while you change ranges.
+- **Language and Theme:** The **文/A** button beside the theme control switches between Simplified Chinese and English. The first visit follows your browser's preferred language, and a manual choice is remembered. Light and dark themes are available. The shirt icon opens **Waifu**, offering ChatGPT, Claude, DeepSeek, Kimi, and Muse skins plus Simple mode, with updated palettes across the dashboard. Light and dark thumbnails appear side by side; desktop shows all five in one row, with a glowing dot marking the selection. Character visibility, opacity, and your skin choice are remembered.
+
+![Skin picker with five skins and light/dark previews](docs/images/skin-picker.png)
 
 ## Data Sources and Privacy
 

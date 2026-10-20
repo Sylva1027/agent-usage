@@ -199,15 +199,12 @@ test("A59 adjacent browser：清理和原始抛出值保持身份与 cause", asy
       disposeError,
     });
     const page = makePage({ handles: [handle] });
-    await assert.rejects(
-      measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }),
-      (error) => {
-        assert.strictEqual(error, disposeError);
-        assert.equal(error.focusOutlineEvidence.diagnostics.selector, SELECTOR);
-        assert.equal(error.focusOutlineEvidence.diagnostics.mutated, false);
-        return true;
-      },
-    );
+    await assert.rejects(measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }), (error) => {
+      assert.strictEqual(error, disposeError);
+      assert.equal(error.focusOutlineEvidence.diagnostics.selector, SELECTOR);
+      assert.equal(error.focusOutlineEvidence.diagnostics.mutated, false);
+      return true;
+    });
   });
 
   await t.test("falsy 主错与 dispose 错保留在 AggregateError", async () => {
@@ -221,16 +218,13 @@ test("A59 adjacent browser：清理和原始抛出值保持身份与 cause", asy
       screenshotThrows: true,
       screenshotError: null,
     });
-    await assert.rejects(
-      measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }),
-      (error) => {
-        assert.ok(error instanceof AggregateError);
-        assert.deepEqual(error.errors, [null, false]);
-        assert.equal(error.cause, null);
-        assert.equal(error.focusOutlineEvidence.captures.focused, null);
-        return true;
-      },
-    );
+    await assert.rejects(measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }), (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [null, false]);
+      assert.equal(error.cause, null);
+      assert.equal(error.focusOutlineEvidence.captures.focused, null);
+      return true;
+    });
   });
 
   await t.test("单一 falsy 主错保留为 cause", async () => {
@@ -240,14 +234,11 @@ test("A59 adjacent browser：清理和原始抛出值保持身份与 cause", asy
       screenshotThrows: true,
       screenshotError: false,
     });
-    await assert.rejects(
-      measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }),
-      (error) => {
-        assert.equal(error.cause, false);
-        assert.equal(error.focusOutlineEvidence.diagnostics.selector, SELECTOR);
-        return true;
-      },
-    );
+    await assert.rejects(measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }), (error) => {
+      assert.equal(error.cause, false);
+      assert.equal(error.focusOutlineEvidence.diagnostics.selector, SELECTOR);
+      return true;
+    });
   });
 
   await t.test("对象主错与 dispose 错保持 AggregateError 顺序和 cause", async () => {
@@ -263,14 +254,11 @@ test("A59 adjacent browser：清理和原始抛出值保持身份与 cause", asy
       screenshotThrows: true,
       screenshotError: primary,
     });
-    await assert.rejects(
-      measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }),
-      (error) => {
-        assert.ok(error instanceof AggregateError);
-        assert.deepEqual(error.errors, [primary, cleanup]);
-        assert.strictEqual(error.cause, primary);
-        return true;
-      },
-    );
+    await assert.rejects(measureFocusOutlineAdjacentPixels({ page, selector: SELECTOR }), (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [primary, cleanup]);
+      assert.strictEqual(error.cause, primary);
+      return true;
+    });
   });
 });

@@ -27,6 +27,8 @@ import {
   buildRun,
   load,
   makeCandidate,
+  makeCandidateSet,
+  realAssessment,
   sha256,
   writeJson,
 } from "../test-support/skin-palette-review-evidence-fixture.mjs";
@@ -211,13 +213,17 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     );
     await assert.rejects(access(path.join(sandboxRoot, ".git")));
     await assert.rejects(access(path.join(sandboxRoot, "node_modules")));
+    // Exercise the migration against its actual pre-migration picker, not the already migrated product.
+    const oldPicker = await readFile(path.join(repoReal, "test-support", "skin-picker-before-migration.txt"));
+    await writeFile(path.join(sandboxRoot, "public", "skin-picker.js"), oldPicker);
+    copiedHashes.set("public/skin-picker.js", sha256(oldPicker));
     const preSources = await readProductionCurrentSources({ rootDir: sandboxRoot });
     const preAssets = await readProductionGeneratedAssets({ rootDir: sandboxRoot });
     assert.equal(Object.keys(preSources.sourceHashes).length, SOURCE_FILES.length);
     assert.ok(Object.hasOwn(preSources.sourceHashes, "public/timeline-utils.js"));
     assert.deepEqual(
       preSources.sourceHashes,
-      REAL_SOURCE_HASHES,
+      { ...REAL_SOURCE_HASHES, "public/skin-picker.js": sha256(oldPicker) },
       "sandbox source bytes match the ready fixture source inputs",
     );
     assert.equal(Object.keys(preAssets.sourceAssetHashes).length, 40);
@@ -247,10 +253,20 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     assert.ok(missingCaptureUnit);
     const built = await buildRun(box, "origin-run", candidates, {
       origins: { currentProfiles: true },
-      captureOptions: (candidate) =>
-        candidate.id === unselectedGapCandidate.id ? { skipUnits: [`light/${missingCaptureUnit.id}`] } : null,
+      assessments: candidates.map((candidate) =>
+        realAssessment(candidate, makeCandidateSet(candidates), null, preSources.sourceHashes),
+      ),
+      captureOptions: (candidate) => ({
+        tweakCapture: (capture) => {
+          capture.sourceHashes = { ...preSources.sourceHashes };
+        },
+        ...(candidate.id === unselectedGapCandidate.id ? { skipUnits: [`light/${missingCaptureUnit.id}`] } : {}),
+      }),
     });
-    const initialReview = await verifyReviewEvidence({ evidence: built.evidence });
+    const initialReview = await verifyReviewEvidence({
+      evidence: built.evidence,
+      sourceSnapshot: Object.fromEntries(HISTORICAL_SOURCE_FILES.map((file) => [file, preSources.sourceBytes[file]])),
+    });
     assert.equal(initialReview.status, "incomplete", "one unselected b candidate has a real missing capture unit");
     assert.deepEqual(initialReview.errors, []);
     assert.ok(
@@ -279,6 +295,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
       recordedAt: "2026-10-10T00:00:00.000Z",
     });
     const originRunDir = built.runDir;
+    await writeJson(path.join(originRunDir, "assessments.json"), verifiedModel.container);
     await writeJson(path.join(originRunDir, "selections.json"), exportedSelection.record);
     const evidence = await load(box, originRunDir, path.join(originRunDir, "captures-index.json"));
     assert.equal(evidence.selections.present, true);

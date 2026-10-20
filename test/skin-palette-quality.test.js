@@ -8268,6 +8268,7 @@ const M32_PLAYWRIGHT_CANDIDATES = [
 ].filter((candidate) => typeof candidate === "string" && candidate.length > 0);
 
 const M32_EDGE_CANDIDATES = [
+  ...(process.env.AGENT_USAGE_EDGE_PATH ? [process.env.AGENT_USAGE_EDGE_PATH] : []),
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
   "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
   "/usr/bin/microsoft-edge",
@@ -9520,10 +9521,14 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
     const occlusionFinalDiff = await page.evaluate(
       buildProbeSource("compare-images", occlusionBefore.toString("base64"), occlusionAfter.toString("base64")),
     );
-    assert.equal(occlusionFinalDiff.identical, true, "移除测试遮挡层后页面截图必须逐像素恢复");
-    assert.deepEqual(occlusionAfterState, occlusionBeforeState, "拒绝遮挡后 search 值、焦点、几何与表面不变");
     savePng("occlusion-restored-before.png", occlusionBefore);
     savePng("occlusion-restored-after.png", occlusionAfter);
+    assert.equal(
+      occlusionFinalDiff.identical,
+      true,
+      `移除测试遮挡层后页面截图必须逐像素恢复：${JSON.stringify(occlusionFinalDiff)}`,
+    );
+    assert.deepEqual(occlusionAfterState, occlusionBeforeState, "拒绝遮挡后 search 值、焦点、几何与表面不变");
     evidence.recovery.occlusion = {
       result: occlusionResult.records[0].result,
       reason: occlusionResult.records[0].reason,
@@ -12381,7 +12386,10 @@ test("M3.4：4.5—7 可 ready 但读数显示优选差距；必要文字/图形
     const role = ROLE_CATALOG.find((item) => item.id === roleId);
     assert.equal(role.required, false);
     assert.equal(role.threshold, null);
-    assert.equal(result.browser.some((item) => item.roleId === roleId), false);
+    assert.equal(
+      result.browser.some((item) => item.roleId === roleId),
+      false,
+    );
   }
   assert.equal(result.browser.find((item) => item.roleId === "chart.axis-text").threshold, 4.5);
 });

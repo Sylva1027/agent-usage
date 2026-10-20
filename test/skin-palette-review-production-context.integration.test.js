@@ -16,9 +16,12 @@ import { REPO_ROOT } from "../scripts/skin-palette/review-evidence.mjs";
 import { verifyReviewEvidence } from "../scripts/skin-palette/review-verify.mjs";
 import {
   HISTORICAL_SOURCE_FILES,
+  REAL_SOURCE_HASHES,
   buildRun,
   load,
   makeCandidate,
+  makeCandidateSet,
+  realAssessment,
   sha256,
   writeJson,
 } from "../test-support/skin-palette-review-evidence-fixture.mjs";
@@ -76,8 +79,28 @@ test("D9f-2 runs the real ten-skin source-context branch and records expected sy
     const candidates = SKIN_IDS.flatMap((skinId) =>
       ["a", "b", "c"].map((variant) => makeCandidate({ skinId, variant })),
     );
-    const built = await buildRun(box, "origin-run", candidates, { origins: { currentProfiles: true } });
-    const initialReview = await verifyReviewEvidence({ evidence: built.evidence });
+    const historicalSnapshot = Object.fromEntries(
+      await Promise.all(HISTORICAL_SOURCE_FILES.map(async (file) => [file, await readFile(path.join(repoRoot, file))])),
+    );
+    historicalSnapshot["public/skin-picker.js"] = await readFile(
+      path.join(repoRoot, "test-support/skin-picker-before-migration.txt"),
+    );
+    const historicalHashes = {
+      ...REAL_SOURCE_HASHES,
+      "public/skin-picker.js": sha256(historicalSnapshot["public/skin-picker.js"]),
+    };
+    const built = await buildRun(box, "origin-run", candidates, {
+      origins: { currentProfiles: true },
+      assessments: candidates.map((candidate) =>
+        realAssessment(candidate, makeCandidateSet(candidates), null, historicalHashes),
+      ),
+      captureOptions: () => ({
+        tweakCapture: (capture) => {
+          capture.sourceHashes = { ...historicalHashes };
+        },
+      }),
+    });
+    const initialReview = await verifyReviewEvidence({ evidence: built.evidence, sourceSnapshot: historicalSnapshot });
     const readinessDetails = {
       status: initialReview.status,
       errors: initialReview.errors,
@@ -117,6 +140,7 @@ test("D9f-2 runs the real ten-skin source-context branch and records expected sy
     });
     assert.equal(exportedSelection.fileName, "selections.json");
     const originRunDir = built.runDir;
+    await writeJson(path.join(originRunDir, "assessments.json"), verifiedModel.container);
     await writeJson(path.join(originRunDir, "selections.json"), exportedSelection.record);
     const evidence = await load(box, originRunDir, path.join(originRunDir, "captures-index.json"));
     assert.equal(evidence.selections.present, true);
@@ -150,15 +174,12 @@ test("D9f-2 runs the real ten-skin source-context branch and records expected sy
     assert.equal(Object.keys(currentAssets.publicAssetHashes).length, 40);
 
     const sourcePreimages = Object.fromEntries(
-      HISTORICAL_SOURCE_FILES.map((file) => [
-        file,
-        { path: `source-before/${file}`, sha256: currentSources.sourceHashes[file] },
-      ]),
+      HISTORICAL_SOURCE_FILES.map((file) => [file, { path: `source-before/${file}`, sha256: historicalHashes[file] }]),
     );
     for (const file of HISTORICAL_SOURCE_FILES) {
-      const bytes = currentSources.sourceBytes[file];
+      const bytes = historicalSnapshot[file];
       assert.ok(Buffer.isBuffer(bytes), `${file} is an actual source Buffer`);
-      assert.equal(sha256(bytes), currentSources.sourceHashes[file], `${file} reader hash matches its bytes`);
+      assert.equal(sha256(bytes), historicalHashes[file], `${file} historical hash matches its bytes`);
       const preimagePath = path.join(manifestRunDir, "source-before", ...file.split("/"));
       await mkdir(path.dirname(preimagePath), { recursive: true });
       await writeFile(preimagePath, Buffer.from(bytes));
@@ -166,7 +187,7 @@ test("D9f-2 runs the real ten-skin source-context branch and records expected sy
 
     const precheck = {
       schemaVersion: 1,
-      sourceHashes: { ...currentSources.sourceHashes },
+      sourceHashes: { ...historicalHashes },
       sourcePreimages,
       selectionRollback: { reservedForM6: true },
       generatedAssets: {
