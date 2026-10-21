@@ -15,6 +15,7 @@
       "scripts/perf-probe.mjs",
       "scripts/perf-probe-sources/**",
       "test-support/perf-fixture.mjs",
+      "test-support/claude-perf-fixture.mjs",
       "!!docs/validation"
     ],
     "ignoreUnknown": false
@@ -33,6 +34,7 @@
       "scripts/perf-probe.mjs",
       "scripts/perf-probe-sources/**",
       "test-support/perf-fixture.mjs",
+      "test-support/claude-perf-fixture.mjs",
       "!public/skin-bootstrap.js"
     ]
   },

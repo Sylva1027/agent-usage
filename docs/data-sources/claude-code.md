@@ -107,9 +107,17 @@ Claude 的三个输入计数是**并列**的（`input_tokens` 不含缓存），
 
 ## 输出吞吐（TPS）
 
-**不做。** Claude 转录没有请求时长字段，属于结构性不支持；未注册 perf reader，`classifyPerfSources` 把该来源归为 `unsupported`（不是退化），`perf-ui` 不显示 TPS 标签。
+**已提供（2026-10-21）。** Claude 转录没有显式请求时长，但同一 `message.id` 的末行时间戳减请求锚点就是请求端到端时长：`window = "request"`、`timingKind = "request_e2e"`、`timingSource = "timestamp_fallback"`、`tokenScope = "reported_output_includes_reasoning"`。它含请求等待与 TTFT，不是纯解码速度。锚点按**文件顺序**取运行最大值的 `user` / `attachment` 行；文件顺序不保证时间单调，不能先按时间排序再扫。完整规则见 [Claude Code TPS 方案](../plans/2026-10-21-claude-code-tps-plan.md)与[实施计划](../plans/2026-10-21-claude-code-tps-implementation-plan.md)。
 
-性能视图的「不支持来源」列表按规范 kind 展示，Claude 与 `project-log` 一样显示为通用的「未知来源 · Main Claude Code」；这是既有 perf 注册表的口径，本次不改（改成具名会牵动 `canonicalPerfSourceKind`、样本键与分组键）。
+三条容易被误解的边界：
+
+1. **只对紧随 prompt/attachment 行的请求计时，同轮续写不采样。** 若一条消息的首行之前已写过 assistant 行，锚点已陈旧，只能落在上一响应写盘的时刻，会把 harness 处理间隙算进请求（本机该例多算 624 ms）；这类消息不产出样本，计入 `skippedNoAnchor`。每条 Claude 样本的锚点都落在真实的 user/attachment 行上。
+2. **TPS 分子比事件路径的 output 总和少 0.0137%（597 token）。** 被剔除的那条同轮续写仍留在事件路径，面板 token 总量仍包含它；采样集内部（本机 3,263 条）两者逐位相等。这 597 token 占事件路径 output 的 0.0137%，不能把「分子必须等于事件输出」当作校验条件。
+3. **已进入统一排名：池化均值可比，p10/p90 不可比。** Claude 与修订后的 Codex v2 同属 `request_e2e`，池化均值（总输出 / 总时长）可以同表排名；但 Claude 是**请求级**分布、Codex 是轮级分布，p10/p90 仍是各自粒度的请求级历史分布，跨来源的分位差不能直接比较。
+
+精度证据（2026-10-21 本机只读核对）：与网关账本按 `message.id` 逐条关联 2,747 条，时长比值 p50 1.008、p99 1.0249、max 1.0416，绝对误差 max 125 ms，池化 154.21 vs 154.96 tok/s（−0.48%）；输出 token 2,747/2,747 精确相等。证据只覆盖约 33 小时、13 个会话、Claude Code 2.1.299 与一条网关路由，不能外推为所有 Claude Code 用户的精度。
+
+来源在 perf 注册表中具名 `Claude`（`canonicalPerfSourceKind("claude")`）；样本键只用 `message.id`，不按会话或时间窗匹配（账本里同一会话的辅助请求没有 `message.id`，因此不会进入统计）。注册前 `classifyPerfSources` 把它放在 `notEnabled` 桶、`kind` 为 `"unsupported"`，界面把两个桶合并显示为「不支持来源」；现在它位于 `enabled`。
 
 ## 增量索引
 
@@ -125,7 +133,7 @@ Claude 的三个输入计数是**并列**的（`input_tokens` 不含缓存），
 
 ## 保留期
 
-Claude Code 默认只保留 30 天转录，过期即从磁盘消失。看板索引保留已解析事件，但不能假设可回溯重扫。
+Claude Code 默认只保留 30 天转录，过期即从磁盘消失。看板索引保留已解析事件，但不能假设可回溯重扫。TPS 样本与转录同寿：文件消失后 `source_files` 行删除，对应 `perf_samples` 级联清除，历史 TPS 无法从已过期文件重建。
 
 ## 相关文件
 
