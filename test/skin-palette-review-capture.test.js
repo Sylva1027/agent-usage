@@ -1400,7 +1400,7 @@ test("D6: previous base fixture hash is rejected by the current fixed binding ve
   );
 });
 
-test("D6: frozen S8 v1 evidence keeps its historical hash and is rejected by current binders", async () => {
+test("D6: frozen S8 v1 evidence keeps its historical hash and is rejected by current binders", async (t) => {
   const warningRunDir = path.join(
     validationRoot,
     "2026-10-03-skin-palette-redesign",
@@ -1408,6 +1408,10 @@ test("D6: frozen S8 v1 evidence keeps its historical hash and is rejected by cur
     "integration",
     "m52-c-d8s9-warning-paired",
   );
+  if (!fs.existsSync(warningRunDir)) {
+    t.skip("dated frozen evidence is not in this tree (release archive); it stays in the authoring repository");
+    return;
+  }
   const outDir = path.join(warningRunDir, "capture-output");
   const capturePath = path.join(outDir, "capture.json");
   const progressPath = path.join(outDir, "progress.json");

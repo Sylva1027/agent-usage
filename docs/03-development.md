@@ -1,6 +1,6 @@
 # 开发与接手
 
-更新：2026-10-03。先读[文档入口](00-index.md)和[任务清单](02-tasks.md)，再按任务阅读现行专题。
+更新：2026-10-21（重写[怎么跑测试](#怎么跑测试)）。先读[文档入口](00-index.md)和[任务清单](02-tasks.md)，再按任务阅读现行专题。
 
 ## 环境与启动
 
@@ -41,7 +41,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `public/app.js`、`public/app-state.js`、`public/calendar.js`、`public/i18n.js`、`public/styles.css`：页面、状态、日期、语言和样式。
 - `public/skins.js`、`public/skin-palettes.js`、`public/skin-ui.js`、`public/skin-picker.js`、`public/skins.css`：角色注册表、配色、运行时和选择器；`scripts/prepare-skin-assets.mjs` 生成并校验资源 manifest 与首屏脚本。
 
-皮肤配色的唯一手写源是 `public/skin-palettes.js`（10 套 × 浅深 × 12 个 token）；`public/skin-bootstrap.js` 与 `public/skin-assets.json` 只能由 `npm.cmd run skins:prepare` 从当前源生成，`npm.cmd run skins:check` 只读核对源、资产和生成物。候选生成→捕获→报告→选择→production 的准确 CLI、隔离参数和输出位置以 [B 的 CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)为准；旧轮 `--production` 只绑定旧迁移来源，不能写成当前新轮通过或据此新增兼容层。任何源字节变化都会使旧摘要/capture 过期，须按受影响范围重测；本轮证据根为 [新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)。本轮全仓工程门禁独立登记，不以旧 CLI 或本段生成/核对命令代替。
+皮肤配色的唯一手写源是 `public/skin-palettes.js`（10 套 × 浅深 × 12 个 token）；`public/skin-bootstrap.js` 与 `public/skin-assets.json` 只能由 `npm.cmd run skins:prepare` 从当前源生成，`npm.cmd run skins:check` 只读核对发布内容（manifest、40 个 WebP 副本哈希、bootstrap），`npm.cmd run skins:check:sources` 再把副本与作者源 PNG 绑定。候选生成→捕获→报告→选择→production 的准确 CLI、隔离参数和输出位置以 [B 的 CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)为准；旧轮 `--production` 只绑定旧迁移来源，不能写成当前新轮通过或据此新增兼容层。任何源字节变化都会使旧摘要/capture 过期，须按受影响范围重测；本轮证据根为 [新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)。本轮全仓工程门禁独立登记，不以旧 CLI 或本段生成/核对命令代替。
 
 ## 单执行器与读侧快照（2026-10-10）
 
@@ -62,17 +62,107 @@ npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd run format:check
 npm.cmd run skins:check
+npm.cmd run skins:check:sources
 npm.cmd run skins:palette
 ```
 
-有意修改配色源后，先运行 `npm.cmd run skins:palette`，再用新 Node 进程运行 `npm.cmd run skins:prepare`，最后运行 `npm.cmd run skins:check`；日常只读核对不要执行 prepare。
+有意修改配色源后，先运行 `npm.cmd run skins:palette`，再用新 Node 进程运行 `npm.cmd run skins:prepare`，最后运行 `npm.cmd run skins:check:sources`；日常只读核对不要执行 prepare。`skins:check` 只验发布内容（manifest、40 个 WebP 副本哈希、bootstrap），在缺少 `lineart assets/` 的发布包中也能通过；`skins:check:sources` 额外把副本与作者源 PNG 绑定，源图缺失时明确打印 `SKIP` 而不是 `PASS`。
 
-按实际影响选择验证，不以旧文档中的测试数量为通过条件。
+按实际影响选择验证，不以旧文档中的测试数量为通过条件（怎么跑、怎么读结果见下一节）。
 
 - 来源与字段映射：适配器测试、`test/usage-core.test.js`、`test/usage-store.test.js`、`test/three-path-parity.test.js`；三路指内存、SQLite 与浏览器纯统计，不再生成 HTML。
 - 计价与更新：`test/pricing.test.js`、`test/pricing-models.test.js`、`test/pricing-auto.test.js`、`test/server.test.js`。
 - 界面与时间：`test/app-render.test.js`、`test/app-toolbar.test.js`、`test/recent-selections.test.js` 及对应日期、语言测试；布局和焦点需浏览器检查。
 - 仅文档整理：检查本地链接和路径、历史状态、原始证据完整性及被移动的重跑脚本；无需重跑全产品测试来证明文字调整。
+
+### 怎么跑测试
+
+测试用 Node 内置的 `node:test`，没有 Jest/Vitest 之类的框架，90 个测试文件全部放在 `test/`。所有命令都在仓库根目录执行。
+
+#### 第一次跑
+
+```powershell
+npm.cmd ci        # 装 devDependencies：typescript、biome、@types/node
+npm.cmd test      # 全部测试，本机约 10–15 分钟
+```
+
+`npm.cmd test` 就是 `node --test "test/**/*.test.js"`：Node 会为每个测试文件起独立进程并行跑，一个文件失败不影响其他文件，最后打印 `tests / pass / fail / skipped` 汇总。任何 `fail` 都让退出码非 0。
+
+只有 `node_modules` 里的 `typescript` 是测试真正 import 的依赖，其余测试只用 Node 内置模块；不装依赖也能跑大部分文件，但 `test/skin-palette-review-production.test.js` 和 `...-isolated.integration.test.js` 在导入阶段就会失败（`import ts from "typescript"`）。
+
+#### 只跑关心的部分
+
+```powershell
+node --test test/skins.test.js                                    # 一个文件
+node --test test/skins.test.js test/pricing.test.js               # 几个文件
+node --test --test-name-pattern="skins:check" test/skins.test.js  # 名字匹配的用例
+```
+
+`--test-name-pattern` 是正则，匹配的是 `test("...")` 的名字。注意它只过滤用例，文件仍会被完整加载，所以文件级 import 错误照样出现。
+
+**跑得慢是正常的**：完整套件里最慢的是两个皮肤集成用例——`D9f-2` 约 1 分钟、`E1` 约 3 分钟——它们会把 160 多个文件复制进验证沙箱并启动子进程。日常改文档或纯逻辑时只跑相关文件即可，不必每次跑全量（选哪些文件见上一节）。
+
+#### 测试写到哪里
+
+- 绝大多数用例用 `mkdtemp` 在系统临时目录下建独立目录，跑完删除。
+- 皮肤配色的集成用例必须在仓库内的 `docs/validation/` 下建 `m4-4-*` 前缀的临时目录，因为被测代码会校验"证据目录必须是仓库的相对路径"。这些目录跑完也会删除；如果测试被强制中断，可能残留 `docs/validation/m4-4-*` 目录，可手动清理。
+- 测试不会读写真实的 `~/.codex-usage`、`~/.codex` 或 `~/.claude`：需要 home 的用例把 `homeDir` / `HOME` 或索引、导入文件路径显式指向临时目录。
+
+#### 跳过（skipped）是什么意思
+
+跳过是**显式**的，每条都带原因，用 `t.skip("...")` 写在用例开头。当前只有三类：
+
+1. **环境缺符号链接权限**：Windows 未开启开发者模式时创建文件符号链接会 `EPERM`，相关"拒绝符号链接"分支跳过（`file symlinks unavailable: EPERM`）。这是环境限制，不是功能缺失；2026-10-21 本机完整套件里 20 条属于这一类，条数随本机是否允许创建符号链接而变。
+2. **发布包没有日期证据**：从 GitHub 源码压缩包解出的树里没有 `docs/validation/` 的历史截图/日志，读取它们的用例（`D6`、`D8u3B1`）跳过。
+3. **发布包没有作者源图**：`lineart assets/` 不随源码包分发，直接读默认仓库根目录的用例跳过，共 12 个：`test/skin-palette-review-production.test.js` 里 8 个（`D9c` ×3、`D9d-2` ×4、"reads all registered generated assets"）、集成用例 `D9f-2` 与 `E1`、`test/skins.test.js` 里 `skins:check:sources` 的 2 个。作者仓库里这些用例正常执行。
+
+**跳过不等于通过**，但也不该被当成失败。判断标准：日志里的 `﹣` 行后面写着原因；如果没有原因或原因不是上面三类，说明是意外跳过，需要查。
+
+#### 浏览器用例
+
+少数用例要真实浏览器来量像素、检查焦点和截图。查找顺序：
+
+1. `AGENT_USAGE_PLAYWRIGHT_MODULE` 指向的 Playwright 入口；
+2. `~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs`（本机 Codex 自带的运行时）；
+3. 都没有则视为无浏览器。
+
+Edge 可执行文件由 `AGENT_USAGE_EDGE_PATH` 指定，不设则用系统默认安装位置。
+
+有浏览器时这些用例真实执行。没有时**大部分会跳过**并标注 `ENVIRONMENT_BLOCKED`，但下面三处故意用 `assert.ok` 硬性要求浏览器，缺环境时是**失败**：
+
+- `test/skin-palette-quality.test.js` 的 `E1c`、`E1d`
+- `test/skin-palette-screenshot-caret.test.js` 的 `D8u11`
+
+它们的存在就是为了防止把"没跑"记成"通过"——涉及像素级结论的检查不允许静默降级。
+
+像素级用例在机器满载时可能偶发 1 级色差（例如"移除遮挡层后逐像素恢复"报告 194 个 `maxChannelDelta: 1` 的像素）。这类失败先单独重跑该文件确认；能稳定通过就不是代码回归，不要为此放宽断言。
+
+#### 和 CI 的差别
+
+CI 在 Windows 上跑 Node 22 和 24 两档，命令是：
+
+```bash
+node --test --test-reporter=spec --test-concurrency=4 --test-timeout=600000 "test/**/*.test.js"
+```
+
+`--test-concurrency=4` 限制并行进程数（避免浏览器用例互相抢资源），`--test-timeout=600000` 给单文件 10 分钟。CI 会先安装 Playwright 1.62.1 并导出 `AGENT_USAGE_PLAYWRIGHT_MODULE`，所以浏览器用例在 CI 里是真跑的。之后依次跑 `typecheck`、`lint`、`format:check`，见 [ci.yml](../.github/workflows/ci.yml)。
+
+本地复现 CI 的测试阶段：
+
+```powershell
+node --test --test-reporter=spec --test-concurrency=4 --test-timeout=600000 "test/**/*.test.js"
+```
+
+#### 从源码压缩包跑测试
+
+从 GitHub Releases 下载的源码包（`Source code (zip)`）由 `.gitattributes` 的 `export-ignore` 裁剪过，和 `git clone` 的仓库有两处不同：
+
+- 没有 `docs/validation/` 下的日期证据 → 2 个用例跳过；
+- 没有 `lineart assets/` 作者源图 → 12 个用例跳过。
+
+因此源码包里的完整套件是 **0 失败、14 个发布包相关跳过**，再加本机符号链接限制的跳过（2026-10-21 实测：2658 项，2624 通过 / 0 失败 / 34 跳过）。`skins:check:sources` 也会打印 `SKIP` 而不是 `PASS`，因为源图不存在——这是如实报告，不是故障。页面运行、`skins:check`、其余测试都不受影响。
+
+要在源码包里验证这些被跳过的用例，请 clone 仓库后运行。
 
 2026-09-30 的浏览器脚本已移入[日期验收目录](validation/2026-09-30-ui-pricing/README.md)。它依赖本机 Edge 和外部提供的 Playwright，可用环境变量指定，未增加生产依赖。
 

@@ -978,7 +978,12 @@ test("真实 CLI 产物的固定形状字段齐全", () => {
     }
     assert.equal(envelope.probeVersion, PROBE_VERSION);
     assert.equal(envelope.methodVersion, METHOD_VERSION);
-    assert.equal(envelope.gitRevision.length, 40);
+    // A release source archive is not a git checkout, so the probe reports null instead of a revision.
+    if (envelope.gitRevision === null) {
+      assert.equal(envelope.dirtyState, null, "no git metadata means no dirty-state claim either");
+    } else {
+      assert.equal(envelope.gitRevision.length, 40);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

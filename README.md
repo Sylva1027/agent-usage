@@ -70,8 +70,10 @@ Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `
 ```bash
 node src/cli.js summary       # 终端汇总
 node src/cli.js summary --json
-node --test                   # 运行测试
+node --test                   # 运行测试（首次先 npm ci 装 devDependencies）
 ```
+
+从 GitHub 的源码压缩包解出的副本同样可以运行测试：日期验收截图与作者源图不随包分发，读取它们的 14 个用例会明确跳过，其余照常运行。细节见[怎么跑测试](docs/03-development.md#怎么跑测试)。
 
 ## 文档与开发
 

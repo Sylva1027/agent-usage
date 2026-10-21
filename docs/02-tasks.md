@@ -66,6 +66,7 @@
 
 ## 已交付与已结束
 
+- **源码包瘦身，2026-10-21。** `.gitattributes` 用 `export-ignore` 排除 `docs/validation/` 的日期证据与 `lineart assets/`（只保留测试要读的 `ink-bounds.json`）；`skins:check` 改为只验发布内容，新增 `skins:check:sources` 绑定 40 张作者源 PNG，源图缺失时打印 `SKIP`。`git archive --worktree-attributes | gzip -9` 实测 287.64 MB → 21.89 MB；plans/archive 按用户要求保留。发布包形态的树中 14 个读取日期证据或作者源图的用例改为显式跳过（`D6`、`D8u3B1`、`D9c`×3、`D9d-2`×4、`D9f-2`、`E1`、默认根资产读取 1 项、`skins:check:sources` 2 项），实测 2658 项 / 2624 通过 / 0 失败 / 34 跳过；[怎么跑测试](03-development.md#怎么跑测试)已重写。
 - **旧 HTML 导出清理，2026-10-03。** 移除导出器、包脚本、离线分支与专属测试，保留在线冻结、JSON 汇总和现有功能；347 项测试与 28 项隔离桌面检查通过，见[验收](validation/2026-10-03-export-removal/README.md)。
 - **角色皮肤与视觉修改，v0.6.0。** 五款选择器、浅深主题、简洁模式、双侧角色和聚光已交付；见[发布验收](validation/2026-10-03-release/README.md)。未确认观感与后续验证边界保留在上文。
 - **Claude 计价。** 官方版本映射、缓存场景、手动覆盖、DSH 非零写入及索引迁移已实现；见[验收](validation/2026-10-01-claude-pricing/README.md)。

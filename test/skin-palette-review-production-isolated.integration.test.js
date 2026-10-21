@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
+import { existsSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -149,6 +150,12 @@ function assertAssetSnapshotEqual(before, after) {
 }
 
 test("E1 clean-source branch runs C5c and both post checks in a copied validation sandbox", async (t) => {
+  if (!existsSync(path.join(REPO_ROOT, "lineart assets"))) {
+    t.skip(
+      "authoring source images are not in this tree (release archive); the sandbox copies them from the authoring repository",
+    );
+    return;
+  }
   const startedAt = Date.now();
   const repoReal = await realpath(REPO_ROOT);
   const validationRoot = await realpath(path.join(repoReal, "docs", "validation"));

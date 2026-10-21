@@ -16,6 +16,7 @@
     "format": "biome format --write .",
     "skins:prepare": "node scripts/prepare-skin-assets.mjs prepare",
     "skins:check": "node scripts/prepare-skin-assets.mjs check",
+    "skins:check:sources": "node scripts/prepare-skin-assets.mjs check-sources",
     "skins:palette": "node scripts/check-skin-palettes.mjs",
     "skins:candidates": "node scripts/skin-palette/generate-cli.mjs",
     "skins:review": "node scripts/skin-palette/review-cli.mjs",

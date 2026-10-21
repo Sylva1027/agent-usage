@@ -90,6 +90,11 @@ import { getPaletteFixtureHash, getTimelineWarningFixtureHash } from "../test-su
 
 const tokens = (color) => Object.fromEntries(PALETTE_TOKEN_KEYS.map((key) => [key, color]));
 const validationRoot = path.join(REPO_ROOT, "docs", "validation");
+// Authoring PNGs are export-ignored from release source archives; the tests that read the
+// default repository root need them, so they skip explicitly in an unpacked release tree.
+const releaseArchiveSkip = fs.existsSync(path.join(REPO_ROOT, "lineart assets"))
+  ? null
+  : "authoring source images are not in this tree (release archive); default-root readers stay in the authoring repository";
 const ROLE_BY_ID = new Map(ROLE_CATALOG.map((role) => [role.id, role]));
 const offlineBaseFixtureHash = getPaletteFixtureHash();
 const offlineWarningFixtureHash = getTimelineWarningFixtureHash();
@@ -5110,7 +5115,11 @@ test("reads the fixed generated asset, tool, and raw manifest bytes from a valid
   });
 });
 
-test("reads all registered generated assets and fixed tool hashes from the default repository root", async () => {
+test("reads all registered generated assets and fixed tool hashes from the default repository root", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const assets = enumerateSourceAssets();
   const result = await readProductionGeneratedAssets();
   assert.deepEqual(verifyProductionGeneratedAssets({ snapshot: result }), { status: "pass", errors: [], gaps: [] });
@@ -10004,7 +10013,11 @@ function makeD9cFixture(historicalStatus = "pass") {
   };
 }
 
-test("D9c gates the full historical selection, reads the default current root, and retains both transition results", async () => {
+test("D9c gates the full historical selection, reads the default current root, and retains both transition results", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const fixture = makeD9cFixture();
   const before = JSON.stringify(fixture);
   const result = await readProductionCurrentContext(fixture);
@@ -10054,7 +10067,11 @@ test("D9c gates the full historical selection, reads the default current root, a
   assert.equal(JSON.stringify(fixture), before, "the supplied evidence and historical context must remain unchanged");
 });
 
-test("D9c allows an unselected readiness failure while the selected ten remain eligible", async () => {
+test("D9c allows an unselected readiness failure while the selected ten remain eligible", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const fixture = makeD9cFixture("rejected");
   const result = await readProductionCurrentContext(fixture);
   assert.equal(result.selectedCandidates.length, SKIN_IDS.length);
@@ -10091,7 +10108,11 @@ test("D9c rejects dirty source gates, incomplete/invalid selections, and failed 
   }
 });
 
-test("D9c snapshots JSON and Buffer inputs before its first asynchronous read", async () => {
+test("D9c snapshots JSON and Buffer inputs before its first asynchronous read", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const fixture = makeD9cFixture();
   const candidateId = fixture.evidence.selections.record.choices[SKIN_IDS[0]].candidateId;
   const preimage = fixture.historicalContext.preMigrationSources.sourceSnapshot[SOURCE_PREIMAGE_FILES[0]];
@@ -10470,7 +10491,11 @@ function cloneCurrentStabilitySample(sample) {
   };
 }
 
-test("D9d-2 passes unchanged samples from the actual default readers", async () => {
+test("D9d-2 passes unchanged samples from the actual default readers", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const sample = await readCurrentStabilitySample();
   const before = JSON.stringify(sample);
 
@@ -10478,7 +10503,11 @@ test("D9d-2 passes unchanged samples from the actual default readers", async () 
   assert.equal(JSON.stringify(sample), before);
 });
 
-test("D9d-2 aggregates start inconsistencies and all current-file drift in fixed order", async () => {
+test("D9d-2 aggregates start inconsistencies and all current-file drift in fixed order", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const sample = cloneCurrentStabilitySample(await readCurrentStabilitySample());
   const wrongRoot = path.join(REPO_ROOT, "docs");
   const assets = enumerateSourceAssets();
@@ -10520,7 +10549,11 @@ test("D9d-2 aggregates start inconsistencies and all current-file drift in fixed
   assert.equal(JSON.stringify(sample), before);
 });
 
-test("D9d-2 snapshots caller data before awaiting default end readers", async () => {
+test("D9d-2 snapshots caller data before awaiting default end readers", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const sample = cloneCurrentStabilitySample(await readCurrentStabilitySample());
   const pending = verifyProductionCurrentStability(sample);
 
@@ -10537,7 +10570,11 @@ test("D9d-2 snapshots caller data before awaiting default end readers", async ()
   assert.deepEqual(await pending, { status: "pass", errors: [], gaps: [] });
 });
 
-test("D9d-2 rejects malformed fields, sparse maps, accessors, and non-Buffer byte inputs", async () => {
+test("D9d-2 rejects malformed fields, sparse maps, accessors, and non-Buffer byte inputs", async (t) => {
+  if (releaseArchiveSkip) {
+    t.skip(releaseArchiveSkip);
+    return;
+  }
   const sample = await readCurrentStabilitySample();
   const invalid = [
     ["non-object options", () => null],

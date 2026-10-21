@@ -1,3 +1,14 @@
 * text=auto eol=lf
 # Preserve raw bytes of hash-bound validation fixtures and records.
 /docs/validation/** -text
+
+# Source archives: GitHub builds them from the tag with these rules applied.
+# Validation screenshots and logs are dated evidence for this repository, not
+# part of running the dashboard (316 MB tree -> ~22 MB archive).
+/docs/validation/*/** export-ignore
+# The one validation file tests read at runtime must stay in the archive.
+/docs/validation/2026-10-02-model-character-skins/ink-bounds.json -export-ignore
+# Authoring PNGs. The page loads only the committed WebP copies under
+# public/assets/skins/; `npm run skins:check:sources` verifies them in an
+# authoring checkout, where these files exist.
+"lineart assets/**" export-ignore

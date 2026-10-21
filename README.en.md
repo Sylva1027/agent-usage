@@ -70,8 +70,10 @@ Automatic results live in `~/.codex-usage/pricing-auto.json`; manual changes liv
 ```bash
 node src/cli.js summary       # Terminal summary
 node src/cli.js summary --json
-node --test                   # Run tests
+node --test                   # Run tests (run npm ci first for devDependencies)
 ```
+
+A copy unpacked from the GitHub source archive can run the tests too: dated acceptance screenshots and authoring source images are not distributed with it, so the 14 tests that read them skip explicitly while everything else runs. See [running the tests](docs/03-development.md#怎么跑测试).
 
 ## Documentation and Development
 

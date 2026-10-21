@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
@@ -178,7 +188,9 @@ test("source asset descriptions match the committed file naming rules", () => {
     assert.ok(entry.sourceName.endsWith(".png"), "sources stay PNG");
     assert.ok(entry.expectedName.endsWith(`.${PUBLIC_ASSET_EXTENSION}`), "public copies are the decided format");
     assert.equal(skinAssetUrl(entry.skinId, entry.mode, entry.view), entry.publicUrl);
-    assert.ok(existsSync(path.join(root, entry.sourcePath)), `missing source ${entry.sourcePath}`);
+    // Only the public copy must exist in every tree: `.gitattributes`
+    // export-ignores `lineart assets/`, so release archives ship without the
+    // authoring PNGs. The source binding is covered below, in a sandbox.
     assert.ok(existsSync(path.join(root, entry.publicPath)), `missing copy ${entry.publicPath}`);
   }
 });
@@ -321,6 +333,77 @@ test("skins:check passes on the committed tree without re-encoding anything", ()
     encoding: "utf8",
   });
   assert.match(output, /check: PASS/);
+  // `check` deliberately does not require `lineart assets/`; the source-aware
+  // command is the one that binds the PNGs, and it is exercised in a sandbox below.
+  assert.doesNotMatch(output, /check-sources/);
+});
+
+test("skins:check:sources binds every committed copy to its authoring PNG", (t) => {
+  if (!existsSync(path.join(root, "lineart assets"))) {
+    t.skip("authoring PNGs are absent (release archive); source binding is the authoring-checkout check");
+    return;
+  }
+  const output = execFileSync(process.execPath, ["scripts/prepare-skin-assets.mjs", "check-sources"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.match(output, /check: PASS/);
+  assert.match(output, /check-sources: PASS \(40 sources bound to their public copies\)/);
+});
+
+test("source binding is skipped, not faked, when a release archive has no authoring PNGs", async () => {
+  const { verifySkinTree } = await import("../scripts/prepare-skin-assets.mjs");
+  const sandbox = mkdtempSync(path.join(tmpdir(), "skins-no-sources-"));
+  try {
+    cpSync(path.join(root, "public"), path.join(sandbox, "public"), { recursive: true });
+
+    const plain = await verifySkinTree({ root: sandbox });
+    assert.equal(plain.status, "pass");
+    assert.equal(plain.sourceBinding, "skipped");
+
+    const withSources = await verifySkinTree({ root: sandbox, requireSources: true });
+    assert.equal(withSources.status, "pass");
+    assert.equal(withSources.sourceBinding, "skipped", "absent PNGs must never read as verified");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("source binding still rejects a changed or missing PNG in a sandbox", async (t) => {
+  if (!existsSync(path.join(root, "lineart assets"))) {
+    t.skip("authoring PNGs are absent (release archive); the rejection path needs real sources to copy");
+    return;
+  }
+  const { verifySkinTree } = await import("../scripts/prepare-skin-assets.mjs");
+  const sources = enumerateSourceAssets();
+  const sandbox = mkdtempSync(path.join(tmpdir(), "skins-source-binding-"));
+  try {
+    cpSync(path.join(root, "public"), path.join(sandbox, "public"), { recursive: true });
+    for (const entry of sources) {
+      const target = path.join(sandbox, ...entry.sourcePath.split("/"));
+      mkdirSync(path.dirname(target), { recursive: true });
+      copyFileSync(path.join(root, ...entry.sourcePath.split("/")), target);
+    }
+    assert.equal((await verifySkinTree({ root: sandbox, requireSources: true })).sourceBinding, "verified");
+
+    const changed = path.join(sandbox, ...sources[0].sourcePath.split("/"));
+    appendFileSync(changed, Buffer.from([0]));
+    const mutated = await verifySkinTree({ root: sandbox, requireSources: true });
+    assert.equal(mutated.status, "fail");
+    assert.ok(
+      mutated.problems.some((problem) =>
+        problem.includes(`source changed since the copies were generated: ${sources[0].sourcePath}`),
+      ),
+      mutated.problems.join("\n"),
+    );
+
+    rmSync(changed);
+    const missing = await verifySkinTree({ root: sandbox, requireSources: true });
+    assert.equal(missing.status, "fail");
+    assert.ok(missing.problems.some((problem) => problem === `missing source ${sources[0].sourcePath}`));
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
 });
 
 test("committed public copies are real WebP files whose bytes match the manifest", () => {

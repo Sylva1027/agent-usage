@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -49,6 +50,12 @@ function assertCleanPass(result, label) {
 }
 
 test("D9f-2 runs the real ten-skin source-context branch and records expected synthetic source drift", async (t) => {
+  if (!existsSync(path.join(REPO_ROOT, "lineart assets"))) {
+    t.skip(
+      "authoring source images are not in this tree (release archive); the default-root readers stay in the authoring repository",
+    );
+    return;
+  }
   const startedAt = Date.now();
   const repoRoot = await realpath(REPO_ROOT);
   const validationRoot = await realpath(path.join(repoRoot, "docs", "validation"));
