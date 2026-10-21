@@ -1,0 +1,88 @@
+{
+  "scope": "two previously reviewed rollouts; local day 2026-10-21; finished native turns only; timing evidence limited to reviewed 326 requests",
+  "checkedAt": "2026-10-21T08:46:30.714Z",
+  "files": [
+    {
+      "file": 1,
+      "bytes": 27470162,
+      "malformed": 0,
+      "requestRows": 489,
+      "requestRowsWithTiming": 0,
+      "identityFields": [
+        "response_id"
+      ],
+      "timingFields": [
+        "duration_ms",
+        "started_at",
+        "started_at_ms",
+        "timestamp"
+      ],
+      "types": {
+        "session_meta/": 1,
+        "event_msg/task_started": 14,
+        "response_item/message": 80,
+        "world_state/": 11,
+        "turn_context/": 22,
+        "event_msg/thread_settings_applied": 25,
+        "event_msg/item_completed": 1317,
+        "response_item/reasoning": 469,
+        "response_item/function_call": 670,
+        "token_usage_record/": 489,
+        "response_item/function_call_output": 695,
+        "event_msg/token_count": 489,
+        "event_msg/task_complete": 14,
+        "response_item/custom_tool_call": 111,
+        "response_item/custom_tool_call_output": 111,
+        "compacted/": 8
+      }
+    },
+    {
+      "file": 2,
+      "bytes": 28794467,
+      "malformed": 0,
+      "requestRows": 705,
+      "requestRowsWithTiming": 0,
+      "identityFields": [
+        "response_id"
+      ],
+      "timingFields": [
+        "duration_ms",
+        "started_at",
+        "started_at_ms",
+        "timestamp"
+      ],
+      "types": {
+        "session_meta/": 1,
+        "event_msg/task_started": 12,
+        "response_item/message": 97,
+        "world_state/": 20,
+        "turn_context/": 29,
+        "event_msg/thread_settings_applied": 32,
+        "event_msg/item_completed": 2203,
+        "response_item/reasoning": 691,
+        "response_item/function_call": 1343,
+        "token_usage_record/": 705,
+        "response_item/function_call_output": 1360,
+        "event_msg/token_count": 708,
+        "event_msg/task_complete": 12,
+        "response_item/custom_tool_call": 97,
+        "response_item/custom_tool_call_output": 97,
+        "compacted/": 17,
+        "response_item/web_search_call": 3
+      }
+    }
+  ],
+  "invalidFinishedTurns": 0,
+  "coverage": {
+    "turns": 24,
+    "requests": 1190,
+    "outputTokens": 1117389,
+    "timedRequests": 326,
+    "timedOutputTokens": 233379,
+    "completeTurns": 6,
+    "partialTurns": 0,
+    "untimedTurns": 18,
+    "lostTimedRequests": 0,
+    "lostTimedOutputTokens": 0
+  }
+}

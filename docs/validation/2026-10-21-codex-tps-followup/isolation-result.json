@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "mode": "benign-append",
+      "mutationInjected": true,
+      "unchangedHistoricalRows": 25,
+      "hiddenOnLiveChange": true,
+      "memoryHiddenOnLiveChange": true,
+      "previousRowsPreserved": true,
+      "recoveredSamples": 25,
+      "directoryExclusion": true
+    },
+    {
+      "mode": "ownership-change",
+      "mutationInjected": true,
+      "unchangedHistoricalRows": 25,
+      "hiddenOnLiveChange": true,
+      "memoryHiddenOnLiveChange": true,
+      "previousRowsPreserved": true,
+      "recoveredSamples": 25,
+      "directoryExclusion": true
+    }
+  ]
+}
