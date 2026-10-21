@@ -34,6 +34,7 @@ import { zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
 import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
 import { claudeSessionFiles } from "./claude-code-usage.js";
+import { workbuddySessionFiles, workbuddyTraceFiles, workbuddyTraceSpans } from "./workbuddy-usage.js";
 import { isPerfSourceEnabled, streamPerfSamplesForFile, classifyPerfSources } from "./perf-sources/index.js";
 import {
   buildCodexThreadPerfSamples,
@@ -57,7 +58,71 @@ import {
   quotaRecordValues,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 16;
+export const STORE_SCHEMA_VERSION = 17;
+
+/**
+ * v17 唯一新增的表：WorkBuddy 的**响应时长 side table**。
+ *
+ * 时长只存在于 `<home>/traces/<pid>/trace_*.jsonl` 的 `span_end`（`type = generation`），
+ * 会话转录里没有可靠的首末时间戳 ⇒ 会话解析（用量）与 trace 解析（时长）必须分开，
+ * 由 `message_id` 在 TPS reader 侧 join。
+ *
+ * 三条刻意的设计约束（实施计划 §1.5）：
+ *   * `INSERT OR IGNORE`：幂等、先到先得，同一 id 多个 span 只留第一条；
+ *   * **不建** trace 指纹表、**不设** `home_id` 列：messageId 全局唯一，重复导入同一份数据的
+ *     副本时先到先得（已知限制，写进文档）；
+ *   * **不主动清理**：10 万条约 10 MB；回收若要做，另开 CLI。
+ *
+ * 刻意**不加** `STRICT`：本表的写入方只有预扫一处，且 `duration_ms` 已在入口校验为正整数；
+ * 与既有 `perf_*` 表的差异按冻结 DDL 保留原样。
+ */
+const WORKBUDDY_DURATION_DDL = `
+  CREATE TABLE IF NOT EXISTS workbuddy_generation_durations (
+    message_id TEXT PRIMARY KEY,
+    duration_ms INTEGER NOT NULL,
+    ended_at_ms INTEGER,
+    capture_version TEXT NOT NULL,
+    captured_at TEXT NOT NULL
+  );
+`;
+
+/** 时长采集方法版本（写进 `capture_version` 列，不参与 perf 的 `methodVersion`）。 */
+const WORKBUDDY_CAPTURE_VERSION = "workbuddy.trace.v1";
+
+/** 冻结列序（`name` / `type` / `pk`），逐个核对。 */
+const WORKBUDDY_DURATION_COLUMNS = Object.freeze([
+  ["message_id", "TEXT", 1],
+  ["duration_ms", "INTEGER", 0],
+  ["ended_at_ms", "INTEGER", 0],
+  ["capture_version", "TEXT", 0],
+  ["captured_at", "TEXT", 0],
+]);
+
+/**
+ * 自检 `workbuddy_generation_durations` 的实际 schema 是否等于冻结 DDL。
+ *
+ * 与其它表同因：`CREATE TABLE IF NOT EXISTS` 只按**名字**判断存在性 —— 同名 VIEW 会静默通过。
+ * 它是 `migrate()` 事务内的最后一步：不符即抛 ⇒ 回滚 ⇒ 版本不动，下次打开重试。
+ * @param {import("node:sqlite").DatabaseSync} database
+ */
+function assertWorkbuddyDurationSchema(database) {
+  const actualColumns = database.prepare("PRAGMA table_info(workbuddy_generation_durations)").all();
+  if (actualColumns.length !== WORKBUDDY_DURATION_COLUMNS.length) {
+    throw new PerfSampleCodecError(
+      "WORKBUDDY_DURATION_SCHEMA_MISMATCH",
+      `workbuddy_generation_durations 列数 ${actualColumns.length} ≠ 冻结 ${WORKBUDDY_DURATION_COLUMNS.length}`,
+    );
+  }
+  for (const [index, [name, type, pk]] of WORKBUDDY_DURATION_COLUMNS.entries()) {
+    const row = actualColumns[index];
+    if (String(row.name) !== name || String(row.type || "").toUpperCase() !== type || Number(row.pk) !== pk) {
+      throw new PerfSampleCodecError(
+        "WORKBUDDY_DURATION_SCHEMA_MISMATCH",
+        `workbuddy_generation_durations 列 ${index} 实际 ${String(row.name)}/${String(row.type)}/pk=${Number(row.pk)} ≠ 冻结 ${name}/${type}/pk=${pk}`,
+      );
+    }
+  }
+}
 const CODEX_ROLLOUT_READER_VERSION = "zstd-jsonl-v1";
 
 /**
@@ -1845,6 +1910,15 @@ export class UsageStore {
      */
     this.codexStableAttempts = new Map();
     /**
+     * S4：WorkBuddy **trace 文件指纹**（`path → { size, mtimeMs }`）。
+     *
+     * 刻意是**进程内 Map**（实施计划 §0 第 5/6 条）：跨轮保留、进程重启自然清空 ⇒ 首轮自动全扫，
+     * 零 schema 成本，也不建 trace 指纹表。`sync()` **不清空**（否则每轮都会重解析全部 trace）；
+     * 只有 `close()` 丢弃。
+     * @type {Map<string, { size: number, mtimeMs: number }>}
+     */
+    this.workbuddyTraceFingerprints = new Map();
+    /**
      * C3 卡：**实例私有**的"未变文件标准化投影"缓存（`readCodexRolloutMetadata` 的返回对象）。
      *
      * 键 = 规范物理路径，身份 = **本轮读取前的窗口指纹 + 来源 + 方法版本 + home**。
@@ -2212,6 +2286,16 @@ export class UsageStore {
       migrate("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE kind = 'claude';", 16);
       version = 16;
     }
+    if (version === 16) {
+      // v17：新增 WorkBuddy 数据源 + 其响应时长 side table。
+      //
+      // ① 落点用**字面量** 17（不用常量）：用常量会让后续抬版本静默跳过新迁移。
+      // ② **不标脏任何既有文件**：新来源没有旧行，回填由首次 sync 自然触发；
+      //    对既有来源做无条件 `UPDATE source_files` 只会白付一次全量重读。
+      // ③ 自检必须在事务内：同名 VIEW 会让 `CREATE TABLE IF NOT EXISTS` 静默通过。
+      migrate(WORKBUDDY_DURATION_DDL, 17, () => assertWorkbuddyDurationSchema(this.database));
+      version = 17;
+    }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
@@ -2228,6 +2312,10 @@ export class UsageStore {
       // 中途失败留下的库仍是 version 0，下次打开可自愈）。
       this.database.exec(PERF_CODEX_PROJECTIONS_DDL);
       assertPerfCodexProjectionsSchema(this.database);
+      // v17：全新库同样无条件建时长表（结构上与 v16→17 迁移不可互相覆盖：建表在抬版本之前，
+      // 中途失败留下的库仍是 version 0，下次打开可自愈）。
+      this.database.exec(WORKBUDDY_DURATION_DDL);
+      assertWorkbuddyDurationSchema(this.database);
       this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     }
     this.database.exec("CREATE INDEX IF NOT EXISTS events_repository_idx ON events(repository_key)");
@@ -2839,6 +2927,14 @@ export class UsageStore {
           }
           continue;
         }
+        if (home.kind === "workbuddy") {
+          // WorkBuddy 同样是逐会话转录；会话文件是普通 jsonl，没有 `-wal`（perf 指纹另由
+          // `enabledPerfSourceStat` 统一处理）。
+          for (const filePath of await workbuddySessionFiles(home.path)) {
+            files.push({ filePath, source: home, info: await stat(filePath) });
+          }
+          continue;
+        }
         for (const filePath of await discoverSessionFiles(home.path)) {
           files.push({ filePath, source: home, info: await stat(filePath) });
         }
@@ -2851,6 +2947,92 @@ export class UsageStore {
   }
 
   /**
+   * S4：把 WorkBuddy trace 里的 `generation` 时长同步进 `workbuddy_generation_durations`。
+   *
+   * 调用纪律（实施计划 §0 最后一段 + §5 S4）：
+   *   * **必须在 `replaceFile` 之外**调用 —— 那里是唯一跨 `await` 的写事务，事务内做文件 I/O
+   *     会把读路径钉在快照上；
+   *   * 文件 I/O 全部在事务**外**：先把变化的文件读成内存数组，再开一个同步事务批量
+   *     `INSERT OR IGNORE`；
+   *   * 指纹只在**写成功后**更新；解析失败的文件不更新指纹（下轮重试）并记一条 warning；
+   *   * 单文件失败不影响其它文件；目录不存在是正常状态，不告警。
+   *
+   * @param {string} homePath
+   * @param {{ onWarning?: (warning: string) => void }} [options]
+   * @returns {Promise<{ filesScanned: number, filesParsed: number, spans: number, written: boolean }>}
+   */
+  async refreshWorkbuddyDurations(homePath, { onWarning } = {}) {
+    const database = this.database;
+    const outcome = { filesScanned: 0, filesParsed: 0, spans: 0, written: false };
+    if (!database) return outcome;
+    let traceFiles;
+    try {
+      traceFiles = await workbuddyTraceFiles(homePath);
+    } catch (error) {
+      onWarning?.(`无法读取 WorkBuddy trace 目录 ${homePath}: ${error.message}`);
+      return outcome;
+    }
+    outcome.filesScanned = traceFiles.length;
+    if (traceFiles.length === 0) return outcome;
+
+    const changed = [];
+    for (const filePath of traceFiles) {
+      let info;
+      try {
+        info = await stat(filePath);
+      } catch {
+        // 单文件不可读：本轮跳过，指纹不动 ⇒ 下轮重试。
+        continue;
+      }
+      const previous = this.workbuddyTraceFingerprints.get(filePath);
+      if (previous && previous.size === info.size && previous.mtimeMs === info.mtimeMs) continue;
+      changed.push({ filePath, size: info.size, mtimeMs: info.mtimeMs });
+    }
+    if (changed.length === 0) return outcome;
+
+    const rows = [];
+    const parsed = [];
+    for (const file of changed) {
+      try {
+        const spans = await workbuddyTraceSpans(file.filePath, { onWarning });
+        rows.push(...spans);
+        parsed.push(file);
+        outcome.filesParsed += 1;
+      } catch (error) {
+        onWarning?.(`无法解析 WorkBuddy trace ${file.filePath}: ${error.message}`);
+      }
+    }
+    outcome.spans = rows.length;
+
+    if (rows.length > 0) {
+      const insert = database.prepare(`
+        INSERT OR IGNORE INTO workbuddy_generation_durations
+          (message_id, duration_ms, ended_at_ms, capture_version, captured_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      const capturedAt = new Date().toISOString();
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        for (const row of rows) {
+          insert.run(row.messageId, row.durationMs, row.endedAtMs, WORKBUDDY_CAPTURE_VERSION, capturedAt);
+        }
+        database.exec("COMMIT");
+        outcome.written = true;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        // 写失败 ⇒ 指纹一律不更新（下轮重试），本轮 sync 不因预扫失败而整体失败。
+        onWarning?.(`无法写入 WorkBuddy 响应时长: ${error.message}`);
+        return outcome;
+      }
+    }
+
+    for (const file of parsed) {
+      this.workbuddyTraceFingerprints.set(file.filePath, { size: file.size, mtimeMs: file.mtimeMs });
+    }
+    return outcome;
+  }
+
+  /**
    * @param {any} file
    * @param {{
    *   onWarning?: (warning: string) => void,
@@ -2859,11 +3041,20 @@ export class UsageStore {
    *   blockedHomeIds?: Set<string>,
    *   committedFingerprints?: Map<string, string>,
    *   onPerfWarning?: (warning: any) => void,
+   *   onWorkbuddyDurationGap?: (homeLabel: string, count: number) => void,
    * }} [options]
    */
   async replaceFile(
     { filePath, source, info },
-    { onWarning, liveChangeWarnings, liveChangedPaths, blockedHomeIds, committedFingerprints, onPerfWarning } = {},
+    {
+      onWarning,
+      liveChangeWarnings,
+      liveChangedPaths,
+      blockedHomeIds,
+      committedFingerprints,
+      onPerfWarning,
+      onWorkbuddyDurationGap,
+    } = {},
   ) {
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
@@ -3050,7 +3241,27 @@ export class UsageStore {
         // 由 `onWarning`/catch 另路处理）；而 `statAfter` **取不到**（`null`）本身就是
         // "读完之后来源不再可读"的证据 —— 与"指纹变了"同属**候选不完整**，且更强。
         const statBefore = enabledPerfSourceStat(source.kind, filePath);
-        await streamPerfSamplesForFile(
+        // S4：WorkBuddy 的时长来自 side table（trace 预扫写入）。查表按调用建**局部**缓存，
+        // 跨调用不复用 —— 同一文件内同一 messageId 至多出现一次，缓存只是防御重复。
+        const durationStatement = database.prepare(
+          "SELECT duration_ms, ended_at_ms FROM workbuddy_generation_durations WHERE message_id = ?",
+        );
+        const durationCache = new Map();
+        const lookupGenerationDuration = (messageId) => {
+          const key = String(messageId ?? "");
+          if (key === "") return null;
+          if (durationCache.has(key)) return durationCache.get(key);
+          const row = durationStatement.get(key);
+          const value = row
+            ? {
+                durationMs: Number(row.duration_ms),
+                endedAtMs: row.ended_at_ms === null ? null : Number(row.ended_at_ms),
+              }
+            : null;
+          durationCache.set(key, value);
+          return value;
+        };
+        const perfResult = await streamPerfSamplesForFile(
           filePath,
           { ...source, path: filePath },
           (sample) => {
@@ -3063,8 +3274,15 @@ export class UsageStore {
               onPerfWarning?.(warning);
               onWarning?.(formatPerfWarning(warning));
             },
+            lookupGenerationDuration,
           },
         );
+        // S4：缺时长的计数不在码域里，交给调用点合并成"每 home 每轮一条"的普通 warning。
+        // ⚠️ 两级 `stats`：reader 按契约返回 `{ state, stats }`，而调度器把**整个返回值**当作
+        // 自己的 `stats` 透传（其它 reader 直接返回裸计数对象）⇒ 这里两种形状都要认。
+        const readerStats = perfResult?.stats ?? null;
+        const skippedNoDuration = Number(readerStats?.skippedNoDuration ?? readerStats?.stats?.skippedNoDuration ?? 0);
+        if (skippedNoDuration > 0) onWorkbuddyDurationGap?.(source.label, skippedNoDuration);
         const statAfter = enabledPerfSourceStat(source.kind, filePath);
         // 变化 = ① 指纹不同（读期间被追加/改写），或 ② 读后**取不到**指纹（文件消失/不可读）。
         const fingerprintChanged = statBefore !== null && statAfter !== statBefore;
@@ -3225,6 +3443,18 @@ export class UsageStore {
      */
     let usageDerivedChanged = false;
     const changedSessions = new Set();
+    /**
+     * S4：本轮**已做过** trace 预扫的 WorkBuddy home（`source.id`）。
+     * 同一 home 的多个会话文件共享同一份 trace ⇒ 每轮至多扫一次。
+     * @type {Set<string>}
+     */
+    const workbuddyRefreshedHomes = new Set();
+    /**
+     * S4：本轮每个 WorkBuddy home 的"缺时长"计数（`homeId → { label, count }`）。
+     * 轮末合并成**每 home 一条**普通 warning（走既有字符串通道，不新增告警码域）。
+     * @type {Map<string, { label: string, count: number }>}
+     */
+    const workbuddyDurationGaps = new Map();
     /** M3.4：本轮**受阻**的 home（文件不可读或替换失败）⇒ 计入 `perf_degraded_home_ids`。 */
     const blockedHomeIds = new Set();
     /** M3.4：**逐文件**的失败归因（只记真正抛错的文件，避免误归因到成功的 home）。 */
@@ -3808,6 +4038,9 @@ export class UsageStore {
             .map((row) => row.session_id)
         : [];
       const earlierFileChanged = previousSessions.some((sessionId) => changedSessions.has(sessionId));
+      // S4：控制流最小重构 —— 把"跳过"从 `continue` 改成标志，`perfFileNeedsRefresh` 的
+      // 调用位置、次数、参数**完全不变**（行为等价是硬要求）。
+      let needsRefresh = true;
       if (
         !earlierFileChanged &&
         existing &&
@@ -3844,17 +4077,22 @@ export class UsageStore {
                 file.filePath,
               )
             : windowedCurrent;
-        if (
-          !perfFileNeedsRefresh(
-            changedKind,
-            file.filePath,
-            this.publishedFileFingerprintsForRound(),
-            this.publishedFileWarningsForRound(),
-            reusedCurrent,
-          )
-        ) {
-          continue;
-        }
+        needsRefresh = perfFileNeedsRefresh(
+          changedKind,
+          file.filePath,
+          this.publishedFileFingerprintsForRound(),
+          this.publishedFileWarningsForRound(),
+          reusedCurrent,
+        );
+      }
+      if (!needsRefresh) continue;
+      // S4：trace 预扫**必须**落在 `replaceFile` 之外（那里是唯一跨 `await` 的写事务）。
+      // 每个 home 每轮至多一次：同一 home 的第二个 WorkBuddy 文件不再触发。
+      if (canonicalizeKind(file.source.kind) === "workbuddy" && !workbuddyRefreshedHomes.has(String(file.source.id))) {
+        workbuddyRefreshedHomes.add(String(file.source.id));
+        await this.refreshWorkbuddyDurations(file.source.path, {
+          onWarning: (warning) => warnings.push(warning),
+        });
       }
       try {
         const replaceOutcome = await this.replaceFile(file, {
@@ -3862,6 +4100,13 @@ export class UsageStore {
           liveChangeWarnings,
           liveChangedPaths,
           blockedHomeIds,
+          onWorkbuddyDurationGap: (homeLabel, count) => {
+            const key = String(file.source.id);
+            const entry = workbuddyDurationGaps.get(key) || { label: homeLabel, count: 0 };
+            entry.count += count;
+            entry.label = homeLabel || entry.label;
+            workbuddyDurationGaps.set(key, entry);
+          },
         });
         for (const row of this.database
           .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
@@ -4249,6 +4494,11 @@ export class UsageStore {
       this.commitStoreRevision("service-tier");
     }
     this.serviceTierEvidenceInput = serviceTierSignature;
+    // S4：缺 duration 的计数走**普通 warning 字符串**通道（`PERF_SOURCE_WARNING_CODES` 是冻结码域，
+    // 不得新增 `MISSING_DURATION`）⇒ 每 home 每轮至多一条。
+    for (const { label, count } of workbuddyDurationGaps.values()) {
+      if (count > 0) warnings.push(`${label || "WorkBuddy"}：${count} 个响应缺少 generation 时长`);
+    }
     this.homes = homes;
     this.warnings = warnings;
     this.generatedAt = new Date().toISOString();
@@ -4472,13 +4722,14 @@ export class UsageStore {
           .all()
           .map((row) => [row.home_id, row]),
       );
-      // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode / Claude）用到的模型名称。
+      // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode / Claude / WorkBuddy）用到的模型名称。
       const harnessModels = {
         Codex: new Set(),
         ZCode: new Set(),
         DSH: new Set(),
         OpenCode: new Set(),
         Claude: new Set(),
+        WorkBuddy: new Set(),
       };
       for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
         const model = String(row.model || "").trim();
@@ -4492,7 +4743,9 @@ export class UsageStore {
               ? "OpenCode"
               : channel.startsWith("claude")
                 ? "Claude"
-                : "Codex";
+                : channel.startsWith("workbuddy")
+                  ? "WorkBuddy"
+                  : "Codex";
         harnessModels[bucket].add(model);
       }
       builtMetadata = {
@@ -4506,6 +4759,7 @@ export class UsageStore {
           DSH: [...harnessModels.DSH].sort((a, b) => a.localeCompare(b)),
           OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
           Claude: [...harnessModels.Claude].sort((a, b) => a.localeCompare(b)),
+          WorkBuddy: [...harnessModels.WorkBuddy].sort((a, b) => a.localeCompare(b)),
         },
         homes: this.homes.map((home) => {
           const row = homeRows.get(home.id);
@@ -5314,6 +5568,8 @@ export class UsageStore {
     this.codexProjections.clear();
     this.codexThreadBuildPlan.clear();
     // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
+    // S4：trace 指纹是**进程内**状态（刻意不落盘）⇒ `close()` 丢弃；重开后首轮自然全扫一次。
+    this.workbuddyTraceFingerprints.clear();
     // `observedDataVersion` 重新取基准（外部提交检测在重开后**从零**开始计），
     // 而 `storeRevision` 是这个**实例**的单调修订号，跨 `close()/open()` 保留。
     this.metadataCache = null;

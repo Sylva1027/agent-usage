@@ -295,6 +295,7 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
       DSH: [],
       OpenCode: [],
       Claude: [],
+      WorkBuddy: [],
     });
   } finally {
     store.close();

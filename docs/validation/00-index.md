@@ -2,6 +2,10 @@
 
 更新：2026-10-21。现行合同见专题说明，任务状态见 [02](../02-tasks.md)。本页按日期组织证据，不用审查意见或计划勾选替代实际验收。
 
+## 2026-10-21：WorkBuddy 数据源
+
+[验收](2026-10-21-workbuddy-implementation/README.md)：本机 `~/.workbuddy-ai` 接入为第六个来源；适配器按 `providerData.messageId` 去重、Auto（`model=default-model`）整体排除、输入按超集直接映射；TPS 时长取自 `traces/<pid>` 的 `generation` span 并持久化到 `workbuddy_generation_durations`（schema 16→17）。三路一致 4 事件 / 4,950 tokens 全等；真机 446 事件 / 69.98M 输入 / 446 TPS 样本 / 零告警，第二轮 `updatedFileCount = 0`。规格见 [WorkBuddy 数据源](../data-sources/workbuddy.md)。
+
 ## 2026-10-21：v0.7.0 发布
 
 [验收范围](2026-10-21-release/README.md)与[发布说明](2026-10-21-release/release-notes.md)：Claude Code 来源、整页配色、限额范围、Worker 恢复与固定框内错误详情；README 使用 DeepSeek 浅色 16:9 示例图及五款皮肤选择器截图。全仓工程检查独立登记，不覆盖此前保留的真机缩放和视觉验收边界。

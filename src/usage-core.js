@@ -31,6 +31,12 @@ import {
   streamClaudeSessionEvents,
 } from "./claude-code-usage.js";
 import {
+  parseWorkbuddySessions,
+  streamWorkbuddySessionEvents,
+  workbuddyHomeLooksUsable,
+  workbuddySessionFiles,
+} from "./workbuddy-usage.js";
+import {
   opencodeDatabaseFiles,
   opencodeHomeLooksUsable,
   opencodeSourceStat,
@@ -358,6 +364,16 @@ export async function classifyImportDirectory(importPath) {
     };
   }
 
+  // WorkBuddy 必须判在 Claude Code **之前**：`~/.workbuddy-ai/projects/<slug>/*.jsonl` 会被
+  // `claudeHomeLooksUsable` 的纯结构判据命中，靠内容（session-meta / function_call）才能区分。
+  // 但也不能挪到 Codex 之前的最前面：ZCode/DSH/OpenCode 的判据更具体，保持现有相对次序。
+  if (await workbuddyHomeLooksUsable(resolved)) {
+    return {
+      type: "workbuddy-home",
+      path: resolved,
+    };
+  }
+
   if (await claudeHomeLooksUsable(resolved)) {
     return {
       type: "claude-home",
@@ -393,7 +409,7 @@ export async function classifyImportDirectory(importPath) {
   return {
     type: "unsupported",
     path: resolved,
-    reason: `目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
+    reason: `目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home、WorkBuddy home，或包含 ${PROJECT_USAGE_DIR}/${PROJECT_USAGE_FILE}`,
   };
 }
 
@@ -624,6 +640,41 @@ export async function discoverClaudeHomes(options = {}) {
   return homes;
 }
 
+export async function discoverWorkbuddyHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const envHomes = options.extraWorkbuddyHomes || env.CODEX_USAGE_WORKBUDDY_HOMES || "";
+  const homes = [];
+  const seen = new Set();
+
+  if (env.CODEX_USAGE_WORKBUDDY === "0") {
+    return homes;
+  }
+
+  async function addHome(label, homePath) {
+    const resolved = path.resolve(homePath);
+    if (seen.has(resolved) || !(await workbuddyHomeLooksUsable(resolved))) {
+      return;
+    }
+    seen.add(resolved);
+    // 用量分散在 projects/**/*.jsonl（含按会话分目录的转录），不像 ZCode 那样有单一数据库。
+    homes.push({
+      id: sourceId("workbuddy", resolved),
+      label,
+      path: resolved,
+      kind: "workbuddy",
+    });
+  }
+
+  await addHome("Main WorkBuddy", path.join(homeDir, ".workbuddy-ai"));
+
+  for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
+    await addHome(`WorkBuddy ${path.basename(extraHome) || extraHome}`, extraHome);
+  }
+
+  return homes;
+}
+
 export async function discoverUsageSources(options = {}) {
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
@@ -659,6 +710,14 @@ export async function discoverUsageSources(options = {}) {
     }
     seenPaths.add(claudeHome.path);
     sources.push(claudeHome);
+  }
+
+  for (const workbuddyHome of await discoverWorkbuddyHomes(options)) {
+    if (seenPaths.has(workbuddyHome.path)) {
+      continue;
+    }
+    seenPaths.add(workbuddyHome.path);
+    sources.push(workbuddyHome);
   }
 
   for (const importDir of optionImportDirs(options)) {
@@ -734,6 +793,21 @@ export async function discoverUsageSources(options = {}) {
         label: `Claude Code ${path.basename(classified.path) || classified.path}`,
         path: classified.path,
         kind: "claude",
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "workbuddy-home") {
+      if (seenPaths.has(classified.path)) {
+        continue;
+      }
+      seenPaths.add(classified.path);
+      sources.push({
+        id: sourceId("workbuddy", classified.path),
+        label: `WorkBuddy ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "workbuddy",
         imported: true,
       });
       continue;
@@ -863,6 +937,17 @@ export async function buildUsageFingerprint(options = {}) {
       let sessionFiles;
       try {
         sessionFiles = await claudeSessionFiles(home.path);
+      } catch (error) {
+        hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
+        continue;
+      }
+      for (const file of sessionFiles) await addFile(file);
+      continue;
+    }
+    if (home.kind === "workbuddy") {
+      let sessionFiles;
+      try {
+        sessionFiles = await workbuddySessionFiles(home.path);
       } catch (error) {
         hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
         continue;
@@ -1774,6 +1859,10 @@ export async function streamUsageFileEvents(filePath, source, onEvent, options =
     await streamClaudeSessionEvents(filePath, source, onEvent, options);
     return;
   }
+  if (source.kind === "workbuddy") {
+    await streamWorkbuddySessionEvents(filePath, source, onEvent, options);
+    return;
+  }
   await streamSessionUsageFileEvents(filePath, source, onEvent, options);
 }
 
@@ -1862,6 +1951,43 @@ async function parseProjectUsageLogFileForIndex(filePath, source, intern, resolv
 async function parseClaudeForIndex(filePath, source, intern, resolveRepository, onWarning) {
   const events = [];
   await streamClaudeSessionEvents(
+    filePath,
+    source,
+    (event) => {
+      events.push({
+        t: event.timestampMs,
+        s: intern(event.sessionId),
+        h: intern(event.homeId),
+        l: intern(event.homeLabel),
+        c: intern(event.channel),
+        p: intern(event.project),
+        rk: intern(event.repositoryKey),
+        rp: intern(event.repositoryPath),
+        rt: intern(event.repositoryKind),
+        m: intern(event.model),
+        total: event.usage.total,
+        input: event.usage.input,
+        cached: event.usage.cached,
+        output: event.usage.output,
+        reasoning: event.usage.reasoning,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: intern(event.contextLevel),
+        serviceTier: intern(event.serviceTier),
+        priceVersion: intern(event.priceVersion),
+      });
+    },
+    { repositoryResolver: resolveRepository, onWarning },
+  );
+  return events;
+}
+
+async function parseWorkbuddyForIndex(filePath, source, intern, resolveRepository, onWarning) {
+  const events = [];
+  await streamWorkbuddySessionEvents(
     filePath,
     source,
     (event) => {
@@ -2921,6 +3047,23 @@ export async function buildUsageReport(options = {}) {
     }
 
     const threadNames = await readSessionThreadNames(home.path);
+    if (home.kind === "workbuddy") {
+      // ⚠️ 报告路径的事件形状与 store 路径**不同**：这里的 `total` 是**用量对象**（与
+      // parseClaudeSessions 同形），不是标量 —— 直接把流事件塞进 `events` 会让
+      // `summarizeUsage` 读不到 `event.total.total`。因此复用 `parseWorkbuddySessions` 的投影。
+      try {
+        const parsed = await parseWorkbuddySessions(home.path, home, {
+          repositoryResolver,
+          onWarning: (warning) => warnings.push(warning),
+        });
+        sessions.push(...parsed.sessions);
+        events.push(...parsed.events);
+      } catch (error) {
+        warnings.push(`无法解析 ${home.path}: ${error.message}`);
+      }
+      continue;
+    }
+
     const previousBySession = new Map();
     let files = [];
     try {
@@ -3055,6 +3198,21 @@ export async function buildUsageIndex(options = {}) {
     }
 
     const previousBySession = new Map();
+    if (home.kind === "workbuddy") {
+      for (const filePath of await workbuddySessionFiles(home.path)) {
+        try {
+          events.push(
+            ...(await parseWorkbuddyForIndex(filePath, home, interner.intern, repositoryResolver, (warning) =>
+              warnings.push(warning),
+            )),
+          );
+        } catch (error) {
+          warnings.push(`无法解析 ${filePath}: ${error.message}`);
+        }
+      }
+      continue;
+    }
+
     let files = [];
     try {
       files = await discoverSessionFiles(home.path);

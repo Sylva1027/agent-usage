@@ -440,7 +440,7 @@ test("列清单与 AO-1/AO-2 对照：映射表 = 计划 30 列 + diagnostic_rea
 // ★ A：新库与旧库升级都落到当前 schema（T1: v15）
 // ---------------------------------------------------------------------------
 
-test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 16", async () => {
+test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 17", async () => {
   const dir = await makeTempDir();
   try {
     const databaseFile = path.join(dir, "usage-index.sqlite");
@@ -448,8 +448,8 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
     store.close();
     const db = inspect(databaseFile);
     try {
-      assert.equal(userVersion(db), 16);
-      assert.equal(STORE_SCHEMA_VERSION, 16, "常量与实际落点必须一致");
+      assert.equal(userVersion(db), 17);
+      assert.equal(STORE_SCHEMA_VERSION, 17, "常量与实际落点必须一致");
       // 列：DDL 实际形状 = 冻结映射表。
       const columns = tableColumns(db, "perf_samples");
       assert.deepEqual(
@@ -476,7 +476,7 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
   }
 });
 
-test("★A v11 夹具路径：迁移到 16，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
+test("★A v11 夹具路径：迁移到 17，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
   try {
@@ -491,8 +491,8 @@ test("★A v11 夹具路径：迁移到 16，且 perf_samples 的表/索引定�
     const migratedDb = inspect(fixture.databaseFile);
     const freshDb = inspect(freshFile);
     try {
-      assert.equal(userVersion(migratedDb), 16, "v11 夹具迁移后必须是当前版本");
-      assert.equal(userVersion(freshDb), 16);
+      assert.equal(userVersion(migratedDb), 17, "v11 夹具迁移后必须是当前版本");
+      assert.equal(userVersion(freshDb), 17);
       assert.equal(objectDefinition(migratedDb, "perf_samples").type, "table");
       assert.equal(migratedDb.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 0);
 
@@ -511,7 +511,7 @@ test("★A v11 夹具路径：迁移到 16，且 perf_samples 的表/索引定�
         "外键与级联必须在 DDL 里（其生效由 ★C/★D 实测，不以文本为证据）",
       );
       // ③ 版本落点用字面量（不是常量拼接）：迁移段里不得出现 STORE_SCHEMA_VERSION 的插值。
-      assert.equal(userVersion(migratedDb), 16);
+      assert.equal(userVersion(migratedDb), 17);
     } finally {
       migratedDb.close();
       freshDb.close();
@@ -1118,7 +1118,7 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
         Number(after.prepare("SELECT COUNT(*) AS c FROM rate_limit_observations").get().c),
         snapshot.rateLimitsCount,
       );
-      assert.equal(userVersion(after), 16);
+      assert.equal(userVersion(after), 17);
       // 标脏只动 size/mtime_ms，不动 kind/home/路径等归属列。
       const rows = after
         .prepare("SELECT path, kind, home_id, home_label, home_path, indexed_at FROM source_files ORDER BY path")
@@ -1178,7 +1178,7 @@ test("★G 重复打开无害：版本仍 15、表与行数不变、且迁移的
 
     const second = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(second.database), 16, "第二次打开不得再抬版本");
+      assert.equal(userVersion(second.database), 17, "第二次打开不得再抬版本");
       assert.equal(objectDefinition(second.database, "perf_samples").sql, firstDdl, "DDL 不得被重写");
       assert.equal(second.database.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 1, "行数不得变");
       assert.deepEqual(second.perfSampleByKey(sample.sampleKey), sample, "行内容不得变");
@@ -1214,12 +1214,12 @@ test("★G 四类夹具都实测可达：空库 / 当前版本（v15） / v11 �
     // 夹具一：空库（version 0）。
     const emptyFile = path.join(freshDir, "empty.sqlite");
     const empty = await openStore(freshDir, emptyFile);
-    assert.equal(userVersion(empty.database), 16);
+    assert.equal(userVersion(empty.database), 17);
     empty.close();
 
     // 夹具二：v11 夹具迁移（同一份库连续打开三次，串行，避免双写连接互相争锁）。
     const migrated = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(migrated.database), 16);
+    assert.equal(userVersion(migrated.database), 17);
     assert.ok(objectDefinition(migrated.database, "perf_samples"));
     migrated.close();
 
@@ -1231,7 +1231,7 @@ test("★G 四类夹具都实测可达：空库 / 当前版本（v15） / v11 �
       probe.close();
     }
     const current = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(current.database), 16);
+    assert.equal(userVersion(current.database), 17);
     assert.deepEqual(
       sourceFilesFingerprint(current.database).map((row) => Number(row.size)),
       [777, 777],
@@ -1241,7 +1241,7 @@ test("★G 四类夹具都实测可达：空库 / 当前版本（v15） / v11 �
 
     // 夹具四：重开库 —— 同一实例关闭后再开（幂等）。
     const reopened = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(reopened.database), 16);
+    assert.equal(userVersion(reopened.database), 17);
     reopened.close();
   } finally {
     await cleanupDir(fixture.dir);
@@ -1293,7 +1293,7 @@ test("★H 迁移中途失败（触发器 ABORT 在标脏那一步）⇒ 回滚�
     // 同一份库重试：必须能成功迁移（失败不留死局）。
     const retry = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(retry.database), 16);
+      assert.equal(userVersion(retry.database), 17);
       assert.ok(objectDefinition(retry.database, "perf_samples"));
       assert.deepEqual(
         sourceFilesFingerprint(retry.database).map((row) => [String(row.path), Number(row.size)]),
@@ -1711,9 +1711,9 @@ function assertFourKindsEqual(actual, expected, label) {
 // 注册表：结构 / not_enabled / unsupported（gate E 的前半）
 // ---------------------------------------------------------------------------
 
-test("★E 注册表：M7 启用四类候选来源，project-log 为 unsupported", () => {
-  assert.deepEqual([...PERF_SOURCE_READERS.keys()], ["zcode", "dsh", "opencode", "codex"]);
-  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex"]);
+test("★E 注册表：M7 启用五类候选来源，project-log 为 unsupported", () => {
+  assert.deepEqual([...PERF_SOURCE_READERS.keys()], ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
+  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
 
   assert.deepEqual(resolvePerfSourceReader("zcode"), {
     kind: "zcode",

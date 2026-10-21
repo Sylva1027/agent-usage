@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildModelActivity } from "../public/pricing-models.js";
-import { pricingModelNoteParts } from "../public/app.js";
+import { HARNESS_ORDER, bucketForChannel, pricingModelNoteParts } from "../public/app.js";
+import { sourceGroup } from "../public/timeline-utils.js";
 import { getLocale, setLocale } from "../public/i18n.js";
 
 test("GPT-6.1 pricing notes distinguish the 500K Codex policy from the API tier in both languages", () => {
@@ -253,9 +254,9 @@ test("pricingHarnessRows keeps aliases visible and exposes missing and free usag
   }
 });
 
-test("空状态文案包含 DSH、OpenCode 与 Claude Code", () => {
+test("空状态文案包含 DSH、OpenCode、Claude Code 与 WorkBuddy", () => {
   const html = renderHomesHtml([]);
-  assert.match(html, /没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录/);
+  assert.match(html, /没有发现 Codex、ZCode、DSH、OpenCode、Claude Code 或 WorkBuddy 目录/);
 });
 
 test("claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode → Claude 的优先级认领", () => {
@@ -1780,4 +1781,19 @@ test("drawTimeline measures the canvas box once, before writing the backing stor
     delete globalThis.document;
     delete globalThis.getComputedStyle;
   }
+});
+
+test("WorkBuddy 归组：HARNESS_ORDER 六项，bucketForChannel 与 sourceGroup 都归 WorkBuddy", () => {
+  assert.equal(HARNESS_ORDER.length, 6);
+  assert.equal(HARNESS_ORDER.at(-1), "WorkBuddy");
+  assert.equal(bucketForChannel("WorkBuddy"), "WorkBuddy");
+  assert.equal(bucketForChannel("workbuddy-subagent"), "WorkBuddy");
+  assert.equal(sourceGroup("WorkBuddy", "workbuddy"), "WorkBuddy");
+  // channel 归一化兜底：home kind 缺失时也要归到 WorkBuddy。
+  assert.equal(sourceGroup("WorkBuddy", ""), "WorkBuddy");
+  // 既有五个来源的归组不变（回归）。
+  assert.equal(bucketForChannel("Claude Code"), "Claude");
+  assert.equal(sourceGroup("Claude Code", "claude"), "Claude");
+  assert.equal(bucketForChannel("ZCode"), "ZCode");
+  assert.equal(bucketForChannel("CLI"), "Codex");
 });

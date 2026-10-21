@@ -46,8 +46,9 @@ import { ZCODE_SELECT_COLUMNS } from "../src/perf-sources/zcode.js";
 const M34_BASE = 1_700_000_000_000;
 // 刻意**本地字面量**（不从 `src/usage-store.js` import）：这样"独立钉住当前 schema 版本"不会被
 // 变成"自我引用"（T1 把 13 → 14 时，这里必须被人**显式**改一次，改不动就是红灯）。
-// T1（handoffs/T1-design.md，C6 触发 + 用户批准）已把 STORE_SCHEMA_VERSION 抬到 16。
-const STORE_SCHEMA_VERSION = 16;
+// T1（handoffs/T1-design.md，C6 触发 + 用户批准）把 STORE_SCHEMA_VERSION 抬到 16；
+// WorkBuddy 接入（docs/plans/2026-10-21-workbuddy-implementation-plan.md）再抬到 17。
+const STORE_SCHEMA_VERSION = 17;
 
 /**
  * 建一个**能被真实 discovery 发现**的 zcode home。

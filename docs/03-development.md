@@ -33,7 +33,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `src/usage-core.js`：来源发现与分类、标准事件、内存报告、时间与周期统计。
 - `src/usage-store.js`：SQLite 增量索引、迁移、查询、元数据与限额聚合。
 - `src/usage-executor.js`：**唯一**持有 `DatabaseSync` 的 worker 执行器（2026-10-10 引入）；主线程只从它发布的读侧快照应答轻量端点。
-- `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`、`src/claude-code-usage.js`：各来源适配器。
+- `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`、`src/claude-code-usage.js`、`src/workbuddy-usage.js`：各来源适配器。
 - `src/repository-identity.js`、`src/service-tier-evidence.js`：仓库身份和服务档位证据。
 - `src/pricing.js`：有效价目、费用估算与不确定性标记。
 - `src/pricing-auto.js`、`src/pricing-store.js`：公开来源解析、刷新、发现、持久化与手动覆盖。

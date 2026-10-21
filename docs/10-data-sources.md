@@ -1,6 +1,6 @@
 # 数据来源与统计口径
 
-更新：2026-10-20。本文维护共同规则；各来源的字段映射分别见下方专题。
+更新：2026-10-21（新增 WorkBuddy 来源）。本文维护共同规则；各来源的字段映射分别见下方专题。
 
 ## 来源与导入
 
@@ -9,11 +9,14 @@
 - [DSH](data-sources/dsh.md)：默认 `~/.dsh`，读取 `sessions/<cwd-slug>/<sessionId>/session.v<N>.jsonl.zstd`。
 - [OpenCode](data-sources/opencode.md)：探测 `~/.local/share/opencode`、Windows APPDATA/LOCALAPPDATA 和 macOS Application Support 下的目录，再展开目录中的 `opencode*.db`。
 - [Claude Code](data-sources/claude-code.md)：默认 `~/.claude`（并发现 `CLAUDE_CONFIG_DIR`），读取 `projects/<cwd>/<sessionId>.jsonl` 与 `projects/<cwd>/<sessionId>/subagents/agent-*.jsonl`，按 `message.id` 去重。
+- [WorkBuddy](data-sources/workbuddy.md)：默认 `~/.workbuddy-ai`，读取 `projects/<cwd-slug>/<sessionId>.jsonl`，按 `providerData.messageId` 去重；响应时长另取 `traces/<pid>/trace_*.jsonl` 的 `generation` span。Auto（`model=default-model`）记录整体排除。
 - [项目日志](14-project-log.md)：导入包含 `.codex-usage/usage.jsonl` 的项目目录。
 
 看板导入的是 home、数据目录或项目目录，不直接导入单个数据库文件。显式导入目录先按 ZCode、DSH、OpenCode、Claude Code 的具体结构判定，再检查 Codex 和项目日志，避免同名 `sessions` 目录误判（`~/.claude/sessions/` 与 Codex 的 `sessions/` 同名，Claude 必须先判）。
 
-追加来源分别使用 `CODEX_USAGE_ZCODE_HOMES`、`CODEX_USAGE_DSH_HOMES`、`CODEX_USAGE_OPENCODE_HOMES`、`CODEX_USAGE_CLAUDE_HOMES`；多个路径使用系统分隔符（Windows `;`，macOS/Linux `:`）。设置 `CODEX_USAGE_ZCODE=0`、`CODEX_USAGE_DSH=0`、`CODEX_USAGE_OPENCODE=0`、`CODEX_USAGE_CLAUDE=0` 可关闭对应的自动发现；显式导入是独立路径，不能把这些开关当成禁止导入策略。`CODEX_USAGE_IMPORT_DIRS` 可提供额外导入目录。
+WorkBuddy 的判定必须排在 Claude Code 之前：两者都是 `projects/<cwd-slug>/<sessionId>.jsonl` 结构，只能按内容区分。探测只看最多 3 个会话文件的前 64 KiB，出现 `"type":"session-meta"` 或 `"type":"function_call"` 即判为 `workbuddy-home`；目录形状相同但内容不符时仍按 Claude Code 判定。
+
+追加来源分别使用 `CODEX_USAGE_ZCODE_HOMES`、`CODEX_USAGE_DSH_HOMES`、`CODEX_USAGE_OPENCODE_HOMES`、`CODEX_USAGE_CLAUDE_HOMES`、`CODEX_USAGE_WORKBUDDY_HOMES`；多个路径使用系统分隔符（Windows `;`，macOS/Linux `:`）。设置 `CODEX_USAGE_ZCODE=0`、`CODEX_USAGE_DSH=0`、`CODEX_USAGE_OPENCODE=0`、`CODEX_USAGE_CLAUDE=0`、`CODEX_USAGE_WORKBUDDY=0` 可关闭对应的自动发现；显式导入是独立路径，不能把这些开关当成禁止导入策略。`CODEX_USAGE_IMPORT_DIRS` 可提供额外导入目录。
 
 ## 统一事件口径
 
@@ -27,7 +30,7 @@ DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都�
 
 ## 历史输出吞吐（TPS）
 
-TPS 是基于历史结构化记录的输出吞吐统计，不是 TTFT，也不是只计算模型解码阶段的速度。单样本按 `outputTokens * 1000 / durationMs` 计算；ZCode、DSH、OpenCode 使用请求端到端时长，计入记录所覆盖的请求等待时间。Codex 只提供带 `item_span_estimate` 标签的轮级 item 时窗估算，不冒充请求 wall-clock 时长。
+TPS 是基于历史结构化记录的输出吞吐统计，不是 TTFT，也不是只计算模型解码阶段的速度。单样本按 `outputTokens * 1000 / durationMs` 计算；ZCode、DSH、OpenCode 使用请求端到端时长，计入记录所覆盖的请求等待时间。Codex 只提供带 `item_span_estimate` 标签的轮级 item 时窗估算，不冒充请求 wall-clock 时长。WorkBuddy 的时长来自 trace 中 `span.type = "generation"`、`status = "ok"` 的 `duration`（毫秒），属于来源显式给出的请求端到端时长（`timingSource = "explicit"`），不是从相邻事件时间差反推的估算。
 
 统计内核版本为 `tps-v1`。来源、来源实例、渠道、代理类别/名称、模型、provider、effort、计时方法、token 范围和窗口口径共同决定分组；不同口径不会合并。组内报告最近秩 p10/p50/p90（p10 较慢、p90 较快）、样本数 `n`、时长分位数和 pooled TPS（样本输出 token 总和除以时长总和）。`n < 20` 仍展示统计但不参与排名；溢出时不伪造数值。样本只取已完成且输出 token 与时长均为正的候选；长时窗和估算是提示标记，不单独作为剔除理由。
 
@@ -39,21 +42,23 @@ coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplac
 
 普通今日、本周、本月、全部、自定义日期和普通最近范围统计所有已选来源。`5h / week` 限额按钮以及“上一个 5h”“上周”只统计 Codex 来源；边界来自实际限额观察值，缺失时不猜测。
 
-限额能力依据来源 kind 判断，不依据渠道显示名称。项目日志即使把 `channel` 写成 Codex，也不会因此获得 Codex 限额资格。ZCode、DSH、OpenCode 和 Claude Code 不参与 Codex 限额窗口。
+限额能力依据来源 kind 判断，不依据渠道显示名称。项目日志即使把 `channel` 写成 Codex，也不会因此获得 Codex 限额资格。ZCode、DSH、OpenCode、Claude Code 和 WorkBuddy 不参与 Codex 限额窗口。
 
 ## 渠道展示与归组
 
-普通范围将 Codex Desktop、Editor Integration、CLI、Codex Exec、codex_work_desktop 归入 Codex，ZCode Subagent 归入 ZCode，DSH Subagent 归入 DSH，OpenCode 保持独立，Claude Code 与 Claude Code Subagent 归入 Claude。来源 kind/homeId 的证据优先，明确旧标签作兼容回退；未知自定义渠道没有来源证据时保留原名。当前和上一完整 Codex 5h/7d 限额范围保留原渠道。
+普通范围将 Codex Desktop、Editor Integration、CLI、Codex Exec、codex_work_desktop 归入 Codex，ZCode Subagent 归入 ZCode，DSH Subagent 归入 DSH，OpenCode 保持独立，Claude Code 与 Claude Code Subagent 归入 Claude，WorkBuddy 归入 WorkBuddy。来源 kind/homeId 的证据优先，明确旧标签作兼容回退；未知自定义渠道没有来源证据时保留原名。当前和上一完整 Codex 5h/7d 限额范围保留原渠道。
 
 归组在汇总与时间线展示时完成，不改写事件 channel；计价继续使用原始标签。合并会话按唯一 ID 去重，不直接相加分渠道会话数。内存报告、SQLite 与浏览器纯统计共用 timeline-utils 中的归组规则。
 
 ## 增量索引与版本
 
-默认索引位于 `~/.codex-usage/usage-index.sqlite`。JSONL/zstd 按文件大小和修改时间检测变化；ZCode/OpenCode 的指纹包含主库和 `-wal`。DSH 按日志文件展开，OpenCode 按数据目录下的多个数据库展开，Claude Code 按 `projects/**/*.jsonl`（含 subagents）展开。
+默认索引位于 `~/.codex-usage/usage-index.sqlite`。JSONL/zstd 按文件大小和修改时间检测变化；ZCode/OpenCode 的指纹包含主库和 `-wal`。DSH 按日志文件展开，OpenCode 按数据目录下的多个数据库展开，Claude Code 按 `projects/**/*.jsonl`（含 subagents）展开，WorkBuddy 按 `projects/**/*.jsonl`（跳过 `tool-results/`）展开。
 
-变化来源通过 `replaceFile` 替换对应事件，未变化来源保留索引。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
+变化来源通过 `replaceFile` 替换对应事件，未变化来源保留索引。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude、WorkBuddy 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
 
-当前 `STORE_SCHEMA_VERSION` 为 16（2026-10-20 快照）。11→12 增加 TPS 样本表，12→13 增加 Codex rollout 依赖索引，13→14 增加 Codex 投影表，14→15 登记 Claude Code 来源（表结构不变，只抬版本号），15→16 把 Claude Code 的模型身份改为线路模型并只标脏 `kind = 'claude'` 重扫；相应迁移按来源标记文件待重扫，保留现有用量表并在事务中升级。DSH 历史迁移仍先使 DSH 指纹失效，以重新归一化非零缓存写入。升级不要求手动删除真实索引或改写原始日志；TPS 首次接入也不把来源正文写入索引。
+WorkBuddy 的响应时长表不随会话文件变化：`sync` 每轮对每个 WorkBuddy home 先扫一遍 trace 目录，用进程内的文件指纹（大小 + 修改时间）跳过未变化的 trace，再一次性写入 `workbuddy_generation_durations`。预扫发生在 `replaceFile` 事务之外，因此不会把 `await` 拉进写事务。
+
+当前 `STORE_SCHEMA_VERSION` 为 17（2026-10-21 快照）。11→12 增加 TPS 样本表，12→13 增加 Codex rollout 依赖索引，13→14 增加 Codex 投影表，14→15 登记 Claude Code 来源（表结构不变，只抬版本号），15→16 把 Claude Code 的模型身份改为线路模型并只标脏 `kind = 'claude'` 重扫，16→17 登记 WorkBuddy 来源并新建响应时长表 `workbuddy_generation_durations`（表内以 `message_id` 为主键，幂等写入，不改既有用量表，也**不标脏**任何既有文件：新来源没有旧行，回填由首次 sync 自然触发）；相应迁移按来源标记文件待重扫，保留现有用量表并在事务中升级。DSH 历史迁移仍先使 DSH 指纹失效，以重新归一化非零缓存写入。升级不要求手动删除真实索引或改写原始日志；TPS 首次接入也不把来源正文写入索引。
 
 ## 读取与数据边界
 

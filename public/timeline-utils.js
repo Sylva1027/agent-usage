@@ -8,12 +8,14 @@ export function sourceGroup(channel, kind = "") {
   if (homeKind === "dsh") return "DSH";
   if (homeKind === "opencode") return "OpenCode";
   if (homeKind === "claude") return "Claude";
+  if (homeKind === "workbuddy") return "WorkBuddy";
   const name = String(channel || "Unknown");
   const normalized = name.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (["zcode", "zcode subagent"].includes(normalized)) return "ZCode";
   if (["dsh", "dsh subagent"].includes(normalized)) return "DSH";
   if (normalized === "opencode") return "OpenCode";
   if (["claude", "claude code", "claude code subagent"].includes(normalized)) return "Claude";
+  if (normalized === "workbuddy") return "WorkBuddy";
   if (
     [
       "codex",

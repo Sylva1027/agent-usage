@@ -105,10 +105,18 @@ export const PERF_SOURCE_SEMANTICS = Object.freeze({
     timingKind: "item_span_estimate",
     tokenScope: "reported_output_includes_reasoning",
   }),
+  // WorkBuddy：一次模型响应 = 一个 request 窗口，时长取自 trace 里 `generation` span 的
+  // `duration`（**直接观测值**，不是时间戳相减）⇒ `timingKind` 用 `request_e2e`，
+  // reader 的 `timingSource` 必须是 `explicit`。`outputTokens` 含 reasoning。
+  workbuddy: Object.freeze({
+    window: "request",
+    timingKind: "request_e2e",
+    tokenScope: "reported_output_includes_reasoning",
+  }),
 });
 
 /** Canonical perf source kinds. Anything else is `unsupported`. */
-export const PERF_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "codex"]);
+export const PERF_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "codex", "workbuddy"]);
 
 /** The only accepted §17.1 `status` values. */
 export const PERF_STATUSES = Object.freeze(["completed", "failed", "cancelled", "in_progress", "unverified"]);
@@ -296,12 +304,12 @@ export function perfFlagNamesOf(mask) {
  * anything unknown are `unsupported`. The input value is never mutated: raw kinds stay
  * available to source discovery and quota eligibility.
  * @param {unknown} kind
- * @returns {"zcode" | "dsh" | "opencode" | "codex" | "unsupported"}
+ * @returns {"zcode" | "dsh" | "opencode" | "codex" | "workbuddy" | "unsupported"}
  */
 export function canonicalPerfSourceKind(kind) {
   const value = typeof kind === "string" ? kind.trim() : "";
   if (value === "main" || value === "jetbrains" || value === "extra" || value === "codex") return "codex";
-  if (value === "zcode" || value === "dsh" || value === "opencode") return value;
+  if (value === "zcode" || value === "dsh" || value === "opencode" || value === "workbuddy") return value;
   return "unsupported";
 }
 
@@ -528,6 +536,7 @@ function resolvePerfSampleKey(sourceKind, raw) {
   if (sourceKind === "dsh") return perfSampleKey(sourceKind, raw.homeId, raw.sessionId, raw.turn, raw.step);
   if (sourceKind === "codex") return perfSampleKey(sourceKind, raw.homeId, raw.threadId, raw.turnId);
   if (sourceKind === "opencode") return perfSampleKey(sourceKind, raw.homeId, raw.databaseIdentity, raw.messageId);
+  if (sourceKind === "workbuddy") return perfSampleKey(sourceKind, raw.homeId, raw.messageId);
   return null;
 }
 

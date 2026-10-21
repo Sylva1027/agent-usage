@@ -18,6 +18,7 @@ import { canonicalPerfSourceKind, normalizePerfSample, PERF_SOURCE_KINDS } from 
 import { streamZcodePerfSamples } from "./zcode.js";
 import { streamDshPerfSamples } from "./dsh.js";
 import { streamOpencodePerfSamples } from "./opencode.js";
+import { streamWorkbuddyPerfSamples } from "./workbuddy.js";
 
 // Codex candidates must be folded across every rollout in a thread. This sentinel
 // keeps it enabled for source classification while rejecting accidental per-file use.
@@ -48,6 +49,7 @@ export const PERF_SOURCE_READERS = new Map(
     ["dsh", streamDshPerfSamples],
     ["opencode", streamOpencodePerfSamples],
     ["codex", rejectCodexFileDispatch],
+    ["workbuddy", streamWorkbuddyPerfSamples],
   ]),
 );
 
@@ -124,7 +126,7 @@ export function classifyPerfSources(sources) {
  * @param {string} filePath
  * @param {{ id?: unknown, path?: unknown, kind?: unknown, label?: unknown }} source
  * @param {(sample: any) => void} onSample
- * @param {{ onWarning?: (warning: any) => void }} [options]
+ * @param {{ onWarning?: (warning: any) => void, lookupGenerationDuration?: (messageId: string) => any }} [options]
  */
 export async function streamPerfSamplesForFile(filePath, source, onSample, options = {}) {
   const { kind, state, reader } = resolvePerfSourceReader(source?.kind);
@@ -152,6 +154,9 @@ export async function streamPerfSamplesForFile(filePath, source, onSample, optio
         warnings.push(warning);
         if (staged === null) options.onWarning?.(warning);
       },
+      // WorkBuddy：时长不在会话转录里，由 store 从 `workbuddy_generation_durations` 查表提供。
+      // 其它 reader 忽略这个字段（各自的时间戳/时长语义与它无关）。
+      lookupGenerationDuration: options.lookupGenerationDuration,
     },
   );
   if (staged !== null) {

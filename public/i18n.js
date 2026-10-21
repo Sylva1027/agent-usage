@@ -314,8 +314,8 @@ const ENGLISH = new Map(
     无用量记录: "No usage found",
     可扫描: "Ready to scan",
     没有可统计的来源: "No sources available",
-    "没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录":
-      "No Codex, ZCode, DSH, OpenCode, or Claude Code directories found",
+    "没有发现 Codex、ZCode、DSH、OpenCode、Claude Code 或 WorkBuddy 目录":
+      "No Codex, ZCode, DSH, OpenCode, Claude Code, or WorkBuddy directories found",
     移除: "Remove",
     不计入统计: "Excluded from totals",
     切换自动刷新: "Toggle auto refresh",
@@ -356,8 +356,8 @@ const ENGLISH = new Map(
     "同一观察时刻存在相互冲突的限额重置时间。": "Conflicting reset times were recorded at the same observation time.",
     "尚未发现当前限额窗口的 Codex 记录。": "No Codex record was found for the current limit window.",
     "限额窗口边界无效。": "The limit window boundaries are invalid.",
-    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home，或包含 .codex-usage/usage.jsonl":
-      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, or a project containing .codex-usage/usage.jsonl.",
+    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home、WorkBuddy home，或包含 .codex-usage/usage.jsonl":
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, a WorkBuddy home, or a project containing .codex-usage/usage.jsonl.",
   }),
 );
 
@@ -656,7 +656,7 @@ export function localizeServerError(body, status = 0, locale = activeLocale) {
     QUOTA_WINDOW_UNAVAILABLE: "This limit window is not available yet.",
     SNAPSHOT_EXPIRED: "This snapshot has expired.",
     INVALID_IMPORT_DIRECTORY:
-      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, or a project with a usage log.",
+      "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, a WorkBuddy home, or a project with a usage log.",
     INVALID_PRICING: "Check the pricing rates and exchange rate, then try again.",
   };
   if (body?.code && known[body.code]) return known[body.code];

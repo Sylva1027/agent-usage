@@ -86,7 +86,7 @@ test("translated dashboard copy preserves cost and limit semantics", () => {
   );
   assert.equal(
     localizeServerError({ code: "INVALID_IMPORT_DIRECTORY", error: "中文原因" }, 400, "en-US"),
-    "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, or a project with a usage log.",
+    "Choose a Codex, ZCode, or DSH home directory, an OpenCode data directory, a Claude Code home, a WorkBuddy home, or a project with a usage log.",
   );
 });
 
@@ -766,4 +766,17 @@ test("unclassifiable or oversized mutation batches fall back to a whole-page tra
     setLocale("zh-CN", { persist: false });
     restoreDomGlobals(previous);
   }
+});
+
+test("目录提示文案在两种语言里都包含 WorkBuddy", () => {
+  const emptyState = "没有发现 Codex、ZCode、DSH、OpenCode、Claude Code 或 WorkBuddy 目录";
+  const english = localizeText(emptyState, "en-US");
+  assert.match(english, /WorkBuddy/);
+  assert.equal(localizeText(emptyState, "zh-CN"), emptyState);
+
+  const reason =
+    "目录需要是 Codex home、ZCode home、DSH home、OpenCode 数据目录、Claude Code home、WorkBuddy home，或包含 .codex-usage/usage.jsonl";
+  const reasonEn = localizeText(reason, "en-US");
+  assert.match(reasonEn, /WorkBuddy home/);
+  assert.notEqual(reasonEn, reason, "英文文案必须真的翻译过，而不是原样返回中文");
 });

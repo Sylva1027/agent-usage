@@ -1,6 +1,16 @@
 # 任务清单
 
-更新：2026-10-20（新增 Claude Code 数据源）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-21（WorkBuddy 数据源已实施）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+
+## 当前：WorkBuddy 数据源
+
+状态：**已实现，本机真实来源已验收（2026-10-21）**。规格见[WorkBuddy 数据源](data-sources/workbuddy.md)，评估与施工入口见[接入计划](plans/2026-10-21-workbuddy-source-plan.md)与[实施计划](plans/2026-10-21-workbuddy-implementation-plan.md)，证据见[验收记录](validation/2026-10-21-workbuddy-implementation/README.md)。
+
+- 适配器 `src/workbuddy-usage.js`：`~/.workbuddy-ai/projects/<cwd-slug>/<sessionId>.jsonl`，按 `providerData.messageId` 去重；Auto（`model=default-model` 或 `requestModelName=auto`）整体排除，不计 token/费用/TPS。输入语义与 Claude Code 相反——`inputTokens` 已含缓存、`outputTokens` 已含推理，直接按超集口径映射，不做二次相加。
+- 响应时长：`traces/<pid>/trace_*.jsonl` 中 `span.type = "generation"` 且 `status = "ok"` 的 `duration`（毫秒），用 `toolOutput[0].id` 关联 `messageId`；持久化到新表 `workbuddy_generation_durations`（`capture_version = workbuddy.trace.v1`）。
+- 接线：`usage-core` 发现/分类/指纹/分派/报告/索引（内容判定必须排在 Claude Code 之前，两者目录形状相同）；`usage-store` schema 16→17、`usageFiles`、`harnessModels.WorkBuddy`；`perf-stats` 语义与 sampleKey（`["workbuddy", homeId, messageId]`）；`perf-sources` 注册；`server` 导入标签；前端 `sourceGroup` / `HARNESS_ORDER` / `bucketForChannel` / 限额排除 / i18n。
+- 验证：新增 4 个测试文件 50 项（适配器 15、接线 13、索引 13、TPS 9）全绿；三路一致（内存 / SQLite / HTTP `/api/usage`）与真机冒烟结果见验收记录。真机 `~/.workbuddy-ai`：446 条事件 / 3 会话 / 69.98M 输入 / 281.6K 输出 / 446 个 TPS 样本，零告警，第二轮 `updatedFileCount = 0`。
+- 残留边界：trace 只保留约 30 天，超窗记录没有时长，TPS 会少样本并以「N 个响应缺少 generation 时长」提示；会话文件被上游清理时看板同步删除对应历史（与 Codex 不同）。`perfSamples` 可能略多于事件数，因为 trace 表里会留下已被裁剪会话的 span。
 
 ## 当前：Claude Code 数据源
 
@@ -30,7 +40,7 @@
 
 **界面后续：** 用户于2026-10-08否决原入口与信息布局，已选独立模型吞吐区域。[重构方案与交互原型](plans/2026-10-08-tps-ui-restructure.md)已完成，具体布局待用户审阅；正式页面尚未替换。下列 G4 结果保留原受测版本归属，不表示用户接受原 UI，也不覆盖新界面。
 
-状态：**功能已实现，M0–M8 收口，M8.3与TPS G4于2026-10-08通过最终独立审核**，见[主审裁定](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)。规格入口为[模型输出吞吐指标（TPS）计划](plans/2026-10-03-model-latency-throughput-plan.md)，实现细节见[来源与统计口径](10-data-sources.md)、来源专题与[看板行为](12-dashboard.md)。功能按来源、代理、模型展示 p10/p50/p90、样本量与覆盖率；ZCode/DSH/OpenCode 使用请求端到端时长，Codex 单列轮级 item 时窗估算；不交付 TTFT。
+状态：**功能已实现，M0–M8 收口，M8.3与TPS G4于2026-10-08通过最终独立审核**，见[主审裁定](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)。规格入口为[模型输出吞吐指标（TPS）计划](plans/2026-10-03-model-latency-throughput-plan.md)，实现细节见[来源与统计口径](10-data-sources.md)、来源专题与[看板行为](12-dashboard.md)。功能按来源、代理、模型展示 p10/p50/p90、样本量与覆盖率；ZCode/DSH/OpenCode 使用请求端到端时长，Codex 单列轮级 item 时窗估算，WorkBuddy 用 trace 中 generation span 的显式 `duration`（同为请求端到端，`timingSource = "explicit"`）；不交付 TTFT。
 
 实施计划原地标完成并保留链接。M8.2已关闭真实Codex覆盖缺口，修复前四文件拒绝不能恢复成当前阻塞；后续CLI增量由主审定向复核覆盖，没有回滚其它任务。可靠归属坏线程隔离/degraded、Codex SQLite未启用、历史全仓两项symlink跳过继续保留，不扩写为未实现TPS或全仓重新通过。验收绑定报告中的受测摘要，不提前覆盖其它线程未来变更。入口：[M8 总览](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.md)、[最终审核包](validation/2026-10-04-perf-metrics/20261004T035100/final-audit.md)。
 

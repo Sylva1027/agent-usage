@@ -29,7 +29,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 
 ## 现行专题
 
-- [10 数据来源与统计口径](10-data-sources.md)：发现、导入、索引、范围、隐私与 TPS；各来源细节见 [Codex](data-sources/codex.md)、[ZCode](data-sources/zcode.md)、[DSH](data-sources/dsh.md)、[OpenCode](data-sources/opencode.md)、[Claude Code](data-sources/claude-code.md)。
+- [10 数据来源与统计口径](10-data-sources.md)：发现、导入、索引、范围、隐私与 TPS；各来源细节见 [Codex](data-sources/codex.md)、[ZCode](data-sources/zcode.md)、[DSH](data-sources/dsh.md)、[OpenCode](data-sources/opencode.md)、[Claude Code](data-sources/claude-code.md)、[WorkBuddy](data-sources/workbuddy.md)。
 - [11 计价与自动更新](11-pricing.md)：模型解析、免费/缺价、缓存场景、来源更新、手动覆盖与汇率。
 - [12 看板行为](12-dashboard.md)：周期、排序、刷新、语言、主题、角色和聚光。
 - [14 项目日志接入](14-project-log.md)：其他项目的 JSONL 字段、语义与最小校验。
@@ -42,6 +42,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 - [皮肤配色当前代码重新验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)：十套 900/900、关键几何 120/120、20 图 dense-data 复查及 classic、五款 picker、在线冻结通过；整体 `incomplete`，真实 OS 缩放/browser zoom 未测，+16px 大视口高度差单列保留。旧 production CLI 绑定旧迁移来源，不能作为本轮通过门禁。
 - [皮肤配色 M5.2.C-D8u28-R4 固定夹具验证](validation/2026-10-03-skin-palette-redesign/20261003T185748/handoffs/M5.2.C-D8u28-R4-fixed-fixtures.md)：31 条几何前提、G1–G11 和三个守卫通过；R1 的采样裁切断言疑似混用滚动前后坐标，完整验收保持 `NEEDS_REVIEW`。
 - [看板刷新性能修复最终报告](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/FINAL-REPORT.md)：逐卡交付/证据路径/复跑命令/未达标清单/已知限制；证据树唯一权威入口是同目录 [README.md](validation/2026-10-09-refresh-performance-fix/2026-10-09T0525+0800/README.md)（主审账本）。
+- [WorkBuddy 数据源验收](validation/2026-10-21-workbuddy-implementation/README.md)：适配器、接线、索引与 TPS 全部落地；三路一致与真机 446 事件 / 446 TPS 样本通过。
 - [旧导出清理验收](validation/2026-10-03-export-removal/README.md)：清理后在线冻结、导入、计价和皮肤回归。
 - [v0.7.0 发布验收](validation/2026-10-21-release/README.md)：来源、配色、刷新恢复及 README 示例图。
 - [v0.6.0 发布验收](validation/2026-10-03-release/README.md)：该次发布的五款皮肤与原在线/离线范围。

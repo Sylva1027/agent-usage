@@ -2774,7 +2774,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
 export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } = {}) {
   // Render paths and labels as escaped text because they may come from imported logs.
   if (!homes.length) {
-    return `<div class="empty">没有发现 Codex、ZCode、DSH、OpenCode 或 Claude Code 目录</div>`;
+    return `<div class="empty">没有发现 Codex、ZCode、DSH、OpenCode、Claude Code 或 WorkBuddy 目录</div>`;
   }
   const excluded = new Set(excludedIds || []);
   return homes
@@ -2817,15 +2817,16 @@ function renderHomes(homes, options = {}) {
 }
 
 // harness 归组顺序。Codex 优先，便于 gpt 系模型归到最相关一侧。
-const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude"];
+export const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy"];
 
-/** 渠道名 → harness 桶名。ZCode、DSH、OpenCode 与 Claude 都用自己的渠道前缀，其余归 Codex。 */
-function bucketForChannel(channel) {
+/** 渠道名 → harness 桶名。ZCode、DSH、OpenCode、Claude 与 WorkBuddy 都用自己的渠道前缀，其余归 Codex。 */
+export function bucketForChannel(channel) {
   const name = String(channel || "").toLowerCase();
   if (name.startsWith("zcode")) return "ZCode";
   if (name.startsWith("dsh")) return "DSH";
   if (name.startsWith("opencode")) return "OpenCode";
   if (name.startsWith("claude")) return "Claude";
+  if (name.startsWith("workbuddy")) return "WorkBuddy";
   return "Codex";
 }
 
