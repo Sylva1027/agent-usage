@@ -217,6 +217,48 @@ test("W4-b1 · D1 · 有界：字节上限逐出最旧条目、轮内放宽到 1
   assert.equal(many.stats().evictions, 6);
 });
 
+test("W4-b1 · D1 · FIFO cursor survives empty byte eviction, clear, and both eviction loops", () => {
+  const byteToEmpty = createBoundedKeyMemo({
+    keyOf: (input) => `b${input}`,
+    maxBytes: 5,
+    hardMaxBytes: 5,
+    valueBytes: () => 4,
+  });
+  for (let index = 0; index < 4; index += 1) byteToEmpty.get(index, () => index);
+  assert.equal(byteToEmpty.size(), 0, "每次 6 B 插入都因 5 B 上限逐出到空");
+  assert.equal(byteToEmpty.stats().evictions, 4);
+  assert.equal(byteToEmpty.retainedBytes(), 0);
+
+  const cleared = createBoundedKeyMemo({
+    keyOf: (input) => `c${input}`,
+    maxBytes: 100,
+    maxEntries: 2,
+    valueBytes: () => 0,
+  });
+  for (let index = 0; index < 3; index += 1) cleared.get(index, () => index);
+  cleared.clear("iterator-write");
+  for (let index = 3; index < 6; index += 1) cleared.get(index, () => index);
+  assert.equal(cleared.has(3), false);
+  assert.equal(cleared.has(4), true);
+  assert.equal(cleared.has(5), true);
+  assert.equal(cleared.stats().clears, 1);
+  assert.equal(cleared.stats().evictions, 2);
+
+  const bothLoops = createBoundedKeyMemo({
+    keyOf: (input) => `d${input}`,
+    maxBytes: 4,
+    hardMaxBytes: 4,
+    maxEntries: 1,
+    valueBytes: (value) => (value === 2 ? 1 : 0),
+  });
+  for (let index = 0; index < 3; index += 1) bothLoops.get(index, () => index);
+  assert.equal(bothLoops.has(0), false);
+  assert.equal(bothLoops.has(1), false);
+  assert.equal(bothLoops.has(2), true);
+  assert.equal(bothLoops.retainedBytes(), 3);
+  assert.equal(bothLoops.stats().evictions, 2);
+});
+
 test("W4-b1 · D1 · 失效契约：clear() 计数与原因；价目版本进入键（换价目 ⇒ 不命中）", async () => {
   const memo = createEventCostMemo();
   memo.estimate(BASE_EVENT);

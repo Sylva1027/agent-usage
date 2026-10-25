@@ -16,6 +16,7 @@ import {
   LONG_CONTEXT_INPUT_THRESHOLD,
 } from "../src/pricing.js";
 import { loadPricingFile } from "../src/pricing-store.js";
+import { isCodexAutoReview } from "../public/pricing-models.js";
 
 test("API cost estimate prices uncached input, cached input, and output separately", () => {
   const estimate = estimateCostForEvents([
@@ -804,4 +805,165 @@ test("模型索引按 models 对象身份缓存：改键集合后立即命中，
   assert.ok(reset.unpricedReasons.includes("unknown-model-price-minimum-scenario"));
   // 内置模型在 reset 后仍按内置价目计价（复活的索引没有指向被替换的目录）。
   assert.equal(estimateEventCost({ ...base, model: "gpt-6-sol" }).pricingStatus, "estimated");
+});
+
+function minimumRatesOracle(catalog, contextLevel, currency) {
+  const fields = ["input", "cachedInput", "cacheWrite", "output"];
+  const contexts = contextLevel === "unknown" ? ["short", "long"] : [contextLevel];
+  const candidates = Object.entries(catalog.models)
+    .filter(([model, entry]) => !isCodexAutoReview(model) && (entry.currency || "USD") === currency)
+    .flatMap(([, entry]) => contexts.map((context) => entry[context]).filter(Boolean))
+    .filter((rates) => fields.some((field) => rates[field] > 0));
+  if (!candidates.length) return null;
+  return Object.fromEntries(fields.map((field) => [field, Math.min(...candidates.map((rates) => rates[field]))]));
+}
+
+function setCurrencyRates(catalog, currency, short, long = short) {
+  for (const entry of Object.values(catalog.models)) {
+    if ((entry.currency || "USD") !== currency) continue;
+    entry.short = { ...short };
+    entry.long = { ...long };
+  }
+  return catalog;
+}
+
+function unknownMinimumEvent(channel = "CLI", contextLevel = "short") {
+  return {
+    model: "zz-minimum-rates-probe",
+    channel,
+    contextLevel,
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10, reasoning: 0 },
+  };
+}
+
+function unknownMinimumUsd(rates) {
+  return (80 * rates.input + 20 * rates.cachedInput + 10 * rates.output) / 1_000_000;
+}
+
+test("未知模型完整计价与独立最低费率 oracle 一致", () => {
+  const catalog = getPricingCatalog();
+  catalog.checkedAt = "2026-10-23";
+  const rates = { input: 10, cachedInput: 1, cacheWrite: 0, output: 20 };
+  setCurrencyRates(catalog, "USD", rates);
+
+  try {
+    setPricingCatalog(catalog);
+    const active = getPricingCatalog();
+    const actual = estimateEventCost(unknownMinimumEvent());
+    const oracle = minimumRatesOracle(active, "short", "USD");
+    assert.deepEqual(oracle, rates);
+    assert.deepEqual(actual, {
+      model: "zz-minimum-rates-probe",
+      currency: "USD",
+      priceVersion: active.version,
+      priceSource: "",
+      serviceTier: "standard",
+      contextLevel: "short",
+      inputUsd: (80 * rates.input) / 1_000_000,
+      cachedInputUsd: (20 * rates.cachedInput) / 1_000_000,
+      cacheWriteInputUsd: 0,
+      outputUsd: (10 * rates.output) / 1_000_000,
+      totalUsd: unknownMinimumUsd(rates),
+      pricedTokens: 110,
+      unpricedTokens: 0,
+      minimumEstimatedTokens: 110,
+      minimumRateModels: ["zz-minimum-rates-probe"],
+      unpricedModels: [],
+      unpricedReasons: ["unknown-model-price-minimum-scenario"],
+      serviceTierUnknownTokens: 0,
+      contextUnknownTokens: 0,
+      cacheWriteUnknownTokens: 0,
+      pricingStatus: "minimum-estimate",
+    });
+  } finally {
+    resetPricingCatalog();
+  }
+});
+
+test("最低费率缓存随同日期价目替换及 A→B→A 正确失效", () => {
+  const base = getPricingCatalog();
+  base.checkedAt = "2026-10-23";
+  const catalogA = setCurrencyRates(
+    setCurrencyRates(
+      structuredClone(base),
+      "USD",
+      { input: 10, cachedInput: 1, cacheWrite: 0, output: 20 },
+      {
+        input: 20,
+        cachedInput: 2,
+        cacheWrite: 0,
+        output: 40,
+      },
+    ),
+    "CNY",
+    { input: 30, cachedInput: 3, cacheWrite: 0, output: 60 },
+    { input: 40, cachedInput: 4, cacheWrite: 0, output: 80 },
+  );
+  const catalogB = setCurrencyRates(
+    setCurrencyRates(
+      structuredClone(base),
+      "USD",
+      { input: 50, cachedInput: 5, cacheWrite: 0, output: 100 },
+      {
+        input: 60,
+        cachedInput: 6,
+        cacheWrite: 0,
+        output: 120,
+      },
+    ),
+    "CNY",
+    { input: 70, cachedInput: 7, cacheWrite: 0, output: 140 },
+    { input: 80, cachedInput: 8, cacheWrite: 0, output: 160 },
+  );
+  const events = [
+    unknownMinimumEvent("CLI", "short"),
+    unknownMinimumEvent("CLI", "long"),
+    unknownMinimumEvent("ZCode", "short"),
+    unknownMinimumEvent("ZCode", "long"),
+  ];
+  const expectedTotals = (catalog) =>
+    events.map((event) =>
+      unknownMinimumUsd(
+        minimumRatesOracle(
+          catalog,
+          event.contextLevel,
+          event.channel.toLocaleLowerCase().startsWith("zcode") ? "CNY" : "USD",
+        ),
+      ),
+    );
+  const assertTotals = (estimates, expected, label) => {
+    for (const [index, estimate] of estimates.entries()) {
+      assert.ok(Math.abs(estimate.totalUsd - expected[index]) < 1e-12, `${label} event ${index}`);
+    }
+  };
+
+  try {
+    setPricingCatalog(catalogA);
+    const versionA = getPricingCatalog().version;
+    const firstA = events.map(estimateEventCost);
+    assertTotals(firstA, expectedTotals(catalogA), "catalog A");
+
+    setPricingCatalog(catalogB);
+    const versionB = getPricingCatalog().version;
+    const valuesB = events.map(estimateEventCost);
+    assert.equal(
+      versionB === versionA,
+      false,
+      "same checkedAt with different models must get a different catalog hash",
+    );
+    assert.notDeepEqual(valuesB, firstA);
+    assertTotals(valuesB, expectedTotals(catalogB), "catalog B");
+
+    setPricingCatalog(catalogA);
+    assert.deepEqual(events.map(estimateEventCost), firstA);
+  } finally {
+    resetPricingCatalog();
+  }
+
+  const defaultRates = minimumRatesOracle(getPricingCatalog(), "short", "USD");
+  assert.ok(Math.abs(estimateEventCost(unknownMinimumEvent()).totalUsd - unknownMinimumUsd(defaultRates)) < 1e-12);
 });

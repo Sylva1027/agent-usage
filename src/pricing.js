@@ -697,6 +697,10 @@ let activePricing = {
   models: MODEL_PRICES,
 };
 
+// Unknown-model fallback scans every compatible catalog entry. Cache only the
+// read-only minimum-rate result; catalog replacement invalidates the whole map.
+const minimumRatesCache = new Map();
+
 export const API_TOKEN_PRICES = Object.freeze(
   Object.fromEntries(
     Object.entries(MODEL_PRICES)
@@ -854,6 +858,7 @@ export function setPricingCatalog(value) {
     .update(JSON.stringify(catalog))
     .digest("hex")
     .slice(0, 12);
+  minimumRatesCache.clear();
   activePricing = { ...catalog, version: `${catalog.checkedAt}-${hash}` };
   return getPricingCatalog();
 }
@@ -897,6 +902,7 @@ export function mergePricingCatalog(value) {
 }
 
 export function resetPricingCatalog() {
+  minimumRatesCache.clear();
   activePricing = {
     checkedAt: API_PRICING_CHECKED_AT,
     version: API_PRICING_VERSION,
@@ -1201,6 +1207,8 @@ function currencyForEvent(model, event) {
 }
 
 function minimumRatesFor(modelKey, contextLevel, currency) {
+  const cacheKey = `${modelKey}\u0000${contextLevel}\u0000${currency}`;
+  if (minimumRatesCache.has(cacheKey)) return minimumRatesCache.get(cacheKey);
   const catalogs = modelKey
     ? [activePricing.models[modelKey]]
     : Object.entries(activePricing.models)
@@ -1208,7 +1216,9 @@ function minimumRatesFor(modelKey, contextLevel, currency) {
         .map(([, entry]) => entry);
   const contexts = contextLevel === "unknown" ? ["short", "long"] : [contextLevel];
   const candidates = catalogs.flatMap((catalog) => contexts.map((context) => catalog?.[context]).filter(Boolean));
-  return minimumRateSets(candidates);
+  const rates = minimumRateSets(candidates);
+  minimumRatesCache.set(cacheKey, rates);
+  return rates;
 }
 
 function minimumCategory(rates, categories) {
@@ -1643,6 +1653,7 @@ export function createBoundedKeyMemo({
   const entryLimit = Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : Number.POSITIVE_INFINITY;
   /** @type {Map<string, { value: any, bytes: number }>} */
   const entries = new Map();
+  let oldestIterator = entries.keys();
   let bytes = 0;
   let roundDepth = 0;
   const stats = {
@@ -1660,9 +1671,18 @@ export function createBoundedKeyMemo({
     hardMaxBytes: hard,
   };
 
+  const oldestKey = () => {
+    let next = oldestIterator.next();
+    if (next.done) {
+      oldestIterator = entries.keys();
+      next = oldestIterator.next();
+    }
+    return next.value;
+  };
+
   const evictTo = (target) => {
     while (bytes > target && entries.size > 0) {
-      const oldest = entries.keys().next().value;
+      const oldest = oldestKey();
       const evicted = entries.get(oldest);
       entries.delete(oldest);
       bytes -= evicted?.bytes ?? 0;
@@ -1689,7 +1709,7 @@ export function createBoundedKeyMemo({
       if (entries.size > stats.peakSize) stats.peakSize = entries.size;
       evictTo(roundDepth > 0 ? hard : limit);
       while (entries.size > entryLimit) {
-        const oldest = entries.keys().next().value;
+        const oldest = oldestKey();
         const evicted = entries.get(oldest);
         entries.delete(oldest);
         bytes -= evicted?.bytes ?? 0;
@@ -1709,6 +1729,7 @@ export function createBoundedKeyMemo({
     },
     clear(reason = "") {
       entries.clear();
+      oldestIterator = entries.keys();
       bytes = 0;
       stats.clears += 1;
       stats.lastClearReason = String(reason);
