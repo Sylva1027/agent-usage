@@ -221,7 +221,7 @@ test("S1：读取期间追加 ⇒ LIVE_SOURCE_CHANGED、整文件回滚、指纹
   );
 });
 
-test("S1：删除物理文件 ⇒ source_files 删除，perf_samples 级联为 0", async () => {
+test("S1：删除物理文件 ⇒ 保留最后一次成功候选并登记 missing", async () => {
   await withClaudeFile(
     DEDUPE.rows,
     async ({ root, files }) => {
@@ -236,12 +236,18 @@ test("S1：删除物理文件 ⇒ source_files 删除，perf_samples 级联为 0
         );
 
         await rm(mainFile);
-        await store.sync({ options: syncOptions(root) });
+        const round = await store.sync({ options: syncOptions(root) });
 
-        assert.equal(sampleCount(store), 0, "source_files 删除后 perf_samples 必须级联清空");
+        assert.equal(sampleCount(store), 1, "来源消失不得删除最后一次成功候选");
         assert.equal(
           Number(store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(mainFile).n),
-          0,
+          1,
+          "source_files 行必须保留来源身份",
+        );
+        assert.deepEqual(
+          round.missingSources.map((source) => [source.path, source.kind]),
+          [[mainFile, "claude"]],
+          "缺失状态必须可机读",
         );
       } finally {
         store.close();

@@ -59,7 +59,7 @@ async function withSessionFile(rows, fn) {
 
 test("P1：workbuddy 的规范 kind、语义与 sampleKey 三元组", () => {
   assert.equal(canonicalPerfSourceKind("workbuddy"), "workbuddy");
-  assert.deepEqual([...PERF_SOURCE_KINDS], ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
+  assert.deepEqual([...PERF_SOURCE_KINDS], ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
   const { sample } = normalizePerfSample({
     sourceKind: "workbuddy",
@@ -180,7 +180,7 @@ test("P2：Auto 事件在 reader 之前已被排除", async () => {
 
 test("P3：注册与透传 —— workbuddy 已启用，lookupGenerationDuration 确实到达 reader", async () => {
   assert.equal(isPerfSourceEnabled("workbuddy"), true);
-  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
+  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
   assert.equal(isPerfSourceEnabled("unknown-kind"), false);
 
   await withSessionFile([usageRecord()], async (file) => {

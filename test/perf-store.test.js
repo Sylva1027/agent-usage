@@ -437,10 +437,10 @@ test("列清单与 AO-1/AO-2 对照：映射表 = 计划 30 列 + diagnostic_rea
 });
 
 // ---------------------------------------------------------------------------
-// ★ A：新库与旧库升级都落到当前 schema（T1: v15）
+// ★ A：新库与旧库升级都落到当前 schema（v21）
 // ---------------------------------------------------------------------------
 
-test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 17", async () => {
+test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 21", async () => {
   const dir = await makeTempDir();
   try {
     const databaseFile = path.join(dir, "usage-index.sqlite");
@@ -448,8 +448,8 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
     store.close();
     const db = inspect(databaseFile);
     try {
-      assert.equal(userVersion(db), 17);
-      assert.equal(STORE_SCHEMA_VERSION, 17, "常量与实际落点必须一致");
+      assert.equal(userVersion(db), 21);
+      assert.equal(STORE_SCHEMA_VERSION, 21, "常量与实际落点必须一致");
       // 列：DDL 实际形状 = 冻结映射表。
       const columns = tableColumns(db, "perf_samples");
       assert.deepEqual(
@@ -476,7 +476,7 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
   }
 });
 
-test("★A v11 夹具路径：迁移到 17，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
+test("★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
   try {
@@ -491,8 +491,8 @@ test("★A v11 夹具路径：迁移到 17，且 perf_samples 的表/索引定�
     const migratedDb = inspect(fixture.databaseFile);
     const freshDb = inspect(freshFile);
     try {
-      assert.equal(userVersion(migratedDb), 17, "v11 夹具迁移后必须是当前版本");
-      assert.equal(userVersion(freshDb), 17);
+      assert.equal(userVersion(migratedDb), 21, "v11 夹具迁移后必须是当前版本");
+      assert.equal(userVersion(freshDb), 21);
       assert.equal(objectDefinition(migratedDb, "perf_samples").type, "table");
       assert.equal(migratedDb.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 0);
 
@@ -511,7 +511,7 @@ test("★A v11 夹具路径：迁移到 17，且 perf_samples 的表/索引定�
         "外键与级联必须在 DDL 里（其生效由 ★C/★D 实测，不以文本为证据）",
       );
       // ③ 版本落点用字面量（不是常量拼接）：迁移段里不得出现 STORE_SCHEMA_VERSION 的插值。
-      assert.equal(userVersion(migratedDb), 17);
+      assert.equal(userVersion(migratedDb), 21);
     } finally {
       migratedDb.close();
       freshDb.close();
@@ -1118,7 +1118,7 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
         Number(after.prepare("SELECT COUNT(*) AS c FROM rate_limit_observations").get().c),
         snapshot.rateLimitsCount,
       );
-      assert.equal(userVersion(after), 17);
+      assert.equal(userVersion(after), 21);
       // 标脏只动 size/mtime_ms，不动 kind/home/路径等归属列。
       const rows = after
         .prepare("SELECT path, kind, home_id, home_label, home_path, indexed_at FROM source_files ORDER BY path")
@@ -1150,7 +1150,7 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
 // ★ G：幂等性（AN-8）
 // ---------------------------------------------------------------------------
 
-test("★G 重复打开无害：版本仍 15、表与行数不变、且迁移的标脏 UPDATE 不重跑（哨兵值实测）", async () => {
+test("★G 重复打开无害：版本仍为当前 v21、表与行数不变、且迁移的标脏 UPDATE 不重跑（哨兵值实测）", async () => {
   const fixture = await makeV11Fixture();
   try {
     const first = await openStore(fixture.dir, fixture.databaseFile);
@@ -1178,7 +1178,7 @@ test("★G 重复打开无害：版本仍 15、表与行数不变、且迁移的
 
     const second = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(second.database), 17, "第二次打开不得再抬版本");
+      assert.equal(userVersion(second.database), 21, "第二次打开不得再抬版本");
       assert.equal(objectDefinition(second.database, "perf_samples").sql, firstDdl, "DDL 不得被重写");
       assert.equal(second.database.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 1, "行数不得变");
       assert.deepEqual(second.perfSampleByKey(sample.sampleKey), sample, "行内容不得变");
@@ -1192,7 +1192,7 @@ test("★G 重复打开无害：版本仍 15、表与行数不变、且迁移的
           ["/v11/dsh-session.jsonl", 424242, 424242],
           ["/v11/zcode.db", 424242, 424242],
         ],
-        "v15 打开不得重跑迁移标脏（哨兵必须原样保留）",
+        "v21 打开不得重跑迁移标脏（哨兵必须原样保留）",
       );
       // 三个索引也不得被重复创建成重复项。
       assert.deepEqual(
@@ -1207,23 +1207,23 @@ test("★G 重复打开无害：版本仍 15、表与行数不变、且迁移的
   }
 });
 
-test("★G 四类夹具都实测可达：空库 / 当前版本（v15） / v11 夹具迁移 / 重开库", async () => {
+test("★G 四类夹具都实测可达：空库 / 当前版本（v21） / v11 夹具迁移 / 重开库", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
   try {
     // 夹具一：空库（version 0）。
     const emptyFile = path.join(freshDir, "empty.sqlite");
     const empty = await openStore(freshDir, emptyFile);
-    assert.equal(userVersion(empty.database), 17);
+    assert.equal(userVersion(empty.database), 21);
     empty.close();
 
     // 夹具二：v11 夹具迁移（同一份库连续打开三次，串行，避免双写连接互相争锁）。
     const migrated = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(migrated.database), 17);
+    assert.equal(userVersion(migrated.database), 21);
     assert.ok(objectDefinition(migrated.database, "perf_samples"));
     migrated.close();
 
-    // 夹具三：当前版本（v15）再打开 —— 不跑任何迁移段，且标脏不重跑（哨兵判别式见上一个用例）。
+    // 夹具三：当前版本（v21）再打开 —— 不跑任何迁移段，且标脏不重跑（哨兵判别式见上一个用例）。
     const probe = inspect(fixture.databaseFile);
     try {
       probe.exec("UPDATE source_files SET size = 777, mtime_ms = 777");
@@ -1231,17 +1231,17 @@ test("★G 四类夹具都实测可达：空库 / 当前版本（v15） / v11 �
       probe.close();
     }
     const current = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(current.database), 17);
+    assert.equal(userVersion(current.database), 21);
     assert.deepEqual(
       sourceFilesFingerprint(current.database).map((row) => Number(row.size)),
       [777, 777],
-      "v15 打开不得再次标脏",
+      "v21 打开不得再次标脏",
     );
     current.close();
 
     // 夹具四：重开库 —— 同一实例关闭后再开（幂等）。
     const reopened = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(reopened.database), 17);
+    assert.equal(userVersion(reopened.database), 21);
     reopened.close();
   } finally {
     await cleanupDir(fixture.dir);
@@ -1293,7 +1293,7 @@ test("★H 迁移中途失败（触发器 ABORT 在标脏那一步）⇒ 回滚�
     // 同一份库重试：必须能成功迁移（失败不留死局）。
     const retry = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(retry.database), 17);
+      assert.equal(userVersion(retry.database), 21);
       assert.ok(objectDefinition(retry.database, "perf_samples"));
       assert.deepEqual(
         sourceFilesFingerprint(retry.database).map((row) => [String(row.path), Number(row.size)]),
@@ -1711,9 +1711,9 @@ function assertFourKindsEqual(actual, expected, label) {
 // 注册表：结构 / not_enabled / unsupported（gate E 的前半）
 // ---------------------------------------------------------------------------
 
-test("★E 注册表：M7 启用五类候选来源，project-log 为 unsupported", () => {
-  assert.deepEqual([...PERF_SOURCE_READERS.keys()], ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
-  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy"]);
+test("★E 注册表：M7 启用六类候选来源，project-log 为 unsupported", () => {
+  assert.deepEqual([...PERF_SOURCE_READERS.keys()], ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
+  assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
   assert.deepEqual(resolvePerfSourceReader("zcode"), {
     kind: "zcode",
@@ -2752,7 +2752,7 @@ test("★C SQL 路径的候选必须经 decodePerfSample 全列解码，与内�
 // ★D 真删除（级联）vs 替换（显式 DELETE）vs 失败 home（都不删）
 // ---------------------------------------------------------------------------
 
-test("★D 真删除：文件消失且 home 未失败 ⇒ source_files 行被删 ⇒ 候选由 FK 级联清除", async () => {
+test("★D 来源消失且 home 未失败 ⇒ 保留 source_files、候选与 missing 状态", async () => {
   const workspace = await makeMultiHomeWorkspace([
     { id: "home-A", rows: [m33ZcodeRow("row-1", { startedAt: M33_BASE + 100, completedAt: M33_BASE + 200 })] },
   ]);
@@ -2778,18 +2778,21 @@ test("★D 真删除：文件消失且 home 未失败 ⇒ source_files 行被删
 
       assert.equal(
         store.database.prepare("SELECT COUNT(*) AS c FROM source_files WHERE path = ?").get(dbFile).c,
-        0,
-        "真删除 ⇒ source_files 行必须被删",
+        1,
+        "来源消失 ⇒ source_files 行必须保留来源身份",
       );
       assert.equal(
         store.database.prepare("SELECT COUNT(*) AS c FROM perf_samples WHERE source_path = ?").get(dbFile).c,
-        0,
-        "真删除 ⇒ 候选必须由 FK 级联清除（实测行确实消失）",
+        1,
+        "来源消失 ⇒ 最后一次成功候选必须保留",
       );
-      // 🟩 实测：`sync()` 返回 `{ ...status, updatedFileCount }`（status 来自 buildUsageFingerprint），
-      // **不含** warnings/failedHomes。因此这里断言真正可观测的事实：DB 里的行确实消失了。
       assert.ok(typeof result === "object" && result !== null, "sync 必须返回对象");
       assert.ok("updatedFileCount" in result, "返回值必须含 updatedFileCount");
+      assert.deepEqual(
+        result.missingSources.map((source) => [source.path, source.kind]),
+        [[dbFile, "zcode"]],
+        "来源消失必须进入 missingSources",
+      );
     } finally {
       store.close();
     }
@@ -2898,9 +2901,7 @@ test("★D 失败 home ⇒ 三段合取生效：source_files 与候选【都不�
   }
 });
 
-test("★D 失败 home 的可达性实测：zcode home 整体消失会被当作真删除（适用边界）", async () => {
-  // 如实记录边界（不修饰）：三段合取保护的是"**被发现但读取失败**"，
-  // **不是**"发现阶段就消失"。zcode home 的发现依赖 DB 存在，因此整体消失时不被发现 ⇒ 按真删除清理。
+test("★D 整个 ZCode home 消失 ⇒ 历史保留并登记 missing（不是 degraded）", async () => {
   const workspace = await makeMultiHomeWorkspace([
     { id: "home-A", rows: [m33ZcodeRow("row-1", { startedAt: M33_BASE, completedAt: M33_BASE + 100 })] },
   ]);
@@ -2912,17 +2913,23 @@ test("★D 失败 home 的可达性实测：zcode home 整体消失会被当作�
       assert.equal(store.database.prepare("SELECT COUNT(*) AS c FROM source_files WHERE path = ?").get(dbFile).c, 1);
 
       await rm(workspace.homes[0].path, { recursive: true, force: true });
-      await store.sync({ options: { homeDir: workspace.root } });
+      const result = await store.sync({ options: { homeDir: workspace.root } });
 
       assert.equal(
         store.database.prepare("SELECT COUNT(*) AS c FROM source_files WHERE path = ?").get(dbFile).c,
-        0,
-        "整个 home 消失 ⇒ 按真删除清理（与『被发现但读失败』形成对照）",
+        1,
+        "整个 home 消失不得删除来源身份",
       );
       assert.equal(
         store.database.prepare("SELECT COUNT(*) AS c FROM perf_samples WHERE source_path = ?").get(dbFile).c,
-        0,
-        "候选随之由 FK 级联清除",
+        1,
+        "整个 home 消失不得删除最后一次成功候选",
+      );
+      assert.equal(result.perfState, "ready", "来源缺失不是读取失败");
+      assert.deepEqual(result.degradedHomeIds, []);
+      assert.deepEqual(
+        result.missingSources.map((source) => source.path),
+        [dbFile],
       );
     } finally {
       store.close();
@@ -3517,7 +3524,7 @@ async function makeThreeZcodeHomeWorkspace() {
   };
 }
 
-test("S1 · 回滚污染反例：真删除与同轮内 `perf_file_warnings` 写失败 ⇒ 失败文件的新指纹不得泄漏进库", async () => {
+test("S1 · 回滚污染反例：来源缺失与同轮内 `perf_file_warnings` 写失败 ⇒ 失败文件的新指纹不得泄漏进库", async () => {
   const workspace = await makeThreeZcodeHomeWorkspace();
   const [dbA, , dbC] = workspace.dbFiles;
   try {
@@ -3528,44 +3535,50 @@ test("S1 · 回滚污染反例：真删除与同轮内 `perf_file_warnings` 写�
       const beforeVersion = store.readMeta("perf_index_version");
       assert.equal(Object.keys(beforeMap).length, 3, "前置：三个来源文件都必须已发布指纹");
 
-      // 注入：只要 `perf_file_warnings` 的 JSON 里**还有 C 的键**就中止写入。
-      // 逐文件提交发生在**真删除落库之前**（那时视图里还有 C）⇒ 该事务必然回滚；
-      // 轮级发布发生在真删除**之后**（C 已被摘出 map）⇒ 不再匹配 ⇒ 那一轮**不抛错**。
-      // 这样"失败文件的指纹已写、告警写失败"的边界就被单独打到了。
-      const needle = JSON.stringify(dbC).slice(1, -1);
-      for (const event of ["INSERT", "UPDATE"]) {
-        store.database.exec(
-          `CREATE TRIGGER s1_reject_while_c_${event} BEFORE ${event} ON store_meta
-           WHEN NEW.key = 'perf_file_warnings' AND instr(NEW.value, '${needle}') > 0
-           BEGIN SELECT RAISE(ABORT, 'S1 injected failure'); END;`,
-        );
-      }
-
       appendZcodeRow(dbA, "r2");
       await rm(dbC, { force: true });
 
+      // Fail exactly one per-file warning write after A's new fingerprint was
+      // written in the same transaction. The round-level publication still runs.
+      const realWriteMeta = store.writeMeta.bind(store);
+      let injected = false;
+      store.writeMeta = (key, value) => {
+        if (!injected && key === "perf_file_warnings") {
+          injected = true;
+          throw new Error("S1 injected failure");
+        }
+        return realWriteMeta(key, value);
+      };
       const decodes = countPublishedMapDecodes(store);
-      const round = await store.sync({ options: workspace.options });
+      let round;
+      try {
+        round = await store.sync({ options: workspace.options });
+      } finally {
+        store.writeMeta = realWriteMeta;
+      }
       const roundDecodes = { ...decodes };
 
+      assert.equal(injected, true, "注入必须命中逐文件告警写入");
       const afterMap = store.readPublishedFileFingerprints();
       assert.equal(round.updatedFileCount, 0, "被注入中止的文件不得计入提交");
       assert.equal(afterMap[dbA], beforeMap[dbA], "整笔回滚 ⇒ A 必须保留旧指纹（视图未被失败轮次的新值污染）");
-      assert.equal(Object.hasOwn(afterMap, dbC), false, "真删除必须移除 C 的已完成指纹分量");
+      assert.equal(afterMap[dbC], beforeMap[dbC], "来源缺失必须保留最后成功指纹");
       assert.deepEqual(
         afterMap,
         JSON.parse(store.readMeta("perf_file_fingerprints")),
         "消费者读数必须等于库里已提交的映射",
       );
-      assert.notEqual(store.readMeta("perf_index_version"), beforeVersion, "真删除必须改变轮级版本");
+      assert.notEqual(store.readMeta("perf_index_version"), beforeVersion, "缺失状态必须改变轮级版本");
+      assert.deepEqual(
+        round.missingSources.map((source) => source.path),
+        [dbC],
+      );
       assert.ok(
         roundDecodes.fingerprints <= 1 && roundDecodes.warnings <= 1,
         `该轮仍至多解码 1 次/份（实测 ${roundDecodes.fingerprints}/${roundDecodes.warnings}）`,
       );
 
-      // 去掉注入 ⇒ 下一轮恢复提交 A。
-      store.database.exec("DROP TRIGGER s1_reject_while_c_INSERT");
-      store.database.exec("DROP TRIGGER s1_reject_while_c_UPDATE");
+      // 注入已解除 ⇒ 下一轮恢复提交 A。
       decodes.fingerprints = 0;
       decodes.warnings = 0;
       const recovered = await store.sync({ options: workspace.options });

@@ -10,11 +10,12 @@ import {
   createCostEstimateAccumulator,
   estimateCostForEvents,
   estimateEventCost,
+  getPricingCatalog,
   LONG_CONTEXT_INPUT_THRESHOLD,
   pricingVersionForTimestamp,
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
-import { isCodexAutoReview } from "../public/pricing-models.js";
+import { canonicalModelName, isCodexAutoReview } from "../public/pricing-models.js";
 import {
   USAGE_DETAIL_MASK,
   USAGE_FIELDS,
@@ -33,8 +34,10 @@ import {
 import {
   parseWorkbuddySessions,
   streamWorkbuddySessionEvents,
+  workbuddyGenerationSpans,
   workbuddyHomeLooksUsable,
   workbuddySessionFiles,
+  workbuddyTraceSnapshot,
 } from "./workbuddy-usage.js";
 import {
   opencodeDatabaseFiles,
@@ -62,6 +65,7 @@ import {
   encodeCodexPublicationPolicy,
   planCodexHomeThreads,
 } from "./perf-sources/codex-thread.js";
+import { readCodexRolloutMetadata } from "./perf-sources/codex-jsonl.js";
 import {
   buildTimelineRows,
   channelForRange,
@@ -1464,7 +1468,11 @@ export async function parseSessionFile(filePath, home, options = {}) {
   };
 }
 
-async function* readJsonlRows(filePath, { withLineNumbers = false } = {}) {
+/**
+ * @param {string} filePath
+ * @param {{ withLineNumbers?: boolean, onMalformedLine?: (lineNumber: number) => void }} [options]
+ */
+async function* readJsonlRows(filePath, { withLineNumbers = false, onMalformedLine } = {}) {
   let lineNumber = 0;
   for await (const line of readRolloutLines(filePath)) {
     lineNumber += 1;
@@ -1476,7 +1484,8 @@ async function* readJsonlRows(filePath, { withLineNumbers = false } = {}) {
       yield withLineNumbers ? { row, lineNumber } : row;
     } catch {
       if (filePath.endsWith(".jsonl.zst")) throw new Error(`Invalid compressed rollout JSON at line ${lineNumber}`);
-      // Ignore malformed JSONL rows from interrupted writes.
+      // Other JSONL readers keep their existing silent-skip behavior.
+      onMalformedLine?.(lineNumber);
     }
   }
 }
@@ -1791,7 +1800,13 @@ async function streamProjectUsageFileEvents(filePath, source, onEvent, options =
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   let rowNumber = 0;
 
-  for await (const row of readJsonlRows(filePath)) {
+  for await (const row of readJsonlRows(filePath, {
+    onMalformedLine: (lineNumber) => {
+      options.onWarning?.(`project-log 来源存在无法解析的 JSONL 行：${filePath}（第 ${lineNumber} 行）`, {
+        lineNumber,
+      });
+    },
+  })) {
     rowNumber += 1;
     if (!isSupportedProjectLogRow(row)) {
       continue;
@@ -2257,6 +2272,8 @@ async function perfPhysicalFilesForHome(home) {
   if (home.kind === "zcode") return home.usageLogPath ? [home.usageLogPath] : [];
   if (home.kind === "dsh") return await dshSessionFiles(home.path);
   if (home.kind === "opencode") return await opencodeDatabaseFiles(home.path);
+  if (home.kind === "workbuddy") return await workbuddySessionFiles(home.path);
+  if (home.kind === "claude") return await claudeSessionFiles(home.path);
   return await discoverSessionFiles(home.path);
 }
 
@@ -2340,20 +2357,66 @@ function perfContentFingerprint(kind, filePath) {
  *
  * @param {any} home
  * @param {string[]} files
- * @returns {{ fingerprint: string, complete: boolean, fileFingerprints: Record<string, string> }}
+ * @param {{ fingerprint: string, complete: boolean } | null} [dependency]
+ * @param {boolean} [capturePrefixEvidence]
+ * @returns {{ fingerprint: string, complete: boolean, fileFingerprints: Record<string, string>, filePrefixEvidence?: Record<string, { size: number, digest: string }> }}
  */
-function perfHomeContentFingerprint(home, files) {
+function perfHomeContentFingerprint(home, files, dependency = null, capturePrefixEvidence = false) {
   const hash = createHash("sha256");
-  let complete = true;
+  let complete = dependency?.complete ?? true;
   /** @type {Record<string, string>} */
   const fileFingerprints = {};
+  /** @type {Record<string, { size: number, digest: string }>} */
+  const filePrefixEvidence = {};
   for (const filePath of [...files].sort()) {
     const fingerprint = perfContentFingerprint(home?.kind, filePath);
     if (fingerprint === null) complete = false;
     else fileFingerprints[filePath] = fingerprint;
     hash.update(`${filePath}\t${fingerprint ?? "!"}\n`);
+    if (capturePrefixEvidence && canonicalPerfKind(home?.kind) === "codex" && fingerprint !== null) {
+      const prefix = perfFilePrefixEvidence(filePath);
+      if (prefix === null) complete = false;
+      else filePrefixEvidence[filePath] = prefix;
+    }
   }
-  return { fingerprint: hash.digest("hex"), complete, fileFingerprints };
+  if (dependency !== null) hash.update(`dependency\t${dependency.fingerprint}\n`);
+  return {
+    fingerprint: hash.digest("hex"),
+    complete,
+    fileFingerprints,
+    ...(capturePrefixEvidence ? { filePrefixEvidence } : {}),
+  };
+}
+
+/**
+ * Hash the complete pre-append prefix. This evidence is deliberately not part
+ * of the persisted fingerprint and is only captured for Codex planning.
+ *
+ * @param {string} filePath
+ * @returns {{ size: number, digest: string } | null}
+ */
+function perfFilePrefixEvidence(filePath) {
+  try {
+    const size = statSync(filePath).size;
+    const hash = createHash("sha256");
+    const handle = openSync(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(PERF_CONTENT_PROBE_BYTES);
+      let offset = 0;
+      while (offset < size) {
+        const length = Math.min(buffer.length, size - offset);
+        const read = readSync(handle, buffer, 0, length, offset);
+        if (read <= 0) return null;
+        hash.update(buffer.subarray(0, read));
+        offset += read;
+      }
+    } finally {
+      closeSync(handle);
+    }
+    return { size, digest: hash.digest("hex") };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -2367,12 +2430,16 @@ function perfHomeContentFingerprint(home, files) {
  *
  * @param {any[]} homes 只传**已启用** home
  * @param {Map<string, string>} fingerprints homeId → 内容指纹
+ * @param {number} [requestTimingRevision]
  */
-function aggregatePerfContentFingerprint(homes, fingerprints) {
+function aggregatePerfContentFingerprint(homes, fingerprints, requestTimingRevision = 0) {
   const hash = createHash("sha256");
   for (const home of homes) {
     const homeId = String(home?.id ?? "");
     hash.update(`${homeId}\t${canonicalPerfKind(home?.kind)}\t${fingerprints.get(homeId) ?? "!"}\n`);
+  }
+  if (Number.isSafeInteger(requestTimingRevision) && requestTimingRevision > 0) {
+    hash.update(`request-timing\t${requestTimingRevision}\n`);
   }
   return hash.digest("hex");
 }
@@ -2384,14 +2451,117 @@ function aggregatePerfContentFingerprint(homes, fingerprints) {
  * ⇒ 本函数每次都重新走 `perfPhysicalFilesForHome`，**不复用**局部窗口的 `files` 列表。
  *
  * @param {any} home
- * @returns {Promise<{ fingerprint: string, complete: boolean } | null>} 发现失败/取不到 ⇒ null
+ * @returns {Promise<{ fingerprint: string, complete: boolean, fileFingerprints: Record<string, string> } | null>} 发现失败/取不到 ⇒ null
  */
-async function perfHomeRoundFingerprint(home) {
+async function perfHomeRoundFingerprint(home, dependency = null) {
   try {
     const files = await perfPhysicalFilesForHome(home);
-    return perfHomeContentFingerprint(home, files);
+    return perfHomeContentFingerprint(home, files, dependency);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Trace files are not perf files (the session transcript is the candidate file),
+ * but they are inputs to WorkBuddy duration lookup. Keep discovery/stat separate
+ * from span parsing so one round reuses the latter.
+ * @param {Awaited<ReturnType<typeof workbuddyTraceSnapshot>>} snapshot
+ * @param {Array<{ messageId: string, durationMs: number, endedAtMs: number | null }> | null} spans
+ */
+function workbuddyTraceDependency(snapshot, spans) {
+  const hash = createHash("sha256");
+  let complete = snapshot.complete && spans !== null;
+  for (const entry of [...snapshot.entries].sort((left, right) => left.filePath.localeCompare(right.filePath))) {
+    const fingerprint = perfContentFingerprint("workbuddy", entry.filePath);
+    if (fingerprint === null) complete = false;
+    hash.update(`${entry.filePath}\t${fingerprint ?? "!"}\n`);
+  }
+  if (spans !== null) {
+    const rows = spans
+      .map((span) => [span.messageId, span.durationMs, span.endedAtMs])
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    for (const row of rows) hash.update(`span\t${JSON.stringify(row)}\n`);
+  }
+  return { fingerprint: hash.digest("hex"), complete };
+}
+
+/**
+ * Prove that one rollout changed only by a strict append while retaining its
+ * single raw session_meta owner. Rewrites, replacements, and owner changes all
+ * fail closed.
+ *
+ * @param {string} filePath
+ * @param {string} beforeFingerprint
+ * @param {string} afterFingerprint
+ * @param {string} expectedThreadId
+ * @param {{ size: number, digest: string } | null | undefined} [prefixEvidence]
+ * @returns {Promise<boolean>}
+ */
+export async function proveCodexLiveAppend(
+  filePath,
+  beforeFingerprint,
+  afterFingerprint,
+  expectedThreadId,
+  prefixEvidence,
+) {
+  if (typeof filePath !== "string" || filePath === "") return false;
+  if (typeof expectedThreadId !== "string" || expectedThreadId === "") return false;
+  if (
+    !prefixEvidence ||
+    !Number.isSafeInteger(prefixEvidence.size) ||
+    prefixEvidence.size < 0 ||
+    typeof prefixEvidence.digest !== "string" ||
+    prefixEvidence.digest === ""
+  ) {
+    return false;
+  }
+  const parseFingerprint = (value) => {
+    if (typeof value !== "string") return null;
+    const match = /^(\d+):([^:]+):([^:]+)$/.exec(value);
+    if (match === null) return null;
+    const size = Number(match[1]);
+    const mtimeMs = Number(match[2]);
+    if (!Number.isSafeInteger(size) || size < 0 || !Number.isFinite(mtimeMs)) return null;
+    return { size, mtimeMs, digest: match[3] };
+  };
+  const before = parseFingerprint(beforeFingerprint);
+  const after = parseFingerprint(afterFingerprint);
+  if (before === null || after === null || after.size <= before.size) return false;
+  if (prefixEvidence.size > before.size) return false;
+  try {
+    const hash = createHash("sha256");
+    const handle = openSync(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(PERF_CONTENT_PROBE_BYTES);
+      let offset = 0;
+      while (offset < prefixEvidence.size) {
+        const length = Math.min(buffer.length, prefixEvidence.size - offset);
+        const read = readSync(handle, buffer, 0, length, offset);
+        if (read <= 0) return false;
+        hash.update(buffer.subarray(0, read));
+        offset += read;
+      }
+    } finally {
+      closeSync(handle);
+    }
+    if (hash.digest("hex") !== prefixEvidence.digest) return false;
+    const projection = await readCodexRolloutMetadata(filePath);
+    const headers = projection.records.filter((record) => record.kind === "session_meta");
+    const owners = new Set();
+    for (const header of headers) {
+      if (typeof header.threadId !== "string" || header.threadId === "") return false;
+      owners.add(header.threadId);
+    }
+    return (
+      projection.stats.invalidSessionMetaPayloads === 0 &&
+      projection.stats.sessionMetaWithoutThreadId === 0 &&
+      headers.length === 1 &&
+      owners.size === 1 &&
+      owners.has(expectedThreadId)
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -2402,7 +2572,7 @@ async function perfHomeRoundFingerprint(home) {
  *
  * @param {any} home
  * @param {string[] | undefined} [expectedFilePaths] optional caller discovery to detect drift since its scan
- * @returns {Promise<{ok: boolean, stable: boolean, code: string|null, files: string[], plan: any|null, before: any|null, after: any|null}>}
+ * @returns {Promise<{ok: boolean, stable: boolean, partial?: boolean, code: string|null, liveChangedPaths?: string[], liveChangedThreadIds?: string[], files: string[], plan: any|null, before: any|null, after: any|null}>}
  */
 export async function planStableCodexHome(home, expectedFilePaths) {
   let files = [];
@@ -2415,7 +2585,7 @@ export async function planStableCodexHome(home, expectedFilePaths) {
 
   try {
     files = (await perfPhysicalFilesForHome(home)).slice().sort();
-    before = perfHomeContentFingerprint(home, files);
+    before = perfHomeContentFingerprint(home, files, null, true);
   } catch (error) {
     scanError = error;
   }
@@ -2462,11 +2632,8 @@ export async function planStableCodexHome(home, expectedFilePaths) {
   if (!before.complete || !after.complete) {
     return { ok: false, stable: false, code: "READ_ONLY_OPEN_FAILED", files, plan, before, after };
   }
-  if (
-    !samePaths(files, afterFiles) ||
-    (expected !== null && !samePaths(expected, files)) ||
-    before.fingerprint !== after.fingerprint
-  ) {
+  const pathSetsMatch = samePaths(files, afterFiles) && (expected === null || samePaths(expected, files));
+  if (!pathSetsMatch) {
     return { ok: false, stable: false, code: "LIVE_SOURCE_CHANGED", files, plan, before, after };
   }
   if (planningError !== null) {
@@ -2492,7 +2659,71 @@ export async function planStableCodexHome(home, expectedFilePaths) {
       after,
     };
   }
-  return { ok: true, stable: true, code: null, files, plan, before, after };
+  if (before.fingerprint === after.fingerprint) {
+    return { ok: true, stable: true, code: null, files, plan, before, after };
+  }
+
+  const ownersByPath = new Map();
+  for (const thread of plan.threads) {
+    for (const rollout of thread.rollouts) {
+      const owners = ownersByPath.get(rollout.filePath) ?? new Set();
+      owners.add(thread.threadId);
+      ownersByPath.set(rollout.filePath, owners);
+    }
+  }
+  const liveChangedPaths = files.filter(
+    (filePath) =>
+      before.fileFingerprints[filePath] !== after.fileFingerprints[filePath] ||
+      Object.hasOwn(before.fileFingerprints, filePath) === false ||
+      Object.hasOwn(after.fileFingerprints, filePath) === false,
+  );
+  const proven = [];
+  for (const filePath of liveChangedPaths) {
+    const owners = ownersByPath.get(filePath);
+    const threadId = owners?.size === 1 ? [...owners][0] : "";
+    if (
+      !threadId ||
+      typeof before.fileFingerprints[filePath] !== "string" ||
+      typeof after.fileFingerprints[filePath] !== "string" ||
+      !(await proveCodexLiveAppend(
+        filePath,
+        before.fileFingerprints[filePath],
+        after.fileFingerprints[filePath],
+        threadId,
+        before.filePrefixEvidence?.[filePath],
+      ))
+    ) {
+      return { ok: false, stable: false, code: "LIVE_SOURCE_CHANGED", files, plan, before, after };
+    }
+    proven.push({ filePath, threadId });
+  }
+  const liveChangedThreadIds = [...new Set(proven.map((entry) => entry.threadId))].sort();
+  const failedThreads = plan.failedThreads ?? [];
+  for (const threadId of liveChangedThreadIds) {
+    const thread = plan.threads.find((entry) => entry.threadId === threadId);
+    failedThreads.push({
+      threadId,
+      reason: "LIVE_SOURCE_CHANGED",
+      filePaths: thread.rollouts.map((rollout) => rollout.filePath).sort(),
+      failedFilePaths: proven
+        .filter((entry) => entry.threadId === threadId)
+        .map((entry) => entry.filePath)
+        .sort(),
+    });
+  }
+  plan.failedThreads = failedThreads;
+  return {
+    ok: true,
+    stable: false,
+    partial: true,
+    code: null,
+    liveChangedPaths,
+    liveChangedThreadIds,
+    files,
+    plan,
+    before,
+    after,
+  };
 }
 
 /**
@@ -2570,14 +2801,14 @@ function perfStatsBoundMs(value) {
  *
  * `state='rebuilding'`（含 store 的读取投影专有值 `uninitialized`）时**不返回部分排名**
  * （卡片明文）：候选集合是中途快照，给出 `rank` 就是把不完整数据当干净排名。此时仍返回
- * `coverage` 与 `meta`（诊断用），但 `groups` 为空数组。
+ * `coverage` 与 `meta`（诊断用），但 `groups` 与 `models` 为空数组。
  *
  * ⚠️ `sourceWarnings` 先经冻结码域过滤：M1.3 的 `summarizePerf` 对域外码**抛错**（有意 fail-loud），
  * 但读路径不得因**自己库里的坏元数据**而整体失败（M3.4 对指纹表已定同一条"读取路径不得因元数据
  * 坏掉而失败"的规矩）。
  *
  * @param {{ samples: any[], bounds: {startMs: number|null, endMs: number|null, windowEndExclusiveMs: number|null}, excludedHomeIds?: string[] | Set<string>, knownSources?: any[], meta?: any }} input
- * @returns {{ groups: any[], coverage: any, meta: any }}
+ * @returns {{ groups: any[], models: any[], coverage: any, codexTimingCoverage: any, meta: any }}
  */
 export function buildPerfStatsBlock(input) {
   const meta = input?.meta ?? {};
@@ -2599,8 +2830,26 @@ export function buildPerfStatsBlock(input) {
   });
   return {
     groups: state === "rebuilding" ? [] : result.groups,
+    models: state === "rebuilding" ? [] : result.models,
     coverage: result.coverage,
+    codexTimingCoverage: state === "rebuilding" ? null : result.codexTimingCoverage,
     meta: result.meta,
+  };
+}
+
+function workbuddyDurationLookupFromSpans(spans) {
+  /** @type {Map<string, { durations: Set<number>, endedAtMs: number | null }>} */
+  const observations = new Map();
+  for (const span of spans) {
+    const entry = observations.get(span.messageId) || { durations: new Set(), endedAtMs: null };
+    entry.durations.add(span.durationMs);
+    if (entry.endedAtMs === null && span.endedAtMs !== null) entry.endedAtMs = span.endedAtMs;
+    observations.set(span.messageId, entry);
+  }
+  return (messageId) => {
+    const entry = observations.get(String(messageId ?? ""));
+    if (entry?.durations.size !== 1) return null;
+    return { durationMs: [...entry.durations][0], endedAtMs: entry.endedAtMs };
   };
 }
 
@@ -2649,6 +2898,18 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
   const wholeHomeCodexBlocks = new Set();
   /** @type {{homeId: string, blockedThreadIds: string[]}[]} */
   const partialHomes = [];
+  const blockPartialThreads = (homeId, threadIds) => {
+    const ids = new Set(threadIds);
+    if (ids.size === 0) return;
+    const existing = partialHomes.find((entry) => entry.homeId === homeId);
+    if (existing) {
+      for (const threadId of existing.blockedThreadIds) ids.add(threadId);
+      existing.blockedThreadIds = [...ids].sort();
+    } else {
+      partialHomes.push({ homeId, blockedThreadIds: [...ids].sort() });
+    }
+  };
+  const liveAppendProofs = new Map();
   const enabledHomes = (homes || []).filter((home) => isPerfSourceEnabled(home?.kind));
 
   // ① 用量全局指纹（卡片明文：同一 homes 列表，**含未启用来源**）—— 只表达"整份报告的上游动过"。
@@ -2656,6 +2917,8 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
 
   /** 已启用 home → **整轮结束**时的内容指纹（`indexVersion` 的分量）。 */
   const perfFingerprintsAfter = new Map();
+  /** 已启用 home → 本轮的规划窗口（供整轮核对重新证明 append）。 */
+  const windowsByHome = new Map();
   /** 本轮已记录过 `LIVE_SOURCE_CHANGED` 的 home（避免整轮核对与局部窗口重复计数）。 */
   const liveChangedHomes = new Set();
   let perfFingerprintStable = true;
@@ -2664,8 +2927,28 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
   //    没有它就无法发现"先读完的 home 在后续读取期间被改写"。
   /** @type {Map<string, { fingerprint: string, complete: boolean } | null>} */
   const roundStart = new Map();
+  /** @type {Map<string, { snapshot: any, spans: any[] | null, dependency: { fingerprint: string, complete: boolean } }>} */
+  const workbuddyTraceDependencies = new Map();
   for (const home of enabledHomes) {
-    roundStart.set(String(home.id ?? ""), await perfHomeRoundFingerprint(home));
+    const homeId = String(home.id ?? "");
+    let dependency = null;
+    if (canonicalPerfKind(home.kind) === "workbuddy") {
+      const snapshot = await workbuddyTraceSnapshot(home.path);
+      let spans = null;
+      try {
+        spans = await workbuddyGenerationSpans(home.path, {
+          files: snapshot.files,
+          onWarning: (warning) => rawWarnings.push(normalizePerfWarningEntry(warning)),
+        });
+      } catch {
+        degradedHomeIds.add(homeId);
+        rawWarnings.push({ sourceKind: "workbuddy", homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 });
+      }
+      dependency = workbuddyTraceDependency(snapshot, spans);
+      if (!snapshot.complete) degradedHomeIds.add(homeId);
+      workbuddyTraceDependencies.set(homeId, { snapshot, spans, dependency });
+    }
+    roundStart.set(homeId, await perfHomeRoundFingerprint(home, dependency));
   }
 
   // ③ 逐已启用 home：Codex 先完整规划再 build；其他来源沿用原逐文件读取窗口。
@@ -2679,11 +2962,13 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
 
     if (kind === "codex") {
       const window = await planStableCodexHome(home);
+      windowsByHome.set(homeId, window);
       files = window.files;
       before = window.before;
       after = window.after;
-      if (!window.stable) perfFingerprintStable = false;
-      if (!window.ok) {
+      const partial = window.ok === true && window.partial === true;
+      if (!window.stable && !partial) perfFingerprintStable = false;
+      if (!window.ok && !partial) {
         degradedHomeIds.add(homeId);
         wholeHomeCodexBlocks.add(homeId);
         const code = String(window.code ?? "READ_ONLY_OPEN_FAILED");
@@ -2708,23 +2993,48 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
         const stagedSamples = [];
         const stagedWarnings = [];
         try {
+          const liveThreadIds = new Set(window.liveChangedThreadIds ?? []);
           for (const thread of window.plan.threads) {
-            const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts);
+            if (liveThreadIds.has(thread.threadId)) continue;
+            const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts, {
+              lookupRequestTiming: options.lookupRequestTiming,
+            });
             stagedSamples.push(...built.samples);
             stagedWarnings.push(...built.warnings);
           }
           if (window.plan.failedThreads.length > 0) {
             const blockedThreadIds = window.plan.failedThreads.map((thread) => thread.threadId).sort();
-            const failedFileCount = window.plan.failedThreads.reduce(
-              (count, thread) => count + thread.failedFilePaths.length,
-              0,
-            );
             degradedHomeIds.add(homeId);
-            partialHomes.push({ homeId, blockedThreadIds });
-            rawWarnings.push({ sourceKind: kind, homeId, code: "MALFORMED_JSON", count: failedFileCount });
+            blockPartialThreads(homeId, blockedThreadIds);
+            const countsByReason = new Map();
+            for (const thread of window.plan.failedThreads) {
+              countsByReason.set(
+                thread.reason,
+                (countsByReason.get(thread.reason) ?? 0) + thread.failedFilePaths.length,
+              );
+            }
+            for (const [code, count] of countsByReason) {
+              if (code === "LIVE_SOURCE_CHANGED") {
+                if (!liveChangedHomes.has(homeId)) {
+                  liveChangedHomes.add(homeId);
+                  rawWarnings.push({ sourceKind: kind, homeId, code, count: 1 });
+                }
+              } else {
+                rawWarnings.push({ sourceKind: kind, homeId, code, count });
+              }
+            }
           }
           perfSamples.push(...stagedSamples);
           rawWarnings.push(...stagedWarnings);
+          liveAppendProofs.set(homeId, new Map());
+          if (partial) {
+            const proofByPath = new Map();
+            for (const failure of window.plan.failedThreads) {
+              if (failure.reason !== "LIVE_SOURCE_CHANGED") continue;
+              for (const filePath of failure.failedFilePaths) proofByPath.set(filePath, failure.threadId);
+            }
+            liveAppendProofs.set(homeId, proofByPath);
+          }
         } catch (error) {
           degradedHomeIds.add(homeId);
           wholeHomeCodexBlocks.add(homeId);
@@ -2750,7 +3060,12 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
       }
 
       // ⚠️ 前置内容指纹只覆盖每文件首尾各 64KiB 摘要，不是未读取字节的全文件哈希。
-      before = files === null ? null : perfHomeContentFingerprint(home, files);
+      const traceDependency = workbuddyTraceDependencies.get(homeId) ?? null;
+      before = files === null ? null : perfHomeContentFingerprint(home, files, traceDependency?.dependency ?? null);
+      const lookupGenerationDuration =
+        kind === "workbuddy" && traceDependency?.spans
+          ? workbuddyDurationLookupFromSpans(traceDependency.spans)
+          : undefined;
       for (const filePath of files || []) {
         try {
           await streamPerfSamplesForFile(
@@ -2769,6 +3084,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
                 // 转成带冻结码的异常，走下面的 catch，与索引回滚路径同源。
                 rawWarnings.push(normalizePerfWarningEntry(warning));
               },
+              lookupGenerationDuration,
             },
           );
         } catch (error) {
@@ -2781,7 +3097,18 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
           });
         }
       }
-      after = files === null ? null : perfHomeContentFingerprint(home, files);
+      let afterDependency = null;
+      if (kind === "workbuddy" && files !== null) {
+        try {
+          afterDependency = workbuddyTraceDependency(
+            await workbuddyTraceSnapshot(home.path),
+            traceDependency?.spans ?? null,
+          );
+        } catch {
+          afterDependency = { fingerprint: "!", complete: false };
+        }
+      }
+      after = files === null ? null : perfHomeContentFingerprint(home, files, afterDependency);
     }
 
     if (kind !== "codex" && before !== null && after !== null) {
@@ -2809,7 +3136,95 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
     const homeId = String(home.id ?? "");
     const kind = canonicalPerfKind(home.kind);
     const start = roundStart.get(homeId) ?? null;
-    const end = await perfHomeRoundFingerprint(home);
+    let endDependency = null;
+    if (kind === "workbuddy") {
+      const traceDependency = workbuddyTraceDependencies.get(homeId);
+      try {
+        endDependency = workbuddyTraceDependency(
+          await workbuddyTraceSnapshot(home.path),
+          traceDependency?.spans ?? null,
+        );
+      } catch {
+        endDependency = { fingerprint: "!", complete: false };
+      }
+    }
+    const end = await perfHomeRoundFingerprint(home, endDependency);
+    if (kind === "codex" && windowsByHome.get(homeId)?.ok === true && end?.complete === true) {
+      const window = windowsByHome.get(homeId);
+      let safe = true;
+      if (safe) {
+        try {
+          const endPaths = (await perfPhysicalFilesForHome(home)).slice().sort();
+          const plannedFiles = [...window.files].sort();
+          safe =
+            endPaths.length === plannedFiles.length &&
+            endPaths.every((filePath, index) => filePath === plannedFiles[index]);
+        } catch {
+          safe = false;
+        }
+      }
+      const proofByPath = liveAppendProofs.get(homeId) ?? new Map();
+      const lateLiveThreadIds = new Set();
+      if (safe) {
+        const ownersByPath = new Map();
+        for (const thread of window.plan.threads ?? []) {
+          for (const rollout of thread.rollouts ?? []) {
+            const owners = ownersByPath.get(rollout.filePath) ?? new Set();
+            owners.add(thread.threadId);
+            ownersByPath.set(rollout.filePath, owners);
+          }
+        }
+        for (const filePath of window.files) {
+          const beforeFingerprint = window.before.fileFingerprints[filePath];
+          const afterFingerprint = window.after.fileFingerprints[filePath];
+          const endFingerprint = end.fileFingerprints[filePath];
+          if (typeof afterFingerprint !== "string" || typeof endFingerprint !== "string") {
+            safe = false;
+            break;
+          }
+          if (endFingerprint === afterFingerprint) continue;
+          const owners = ownersByPath.get(filePath);
+          const threadId = owners?.size === 1 ? [...owners][0] : "";
+          if (
+            typeof beforeFingerprint !== "string" ||
+            !threadId ||
+            !(await proveCodexLiveAppend(
+              filePath,
+              beforeFingerprint,
+              endFingerprint,
+              threadId,
+              window.before.filePrefixEvidence?.[filePath],
+            ))
+          ) {
+            safe = false;
+            break;
+          }
+          proofByPath.set(filePath, threadId);
+          lateLiveThreadIds.add(threadId);
+        }
+      }
+      if (!safe) {
+        degradedHomeIds.add(homeId);
+        wholeHomeCodexBlocks.add(homeId);
+        if (!liveChangedHomes.has(homeId)) {
+          liveChangedHomes.add(homeId);
+          rawWarnings.push({ sourceKind: kind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
+        }
+        perfFingerprintStable = false;
+        continue;
+      }
+      if (proofByPath.size > 0) liveAppendProofs.set(homeId, proofByPath);
+      if (lateLiveThreadIds.size > 0) {
+        degradedHomeIds.add(homeId);
+        blockPartialThreads(homeId, lateLiveThreadIds);
+        if (!liveChangedHomes.has(homeId)) {
+          liveChangedHomes.add(homeId);
+          rawWarnings.push({ sourceKind: kind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
+        }
+        perfFingerprintStable = false;
+      }
+      if (window?.partial === true) perfFingerprintStable = false;
+    }
 
     if (end !== null) {
       perfFingerprintsAfter.set(homeId, end.fingerprint);
@@ -2841,9 +3256,11 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
         }
       }
       if (start.fingerprint !== end.fingerprint) {
-        degradedHomeIds.add(homeId);
-        if (kind === "codex") wholeHomeCodexBlocks.add(homeId);
-        if (!liveChangedHomes.has(homeId)) {
+        const appendOnlyCodex =
+          kind === "codex" && (liveAppendProofs.get(homeId)?.size ?? 0) > 0 && !wholeHomeCodexBlocks.has(homeId);
+        if (!appendOnlyCodex) degradedHomeIds.add(homeId);
+        if (kind === "codex" && !appendOnlyCodex) wholeHomeCodexBlocks.add(homeId);
+        if (!appendOnlyCodex && !liveChangedHomes.has(homeId)) {
           liveChangedHomes.add(homeId);
           rawWarnings.push({ sourceKind: kind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
         }
@@ -2865,9 +3282,15 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
   const classified = classifyPerfSources(homes);
   const finalPartialHomes = partialHomes.filter((entry) => !wholeHomeCodexBlocks.has(entry.homeId));
   const publicationFilter = createCodexPublishFilter(degradedList, finalPartialHomes);
+  const partialHomeIds = new Set(finalPartialHomes.map((entry) => entry.homeId));
+  const retainedPerfSamples = perfSamples.filter((sample) => {
+    if (sample?.sourceKind !== "codex") return true;
+    if (!partialHomeIds.has(String(sample.homeId ?? ""))) return true;
+    return codexSampleAllowed(publicationFilter, sample);
+  });
   const rankedHomeIds = [
     ...new Set(
-      perfSamples
+      retainedPerfSamples
         .filter((sample) => {
           const homeId = String(sample?.homeId ?? "");
           if (homeId === "") return false;
@@ -2881,7 +3304,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
   const codexPublicationPolicy = encodeCodexPublicationPolicy(finalPartialHomes);
 
   return {
-    perfSamples,
+    perfSamples: retainedPerfSamples,
     perfMeta: {
       state,
       ready: state === "ready",
@@ -2889,7 +3312,13 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
       // 已启用性能来源**内容**指纹的聚合（与 M3.4 `buildPublishedSourcesFingerprint` 同口径：
       // 只含已启用来源）⇒ **内容变则版本变**；任一已启用 home 的指纹不可取得或前后不同 ⇒ `null`
       //（一个描述不了所载候选的版本号就是"元数据说谎"，同 M3.4 BC-2 的裁决）。
-      indexVersion: perfFingerprintStable ? aggregatePerfContentFingerprint(enabledHomes, perfFingerprintsAfter) : null,
+      indexVersion: perfFingerprintStable
+        ? aggregatePerfContentFingerprint(
+            enabledHomes,
+            perfFingerprintsAfter,
+            /** @type {number | undefined} */ (options.requestTimingRevision),
+          )
+        : null,
       indexedAt: new Date().toISOString(),
       degradedHomeIds: degradedList,
       sourceWarnings: projectPerfSourceFailures(rawWarnings),
@@ -3046,7 +3475,6 @@ export async function buildUsageReport(options = {}) {
       continue;
     }
 
-    const threadNames = await readSessionThreadNames(home.path);
     if (home.kind === "workbuddy") {
       // ⚠️ 报告路径的事件形状与 store 路径**不同**：这里的 `total` 是**用量对象**（与
       // parseClaudeSessions 同形），不是标量 —— 直接把流事件塞进 `events` 会让
@@ -3064,6 +3492,7 @@ export async function buildUsageReport(options = {}) {
       continue;
     }
 
+    const threadNames = await readSessionThreadNames(home.path);
     const previousBySession = new Map();
     let files = [];
     try {
@@ -3197,7 +3626,6 @@ export async function buildUsageIndex(options = {}) {
       continue;
     }
 
-    const previousBySession = new Map();
     if (home.kind === "workbuddy") {
       for (const filePath of await workbuddySessionFiles(home.path)) {
         try {
@@ -3213,6 +3641,7 @@ export async function buildUsageIndex(options = {}) {
       continue;
     }
 
+    const previousBySession = new Map();
     let files = [];
     try {
       files = await discoverSessionFiles(home.path);
@@ -3891,6 +4320,7 @@ function summaryRangeFields(range, bucket) {
 
 export function summarizeUsageIndex(index, filters = {}) {
   const strings = index.strings;
+  const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
   const sourceKinds = homeSourceKinds(index.homes);
   const { quota, asOf } = summaryQuotaContext(index.rateLimitObservations, filters);
   const range = indexDateRange({ ...filters, quota, now: asOf }, index.events);
@@ -3956,6 +4386,7 @@ export function summarizeUsageIndex(index, filters = {}) {
   const costAccumulator = createCostEstimateAccumulator();
   const { timeline, timelineError } = buildTimelineRowsWithLimit(timelineEvents(), range, bucket, {
     sourceKinds,
+    pricingModels,
     estimateCost: estimateEventCost,
     onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
   });
@@ -3977,7 +4408,9 @@ export function summarizeUsageIndex(index, filters = {}) {
       channelForRange(strings[event.c], range, sourceKinds.get(String(strings[event.h]))),
     ),
     homes: groupIndexedEvents(index, events, (event) => strings[event.l]),
-    models: groupIndexedEvents(index, events, (event) => strings[event.m] || "Unknown model"),
+    models: groupIndexedEvents(index, events, (event) =>
+      canonicalModelName(strings[event.m] || "Unknown model", pricingModels),
+    ),
     projects: groupIndexedEvents(index, events, (event) => strings[event.p] || "Unknown cwd"),
     repositories: groupIndexedRepositories(index, events),
   };
@@ -3987,6 +4420,7 @@ export function summarizeUsageIndex(index, filters = {}) {
  * @returns {import("./usage-types.js").UsageSummary}
  */
 export function summarizeUsage(report, filters = {}) {
+  const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
   const sourceKinds = homeSourceKinds(report.homes);
   // M4.3（M4.3-R1）：来源排除必须**先**作用于候选、再进入统计 —— 卡片明文"范围和来源过滤
   // **先统一作用于候选**，再作分组"，上游方案 :66 要求两条生产路径用**同一候选过滤**。
@@ -4035,6 +4469,7 @@ export function summarizeUsage(report, filters = {}) {
   const costAccumulator = createCostEstimateAccumulator();
   const { timeline, timelineError } = buildTimelineRowsWithLimit(events, range, bucket, {
     sourceKinds,
+    pricingModels,
     estimateCost: estimateEventCost,
     onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
   });
@@ -4057,7 +4492,7 @@ export function summarizeUsage(report, filters = {}) {
       channelForRange(event.channel, range, sourceKinds.get(String(event.homeId))),
     ),
     homes: groupByUsage(events, (event) => event.homeLabel),
-    models: groupByUsage(events, (event) => event.model || "Unknown model"),
+    models: groupByUsage(events, (event) => canonicalModelName(event.model || "Unknown model", pricingModels)),
     projects: groupByUsage(events, (event) => event.cwd || "Unknown cwd"),
     repositories: groupRepositories(events),
   };
@@ -4066,13 +4501,13 @@ export function summarizeUsage(report, filters = {}) {
   //
   // 形状 = M3.4 读投影字段的**同义等价物**（`state/ready/methodVersion/indexVersion/
   // indexedAt/degradedHomeIds/sourceWarnings/unsupportedSources/rankedHomeIds`）
-  // **加上冻结的 `PerfSummary` 三件套 `{groups, coverage, meta}`**（`usage-types.js:178`）。
+  // **加上冻结的 `PerfSummary` 四件套 `{groups, models, coverage, meta}`**（`usage-types.js`）。
   //
   // ⚠️ **契约冲突与裁定（M4.2-R1）**：M1 冻结的 typedef 只描述 `{groups, coverage, meta}`，
   //   而 M3.4 已验收的索引路径把 `summary.perf` 实现成**状态投影**（且 M3 的
-  //   `test/perf-state.test.js:278,557` 断言 `summary.perf.state`，那些测试文件属 M3、
-  //   本卡**不得改**）。⇒ 裁定为**加法超集**：既有键**一个不改**，只新增三件套，
-  //   两条路径产出**同一组键**。下游按冻结形状读 `groups/coverage/meta` 即可。
+  //   `test/perf-state.test.js` 断言 `summary.perf.state`，那些测试文件属 M3、
+  //   本卡**不得改**）。⇒ 裁定为**加法超集**：既有键**一个不改**，新增 `models` 后与旧三件套共存；
+  //   两条路径产出**同一组键**。下游按冻结形状读 `groups/models/coverage/meta` 即可。
   if (Array.isArray(perfReport.perfSamples)) {
     // `perfMeta` 尚未并入 `UsageReport` typedef（M4.1 已登记的边界：`src/usage-types.js` 属 M3）
     // ⇒ 本卡用局部交叉类型读取，不改 M3 文件。
@@ -4089,6 +4524,9 @@ export function summarizeUsage(report, filters = {}) {
     // ③ 配额范围下的**非 Codex home**（索引侧 `nonCodexHomeIds()`，卡片明文沿用该判定）。
     // ⚠️ 只作用于 `summary.perf`，**不**改 `totals/channels/models/timeline`（卡片明文）。
     const excludeHomes = Array.isArray(filters.excludeHomes) ? filters.excludeHomes : [];
+    const missingSourceExclusions = quotaPreset
+      ? [...excludeHomes, ...perfNonCodexHomeIds(report.homes)]
+      : excludeHomes;
     const perfExclusions = [
       ...new Set([
         ...excludeHomes,
@@ -4133,15 +4571,20 @@ export function summarizeUsage(report, filters = {}) {
       indexVersion: perfMeta.indexVersion ?? null,
       indexedAt: perfMeta.indexedAt ?? null,
       degradedHomeIds: degraded,
+      missingSources: (perfMeta.missingSources ?? []).filter(
+        (source) => !missingSourceExclusions.includes(source.homeId),
+      ),
       // M4.3 返工1（复核 §3，M4.2 复核 R3 遗留项）：顶层与 `meta.sourceWarnings` 必须是**同一份
       // 规范结果**。此前顶层直接用原始状态告警（`perfMeta.sourceWarnings`），而内核会按冻结码域
       // 过滤并补算 `AGGREGATE_OVERFLOW` ⇒ 实测出现"meta 有 overflow 告警、顶层却是 `[]`"。
-      // 这里复用内核输出，**不**另写过滤/排序/合并逻辑；12 键形状不变。
+      // 这里复用内核输出，**不**另写过滤/排序/合并逻辑；13 键形状不变。
       sourceWarnings: perfStats.meta.sourceWarnings,
       unsupportedSources: perfMeta.unsupportedSources ?? [],
       rankedHomeIds,
       groups: perfStats.groups,
+      models: perfStats.models,
       coverage: perfStats.coverage,
+      codexTimingCoverage: perfStats.codexTimingCoverage,
       meta: perfStats.meta,
     };
   }

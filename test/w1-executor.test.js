@@ -18,23 +18,44 @@ import { Worker } from "node:worker_threads";
 
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
+import { UsageStore } from "../src/usage-store.js";
+import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+
+function isolatedOptions(root, fixture) {
+  return {
+    homeDir: root,
+    env: {},
+    databaseFile: path.join(root, "usage-index.sqlite"),
+    importStoreFile: path.join(root, "imports.json"),
+    importDirs: [fixture.codexHome],
+    automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
+  };
+}
+
+async function seedRequestTiming(fixture, options) {
+  const store = new UsageStore(options);
+  try {
+    await store.sync({ options });
+    await fixture.seedRequestTiming(store);
+  } finally {
+    store.close();
+  }
+}
 
 test("dashboard skipCheck reinitializes the executor after a crash", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "executor-dashboard-recovery-"));
   const fixture = createPerfCodexIntegrationFixture();
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
   const originalPostMessage = Worker.prototype.postMessage;
   let activeWorker;
   Worker.prototype.postMessage = function (message, ...args) {
     if (message.type === "dashboard") activeWorker = this;
     return originalPostMessage.call(this, message, ...args);
   };
-  const server = createUsageServer({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const server = createUsageServer(options);
   try {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const url = `http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`;
@@ -47,6 +68,10 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
     const actual = await after.json();
     assert.equal(after.status, 200, JSON.stringify(actual));
     assert.deepEqual(actual.summary.totals, expected.summary.totals);
+    assert.equal(actual.summary.perf.models.length, 1);
+    assert.deepEqual(actual.summary.perf.models, expected.summary.perf.models);
+    assert.deepEqual(actual.summary.perf.codexTimingCoverage, expected.summary.perf.codexTimingCoverage);
+    assert.equal(actual.summary.perf.codexTimingCoverage.counts.sampled, 25);
     assert.ok(actual.metadata.harnessModels);
   } finally {
     Worker.prototype.postMessage = originalPostMessage;
@@ -59,15 +84,12 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
 async function withExecutor(body) {
   const root = await mkdtemp(path.join(tmpdir(), "w1-executor-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const databaseFile = path.join(root, "usage-index.sqlite");
-  const executor = createUsageExecutor({
-    homeDir: root,
-    databaseFile,
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  const databaseFile = options.databaseFile;
+  await seedRequestTiming(fixture, options);
+  const executor = createUsageExecutor(options);
   try {
-    return await body({ executor, databaseFile, root, fixture });
+    return await body({ executor, databaseFile, root, fixture, options });
   } finally {
     await executor.close();
     fixture.close();
@@ -76,13 +98,13 @@ async function withExecutor(body) {
 }
 
 test("W1 · 执行器独占数据库连接：主线程客户端没有 database，只有读侧快照", async () => {
-  await withExecutor(async ({ executor, databaseFile }) => {
+  await withExecutor(async ({ executor, databaseFile, options }) => {
     // 连接归属：客户端**不是** UsageStore，没有连接句柄。
     assert.equal(executor.database, undefined);
     assert.equal(typeof executor.metadata, "function");
     // 首次发布前读侧快照为空（不是抛错、也不是 {} 冒充）。
     assert.equal(executor.metadata(), null);
-    const status = await executor.sync({ options: { force: true } });
+    const status = await executor.sync({ options: { ...options, force: true } });
     assert.ok(status, "sync 必须返回状态");
     const metadata = executor.metadata();
     assert.ok(metadata, "sync 完成后必须发布读侧快照");
@@ -93,8 +115,8 @@ test("W1 · 执行器独占数据库连接：主线程客户端没有 database�
 });
 
 test("W1 · metadataFor(asOf) 在执行器内按该时刻现算（RC2：metadata() 忽略 asOf）", async () => {
-  await withExecutor(async ({ executor }) => {
-    await executor.sync({ options: { force: true } });
+  await withExecutor(async ({ executor, options }) => {
+    await executor.sync({ options: { ...options, force: true } });
     const asOf = new Date(Date.now() - 60_000);
     const historical = await executor.metadataFor(asOf);
     assert.ok(historical.harnessModels, "按历史时刻算出的 metadata 仍必须是完整对象");
@@ -108,13 +130,35 @@ test("W1 · metadataFor(asOf) 在执行器内按该时刻现算（RC2：metadata
 });
 
 test("W1 · summarize / periodComparison 是 Promise，且形状与同步版一致（RC1）", async () => {
-  await withExecutor(async ({ executor }) => {
-    await executor.sync({ options: { force: true } });
+  await withExecutor(async ({ executor, fixture, options }) => {
+    await executor.sync({ options: { ...options, force: true } });
     const pending = executor.summarize({ preset: "all", now: new Date() });
     assert.ok(pending instanceof Promise, "summarize 必须是 Promise（跨线程 ⇒ 不可再同步调用）");
     const summary = await pending;
     assert.ok(summary.totals, "summary.totals 必须存在（F1 症状的反面）");
     assert.ok(summary.range, "summary.range 必须存在");
+    assert.equal(summary.perf.models.length, 1, "执行器消息必须保留模型速度行");
+    const model = summary.perf.models[0];
+    assert.deepEqual(Object.keys(model).sort(), [
+      "averageTps",
+      "firstSampleAtMs",
+      "key",
+      "lastSampleAtMs",
+      "model",
+      "modelProvider",
+      "n",
+      "p10",
+      "p90",
+      "rank",
+      "rankState",
+      "reasoningEffort",
+      "sourceKind",
+      "state",
+      "window",
+    ]);
+    assert.equal(model.key, JSON.stringify(["codex", fixture.expected.model, "high", ""]));
+    assert.equal(model.averageTps, fixture.expected.tps.pooled);
+    assert.equal(model.n, fixture.expected.n);
     const comparison = executor.periodComparison({ now: new Date() });
     assert.ok(comparison instanceof Promise, "periodComparison 必须是 Promise");
     const periods = await comparison;
@@ -123,9 +167,84 @@ test("W1 · summarize / periodComparison 是 Promise，且形状与同步版一�
   });
 });
 
+test("R09 · 并发请求各自绑定自己的价格目录", async () => {
+  const original = getPricingCatalog();
+  try {
+    await withExecutor(async ({ executor, options }) => {
+      const candidate = structuredClone(original);
+      candidate.checkedAt = "2026-10-24";
+      candidate.models["gpt-6-sol"].short = { input: 1, cachedInput: 0.1, cacheWrite: 0, output: 2 };
+      candidate.models["gpt-6-sol"].long = { input: 1, cachedInput: 0.1, cacheWrite: 0, output: 2 };
+
+      const database = new DatabaseSync(options.databaseFile);
+      try {
+        database
+          .prepare("INSERT INTO source_files VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+          .run("/fixture/usage.jsonl", "main", "home-a", "Home A", options.homeDir, 1, 1, "2026-10-24T00:00:00.000Z");
+        database
+          .prepare(
+            `INSERT INTO events (
+               source_path, timestamp_ms, session_id, home_id, home_label, channel, project, model,
+               hour_key, day_key, week_key, month_key, detail_mask, cache_write_tokens, cache_write_known,
+               request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            "/fixture/usage.jsonl",
+            Date.parse("2026-10-24T02:00:00Z"),
+            "session-a",
+            "home-a",
+            "Home A",
+            "CLI",
+            "project",
+            "gpt-6-sol",
+            "2026-10-24 02",
+            "2026-10-24",
+            "2026-10-19",
+            "2026-10",
+            15,
+            0,
+            1,
+            0,
+            "short",
+            "standard",
+            "fixture",
+            1010,
+            1000,
+            0,
+            10,
+            0,
+          );
+      } finally {
+        database.close();
+      }
+      await executor.sync({ options: { ...options, force: true } });
+
+      const catalogA = setPricingCatalog(candidate);
+      const pendingA = executor.dashboard({ preset: "all" }, { includeDetails: false });
+
+      candidate.checkedAt = "2026-10-25";
+      candidate.models["gpt-6-sol"].short = { input: 10, cachedInput: 1, cacheWrite: 0, output: 20 };
+      candidate.models["gpt-6-sol"].long = { input: 10, cachedInput: 1, cacheWrite: 0, output: 20 };
+      const catalogB = setPricingCatalog(candidate);
+      const pendingB = executor.dashboard({ preset: "all" }, { includeDetails: false });
+      const [dashboardA, dashboardB] = await Promise.all([pendingA, pendingB]);
+
+      assert.deepEqual(dashboardA.pricingCatalog, catalogA);
+      assert.deepEqual(dashboardB.pricingCatalog, catalogB);
+      assert.deepEqual(dashboardA.summary.costEstimate.priceVersions, [catalogA.version]);
+      assert.deepEqual(dashboardB.summary.costEstimate.priceVersions, [catalogB.version]);
+      assert.ok(dashboardA.summary.costEstimate.totalUsd > 0);
+      assert.ok(dashboardB.summary.costEstimate.totalUsd > dashboardA.summary.costEstimate.totalUsd);
+    });
+  } finally {
+    setPricingCatalog(original);
+  }
+});
+
 test("W1 · snapshot 由执行器 backup，并返回绑定该 asOf 的读侧状态（RC3 执行器半）", async () => {
-  await withExecutor(async ({ executor, root }) => {
-    await executor.sync({ options: { force: true } });
+  await withExecutor(async ({ executor, root, options }) => {
+    await executor.sync({ options: { ...options, force: true } });
     const databaseFile = path.join(root, "frozen-copy.sqlite");
     const asOf = new Date();
     const frozen = await executor.snapshot({ databaseFile, asOf: asOf.getTime() });
@@ -149,13 +268,10 @@ test("W1 · snapshot 由执行器 backup，并返回绑定该 asOf 的读侧状�
 test("W1 · close() 释放连接：库文件与目录可立即删除（Windows EBUSY/EPERM 教训）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-executor-close-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = createUsageExecutor({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
-  await executor.sync({ options: { force: true } });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const executor = createUsageExecutor(options);
+  await executor.sync({ options: { ...options, force: true } });
   await executor.close();
   fixture.close();
   // 不重试：close() 必须已经等到执行器释放连接（否则这里会 EPERM/EBUSY）。
@@ -166,12 +282,9 @@ test("W1 · close() 释放连接：库文件与目录可立即删除（Windows E
 test("W1 · /api/status 在主线程就地应答：执行器在飞时仍快速返回", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-status-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const server = createUsageServer({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const server = createUsageServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -205,16 +318,9 @@ const settledWithin = (promise, ms) =>
 test("W1-b · 家族①：请求超时必须以可重试错误结算，绝不挂死", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-timeout-"));
   const fixture = createPerfCodexIntegrationFixture();
+  const options = isolatedOptions(root, fixture);
   // 1 ms 超时：任何真实请求都来不及应答 ⇒ 必然走超时路径。
-  const executor = createUsageExecutor(
-    {
-      homeDir: root,
-      databaseFile: path.join(root, "usage-index.sqlite"),
-      importDirs: [fixture.codexHome],
-      automaticDiscoveryEnabled: false,
-    },
-    { requestTimeoutMs: 1 },
-  );
+  const executor = createUsageExecutor(options, { requestTimeoutMs: 1 });
   try {
     const outcome = await settledWithin(executor.summarize({ preset: "all", now: new Date() }), 5000);
     assert.notEqual(outcome.state, "hung", "超时请求必须结算（不得挂死）");
@@ -234,14 +340,11 @@ test("W1-b · 家族①：请求超时必须以可重试错误结算，绝不挂
 test("W1-b · 家族①：执行器内失败必须以可重试错误返回（不挂死、不 500）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-failfast-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = createUsageExecutor({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const executor = createUsageExecutor(options);
   try {
-    await executor.sync({ options: { force: true } });
+    await executor.sync({ options: { ...options, force: true } });
     // 故意让执行器内的 `backup` 失败（目标目录不存在）⇒ 必须返回可重试错误而不是抛栈/挂死。
     const outcome = await settledWithin(
       executor.snapshot({ databaseFile: path.join(root, "no-such-dir", "copy.sqlite"), asOf: Date.now() }),
@@ -260,13 +363,10 @@ test("W1-b · 家族①：执行器内失败必须以可重试错误返回（不
 test("W1-b · 家族①：close() 必须在执行器退出后迅速落定（显式 flush 语义）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-closeflush-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = createUsageExecutor({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
-  await executor.sync({ options: { force: true } });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const executor = createUsageExecutor(options);
+  await executor.sync({ options: { ...options, force: true } });
   const started = performance.now();
   await executor.close();
   const ms = performance.now() - started;
@@ -280,14 +380,11 @@ test("W1-b · 家族①：close() 必须在执行器退出后迅速落定（显�
 test("W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不发布半成品", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-publish-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = createUsageExecutor({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const executor = createUsageExecutor(options);
   try {
-    await executor.sync({ options: { force: true } });
+    await executor.sync({ options: { ...options, force: true } });
     const published = executor.metadata();
     assert.ok(published?.harnessModels, "首次 sync 后必须发布完整快照");
     // 完整态的形状契约（= `store.metadata()` 的形状）：模型表存在且 `homes` 是数组。
@@ -297,7 +394,7 @@ test("W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不�
     // 多轮发布各自采样，避免单次同步太快而把正确实现误判为空转。
     for (let round = 0; round < 5; round += 1) {
       let settled = false;
-      const inFlight = executor.sync({ options: { force: true } }).then((status) => {
+      const inFlight = executor.sync({ options: { ...options, force: true } }).then((status) => {
         settled = true;
         return status;
       });
@@ -327,12 +424,9 @@ test("W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不�
 test("W1-b · 家族②：/api/status 只读已发布快照，不与执行器的重活竞争", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-status-snapshot-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const server = createUsageServer({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const server = createUsageServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -358,6 +452,8 @@ test("W1-b · 家族②：/api/status 只读已发布快照，不与执行器的
 test("W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 去重）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-syncmerge-"));
   const fixture = createPerfCodexIntegrationFixture();
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
   // 直接数"向执行器发出的 sync 消息"：`checkedAt` 相等并不能证明只跑了一次（两次同步
   // 也会得到同一个 checkedAt）⇒ 必须计数。插桩只包住 `Worker.prototype.postMessage`，
   // 不改产品文件、不改 schema。
@@ -367,12 +463,7 @@ test("W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 
     if (message && message.type === "sync") syncMessages.push({ id: message.id, at: Date.now() });
     return originalPostMessage.call(this, message, ...rest);
   };
-  const server = createUsageServer({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const server = createUsageServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -402,12 +493,9 @@ test("W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 
 test("W1-b · 收口：server.close() 无回调时返回 Promise，且只有执行器释放后才 settle", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-server-close-promise-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const server = createUsageServer({
-    homeDir: root,
-    databaseFile: path.join(root, "usage-index.sqlite"),
-    importDirs: [fixture.codexHome],
-    automaticDiscoveryEnabled: false,
-  });
+  const options = isolatedOptions(root, fixture);
+  await seedRequestTiming(fixture, options);
+  const server = createUsageServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   await fetch(`http://127.0.0.1:${server.address().port}/api/usage?preset=all`).then((r) => r.json());
   const closed = server.close();

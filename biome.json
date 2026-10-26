@@ -16,7 +16,8 @@
       "scripts/perf-probe-sources/**",
       "test-support/perf-fixture.mjs",
       "test-support/claude-perf-fixture.mjs",
-      "!!docs/validation"
+      "!!docs/validation",
+      "!!output"
     ],
     "ignoreUnknown": false
   },

@@ -1,6 +1,7 @@
 // 周期对比的共享实现：服务端汇总、SQLite 索引和浏览器（含静态快照）三条
 // 路径都使用这里的口径，避免排除来源或时段边界在各实现间漂移。
 import { USAGE_DETAIL_INCONSISTENT, USAGE_DETAIL_MASK, emptyUsage } from "./usage-fields.js";
+import { canonicalModelName } from "./pricing-models.js";
 
 export const COMPARISON_PERIOD_KEYS = ["today", "week", "month", "all"];
 
@@ -67,7 +68,7 @@ export function calendarPresetRange(preset, now, zone = "local", timestamps = []
   };
 }
 
-function emptyPeriodMetrics() {
+export function emptyPeriodMetrics() {
   return {
     total: 0,
     input: 0,
@@ -88,7 +89,7 @@ function emptyPeriodMetrics() {
   };
 }
 
-function addPeriodEvent(target, event) {
+export function addPeriodEvent(target, event) {
   const usage = event.total || emptyUsage();
   const total = Number(usage.total || 0);
   const mask = Number.isInteger(event.detailMask) ? event.detailMask : USAGE_DETAIL_MASK.complete;
@@ -167,7 +168,7 @@ export function summarizePeriodComparison(events = [], options = {}) {
     if (!Number.isFinite(timestamp)) {
       continue;
     }
-    const modelKey = event.model || "Unknown model";
+    const modelKey = canonicalModelName(event.model || "Unknown model", options.pricingModels);
     const repositoryKey = event.repositoryKey || `directory:${event.cwd || "Unknown cwd"}`;
     const modelRow = comparisonRow(rows.models, modelKey, modelKey, event, COMPARISON_PERIOD_KEYS);
     const repositoryRowKey = repositoryKey;

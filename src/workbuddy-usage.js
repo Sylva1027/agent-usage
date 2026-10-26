@@ -276,6 +276,38 @@ export async function streamWorkbuddySessionEvents(filePath, source, onEvent, op
   }
 }
 
+/**
+ * Map every usage message to the session files that contain it. Used only when a
+ * new trace duration has no published sample path to jump from.
+ * @param {string} homePath
+ * @returns {Promise<Map<string, Set<string>>>}
+ */
+export async function workbuddySessionMessageFiles(homePath) {
+  const byMessage = new Map();
+  for (const filePath of await workbuddySessionFiles(homePath)) {
+    const seen = new Set();
+    for await (const line of readRolloutLines(filePath)) {
+      if (!line.trim()) continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!USAGE_RECORD_TYPES.has(String(record?.type || ""))) continue;
+      const providerData = record?.providerData;
+      if (!providerData?.usage) continue;
+      const messageId = trimmed(providerData.messageId);
+      if (!messageId || seen.has(messageId)) continue;
+      seen.add(messageId);
+      const files = byMessage.get(messageId) || new Set();
+      files.add(filePath);
+      byMessage.set(messageId, files);
+    }
+  }
+  return byMessage;
+}
+
 /** 供报告路径使用：把一个 WorkBuddy home 下所有会话汇总成 `{ sessions, events }`。 */
 export async function parseWorkbuddySessions(homePath, source, options = {}) {
   const sessions = new Map();
@@ -365,6 +397,27 @@ export async function workbuddyTraceFiles(homePath) {
 }
 
 /**
+ * One discovery/stat pass for the trace dependency. The caller compares snapshots
+ * around candidate reads; unreadable entries make `complete=false`.
+ * @param {string} homePath
+ * @returns {Promise<{ files: string[], entries: Array<{ filePath: string, size: number, mtimeMs: number }>, complete: boolean }>}
+ */
+export async function workbuddyTraceSnapshot(homePath) {
+  const files = await workbuddyTraceFiles(homePath);
+  const entries = [];
+  let complete = true;
+  for (const filePath of files) {
+    try {
+      const info = await stat(filePath);
+      entries.push({ filePath, size: info.size, mtimeMs: info.mtimeMs });
+    } catch {
+      complete = false;
+    }
+  }
+  return { files, entries, complete };
+}
+
+/**
  * 单个 trace 文件里的 generation span。
  * @param {string} filePath
  * @param {{ onWarning?: (warning: string) => void }} [options]
@@ -416,12 +469,12 @@ export async function workbuddyTraceSpans(filePath, options = {}) {
  * 只收 `status === "ok"` 的 span；`toolOutput` 是 JSON 字符串，`[0].id` 即该次响应的 messageId。
  * `duration` 必须是正整数毫秒 —— 非正/非整数一律丢弃（不制造 `DURATION_NONPOSITIVE` 样本）。
  * @param {string} homePath
- * @param {{ onWarning?: (warning: string) => void }} [options]
+ * @param {{ files?: string[], onWarning?: (warning: string) => void }} [options]
  * @returns {Promise<Array<{ messageId: string, durationMs: number, endedAtMs: number | null }>>}
  */
 export async function workbuddyGenerationSpans(homePath, options = {}) {
   const spans = [];
-  for (const filePath of await workbuddyTraceFiles(homePath)) {
+  for (const filePath of options.files ?? (await workbuddyTraceFiles(homePath))) {
     spans.push(...(await workbuddyTraceSpans(filePath, options)));
   }
   return spans;

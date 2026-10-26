@@ -25,8 +25,100 @@ import {
   projectionStoreByteEstimate,
 } from "../src/usage-store.js";
 import { createCodexProjectionCache } from "../src/perf-sources/codex-thread.js";
+import { readCodexRolloutMetadata } from "../src/perf-sources/codex-jsonl.js";
 
 const TABLE = CODEX_PROJECTION_STORE_TABLE;
+
+test("WebSearch compatibility rebuilds an unchanged rollout's old rejected projection after restart", async () => {
+  const { homeDir, rolloutA, databaseFile } = await makeCodexHome();
+  const options = { homeDir, databaseFile, env: {}, importDirs: [], automaticDiscoveryEnabled: false };
+  let store = new UsageStore(options);
+  try {
+    await appendFile(
+      rolloutA,
+      jsonl([
+        {
+          type: "event_msg",
+          payload: {
+            type: "item_completed",
+            thread_id: "t1-thread-a",
+            turn_id: "t1-turn-a1",
+            started_at_ms: 1_700_000_000_000,
+            completed_at_ms: 1_700_100_000_000,
+            item: { type: "WebSearch", id: "search-1", query: "PRIVATE_QUERY", action: { type: "search" } },
+          },
+        },
+      ]),
+    );
+    await store.sync({ options });
+    const homeId = store.database.prepare("SELECT home_id FROM source_files WHERE path = ?").get(rolloutA).home_id;
+    store.importRequestTimingEvidence({
+      homeId,
+      reviewedOrigins: ["fixture@1"],
+      records: [
+        {
+          schemaVersion: 1,
+          evidenceOrigin: "fixture@1",
+          responseId: "resp-t1-thread-a",
+          requestedModel: "gpt-fixture",
+          reportedOutputTokens: 500,
+          durationMs: 1500,
+          status: "completed",
+          completedAtMs: null,
+        },
+        {
+          schemaVersion: 1,
+          evidenceOrigin: "fixture@1",
+          responseId: "resp-t1-thread-b",
+          requestedModel: "gpt-fixture",
+          reportedOutputTokens: 700,
+          durationMs: 1500,
+          status: "completed",
+          completedAtMs: null,
+        },
+      ],
+    });
+    const oldProjection = await readCodexRolloutMetadata(rolloutA);
+    oldProjection.stats.unknownItemTypes = 1;
+    oldProjection.records = oldProjection.records.filter((record) => record.kind !== "ignored_item_envelope");
+    const encoded = JSON.stringify(oldProjection);
+    store.database
+      .prepare(`UPDATE ${TABLE} SET method_version = ?, projection = ?, bytes = ? WHERE path = ?`)
+      .run(
+        "tps-v1:codex-projection-v2",
+        encoded,
+        encoded.length,
+        process.platform === "win32" ? rolloutA.toLowerCase() : rolloutA,
+      );
+    store.writePerfState("degraded", {
+      degradedHomeIds: [homeId],
+      sourceWarnings: [{ sourceKind: "codex", homeId, code: "UNSUPPORTED_SCHEMA", count: 1 }],
+    });
+    store.close();
+    store = new UsageStore(options);
+    await store.sync({ options });
+    const summary = await store.summarize({ preset: "all" });
+    assert.equal(summary.perf.meta.state, "ready");
+    assert.equal(summary.perf.coverage.bySource.codex.sampled, 2);
+    assert.equal(summary.perf.models.length, 1);
+    assert.equal(summary.perf.models[0].averageTps, 400, "search duration must not enter the model's item span");
+    assert.deepEqual(summary.perf.meta.sourceWarnings, []);
+    const projection = JSON.parse(
+      store.database
+        .prepare(`SELECT projection FROM ${TABLE} WHERE path = ?`)
+        .get(process.platform === "win32" ? rolloutA.toLowerCase() : rolloutA).projection,
+    );
+    assert.equal(projection.stats.unknownItemTypes, 0);
+    assert.equal(JSON.stringify(projection).includes("PRIVATE_QUERY"), false);
+    const repeated = await store.sync({ options });
+    assert.equal(repeated.updatedFileCount, 0);
+    assert.equal((await store.summarize({ preset: "all" })).perf.meta.indexVersion, summary.perf.meta.indexVersion);
+    assert.equal((await store.summarize({ preset: "all" })).perf.models[0].averageTps, 400);
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -169,8 +261,8 @@ test("T1 · schema 13 → 14 只建表 + 索引、不回填（表存在且为空
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 17, "v13→14 建投影表；v16→17 建 WorkBuddy 时长表");
-    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 17);
+    assert.equal(STORE_SCHEMA_VERSION, 21, "当前 schema 包含 home-scoped WorkBuddy duration observations");
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 21);
     assert.deepEqual(columnNames(store.database, TABLE), [
       "path",
       "home_id",
@@ -220,7 +312,7 @@ test("T1 · 迁移幂等：重复 open 不再建、不清表；已存在的行�
   const second = new UsageStore({ homeDir, databaseFile });
   try {
     await second.open();
-    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 17);
+    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 21);
     assert.equal(rowCount(second.database), 1, "重复 open 不得清表");
     assert.equal(storeRows(second.database)[0].path, "c:\\t1\\sentinel.jsonl");
   } finally {
@@ -256,7 +348,7 @@ test("T1 · 迁移中断可重入：未提交的建表 + v13 版本号 ⇒ 重�
   const retried = new UsageStore({ homeDir, databaseFile });
   try {
     await retried.open();
-    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 17, "重开必须重试成功");
+    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 21, "重开必须重试成功");
     assert.deepEqual(columnNames(retried.database, TABLE).length, 8);
   } finally {
     retried.close();
@@ -282,7 +374,7 @@ test("T1 · v13 → v14 不标脏全库：既有 source_files 不被标 -1，首
   const migrated = new UsageStore({ homeDir, databaseFile });
   try {
     await migrated.open();
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 17);
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 21);
     assert.equal(
       Number(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE size = -1 OR mtime_ms = -1").get().n,
@@ -561,7 +653,7 @@ test("T1 · 未提交即中断（关连接）⇒ 重开后无半行（模拟进�
   try {
     await reopened.open();
     assert.equal(rowCount(reopened.database), 0, "未提交的写必须被回滚 ⇒ 库里没有半行");
-    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 17);
+    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 21);
   } finally {
     reopened.close();
     await rm(homeDir, { recursive: true, force: true });

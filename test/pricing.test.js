@@ -6,6 +6,8 @@ import test from "node:test";
 
 import {
   createCostEstimateAccumulator,
+  createEventCostMemo,
+  CNY_PRICING_SOURCES,
   estimateCostForEvents,
   estimateCostForGroups,
   estimateEventCost,
@@ -13,10 +15,11 @@ import {
   isPeakPricingTime,
   setPricingCatalog,
   resetPricingCatalog,
+  runWithPricingCatalog,
   LONG_CONTEXT_INPUT_THRESHOLD,
 } from "../src/pricing.js";
 import { loadPricingFile } from "../src/pricing-store.js";
-import { isCodexAutoReview } from "../public/pricing-models.js";
+import { canonicalModelName, isCodexAutoReview } from "../public/pricing-models.js";
 
 test("API cost estimate prices uncached input, cached input, and output separately", () => {
   const estimate = estimateCostForEvents([
@@ -197,6 +200,68 @@ test("unknown prices and incomplete details use minimum catalog rates", () => {
   assert.deepEqual(estimate.unpricedModels, []);
   assert.deepEqual(estimate.minimumRateModels, ["custom-review-model", "Unknown model"]);
 });
+
+test("cost accumulator counts canonical model identities while diagnostics keep raw names", () => {
+  const event = {
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 100, input: 80, cached: 20, output: 20, reasoning: 0 },
+  };
+  const estimate = estimateCostForEvents([
+    { ...event, model: "deepseek-v4.1-flash" },
+    { ...event, model: "group/deepseek" },
+    { ...event, model: "custom-review-model" },
+  ]);
+
+  assert.equal(estimate.modelCount, 2);
+  assert.deepEqual(estimate.minimumRateModels, ["custom-review-model"]);
+});
+
+test("request pricing context survives await even when the global catalog changes", async () => {
+  const original = getPricingCatalog();
+  try {
+    const candidateA = structuredClone(original);
+    candidateA.checkedAt = "2026-10-25";
+    candidateA.models["gpt-6-sol"].short.input = 3;
+    const catalogA = setPricingCatalog(candidateA);
+    const candidateB = structuredClone(original);
+    candidateB.checkedAt = "2026-10-26";
+    candidateB.models["gpt-6-sol"].short.input = 9;
+    const catalogB = setPricingCatalog(candidateB);
+
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const pending = runWithPricingCatalog(catalogA, async () => {
+      await gate;
+      return estimateCostForEvents([
+        {
+          model: "gpt-6-sol",
+          detailMask: 15,
+          cacheWriteTokens: 0,
+          cacheWriteKnown: true,
+          contextLevel: "short",
+          serviceTier: "standard",
+          total: { total: 1_000_000, input: 1_000_000, cached: 0, output: 0 },
+        },
+      ]);
+    });
+
+    setPricingCatalog(catalogB);
+    release();
+    const estimate = await pending;
+
+    assert.equal(estimate.totalUsd, 3);
+    assert.deepEqual(estimate.priceVersions, [catalogA.version]);
+    assert.equal(getPricingCatalog().version, catalogB.version);
+  } finally {
+    setPricingCatalog(original);
+  }
+});
 test("grouped store rows produce the same aggregate as individual events", () => {
   const event = {
     model: "gpt-6-luna",
@@ -349,6 +414,93 @@ test("DeepSeek 谷时段按 5 折计价", () => {
   assert.ok(!peak.unpricedReasons.includes("off-peak-pricing-applied"));
   assert.ok(weekdayOffPeak.unpricedReasons.includes("off-peak-pricing-applied"));
   assert.ok(weekend.unpricedReasons.includes("off-peak-pricing-applied"));
+});
+
+test("八个 DeepSeek 原始名共用官方价与峰谷边界", () => {
+  const models = getPricingCatalog().models;
+  const names = [
+    "deepseek-v4.1-flash",
+    "opendesign/deepseek-v4.1-flash",
+    "workbuddy-ai/deepseek-v4.1-flash",
+    "workbuddy-ai/deepseek-v4.1-flash-sg",
+    "opencode-go/deepseek-v4.1-flash",
+    "deepseek-flash",
+    "deepseek-v4.1-flash-sg",
+    "group/deepseek",
+  ];
+  for (const name of names) assert.equal(canonicalModelName(name, models), "deepseek-flash");
+
+  const event = {
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    total: { total: 110, input: 100, cached: 20, output: 10, reasoning: 0 },
+  };
+  const instants = [
+    ["09:00 peak start", "2026-09-22T01:00:00.000Z"],
+    ["10:00 peak", "2026-09-22T02:00:00.000Z"],
+    ["12:00 peak end", "2026-09-22T04:00:00.000Z"],
+    ["13:00 off-peak", "2026-09-22T05:00:00.000Z"],
+    ["14:00 peak start", "2026-09-22T06:00:00.000Z"],
+    ["18:00 peak end", "2026-09-22T10:00:00.000Z"],
+  ];
+  const peakAmount = (80 * 2 + 20 * 0.04 + 10 * 8) / 1_000_000;
+
+  for (const [label, timestamp] of instants) {
+    const expected = estimateEventCost({ ...event, model: "deepseek-flash", timestamp });
+    for (const model of names) {
+      const actual = estimateEventCost({ ...event, model, timestamp });
+      assert.equal(actual.totalUsd, expected.totalUsd, `${label}: ${model}`);
+      assert.equal(actual.currency, "CNY", `${label}: ${model}`);
+      assert.equal(actual.priceSource, CNY_PRICING_SOURCES.deepseek, `${label}: ${model}`);
+    }
+  }
+
+  assert.ok(
+    Math.abs(
+      estimateEventCost({ ...event, model: "deepseek-flash", timestamp: instants[0][1] }).totalUsd - peakAmount,
+    ) < 1e-15,
+  );
+  assert.ok(
+    Math.abs(
+      estimateEventCost({ ...event, model: "deepseek-flash", timestamp: instants[2][1] }).totalUsd - peakAmount * 0.5,
+    ) < 1e-15,
+  );
+});
+
+test("残留自动缓存条目不会抢走 DeepSeek 别名的官方键", () => {
+  const catalog = getPricingCatalog();
+  const residual = structuredClone(catalog.models["deepseek-flash"]);
+  residual.currency = "USD";
+  residual.source = CNY_PRICING_SOURCES.qwen;
+  residual.short = { input: 9, cachedInput: 0.9, cacheWrite: 0, output: 18 };
+  residual.long = { input: 9, cachedInput: 0.9, cacheWrite: 0, output: 18 };
+  catalog.models["deepseek-v4-flash-0731"] = residual;
+
+  try {
+    setPricingCatalog(catalog);
+    assert.equal(Object.hasOwn(getPricingCatalog().models, "deepseek-v4-flash-0731"), true);
+    const event = {
+      model: "deepseek-flash",
+      detailMask: 15,
+      cacheWriteTokens: 0,
+      cacheWriteKnown: true,
+      contextLevel: "short",
+      serviceTier: "standard",
+      timestamp: "2026-09-22T02:00:00.000Z",
+      total: { total: 110, input: 100, cached: 20, output: 10, reasoning: 0 },
+    };
+    const expected = estimateEventCost(event);
+    for (const model of ["deepseek-v4.1-flash", "workbuddy-ai/deepseek-v4.1-flash-sg", "group/deepseek"]) {
+      const actual = estimateEventCost({ ...event, model });
+      assert.equal(actual.totalUsd, expected.totalUsd, model);
+      assert.equal(actual.priceSource, CNY_PRICING_SOURCES.deepseek, model);
+    }
+  } finally {
+    resetPricingCatalog();
+  }
 });
 
 test("峰谷区间端点为左闭右开，跨日区间不命中", () => {
@@ -781,7 +933,7 @@ test("模型索引按 models 对象身份缓存：改键集合后立即命中，
   assert.equal(before.minimumEstimatedTokens, 110);
 
   const catalog = getPricingCatalog();
-  assert.equal(Object.keys(catalog.models).length, 103);
+  assert.equal(Object.keys(catalog.models).length, 101);
   catalog.models[model] = structuredClone(catalog.models["gpt-6-sol"]);
   try {
     // setPricingCatalog 走 validatePricingCatalog，产出全新 models 对象；
@@ -966,4 +1118,35 @@ test("最低费率缓存随同日期价目替换及 A→B→A 正确失效", () 
 
   const defaultRates = minimumRatesOracle(getPricingCatalog(), "short", "USD");
   assert.ok(Math.abs(estimateEventCost(unknownMinimumEvent()).totalUsd - unknownMinimumUsd(defaultRates)) < 1e-12);
+});
+
+test("价目替换后事件 memo 不复用旧目录结果", () => {
+  const catalogA = getPricingCatalog();
+  const catalogB = structuredClone(catalogA);
+  catalogB.models["deepseek-flash"].short = { input: 4, cachedInput: 0.08, cacheWrite: 0, output: 16 };
+  catalogB.models["deepseek-flash"].long = { input: 4, cachedInput: 0.08, cacheWrite: 0, output: 16 };
+  const event = {
+    model: "deepseek-v4.1-flash",
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    contextLevel: "short",
+    serviceTier: "standard",
+    timestamp: "2026-09-22T02:00:00.000Z",
+    total: { total: 110, input: 100, cached: 20, output: 10, reasoning: 0 },
+  };
+  const memo = createEventCostMemo();
+
+  try {
+    setPricingCatalog(catalogA);
+    const first = memo.estimate(event);
+    setPricingCatalog(catalogB);
+    const second = memo.estimate(event);
+    assert.equal(memo.stats().misses, 2, "目录版本变化必须新增一次未命中");
+    assert.notEqual(second.priceVersion, first.priceVersion);
+    assert.ok(Math.abs(second.totalUsd - first.totalUsd * 2) < 1e-15);
+    assert.deepEqual(second, estimateEventCost(event));
+  } finally {
+    resetPricingCatalog();
+  }
 });

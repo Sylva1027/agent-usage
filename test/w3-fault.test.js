@@ -108,14 +108,21 @@ const settledWithin = async (promise, ms) => {
   return outcome;
 };
 
-async function makeExecutor({ root, fixture, options = {} }) {
-  return createUsageExecutor({
+function isolatedOptions(root, fixture, overrides = {}) {
+  return {
     homeDir: root,
+    env: {},
     databaseFile: path.join(root, "usage-index.sqlite"),
+    importStoreFile: path.join(root, "imports.json"),
     importDirs: [fixture.codexHome],
     automaticDiscoveryEnabled: false,
-    ...options,
-  });
+    ...overrides,
+  };
+}
+
+async function makeExecutor({ root, fixture, options = {} }) {
+  const isolated = isolatedOptions(root, fixture, options);
+  return { executor: createUsageExecutor(isolated), options: isolated };
 }
 
 /**
@@ -134,11 +141,11 @@ const liveWorkerThreads = () => {
 test("W3 · 崩溃①：worker 被强制终止 ⇒ 在途请求以可重试错误结算，不挂死", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-inflight-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
+  const { executor, options } = await makeExecutor({ root, fixture });
   try {
-    await executor.sync({ options: { force: true } }); // 预热：库已建、快照已发布
+    await executor.sync({ options: { ...options, force: true } }); // 预热：库已建、快照已发布
     // 同一 tick 内提交 + 终止：主线程还没让出事件环 ⇒ 该请求**必然**仍在 `pending` 里。
-    const inFlight = executor.sync({ options: { force: true } });
+    const inFlight = executor.sync({ options: { ...options, force: true } });
     const crashed = await executor.crashWorkerForTest();
     const outcome = await settledWithin(inFlight, 90_000); // 争用下在途结算可能被拖到分钟级（只放宽**保护值**，判据不变）
     assert.equal(crashed, true, "故障注入必须真的终止了执行器线程");
@@ -162,9 +169,9 @@ test("W3 · 崩溃①：worker 被强制终止 ⇒ 在途请求以可重试错�
 test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / 库重开 / 快照不脏）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-recover-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
+  const { executor, options } = await makeExecutor({ root, fixture });
   try {
-    await executor.sync({ options: { force: true } });
+    await executor.sync({ options: { ...options, force: true } });
     assert.ok(executor.metadata()?.harnessModels, "预热后必须已发布完整快照");
     await executor.crashWorkerForTest();
     // 崩溃后：线程已死、可见状态清空（不得留下陈旧/半发布快照）。
@@ -172,7 +179,7 @@ test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / �
     assert.equal(executor.metadata(), null, "崩溃后读侧快照必须清空（不留陈旧状态）");
     assert.equal(executor.restarts, 0, "尚未重启");
     // **下一个请求**必须能恢复：就地拉起新执行器、库能重开、快照重新变完整。
-    const status = await settledWithin(executor.sync({ options: { force: true } }), 120_000); // 同上：保护值放宽，判据不变
+    const status = await settledWithin(executor.sync({ options: { ...options, force: true } }), 120_000); // 同上：保护值放宽，判据不变
     assert.equal(status.state, "resolved", `崩溃后下一个请求必须成功（实测 ${status.state}）`);
     assert.ok(status.value, "恢复后的 sync 必须返回状态");
     assert.equal(executor.alive, true, "恢复后执行器线程必须活着");
@@ -180,6 +187,7 @@ test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / �
     const metadata = executor.metadata();
     assert.ok(metadata?.harnessModels, "恢复后必须重新发布完整快照");
     assert.ok(Array.isArray(metadata.homes), "恢复后 homes 必须是数组");
+    assert.equal(metadata.homes.length, 1, "隔离 sync 只能发现 fixture Codex home");
     record({
       cell: "②崩溃后恢复",
       expected: "崩溃清空状态 ⇒ 下一个请求成功 + restarts=1",
@@ -196,9 +204,9 @@ test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / �
 test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样全部为空或完整）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-publish-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
+  const { executor, options } = await makeExecutor({ root, fixture });
   try {
-    await executor.sync({ options: { force: true } });
+    await executor.sync({ options: { ...options, force: true } });
     const isComplete = (state) =>
       state !== null && state !== undefined && Boolean(state.harnessModels) && Array.isArray(state.homes);
     /** 半发布 = 有 metadata 却**不完整**（`null`/空态是"崩溃后清空"，不算半成品）。 */
@@ -209,7 +217,7 @@ test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样�
     // 在飞一次同步（重活），**同时**硬崩溃：崩溃点落在"发布中途"附近。
     // 注意：先启动采样、再 `await` 崩溃，否则崩溃一落定循环就退出、一次样本都采不到（断言空转）。
     const inFlight = executor
-      .sync({ options: { force: true } })
+      .sync({ options: { ...options, force: true } })
       .then((value) => {
         settled = true;
         return value;
@@ -254,8 +262,8 @@ test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样�
 test("W3 · 崩溃④：close() 期间崩溃不得让 close() 永不落定，且之后库可立即删除", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-close-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
-  await executor.sync({ options: { force: true } });
+  const { executor, options } = await makeExecutor({ root, fixture });
+  await executor.sync({ options: { ...options, force: true } });
   const started = performance.now();
   // 同一 tick 内：发起 close() + 立刻把执行器打崩（关闭握手与崩溃竞争）。
   const closing = executor.close();
@@ -278,9 +286,9 @@ test("W3 · 崩溃④：close() 期间崩溃不得让 close() 永不落定，且
 test("W3 · 泄漏①：多次 close() 幂等；close() 后再请求以 EXECUTOR_UNAVAILABLE 结算", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-multiclose-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
+  const { executor, options } = await makeExecutor({ root, fixture });
   try {
-    await executor.sync({ options: { force: true } });
+    await executor.sync({ options: { ...options, force: true } });
     const first = await settledWithin(executor.close(), 30_000);
     assert.equal(first.state, "resolved", "第一次 close() 必须落定");
     const started = performance.now();
@@ -290,7 +298,7 @@ test("W3 · 泄漏①：多次 close() 幂等；close() 后再请求以 EXECUTOR
     assert.ok(secondMs < 200, `第二次 close() 必须立即返回，实测 ${secondMs.toFixed(1)} ms`);
     assert.equal(executor.alive, false, "close() 后执行器必须已死");
     // close() 之后**不得重启**：请求以不可用错误结算（不是挂死、不是偷偷拉起新线程）。
-    const after = await settledWithin(executor.sync({ options: { force: true } }), 60_000);
+    const after = await settledWithin(executor.sync({ options: { ...options, force: true } }), 60_000);
     assert.equal(after.state, "rejected", "close() 后再请求必须 reject");
     assert.equal(after.error.code, "EXECUTOR_UNAVAILABLE", "close() 后必须报 EXECUTOR_UNAVAILABLE");
     assert.equal(executor.restarts, 0, "close() 之后**绝不**重启");
@@ -308,8 +316,8 @@ test("W3 · 泄漏①：多次 close() 幂等；close() 后再请求以 EXECUTOR
 test("W3 · 泄漏②：异常路径（执行器内失败）后 close() ⇒ 库文件与临时目录立即可删", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-errorpath-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const executor = await makeExecutor({ root, fixture });
-  await executor.sync({ options: { force: true } });
+  const { executor, options } = await makeExecutor({ root, fixture });
+  await executor.sync({ options: { ...options, force: true } });
   // 故意让执行器内的 backup 失败（目标目录不存在）⇒ 走异常路径。
   const failure = await settledWithin(
     executor.snapshot({ databaseFile: path.join(root, "no-such-dir", "copy.sqlite"), asOf: Date.now() }),
@@ -335,8 +343,8 @@ test("W3 · 泄漏③：反复 create→sync→close 三个循环，存活 worke
   const baseline = liveWorkerThreads();
   const cycles = [];
   for (let cycle = 1; cycle <= 3; cycle += 1) {
-    const executor = await makeExecutor({ root, fixture });
-    await executor.sync({ options: { force: true } });
+    const { executor, options } = await makeExecutor({ root, fixture });
+    await executor.sync({ options: { ...options, force: true } });
     const during = liveWorkerThreads();
     const aliveDuring = executor.alive;
     await executor.close();
@@ -367,16 +375,13 @@ test("W3 · 泄漏④：外部 kill 子进程（真进程级故障）后库目�
   // 报到改用**标记文件**（不用 stdout 管道）：子进程 `stdio: "ignore"` ⇒ 不持有任何继承管道，
   // 即便父进程异常退出，runner 也不会被"子进程持着管道烧 CPU"卡住（W4 挂死根因）。
   const marker = path.join(root, "child-ready.marker");
+  const childOptions = isolatedOptions(root, fixture);
   const script = `
     import { writeFileSync } from "node:fs";
     const { createUsageExecutor } = await import(${JSON.stringify(EXECUTOR_URL)});
-    const executor = createUsageExecutor({
-      homeDir: ${JSON.stringify(root)},
-      databaseFile: ${JSON.stringify(path.join(root, "usage-index.sqlite"))},
-      importDirs: [${JSON.stringify(fixture.codexHome)}],
-      automaticDiscoveryEnabled: false,
-    });
-    await executor.sync({ options: { force: true } });
+    const options = ${JSON.stringify(childOptions)};
+    const executor = createUsageExecutor(options);
+    await executor.sync({ options: { ...options, force: true } });
     writeFileSync(${JSON.stringify(marker)}, "CHILD-READY");
     // 自保：父进程一消失就自行退出（绝不做孤儿；且它只终止自己）。
     const parentPid = ${process.pid};
@@ -396,6 +401,7 @@ test("W3 · 泄漏④：外部 kill 子进程（真进程级故障）后库目�
   await writeFile(scriptFile, script);
   const child = spawn(process.execPath, [scriptFile], {
     cwd: process.cwd(),
+    env: { ...process.env, HOME: root, USERPROFILE: root },
     // 不继承 stdio：无管道可持 ⇒ 父/runner 永不被它挂住。
     stdio: "ignore",
   });

@@ -3,7 +3,7 @@
 // 关键结构约束（实施计划 §1.4 / §6 P2）：
 // - **复用** `streamWorkbuddySessionEvents` 拿事件，不重新解析会话文件 —— 事件里带的 `messageId`
 //   就是 trace span 的关联键（该字段只服务本 reader，不进库、不进 API）。
-// - `durationMs` **只能查表得来**（`workbuddy_generation_durations`，由 trace 预扫写入），
+// - `durationMs` **只能查表得来**（按 home 归属的 duration observations，由 trace 预扫写入），
 //   reader 自己**不算**时间：会话转录里根本没有可靠的首末时间戳。
 // - 查不到时长 ⇒ 计 `skippedNoDuration` 并**跳过**，绝不造 0 时长样本（否则会伪造
 //   `DURATION_NONPOSITIVE` 扣分）。

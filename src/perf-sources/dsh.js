@@ -9,6 +9,7 @@
  * - `session` 头的 `id`/`version`/`delegationDepth`/`agentPreset`；
  * - `request/header`、`request/context` 的 `data.header.config.{model,provider}`；
  * - `step/start` 的 `data.{turn,step}` 与 `row.time`；
+ * - `llm/retry-started` 的 `data.{turn,step}` 与 `row.time`（仅作最终尝试起点）；
  * - `assistant/message` 的 `data.{turn,step}`、`row.time`、`data.usage.outputTokens`；
  * - 步骤结束帧（裁定 G / M0.6 / task-24 裁定 (B)）**只取 `data.{turn,step}` 定位键与帧序**，
  *   它的 `row.time` 与 `data` 其余键**从不访问**。
@@ -46,6 +47,7 @@ const MALFORMED_JSON_PREFIX = /^MALFORMED_JSON:(\d+)\b/;
 
 /** 步骤结束帧的判别式字面量（裁定 G：只据它做归属与帧序判定，不读其载荷）。 */
 const STEP_END_TYPE = "step/end";
+const RETRY_STARTED_TYPE = "llm/retry-started";
 
 function trimmedText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -148,19 +150,22 @@ function claimScope(state, turn) {
  * @returns {Promise<boolean>}
  */
 async function emitGroup(group, session, onSample, addWarning) {
-  const start = group.starts.length > 0 ? group.starts[0] : null;
+  const stepStart = group.starts.length > 0 ? group.starts[0] : null;
   const message = group.messages.length > 0 ? group.messages[0] : null;
   if (!message) {
     // 有 start 无 message：**不是候选**（无输出可统计；M0 契约：不进 eligible）。不产候选、不置 pending。
     return false;
   }
+  // 同 step 重试时，最终 message 前的最后一条 retry-started 才是本次模型调用起点。
+  const retryStart = group.retryStarts.filter((entry) => entry.frameIndex < message.frameIndex).at(-1) ?? null;
+  const start = retryStart ?? stepStart;
 
   const startTimes = new Set(group.starts.map(startKey));
   const messageTimes = new Set(group.messages.map(messageKey));
   const recordConflict = startTimes.size > 1 || messageTimes.size > 1;
 
   // ---- 代表对：**文档顺序第一条**，与"较快时窗"无关（冲突时不任选较快/较慢，也不求和）。
-  const startScope = start?.proven ? start : null;
+  const startScope = stepStart?.proven ? stepStart : null;
   const messageScope = message.proven ? message : null;
   const scope = messageScope ?? startScope;
 
@@ -332,14 +337,14 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
   /**
    * 分组键用 JSON 元组（**不是**拼接分隔符）：键空间里没有任何字符串拼接，
    * 因此"分隔符可能出现在数据里"的碰撞问题不存在。
-   * @type {Map<string, { turn: number, step: number, starts: any[], messages: any[], ends: any[] }>}
+   * @type {Map<string, { turn: number, step: number, starts: any[], retryStarts: any[], messages: any[], ends: any[] }>}
    */
   const groups = new Map();
   const groupFor = (turn, step) => {
     const key = JSON.stringify([turn, step]);
     let group = groups.get(key);
     if (!group) {
-      group = { turn, step, starts: [], messages: [], ends: [] };
+      group = { turn, step, starts: [], retryStarts: [], messages: [], ends: [] };
       groups.set(key, group);
     }
     return group;
@@ -398,6 +403,16 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         proven: scope.proven,
         frameIndex: currentFrameIndex,
       });
+      continue;
+    }
+    if (type === RETRY_STARTED_TYPE) {
+      const turn = identityInteger(row?.data?.turn);
+      const step = identityInteger(row?.data?.step);
+      if (turn === null || step === null) {
+        addWarning(UNKEYABLE_RECORD_CODE, 1);
+        continue;
+      }
+      groupFor(turn, step).retryStarts.push({ time: row?.time, frameIndex: currentFrameIndex });
       continue;
     }
     if (type === STEP_END_TYPE) {

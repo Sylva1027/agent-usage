@@ -30,9 +30,13 @@ DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都�
 
 ## 历史输出吞吐（TPS）
 
-TPS 是基于历史结构化记录的输出吞吐统计，不是 TTFT，也不是只计算模型解码阶段的速度。单样本按 `outputTokens * 1000 / durationMs` 计算；ZCode、DSH、OpenCode 使用请求端到端时长，计入记录所覆盖的请求等待时间。Codex 只提供带 `item_span_estimate` 标签的轮级 item 时窗估算，不冒充请求 wall-clock 时长。WorkBuddy 的时长来自 trace 中 `span.type = "generation"`、`status = "ok"` 的 `duration`（毫秒），属于来源显式给出的请求端到端时长（`timingSource = "explicit"`），不是从相邻事件时间差反推的估算。
+TPS 是基于历史结构化记录的输出吞吐统计，不是 TTFT，也不是纯解码速度。单样本按 `outputTokens * 1000 / durationMs` 计算。Codex 的 `tps-v2` 对同轮全部已识别请求求完整端到端时长之和，分子与分母严格覆盖同一集合；缺任一计时整轮不采样，不使用旧 item span 补缺。计时须显式离线导入已审 producer 批次，正常 summary 不访问网关。ZCode、DSH 使用来源记录的请求窗口，OpenCode 使用 `streamed-created`，排除流结束后的工具处理。WorkBuddy 使用 trace 的显式 generation duration，并持久保留异值冲突。Claude 使用转录时间戳回退（`timingSource=timestamp_fallback`）：同一 `message.id` 末行减有效 user/attachment 锚点，同轮续写不采样；既有采样集比用量事件少 597 output token（0.0137%），不从面板用量总数删除这部分。各来源均计入其请求窗口内的等待。
 
-统计内核版本为 `tps-v1`。来源、来源实例、渠道、代理类别/名称、模型、provider、effort、计时方法、token 范围和窗口口径共同决定分组；不同口径不会合并。组内报告最近秩 p10/p50/p90（p10 较慢、p90 较快）、样本数 `n`、时长分位数和 pooled TPS（样本输出 token 总和除以时长总和）。`n < 20` 仍展示统计但不参与排名；溢出时不伪造数值。样本只取已完成且输出 token 与时长均为正的候选；长时窗和估算是提示标记，不单独作为剔除理由。
+代码中的统计内核版本为 `tps-v2`；正式服务是否已加载新方法以实际 API 为准，验收状态见[主审整合记录](validation/2026-10-21-tps-measurement-correction/review/final-integration/README.md)。来源、来源实例、渠道、代理类别/名称、模型、provider、effort、计时方法、token 范围和窗口共同决定旧 `groups` 分组；组内报告最近秩 p10/p50/p90、n、时长分位与 pooled（总输出/总时长）。Codex 的 n/分位仍按轮，不能与请求级分位当成同粒度稳定性比较。旧 groups 的 `n < 20` 不获排名；样本只取已完成且输出和时长均为正的候选，溢出不伪造数值。
+
+`summary.perf.models` 供独立模型速度区域消费：同一过滤、去重和sampled集合按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合，同provider仍合并home、渠道与主/子代理；空provider保持未知，不从名称推断。平均速度仍为总输出乘1000除以总时长，p10/p90仍取同集逐条TPS最近秩。行含实际成员首末日期、window与rankState；eligible先于参考行，溢出最后，各段按未舍入均值降序、key决胜。编号要求原有已审时间/输出范围准入，并满足有效meta.minSamples（默认20）；rankState优先级为overflow、unverified、insufficient_samples、eligible。DSH/ZCode输出范围未知，OpenCode/WorkBuddy缺逐样本来源版本证明，保留参考统计但不编号；混合单位不排名。旧Codex估算只留诊断，不进入模型总览。空模型不生成行，溢出不伪造数值。验收与限制见[修复账本](validation/2026-10-23-tps-remediation/README.md)。
+
+`summary.perf.codexTimingCoverage` 单列当前方法Codex的同范围覆盖，沿用来源排除及健康发布过滤：counts复用候选/采样/互斥丢因/pending/unplaced；recordedOutputTokens只累加已知非负输出，sampledOutputTokens为可采样子集，unknownOutputCandidates单列未知输出。两个安全整数和独立溢出为null。没有适用Codex来源为null，已配置但范围无候选为零计数；rebuilding/uninitialized不发布假覆盖。全历史unplaced不纳入当前范围分母。旧coverage及groups不变。
 
 coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplaced`。对可定位候选，恒等式为 `eligible = sampled + dropped + pending`；缺时间的 `unplaced` 作为所选来源的全历史诊断，不进入当前日期范围分母。没有样本的来源只报告诊断，不合成 0 TPS。未知来源格式、无法唯一归属、读取错误、来源变化及发布失败按 warning/degraded 状态显式呈现；Codex 对可靠归属的坏线程整线程隔离，未知或含糊边界 fail closed。TPS 候选与普通用量事件分开存储和汇总，不增加 `totals`、费用、时间线或限额统计。
 
@@ -56,9 +60,9 @@ coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplac
 
 变化来源通过 `replaceFile` 替换对应事件，未变化来源保留索引。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude、WorkBuddy 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
 
-WorkBuddy 的响应时长表不随会话文件变化：`sync` 每轮对每个 WorkBuddy home 先扫一遍 trace 目录，用进程内的文件指纹（大小 + 修改时间）跳过未变化的 trace，再一次性写入 `workbuddy_generation_durations`。预扫发生在 `replaceFile` 事务之外，因此不会把 `await` 拉进写事务。
+WorkBuddy 的计时是独立输入：普通 `sync` 每轮对每个启用 home 预扫 trace，复用未变化文件的进程内指纹，把新 distinct duration 写入 home-scoped observation 表，并定位受影响会话重建。预扫发生在 `replaceFile` 事务之外，不把 `await` 拉进写事务。trace 集合与已解析计时参与 memory/store 性能版本及读取稳定性检查；删除 trace 不遗忘已知时长或冲突。
 
-当前 `STORE_SCHEMA_VERSION` 为 17（2026-10-21 快照）。11→12 增加 TPS 样本表，12→13 增加 Codex rollout 依赖索引，13→14 增加 Codex 投影表，14→15 登记 Claude Code 来源（表结构不变，只抬版本号），15→16 把 Claude Code 的模型身份改为线路模型并只标脏 `kind = 'claude'` 重扫，16→17 登记 WorkBuddy 来源并新建响应时长表 `workbuddy_generation_durations`（表内以 `message_id` 为主键，幂等写入，不改既有用量表，也**不标脏**任何既有文件：新来源没有旧行，回填由首次 sync 自然触发）；相应迁移按来源标记文件待重扫，保留现有用量表并在事务中升级。DSH 历史迁移仍先使 DSH 指纹失效，以重新归一化非零缓存写入。升级不要求手动删除真实索引或改写原始日志；TPS 首次接入也不把来源正文写入索引。
+当前代码 `STORE_SCHEMA_VERSION` 为 19。11→12 增加 TPS 样本表，12→13 增加 Codex rollout 依赖，13→14 增加投影表；14→15 登记 Claude，15→16 更正 Claude 线路模型并定向重扫；16→17 登记 WorkBuddy 和旧无 home 时长表；17→18 增加 Codex 请求计时证据与 dirty 线程；18→19 增加 WorkBuddy home-scoped duration observation。旧无 home 行保留，不猜归属回填；多 home 不借用，单/多模式变化重建相关候选。迁移短事务执行，保留用量/费用及原始来源；证据导入不等于候选发布，性能版本用成功消费 dirty 的事务内发布序号表达部分成功。无需手动删除索引；本机 3765 正式服务已于 2026-10-21 切换至 schema19/tps-v2，并导入原六轮 326 条审核计时；其他安装仍由首次打开执行迁移。
 
 ## 读取与数据边界
 

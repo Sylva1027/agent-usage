@@ -37,6 +37,8 @@ import {
 import { resolvePricingModel } from "../public/pricing-models.js";
 
 const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
+const DISCOVERY_CAPABILITY_REVISION = "official-openai-discovery-v1";
+const DISCOVERY_TERMINAL_REASONS = new Set(["unsupported-provider", "unsupported-context-policy"]);
 export { MAX_PRICING_MODELS };
 const PRICE_CONFLICT_TOLERANCE = 1e-7;
 
@@ -101,39 +103,42 @@ function differences(base, current) {
   return Object.keys(result).length ? result : undefined;
 }
 
-function automaticBase() {
+function automaticBase(state = automatic) {
   const defaults = getDefaultPricingCatalog();
   return validatePricingCatalog({
-    checkedAt: automatic.checkedAt || defaults.checkedAt,
-    usdToCnyRate: automatic.usdToCnyRate || defaults.usdToCnyRate,
-    models: overlay(defaults.models, automatic.models),
+    checkedAt: state.checkedAt || defaults.checkedAt,
+    usdToCnyRate: state.usdToCnyRate || defaults.usdToCnyRate,
+    models: overlay(defaults.models, state.models),
   });
 }
 
-function applyCurrent() {
-  const base = automaticBase();
+function effectiveCatalog(state = automatic) {
+  const base = automaticBase(state);
   const checkedAt =
-    automatic.checkedAt && automatic.checkedAt > (manual.checkedAt || "")
-      ? automatic.checkedAt
+    state.checkedAt && state.checkedAt > (manual.checkedAt || "")
+      ? state.checkedAt
       : manual.checkedAt || base.checkedAt;
-  return setPricingCatalog({
+  return validatePricingCatalog({
     checkedAt,
     usdToCnyRate: manual.usdToCnyRate ?? base.usdToCnyRate,
     models: overlay(base.models, manual.modelOverrides),
   });
 }
 
-function statusVersion() {
-  const value = {
-    modelMetadata: automatic.modelMetadata || {},
-    discoveryResults: automatic.discoveryResults || [],
-    discoveryAttemptedAt: automatic.discoveryAttemptedAt || {},
-    priceUpdateSummary: automatic.priceUpdateSummary || null,
-    priceAttemptedAt: automatic.priceAttemptedAt || null,
-    exchangeRateAttemptedAt: automatic.exchangeRateAttemptedAt || null,
-    issues: automatic.issues || [],
-  };
+function applyCurrent() {
+  return setPricingCatalog(effectiveCatalog());
+}
+
+function statusVersion(status) {
+  const value = { ...status };
+  delete value.statusVersion;
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 12);
+}
+
+function exchangeRateMode() {
+  if (manual.usdToCnyRate !== undefined) return "manual";
+  const automaticRate = Number(automatic.usdToCnyRate);
+  return Number.isFinite(automaticRate) && automaticRate > 0 ? "automatic" : "built-in";
 }
 
 function effectivePriceVersion(catalog) {
@@ -174,7 +179,8 @@ function mergeRateTier(baseRates, existingMetadata, providerPatches, tier, check
       name: sourceNames[index],
     }))
     .filter((source) => source.rates && source.metadata);
-  if (!sources.length) return { rates: baseRates, metadata: existingMetadata, conflict: null, changed: false };
+  if (!sources.length)
+    return { rates: baseRates, metadata: existingMetadata, conflict: null, changed: false, updatedSources: [] };
 
   const sourceFields = new Map(
     sources.map((source) => [
@@ -205,7 +211,7 @@ function mergeRateTier(baseRates, existingMetadata, providerPatches, tier, check
       origin: existingMetadata?.origin || "built-in",
       conflicts,
     };
-    return { rates: baseRates, metadata: conflictMetadata, conflict: conflicts, changed: false };
+    return { rates: baseRates, metadata: conflictMetadata, conflict: conflicts, changed: false, updatedSources: [] };
   }
 
   const rates = { ...baseRates };
@@ -232,6 +238,13 @@ function mergeRateTier(baseRates, existingMetadata, providerPatches, tier, check
   }
   const sourceUrls = [...new Set([...selectedSources].map((source) => source.metadata.sourceUrl).filter(Boolean))];
   const providerIds = [...new Set([...selectedSources].map((source) => source.metadata.providerId).filter(Boolean))];
+  const updatedSources = [...selectedSources]
+    .filter((source) =>
+      RATE_FIELDS.some(
+        (field) => Object.is(source.rates[field], rates[field]) && !Object.is(rates[field], baseRates[field]),
+      ),
+    )
+    .map((source) => source.name);
   const origin =
     selectedSources.size === 0
       ? existingMetadata?.origin || "built-in"
@@ -253,6 +266,7 @@ function mergeRateTier(baseRates, existingMetadata, providerPatches, tier, check
     metadata,
     conflict: null,
     changed: !RATE_FIELDS.every((field) => Object.is(rates[field], baseRates[field])),
+    updatedSources,
   };
 }
 
@@ -319,16 +333,20 @@ export function getAutomaticPricingStatus() {
   const automaticModels = autoCoverage.automaticModels;
   const manualModels = Object.keys(manual.modelOverrides || {}).sort();
   const totalModelCount = Object.keys(catalog.models).length;
-  return {
+  const priceUpdateSummary = structuredClone(automatic.priceUpdateSummary || null);
+  if (priceUpdateSummary && !Array.isArray(priceUpdateSummary.sourceResults)) priceUpdateSummary.sourceResults = [];
+  const status = {
     priceSource: MODEL_PRICES_URL,
     fallbackPriceSource: LITELLM_PRICES_URL,
     cnyPriceSource: MIMO_PRICES_URL,
     exchangeRateSource: USD_CNY_RATE_URL,
+    pricePartialFailure: automatic.pricePartialFailure === true,
     priceUpdatedAt: automatic.priceUpdatedAt || null,
     priceAttemptedAt: automatic.priceAttemptedAt || null,
     exchangeRateDate: automatic.exchangeRateDate || null,
     exchangeRateUpdatedAt: automatic.exchangeRateUpdatedAt || null,
     exchangeRateAttemptedAt: automatic.exchangeRateAttemptedAt || null,
+    exchangeRateMode: exchangeRateMode(),
     automaticUsdToCnyRate: automaticRateCatalog.usdToCnyRate,
     effectiveUsdToCnyRate: catalog.usdToCnyRate,
     automaticModelCount: automaticModels.length,
@@ -343,12 +361,12 @@ export function getAutomaticPricingStatus() {
     manualModels,
     manualExchangeRate: manual.usdToCnyRate !== undefined,
     modelMetadata: structuredClone(automatic.modelMetadata || {}),
-    discoveryResults: structuredClone(automatic.discoveryResults || []),
+    discoveryResults: discoveryResultsWithPolicy(),
     discoveryAttemptedAt: structuredClone(automatic.discoveryAttemptedAt || {}),
-    priceUpdateSummary: structuredClone(automatic.priceUpdateSummary || null),
+    priceUpdateSummary,
     issues: structuredClone(automatic.issues || []),
-    statusVersion: statusVersion(),
   };
+  return { ...status, statusVersion: statusVersion(status) };
 }
 
 export async function loadPricingFile(options = {}) {
@@ -411,11 +429,13 @@ export async function savePricingFile(options, catalog, saveOptions = {}) {
     throw new Error(`Pricing catalog cannot contain more than ${MAX_PRICING_MODELS} models.`);
   }
   const base = automaticBase();
+  const hasManualExchangeRate = manual.usdToCnyRate !== undefined;
   const overrides = differences(base.models, normalized.models) || {};
   const next = {
     schemaVersion: 2,
     checkedAt: normalized.checkedAt,
-    ...(saveOptions.restoreAutomaticExchangeRate === true || normalized.usdToCnyRate === base.usdToCnyRate
+    ...(saveOptions.restoreAutomaticExchangeRate === true ||
+    (!hasManualExchangeRate && normalized.usdToCnyRate === base.usdToCnyRate)
       ? {}
       : { usdToCnyRate: normalized.usdToCnyRate }),
     modelOverrides: overrides,
@@ -433,6 +453,120 @@ function due(lastAttempt, lastSuccess, nowMs) {
     nowMs - attemptedMs >=
     (Number.isFinite(successMs) && successMs >= attemptedMs ? AUTO_REFRESH_INTERVAL_MS : AUTO_RETRY_INTERVAL_MS)
   );
+}
+
+function discoverySignature(options = {}) {
+  return JSON.stringify([
+    String(options.discoveryCapabilityRevision || DISCOVERY_CAPABILITY_REVISION),
+    String(options.discoveryMappingSignature || ""),
+  ]);
+}
+
+function modelDirectoryMarker(catalog) {
+  return createHash("sha256")
+    .update(JSON.stringify(Object.keys(catalog.models).sort()))
+    .digest("hex")
+    .slice(0, 12);
+}
+
+function discoverySourceMarker(state = automatic) {
+  return JSON.stringify([modelDirectoryMarker(effectiveCatalog(state)), state.priceUpdatedAt || null]);
+}
+
+function discoveryResultFor(model) {
+  const key = String(model ?? "")
+    .trim()
+    .toLowerCase();
+  return [...(Array.isArray(automatic.discoveryResults) ? automatic.discoveryResults : [])]
+    .reverse()
+    .find((result) => String(result?.model || "").toLowerCase() === key);
+}
+
+function discoveryNeedsNetworkRetry(result) {
+  return result?.status === "error" || ["source-error", "timeout", "error"].includes(result?.reason);
+}
+
+function discoveryPolicy(result, attemptedAt) {
+  const attemptedMs = Date.parse(attemptedAt || "");
+  const retryAt = (delayMs) => (Number.isFinite(attemptedMs) ? new Date(attemptedMs + delayMs).toISOString() : null);
+  if (result?.status === "added" || result?.status === "matched") {
+    return { retryable: false, nextRetryAt: null };
+  }
+  if (DISCOVERY_TERMINAL_REASONS.has(result?.reason)) {
+    return { retryable: false, nextRetryAt: null };
+  }
+  if (discoveryNeedsNetworkRetry(result)) {
+    return { retryable: true, nextRetryAt: retryAt(AUTO_RETRY_INTERVAL_MS) };
+  }
+  return { retryable: true, nextRetryAt: null };
+}
+
+function discoveryIsDue(model, nowMs, options = {}, sourceMarker) {
+  const result = discoveryResultFor(model);
+  if (!result) return true;
+  if (result.status === "added" || result.status === "matched") return true;
+  if (result.signature !== discoverySignature(options)) return true;
+  const attemptedAt = automatic.discoveryAttemptedAt?.[String(model).toLowerCase()] || null;
+  const policy = discoveryPolicy(result, attemptedAt);
+  if (!policy.retryable) return false;
+  if (!discoveryNeedsNetworkRetry(result)) {
+    return !result.sourceMarker || result.sourceMarker !== sourceMarker;
+  }
+  if (options.force === true) return true;
+  const retryMs = Date.parse(policy.nextRetryAt || "");
+  return !Number.isFinite(retryMs) || nowMs >= retryMs;
+}
+
+function discoveryResultsWithPolicy() {
+  return (Array.isArray(automatic.discoveryResults) ? automatic.discoveryResults : []).map((result) => {
+    const model = String(result?.model || "")
+      .trim()
+      .toLowerCase();
+    const attemptedAt = automatic.discoveryAttemptedAt?.[model] || result?.attemptedAt || null;
+    return {
+      model,
+      status: result?.status || "error",
+      reason: result?.reason ?? null,
+      ...discoveryPolicy(result, attemptedAt),
+    };
+  });
+}
+
+function cooldownDiscoveryResult(model) {
+  const result = discoveryResultFor(model);
+  const attemptedAt = automatic.discoveryAttemptedAt?.[String(model).toLowerCase()] || null;
+  const policy = result ? discoveryPolicy(result, attemptedAt) : null;
+  if (result && (!policy.retryable || policy.nextRetryAt === null)) {
+    return { model, status: result.status, reason: result.reason };
+  }
+  return { model, status: "deferred", reason: "retry-after" };
+}
+
+function storedDiscoveryRetryModels(models) {
+  const seen = new Set();
+  const results = [];
+  for (const result of Array.isArray(automatic.discoveryResults) ? automatic.discoveryResults : []) {
+    const model = String(result?.model || "")
+      .trim()
+      .toLowerCase();
+    if (!model || seen.has(model)) continue;
+    const attemptedAt = automatic.discoveryAttemptedAt?.[model] || null;
+    if (!discoveryPolicy(result, attemptedAt).retryable || discoveryNeedsNetworkRetry(result)) continue;
+    if (resolvePricingModel(model, models).matchType !== "missing") continue;
+    seen.add(model);
+    results.push(model);
+  }
+  return results.sort((left, right) => left.localeCompare(right));
+}
+
+function mergeDiscoveryResults(existing, updates) {
+  const byModel = new Map(
+    (Array.isArray(existing) ? existing : [])
+      .filter((result) => result?.model)
+      .map((result) => [String(result.model).toLowerCase(), result]),
+  );
+  for (const result of updates) byModel.set(result.model, result);
+  return [...byModel.values()].sort((left, right) => left.model.localeCompare(right.model));
 }
 
 function pricingIssue(category, source, error) {
@@ -517,23 +651,37 @@ export async function refreshAutomaticPricing(options = {}) {
   const fetcher = options.pricingFetcher || globalThis.fetch;
   const discoveryEnabled = options.automaticDiscoveryEnabled !== false;
   const discoveryReady = options.discoveryReady !== false;
+  const targetModel = typeof options.model === "string" ? options.model.trim() : "";
+  const targeted = Boolean(targetModel);
+  const observedModels = targeted ? [targetModel] : options.usedModels;
   const currentCatalog = getPricingCatalog();
+  const sourceMarker = discoverySourceMarker();
   const missingCandidates =
-    discoveryEnabled && discoveryReady ? missingObservedModels(options.usedModels, currentCatalog.models) : [];
+    discoveryEnabled && discoveryReady ? missingObservedModels(observedModels, currentCatalog.models) : [];
   const matchedResults =
-    discoveryEnabled && discoveryReady ? matchedObservedModels(options.usedModels, currentCatalog.models) : [];
-  const discoveryDue = missingCandidates.filter(
-    (model) => force || due(automatic.discoveryAttemptedAt?.[model], null, now.getTime()),
+    discoveryEnabled && discoveryReady ? matchedObservedModels(observedModels, currentCatalog.models) : [];
+  const maintainPrices =
+    !targeted &&
+    (force ||
+      due(automatic.priceAttemptedAt, automatic.pricePartialFailure ? null : automatic.priceUpdatedAt, now.getTime()));
+  const storedRetryModels =
+    discoveryEnabled && discoveryReady && maintainPrices ? storedDiscoveryRetryModels(currentCatalog.models) : [];
+  const normallyDue = missingCandidates.filter((model) =>
+    discoveryIsDue(model, now.getTime(), { ...options, force }, sourceMarker),
   );
-  const updatePrices =
-    force ||
-    discoveryDue.length > 0 ||
-    due(automatic.priceAttemptedAt, automatic.pricePartialFailure ? null : automatic.priceUpdatedAt, now.getTime());
-  const updateRate = force || due(automatic.exchangeRateAttemptedAt, automatic.exchangeRateUpdatedAt, now.getTime());
+  const discoveryDue = [...new Set([...normallyDue, ...storedRetryModels])].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  const maintenanceOnlyDiscovery = new Set(
+    maintainPrices ? discoveryDue.filter((model) => !normallyDue.includes(model)) : [],
+  );
+  const discoverPrices = discoveryDue.length > 0;
+  const updateRate =
+    !targeted && (force || due(automatic.exchangeRateAttemptedAt, automatic.exchangeRateUpdatedAt, now.getTime()));
   const cooldownResults = missingCandidates
     .filter((model) => !discoveryDue.includes(model))
-    .map((model) => ({ model, status: "deferred", reason: "retry-after" }));
-  if (!updatePrices && !updateRate) {
+    .map(cooldownDiscoveryResult);
+  if (!maintainPrices && !discoverPrices && !updateRate) {
     return {
       changed: false,
       statusChanged: false,
@@ -547,26 +695,27 @@ export async function refreshAutomaticPricing(options = {}) {
   }
 
   const previousPriceVersion = effectivePriceVersion(currentCatalog);
-  const previousStatusVersion = statusVersion();
+  const previousStatusVersion = getAutomaticPricingStatus().statusVersion;
   const results = await Promise.allSettled([
-    updatePrices ? fetchPricingJson(fetcher, MODEL_PRICES_URL) : Promise.resolve(null),
-    updatePrices ? fetchPricingJson(fetcher, LITELLM_PRICES_URL) : Promise.resolve(null),
-    updatePrices ? fetchPricingText(fetcher, MIMO_PRICES_URL) : Promise.resolve(null),
-    updatePrices ? fetchPricingText(fetcher, STEPFUN_PRICES_URL) : Promise.resolve(null),
-    updatePrices ? fetchPricingText(fetcher, KIMI_PRICES_URL) : Promise.resolve(null),
-    updatePrices ? fetchPricingText(fetcher, GLM_PRICES_URL) : Promise.resolve(null),
+    maintainPrices || discoverPrices ? fetchPricingJson(fetcher, MODEL_PRICES_URL) : Promise.resolve(null),
+    maintainPrices || discoverPrices ? fetchPricingJson(fetcher, LITELLM_PRICES_URL) : Promise.resolve(null),
+    maintainPrices ? fetchPricingText(fetcher, MIMO_PRICES_URL) : Promise.resolve(null),
+    maintainPrices ? fetchPricingText(fetcher, STEPFUN_PRICES_URL) : Promise.resolve(null),
+    maintainPrices ? fetchPricingText(fetcher, KIMI_PRICES_URL) : Promise.resolve(null),
+    maintainPrices ? fetchPricingText(fetcher, GLM_PRICES_URL) : Promise.resolve(null),
     updateRate ? fetchPricingJson(fetcher, USD_CNY_RATE_URL) : Promise.resolve(null),
   ]);
   const next = structuredClone(automatic);
+  const previousIssues = Array.isArray(automatic.issues) ? automatic.issues : [];
   const issues = [];
   let pricesUpdated = false;
   let exchangeRateUpdated = false;
   const discoveryResults = [...matchedResults, ...cooldownResults];
   const addedModels = [];
-  if (updatePrices) {
+  const defaultCatalog = automaticBase();
+  if (maintainPrices) {
     next.priceAttemptedAt = timestamp;
     const sources = ["Models.dev", "LiteLLM", "Xiaomi MiMo", "StepFun", "Kimi", "GLM"];
-    const defaultCatalog = automaticBase();
     const candidateModels = overlay(defaultCatalog.models, manual.modelOverrides);
     const candidateCatalog = validatePricingCatalog({
       checkedAt: defaultCatalog.checkedAt,
@@ -575,6 +724,8 @@ export async function refreshAutomaticPricing(options = {}) {
     });
     const providerByModel = providerMapForModels(candidateCatalog.models, automatic.modelMetadata);
     const sourcePatches = [null, null, null, null, null, null];
+    const parsedSources = [false, false, false, false, false, false];
+    const sourceUpdatedModels = Array.from({ length: 6 }, () => new Set());
     const parsers = [
       modelsDevPricePatches,
       liteLLMPricePatches,
@@ -590,6 +741,7 @@ export async function refreshAutomaticPricing(options = {}) {
             index === 0
               ? parser(results[index].value, candidateCatalog, { providerByModel })
               : parser(results[index].value, candidateCatalog);
+          parsedSources[index] = true;
         } catch (error) {
           issues.push(pricingIssue("prices", sources[index], error));
         }
@@ -631,6 +783,7 @@ export async function refreshAutomaticPricing(options = {}) {
           : [],
       );
       const selectedThreshold = thresholdSources[0]?.threshold;
+      const selectedThresholdSource = thresholdSources.find((item) => item.threshold === selectedThreshold)?.source;
       const thresholdConflict = new Set(thresholdSources.map((item) => item.threshold)).size > 1;
       const tiers = ["short", "long", "fast.short", "fast.long"];
       for (const tier of tiers) {
@@ -676,6 +829,10 @@ export async function refreshAutomaticPricing(options = {}) {
           continue;
         }
         writeTier(nextEntry, tier, merged.rates);
+        for (const source of merged.updatedSources) {
+          const index = sources.indexOf(source);
+          if (index >= 0) sourceUpdatedModels[index].add(model);
+        }
         modelTouched = true;
         changedTier ||= merged.changed;
       }
@@ -685,6 +842,10 @@ export async function refreshAutomaticPricing(options = {}) {
         nextEntry.longContextThreshold !== selectedThreshold;
       if (Number.isInteger(selectedThreshold) && !thresholdConflict)
         Object.assign(nextEntry, { longContextThreshold: selectedThreshold });
+      if (thresholdChanged && selectedThresholdSource) {
+        const index = sources.indexOf(selectedThresholdSource);
+        if (index >= 0) sourceUpdatedModels[index].add(model);
+      }
       const preferredSource = modelPatches.find((patch) => patch?.source)?.source;
       if (preferredSource) nextEntry.source = preferredSource;
       if (Object.keys(existingMetadata).length) {
@@ -714,6 +875,20 @@ export async function refreshAutomaticPricing(options = {}) {
       }
     }
 
+    const sourceResultsBySource = new Map(
+      (Array.isArray(next.priceUpdateSummary?.sourceResults) ? next.priceUpdateSummary.sourceResults : [])
+        .filter((result) => isObject(result) && typeof result.source === "string")
+        .map((result) => [result.source, result]),
+    );
+    for (const [index, source] of sources.entries()) {
+      sourceResultsBySource.set(source, {
+        source,
+        attemptedAt: timestamp,
+        fetched: results[index].status === "fulfilled",
+        parsed: results[index].status === "rejected" ? null : parsedSources[index],
+        updatedModelCount: sourceUpdatedModels[index].size,
+      });
+    }
     next.priceUpdateSummary = {
       checkedAt: timestamp,
       attemptedModelCount: sourceCoverage.supportedModelCount,
@@ -727,51 +902,8 @@ export async function refreshAutomaticPricing(options = {}) {
       unsupportedCurrencyModelCount: sourceCoverage.unsupportedCurrencyModelCount,
       providers: sourceCoverage.providers,
       fetchedSourceCount: results.slice(0, 6).filter((result) => result.status === "fulfilled").length,
+      sourceResults: sources.map((source) => sourceResultsBySource.get(source)),
     };
-
-    if (discoveryEnabled && discoveryReady && discoveryDue.length) {
-      next.discoveryAttemptedAt ||= {};
-      for (const model of discoveryDue) {
-        next.discoveryAttemptedAt[model] = timestamp;
-        try {
-          if (results[0].status === "rejected" && results[1].status === "rejected") {
-            const reason = [results[0].reason, results[1].reason].some((error) => error?.code === "PRICING_TIMEOUT")
-              ? "timeout"
-              : "source-error";
-            discoveryResults.push({ model, status: "error", reason });
-            continue;
-          }
-          const parsed = parseOpenAIModelPricing(model, {
-            modelsDevPayload: results[0].status === "fulfilled" ? results[0].value : undefined,
-            liteLLMPayload: results[1].status === "fulfilled" ? results[1].value : undefined,
-            checkedAt: timestamp,
-          });
-          if (parsed.status !== "added") {
-            discoveryResults.push({ model, status: parsed.status, reason: parsed.reason });
-            continue;
-          }
-          const modelCount = effectiveModelCount(overlay(defaultCatalog.models, next.models), manual.modelOverrides);
-          if (modelCount >= MAX_PRICING_MODELS) {
-            discoveryResults.push({ model, status: "rejected", reason: "catalog-capacity" });
-            continue;
-          }
-          next.models = overlay(next.models || {}, { [model]: parsed.pricing });
-          next.modelMetadata ||= {};
-          next.modelMetadata[model] = parsed.modelMetadata;
-          next.checkedAt = timestamp.slice(0, 10);
-          addedModels.push(model);
-          pricesUpdated = true;
-          discoveryResults.push({ model, status: "added", reason: null });
-        } catch (error) {
-          discoveryResults.push({
-            model,
-            status: "error",
-            reason: error.code === "PRICING_TIMEOUT" ? "timeout" : "error",
-          });
-        }
-      }
-      next.discoveryResults = discoveryResults;
-    }
 
     if (pricesUpdated) next.checkedAt ||= timestamp.slice(0, 10);
     const priceIssues = issues.some((issue) => issue.category === "prices");
@@ -782,7 +914,88 @@ export async function refreshAutomaticPricing(options = {}) {
       issues.push(pricingIssue("prices", "Models.dev / LiteLLM", new Error("No matching model prices were found.")));
     }
     next.pricePartialFailure = issues.some((issue) => issue.category === "prices");
-    next.issues = issues;
+  }
+  if (discoverPrices) {
+    next.discoveryAttemptedAt ||= {};
+    const sourceUpdatedModels = [new Set(), new Set()];
+    const storedDiscoveryResults = [];
+    const resultSourceMarker = maintainPrices ? discoverySourceMarker(next) : sourceMarker;
+    const recordDiscoveryResult = (model, status, reason) => {
+      discoveryResults.push({ model, status, reason });
+      const stored = {
+        model,
+        status,
+        reason,
+        signature: discoverySignature(options),
+      };
+      if (discoveryPolicy(stored, timestamp).retryable && !discoveryNeedsNetworkRetry(stored)) {
+        stored.sourceMarker = resultSourceMarker;
+      }
+      storedDiscoveryResults.push(stored);
+    };
+    for (const model of discoveryDue) {
+      if (maintenanceOnlyDiscovery.has(model) && results[0].status === "rejected" && results[1].status === "rejected") {
+        continue;
+      }
+      next.discoveryAttemptedAt[model] = timestamp;
+      try {
+        if (results[0].status === "rejected" && results[1].status === "rejected") {
+          const reason = [results[0].reason, results[1].reason].some((error) => error?.code === "PRICING_TIMEOUT")
+            ? "timeout"
+            : "source-error";
+          recordDiscoveryResult(model, "error", reason);
+          continue;
+        }
+        const parsed = parseOpenAIModelPricing(model, {
+          modelsDevPayload: results[0].status === "fulfilled" ? results[0].value : undefined,
+          liteLLMPayload: results[1].status === "fulfilled" ? results[1].value : undefined,
+          checkedAt: timestamp,
+        });
+        if (parsed.status !== "added") {
+          recordDiscoveryResult(model, parsed.status, parsed.reason);
+          continue;
+        }
+        const modelCount = effectiveModelCount(overlay(defaultCatalog.models, next.models), manual.modelOverrides);
+        if (modelCount >= MAX_PRICING_MODELS) {
+          recordDiscoveryResult(model, "rejected", "catalog-capacity");
+          continue;
+        }
+        next.models = overlay(next.models || {}, { [model]: parsed.pricing });
+        next.modelMetadata ||= {};
+        next.modelMetadata[model] = parsed.modelMetadata;
+        const sourceIndex =
+          parsed.pricing.source === MODEL_PRICES_URL ? 0 : parsed.pricing.source === LITELLM_PRICES_URL ? 1 : -1;
+        if (sourceIndex >= 0) sourceUpdatedModels[sourceIndex].add(model);
+        next.checkedAt = timestamp.slice(0, 10);
+        addedModels.push(model);
+        pricesUpdated = true;
+        recordDiscoveryResult(model, "added", null);
+      } catch (error) {
+        recordDiscoveryResult(model, "error", error.code === "PRICING_TIMEOUT" ? "timeout" : "error");
+      }
+    }
+    next.discoveryResults = mergeDiscoveryResults(next.discoveryResults, storedDiscoveryResults);
+    if (!maintainPrices) {
+      const sourceResultsBySource = new Map(
+        (Array.isArray(next.priceUpdateSummary?.sourceResults) ? next.priceUpdateSummary.sourceResults : [])
+          .filter((result) => isObject(result) && typeof result.source === "string")
+          .map((result) => [result.source, result]),
+      );
+      for (const [index, source] of ["Models.dev", "LiteLLM"].entries()) {
+        const fetched = results[index].status === "fulfilled";
+        sourceResultsBySource.set(source, {
+          source,
+          attemptedAt: timestamp,
+          fetched,
+          parsed: results[index].status === "rejected" ? null : isObject(results[index].value),
+          updatedModelCount: sourceUpdatedModels[index].size,
+        });
+      }
+      next.priceUpdateSummary = {
+        ...(next.priceUpdateSummary || {}),
+        sourceResults: [...sourceResultsBySource.values()],
+      };
+    }
   }
   if (updateRate) {
     next.exchangeRateAttemptedAt = timestamp;
@@ -800,7 +1013,12 @@ export async function refreshAutomaticPricing(options = {}) {
       issues.push(pricingIssue("exchangeRate", "Frankfurter", results[6].reason));
     }
   }
-  next.issues = issues;
+  next.issues = [
+    ...previousIssues.filter((issue) =>
+      issue?.category === "prices" ? !maintainPrices : issue?.category === "exchangeRate" ? !updateRate : true,
+    ),
+    ...issues,
+  ];
   const previous = automatic;
   automatic = next;
   try {
@@ -816,7 +1034,7 @@ export async function refreshAutomaticPricing(options = {}) {
   );
   return {
     changed: previousPriceVersion !== effectivePriceVersion(getPricingCatalog()),
-    statusChanged: previousStatusVersion !== statusVersion(),
+    statusChanged: previousStatusVersion !== getAutomaticPricingStatus().statusVersion,
     pricesUpdated,
     exchangeRateUpdated,
     errors,

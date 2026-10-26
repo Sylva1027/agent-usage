@@ -44,7 +44,7 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ### 输入口径是反的
 
-与 Claude Code 相反，WorkBuddy 的 `usage.inputTokens` **已包含缓存**、`outputTokens` **已包含 reasoning**：
+与 Claude Code 相反，当前安装版本（`5.8.4` / bundle `37.10.3-42`）的 Chat Completions 适配路径中，WorkBuddy 的 `usage.inputTokens` **已包含缓存**、`outputTokens` **已包含 reasoning**：
 
 | 看板字段 | 来源 | 说明 |
 |---|---|---|
@@ -59,6 +59,8 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 `providerData.usage`、`providerData.rawUsage`、`message.usage` 三份冗余**只取第一份**，不做交叉校验、不累加（`test/workbuddy-usage.test.js` 用"改第二份的值不改变输出"钉住）。
 
+依据不是字段名或样本猜测：安装包 `main/netdrive-env-route.js` 将 Agent SDK usage 写入 `providerData`；`@openai/agents-openai` 的 Chat Completions 适配器把 `outputTokens` 设为 `completion_tokens`，把 `reasoning_tokens` 放入独立 detail；同包 OpenAI 类型文档明确 reasoning 类 token 仍计入 completion 总量。该认证只覆盖当前安装的 Chat Completions 路径，不外推到未来版本或违反该契约的兼容 provider。
+
 ### Auto 整体排除
 
 `providerData.model === "default-model"` 或 `requestModelName` 归一化后等于 `auto` 的记录**整条丢弃**：Auto 没有确定的线路模型，无法计价，也无法归属 TPS 分母。同一文件里的非 Auto 记录不受影响。这是用户裁决（实施计划 §0），不是实现细节。
@@ -69,11 +71,11 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 | 项目 | 取值 |
 |---|---|
-| 表 | `workbuddy_generation_durations(message_id PK, duration_ms, ended_at_ms, capture_version, captured_at)` |
-| 写入 | trace 预扫时 `INSERT OR IGNORE`（幂等、先到先得；同 id 多 span 只留第一条） |
+| 表 | `workbuddy_generation_duration_observations`，主键为 `(home_id, message_id, duration_ms)`；旧无 home 表保留 |
+| 写入 | trace 预扫时保存全部 distinct duration；同值幂等，异值持久冲突，不能先到先得 |
 | `capture_version` | `workbuddy.trace.v1` |
-| 触发 | **只在会话文件需要重新解析时**（同一 home 每轮至多一次），且**在 `replaceFile` 事务之外** |
-| 指纹 | 进程内 `Map<path,{size,mtimeMs}>`：跨轮保留、进程重启清空 ⇒ 首轮全扫；**不建**指纹表 |
+| 触发 | 每轮普通 sync 独立预扫（同一 home 每轮至多一次），在 `replaceFile` 事务之外；新 observation 定位相关会话重建 |
+| 指纹 | 进程内 trace 指纹跨轮复用，重开后重新预扫；trace 依赖同时进入 memory/store 性能版本及读取稳定性检查 |
 | 保留 | 不主动清理。10 万条约 10 MB；回收若要做另开 CLI |
 | 查询 | reader 通过 `lookupGenerationDuration(messageId)` 回调查表（`replaceFile` 内按调用建局部缓存） |
 
@@ -81,16 +83,18 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ### 30 天窗口与表兜底
 
-trace 只保留约 30 天，会话转录不清理。因此"删掉 trace 后再重解析会话"是正常场景：时长已经在表里，TPS 样本数**不变**（`test/workbuddy-store.test.js` 的"删掉 trace 目录后重解析会话文件 ⇒ 样本数不变"钉住）。反过来说，**从未被 trace 覆盖过**的历史响应没有时长，只能永久缺席 TPS。
+trace 只保留约 30 天，会话转录不清理。已归属的时长 observation 与冲突不会因删除 trace 或重开而消失。旧无 home 表仅在恰好一个启用的 WorkBuddy home、且该消息没有 scoped observation 时兜底；多 home 不借用旧值。单→多会撤出依赖兜底的候选，多→单恢复允许的旧值，原记录不删除。历史响应若从未采到可靠计时，就保持缺失，不能由会话相邻时间推算。
 
 ### TPS 口径
 
-`PERF_SOURCE_SEMANTICS.workbuddy = { window: "request", timingKind: "request_e2e", tokenScope: "reported_output_includes_reasoning" }`。`sampleKey` 是三元组 `["workbuddy", homeId, messageId]`；`methodVersion` 取默认 `tps-v1`（采集方法版本写在 `capture_version` 列，两者不是一回事）。`agentKind` 恒 `main`（`providerData.agent` 目前只区分 `cli`，没有子代理语义）。
+`PERF_SOURCE_SEMANTICS.workbuddy = { window: "request", timingKind: "request_e2e", tokenScope: "reported_output_includes_reasoning" }`。`sampleKey` 是三元组 `["workbuddy", homeId, messageId]`；`methodVersion` 取默认 `tps-v2`（采集方法版本写在 `capture_version` 列，两者不是一回事）。`agentKind` 恒 `main`（`providerData.agent` 目前只区分 `cli`，没有子代理语义）。
+
+`workbuddyGenerationSpans()` 按稳定文件路径顺序保留每个合格 generation span，不在解析阶段选一条。memory/store 均按 distinct duration 归并：一个值可用，多个值阻断该消息。当前安装版本 Chat adapter 的输出包含 reasoning 证据已留存，但样本尚缺逐条版本 provenance，因此保留自身速度统计、统一 `rank=null`。实现与隔离验收见[计量修订账本](../validation/2026-10-21-tps-measurement-correction/README.md)，不代表正式服务已迁移。
 
 ## 已知限制
 
-1. **去重是文件内的。** 同一份数据被复制成两份文件（或同一 home 被导入两次）时，事件会重复计入；时长表靠 `message_id` 主键先到先得，不会重复。
-2. **时长表不区分 home。** `message_id` 是全局唯一 id，两个 home 出现同一 id 时共用第一条时长（实测不会发生，但不设约束）。
+1. **用量去重是文件内的。** 同一份数据复制成两份文件可能重复计入用量；性能候选另按稳定 sampleKey 去重。
+2. **旧值缺 home 归属。** 新 observation 已按 home 隔离；旧表仅按上述单 home 条件兜底，不猜测多 home 的归属。
 3. **无 trace 即无 TPS。** 只在 trace 覆盖窗口内的响应能算速度；Auto 响应永久无样本（已整体排除）。
 4. **`serviceTier` 恒 `unknown`。** WorkBuddy 转录没有 Fast/priority 之类的档位字段。
 5. **会话名不参与统计。** `ai-title` 记录被跳过，`conversationName` 为空。

@@ -7,8 +7,14 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 
-import { createUsageServer, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
-import { MAX_PRICING_MODELS } from "../src/pricing.js";
+import { createUsageServer as createUsageServerBase, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
+import {
+  getDefaultPricingCatalog,
+  getPricingCatalog,
+  MAX_PRICING_MODELS,
+  runWithPricingCatalog,
+  setPricingCatalog,
+} from "../src/pricing.js";
 import {
   GLM_PRICES_URL,
   KIMI_PRICES_URL,
@@ -18,6 +24,10 @@ import {
   STEPFUN_PRICES_URL,
   USD_CNY_RATE_URL,
 } from "../src/pricing-auto.js";
+
+function createUsageServer(options = {}) {
+  return createUsageServerBase({ pricingRefreshSchedulerEnabled: false, ...options });
+}
 
 function mimoPricingPage() {
   return `<!doctype html><html><body><h2>模型国内定价</h2><p>单位：元 / 百万 tokens；缓存写入限时免费</p><table>
@@ -76,6 +86,58 @@ function glmPricingPage() {
     ["GLM-4.5-Air", "输入 [0, 32K)，输出 [0, 0.2K)", "0.8", "2", "限时免费", "0.16"],
   ];
   return `<html><body><table><thead><tr><th>模型名称</th><th>上下文</th><th>输入单价（元/百万 Tokens）</th><th>输出单价（元/百万 Tokens）</th><th>缓存存储（元/百万 Tokens/小时）</th><th>缓存命中（元/百万 Tokens）</th></tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+}
+
+function r07ModelsDevCatalog(models) {
+  return {
+    openai: {
+      models: Object.fromEntries(
+        models.map((model, index) => [
+          model,
+          {
+            modalities: { input: ["text"], output: ["text"] },
+            cost: {
+              input: index + 2,
+              cache_read: 0.2,
+              cache_write: 2.5,
+              output: 10,
+              tiers: [
+                {
+                  tier: { type: "context", size: 272_000 },
+                  input: index + 4,
+                  cache_read: 0.4,
+                  cache_write: 5,
+                  output: 15,
+                },
+              ],
+            },
+          },
+        ]),
+      ),
+    },
+  };
+}
+
+function r07PricingFetcher({ calls, models = [], rate = 6.8 }) {
+  return async (url) => {
+    calls.push(url);
+    if (url === MODEL_PRICES_URL) {
+      return new Response(JSON.stringify(r07ModelsDevCatalog(models)), { status: 200 });
+    }
+    if (url === LITELLM_PRICES_URL) return new Response(JSON.stringify({}), { status: 200 });
+    if (url === USD_CNY_RATE_URL) {
+      return new Response(
+        JSON.stringify({
+          base: "USD",
+          quote: "CNY",
+          date: "2026-10-26",
+          rate: typeof rate === "function" ? rate() : rate,
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("", { status: 200, headers: { "content-type": "text/html" } });
+  };
 }
 
 function jsonl(rows) {
@@ -232,6 +294,139 @@ test("server serves the dashboard and usage API", async () => {
     assert.equal(detailed.report.events[0].channel, "CLI");
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("usage responses carry one exact pricing catalog and frozen snapshots stay pinned", async () => {
+  const fixture = await makeFixtureHome();
+  const originalPricing = getPricingCatalog();
+  const server = createUsageServer(fixture);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const catalogWithStatus = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    const expected = {
+      checkedAt: catalogWithStatus.checkedAt,
+      version: catalogWithStatus.version,
+      usdToCnyRate: catalogWithStatus.usdToCnyRate,
+      source: catalogWithStatus.source,
+      models: catalogWithStatus.models,
+    };
+    const full = await fetch(`${baseUrl}/api/usage?detail=full`).then((response) => response.json());
+    const dashboard = await fetch(`${baseUrl}/api/usage?preset=all&view=dashboard`).then((response) => response.json());
+    const summary = await fetch(`${baseUrl}/api/summary?preset=all`).then((response) => response.json());
+    const paused = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
+
+    for (const body of [full, dashboard, summary, paused]) {
+      assert.deepEqual(body.pricingCatalog, expected);
+    }
+    assert.deepEqual(full.report.pricingCatalog, expected);
+
+    const changed = structuredClone(expected);
+    changed.checkedAt = "2026-10-26";
+    changed.usdToCnyRate += 0.1;
+    changed.models["gpt-6-sol"].short.input += 7;
+    setPricingCatalog(changed);
+
+    const live = await fetch(`${baseUrl}/api/usage?preset=all&view=dashboard`).then((response) => response.json());
+    const frozen = await fetch(`${baseUrl}/api/usage?preset=all&snapshot=${paused.snapshotId}`).then((response) =>
+      response.json(),
+    );
+    assert.notEqual(live.pricingCatalog.version, expected.version);
+    assert.deepEqual(frozen.pricingCatalog, expected);
+    assert.deepEqual(frozen.periodComparison, paused.periodComparison);
+    const frozenPricing = await fetch(`${baseUrl}/api/pricing?snapshot=${paused.snapshotId}`).then((response) =>
+      response.json(),
+    );
+    assert.equal(frozenPricing.automatic.effectiveUsdToCnyRate, expected.usdToCnyRate);
+  } finally {
+    setPricingCatalog(originalPricing);
+    await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
+test("snapshot captures pricing before backup and discovery leaves the request scope", async () => {
+  const fixture = await makeFixtureHome();
+  const originalPricing = getPricingCatalog();
+  const projectRoot = path.join(fixture.homeDir, "snapshot-pricing-boundary");
+  await mkdir(path.join(projectRoot, ".codex-usage"), { recursive: true });
+  await writeFile(
+    path.join(projectRoot, ".codex-usage", "usage.jsonl"),
+    jsonl([
+      {
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: new Date().toISOString(),
+        session_id: "snapshot-pricing-boundary",
+        request_id: "snapshot-pricing-boundary",
+        model: "gpt-snapshot-pricing-boundary",
+        cwd: projectRoot,
+        usage: { total: 1, input: 1, output: 0 },
+      },
+    ]),
+  );
+  const timers = [];
+  const calls = [];
+  const observedPricingVersions = [];
+  const fetchPricing = r07PricingFetcher({ calls, models: ["gpt-snapshot-pricing-boundary"] });
+  let pendingLiveCatalog = null;
+  let liveCatalog = null;
+  const server = createUsageServer({
+    ...fixture,
+    importDirs: [projectRoot],
+    pricingDiscoveryDelayMs: 5_000,
+    schedulePricingDiscovery(callback, delay) {
+      const timer = { callback, delay };
+      timers.push(timer);
+      if (pendingLiveCatalog) liveCatalog = setPricingCatalog(pendingLiveCatalog);
+      return timer;
+    },
+    cancelPricingDiscovery(timer) {
+      timer.cancelled = true;
+    },
+    pricingFetcher: async (url) => {
+      observedPricingVersions.push({ url, version: getPricingCatalog().version });
+      return fetchPricing(url);
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const catalogA = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    pendingLiveCatalog = {
+      checkedAt: "2026-10-27",
+      version: catalogA.version,
+      usdToCnyRate: catalogA.usdToCnyRate + 0.2,
+      source: catalogA.source,
+      models: structuredClone(catalogA.models),
+    };
+    pendingLiveCatalog.models["gpt-6-sol"].short.input += 1;
+
+    const frozen = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
+    assert.ok(timers.length > 0);
+    assert.ok(liveCatalog);
+    assert.equal(frozen.pricingCatalog.version, catalogA.version);
+
+    const snapshotPricing = await fetch(`${baseUrl}/api/pricing?snapshot=${frozen.snapshotId}`).then((response) =>
+      response.json(),
+    );
+    assert.equal(snapshotPricing.version, catalogA.version);
+    assert.equal(snapshotPricing.automatic.effectiveUsdToCnyRate, catalogA.usdToCnyRate);
+
+    const inheritedTimer = timers.at(-1);
+    observedPricingVersions.length = 0;
+    await runWithPricingCatalog(catalogA, () => inheritedTimer.callback());
+    assert.ok(observedPricingVersions.length > 0);
+    assert.ok(
+      observedPricingVersions.every((item) => item.version === liveCatalog.version),
+      JSON.stringify(observedPricingVersions),
+    );
+  } finally {
+    setPricingCatalog(originalPricing);
+    await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
   }
 });
 
@@ -563,13 +758,37 @@ test("server imports project usage log directories and refreshes usage data", as
       true,
     );
 
-    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(projectRoot)}`, { method: "DELETE" });
+    const deleteResponse = await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(projectRoot)}`, {
+      method: "DELETE",
+    });
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
 
-    assert.equal(removed.summary.totals.total, 123);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(removed.summary.totals.total, after.summary.totals.total);
+    assert.ok(
+      removed.summary.perf.missingSources.some(
+        (source) =>
+          source.path === path.join(projectRoot, ".codex-usage", "usage.jsonl") && source.kind === "project-log",
+      ),
+      "removed project-log source must remain diagnosed as missing",
+    );
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot),
       false,
+    );
+
+    const restoredImport = await fetch(`${baseUrl}/api/imports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: projectRoot }),
+    });
+    const restored = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
+    assert.equal(restoredImport.status, 200);
+    assert.equal(restored.summary.totals.total, after.summary.totals.total);
+    assert.equal(restored.summary.perf.missingSources.length, 0);
+    assert.equal(
+      restored.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot),
+      true,
     );
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -652,9 +871,13 @@ test("server imports a DSH home and labels it as DSH", async () => {
     );
     assert.deepEqual(after.metadata.harnessModels.DSH, ["deepseek-flash"]);
 
-    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(dshRoot)}`, { method: "DELETE" });
+    const deleteResponse = await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(dshRoot)}`, {
+      method: "DELETE",
+    });
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
-    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(removed.summary.totals.total, after.summary.totals.total);
+    assert.ok(removed.summary.perf.missingSources.length > 0);
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "dsh" && home.path === dshRoot),
       false,
@@ -730,9 +953,13 @@ test("server imports an OpenCode data dir and labels it as OpenCode", async () =
       true,
     );
 
-    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(ocRoot)}`, { method: "DELETE" });
+    const deleteResponse = await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(ocRoot)}`, {
+      method: "DELETE",
+    });
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
-    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(removed.summary.totals.total, after.summary.totals.total);
+    assert.ok(removed.summary.perf.missingSources.length > 0);
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "opencode" && home.path === ocRoot),
       false,
@@ -802,9 +1029,13 @@ test("server imports a Claude Code home and labels it as Claude Code", async () 
     );
     assert.deepEqual(after.metadata.harnessModels.Claude, ["claude-sonnet-4-5"]);
 
-    await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(claudeRoot)}`, { method: "DELETE" });
+    const deleteResponse = await fetch(`${baseUrl}/api/imports?path=${encodeURIComponent(claudeRoot)}`, {
+      method: "DELETE",
+    });
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
-    assert.equal(removed.summary.totals.total, before.summary.totals.total);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(removed.summary.totals.total, after.summary.totals.total);
+    assert.ok(removed.summary.perf.missingSources.length > 0);
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "claude" && home.path === claudeRoot),
       false,
@@ -1004,6 +1235,254 @@ test("pricing refresh endpoint updates cached values and rejects an outdated edi
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("pricing refresh API targets one model and keeps concurrent targets independent", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-pricing-target-"));
+  const calls = [];
+  const first = "gpt-r07-first";
+  const second = "gpt-r07-second";
+  let modelCalls = 0;
+  let startedResolve;
+  let releaseResolve;
+  const started = new Promise((resolve) => {
+    startedResolve = resolve;
+  });
+  const released = new Promise((resolve) => {
+    releaseResolve = resolve;
+  });
+  const server = createUsageServer({
+    homeDir,
+    pricingFetcher: async (url) => {
+      calls.push(url);
+      if (url === MODEL_PRICES_URL) {
+        modelCalls += 1;
+        if (modelCalls === 1) {
+          startedResolve();
+          await released;
+        }
+        return new Response(JSON.stringify(r07ModelsDevCatalog([first, second])), { status: 200 });
+      }
+      if (url === LITELLM_PRICES_URL) return new Response(JSON.stringify({}), { status: 200 });
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    await fetch(`${baseUrl}/api/pricing`);
+    const matched = await fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-6-sol" }),
+    }).then((response) => response.json());
+    assert.deepEqual(matched.discovery.results, [{ model: "gpt-6-sol", status: "matched", reason: "exact" }]);
+    assert.deepEqual(calls, []);
+
+    for (const model of [null, "", "x".repeat(129)]) {
+      const rejected = await fetch(`${baseUrl}/api/pricing/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      assert.equal(rejected.status, 400);
+      assert.equal((await rejected.json()).code, "INVALID_PRICING_MODEL");
+    }
+
+    const firstRequest = fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: first }),
+    });
+    await started;
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+
+    const secondRequest = fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: second }),
+    });
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 2, "a different target waits for the active catalog mutation");
+
+    releaseResolve();
+    const [firstResponse, secondResponse] = await Promise.all([firstRequest, secondRequest]);
+    assert.equal(firstResponse.status, 200);
+    assert.equal(secondResponse.status, 200);
+    assert.deepEqual((await firstResponse.json()).discovery.addedModels, [first]);
+    assert.deepEqual((await secondResponse.json()).discovery.addedModels, [second]);
+    assert.equal(calls.filter((url) => url === MODEL_PRICES_URL).length, 2);
+    assert.equal(calls.filter((url) => url === LITELLM_PRICES_URL).length, 2);
+  } finally {
+    releaseResolve();
+    await new Promise((resolve) => server.close(resolve));
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("pricing mutations keep a manual FX lock across save and refresh races", async () => {
+  const fixture = await makeFixtureHome();
+  const calls = [];
+  let rate = 6.8;
+  const server = createUsageServer({
+    ...fixture,
+    automaticDiscoveryEnabled: false,
+    pricingFetcher: r07PricingFetcher({ calls, models: ["gpt-6-sol"], rate: () => rate }),
+  });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    await fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+
+    const manual = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    manual.usdToCnyRate = 7.1;
+    assert.equal(
+      (
+        await fetch(`${baseUrl}/api/pricing`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(manual),
+        })
+      ).status,
+      200,
+    );
+
+    rate = 7.1;
+    await fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    const equal = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(equal.usdToCnyRate, 7.1);
+    assert.equal(equal.automatic.automaticUsdToCnyRate, 7.1);
+    assert.equal(equal.automatic.manualExchangeRate, true);
+
+    const draft = structuredClone(equal);
+    const oldInput = draft.models["gpt-6-sol"].short.input;
+    draft.models["gpt-6-sol"].short.input = oldInput + 1;
+    rate = 6.8;
+    const saveRequest = fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    await new Promise(setImmediate);
+    const refreshRequest = fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    const [saved, refreshed] = await Promise.all([saveRequest, refreshRequest]);
+    assert.equal(saved.status, 200, await saved.clone().text());
+    assert.equal(refreshed.status, 200);
+
+    const retained = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(retained.models["gpt-6-sol"].short.input, oldInput + 1);
+    assert.equal(retained.usdToCnyRate, 7.1);
+    assert.equal(retained.automatic.automaticUsdToCnyRate, 6.8);
+    assert.equal(retained.automatic.manualExchangeRate, true);
+
+    retained.restoreAutomaticExchangeRate = true;
+    const restored = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(retained),
+    }).then((response) => response.json());
+    assert.equal(restored.usdToCnyRate, 6.8);
+    const restoredStatus = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(restoredStatus.automatic.manualExchangeRate, false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(fixture.homeDir, { recursive: true, force: true });
+  }
+});
+
+test("imported pricing runtime rejects saves and refreshes", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-pricing-imported-"));
+  const catalog = structuredClone(getDefaultPricingCatalog());
+  const server = createUsageServer({
+    homeDir,
+    automaticDiscoveryEnabled: false,
+    importContext: { pricingCatalog: catalog, serviceTierEvidenceSnapshot: null },
+  });
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const pricing = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.equal(pricing.automatic, null);
+    const saved = await fetch(`${baseUrl}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(catalog),
+    });
+    assert.equal(saved.status, 405);
+    assert.equal((await saved.json()).code, "IMPORT_PRICING_READ_ONLY");
+    const refreshed = await fetch(`${baseUrl}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-6-sol" }),
+    });
+    assert.equal(refreshed.status, 405);
+    assert.equal((await refreshed.json()).code, "IMPORT_PRICING_READ_ONLY");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("failed pricing writes keep the prior effective catalog", async () => {
+  const saveHome = await mkdtemp(path.join(tmpdir(), "codex-pricing-save-failure-"));
+  const refreshHome = await mkdtemp(path.join(tmpdir(), "codex-pricing-refresh-failure-"));
+  let saveServer = null;
+  let refreshServer = null;
+  try {
+    saveServer = createUsageServer({ homeDir: saveHome, automaticDiscoveryEnabled: false });
+    await new Promise((resolve) => saveServer.listen(0, "127.0.0.1", resolve));
+    const saveBase = `http://127.0.0.1:${saveServer.address().port}`;
+    const beforeSave = await fetch(`${saveBase}/api/pricing`).then((response) => response.json());
+    const pricingPath = path.join(saveHome, ".codex-usage", "pricing.json");
+    await mkdir(pricingPath, { recursive: true });
+    const rejectedDraft = structuredClone(beforeSave);
+    rejectedDraft.models["gpt-6-sol"].short.input += 1;
+    const failedSave = await fetch(`${saveBase}/api/pricing`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(rejectedDraft),
+    });
+    assert.equal(failedSave.status, 400);
+    const afterSave = await fetch(`${saveBase}/api/pricing`).then((response) => response.json());
+    assert.equal(afterSave.version, beforeSave.version);
+    assert.equal(afterSave.models["gpt-6-sol"].short.input, beforeSave.models["gpt-6-sol"].short.input);
+
+    await mkdir(path.join(refreshHome, ".codex-usage", "pricing-auto.json"), { recursive: true });
+    refreshServer = createUsageServer({
+      homeDir: refreshHome,
+      automaticDiscoveryEnabled: false,
+      pricingFetcher: r07PricingFetcher({ calls: [], models: ["gpt-6-sol"], rate: 6.9 }),
+    });
+    await new Promise((resolve) => refreshServer.listen(0, "127.0.0.1", resolve));
+    const refreshBase = `http://127.0.0.1:${refreshServer.address().port}`;
+    const beforeRefresh = await fetch(`${refreshBase}/api/pricing`).then((response) => response.json());
+    const failedRefresh = await fetch(`${refreshBase}/api/pricing/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    assert.equal(failedRefresh.status, 500);
+    const afterRefresh = await fetch(`${refreshBase}/api/pricing`).then((response) => response.json());
+    assert.equal(afterRefresh.version, beforeRefresh.version);
+    assert.equal(afterRefresh.usdToCnyRate, beforeRefresh.usdToCnyRate);
+  } finally {
+    if (saveServer) await new Promise((resolve) => saveServer.close(resolve));
+    if (refreshServer) await new Promise((resolve) => refreshServer.close(resolve));
+    await rm(saveHome, { recursive: true, force: true });
+    await rm(refreshHome, { recursive: true, force: true });
   }
 });
 

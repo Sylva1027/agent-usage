@@ -13,10 +13,11 @@
 // 1. 只读打开（`DatabaseSync(..., {readOnly:true})`），**绝不回退可写**。有意**不复用**产品
 //    `openOpencodeDatabase()`：它在崩溃残留 WAL 时退回普通打开，与本卡的只读纪律冲突。
 // 2. **绝不 `SELECT data` 整串**：SQL 只投影普通列 + JSON **标量**，`OPENCODE_PERF_JSON_PATHS` 是唯一白名单。
-//    `$.time.streamed`、`$.model.variant`、`$.content`、`item_json` 永不进入 SQL。
+//    `$.model.variant`、`$.content`、`item_json` 永不进入 SQL。
 // 3. 坏 JSON 行**不中断整库**：主扫描用 `json_valid(m.data) = 1` 过滤，坏行另用计数查询记 `MALFORMED_JSON`。
 //    每个 JSON 调用都包在 `CASE WHEN json_valid(m.data) = 1 ...` 里，因为 SQLite **不保证** WHERE 先于结果列求值。
-// 4. `durationMs = completed - created`（两者均须存在）；**绝不使用 streamed**（它是 epoch 毫秒时间戳，不是布尔）。
+// 4. `durationMs = streamed - created`（两者均须存在）。`streamed` 是 provider 流结束时间；
+//    `completed` 在工具执行后才写入，不能作为本来源的响应时长终点。
 // 5. `outputTokens` 只在 output 与 reasoning **各自已知**时相加；缺任一项 → `null`（不是 0）。
 // 6. `data.agent` 只证明名称 → `agentKind='unknown'`；variant/effort/provider **缺证据不从当前配置回填**。
 // 7. **未验证路径不投影**（裁定 AL-4）：`inputTokens` 仅为诊断（§17.1:200 自己标注"（诊断）"）、M1 内核
@@ -71,10 +72,11 @@ export const OPENCODE_FINISH_FAILED = Object.freeze(["error"]);
  * 测试用「从 SQL 文本抽出的路径集合 === 本数组」双向锁定，任何一侧漂移都会红。
  *
  * **不含**输入侧三路径（`$.tokens.input` / `cache.read` / `cache.write`）：裁定 AL-4 判为越界，
- * 见文件头约束 7。也不含 `$.time.streamed` / `$.model.variant` / `$.content`。
+ * 见文件头约束 7。也不含 `$.model.variant` / `$.content`。
  */
 export const OPENCODE_PERF_JSON_PATHS = Object.freeze([
   "$.time.created",
+  "$.time.streamed",
   "$.time.completed",
   "$.tokens.output",
   "$.tokens.reasoning",
@@ -124,6 +126,7 @@ export function buildOpencodePerfSql() {
     "       m.session_id AS session_id,",
     "       m.seq AS seq,",
     `${scalarColumn("created_ms", "$.time.created")},`,
+    `${scalarColumn("streamed_ms", "$.time.streamed")},`,
     `${scalarColumn("completed_ms", "$.time.completed")},`,
     `${scalarColumn("output_tokens", "$.tokens.output")},`,
     `${scalarColumn("reasoning_tokens", "$.tokens.reasoning")},`,
@@ -219,22 +222,23 @@ function trimmedText(value) {
 }
 
 /**
- * 时长（毫秒）= `completed − created`，**两者均须存在**（§17.1:198）。
+ * 时长（毫秒）= `streamed − created`，**两者均须存在**。
  *
  * 任一侧缺失、非数值（含 JSON 文本/none）→ `null`，**绝不把缺失当 0**。
  * 负数/非整数照原样返回：时序矛盾与非法值由 M1 的 `DURATION_NONPOSITIVE` / `TIME_INVALID` 归类，
- * reader 不在这里吞掉证据。**绝不使用 `$.time.streamed`**（它是 epoch 毫秒时间戳，不是结束证据）。
+ * reader 不在这里吞掉证据。`streamed` 是响应流结束时刻；工具执行后的 `completed` 不参与时长。
  * @param {unknown} created
- * @param {unknown} completed
+ * @param {unknown} streamed
  * @returns {number | null}
  */
-export function resolveOpencodeDuration(created, completed) {
-  if (!isFiniteNumber(created) || !isFiniteNumber(completed)) return null;
-  return /** @type {number} */ (completed) - /** @type {number} */ (created);
+export function resolveOpencodeDuration(created, streamed) {
+  if (!isFiniteNumber(created) || !isFiniteNumber(streamed)) return null;
+  return /** @type {number} */ (streamed) - /** @type {number} */ (created);
 }
 
 /**
- * 定位时间戳：优先 `completed`，其为空/非法时才用 `created`（§17.1:201「缺时长候选可用 created 定位诊断」）。
+ * 定位日历时间：优先 `completed`，其为空/非法时才用 `created`（§17.1:201）。
+ * `streamed` 只表示 provider 流结束；本来源的日期归属仍沿用既有 `completed` 规则。
  * 只有正有限数才可用：0/负数由 M1 归为 `out_of_range`，不能顶替一个可用的定位值。
  * @param {unknown} created
  * @param {unknown} completed
@@ -596,9 +600,9 @@ export async function streamOpencodePerfSamples(dbFile, source, onSample, option
       if (!terminal.recognized) unrecognizedTerminalRows += 1;
 
       const createdMs = isFiniteNumber(row.created_ms) ? /** @type {number} */ (row.created_ms) : null;
+      const streamedMs = isFiniteNumber(row.streamed_ms) ? /** @type {number} */ (row.streamed_ms) : null;
       const completedMs = isFiniteNumber(row.completed_ms) ? /** @type {number} */ (row.completed_ms) : null;
-      // 契约 §2-F 的 OpenCode 行把"结束证据"定义为 `data.finish`；`completed` 缺失属时间面（M1 归 MISSING_DURATION）。
-      // 本计数器同时是"是否该改判 pending"的实测依据（本机全库为 0）。
+      // `finish` 是终态证据；该计数器只记录更晚的 step-ended 时间是否缺失，不参与时长。
       if (completedMs === null) completedMissingRows += 1;
       const model = trimmedText(row.model_id);
       const modelProvider = trimmedText(row.provider_id);
@@ -637,10 +641,10 @@ export async function streamOpencodePerfSamples(dbFile, source, onSample, option
         // 模型证据的名称类字面量无冻结值，交给 M0.6 裁定；此处不发明字面量。
         modelEvidence: "",
         tsMs: resolveOpencodeTsMs(createdMs, completedMs),
-        // 观测边界 = [created, completed]（§17.1:222）；本来源两者的差恰好等于 durationMs。
+        // 观测边界 = [created, streamed]；工具执行发生在 streamed 之后，不计入请求窗口。
         windowStartMs: createdMs,
-        windowEndMs: completedMs,
-        durationMs: resolveOpencodeDuration(createdMs, completedMs),
+        windowEndMs: streamedMs,
+        durationMs: resolveOpencodeDuration(createdMs, streamedMs),
         outputTokens: combineOpencodeOutputTokens(row.output_tokens, row.reasoning_tokens),
         // 裁定 AL-4：`inputTokens` 恒 `null`。它只是诊断字段、M1 内核不消费，而输入侧三个 JSON 路径
         // （`$.tokens.input` / `cache.read` / `cache.write`）未经 M0 验证 ⇒ 不投影（§3 第 6 条同源原则）。

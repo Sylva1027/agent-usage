@@ -441,6 +441,7 @@ export function zcodeRowToRawSample(row, available, context) {
     // 显式传与 PERF_SOURCE_SEMANTICS.zcode 相同的值；不一致会得 SOURCE_SEMANTICS_MISMATCH。
     window: "request",
     timingKind: "request_e2e",
+    // 2026-10-21 evidence: output_tokens and reasoning_tokens are separate columns, but their inclusion relation is unproven.
     tokenScope: "reported_output_unspecified",
     status: classification.status,
     terminalVerified: classification.terminalVerified,

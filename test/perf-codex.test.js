@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -21,6 +21,10 @@ import {
 import { foldCodexRolloutMetadata } from "../src/perf-sources/codex-fold.js";
 
 const BODY_SENTINEL = "M61_BODY_SENTINEL_MUST_NOT_ESCAPE";
+const SIX_TURN_FIXTURE_URL = new URL(
+  "../docs/validation/2026-10-21-tps-measurement-correction/A/review/six-turn-request-fixture.json",
+  import.meta.url,
+);
 
 async function createRollout(root, relativePath, lines) {
   const filePath = path.join(root, relativePath);
@@ -93,8 +97,101 @@ function coverage(samples) {
   return computePerfCoverage(selectPerfSamples(samples));
 }
 
-function buildCandidates(homeId, foldedResult, rolloutFiles = []) {
-  return buildCodexTurnCandidates(homeId, foldedResult, rolloutFiles);
+function buildCandidates(homeId, foldedResult, rolloutFiles = [], options = {}) {
+  return buildCodexTurnCandidates(homeId, foldedResult, rolloutFiles, options);
+}
+
+function lookupDurations(durations) {
+  const byResponse = new Map(Object.entries(durations));
+  return ({ responseId, model, outputTokens }) => {
+    const durationMs = byResponse.get(responseId);
+    if (durationMs === undefined) {
+      return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: null };
+    }
+    return { state: "available", durationMs, reportedOutputTokens: outputTokens, requestedModel: model };
+  };
+}
+
+function sixTurnProjection(fixture, { itemSpanTurnId = null, missingResponseId = null } = {}) {
+  const homeId = "home-six-turn";
+  const threadId = "thread-six-turn";
+  const sourcePath = "sessions/six-turn-fixture.jsonl";
+  const records = [];
+  const requestById = new Map();
+  let lineNumber = 1;
+  const append = (kind, fields) => records.push(projected(kind, fields, sourcePath, lineNumber++));
+
+  append("session_meta", { threadId, explicitSubagent: false });
+  for (const fixtureTurn of fixture.turns) {
+    const endedAtMs = Date.parse(fixtureTurn.endedAt);
+    append("turn_context", {
+      threadId,
+      turnId: fixtureTurn.id,
+      model: fixture.requestedModel,
+      effort: fixture.reasoningEffort,
+    });
+    let turnOutputTokens = 0;
+    for (const fixtureRequest of fixtureTurn.requests) {
+      turnOutputTokens += fixtureRequest.outputTokens;
+      requestById.set(fixtureRequest.id, fixtureRequest);
+      append("token_usage_record", {
+        threadId,
+        turnId: fixtureTurn.id,
+        responseId: fixtureRequest.id,
+        outputTokens: fixtureRequest.outputTokens,
+        turnOutputTokens,
+        timestamp: new Date(endedAtMs).toISOString(),
+      });
+    }
+    if (fixtureTurn.id === itemSpanTurnId) {
+      append("item_completed", {
+        threadId,
+        turnId: fixtureTurn.id,
+        itemId: "tool-only-request-span",
+        itemType: "CommandExecution",
+        startedAtMs: endedAtMs - 20_000,
+        completedAtMs: endedAtMs,
+      });
+      append("item_completed", {
+        threadId,
+        turnId: fixtureTurn.id,
+        itemId: "target-span-that-must-not-fill-a-missing-request",
+        itemType: "AgentMessage",
+        startedAtMs: endedAtMs - 10_000,
+        completedAtMs: endedAtMs,
+      });
+    }
+    append("task_complete", {
+      threadId,
+      turnId: fixtureTurn.id,
+      startedAtSec: Math.floor((endedAtMs - fixtureTurn.durationMs) / 1_000),
+      completedAtSec: Math.floor(endedAtMs / 1_000),
+      durationMs: fixtureTurn.durationMs,
+    });
+  }
+
+  const lookupRequestTiming = ({ responseId, model, outputTokens }) => {
+    const fixtureRequest = requestById.get(responseId);
+    assert.ok(fixtureRequest, `unknown fixture request ${responseId}`);
+    assert.equal(model, fixture.requestedModel);
+    assert.equal(outputTokens, fixtureRequest.outputTokens);
+    if (responseId === missingResponseId) {
+      return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: null };
+    }
+    return {
+      state: "available",
+      durationMs: fixtureRequest.durationMs,
+      reportedOutputTokens: fixtureRequest.outputTokens,
+      requestedModel: fixture.requestedModel,
+    };
+  };
+
+  return {
+    homeId,
+    threadId,
+    rollouts: [{ filePath: sourcePath, threadId, projection: { records } }],
+    lookupRequestTiming,
+  };
 }
 
 test("M6.1 streams a metadata-only projection, counts malformed/unknown rows, and accepts only PascalCase target items", async (t) => {
@@ -863,7 +960,7 @@ test("M6.2 leaves the latest missing cumulative snapshot unavailable instead of 
   assert.equal(turns[0].crossCheckState, "unavailable");
 });
 
-test("M6.3 builds a completed candidate from the full item-span estimate, without TTFT or provider inference", async (t) => {
+test("B1 builds a completed candidate from full request timing, without TTFT or provider inference", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m63-codex-complete-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const baseMs = 1_800_000_000_000;
@@ -909,7 +1006,9 @@ test("M6.3 builds a completed candidate from the full item-span estimate, withou
 
   const rollouts = await Promise.all([readCodexRolloutMetadata(filePath), readCodexRolloutMetadata(emptyRolloutPath)]);
   const result = foldCodexRolloutMetadata("home-A", rollouts);
-  const { candidates, warnings, rolloutFiles } = buildCandidates("home-A", result, [filePath, emptyRolloutPath]);
+  const { candidates, warnings, rolloutFiles } = buildCandidates("home-A", result, [filePath, emptyRolloutPath], {
+    lookupRequestTiming: lookupDurations({ "Response-A": 500 }),
+  });
   assert.equal(candidates.length, 1);
   assert.deepEqual(warnings, []);
   assert.deepEqual(
@@ -920,10 +1019,11 @@ test("M6.3 builds a completed candidate from the full item-span estimate, withou
   const [raw] = candidates;
   assert.deepEqual(raw.identity, ["Thread-A", "Turn-A"]);
   assert.equal(raw.outputTokens, 80, "usage.output_tokens is counted once and reasoning is not added again");
-  assert.equal(raw.durationMs, 500, "duration is the sum of 300 ms and 200 ms spans, not their 700 ms envelope");
-  assert.equal(raw.windowStartMs, baseMs);
-  assert.equal(raw.windowEndMs, baseMs + 700);
+  assert.equal(raw.durationMs, 500, "duration comes from the matched request, not item spans");
+  assert.equal(raw.windowStartMs, null);
+  assert.equal(raw.windowEndMs, null);
   assert.equal(raw.tsMs, baseMs + 2_000, "placement uses the completed turn's last deduplicated request timestamp");
+  assert.equal(raw.timingSource, "explicit");
   assert.equal(raw.requestCount, 1);
   assert.equal(raw.itemCount, 2);
   assert.equal(raw.timedItemCount, 2);
@@ -937,16 +1037,17 @@ test("M6.3 builds a completed candidate from the full item-span estimate, withou
   const sample = normalized(raw);
   assert.equal(sample.sampleKey, '["codex","home-A","Thread-A","Turn-A"]');
   assert.equal(sample.window, "turn");
-  assert.equal(sample.timingKind, "item_span_estimate");
+  assert.equal(sample.timingKind, "request_e2e");
   assert.equal(sample.tokenScope, "reported_output_includes_reasoning");
-  assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), ["METHOD_ESTIMATE"]);
+  assert.equal(sample.methodVersion, "tps-v2");
+  assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), []);
   const resultCoverage = coverage([sample]);
   assert.equal(resultCoverage.eligible, 1);
-  assert.equal(resultCoverage.sampled, 1, "the complete 500 ms item window is retained despite TTFT=5000 ms");
+  assert.equal(resultCoverage.sampled, 1, "the complete 500 ms request timing is retained despite TTFT=5000 ms");
   assert.equal(resultCoverage.dropped, 0);
 });
 
-test("M6.4 keeps a complete JSONL-only turn usable without an optional SQLite source", async (t) => {
+test("B1 keeps a JSONL-only turn visible but missing when no request timing lookup is supplied", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m64-codex-jsonl-only-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const baseMs = 1_800_000_000_000;
@@ -982,56 +1083,63 @@ test("M6.4 keeps a complete JSONL-only turn usable without an optional SQLite so
   assert.deepEqual(built.warnings, []);
   assert.equal(built.candidates.length, 1);
   assert.equal(built.candidates[0].outputTokens, 20);
-  assert.equal(built.candidates[0].durationMs, 100);
-  assert.equal(coverage([normalized(built.candidates[0])]).sampled, 1);
+  assert.equal(built.candidates[0].durationMs, null);
+  assert.ok(built.candidates[0].sampleFlags.includes("MISSING_DURATION"));
+  assert.equal(coverage([normalized(built.candidates[0])]).sampled, 0);
 });
 
-test("M6.3 keeps complete multi-request long turns sampled and counts only summed item spans", () => {
+test("B1 keeps complete multi-request long turns sampled using summed request timing", () => {
   const baseMs = 1_800_000_000_000;
   const result = folded(
     "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
     requestRecord("Turn-A", "Response-A", 70, baseMs + 1_000, 70),
     requestRecord("Turn-A", "Response-B", 70, baseMs + 2_000, 140),
     itemRecord("Turn-A", "Item-A", baseMs, baseMs + 150_001),
     itemRecord("Turn-A", "Item-B", baseMs + 200_000, baseMs + 350_000, "Reasoning"),
     taskCompleteRecord("Turn-A"),
   );
-  const [raw] = buildCandidates("home-A", result).candidates;
+  const [raw] = buildCandidates("home-A", result, [], {
+    lookupRequestTiming: lookupDurations({ "Response-A": 150_001, "Response-B": 150_000 }),
+  }).candidates;
   assert.equal(raw.outputTokens, 140);
   assert.equal(raw.durationMs, 300_001);
   assert.equal(raw.requestCount, 2);
   assert.equal(raw.itemCount, 2);
   const sample = normalized(raw);
-  assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), ["LONG_WINDOW", "MULTI_REQUEST_TURN", "METHOD_ESTIMATE"]);
+  assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), ["LONG_WINDOW", "MULTI_REQUEST_TURN"]);
   const resultCoverage = coverage([sample]);
   assert.equal(resultCoverage.sampled, 1, "LONG_WINDOW and MULTI_REQUEST_TURN are hints, not exclusions");
   assert.equal(resultCoverage.dropped, 0);
 });
 
-test("M6.3 marks partial spans and never treats an incomplete item set as a full denominator", () => {
+test("B1 ignores incomplete item spans when every request has complete timing", () => {
   const baseMs = 1_800_000_000_000;
   const result = folded(
     "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
     requestRecord("Turn-A", "Response-A", 20, baseMs + 1_000),
     itemRecord("Turn-A", "Timed", baseMs, baseMs + 200),
     itemRecord("Turn-A", "Untimed", null, baseMs + 500, "Reasoning"),
     taskCompleteRecord("Turn-A"),
   );
-  const [raw] = buildCandidates("home-A", result).candidates;
-  assert.equal(raw.durationMs, 200, "the valid observed span is retained for coverage only");
-  assert.equal(raw.windowStartMs, baseMs);
-  assert.equal(raw.windowEndMs, baseMs + 200);
+  const [raw] = buildCandidates("home-A", result, [], {
+    lookupRequestTiming: lookupDurations({ "Response-A": 200 }),
+  }).candidates;
+  assert.equal(raw.durationMs, 200);
+  assert.equal(raw.windowStartMs, null);
+  assert.equal(raw.windowEndMs, null);
   assert.equal(raw.itemCount, 2);
   assert.equal(raw.timedItemCount, 1);
   const sample = normalized(raw);
-  assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"));
+  assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
   const resultCoverage = coverage([sample]);
-  assert.equal(resultCoverage.completeTimedPositiveOutput, 0);
-  assert.equal(resultCoverage.sampled, 0);
-  assert.equal(resultCoverage.droppedByReason.partial_item_span, 1);
+  assert.equal(resultCoverage.completeTimedPositiveOutput, 1);
+  assert.equal(resultCoverage.sampled, 1);
+  assert.equal(resultCoverage.droppedByReason.partial_item_span, 0);
 });
 
-test("M6.3 treats unkeyable target items as an incomplete span set without inventing items", async (t) => {
+test("B1 ignores unkeyable target items when request timing is complete without inventing items", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m63-codex-unkeyable-item-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const baseMs = 1_800_000_000_000;
@@ -1079,7 +1187,14 @@ test("M6.3 treats unkeyable target items as an incomplete span set without inven
   ]);
 
   const foldedResult = foldCodexRolloutMetadata("home-A", [await readCodexRolloutMetadata(fixture)]);
-  const built = buildCandidates("home-A", foldedResult, [fixture]);
+  const built = buildCandidates("home-A", foldedResult, [fixture], {
+    lookupRequestTiming: lookupDurations({
+      "Response-Different": 100,
+      "Response-Replay": 100,
+      "Response-Unkeyable-Only": 100,
+      "Response-Normal": 100,
+    }),
+  });
   const samples = built.candidates.map(normalized);
   const byTurn = new Map(
     built.candidates.map((candidate, index) => [candidate.turnId, { candidate, sample: samples[index] }]),
@@ -1092,44 +1207,47 @@ test("M6.3 treats unkeyable target items as an incomplete span set without inven
     const { candidate, sample } = byTurn.get(turnId);
     assert.equal(candidate.itemCount, 1, "the missing-ID item never becomes a synthetic count");
     assert.equal(candidate.timedItemCount, 1);
-    assert.equal(candidate.durationMs, 100, "only the stable identified item contributes to duration");
-    assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"));
-    assert.equal(coverage([sample]).sampled, 0);
-    assert.equal(coverage([sample]).completeTimedPositiveOutput, 0);
+    assert.equal(candidate.durationMs, 100, "complete request timing does not depend on the item ledger");
+    assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
+    assert.equal(coverage([sample]).sampled, 1);
+    assert.equal(coverage([sample]).completeTimedPositiveOutput, 1);
   }
 
   const unkeyableOnly = byTurn.get("Turn-Unkeyable-Only");
   assert.equal(unkeyableOnly.candidate.itemCount, 0);
   assert.equal(unkeyableOnly.candidate.timedItemCount, 0);
-  assert.equal(unkeyableOnly.candidate.durationMs, null);
-  assert.ok(perfFlagNamesOf(unkeyableOnly.sample.sampleFlags).includes("MISSING_DURATION"));
+  assert.equal(unkeyableOnly.candidate.durationMs, 100);
+  assert.equal(perfFlagNamesOf(unkeyableOnly.sample.sampleFlags).includes("MISSING_DURATION"), false);
   assert.equal(perfFlagNamesOf(unkeyableOnly.sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
 
   const normal = byTurn.get("Turn-Normal");
   assert.equal(normal.candidate.itemCount, 1);
   assert.equal(normal.candidate.durationMs, 100);
   assert.equal(perfFlagNamesOf(normal.sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
-  assert.equal(coverage(samples).sampled, 1, "a fully identified item set remains eligible for sampling");
-  assert.equal(coverage(samples).droppedByReason.partial_item_span, 2);
-  assert.equal(coverage(samples).droppedByReason.duration_missing_nonpositive_invalid, 1);
+  assert.equal(coverage(samples).sampled, 4, "item-key diagnostics do not veto complete request timing");
+  assert.equal(coverage(samples).droppedByReason.partial_item_span, 0);
+  assert.equal(coverage(samples).droppedByReason.duration_missing_nonpositive_invalid, 0);
 });
 
-test("M6.3 drops overlapping item windows even though their span lengths are measurable", () => {
+test("B1 ignores overlapping item windows when request timing is complete", () => {
   const baseMs = 1_800_000_000_000;
   const result = folded(
     "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
     requestRecord("Turn-A", "Response-A", 20, baseMs + 1_000),
     itemRecord("Turn-A", "Item-A", baseMs, baseMs + 300),
     itemRecord("Turn-A", "Item-B", baseMs + 200, baseMs + 400, "Reasoning"),
     taskCompleteRecord("Turn-A"),
   );
-  const [raw] = buildCandidates("home-A", result).candidates;
-  assert.equal(raw.durationMs, 500, "duration remains the sum of the observed 300 ms and 200 ms spans");
-  assert.equal(raw.windowStartMs, baseMs);
-  assert.equal(raw.windowEndMs, baseMs + 400);
+  const [raw] = buildCandidates("home-A", result, [], {
+    lookupRequestTiming: lookupDurations({ "Response-A": 500 }),
+  }).candidates;
+  assert.equal(raw.durationMs, 500, "duration comes from the request timing");
+  assert.equal(raw.windowStartMs, null);
+  assert.equal(raw.windowEndMs, null);
   const sample = normalized(raw);
-  assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"));
-  assert.equal(coverage([sample]).droppedByReason.overlapping_item_span, 1);
+  assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"), false);
+  assert.equal(coverage([sample]).droppedByReason.overlapping_item_span, 0);
 });
 
 test("M6.3 emits a positive-output candidate without items as missing duration", () => {
@@ -1149,12 +1267,130 @@ test("M6.3 emits a positive-output candidate without items as missing duration",
   assert.equal(coverage([sample]).droppedByReason.duration_missing_nonpositive_invalid, 1);
 });
 
+test("B1 sums complete request timing for one turn regardless of request order or tool-only items", () => {
+  const baseMs = 1_800_000_000_000;
+  const requests = [
+    requestRecord("Turn-A", "Response-A", 100, baseMs + 1_000, 100),
+    requestRecord("Turn-A", "Response-B", 900, baseMs + 9_000, 1_000),
+  ];
+  const build = (records) => {
+    const result = folded(
+      "home-A",
+      ...records,
+      projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+      itemRecord("Turn-A", "Text-A", baseMs, baseMs + 10_000),
+      itemRecord("Turn-A", "Tool-B", baseMs, baseMs + 9_000, "CommandExecution"),
+      taskCompleteRecord("Turn-A"),
+    );
+    return buildCandidates("home-A", result, [], {
+      lookupRequestTiming: lookupDurations({ "Response-A": 1_000, "Response-B": 9_000 }),
+    }).candidates[0];
+  };
+
+  for (const records of [requests, [...requests].reverse()]) {
+    const raw = build(records);
+    assert.deepEqual(raw.identity, ["Thread-A", "Turn-A"]);
+    assert.equal(raw.outputTokens, 1_000);
+    assert.equal(raw.requestCount, 2);
+    assert.equal(raw.itemCount, 1, "tool-only items remain outside the target item count");
+    assert.equal(raw.durationMs, 10_000);
+    assert.equal(raw.timingSource, "explicit");
+    assert.equal(raw.windowStartMs, null);
+    assert.equal(raw.windowEndMs, null);
+    assert.equal(normalized(raw).sampleKey, '["codex","home-A","Thread-A","Turn-A"]');
+  }
+});
+
+test("B1 treats a turn without lookup timing as missing even when its item spans are complete", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    requestRecord("Turn-A", "Response-A", 100, baseMs + 1_000),
+    itemRecord("Turn-A", "Item-A", baseMs, baseMs + 1_000),
+    taskCompleteRecord("Turn-A"),
+  );
+  const [raw] = buildCandidates("home-A", result).candidates;
+  const sample = normalized(raw);
+  assert.equal(raw.durationMs, null);
+  assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION"));
+  assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
+  assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"), false);
+});
+
+test("B1 maps output and model mismatches to RECORD_CONFLICT", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    requestRecord("Turn-A", "Response-A", 20, baseMs + 1_000),
+    taskCompleteRecord("Turn-A"),
+  );
+  for (const lookupRequestTiming of [
+    ({ model, outputTokens }) => ({
+      state: "available",
+      durationMs: 200,
+      reportedOutputTokens: outputTokens + 1,
+      requestedModel: model,
+    }),
+    ({ outputTokens }) => ({
+      state: "available",
+      durationMs: 200,
+      reportedOutputTokens: outputTokens,
+      requestedModel: "Other-Model",
+    }),
+  ]) {
+    const [raw] = buildCandidates("home-A", result, [], { lookupRequestTiming }).candidates;
+    assert.equal(raw.durationMs, null);
+    assert.ok(raw.sampleFlags.includes("RECORD_CONFLICT"));
+  }
+});
+
+test("B1 maps non-positive and non-integer request durations to TIME_INVALID", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    requestRecord("Turn-A", "Response-A", 20, baseMs + 1_000),
+    taskCompleteRecord("Turn-A"),
+  );
+  for (const durationMs of [0, -1, 1.5]) {
+    const [raw] = buildCandidates("home-A", result, [], {
+      lookupRequestTiming: lookupDurations({ "Response-A": durationMs }),
+    }).candidates;
+    assert.equal(raw.durationMs, null);
+    assert.ok(raw.sampleFlags.includes("TIME_INVALID"));
+  }
+});
+
+test("B1 propagates request timing lookup failures unchanged", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    requestRecord("Turn-A", "Response-A", 20, baseMs + 1_000),
+    taskCompleteRecord("Turn-A"),
+  );
+  const failure = new Error("timing store unavailable");
+  assert.throws(
+    () =>
+      buildCandidates("home-A", result, [], {
+        lookupRequestTiming: () => {
+          throw failure;
+        },
+      }),
+    (error) => error === failure,
+  );
+});
+
 test("M6.3 does not infer completed, in-progress, failed, or cancelled from task_started/turn_aborted", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m63-codex-no-terminal-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const baseMs = 1_800_000_000_000;
   const filePath = await createRollout(root, "sessions/ongoing.jsonl", [
     json(sessionMeta("Thread-A")),
+    json({
+      type: "turn_context",
+      payload: { thread_id: "Thread-A", turn_id: "Turn-A", model: "Model-A", effort: "high" },
+    }),
     json({
       type: "token_usage_record",
       timestamp: new Date(baseMs + 1_000).toISOString(),
@@ -1178,12 +1414,18 @@ test("M6.3 does not infer completed, in-progress, failed, or cancelled from task
     }),
   ]);
   const result = foldCodexRolloutMetadata("home-A", [await readCodexRolloutMetadata(filePath)]);
-  const built = buildCandidates("home-A", result);
+  const built = buildCandidates("home-A", result, [], {
+    lookupRequestTiming: lookupDurations({ "Response-A": 100 }),
+  });
   assert.equal(built.candidates.length, 1);
   const raw = built.candidates[0];
   assert.equal(raw.terminalVerified, false);
   assert.equal(raw.tsMs, null, "an unended turn is unplaced even when a request timestamp exists");
-  assert.equal(raw.durationMs, 100, "item timing and output can be complete while terminal evidence is still missing");
+  assert.equal(
+    raw.durationMs,
+    100,
+    "request timing and output can be complete while terminal evidence is still missing",
+  );
   const sample = normalized(raw);
   assert.equal(sample.status, "unverified");
   assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("TERMINAL_UNVERIFIED"));
@@ -1220,7 +1462,7 @@ test("M6.3 preserves incomplete request-set candidates but never uses their part
   assert.equal(names.includes("UNKEYABLE_RECORD"), false, "source warnings do not enter the sample flag bitset");
 });
 
-test("M6.3 creates no candidates from context alone and retains zero-output stable turns", () => {
+test("B1 creates no candidates from context alone and retains zero-output stable turns", () => {
   const contextOnly = folded(
     "home-A",
     projected("turn_context", { threadId: "Thread-A", turnId: "Context-Only", model: "Model-A", effort: "low" }),
@@ -1230,11 +1472,14 @@ test("M6.3 creates no candidates from context alone and retains zero-output stab
   const baseMs = 1_800_000_000_000;
   const zeroOutput = folded(
     "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-Zero", model: "Model-A", effort: "low" }),
     requestRecord("Turn-Zero", "Response-Zero", 0, baseMs + 1_000),
     itemRecord("Turn-Zero", "Item-Zero", baseMs, baseMs + 100),
     taskCompleteRecord("Turn-Zero"),
   );
-  const [raw] = buildCandidates("home-A", zeroOutput).candidates;
+  const [raw] = buildCandidates("home-A", zeroOutput, [], {
+    lookupRequestTiming: lookupDurations({ "Response-Zero": 100 }),
+  }).candidates;
   const sample = normalized(raw);
   assert.equal(sample.outputTokens, 0);
   assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("OUTPUT_ZERO"));
@@ -1252,12 +1497,15 @@ test("M6.3 creates no candidates from context alone and retains zero-output stab
 
   const typeConflict = folded(
     "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-Type", model: "Model-A", effort: "low" }),
     requestRecord("Turn-Type", "Response-Type", 8, baseMs + 1_000),
     itemRecord("Turn-Type", "Shared-Item", baseMs, baseMs + 100, "AgentMessage"),
     itemRecord("Turn-Type", "Shared-Item", baseMs, baseMs + 100, "Reasoning"),
     taskCompleteRecord("Turn-Type"),
   );
-  const [conflictedItem] = buildCandidates("home-A", typeConflict).candidates;
+  const [conflictedItem] = buildCandidates("home-A", typeConflict, [], {
+    lookupRequestTiming: lookupDurations({ "Response-Type": 100 }),
+  }).candidates;
   assert.equal(conflictedItem.itemCount, 1, "a type conflict between two allowed target types remains a unique item");
   assert.equal(conflictedItem.timedItemCount, 1);
   assert.equal(conflictedItem.durationMs, 100);
@@ -1531,6 +1779,182 @@ test("M8.2 C: the four observed paginated child shapes prove one child owner", a
   assert.equal(nonzeroRead.projection.ownershipProof.boundaryOrdinal, 42);
 });
 
+test("B1 forwards thread request timing while preserving key, placement, and request count", () => {
+  const placedAt = Date.parse("2026-10-01T00:00:03.000Z");
+  const records = [
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    projected("token_usage_record", {
+      threadId: "Thread-A",
+      turnId: "Turn-A",
+      responseId: "Response-A",
+      outputTokens: 40,
+      turnOutputTokens: 40,
+      timestamp: new Date(placedAt).toISOString(),
+    }),
+    projected("task_complete", {
+      threadId: "Thread-A",
+      turnId: "Turn-A",
+      startedAtSec: 1_800_000_000,
+      completedAtSec: 1_800_000_001,
+      durationMs: 1_000,
+    }),
+  ];
+  let lookupQuery;
+  const built = buildCodexThreadPerfSamples(
+    "home-A",
+    "Thread-A",
+    [{ filePath: "sessions/a.jsonl", threadId: "Thread-A", projection: { records } }],
+    {
+      lookupRequestTiming: (query) => {
+        lookupQuery = query;
+        return {
+          state: "available",
+          durationMs: 400,
+          reportedOutputTokens: 40,
+          requestedModel: "Model-A",
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(lookupQuery, {
+    homeId: "home-A",
+    threadId: "Thread-A",
+    turnId: "Turn-A",
+    responseId: "Response-A",
+    model: "Model-A",
+    outputTokens: 40,
+  });
+  assert.equal(built.samples.length, 1);
+  const [sample] = built.samples;
+  assert.equal(sample.sampleKey, '["codex","home-A","Thread-A","Turn-A"]');
+  assert.equal(sample.tsMs, placedAt);
+  assert.equal(sample.durationMs, 400);
+  assert.equal(sample.requestCount, 1);
+  assert.equal(sample.timingSource, "explicit");
+});
+
+test("B1 full chain builds all six A fixture turns from native projection records", async () => {
+  const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
+  const projection = sixTurnProjection(fixture);
+  const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
+    lookupRequestTiming: projection.lookupRequestTiming,
+  });
+
+  assert.deepEqual(built.warnings, []);
+  assert.deepEqual(
+    built.samples.map((sample) => sample.sampleKey),
+    fixture.turns.map((fixtureTurn) =>
+      JSON.stringify(["codex", projection.homeId, projection.threadId, fixtureTurn.id]),
+    ),
+  );
+  assert.deepEqual(
+    built.samples.map((sample) => sample.tsMs),
+    fixture.turns.map((fixtureTurn) => Date.parse(fixtureTurn.endedAt)),
+  );
+  assert.deepEqual(
+    built.samples.map((sample) => sample.durationMs),
+    fixture.turns.map((fixtureTurn) => fixtureTurn.durationMs),
+  );
+  assert.deepEqual(
+    built.samples.map((sample) => sample.requestCount),
+    fixture.turns.map((fixtureTurn) => fixtureTurn.requestCount),
+  );
+  assert.deepEqual(
+    built.samples.map((sample) => sample.outputTokens),
+    fixture.turns.map((fixtureTurn) => fixtureTurn.outputTokens),
+  );
+  assert.ok(
+    built.samples.every(
+      (sample) =>
+        sample.windowStartMs === null &&
+        sample.windowEndMs === null &&
+        sample.timingKind === "request_e2e" &&
+        sample.methodVersion === "tps-v2" &&
+        sample.timingSource === "explicit" &&
+        !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
+        !perfFlagNamesOf(sample.sampleFlags).includes("METHOD_ESTIMATE"),
+    ),
+  );
+
+  assert.equal(
+    built.samples.reduce((sum, sample) => sum + sample.requestCount, 0),
+    fixture.totals.requests,
+  );
+  assert.equal(
+    built.samples.reduce((sum, sample) => sum + sample.durationMs, 0),
+    fixture.totals.durationMs,
+  );
+  assert.equal(
+    built.samples.reduce((sum, sample) => sum + sample.outputTokens, 0),
+    fixture.totals.outputTokens,
+  );
+
+  const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
+  assert.equal(summary.coverage.sampled, 6);
+  assert.equal(summary.groups.length, 1);
+  assert.equal(summary.groups[0].n, 6);
+  assert.equal(summary.groups[0].sums.durationMs, fixture.totals.durationMs);
+  assert.equal(summary.groups[0].sums.outputTokens, fixture.totals.outputTokens);
+  assert.equal(summary.groups[0].tps.pooled, fixture.totals.pooledSpeedTokPerSec);
+  assert.equal(summary.groups[0].rank, 1);
+  assert.equal(summary.models[0].rank, 1);
+});
+
+test("B1 full chain makes only the affected turn missing when a tool-only request timing is absent", async () => {
+  const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
+  const affectedTurn = fixture.turns[3];
+  const missingResponseId = affectedTurn.requests[0].id;
+  const projection = sixTurnProjection(fixture, {
+    itemSpanTurnId: affectedTurn.id,
+    missingResponseId,
+  });
+  const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
+    lookupRequestTiming: projection.lookupRequestTiming,
+  });
+
+  assert.equal(built.samples.length, fixture.turns.length);
+  const affectedKey = JSON.stringify(["codex", projection.homeId, projection.threadId, affectedTurn.id]);
+  const affected = built.samples.find((sample) => sample.sampleKey === affectedKey);
+  assert.ok(affected);
+  assert.equal(affected.durationMs, null);
+  assert.ok(perfFlagNamesOf(affected.sampleFlags).includes("MISSING_DURATION"));
+  assert.equal(affected.requestCount, affectedTurn.requestCount);
+  assert.equal(affected.outputTokens, affectedTurn.outputTokens);
+  assert.equal(affected.itemCount, 1, "the target item span remains visible for diagnostics");
+  assert.equal(affected.timedItemCount, 1);
+  assert.equal(affected.windowStartMs, null);
+  assert.equal(affected.windowEndMs, null);
+  assert.equal(perfFlagNamesOf(affected.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
+  assert.equal(perfFlagNamesOf(affected.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"), false);
+
+  const complete = built.samples.filter((sample) => sample.sampleKey !== affectedKey);
+  assert.equal(complete.length, 5);
+  assert.deepEqual(
+    complete.map((sample) => sample.durationMs),
+    fixture.turns
+      .filter((fixtureTurn) => fixtureTurn.id !== affectedTurn.id)
+      .map((fixtureTurn) => fixtureTurn.durationMs),
+  );
+  assert.ok(
+    complete.every(
+      (sample) =>
+        !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
+        sample.windowStartMs === null &&
+        sample.windowEndMs === null,
+    ),
+  );
+  const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
+  assert.equal(summary.coverage.sampled, 5);
+  assert.equal(summary.groups[0].n, 5);
+  assert.equal(summary.groups[0].sums.durationMs, fixture.totals.durationMs - affectedTurn.durationMs);
+  assert.equal(
+    summary.groups[0].tps.pooled,
+    ((fixture.totals.outputTokens - affectedTurn.outputTokens) * 1_000) /
+      (fixture.totals.durationMs - affectedTurn.durationMs),
+  );
+});
+
 test("M8.2 C: proven child segmentation preserves stats and excludes parent request/item/terminal evidence before fold", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m82-child-prefix-fold-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -1660,7 +2084,9 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
     plan.threads.map((thread) => thread.threadId),
     ["Child"],
   );
-  const built = buildCodexThreadPerfSamples("home-child-prefix", "Child", plan.threads[0].rollouts);
+  const built = buildCodexThreadPerfSamples("home-child-prefix", "Child", plan.threads[0].rollouts, {
+    lookupRequestTiming: lookupDurations({ "Response-Shared": 400 }),
+  });
   assert.deepEqual(built.warnings, []);
   assert.deepEqual(built.rolloutFiles, [file]);
   assert.equal(built.samples.length, 1, "the parent prefix must not produce a second candidate");
@@ -1985,7 +2411,7 @@ test("M8.2 C: paginated child proof rejects incomplete ordinals, invalid bounds,
   );
 });
 
-test("M8.2 §3: the 14 registered structures are accepted without changing TPS inputs or reading bodies", async (t) => {
+test("M8.2 §3: registered structures are accepted without changing TPS inputs or reading bodies", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m82-structures-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
@@ -2061,6 +2487,7 @@ test("M8.2 §3: the 14 registered structures are accepted without changing TPS i
     ignoredItem("DynamicToolCall", { arguments: BODY_SENTINEL, content_items: BODY_SENTINEL, duration: 9999 }),
     ignoredItem("Plan", { text: BODY_SENTINEL }),
     ignoredItem("FunctionCallOutput", { name: "tool", output: BODY_SENTINEL }),
+    ignoredItem("WebSearch", { query: BODY_SENTINEL, action: { type: "search", query: BODY_SENTINEL } }),
   ];
 
   const baselineFile = await createRollout(root, "sessions/baseline.jsonl", targetTurn);

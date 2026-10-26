@@ -5,12 +5,24 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 import { createUsageServer } from "./server.js";
 import { buildUsageReport, summarizeUsage, toPublicUsageReport } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
 import { loadPricingFile } from "./pricing-store.js";
+import { PRICE_FETCH_TIMEOUT_MS } from "./pricing-auto.js";
+import {
+  planHistoryArchive,
+  prepareHistoryArchiveCommit,
+  publishHistoryArchiveBundle,
+  publishHistoryArchiveImport,
+  verifyPublishedHistoryArchiveBundle,
+} from "./history-archive.js";
+import { createHistoryBackup, restoreHistoryBackup, verifyHistoryBackup } from "./history-backup.js";
+import { loadServiceTierEvidence } from "./service-tier-evidence.js";
+import { createUsageExecutor } from "./usage-executor.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3765;
@@ -27,7 +39,14 @@ const USAGE = `Usage:
   codex-usage gateway [--host <host>] [--port <port>] [--home-dir <dir>] [--memory-mb <mb>]
   codex-usage restart [--host <host>] [--port <port>] [--home-dir <dir>] [--memory-mb <mb>]
   codex-usage run [--host <host>] [--port <port>] [--home-dir <dir>]
-  codex-usage stop`;
+  codex-usage stop
+  codex-usage history verify <databaseFile>
+  codex-usage history backup <sourceDB> <newPackageDB>
+  codex-usage history export <sourceDB> <newDirectory> [--home-dir <dir>]
+  codex-usage history import <publishedBundleDir> <newImportDir>
+  codex-usage history restore <packageDB> <newDB>
+  codex-usage history archive <sourceDB> --dry-run
+  codex-usage history archive <sourceDB> --commit <verifiedCandidateDB> --backup <newBundleDir> [--home-dir <dir>]`;
 
 function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(value || 0);
@@ -121,7 +140,8 @@ function isProcessRunning(pid) {
   }
 }
 
-async function waitForProcessExit(pid, timeoutMs = 5000) {
+// Shutdown drains bounded pricing writes before releasing the process.
+async function waitForProcessExit(pid, timeoutMs = PRICE_FETCH_TIMEOUT_MS + 5000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isProcessRunning(pid)) {
@@ -501,6 +521,221 @@ async function restartGateway(args) {
   console.log(`Agent Usage gateway restarted: ${service.url} (pid ${service.pid})`);
 }
 
+async function verifyHistoryCommand(args) {
+  const [subcommand, databaseFile, ...extra] = args;
+  if (subcommand !== "verify" || !databaseFile || extra.length > 0) {
+    console.error("Usage: codex-usage history verify <databaseFile>");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const verified = await verifyHistoryBackup(databaseFile);
+    console.log("History backup verified.");
+    console.log(`Schema: ${verified.manifest.schemaVersion}`);
+    console.log("Tables:");
+    for (const [table, evidence] of Object.entries(verified.manifest.tables).sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
+      console.log(`- ${table}: ${formatNumber(evidence.rows)}`);
+    }
+    const captured = verified.manifest.serviceTierEvidence;
+    console.log(
+      captured === null
+        ? "Service-tier evidence: not captured"
+        : `Service-tier evidence: captured (${formatNumber(captured.snapshot.threads.length)} threads)`,
+    );
+  } catch (error) {
+    console.error(
+      `History backup verification failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+async function backupHistoryCommand(args) {
+  const [subcommand, sourceFile, destinationFile, ...extra] = withoutOption(args, "--home-dir");
+  if (subcommand !== "backup" || !sourceFile || !destinationFile || extra.length > 0) {
+    console.error("Usage: codex-usage history backup <sourceDB> <newPackageDB> [--home-dir <dir>]");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    await loadPricingFile(reportOptions(args));
+    const source = new DatabaseSync(sourceFile, { readOnly: true });
+    try {
+      await createHistoryBackup(source, destinationFile);
+    } finally {
+      source.close();
+    }
+    console.log("History backup created.");
+    console.log(`Database: ${path.resolve(destinationFile)}`);
+    console.log("Service-tier evidence: not captured");
+    console.log("Source database was not modified.");
+  } catch (error) {
+    console.error(
+      `History backup creation failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+async function restoreHistoryCommand(args) {
+  const [subcommand, packageFile, destinationFile, ...extra] = args;
+  if (subcommand !== "restore" || !packageFile || !destinationFile || extra.length > 0) {
+    console.error("Usage: codex-usage history restore <packageDB> <newDB>");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const restored = await restoreHistoryBackup(packageFile, destinationFile);
+    console.log("History backup restored.");
+    console.log(`Database: ${restored.restoredTo}`);
+    console.log(`Manifest: ${restored.manifestFile}`);
+    console.log("Online service was not switched.");
+  } catch (error) {
+    console.error(
+      `History backup restore failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+async function exportHistoryCommand(args) {
+  const [subcommand, sourceFile, destinationDirectory, ...extra] = withoutOption(args, "--home-dir");
+  if (subcommand !== "export" || !sourceFile || !destinationDirectory || extra.length > 0) {
+    console.error("Usage: codex-usage history export <sourceDB> <newDirectory> [--home-dir <dir>]");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    await loadPricingFile(reportOptions(args));
+    const homeDir = readOption(args, "--home-dir");
+    const serviceTierEvidence = homeDir
+      ? loadServiceTierEvidence([{ id: "cli-export", label: "CLI export", path: path.resolve(homeDir), kind: "main" }])
+      : null;
+    const source = new DatabaseSync(sourceFile, { readOnly: true });
+    try {
+      const published = await publishHistoryArchiveBundle(source, destinationDirectory, { serviceTierEvidence });
+      console.log("History bundle exported.");
+      console.log(`Directory: ${published.directory}`);
+      console.log(`Manifest: ${published.manifestFile}`);
+      console.log(`Completion marker: ${published.markerFile}`);
+      console.log("Source database was not modified.");
+    } finally {
+      source.close();
+    }
+  } catch (error) {
+    console.error(
+      `History bundle export failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+async function importHistoryCommand(args) {
+  const [subcommand, sourceDirectory, destinationDirectory, ...extra] = args;
+  if (subcommand !== "import" || !sourceDirectory || !destinationDirectory || extra.length > 0) {
+    console.error("Usage: codex-usage history import <publishedBundleDir> <newImportDir>");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const imported = await publishHistoryArchiveImport(sourceDirectory, destinationDirectory);
+    console.log("History bundle imported.");
+    console.log(`Runtime: ${imported.runtimeFile}`);
+    console.log(`Bundle: ${imported.bundleDirectory}`);
+    console.log(`Import marker: ${imported.markerFile}`);
+    console.log("Online service was not switched.");
+  } catch (error) {
+    console.error(
+      `History bundle import failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+async function archiveHistoryCommand(args) {
+  const [subcommand, sourceFile, ...archiveArgs] = args;
+  if (subcommand !== "archive" || !sourceFile) {
+    console.error(USAGE);
+    process.exitCode = 1;
+    return;
+  }
+
+  let source;
+  let executor;
+  try {
+    const dryRun = archiveArgs.length === 1 && archiveArgs[0] === "--dry-run";
+    if (!dryRun) {
+      if (!hasFlag(archiveArgs, "--commit") && !hasFlag(archiveArgs, "--backup")) {
+        console.error("Usage: codex-usage history archive <sourceDB> --dry-run");
+        process.exitCode = 1;
+        return;
+      }
+      const candidateFile = readOption(archiveArgs, "--commit");
+      const backupDirectory = readOption(archiveArgs, "--backup");
+      const remaining = withoutOption(withoutOption(withoutOption(archiveArgs, "--commit"), "--backup"), "--home-dir");
+      if (!candidateFile || !backupDirectory || remaining.length > 0) {
+        console.error(
+          "Usage: codex-usage history archive <sourceDB> --commit <verifiedCandidateDB> --backup <newBundleDir> [--home-dir <dir>]",
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      await loadPricingFile(reportOptions(args));
+      const homeDir = readOption(args, "--home-dir");
+      const serviceTierEvidence = homeDir
+        ? loadServiceTierEvidence([
+            { id: "cli-archive-commit", label: "CLI archive commit", path: path.resolve(homeDir), kind: "main" },
+          ])
+        : null;
+      source = new DatabaseSync(sourceFile, { readOnly: true });
+      const plan = await prepareHistoryArchiveCommit(source, candidateFile);
+      const published = await publishHistoryArchiveBundle(source, backupDirectory, { serviceTierEvidence });
+      await verifyPublishedHistoryArchiveBundle(published.directory);
+      source.close();
+      source = null;
+
+      executor = createUsageExecutor({ ...reportOptions(args), databaseFile: path.resolve(sourceFile) });
+      await executor.open();
+      const committed = await executor.commitHistoryArchiveEvents(plan);
+      console.log("History archive committed.");
+      console.log(`Backup: ${published.directory}`);
+      console.log(`Manifest: ${published.manifestFile}`);
+      console.log(`Completion marker: ${published.markerFile}`);
+      console.log(`Segment: ${committed.segmentId}`);
+      console.log(`Deleted events: ${formatNumber(committed.deletedEventCount)}`);
+      console.log(`Replay: ${committed.replay ? "yes" : "no"}`);
+      console.log("Online service was not switched.");
+      return;
+    }
+
+    source = new DatabaseSync(sourceFile, { readOnly: true });
+    const plan = planHistoryArchive(source, { asOf: Date.now() });
+    console.log("History archive dry-run.");
+    console.log(`Eligible: ${plan.eligible ? "yes" : "no"}`);
+    console.log(`Reason: ${plan.reason}`);
+    console.log(`Events: ${formatNumber(plan.eventCount)}`);
+    console.log(`Cold events: ${formatNumber(plan.coldEventCount)}`);
+    console.log(`Cutoff local: ${new Date(plan.cutoffMs).toLocaleString()}`);
+    console.log(`Cutoff epoch ms: ${plan.cutoffMs}`);
+  } catch (error) {
+    console.error(
+      `History archive ${archiveArgs[0] === "--dry-run" ? "dry-run" : "commit"} failed: ${error?.code ? `${error.code}: ` : ""}${error?.message ?? String(error)}`,
+    );
+    process.exitCode = 1;
+  } finally {
+    source?.close();
+    await executor?.close();
+  }
+}
+
 async function main() {
   const { command, args } = splitCommand(process.argv.slice(2), invokedAsCud() ? "dashboard" : "summary");
 
@@ -536,6 +771,23 @@ async function main() {
 
   if (command === "summary" || command === "json") {
     await printSummary(command, args);
+    return;
+  }
+
+  if (command === "history") {
+    if (args[0] === "backup") {
+      await backupHistoryCommand(args);
+    } else if (args[0] === "restore") {
+      await restoreHistoryCommand(args);
+    } else if (args[0] === "export") {
+      await exportHistoryCommand(args);
+    } else if (args[0] === "import") {
+      await importHistoryCommand(args);
+    } else if (args[0] === "archive") {
+      await archiveHistoryCommand(args);
+    } else {
+      await verifyHistoryCommand(args);
+    }
     return;
   }
 

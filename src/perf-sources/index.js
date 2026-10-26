@@ -19,6 +19,7 @@ import { streamZcodePerfSamples } from "./zcode.js";
 import { streamDshPerfSamples } from "./dsh.js";
 import { streamOpencodePerfSamples } from "./opencode.js";
 import { streamWorkbuddyPerfSamples } from "./workbuddy.js";
+import { streamClaudePerfSamples } from "./claude.js";
 
 // Codex candidates must be folded across every rollout in a thread. This sentinel
 // keeps it enabled for source classification while rejecting accidental per-file use.
@@ -50,6 +51,7 @@ export const PERF_SOURCE_READERS = new Map(
     ["opencode", streamOpencodePerfSamples],
     ["codex", rejectCodexFileDispatch],
     ["workbuddy", streamWorkbuddyPerfSamples],
+    ["claude", streamClaudePerfSamples],
   ]),
 );
 
@@ -154,7 +156,7 @@ export async function streamPerfSamplesForFile(filePath, source, onSample, optio
         warnings.push(warning);
         if (staged === null) options.onWarning?.(warning);
       },
-      // WorkBuddy：时长不在会话转录里，由 store 从 `workbuddy_generation_durations` 查表提供。
+      // WorkBuddy：时长不在会话转录里，由 store/memory 的 trace 预扫结果提供。
       // 其它 reader 忽略这个字段（各自的时间戳/时长语义与它无关）。
       lookupGenerationDuration: options.lookupGenerationDuration,
     },

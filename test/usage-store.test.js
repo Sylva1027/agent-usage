@@ -2814,22 +2814,31 @@ test("D3 · frozen 快照不被 live 新观测改写；同一 asOf 的读数在�
 //
 // 判别力要点：
 //   * "复用"的机械证据 = `metadata()` 里那条**未过滤**分组语句被 `prepare` 的次数（稳态：1 → 0），
-//     以及 C5 静态块的三条语句在同一轮 no-op sync 之后**不再执行**（"未被回退"的计数证据）；
+//     以及 C5 静态块 / raw count / rollup count 各路径在同一轮 no-op sync 之后**不再执行**；
 //   * "未来事件过滤不被缓存吃掉" = 同一份数据、**只推进 `asOf`** ⇒ 某个模型由"未来"变为"非未来"
 //     （出现/消失 + `lastSeen` 具体值变化），且该路径**每次现算**（计数每次都增长）；
 //   * "命中仍新鲜" = 命中路径返回的 `asOf` 必须是**本次请求**的时刻，静态部分逐字不变。
 
 const D4_UNFILTERED_SIGNATURE = "FROM events GROUP BY channel, model, home_id";
 const D4_FILTERED_SIGNATURE = "FROM events WHERE timestamp_ms <= ? GROUP BY channel, model, home_id";
-const D4_STATIC_BLOCK_SIGNATURES = [
+const D4_RAW_COUNT_SIGNATURES = [
   "COUNT(DISTINCT session_id) AS session_count FROM events",
   "SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count",
-  "SELECT DISTINCT channel, model FROM events",
 ];
+const D4_ROLLUP_COUNT_SIGNATURES = ["FROM usage_rollup_daily", "FROM usage_rollup_sessions"];
+const D4_STATIC_BLOCK_SIGNATURES = ["SELECT DISTINCT channel, model FROM events"];
 
-/** `metadata()` 的未过滤/过滤分组语句 + C5 静态块三条语句各被 `prepare` 了几次。 */
+/** `metadata()` 的观测、raw count、rollup count 与 C5 静态块各被 `prepare` 了几次。 */
 function d4CountQueries(store) {
-  const counter = { unfiltered: 0, filtered: 0, staticBlock: 0, total: 0 };
+  const counter = {
+    unfiltered: 0,
+    filtered: 0,
+    markerChecks: 0,
+    rawCount: 0,
+    rollupCount: 0,
+    staticBlock: 0,
+    total: 0,
+  };
   let current = null;
   const wrap = (database) => {
     if (!database) return database;
@@ -2840,6 +2849,9 @@ function d4CountQueries(store) {
         counter.total += 1;
         if (normalized.includes(D4_FILTERED_SIGNATURE)) counter.filtered += 1;
         else if (normalized.includes(D4_UNFILTERED_SIGNATURE)) counter.unfiltered += 1;
+        if (normalized.includes("FROM usage_rollup_days")) counter.markerChecks += 1;
+        if (D4_RAW_COUNT_SIGNATURES.some((signature) => normalized.includes(signature))) counter.rawCount += 1;
+        if (D4_ROLLUP_COUNT_SIGNATURES.some((signature) => normalized.includes(signature))) counter.rollupCount += 1;
         if (D4_STATIC_BLOCK_SIGNATURES.some((signature) => normalized.includes(signature))) counter.staticBlock += 1;
       }
       return original(sql);
@@ -2857,6 +2869,9 @@ function d4CountQueries(store) {
   counter.reset = () => {
     counter.unfiltered = 0;
     counter.filtered = 0;
+    counter.markerChecks = 0;
+    counter.rawCount = 0;
+    counter.rollupCount = 0;
     counter.staticBlock = 0;
     counter.total = 0;
   };
@@ -2900,12 +2915,16 @@ test("D4 · 观测聚合复用：稳态 0 次查询；C5 静态块在无变化�
     const cold = store.metadata(new Date(asOf));
     assert.equal(counts.unfiltered, 1, "冷调用：一次未过滤分组（静态输入入缓存）");
     assert.equal(counts.filtered, 0, "无未来事件 ⇒ 不需要按 asOf 现算");
-    assert.equal(counts.staticBlock, 3, "冷调用重建 C5 静态块（三条语句）");
+    assert.equal(counts.rawCount, 0, "完整 rollup 可用 ⇒ 不扫 events 原始计数");
+    assert.equal(counts.rollupCount, 5, "冷调用读取 rollup daily/session 计数路径");
+    assert.equal(counts.staticBlock, 1, "冷调用只重建模型集合");
 
     counts.reset();
     const warm = store.metadata(new Date(asOf));
     assert.equal(counts.unfiltered, 0, "稳态：观测聚合零重算");
     assert.equal(counts.filtered, 0, "稳态：没有按 asOf 的现算");
+    assert.equal(counts.rawCount, 0, "稳态：raw count 零重扫");
+    assert.equal(counts.rollupCount, 0, "稳态：rollup count 零重扫");
     assert.equal(counts.staticBlock, 0, "C5 静态块零重算（本卡没有回退它）");
     assert.deepEqual(warm, cold, "同一 asOf 的读数逐字相同");
     assert.equal(store.metadataObservationCache.revision, store.storeRevision, "缓存键 = D1 修订");
@@ -2928,13 +2947,34 @@ test("D4 · 观测聚合复用：稳态 0 次查询；C5 静态块在无变化�
     counts.reset();
     const grown = store.metadata(new Date(asOf));
     assert.equal(counts.unfiltered, 1, "新事件 ⇒ 观测聚合按实际变更重算一次");
-    assert.equal(counts.staticBlock, 3, "新事件 ⇒ C5 静态块一并重建");
+    assert.equal(counts.rawCount, 0, "新事件仍走完整 rollup 计数路径");
+    assert.equal(counts.rollupCount, 5, "新事件 ⇒ rollup daily/session 计数路径重建");
+    assert.equal(counts.staticBlock, 1, "新事件 ⇒ 模型集合一并重建");
     assert.equal(grown.eventCount, cold.eventCount + 1, "身份读数随之更新");
     assert.equal(grown.modelLastSeen.Codex["gpt-6-sol"], Date.parse("2026-07-12T08:00:00.000Z"));
 
     counts.reset();
     store.metadata(new Date(asOf));
-    assert.equal(counts.unfiltered + counts.filtered + counts.staticBlock, 0, "再次稳态：全零重算");
+    assert.equal(
+      counts.unfiltered + counts.filtered + counts.rawCount + counts.rollupCount + counts.staticBlock,
+      0,
+      "再次稳态：全零重算",
+    );
+
+    // rollup 标记缺失 ⇒ 回退仍必须执行两条 raw count（不能被新路径静默吞掉）。
+    const writer = new DatabaseSync(fixture.databaseFile);
+    try {
+      writer.prepare("DELETE FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-11'").run();
+    } finally {
+      writer.close();
+    }
+    counts.reset();
+    const fallback = store.metadata(new Date(asOf));
+    assert.ok(counts.markerChecks > 0, "缺失标记 ⇒ 先检查 rollup 日标记");
+    assert.equal(counts.rollupCount, 0, "guard 在准备计数 SQL 前拒绝缺失标记");
+    assert.equal(counts.rawCount, 2, "回退 ⇒ 仍是两条 raw count 扫描");
+    assert.equal(counts.staticBlock, 1, "回退轮次仍重建模型集合");
+    assert.equal(fallback.eventCount, grown.eventCount, "回退计数与完整路径一致");
   } finally {
     store.close();
     await rm(fixture.homeDir, { recursive: true, force: true });
@@ -2954,6 +2994,8 @@ test("D4 · 未来事件不被缓存吃掉：只推进 asOf ⇒ 同一份数据�
     const before = store.metadata(new Date(early));
     assert.equal(counts.unfiltered, 1, "冷调用先取静态输入（未过滤分组）");
     assert.equal(counts.filtered, 1, "有未来事件 ⇒ 必须按当前 asOf 现算一次");
+    assert.equal(counts.rawCount, 0, "冷调用走完整 rollup 计数");
+    assert.equal(counts.rollupCount, 5, "冷调用读取 rollup daily/session 计数路径");
     assert.equal(before.modelLastSeen.Codex["gpt-6-sol"], Date.parse("2026-07-12T05:00:00.000Z"), "≤ asOf 的 MAX");
     assert.equal(Object.hasOwn(before.modelLastSeen.Codex, "gpt-6-mini"), false, "只有未来事件的模型不得出现");
     assert.deepEqual(before.activeHarnessModels.Codex, ["gpt-6-sol"]);
@@ -2961,12 +3003,14 @@ test("D4 · 未来事件不被缓存吃掉：只推进 asOf ⇒ 同一份数据�
     counts.reset();
     const beforeAgain = store.metadata(new Date(early));
     assert.equal(counts.filtered, 1, "同一 asOf 仍**每次现算**（不是把上一次结果缓存住）");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "静态计数路径仍零重扫");
     assert.deepEqual(beforeAgain.modelLastSeen, before.modelLastSeen);
 
     counts.reset();
     const after = store.metadata(new Date(late));
     assert.equal(counts.filtered, 0, "无未来事件 ⇒ 过滤是恒等 ⇒ 复用静态输入（0 次现算）");
     assert.equal(counts.unfiltered, 0, "静态输入未变 ⇒ 零重读");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "推进 asOf 不重扫计数路径");
     assert.equal(
       after.modelLastSeen.Codex["gpt-6-mini"],
       Date.parse("2026-07-12T07:00:00.000Z"),
@@ -2977,6 +3021,7 @@ test("D4 · 未来事件不被缓存吃掉：只推进 asOf ⇒ 同一份数据�
     counts.reset();
     const back = store.metadata(new Date(early));
     assert.equal(counts.filtered, 1, "退回更早的 asOf ⇒ 再次按当前 asOf 现算");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "退回 asOf 不重扫计数路径");
     assert.equal(Object.hasOwn(back.modelLastSeen.Codex, "gpt-6-mini"), false, "快路径不得把晚 asOf 的结果留成缓存");
     assert.deepEqual(back.modelLastSeen, before.modelLastSeen);
   } finally {
@@ -3069,7 +3114,7 @@ test("D4 · metadata 的 warnings 按自身语义更新（静态缓存保留但�
     assert.match(store.warnings[0], /D4 simulated source scan warning/);
     assert.match(warned.warnings[0], /D4 simulated source scan warning/, "warnings 按自身语义更新（没有被缓存冻结）");
     assert.equal(warned.eventCount, cold.eventCount, "静态聚合被保留（无用量变化）");
-    assert.equal(counts.staticBlock, 0, "保留轮次零重建（计数证据）");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "保留轮次零重建（计数证据）");
     assert.ok(
       new Date(warned.generatedAt).getTime() >= new Date(cold.generatedAt).getTime(),
       "generatedAt 同样按自身语义刷新",
@@ -3083,7 +3128,7 @@ test("D4 · metadata 的 warnings 按自身语义更新（静态缓存保留但�
     assert.deepEqual(store.warnings, []);
     assert.deepEqual(clear.warnings, [], "警告消失同样立即反映");
     assert.equal(clear.eventCount, cold.eventCount);
-    assert.equal(counts.staticBlock, 0, "恢复轮次同样零重建");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "恢复轮次同样零重建");
   } finally {
     store.close();
     await rm(fixture.homeDir, { recursive: true, force: true });
@@ -3155,7 +3200,11 @@ test("D4 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
 
     counts.reset();
     store.metadata(new Date(asOf));
-    assert.equal(counts.unfiltered + counts.filtered, 0, "事务外：稳态复用（0 次观测查询）");
+    assert.equal(
+      counts.unfiltered + counts.filtered + counts.rawCount + counts.rollupCount + counts.staticBlock,
+      0,
+      "事务外：稳态复用（0 次派生查询）",
+    );
 
     store.database.exec("BEGIN IMMEDIATE");
     try {
@@ -3188,7 +3237,11 @@ test("D4 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
       Date.parse("2026-07-12T07:00:00.000Z"),
       "回滚后观测恢复（缓存自始至终指向已提交状态）",
     );
-    assert.equal(counts.unfiltered + counts.filtered, 0, "回滚没有推进修订 ⇒ 事务外继续复用未被污染的缓存");
+    assert.equal(
+      counts.unfiltered + counts.filtered + counts.rawCount + counts.rollupCount + counts.staticBlock,
+      0,
+      "回滚没有推进修订 ⇒ 事务外继续复用未被污染的缓存",
+    );
     assert.equal(store.metadataObservationCache.rows.length, cachedGroups);
   } finally {
     store.close();
@@ -3208,7 +3261,7 @@ test("D4 · 改来源（新增来源目录）：身份/模型集合按自身语�
     assert.equal(before.homes.length, 1);
     counts.reset();
     store.metadata(new Date(asOf));
-    assert.equal(counts.staticBlock, 0, "稳态：C5 静态块零重算");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "稳态：计数与 C5 静态块零重算");
 
     // 运行期**新增一个来源**（第二个 Codex home，经 `options.extraHomes` 注入）⇒ home 集合形状变化
     // （`homeSetChanged`）⇒ 静态块必须按**实际变更**重建（不是每轮都算，也不是永不算）。
@@ -3230,7 +3283,9 @@ test("D4 · 改来源（新增来源目录）：身份/模型集合按自身语�
     await store.sync({ options: { ...store.options, extraHomes: extraHome } });
     counts.reset();
     const after = store.metadata(new Date(asOf));
-    assert.equal(counts.staticBlock, 3, "改来源 ⇒ C5 静态块按实际变更重建");
+    assert.equal(counts.rawCount, 0, "改来源仍走完整 rollup 计数");
+    assert.equal(counts.rollupCount, 5, "改来源 ⇒ rollup daily/session 计数路径重建");
+    assert.equal(counts.staticBlock, 1, "改来源 ⇒ 模型集合按实际变更重建");
     assert.equal(after.eventCount, before.eventCount + 1, "新来源的事件立即计入");
     assert.equal(after.homes.length, before.homes.length + 1, "身份（home 集合）立即多出一个来源");
     assert.equal(after.homeCount, before.homeCount + 1);
@@ -3241,7 +3296,7 @@ test("D4 · 改来源（新增来源目录）：身份/模型集合按自身语�
 
     counts.reset();
     store.metadata(new Date(asOf));
-    assert.equal(counts.staticBlock, 0, "再次稳态：零重算");
+    assert.equal(counts.rawCount + counts.rollupCount + counts.staticBlock, 0, "再次稳态：零重算");
   } finally {
     store.close();
     await rm(fixture.homeDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 # ZCode 数据源
 
-更新：2026-10-08。共同发现、统计和读取边界见[数据来源](../10-data-sources.md)。
+更新：2026-10-21。共同发现、统计和读取边界见[数据来源](../10-data-sources.md)。
 
 ## 存储与发现
 
@@ -21,9 +21,9 @@
 
 ## 输出吞吐（TPS）
 
-性能 reader 从 `model_usage` 逐行读取稳定 `id`、`model_id`、`provider_id`、`output_tokens`、时间字段和可用的子代理标志。`duration_ms` 是有效整数时直接作为时长（显式 0/负数不回退）；否则仅在 `started_at` 与 `completed_at` 都可规范为 epoch 毫秒且差值非负时，以完成减开始回退。统计时间点优先完成时间，缺失时用开始时间。
+性能 reader 从 `model_usage` 逐行读取稳定 `id`、`model_id`、`provider_id`、`output_tokens`、时间字段和可用的子代理标志。每条记录是一次外层模型尝试：`started_at` 在调用前写入，`completed_at` 在调用结束后写入，`duration_ms` 是两者之差；内部网络重试由 `retry_count` 记录，usage 取最终结果。`duration_ms` 是有效整数时直接作为时长（显式 0/负数不回退）；否则仅在 `started_at` 与 `completed_at` 都可规范为 epoch 毫秒且差值非负时，以完成减开始回退。统计时间点优先完成时间，缺失时用开始时间。
 
-窗口为一条 request，`timingKind=request_e2e`；`tokenScope=reported_output_unspecified`，因为来源没有提供已验证的输出 token 子范围。稳定行 ID 是构造候选的前提；未完成、失败、取消、重试及终态未核实的记录保留为诊断候选，不进入 sampled。完成状态还须有完成时间证据；输出与时长必须为正且通过公共校验。身份不稳只报 `UNKEYABLE_RECORD`，不造候选。子代理类别只由 `query_source=subagent` 或 `task_type=subagent_child` 明确标记；否则 `agentKind=unknown`。模型与 provider 取该行证据，不从当前配置补值。
+窗口为一条 request，`timingKind=request_e2e`。脱敏真库样例同时含 `output_tokens=303`、`reasoning_tokens=91`、`input_tokens=33942` 和 `provider_total_tokens=34245`，且 `34245 = 33942 + 303`；原始 usage 中 reasoning 是独立字段。这个等式只说明本机 provider 的 completion 总量按 input + output 报出，不能证明 `output_tokens` 是否已经包含独立列出的 `reasoning_tokens`。在找到该安装版本的 provider 字段契约或写入映射前，`tokenScope=reported_output_unspecified` 保持不变，ZCode 不得进入统一速度排名，也不得擅自把 reasoning 加进分子。稳定行 ID 是构造候选的前提；未完成、失败、取消、重试及终态未核实的记录保留为诊断候选，不进入 sampled。完成状态还须有完成时间证据；输出与时长必须为正且通过公共校验。身份不稳只报 `UNKEYABLE_RECORD`，不造候选。子代理类别只由 `query_source=subagent` 或 `task_type=subagent_child` 明确标记；否则 `agentKind=unknown`。模型与 provider 取该行证据，不从当前配置补值。
 
 2026-10-01 Claude 接入时，没有找到可核验的 ZCode 上游写库源码，尚不能确认 `input_tokens` 与缓存读/写的包含关系。当前映射保持不变，不因模型名为 Claude 就额外累加缓存。已有字段校验和最低费率场景仍适用；Claude 价目接入不等于已证明 ZCode 所有 Claude 记录可以精确计费。后续应以版本化写库代码或可对照的脱敏原始请求补证据。
 

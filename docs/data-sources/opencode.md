@@ -96,7 +96,7 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 
 ## 输出吞吐（TPS）
 
-性能 reader 读取 assistant message 的稳定 `id`（投影为 `message_id`）及性能标量；未完成、失败或缺值的记录也保留为诊断候选。`data.finish=stop/tool-calls` 为完成证据，`error` 或明确 error 字段为失败，未知 finish 不猜完成。时长为 `completed_ms - created_ms`；统计时间优先完成时间、其次创建时间。输出为 `tokens.output + tokens.reasoning`，任一分量未知就保持未知，任一分量无效也不能被另一项抵消。每条 message 作为统计窗口，`timingKind=request_e2e`、`tokenScope=visible_plus_reasoning`。这不代表每条 message 都与上游一次 provider request 一一对应，故 `requestCount` 保持 null，不伪造请求数。
+性能 reader 读取 assistant message 的稳定 `id`（投影为 `message_id`）及性能标量；未完成、失败或缺值的记录也保留为诊断候选。`data.finish=stop/tool-calls` 为完成证据，`error` 或明确 error 字段为失败，未知 finish 不猜完成。时长为 `streamed_ms - created_ms`：`streamed` 表示 provider 流结束，`completed` 可能在后续工具执行完成后才写入，不能作为请求时长终点。`streamed` 缺失时保持时长未知，不回退到 `completed`；`completed` 缺失只进入独立诊断。统计/日历时间仍优先 `completed`、其次 `created`，不因时长终点改为 `streamed` 而改变日期归属。输出为 `tokens.output + tokens.reasoning`，任一分量未知就保持未知，任一分量无效也不能被另一项抵消。每条 message 作为统计窗口，`timingKind=request_e2e`、`tokenScope=visible_plus_reasoning`。这不代表每条 message 都与上游一次 provider request 一一对应，故 `requestCount` 保持 null，不伪造请求数。
 
 模型/provider 取消息记录的 `data.model.id` / `providerID`。`data.agent` 只证明名称，不证明类别，故 `agentKind=unknown`；effort/variant 不从当前配置回填。旧的不兼容 session 主版本排除并告警；缺失或无法解析的版本保留警告，不能当作已确认兼容。零/负输出或无效时长仍由公共内核排除。
 

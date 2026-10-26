@@ -71,7 +71,7 @@ const RANKED = {
   agentKind: "subagent",
   agent: "worker",
   n: 25,
-  rank: 1,
+  rank: null,
   insufficientSamples: false,
   tps: { p10: 204, p50: 224, p90: 244, pooled: 224 },
   durationMs: { p50: 500, p90: 500 },
@@ -302,12 +302,13 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
               reasoning: 90,
             },
             {
-              id: "missing-completed",
+              id: "missing-streamed",
               session_id: "oc-v2-missing-completed",
               created: DAY_B + 5000,
+              completed: DAY_B + 6000,
               output: 40,
               reasoning: 10,
-              omitCompleted: true,
+              omitStreamed: true,
             },
             {
               id: "unknown-version",
@@ -354,7 +355,8 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
             const data = {
               time: {
                 created: message.created,
-                ...(message.omitCompleted ? {} : { completed: message.completed }),
+                ...(message.omitStreamed ? {} : { streamed: message.completed }),
+                completed: message.completed,
               },
               tokens: { output: message.output, reasoning: message.reasoning },
               model: { id: "opencode-model", providerID: "fixture-provider" },
@@ -386,6 +388,7 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
       extraOpencodeHomes: sources.includes("opencode") ? opencodeHome : "",
       importDirs: [],
       automaticDiscoveryEnabled: false,
+      pricingRefreshSchedulerEnabled: false,
     };
     const expected = {
       provenance: "M0.6 frozen fixture-cases X-05..X-09/N-02; literal manual calculations, not product output",
@@ -525,6 +528,13 @@ export function createPerfCodexIntegrationFixture() {
   const threadId = "fixture-codex-thread";
   const base = Date.parse("2026-10-04T12:00:00.000Z");
   const rows = [[], [], []];
+  const timingRecords = [];
+  const timingByThreadResponse = new Map();
+  const timingKey = (threadId, responseId) => `${threadId}\u0000${responseId}`;
+  const registerTiming = (record) => {
+    timingByThreadResponse.set(timingKey(threadId, record.responseId), record);
+    return record;
+  };
   for (const rolloutRows of rows) {
     rolloutRows.push({ type: "session_meta", payload: { id: threadId, source: "vscode" } });
   }
@@ -539,17 +549,29 @@ export function createPerfCodexIntegrationFixture() {
     let cumulativeOutput = 0;
     for (const [requestIndex, outputTokens] of requestOutputs.entries()) {
       cumulativeOutput += outputTokens;
+      const responseId = `response-${turn}-${requestIndex + 1}`;
       rows[requestRollout].push({
         type: "token_usage_record",
         timestamp: new Date(base + turn * 10000 + 2500 + requestIndex * 1000).toISOString(),
         payload: {
           thread_id: threadId,
           turn_id: turnId,
-          response_id: `response-${turn}-${requestIndex + 1}`,
+          response_id: responseId,
           usage: { output_tokens: outputTokens },
           turn_token_usage: { output_tokens: cumulativeOutput },
         },
       });
+      const timing = {
+        schemaVersion: 1,
+        evidenceOrigin: "fixture@1",
+        responseId,
+        requestedModel: "codex-fixture-model",
+        reportedOutputTokens: outputTokens,
+        durationMs: turn === 25 ? 200000 : 1000,
+        status: "completed",
+        completedAtMs: null,
+      };
+      timingRecords.push(registerTiming(timing));
     }
     const itemRollout = turn <= 18 ? 1 : 2;
     const startedAtMs = base + turn * 10000;
@@ -593,9 +615,49 @@ export function createPerfCodexIntegrationFixture() {
       extraHomes: codexHome,
       importDirs: [],
       automaticDiscoveryEnabled: false,
+      pricingRefreshSchedulerEnabled: false,
+      lookupRequestTiming(query) {
+        const timing = timingByThreadResponse.get(timingKey(query.threadId, query.responseId));
+        return timing
+          ? {
+              state: "available",
+              durationMs: timing.durationMs,
+              reportedOutputTokens: timing.reportedOutputTokens,
+              requestedModel: timing.requestedModel,
+            }
+          : { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+      },
+    };
+    const registerThreadTiming = (targetThreadId, responsePrefix, records = timingRecords) => {
+      const registered = records.map((record) => ({
+        ...record,
+        responseId: `${responsePrefix}${record.responseId}`,
+      }));
+      for (const record of registered) {
+        timingByThreadResponse.set(timingKey(targetThreadId, record.responseId), record);
+      }
+      return registered;
+    };
+    const addRequestTiming = (targetThreadId, record) => {
+      timingByThreadResponse.set(timingKey(targetThreadId, record.responseId), record);
+      return record;
+    };
+    const seedRequestTiming = async (store, records = timingRecords) => {
+      const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(codexHome));
+      assert.ok(home, "fixture must discover the Codex home before timing evidence can be imported");
+      store.importRequestTimingEvidence({
+        homeId: String(home.id),
+        records,
+        reviewedOrigins: ["fixture@1"],
+      });
+      await store.sync({ options: reportOptions });
     };
     return {
       reportOptions,
+      timingRecords,
+      registerThreadTiming,
+      addRequestTiming,
+      seedRequestTiming,
       codexHome,
       serverOptions: {
         ...reportOptions,
@@ -605,7 +667,7 @@ export function createPerfCodexIntegrationFixture() {
       expected: {
         model: "codex-fixture-model",
         agentKind: "unknown",
-        timingKind: "item_span_estimate",
+        timingKind: "request_e2e",
         tokenScope: "reported_output_includes_reasoning",
         n: 25,
         rank: 1,

@@ -76,7 +76,7 @@ const okSample = (raw) => {
 };
 
 test("M1.1 constants match the frozen §17.4 table: 18 bit slots, 2/3 reserved, 16 settable names", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v1");
+  assert.equal(PERF_METHOD_VERSION, "tps-v2");
   assert.equal(PERF_MIN_SAMPLES, 20);
   assert.equal(PERF_LONG_WINDOW_MS, 300000);
   assert.equal(PERF_EPOCH_MS_MIN, 1e12);
@@ -316,7 +316,7 @@ test("M1.1-D Codex and the request-level sources can never share a group key", (
   const codex = {
     ...base,
     sourceKind: "codex",
-    timingKind: "item_span_estimate",
+    timingKind: "request_e2e",
     tokenScope: "reported_output_includes_reasoning",
   };
   const zcode = {
@@ -342,7 +342,7 @@ test("M1.1-D Codex and the request-level sources can never share a group key", (
     "m",
     "p",
     "high",
-    "item_span_estimate",
+    "request_e2e",
     "reported_output_includes_reasoning",
   ]);
   // even with identical timing/token semantics the source kind still separates groups
@@ -366,7 +366,8 @@ test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope"
     ["zcode", "request", "request_e2e", "reported_output_unspecified", false],
     ["dsh", "step", "request_e2e", "reported_output_unspecified", false],
     ["opencode", "message", "request_e2e", "visible_plus_reasoning", false],
-    ["codex", "turn", "item_span_estimate", "reported_output_includes_reasoning", true],
+    ["codex", "turn", "request_e2e", "reported_output_includes_reasoning", false],
+    ["claude", "request", "request_e2e", "reported_output_includes_reasoning", false],
   ];
   for (const [kind, window, timingKind, tokenScope, estimated] of expected) {
     const sample = okSample({
@@ -396,10 +397,10 @@ test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope"
   );
   assert.equal(forced.sample.sourceKind, "codex");
   assert.equal(forced.sample.window, "turn");
-  assert.equal(forced.sample.timingKind, "item_span_estimate");
+  assert.equal(forced.sample.timingKind, "request_e2e");
   assert.equal(forced.sample.tokenScope, "reported_output_includes_reasoning");
   assert.ok(forced.warnings.includes("SOURCE_SEMANTICS_MISMATCH"));
-  assert.ok(flagSet(forced.sample).has("METHOD_ESTIMATE"));
+  assert.equal(flagSet(forced.sample).has("METHOD_ESTIMATE"), false);
 
   const endToEnd = {
     homeId: HOME,
@@ -427,7 +428,7 @@ test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope"
     "p",
     "high",
   ]);
-  assert.equal(JSON.parse(perfGroupKey(codexSample))[8], "item_span_estimate");
+  assert.equal(JSON.parse(perfGroupKey(codexSample))[8], "request_e2e");
   assert.equal(JSON.parse(perfGroupKey(zcodeSample))[8], "request_e2e");
 });
 
@@ -533,7 +534,7 @@ test("M1.1 §17.4 bit 5 MULTI_REQUEST_TURN is Codex-only and only a hint", () =>
   });
   const flags = flagSet(codex.sample);
   assert.ok(flags.has("MULTI_REQUEST_TURN"));
-  assert.ok(flags.has("METHOD_ESTIMATE"));
+  assert.equal(flags.has("METHOD_ESTIMATE"), false);
   assert.equal(flags.has("MISSING_DURATION"), false);
   assert.equal(flags.has("SOURCE_FILTERED"), false);
   assert.equal(flags.has("TERMINAL_UNVERIFIED"), false);
@@ -733,9 +734,12 @@ test("M1.1 numbers/counts/provenance: null stays missing, true 0 stays 0, unsafe
   assert.equal(provenance.sample.timingSource, "unknown");
   assert.ok(provenance.warnings.includes("UNRECOGNIZED_PROVENANCE"));
 
-  const version = normalizePerfSample(zcodeRaw({ methodVersion: "tps-v2" }));
-  assert.equal(version.sample.methodVersion, "tps-v2");
-  assert.ok(version.warnings.includes("UNRECOGNIZED_METHOD_VERSION"));
+  const historical = normalizePerfSample(zcodeRaw({ methodVersion: "tps-v1" }));
+  assert.equal(historical.sample.methodVersion, "tps-v1");
+  assert.equal(historical.warnings.includes("UNRECOGNIZED_METHOD_VERSION"), false);
+  const future = normalizePerfSample(zcodeRaw({ methodVersion: "tps-v99" }));
+  assert.equal(future.sample.methodVersion, "tps-v99");
+  assert.ok(future.warnings.includes("UNRECOGNIZED_METHOD_VERSION"));
   assert.equal(okSample(zcodeRaw()).methodVersion, PERF_METHOD_VERSION);
 });
 
@@ -888,7 +892,7 @@ test("M1.1-Q contract ruling Q: normalization warning codes never enter a source
     zcodeRaw({
       status: "weird",
       timingSource: "guessed",
-      methodVersion: "tps-v2",
+      methodVersion: "tps-v99",
       agentKind: "main-ish",
       sampleFlags: ["NOPE"],
       modelProvider: "unknown",
@@ -1483,16 +1487,17 @@ test("M1.2 hints still sample: LONG_WINDOW boundary, MULTI_REQUEST_TURN, METHOD_
   const long = okZcode({ identity: ["long"], durationMs: PERF_LONG_WINDOW_MS + 1 });
   const edge = okZcode({ identity: ["edge"], durationMs: PERF_LONG_WINDOW_MS });
   const multi = okCodex({ turnId: "multi", requestCount: 2 });
-  const coverage = computePerfCoverage(selectPerfSamples([long, edge, multi], {}), {});
-  assert.equal(coverage.eligible, 3);
-  assert.equal(coverage.sampled, 3);
+  const estimate = okZcode({ identity: ["estimate"], sampleFlags: ["METHOD_ESTIMATE"] });
+  const coverage = computePerfCoverage(selectPerfSamples([long, edge, multi, estimate], {}), {});
+  assert.equal(coverage.eligible, 4);
+  assert.equal(coverage.sampled, 4);
   assert.equal(coverage.dropped, 0);
   assert.equal(coverage.byFlag.LONG_WINDOW, 1);
   assert.equal(coverage.byFlag.MULTI_REQUEST_TURN, 1);
   assert.equal(coverage.byFlag.METHOD_ESTIMATE, 1);
   assert.equal(coverage.sampleRate, 1);
   assert.ok(flagSet(multi).has("MULTI_REQUEST_TURN"));
-  assert.ok(flagSet(multi).has("METHOD_ESTIMATE"));
+  assert.equal(flagSet(multi).has("METHOD_ESTIMATE"), false);
 });
 
 test("M1.2 rates: N-04 definition and N-05 null denominators", () => {

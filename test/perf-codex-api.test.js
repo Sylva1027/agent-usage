@@ -5,42 +5,110 @@ import path from "node:path";
 import test from "node:test";
 
 import { createUsageServer } from "../src/server.js";
-import { renderPerfCoverageHtml, renderPerfDetailHtml } from "../public/perf-ui.js";
+import { UsageStore } from "../src/usage-store.js";
+import { renderPerfCoverageHtml, renderPerfDetailHtml, renderPerfModelsHtml } from "../public/perf-ui.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
-test("M7 Codex estimate reaches dashboard, summary, full detail, UI labels, and immutable snapshots", async () => {
+const MODEL_ROW_KEYS = [
+  "key",
+  "sourceKind",
+  "model",
+  "reasoningEffort",
+  "modelProvider",
+  "window",
+  "firstSampleAtMs",
+  "lastSampleAtMs",
+  "rankState",
+  "averageTps",
+  "p10",
+  "p90",
+  "n",
+  "state",
+  "rank",
+];
+
+function assertCodexModel(perf, fixture, where) {
+  assert.equal(perf.models.length, 1, `${where}: one Codex model row`);
+  const model = perf.models[0];
+  assert.deepEqual(Object.keys(model).sort(), [...MODEL_ROW_KEYS].sort());
+  assert.equal(model.key, JSON.stringify(["codex", fixture.expected.model, "high", ""]));
+  assert.equal(model.sourceKind, "codex");
+  assert.equal(model.model, fixture.expected.model);
+  assert.equal(model.reasoningEffort, "high");
+  assert.equal(model.modelProvider, "");
+  assert.equal(model.window, "turn");
+  assert.equal(model.rankState, "eligible");
+  assert.equal(model.firstSampleAtMs, Date.parse("2026-10-04T12:00:12.500Z"));
+  assert.equal(model.lastSampleAtMs, Date.parse("2026-10-04T12:04:13.500Z"));
+  assert.equal(model.averageTps, fixture.expected.tps.pooled);
+  assert.equal(model.p10, fixture.expected.tps.p10);
+  assert.equal(model.p90, fixture.expected.tps.p90);
+  assert.equal(model.n, fixture.expected.n);
+  assert.equal(model.state, "ok");
+  assert.equal(model.rank, fixture.expected.rank);
+}
+
+function serverUrl(server) {
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+async function listen(server) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return serverUrl(server);
+}
+
+async function getJson(baseUrl, route, query) {
+  const response = await fetch(`${baseUrl}/api/${route}?${query}`);
+  assert.equal(response.status, 200, `${route}?${query}`);
+  return response.json();
+}
+
+test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels, and immutable snapshots", async () => {
   const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
+  await store.sync({ options: fixture.reportOptions });
+  await fixture.seedRequestTiming(store);
+  store.close();
   const server = createUsageServer({
     ...fixture.serverOptions,
     heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  const get = async (route, query) => {
-    const response = await fetch(`${baseUrl}/api/${route}?${query}`);
-    assert.equal(response.status, 200, `${route}?${query}`);
-    return response.json();
-  };
+  const baseUrl = await listen(server);
+  const get = (route, query) => getJson(baseUrl, route, query);
 
   try {
+    const usage = await get("usage", "preset=all&skipCheck=1");
     const dashboard = await get("usage", "preset=all&view=dashboard&skipCheck=1");
     const summary = await get("summary", "preset=all&skipCheck=1");
     const full = await get("usage", "preset=all&detail=full&skipCheck=1");
     const frozen = await get("usage", "preset=all&freeze=1&skipCheck=1");
 
-    for (const body of [dashboard, summary, full, frozen]) {
+    for (const body of [usage, dashboard, summary, full, frozen]) {
       const perf = body.summary.perf;
       assert.equal(perf.state, "ready");
+      assert.equal(perf.meta.methodVersion, "tps-v2");
       assert.equal(perf.groups.length, 1);
       assert.equal(perf.groups[0].sourceKind, "codex");
-      assert.equal(perf.groups[0].timingKind, "item_span_estimate");
+      assert.equal(perf.groups[0].timingKind, "request_e2e");
       assert.equal(perf.groups[0].tokenScope, "reported_output_includes_reasoning");
       assert.equal(perf.groups[0].agentKind, "unknown");
+      assert.equal(perf.groups[0].n, fixture.expected.n);
       assert.deepEqual(perf.groups[0].tps, fixture.expected.tps);
+      assertCodexModel(perf, fixture, "Codex API entry");
+      const timing = perf.codexTimingCoverage;
+      assert.equal(timing.methodVersion, "tps-v2");
+      assert.equal(timing.counts.eligible, 25);
+      assert.equal(timing.counts.sampled, 25);
+      assert.equal(timing.recordedOutputTokens, 2800);
+      assert.equal(timing.sampledOutputTokens, 2800);
+      assert.equal(timing.unknownOutputCandidates, 0);
       assert.deepEqual(perf.coverage, summary.summary.perf.coverage);
+      assert.deepEqual(timing, summary.summary.perf.codexTimingCoverage);
     }
     assert.deepEqual(dashboard.summary.perf.groups, summary.summary.perf.groups);
+    assert.deepEqual(dashboard.summary.perf.models, summary.summary.perf.models);
     assert.deepEqual(full.summary.perf.groups, summary.summary.perf.groups);
+    assert.deepEqual(full.summary.perf.models, summary.summary.perf.models);
     assert.ok(full.report);
     assert.equal("perfSamples" in full.report, false);
     assert.equal("perfMeta" in full.report, false);
@@ -50,28 +118,121 @@ test("M7 Codex estimate reaches dashboard, summary, full detail, UI labels, and 
     const detailZh = renderPerfDetailHtml(group, dashboard.summary.perf.coverage);
     const detailEn = renderPerfDetailHtml(group, dashboard.summary.perf.coverage, { locale: "en-US" });
     const coverageZh = renderPerfCoverageHtml(dashboard.summary.perf);
-    assert.match(detailZh, /轮级 item 时窗 TPS 估算/);
+    assert.match(detailZh, /请求端到端 TPS（含请求等待）/);
     assert.match(detailZh, /代理未知/);
-    assert.match(detailEn, /Turn-level item-window TPS estimate/);
+    assert.match(detailEn, /Request end-to-end TPS \(includes request waiting\)/);
     assert.match(detailEn, /Unknown agent/);
     assert.match(coverageZh, /近期/);
     assert.match(coverageZh, /历史/);
+    const modelHtml = renderPerfModelsHtml(dashboard.summary.perf, { calendarZone: "utc" });
+    assert.match(modelHtml, /25 个回合/);
+    assert.match(modelHtml, /样本日期 2026-10-04/);
+    assert.doesNotMatch(modelHtml, /perf-codex-coverage|候选采样覆盖率|已记录输出覆盖率/);
 
     const snapshotId = frozen.snapshotId;
     assert.ok(snapshotId);
     const frozenSummary = await get("summary", `preset=all&snapshot=${snapshotId}`);
+    const frozenModels = frozen.summary.perf.models;
+    const frozenTiming = frozen.summary.perf.codexTimingCoverage;
     const livePath = fixture.rolloutFiles[0];
     const liveBefore = readFileSync(livePath, "utf8");
     writeFileSync(livePath, liveBefore.replaceAll('"output_tokens":100', '"output_tokens":150'));
     const live = await get("summary", "preset=all");
     assert.notEqual(live.summary.perf.indexVersion, frozen.summary.perf.indexVersion);
     assert.notDeepEqual(live.summary.perf.groups[0].tps, frozen.summary.perf.groups[0].tps);
-    assert.deepEqual(
-      (await get("summary", `preset=all&snapshot=${snapshotId}`)).summary.perf,
-      frozenSummary.summary.perf,
-    );
+    assert.notDeepEqual(live.summary.perf.models, frozenModels);
+    assert.equal(live.summary.perf.models[0].n, 24);
+    assert.equal(live.summary.perf.codexTimingCoverage.counts.eligible, 25);
+    assert.equal(live.summary.perf.codexTimingCoverage.counts.sampled, 24);
+    const frozenAfterMutation = await get("summary", `preset=all&snapshot=${snapshotId}`);
+    assert.deepEqual(frozenAfterMutation.summary.perf.models, frozenModels);
+    assert.deepEqual(frozenAfterMutation.summary.perf.codexTimingCoverage, frozenTiming);
+    assert.deepEqual(frozenAfterMutation.summary.perf, frozenSummary.summary.perf);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    fixture.close();
+  }
+});
+
+test("Codex API drops a turn with missing request timing without falling back to item spans", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
+  let server;
+  try {
+    await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(
+      store,
+      fixture.timingRecords.filter((record) => record.responseId !== "response-25-2"),
+    );
+    const missing = store.database.prepare("SELECT duration_ms FROM perf_samples WHERE output_tokens = 124").get();
+    assert.equal(missing.duration_ms, null, "the whole turn must have no denominator");
+    store.close();
+
+    server = createUsageServer({
+      ...fixture.serverOptions,
+      heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
+    });
+    const baseUrl = await listen(server);
+    const body = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
+    const perf = body.summary.perf;
+    assert.equal(perf.meta.methodVersion, "tps-v2");
+    assert.equal(perf.groups[0].n, 24);
+    assert.equal(perf.models[0].n, 24);
+    assert.equal(perf.models[0].rank, 1);
+    assert.deepEqual(perf.groups[0].tps, {
+      p10: 102,
+      p50: 111,
+      p90: 121,
+      pooled: 111.5,
+    });
+    assert.equal(perf.models[0].averageTps, perf.groups[0].tps.pooled);
+    assert.equal(perf.codexTimingCoverage.counts.eligible, 25);
+    assert.equal(perf.codexTimingCoverage.counts.sampled, 24);
+    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 2800);
+    assert.equal(perf.codexTimingCoverage.sampledOutputTokens, 2676);
+    assert.equal(perf.codexTimingCoverage.unknownOutputCandidates, 0);
+    const html = renderPerfModelsHtml(perf, { calendarZone: "utc" });
+    assert.match(html, /24 个回合/);
+    assert.doesNotMatch(html, /perf-codex-coverage|已记录输出覆盖率|缺失或无效时长/);
+  } finally {
+    store.close();
+    if (server) await new Promise((resolve) => server.close(resolve));
+    fixture.close();
+  }
+});
+
+test("Codex API explains current-method candidates when no request timing is available", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
+  let server;
+  try {
+    await store.sync({ options: fixture.reportOptions });
+    store.close();
+    server = createUsageServer({
+      ...fixture.serverOptions,
+      heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
+    });
+    const baseUrl = await listen(server);
+    const body = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
+    const perf = body.summary.perf;
+    assert.equal(perf.models.length, 1);
+    assert.equal(perf.models[0].state, "missing_duration");
+    assert.equal(perf.models[0].candidateCount, 25);
+    assert.equal(perf.models[0].n, 0);
+    assert.deepEqual([perf.models[0].averageTps, perf.models[0].p10, perf.models[0].p90], [null, null, null]);
+    assert.deepEqual(perf.groups, []);
+    assert.equal(perf.codexTimingCoverage.counts.eligible, 25);
+    assert.equal(perf.codexTimingCoverage.counts.sampled, 0);
+    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 2800);
+    assert.equal(perf.codexTimingCoverage.sampledOutputTokens, 0);
+    const html = renderPerfModelsHtml(perf);
+    assert.match(html, /日志未记录请求耗时/);
+    assert.doesNotMatch(html, /perf-codex-coverage|缺失或无效时长|候选采样覆盖率/);
+    assert.match(html, /perf-model-data-row/);
+    assert.doesNotMatch(html, /n=0/);
+  } finally {
+    store.close();
+    if (server) await new Promise((resolve) => server.close(resolve));
     fixture.close();
   }
 });
@@ -182,5 +343,136 @@ test("C2 · 端到端 API：坏 rollout 的告警跨多轮不累加、读数 = �
     assert.equal(readFileSync(healthy, "utf8").includes("ApiThread-A"), true);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("L1 published perf revision changes the shared status/usage fingerprint and preserves frozen reads", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
+  let server;
+  try {
+    await store.sync({ options: fixture.reportOptions });
+    server = createUsageServer({
+      ...fixture.serverOptions,
+      heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
+    });
+    const baseUrl = await listen(server);
+
+    const initial = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
+    assert.equal(initial.summary.perf.models.length, 1);
+    assert.equal(initial.summary.perf.models[0].state, "missing_duration");
+    assert.equal(initial.summary.perf.models[0].candidateCount, 25);
+    assert.equal(initial.summary.perf.models[0].n, 0);
+    assert.equal(initial.summary.perf.models[0].averageTps, null);
+    assert.deepEqual(initial.summary.perf.groups, []);
+    const initialStatus = await getJson(baseUrl, "status", `since=${initial.fingerprint}`);
+    assert.equal(initialStatus.changed, false);
+    assert.equal(initialStatus.fingerprint, initial.fingerprint);
+
+    const initialFrozen = await getJson(baseUrl, "usage", "preset=all&freeze=1&skipCheck=1");
+    assert.ok(initialFrozen.snapshotId);
+    assert.deepEqual(initialFrozen.summary.perf.models, initial.summary.perf.models);
+
+    const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(fixture.codexHome));
+    assert.ok(home);
+    const initialTimingRecords = fixture.timingRecords.filter(
+      (record) => !record.responseId.startsWith("response-25-"),
+    );
+    const imported = store.importRequestTimingEvidence({
+      homeId: String(home.id),
+      records: initialTimingRecords,
+      reviewedOrigins: ["fixture@1"],
+    });
+    assert.equal(imported.changed, true);
+    const pendingStatus = await getJson(baseUrl, "status", `since=${initial.fingerprint}`);
+    assert.equal(pendingStatus.changed, true);
+    assert.notEqual(pendingStatus.fingerprint, initial.fingerprint);
+    const stablePendingStatus = await getJson(baseUrl, "status", `since=${pendingStatus.fingerprint}`);
+    assert.equal(stablePendingStatus.changed, false);
+    assert.equal(stablePendingStatus.fingerprint, pendingStatus.fingerprint);
+
+    const published = await getJson(baseUrl, "usage", "preset=all");
+
+    const changedStatus = await getJson(baseUrl, "status", `since=${initial.fingerprint}`);
+    assert.equal(changedStatus.changed, true);
+    assert.notEqual(changedStatus.fingerprint, initial.fingerprint);
+    assert.equal(published.fingerprint, changedStatus.fingerprint);
+
+    const live = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
+    const summary = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
+    assert.equal(live.fingerprint, changedStatus.fingerprint);
+    assert.equal(summary.fingerprint, changedStatus.fingerprint);
+    assert.equal(live.summary.perf.models[0].n, 24);
+    assert.equal(summary.summary.perf.models[0].n, 24);
+
+    const stableStatus = await getJson(baseUrl, "status", `since=${live.fingerprint}`);
+    assert.equal(stableStatus.changed, false);
+    assert.equal(stableStatus.fingerprint, live.fingerprint);
+
+    const externalImport = store.importRequestTimingEvidence({
+      homeId: String(home.id),
+      records: fixture.timingRecords.filter((record) => record.responseId.startsWith("response-25-")),
+      reviewedOrigins: ["fixture@1"],
+    });
+    assert.equal(externalImport.changed, true);
+    await store.sync({ options: fixture.reportOptions });
+
+    // Only status may observe the external store.sync; an already-open page does not fetch usage first.
+    const externalStatus = await getJson(baseUrl, "status", `since=${live.fingerprint}`);
+    assert.equal(externalStatus.changed, true);
+    assert.notEqual(externalStatus.fingerprint, live.fingerprint);
+
+    const externalLive = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
+    const externalSummary = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
+    assert.equal(externalLive.fingerprint, externalStatus.fingerprint);
+    assert.equal(externalSummary.fingerprint, externalStatus.fingerprint);
+    assert.equal(externalLive.summary.perf.models[0].n, 25);
+    assert.equal(externalSummary.summary.perf.models[0].n, 25);
+
+    const externalStableStatus = await getJson(baseUrl, "status", `since=${externalLive.fingerprint}`);
+    assert.equal(externalStableStatus.changed, false);
+    assert.equal(externalStableStatus.fingerprint, externalLive.fingerprint);
+
+    const duplicate = store.importRequestTimingEvidence({
+      homeId: String(home.id),
+      records: fixture.timingRecords,
+      reviewedOrigins: ["fixture@1"],
+    });
+    assert.equal(duplicate.changed, false);
+    const duplicateStatus = await getJson(baseUrl, "status", `since=${externalLive.fingerprint}`);
+    assert.equal(duplicateStatus.changed, false);
+    assert.equal(duplicateStatus.fingerprint, externalLive.fingerprint);
+
+    assert.throws(
+      () =>
+        store.importRequestTimingEvidence({
+          homeId: String(home.id),
+          records: [{ ...fixture.timingRecords[0], durationMs: fixture.timingRecords[0].durationMs + 1 }],
+          reviewedOrigins: ["unreviewed@1"],
+        }),
+      (error) => error.code === "REQUEST_TIMING_ORIGIN_UNREVIEWED",
+    );
+    const afterConflict = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
+    const afterConflictSummary = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
+    const afterConflictStatus = await getJson(baseUrl, "status", `since=${externalLive.fingerprint}`);
+    assert.equal(afterConflict.fingerprint, externalLive.fingerprint);
+    assert.equal(afterConflictSummary.fingerprint, externalLive.fingerprint);
+    assert.equal(afterConflictStatus.changed, false);
+    assert.equal(afterConflictStatus.fingerprint, externalLive.fingerprint);
+    assert.equal(afterConflict.summary.perf.models[0].n, 25);
+    assert.equal(afterConflictSummary.summary.perf.models[0].n, 25);
+
+    const frozen = await getJson(
+      baseUrl,
+      "usage",
+      `preset=all&snapshot=${encodeURIComponent(initialFrozen.snapshotId)}`,
+    );
+    assert.equal(frozen.fingerprint, initialFrozen.fingerprint);
+    assert.deepEqual(frozen.summary.perf.models, initialFrozen.summary.perf.models);
+    assert.deepEqual(frozen.summary.perf.groups, []);
+  } finally {
+    if (server) await server.close();
+    store.close();
+    fixture.close();
   }
 });

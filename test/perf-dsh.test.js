@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 
 import { streamDshPerfSamples } from "../src/perf-sources/dsh.js";
-import { PERF_FLAGS, perfFlagNamesOf } from "../src/perf-stats.js";
+import { PERF_FLAGS, PERF_METHOD_VERSION, perfFlagNamesOf } from "../src/perf-stats.js";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const READER_FILE = path.join(REPO_ROOT, "src", "perf-sources", "dsh.js");
@@ -69,6 +69,10 @@ function requestRow({ seq = 2, time = T0 + 500, model = "model-a", provider = "p
 
 function stepStartRow({ seq = 3, time = T0 + 1000, turn = 1, step = 1 } = {}) {
   return { type: "step/start", seq, time, data: { turn, step } };
+}
+
+function retryStartedRow({ seq = 4, time = T0 + 1500, turn = 1, step = 1 } = {}) {
+  return { type: "llm/retry-started", seq, time, data: { turn, step } };
 }
 
 /** 步骤结束帧：产物里带哨兵，`time` 故意是"若被读取就会污染结果"的值。 */
@@ -262,7 +266,7 @@ test("主夹具：身份元组、请求作用域模型、手算两组 TPS 与正
       assert.equal(sample.timingKind, "request_e2e");
       assert.equal(sample.tokenScope, "reported_output_unspecified");
       assert.equal(sample.timingSource, "timestamp_fallback");
-      assert.equal(sample.methodVersion, "tps-v1");
+      assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
       assert.equal(sample.channel, "dsh", "channel 冻结为小写 kebab-case（裁定 AL-5）");
       assert.equal(sample.agentKind, "unknown", "depth=0 不给 main");
       assert.equal(sample.agent, "standard");
@@ -702,6 +706,40 @@ test("缺 start：保留候选、时长 null 与 MISSING_DURATION，且不回填
     assert.ok(flagsOf(samples[0]).includes("MISSING_DURATION"));
     assert.equal(samples[0].model, "", "无 header 作用域时不回填任何模型");
     assert.equal(samples[0].modelEvidence, "");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("同 step 的重试以最后一条早于 message 的 retry-started 为起点；较早尝试与 message 后帧不参与", async () => {
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 1000, turn: 1, step: 1 }),
+      retryStartedRow({ seq: 2, time: T0 + 5000, turn: 1, step: 1 }),
+      messageRow({ seq: 3, time: T0 + 8000, turn: 1, step: 1, outputTokens: 90 }),
+      stepStartRow({ seq: 4, time: T0 + 1000, turn: 1, step: 2 }),
+      retryStartedRow({ seq: 5, time: T0 + 4000, turn: 1, step: 2 }),
+      retryStartedRow({ seq: 6, time: T0 + 6000, turn: 1, step: 2 }),
+      messageRow({ seq: 7, time: T0 + 9000, turn: 1, step: 2, outputTokens: 90 }),
+      stepStartRow({ seq: 8, time: T0 + 1000, turn: 1, step: 3 }),
+      messageRow({ seq: 9, time: T0 + 3000, turn: 1, step: 3, outputTokens: 90 }),
+      retryStartedRow({ seq: 10, time: T0 + 5000, turn: 1, step: 3 }),
+      stepStartRow({ seq: 11, time: T0 + 1000, turn: 1, step: 4 }),
+      messageRow({ seq: 12, time: T0 + 3000, turn: 1, step: 4, outputTokens: 90 }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 1)).durationMs, 3000, "单次重试从 retry-started 起算");
+    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 2)).durationMs, 3000, "多次重试取最后一条早于 message 的起点");
+    assert.equal(
+      byKey.get(sampleKeyOf(SESSION_ID, 1, 3)).durationMs,
+      2000,
+      "message 后的 retry-started 不得倒灌进已完成样本",
+    );
+    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 4)).durationMs, 2000, "无重试仍使用 step/start");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -316,6 +316,67 @@ test("workbuddyGenerationSpans 只收 ok 的 generation span，并跳过坏 tool
   });
 });
 
+test("trace 解析保留重复同值/异值、跨文件与旧 span 形状，不在这里选值", async () => {
+  await withTempDir(async (dir) => {
+    const traceDir = path.join(dir, "traces", "102284");
+    await mkdir(traceDir, { recursive: true });
+    const endedAtMs = Date.parse("2026-10-21T00:08:56.704Z");
+
+    // 先写 b 再写 a：结果必须由文件路径排序决定，而不是创建/导入顺序。
+    await writeFile(
+      path.join(traceDir, "trace_b.jsonl"),
+      jsonl([
+        traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-cross" }]), duration: 900 } }),
+        traceRow({
+          span: {
+            type: "generation",
+            status: "ok",
+            duration: 700,
+            toolOutput: JSON.stringify([{ id: "msg-old-shape" }]),
+          },
+        }),
+      ]),
+    );
+    await writeFile(
+      path.join(traceDir, "trace_a.jsonl"),
+      jsonl([
+        traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-same" }]), duration: 900 } }),
+        traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-cross" }]), duration: 1100 } }),
+        traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-conflict" }]), duration: 800 } }),
+        traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-conflict" }]), duration: 850 } }),
+      ]),
+    );
+    await writeFile(
+      path.join(traceDir, "trace_c.jsonl"),
+      jsonl([traceRow({ span: { toolOutput: JSON.stringify([{ id: "msg-same" }]), duration: 900 } })]),
+    );
+
+    const spans = await workbuddyGenerationSpans(dir);
+    const byId = new Map();
+    for (const span of spans) byId.set(span.messageId, [...(byId.get(span.messageId) ?? []), span]);
+
+    assert.deepEqual(
+      byId.get("msg-same").map((span) => [span.durationMs, span.endedAtMs]),
+      [
+        [900, endedAtMs],
+        [900, endedAtMs],
+      ],
+      "同值重复全部保留，不能提前折叠",
+    );
+    assert.deepEqual(
+      byId.get("msg-conflict").map((span) => span.durationMs),
+      [800, 850],
+      "异值冲突全部保留，不能先到先得",
+    );
+    assert.deepEqual(
+      byId.get("msg-cross").map((span) => span.durationMs),
+      [1100, 900],
+      "跨文件重复按稳定路径顺序返回，两个成员都在",
+    );
+    assert.equal(byId.get("msg-old-shape")[0].durationMs, 700, "旧 span 缺 trace/start 元数据仍可解析");
+  });
+});
+
 test("traces 目录不存在 ⇒ 空数组，不抛", async () => {
   await withTempDir(async (dir) => {
     assert.deepEqual(await workbuddyGenerationSpans(dir), []);

@@ -1,3 +1,5 @@
+import { canonicalModelName } from "./pricing-models.js";
+
 const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
 
 /** Product ownership comes from a known home kind, then explicit legacy aliases. */
@@ -600,7 +602,10 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       : null;
   const quotaSlotsByKey = quotaSlots ? new Map(quotaSlots.map((slot) => [slot.key, slot])) : null;
   const rowsByKey = new Map();
+  const factsByKey = options.factRows ? new Map(options.factRows.map((row) => [row.key, row])) : null;
   const estimateCost = options.estimateCost || ((event) => event.costEstimate || null);
+  const pricingModels = options.pricingModels;
+  const modelNameFor = options.modelName || ((value) => canonicalModelName(value, pricingModels));
   for (const event of events) {
     if (sparseRange) {
       const timestamp = new Date(event.timestamp ?? event.timestampMs).getTime();
@@ -624,13 +629,15 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       : quotaSlots
         ? quotaSlotForEvent(event, quotaSlots, range, bucket)
         : null;
-    const key =
-      quotaSlots || sparseHalfHour
+    const key = options.eventBucketKey
+      ? options.eventBucketKey(event)
+      : quotaSlots || sparseHalfHour
         ? slot?.key
         : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
     if (!key) continue;
     const row = rowsByKey.get(key) || {
       ...emptyRow(key, slot || {}),
+      factRow: factsByKey?.get(key),
       channelGroups: new Map(),
       modelGroups: new Map(),
       modelCosts: new Map(),
@@ -641,38 +648,44 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       contextUnknownTokens: 0,
       cacheWriteUnknownTokens: 0,
     };
-    row.count += 1;
-    row.sessionsSet.add(event.sessionId || "");
-    addUsage(row.total, event.total || event.usage);
-    const channelName = channelForRange(event.channel, range, options.sourceKinds?.get(String(event.homeId)));
-    const channel = row.channelGroups.get(channelName) || {
-      key: channelName,
-      name: channelName,
-      count: 0,
-      sessions: new Set(),
-      total: emptyUsage(),
-    };
-    addSegment(channel, event);
-    row.channelGroups.set(channelName, channel);
+    const modelName = modelNameFor(String(event.model || "Unknown model"));
+    // Unchanged fact rows survive repricing; only money and pricing coverage are rebuilt.
+    if (!row.factRow) {
+      row.count += 1;
+      row.sessionsSet.add(event.sessionId || "");
+      addUsage(row.total, event.total || event.usage);
+      const channelName = channelForRange(event.channel, range, options.sourceKinds?.get(String(event.homeId)));
+      const channel = row.channelGroups.get(channelName) || {
+        key: channelName,
+        name: channelName,
+        count: 0,
+        sessions: new Set(),
+        total: emptyUsage(),
+      };
+      addSegment(channel, event);
+      row.channelGroups.set(channelName, channel);
 
-    const modelName = String(event.model || "Unknown model");
-    const model = row.modelGroups.get(modelName) || {
-      key: modelName,
-      name: modelName,
-      count: 0,
-      sessions: new Set(),
-      total: emptyUsage(),
-    };
-    addSegment(model, event);
-    row.modelGroups.set(modelName, model);
+      const model = row.modelGroups.get(modelName) || {
+        key: modelName,
+        name: modelName,
+        count: 0,
+        sessions: new Set(),
+        total: emptyUsage(),
+      };
+      addSegment(model, event);
+      row.modelGroups.set(modelName, model);
+    }
 
     const estimate = estimateCost(event);
     if (estimate) {
-      options.onEstimate?.(event, estimate);
+      options.onEstimate?.(event, estimate, key);
       row.estimatedRecords += 1;
-      const cost = row.modelCosts.get(modelName) || {
+      const currency = estimate.currency === "CNY" ? "CNY" : "USD";
+      const modelCostKey = `${modelName}\u0000${currency}`;
+      const cost = row.modelCosts.get(modelCostKey) || {
+        model: modelName,
         totalUsd: 0,
-        currency: estimate.currency || "USD",
+        currency,
         pricedTokens: 0,
         unpricedTokens: 0,
         minimumEstimatedTokens: 0,
@@ -689,7 +702,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       cost.contextUnknownTokens += Number(estimate.contextUnknownTokens || 0);
       cost.cacheWriteUnknownTokens += Number(estimate.cacheWriteUnknownTokens || 0);
       if (estimate.pricingStatus) cost.pricingStatuses.add(estimate.pricingStatus);
-      row.modelCosts.set(modelName, cost);
+      row.modelCosts.set(modelCostKey, cost);
       row.pricedTokens += Number(estimate.pricedTokens || 0);
       row.unpricedTokens += Number(estimate.unpricedTokens || 0);
       row.minimumEstimatedTokens += Number(estimate.minimumEstimatedTokens || 0);
@@ -705,6 +718,13 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
   }
 
   const rows = [...rowsByKey.values()].map((row) => {
+    const modelCosts = [...row.modelCosts.values()];
+    const currenciesByModel = new Map();
+    for (const cost of modelCosts) {
+      const currencies = currenciesByModel.get(cost.model) || new Set();
+      currencies.add(cost.currency);
+      currenciesByModel.set(cost.model, currencies);
+    }
     const statusValues = [...row.modelCosts.values()].flatMap((entry) => [...entry.pricingStatuses]);
     let pricingStatus = "unavailable";
     if (row.estimatedRecords > 0) {
@@ -721,33 +741,37 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
     return {
       key: row.key,
       name: row.name,
-      count: row.count,
-      sessions: row.sessionsSet.size,
-      total: row.total,
-      channels: materializeSegments(row.channelGroups),
-      models: materializeSegments(row.modelGroups),
+      count: row.factRow?.count ?? row.count,
+      sessions: row.factRow?.sessions ?? row.sessionsSet.size,
+      total: row.factRow?.total ?? row.total,
+      channels: row.factRow?.channels ?? materializeSegments(row.channelGroups),
+      models: row.factRow?.models ?? materializeSegments(row.modelGroups),
       costByModel: Object.fromEntries(
-        [...row.modelCosts].map(([name, cost]) => [
-          name,
-          {
-            totalUsd: cost.totalUsd,
-            currency: cost.currency || "USD",
-            pricedTokens: cost.pricedTokens,
-            unpricedTokens: cost.unpricedTokens,
-            minimumEstimatedTokens: cost.minimumEstimatedTokens,
-            serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
-            contextUnknownTokens: cost.contextUnknownTokens,
-            cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
-            pricingStatus:
-              cost.unpricedTokens > 0
-                ? cost.pricedTokens > 0
-                  ? "partial"
-                  : "unpriced"
-                : cost.minimumEstimatedTokens > 0
-                  ? "minimum-estimate"
-                  : "estimated",
-          },
-        ]),
+        modelCosts.map((cost) => {
+          const mixed = currenciesByModel.get(cost.model).size > 1;
+          return [
+            mixed ? `${cost.model}\u0000${cost.currency}` : cost.model,
+            {
+              ...(mixed ? { model: cost.model } : {}),
+              totalUsd: cost.totalUsd,
+              currency: cost.currency || "USD",
+              pricedTokens: cost.pricedTokens,
+              unpricedTokens: cost.unpricedTokens,
+              minimumEstimatedTokens: cost.minimumEstimatedTokens,
+              serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
+              contextUnknownTokens: cost.contextUnknownTokens,
+              cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
+              pricingStatus:
+                cost.unpricedTokens > 0
+                  ? cost.pricedTokens > 0
+                    ? "partial"
+                    : "unpriced"
+                  : cost.minimumEstimatedTokens > 0
+                    ? "minimum-estimate"
+                    : "estimated",
+            },
+          ];
+        }),
       ),
       pricedTokens: row.pricedTokens,
       unpricedTokens: row.unpricedTokens,

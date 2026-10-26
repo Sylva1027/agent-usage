@@ -1,5 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { isCodexAutoReview, resolvePricingModel } from "../public/pricing-models.js";
+import { canonicalModelName, isCodexAutoReview, resolvePricingModel } from "../public/pricing-models.js";
 
 // This catalog revision includes a fresh Claude check on 2026-10-01;
 // the date does not claim that every provider entry was rechecked that day.
@@ -510,37 +511,11 @@ const MODEL_PRICES = Object.freeze({
     short: { input: 0.03, cachedInput: 0.006, cacheWrite: 0, output: 0.13 },
     long: { input: 0.1, cachedInput: 0.02, cacheWrite: 0, output: 0.4 },
   }),
-  // QwenCloud 第三方转售（美元；deepseek 系按北京时间 8:00-22:00 高峰、其余 5 折）
+  // QwenCloud 第三方转售（美元）
   "glm-5.3-prime": Object.freeze({
     currency: "USD",
     source: CNY_PRICING_SOURCES.qwen,
     short: { input: 2.8, cachedInput: 0.56, cacheWrite: 0, output: 8.8 },
-  }),
-  "deepseek-v4.1-flash": Object.freeze({
-    currency: "USD",
-    source: CNY_PRICING_SOURCES.qwen,
-    short: { input: 0.3, cachedInput: 0.03, cacheWrite: 0, output: 1.2 },
-    offPeakMultiplier: 0.5,
-    peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([
-      Object.freeze({
-        days: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
-        ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]),
-      }),
-    ]),
-  }),
-  "deepseek-v4-flash-0731": Object.freeze({
-    currency: "USD",
-    source: CNY_PRICING_SOURCES.qwen,
-    short: { input: 0.44, cachedInput: 0.044, cacheWrite: 0, output: 1.32 },
-    offPeakMultiplier: 0.5,
-    peakTimezone: "Asia/Shanghai",
-    peakWindows: Object.freeze([
-      Object.freeze({
-        days: Object.freeze([1, 2, 3, 4, 5, 6, 7]),
-        ranges: Object.freeze([Object.freeze(["08:00", "22:00"])]),
-      }),
-    ]),
   }),
   // Google Gemini（美元；Priority 为官方快速档。缓存写入为按时存储费，按 0 简化）
   "gemini-2.5-pro": Object.freeze({
@@ -697,6 +672,22 @@ let activePricing = {
   models: MODEL_PRICES,
 };
 
+const pricingContext = new AsyncLocalStorage();
+
+function currentPricing() {
+  return pricingContext.getStore() || activePricing;
+}
+
+/** Run one request-bound operation against its own catalog without changing the global one. */
+export function runWithPricingCatalog(catalog, operation) {
+  return catalog && typeof catalog === "object" ? pricingContext.run(catalog, operation) : operation();
+}
+
+/** Run background work against the live catalog, never the request catalog that scheduled it. */
+export function runWithoutPricingCatalog(operation) {
+  return pricingContext.exit(operation);
+}
+
 // Unknown-model fallback scans every compatible catalog entry. Cache only the
 // read-only minimum-rate result; catalog replacement invalidates the whole map.
 const minimumRatesCache = new Map();
@@ -710,12 +701,13 @@ export const API_TOKEN_PRICES = Object.freeze(
 );
 
 export function getPricingCatalog() {
+  const pricing = currentPricing();
   return {
-    checkedAt: activePricing.checkedAt,
-    version: activePricing.version,
-    usdToCnyRate: activePricing.usdToCnyRate,
+    checkedAt: pricing.checkedAt,
+    version: pricing.version,
+    usdToCnyRate: pricing.usdToCnyRate,
     source: API_PRICING_SOURCE,
-    models: structuredClone(activePricing.models),
+    models: structuredClone(pricing.models),
   };
 }
 
@@ -912,7 +904,7 @@ export function resetPricingCatalog() {
 }
 
 export function pricingVersionForTimestamp(_timestamp) {
-  return activePricing.version;
+  return currentPricing().version;
 }
 
 function finiteNonNegative(value) {
@@ -938,9 +930,44 @@ function usageFields(event = {}) {
 
 function normalizeModel(value) {
   const model = String(value || "Unknown model").trim() || "Unknown model";
-  const resolved = resolvePricingModel(model, activePricing.models);
-  if (resolved.matchType === "free") return { name: model, key: "", free: true };
-  return { name: model, key: resolved.catalogKey || "" };
+  const resolved = resolvePricingModel(model, currentPricing().models);
+  return {
+    name: model,
+    key: resolved.catalogKey || "",
+    free: resolved.matchType === "free",
+    canonicalName: resolved.canonicalModel,
+  };
+}
+
+export function createEventPricing(pricingModels = currentPricing().models) {
+  let catalog = currentPricing();
+  const models = new Map();
+  function modelFor(value) {
+    const current = currentPricing();
+    if (current !== catalog) {
+      catalog = current;
+      models.clear();
+    }
+    const name = String(value ?? "").trim();
+    let model = models.get(name);
+    if (!model) {
+      model = { quote: normalizeModel(name), display: canonicalModelName(name, pricingModels) };
+      // shortcut: unusual model inventories stay streaming once this request's small dictionary is full.
+      if (models.size < 1024 && name.length <= 1024) models.set(name, model);
+    }
+    return model;
+  }
+  return {
+    estimate(event = {}) {
+      return estimateEventCostForModel(event, modelFor(event.model || "Unknown model").quote);
+    },
+    modelName(value) {
+      return modelFor(value).display;
+    },
+    costModelName(value) {
+      return modelFor(value).quote.canonicalName;
+    },
+  };
 }
 
 function normalizeServiceTier(value) {
@@ -1199,7 +1226,7 @@ function rateSetsFor(entry, contextTier, usage) {
 }
 
 function currencyForEvent(model, event) {
-  if (model.key) return activePricing.models[model.key].currency || "USD";
+  if (model.key) return currentPricing().models[model.key].currency || "USD";
   // 价目表里没有的模型只能按渠道兜底。ZCode 与 DSH 都跑人民币模型，
   // 漏掉 dsh 会把 DSH 的未收录模型按美元计价。
   const channel = String(event.channel || event.source || "").toLocaleLowerCase();
@@ -1207,11 +1234,12 @@ function currencyForEvent(model, event) {
 }
 
 function minimumRatesFor(modelKey, contextLevel, currency) {
-  const cacheKey = `${modelKey}\u0000${contextLevel}\u0000${currency}`;
+  const pricing = currentPricing();
+  const cacheKey = `${pricing.version}\u0000${modelKey}\u0000${contextLevel}\u0000${currency}`;
   if (minimumRatesCache.has(cacheKey)) return minimumRatesCache.get(cacheKey);
   const catalogs = modelKey
-    ? [activePricing.models[modelKey]]
-    : Object.entries(activePricing.models)
+    ? [pricing.models[modelKey]]
+    : Object.entries(pricing.models)
         .filter(([model, entry]) => !isCodexAutoReview(model) && (entry.currency || "USD") === currency)
         .map(([, entry]) => entry);
   const contexts = contextLevel === "unknown" ? ["short", "long"] : [contextLevel];
@@ -1226,11 +1254,15 @@ function minimumCategory(rates, categories) {
 }
 
 function estimateEventCost(event = {}) {
-  const model = normalizeModel(event.model);
+  return estimateEventCostForModel(event, normalizeModel(event.model));
+}
+
+function estimateEventCostForModel(event, model) {
+  const pricing = currentPricing();
   const usage = usageFields(event);
   const total = usage.total || (usage.input || 0) + (usage.output || 0);
-  const version = activePricing.version;
-  const entry = model.key ? activePricing.models[model.key] : null;
+  const version = pricing.version;
+  const entry = model.key ? pricing.models[model.key] : null;
   const currency = currencyForEvent(model, event);
   const contextLevel = contextTierFor(entry, event, usage, model.key);
   // Product policy changes the price tier, not the recorded request context.
@@ -1512,7 +1544,10 @@ function createCostSummaryState(options = {}) {
     if (estimate.serviceTierUnknownTokens > 0) totals.serviceTierUnknownRecords += 1;
     if (estimate.contextUnknownTokens > 0) totals.contextUnknownRecords += 1;
     if (estimate.cacheWriteUnknownTokens > 0) totals.cacheWriteUnknownRecords += 1;
-    if (modelNameIsKnown(estimate.model)) models.add(estimate.model);
+    const canonical = options.modelName
+      ? options.modelName(estimate.model || "Unknown model")
+      : canonicalModelName(estimate.model || "Unknown model", currentPricing().models);
+    if (modelNameIsKnown(canonical)) models.add(canonical);
     for (const name of estimate.unpricedModels) unpricedModels.add(name);
     for (const name of estimate.minimumRateModels || []) minimumRateModels.add(name);
     for (const reason of estimate.unpricedReasons) unpricedReasons.add(reason);
@@ -1559,8 +1594,8 @@ function createCostSummaryState(options = {}) {
       cacheWriteUnknownRecords: totals.cacheWriteUnknownRecords,
       priceVersions: [...priceVersions].sort(),
       priceSources: [...priceSources].sort(),
-      usdToCnyRate: options.usdToCnyRate ?? activePricing.usdToCnyRate,
-      priceCheckedAt: options.priceCheckedAt || activePricing.checkedAt,
+      usdToCnyRate: options.usdToCnyRate ?? currentPricing().usdToCnyRate,
+      priceCheckedAt: options.priceCheckedAt || currentPricing().checkedAt,
       priceMode: API_PRICING_MODE,
       priceSource: priceSources.size === 1 ? [...priceSources][0] : "",
     };
@@ -1779,7 +1814,7 @@ export function eventCostMemoKey(event = {}) {
   const own = (key) => (Object.hasOwn(usage, key) ? 1 : 0);
   const mask = Number.isInteger(event.detailMask) ? `i:${event.detailMask}` : enc(event.detailMask);
   return [
-    activePricing.version,
+    currentPricing().version,
     enc(event.model),
     enc(event.sourceKind),
     enc(event.channel ?? event.source),

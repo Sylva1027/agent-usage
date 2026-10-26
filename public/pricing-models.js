@@ -1,6 +1,10 @@
 const PRICING_MODEL_ALIASES = Object.freeze({
   "gpt-5.6": "gpt-5.6-sol",
   "gpt-daybreak-blue-latest": "gpt-5.6-sol",
+  "deepseek-v4.1-flash": "deepseek-flash",
+  "deepseek-v4.1-flash-sg": "deepseek-flash",
+  // Local Magpie routing-group convention; sync this alias when the group changes.
+  "group/deepseek": "deepseek-flash",
 });
 
 export const CODEX_AUTO_REVIEW_MODEL = "codex-auto-review";
@@ -101,46 +105,102 @@ function modelIndex(models) {
   return index;
 }
 
+function aliasTarget(normalized) {
+  const routedClaude = normalized.startsWith("anthropic/") ? normalized.slice("anthropic/".length) : null;
+  return (
+    PRICING_MODEL_ALIASES[normalized] ||
+    CLAUDE_MODEL_SNAPSHOTS[normalized] ||
+    (routedClaude && (CLAUDE_MODEL_SNAPSHOTS[routedClaude] || (routedClaude.startsWith("claude-") && routedClaude)))
+  );
+}
+
+function longestSuffixKey(normalized, index) {
+  return [...index.keys()]
+    .filter((key) => normalized.startsWith(`${key}-`))
+    .sort((left, right) => right.length - left.length || left.localeCompare(right))[0];
+}
+
+function canonicalCandidate(normalized, index) {
+  const alias = aliasTarget(normalized);
+  const aliasKey = alias && index.get(alias);
+  if (aliasKey) return { name: aliasKey, catalogKey: aliasKey };
+
+  const exact = index.get(normalized);
+  if (exact) return { name: exact, catalogKey: exact };
+  if (normalized.endsWith("-free")) return { name: normalized, catalogKey: null };
+
+  // A future version (4-9, 5-6, etc.) must never borrow an older Claude price.
+  if (normalized.startsWith("claude-")) return null;
+  const suffixKey = longestSuffixKey(normalized, index);
+  return suffixKey ? { name: normalized, catalogKey: index.get(suffixKey) } : null;
+}
+
+/** Return the display identity used by both aggregation and pricing resolution. */
+export function canonicalModelName(rawModel, models) {
+  const original = String(rawModel ?? "").trim();
+  const normalized = original.toLowerCase();
+  if (!normalized) return original;
+
+  const index = modelIndex(models);
+  const alias = aliasTarget(normalized);
+  const aliasKey = alias && index.get(alias);
+  if (aliasKey) return aliasKey;
+
+  const slash = normalized.indexOf("/");
+  if (slash > 0 && slash < normalized.length - 1) {
+    const routed = canonicalCandidate(normalized.slice(slash + 1), index);
+    if (routed?.catalogKey) return routed.name;
+    return original;
+  }
+
+  return canonicalCandidate(normalized, index)?.name || original;
+}
+
 /** Resolve an observed model ID against a supplied pricing catalog. */
 export function resolvePricingModel(rawModel, models) {
   const original = String(rawModel ?? "").trim();
-  const normalized = original.toLowerCase();
+  const originalAlias = aliasTarget(original.toLowerCase());
+  const originalAliasKey = originalAlias && modelIndex(models).get(originalAlias);
+  const canonicalModel = canonicalModelName(original, models);
+  const normalized = canonicalModel.toLowerCase();
   // ChatGPT auto-review is exempt from billing, including stale local rates.
   if (isCodexAutoReview(normalized)) {
-    return { rawModel: original, catalogKey: null, matchType: "free" };
+    return { rawModel: original, canonicalModel, catalogKey: null, matchType: "free" };
   }
   const index = modelIndex(models);
   if (!normalized || normalized === "unknown model") {
-    return { rawModel: original, catalogKey: null, matchType: "missing" };
+    return { rawModel: original, canonicalModel, catalogKey: null, matchType: "missing" };
   }
 
   const exact = index.get(normalized);
-  if (exact) return { rawModel: original, catalogKey: exact, matchType: "exact" };
+  if (exact) {
+    return {
+      rawModel: original,
+      canonicalModel,
+      catalogKey: exact,
+      matchType: originalAliasKey === exact ? "alias" : "exact",
+    };
+  }
 
   const routedClaude = normalized.startsWith("anthropic/") ? normalized.slice("anthropic/".length) : null;
-  const alias =
-    PRICING_MODEL_ALIASES[normalized] ||
-    CLAUDE_MODEL_SNAPSHOTS[normalized] ||
-    (routedClaude && (CLAUDE_MODEL_SNAPSHOTS[routedClaude] || (routedClaude.startsWith("claude-") && routedClaude)));
+  const alias = aliasTarget(normalized);
   const aliasKey = alias && index.get(alias);
-  if (aliasKey) return { rawModel: original, catalogKey: aliasKey, matchType: "alias" };
+  if (aliasKey) return { rawModel: original, canonicalModel, catalogKey: aliasKey, matchType: "alias" };
 
   if (normalized.endsWith("-free")) {
-    return { rawModel: original, catalogKey: null, matchType: "free" };
+    return { rawModel: original, canonicalModel, catalogKey: null, matchType: "free" };
   }
 
   // A future version (4-9, 5-6, etc.) must never borrow an older Claude price.
   if (normalized.startsWith("claude-") || routedClaude) {
-    return { rawModel: original, catalogKey: null, matchType: "missing" };
+    return { rawModel: original, canonicalModel, catalogKey: null, matchType: "missing" };
   }
 
-  const suffixKeys = [...index.keys()]
-    .filter((key) => normalized.startsWith(`${key}-`))
-    .sort((left, right) => right.length - left.length || left.localeCompare(right));
-  if (suffixKeys.length) {
-    return { rawModel: original, catalogKey: index.get(suffixKeys[0]), matchType: "suffix" };
+  const suffixKey = longestSuffixKey(normalized, index);
+  if (suffixKey) {
+    return { rawModel: original, canonicalModel, catalogKey: index.get(suffixKey), matchType: "suffix" };
   }
-  return { rawModel: original, catalogKey: null, matchType: "missing" };
+  return { rawModel: original, canonicalModel, catalogKey: null, matchType: "missing" };
 }
 
 /** Count unique observed IDs, keeping the harnesses where each one appeared. */
@@ -160,7 +220,7 @@ export function buildUsagePricingCoverage(harnessModels, models, ready = true) {
     for (const [harness, names] of Object.entries(harnessModels)) {
       if (!Array.isArray(names)) continue;
       for (const name of names) {
-        const model = String(name ?? "").trim();
+        const model = canonicalModelName(name, models);
         const normalized = model.toLowerCase();
         if (!normalized || normalized === "unknown model") continue;
         let item = used.get(normalized);
@@ -176,8 +236,8 @@ export function buildUsagePricingCoverage(harnessModels, models, ready = true) {
   let matchedUsedModelCount = 0;
   let freeRuleUsedModelCount = 0;
   const missingUsedModels = [];
-  for (const [normalized, item] of [...used].sort(([left], [right]) => left.localeCompare(right))) {
-    const result = resolvePricingModel(normalized, models);
+  for (const [, item] of [...used].sort(([left], [right]) => left.localeCompare(right))) {
+    const result = resolvePricingModel(item.model, models);
     if (result.matchType === "missing") {
       missingUsedModels.push({ model: item.model, harnesses: [...item.harnesses].sort() });
       continue;

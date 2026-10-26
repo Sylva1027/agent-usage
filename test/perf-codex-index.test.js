@@ -8,9 +8,9 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -37,6 +37,14 @@ import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.
 
 const FIXTURE_NOW = new Date("2026-10-04T13:00:00.000Z");
 
+// The Windows sandbox rejects rename(2) even for ordinary temp files.
+function moveFixtureFile(from, to) {
+  const info = statSync(from);
+  copyFileSync(from, to);
+  utimesSync(to, info.atime, info.mtime);
+  unlinkSync(from);
+}
+
 function assertCodexSummary(perf, expected) {
   assert.equal(perf.state, "ready");
   assert.deepEqual(perf.sourceWarnings, []);
@@ -55,8 +63,8 @@ test("M7 migration creates v13 rollout/dependency tables and rolls back atomical
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 17);
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 17);
+    assert.equal(STORE_SCHEMA_VERSION, 21);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
     assert.deepEqual(
       store.database
         .prepare("PRAGMA table_info(perf_sample_sources)")
@@ -112,7 +120,7 @@ test("M7 migration creates v13 rollout/dependency tables and rolls back atomical
   const retry = new UsageStore(fixture.serverOptions);
   try {
     await retry.open();
-    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 17);
+    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 21);
     assert.equal(
       retry.database.prepare("SELECT size FROM source_files WHERE path LIKE '%legacy.jsonl'").get().size,
       -1,
@@ -128,6 +136,7 @@ test("M7 indexes one candidate per cross-rollout turn, tracks empty rollouts, an
   const store = new UsageStore(fixture.serverOptions);
   try {
     const first = await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store);
     assert.equal(first.perfState, "ready");
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
@@ -185,11 +194,12 @@ test("M7 indexes one candidate per cross-rollout turn, tracks empty rollouts, an
   }
 });
 
-test("M7 archive moves, transactional rollback, retry, and dependency deletion preserve whole-thread state", async () => {
+test("M7 archive moves, transactional rollback, retry, and dependency loss preserve whole-thread state", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store);
     const oldVersion = store.perfState().indexVersion;
     const originalPath = fixture.rolloutFiles[0];
     const archivedPath = originalPath.replace(
@@ -197,7 +207,7 @@ test("M7 archive moves, transactional rollback, retry, and dependency deletion p
       `${path.sep}archived_sessions${path.sep}`,
     );
     mkdirSync(path.dirname(archivedPath), { recursive: true });
-    renameSync(originalPath, archivedPath);
+    moveFixtureFile(originalPath, archivedPath);
 
     store.database.exec(`
       CREATE TRIGGER fail_codex_archive_publish BEFORE INSERT ON perf_rollout_threads
@@ -284,22 +294,30 @@ test("M7 archive moves, transactional rollback, retry, and dependency deletion p
     rmSync(fixture.rolloutFiles[1]);
     const deleted = await store.sync({ options: fixture.reportOptions });
     assert.equal(deleted.perfState, "ready");
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 2);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 50);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
       25,
+    );
+    assert.deepEqual(
+      deleted.missingSources.map((source) => source.path),
+      [fixture.rolloutFiles[1]],
     );
 
     rmSync(archivedPath);
     rmSync(fixture.rolloutFiles[2]);
     const noRollouts = await store.sync({ options: fixture.reportOptions });
     assert.equal(noRollouts.perfState, "ready");
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 0);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 0);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      0,
+      25,
+    );
+    assert.deepEqual(
+      noRollouts.missingSources.map((source) => source.path).sort(),
+      [archivedPath, fixture.rolloutFiles[1], fixture.rolloutFiles[2]].sort(),
     );
   } finally {
     store.close();
@@ -809,6 +827,17 @@ test("M8.2 C: store publishes only the child ledger and revision 1 rebuilds unch
 
   try {
     await store.sync({ options: fixture.reportOptions });
+    const childTiming = fixture.addRequestTiming("Child-store", {
+      schemaVersion: 1,
+      evidenceOrigin: "fixture@1",
+      responseId: "Shared-response",
+      requestedModel: "Child-model",
+      reportedOutputTokens: 40,
+      durationMs: 400,
+      status: "completed",
+      completedAtMs: null,
+    });
+    await fixture.seedRequestTiming(store, [...fixture.timingRecords, childTiming]);
     const childOwner = store.database
       .prepare("SELECT home_id, thread_id FROM perf_rollout_threads WHERE source_path=?")
       .get(childPath);
@@ -1055,9 +1084,15 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
       const directory = index === 1 ? "archived_sessions" : "sessions";
       const targetPath = path.join(fixture.codexHome, directory, "m82-healthy-thread", `rollout-${index + 1}.jsonl`);
       mkdirSync(path.dirname(targetPath), { recursive: true });
-      writeFileSync(targetPath, readFileSync(sourcePath, "utf8").replaceAll("fixture-codex-thread", healthyThreadId));
+      writeFileSync(
+        targetPath,
+        readFileSync(sourcePath, "utf8")
+          .replaceAll("fixture-codex-thread", healthyThreadId)
+          .replaceAll("response-", "healthy-response-"),
+      );
       healthyRollouts.push(targetPath);
     }
+    fixture.registerThreadTiming(healthyThreadId, "healthy-");
     writeFileSync(fixture.rolloutFiles[1], "{not json\n", { flag: "a" });
 
     const secondHome = path.join(fixture.reportOptions.homeDir, "codex-second-home");
@@ -1066,6 +1101,7 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
       mkdirSync(path.dirname(targetPath), { recursive: true });
       writeFileSync(targetPath, readFileSync(sourcePath, "utf8").replaceAll(healthyThreadId, "second-home-thread"));
     }
+    fixture.registerThreadTiming("second-home-thread", "healthy-");
     const options = {
       ...fixture.reportOptions,
       extraHomes: [fixture.codexHome, secondHome].join(path.delimiter),
@@ -1127,12 +1163,19 @@ test("M8.2 B4: store preserves a failed old thread graph while publishing health
   const healthyFiles = fixture.rolloutFiles.map((sourcePath, index) => {
     const targetPath = path.join(fixture.codexHome, "sessions", healthyThreadId, `rollout-${index + 1}.jsonl`);
     mkdirSync(path.dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, readFileSync(sourcePath, "utf8").replaceAll("fixture-codex-thread", healthyThreadId));
+    writeFileSync(
+      targetPath,
+      readFileSync(sourcePath, "utf8")
+        .replaceAll("fixture-codex-thread", healthyThreadId)
+        .replaceAll("response-", "healthy-response-"),
+    );
     return targetPath;
   });
+  const healthyTiming = fixture.registerThreadTiming(healthyThreadId, "healthy-");
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store, [...fixture.timingRecords, ...healthyTiming]);
     const homeId = String(store.database.prepare("SELECT home_id FROM perf_rollout_threads LIMIT 1").get().home_id);
     const oldVersion = store.perfState().indexVersion;
     const failedSamples = store.database
@@ -1218,12 +1261,20 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
   const healthyFiles = fixture.rolloutFiles.map((sourcePath, index) => {
     const targetPath = path.join(fixture.codexHome, "sessions", healthyThreadId, `rollout-${index + 1}.jsonl`);
     mkdirSync(path.dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, readFileSync(sourcePath, "utf8").replaceAll(oldThreadId, healthyThreadId));
+    writeFileSync(
+      targetPath,
+      readFileSync(sourcePath, "utf8")
+        .replaceAll(oldThreadId, healthyThreadId)
+        .replaceAll("response-", "healthy-response-"),
+    );
     return targetPath;
   });
+  const healthyTiming = fixture.registerThreadTiming(healthyThreadId, "healthy-");
+  const newTiming = fixture.registerThreadTiming(newThreadId, "new-");
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store, [...fixture.timingRecords, ...healthyTiming]);
     const homeId = String(store.database.prepare("SELECT home_id FROM perf_rollout_threads LIMIT 1").get().home_id);
     const originalVersion = store.perfState().indexVersion;
     const oldSamples = store.database
@@ -1245,7 +1296,7 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
       .filter((row) => JSON.parse(row.sample_key)[2] === oldThreadId);
     const originalFingerprints = store.readPublishedFileFingerprints();
     const replacementFiles = fixture.rolloutFiles.map((sourcePath) =>
-      readFileSync(sourcePath, "utf8").replaceAll(oldThreadId, newThreadId),
+      readFileSync(sourcePath, "utf8").replaceAll(oldThreadId, newThreadId).replaceAll("response-", "new-response-"),
     );
     assert.equal(oldSamples.length, 25);
     assert.equal(oldMappings.length, fixture.rolloutFiles.length);
@@ -1317,6 +1368,7 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
       writeFileSync(sourcePath, replacementFiles[index]);
     }
     await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store, newTiming);
 
     const recoveredIndex = store.summarize({ preset: "all", now: FIXTURE_NOW }).perf;
     const recoveredMemoryReport = await buildUsageReport(fixture.reportOptions);
@@ -1352,9 +1404,15 @@ test("M8.2 B5: indexed and memory summaries share partial policy across range, u
   const healthyFiles = fixture.rolloutFiles.map((sourcePath, index) => {
     const targetPath = path.join(fixture.codexHome, "sessions", healthyThreadId, `rollout-${index + 1}.jsonl`);
     mkdirSync(path.dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, readFileSync(sourcePath, "utf8").replaceAll("fixture-codex-thread", healthyThreadId));
+    writeFileSync(
+      targetPath,
+      readFileSync(sourcePath, "utf8")
+        .replaceAll("fixture-codex-thread", healthyThreadId)
+        .replaceAll("response-", "healthy-response-"),
+    );
     return targetPath;
   });
+  const healthyTiming = fixture.registerThreadTiming(healthyThreadId, "healthy-");
   const quotaEndSeconds = Math.floor((FIXTURE_NOW.getTime() + 60 * 60 * 1000) / 1000);
   const unplacedTurn = [
     {
@@ -1419,6 +1477,7 @@ test("M8.2 B5: indexed and memory summaries share partial policy across range, u
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store, [...fixture.timingRecords, ...healthyTiming]);
     const homeId = String(store.database.prepare("SELECT home_id FROM perf_rollout_threads LIMIT 1").get().home_id);
     writeFileSync(fixture.rolloutFiles[1], "{broken json\n", { flag: "a" });
     await store.sync({ options: fixture.reportOptions });
@@ -2897,7 +2956,7 @@ test("C2 · 恢复路径：删除 / 重命名 rollout 与 home 别名变化都�
     await store.sync({ options: renamed.reportOptions });
     const sentinel = c2MarkSentinel(store);
     const nextBad = path.join(renamed.sessionsDir, "rollout-b2.jsonl");
-    renameSync(renamed.badFile, nextBad);
+    moveFixtureFile(renamed.badFile, nextBad);
     await store.sync({ options: renamed.reportOptions });
     const record = store.codexStableAttempts.get(c2OnlyHomeId(store));
     assert.equal(record.paths.includes(nextBad), true, "记录必须绑定**新**路径");
@@ -2955,8 +3014,13 @@ test("C2 · 恢复路径：删除 / 重命名 rollout 与 home 别名变化都�
     // ⇒ 候选复用。删除本身必须**真的生效**（下面直接查 `source_files`），这才等价于旧的哨兵判据。
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(deleted.badFile).n,
-      0,
-      "被删除的 rollout 的索引行必须消失（删除确实被发布）",
+      1,
+      "被删除 rollout 的来源身份必须保留",
+    );
+    assert.deepEqual(
+      status.missingSources.map((source) => source.path),
+      [deleted.badFile],
+      "被删除 rollout 必须登记 missing",
     );
     const deletePlan = c4BuildPlan(store);
     assert.deepEqual(
@@ -3557,7 +3621,7 @@ test("C3 · 失效条件：路径集变化（新增 / 删除）立即重新规�
   }
 });
 
-test("C3 · 稳定窗口才提交：读取前/后不一致（LIVE_SOURCE_CHANGED）的轮次不得留下可复用投影", async () => {
+test("C3 · 已证明的 append 只隔离变更线程，未受影响的投影仍可提交", async () => {
   const fixture = makeC3Home();
   const store = new UsageStore(fixture.serverOptions);
   try {
@@ -3574,7 +3638,7 @@ test("C3 · 稳定窗口才提交：读取前/后不一致（LIVE_SOURCE_CHANGED
       "utf8",
     );
 
-    // 注入点 = 投影查找本身：它发生在 `before` 指纹之后、`after` 指纹之前 ⇒ 窗口不可证。
+    // 注入点 = 投影查找本身：它发生在 `before` 指纹之后、`after` 指纹之前 ⇒ 仅 B 发生严格 append。
     const realLookup = store.codexProjections.lookup.bind(store.codexProjections);
     let injected = false;
     store.codexProjections.lookup = (args) => {
@@ -3593,23 +3657,19 @@ test("C3 · 稳定窗口才提交：读取前/后不一致（LIVE_SOURCE_CHANGED
     }
     assert.equal(injected, true, "前置：注入点确实被触发（否则测不到不稳定窗口）");
     assert.equal(unstable.perfState, "degraded");
-    assert.equal(c2WarningCodes(store).includes("LIVE_SOURCE_CHANGED"), true, "窗口不可证必须如实归因");
-    const rolledBack = store.codexProjections.stats();
-    assert.equal(rolledBack.rollbacks, 1, "不稳定窗口必须走 rollback");
-    assert.equal(rolledBack.stagedEntries, 0, "不稳定窗口的暂存投影必须被丢弃（不粘到下一轮）");
-    assert.equal(
-      rolledBack.entries,
-      2,
-      "A 的旧条目被「失效即删」淘汰、新投影又因窗口不可证未提交 ⇒ 只剩 B/C；这正是「失效即重算」",
-    );
-    assert.equal(rolledBack.commits, 1, "不稳定窗口绝不能提升为可复用条目");
+    assert.equal(c2WarningCodes(store).includes("LIVE_SOURCE_CHANGED"), true, "被隔离线程必须如实归因");
+    const partial = store.codexProjections.stats();
+    assert.equal(partial.rollbacks, 0, "已证明的 append 不触发整窗口 rollback");
+    assert.equal(partial.stagedEntries, 0, "被隔离路径的暂存投影必须被丢弃（不粘到下一轮）");
+    assert.equal(partial.entries, 2, "A 与 B 的旧条目被隔离，C 的已提交投影保留");
+    assert.equal(partial.commits, 2, "已证明的 append 仍提交未受影响文件的投影");
 
-    // 恢复轮：窗口稳定 ⇒ 提交；A 的新投影必须被读出来并发布。
+    // 恢复轮：窗口稳定 ⇒ 提交；A 与 B 的新投影必须被读出来并发布。
     const recovered = await store.sync({ options: fixture.reportOptions });
     assert.equal(recovered.perfState, "ready");
     assert.equal(c3Samples(store, "Thread-A").length, 2, "A 必须被重新读取（不稳定轮的投影没有留下来）");
     const after = store.codexProjections.stats();
-    assert.equal(after.commits, 2, "恢复轮的稳定窗口才提交");
+    assert.equal(after.commits, 3, "隔离轮与恢复轮各提交一次未受影响投影；B 的过期投影仍被排除");
     assert.equal(after.entries, 3);
     assert.equal(c2WarningCodes(store).includes("LIVE_SOURCE_CHANGED"), false, "告警随恢复消失");
   } finally {
@@ -3667,7 +3727,7 @@ test("C3 · 发布事务回滚：投影不因回滚失效（文件内容没变�
   }
 });
 
-test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、schema 已抬到 17 且不新增任何 meta 键", async () => {
+test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、schema 已抬到 21 且不新增任何 meta 键", async () => {
   const fixture = makeC3Home();
   const store = new UsageStore(fixture.serverOptions);
   try {
@@ -3682,25 +3742,41 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
       false,
       "投影缓存不得落盘（持久化属 T1，仅 C6 触发后才做）",
     );
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 17, "WorkBuddy 已把 schema 抬到 17");
+    assert.equal(
+      store.database.prepare("PRAGMA user_version").get().user_version,
+      21,
+      "History retention moves schema to 21",
+    );
     const tables = store.database
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .all()
       .map((row) => row.name);
     assert.deepEqual(
       tables,
       [
+        "archive_segments",
         "events",
+        "history_replaced_facts",
         "perf_codex_projections",
+        "perf_request_timing_dirty_threads",
+        "perf_request_timing_evidence",
+        "perf_request_timing_meta",
+        "perf_request_timing_threads",
         "perf_rollout_threads",
         "perf_sample_sources",
         "perf_samples",
         "rate_limit_observations",
         "source_files",
         "store_meta",
+        "usage_rollup_daily",
+        "usage_rollup_days",
+        "usage_rollup_dirty_days",
+        "usage_rollup_format",
+        "usage_rollup_sessions",
+        "workbuddy_generation_duration_observations",
         "workbuddy_generation_durations",
       ],
-      "T1 之后唯一新增的表是 perf_codex_projections；WorkBuddy 接入（v17）新增 workbuddy_generation_durations。两者都不新增任何 meta 键（C3 时代此清单**禁止任何新增表**；该规则已由 C6 判决「4×/缺省逐出 362 ⇒ 真变轮 363 份全文重读」+ 用户 2026-10-09 批准触发 T1/T2 + handoffs/T1-design.md 取代，并随 v17 计划再次扩充 —— 断言强度不变，取代可追溯）",
+      "v20 新增 history_replaced_facts，v21 新增 archive_segments；sync() 安装五张 usage_rollup_* 派生表。此清单保持精确 deepEqual，但这些表都不新增 projection meta 键",
     );
     store.close();
     assert.equal(store.codexProjections.stats().entries, 0, "close() 必须清空实例私有投影（不跨 close/实例存活）");
@@ -4229,9 +4305,9 @@ test("C4 · 多片段：任一 rollout 变化都必须重建整个线程，且�
  * 判据 ③ 也不成立（存活片段的 after 指纹 == 已提交指纹）。所以本用例是"丢判据 ② 就会被抓住"的
  * 判别力来源 —— 变异 `mut-ignore-path-set` 正是被它抓住（见 `C4/mutation-c4.json`）。
  *
- * 语义：该线程的候选由**它的全部 rollout**折出来，片段少了 ⇒ 候选必须只反映存活片段。
+ * 语义：片段少了不能把最后一份完整发布替换成缺依赖的新结果；旧样本与 ownership 保留。
  */
-test("C4 · 多片段（片段收缩）：同一线程的一个 rollout 被删除 ⇒ 该线程必须重建，且只反映存活片段", async () => {
+test("C4 · 多片段（片段收缩）：保留最后一份完整线程发布，不发布缺依赖替代", async () => {
   const fixture = c4MakeHome("shrunken-rollout");
   const fileA1 = c3Write(path.join(fixture.sessionsDir, "rollout-a1.jsonl"), "Thread-A", {
     turn: "Turn-1",
@@ -4255,7 +4331,7 @@ test("C4 · 多片段（片段收缩）：同一线程的一个 rollout 被删�
 
     // **片段收缩**：删掉第二片，只留第一片。
     rmSync(fileA2, { force: true });
-    await store.sync({ options: fixture.reportOptions });
+    const shrunk = await store.sync({ options: fixture.reportOptions });
 
     const plan = c4BuildPlan(store);
     assert.deepEqual(plan.staged, ["Thread-A"], "片段收缩必须让该线程进入受影响集合（不许当成'没变'）");
@@ -4268,18 +4344,22 @@ test("C4 · 多片段（片段收缩）：同一线程的一个 rollout 被删�
       fingerprintsBefore[fileA1],
       "存活片段的已提交指纹必须逐字节不变（否则本用例会退化成'指纹变化就能抓住'）",
     );
-    assert.equal(c3Samples(store, "Thread-A").length, 1, "重建后的候选必须只反映存活片段（Turn-2 消失）");
-    assert.equal(rolloutRows("Thread-A"), 1, "片段收缩后 Thread-A 只剩 1 份 rollout 归属");
+    assert.equal(c3Samples(store, "Thread-A").length, 2, "最后一次完整线程候选必须保留");
+    assert.equal(rolloutRows("Thread-A"), 2, "缺失片段的 ownership 必须保留以解释旧候选");
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(fileA2).n,
-      0,
-      "被删片段的 source_files 行必须消失",
+      1,
+      "被删片段的 source_files 行必须保留来源身份",
     );
-    assert.equal(Object.hasOwn(fingerprintsAfter, fileA2), false, "被删片段的指纹分量必须消失");
+    assert.equal(Object.hasOwn(fingerprintsAfter, fileA2), true, "最后成功指纹必须保留");
     assert.equal(Object.hasOwn(fingerprintsAfter, fileA1), true, "存活片段的指纹分量必须留下");
     const after = c4Identity(store);
     assert.deepEqual(after["Thread-B"], before["Thread-B"], "兄弟线程 B 必须逐条不变");
-    assert.notDeepEqual(after["Thread-A"], before["Thread-A"], "Thread-A 的候选/归属行必须被替换");
+    assert.deepEqual(after["Thread-A"], before["Thread-A"], "缺依赖轮不得替换最后完整发布");
+    assert.deepEqual(
+      shrunk.missingSources.map((source) => source.path),
+      [fileA2],
+    );
     assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
   } finally {
     store.close();
@@ -4287,7 +4367,7 @@ test("C4 · 多片段（片段收缩）：同一线程的一个 rollout 被删�
   }
 });
 
-test("C4 · 删除：rollout 整体消失 ⇒ 只清掉它所属线程的行，兄弟线程原样保留", async () => {
+test("C4 · 删除：rollout 整体消失 ⇒ 保留所属线程最后完整发布，兄弟线程原样保留", async () => {
   const fixture = makeC3Home({ count: 3 });
   const store = new UsageStore(fixture.serverOptions);
   try {
@@ -4296,21 +4376,25 @@ test("C4 · 删除：rollout 整体消失 ⇒ 只清掉它所属线程的行，�
     const fileB = c3PathOf(fixture, "B");
     rmSync(fileB, { force: true });
 
-    await store.sync({ options: fixture.reportOptions });
+    const removed = await store.sync({ options: fixture.reportOptions });
     const plan = c4BuildPlan(store);
     assert.deepEqual(plan.staged, [], "删除不产生'受影响线程'（没有线程需要重建）");
     assert.deepEqual(plan.retained, ["Thread-A", "Thread-C"], "A/C 未受影响");
     const after = c4Identity(store);
-    assert.equal(after["Thread-B"], undefined, "B 的行必须被清掉（旧线程已不存在）");
+    assert.deepEqual(after["Thread-B"], before["Thread-B"], "B 的最后完整发布必须保留");
     assert.deepEqual(after["Thread-A"], before["Thread-A"], "A 必须逐条不变");
     assert.deepEqual(after["Thread-C"], before["Thread-C"], "C 必须逐条不变");
-    assert.equal(c3Samples(store, "Thread-B").length, 0);
+    assert.equal(c3Samples(store, "Thread-B").length, 1);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(fileB).n,
-      0,
-      "真实删除必须移除 source_files 行（原有语义不变）",
+      1,
+      "来源消失必须保留 source_files 行",
     );
-    assert.equal(Object.hasOwn(c4Fingerprints(store), fileB), false, "真实删除必须移除已提交指纹分量");
+    assert.equal(Object.hasOwn(c4Fingerprints(store), fileB), true, "最后成功指纹必须保留");
+    assert.deepEqual(
+      removed.missingSources.map((source) => source.path),
+      [fileB],
+    );
     assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
   } finally {
     store.close();
@@ -4360,7 +4444,7 @@ test("C4 · 归档迁移（同一 home 内重命名）：路径集变化 ⇒ 只
     const archivedDir = path.join(fixture.homeDir, "archived_sessions", "2026", "10");
     mkdirSync(archivedDir, { recursive: true });
     const archivedPath = path.join(archivedDir, path.basename(fileA));
-    renameSync(fileA, archivedPath);
+    moveFixtureFile(fileA, archivedPath);
 
     await store.sync({ options: fixture.reportOptions });
     const plan = c4BuildPlan(store);

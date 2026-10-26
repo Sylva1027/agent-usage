@@ -270,11 +270,11 @@ export async function readCodexRollout(filePath) {
 /**
  * C3：投影的**方法版本**。
  *
- * `PERF_METHOD_VERSION`（标准化口径）+ 本段的投影形状版本。二者任一变化 ⇒ 旧投影立即失效。
- * ⚠️ 任何改变 `readCodexRolloutMetadata()` 返回形状的改动（`codex-jsonl.js`）**必须**同时 bump
+ * `PERF_METHOD_VERSION`（标准化口径）+ 本段的投影解析版本。二者任一变化 ⇒ 旧投影立即失效。
+ * ⚠️ 任何改变 `readCodexRolloutMetadata()` 返回形状或类型识别的改动（`codex-jsonl.js`）**必须**同时 bump
  * `CODEX_PROJECTION_METHOD_VERSION`，否则复用会把旧形状喂给新消费者。
  */
-export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v2";
+export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v3";
 
 /** C3：一个投影缓存实例的默认字节预算（计划 §5 P2b「初始每实例投影缓存预算 64 MiB」）。 */
 export const DEFAULT_CODEX_PROJECTION_CACHE_BYTES = 64 * 1024 * 1024;
@@ -458,21 +458,26 @@ export function createCodexProjectionCache({ maxBytes = DEFAULT_CODEX_PROJECTION
       });
       return true;
     },
-    /** 稳定窗口成立 ⇒ 把本轮暂存提升为可复用条目（返回提升的条目数）。 */
-    commit(homeId) {
+    /** 稳定窗口（或已证明的 append 子集）⇒ 把本轮暂存提升为可复用条目（返回提升的条目数）。 */
+    commit(homeId, excludedPaths = []) {
       const bucket = staged.get(homeId);
       staged.delete(homeId);
       if (bucket === undefined || bucket.size === 0) return 0;
+      const excluded = new Set((excludedPaths ?? []).map(canonicalProjectionPath));
+      let promoted = 0;
       for (const [canonicalPath, entry] of bucket) {
+        if (excluded.has(canonicalPath)) continue;
         const previous = committed.get(canonicalPath);
         if (previous !== undefined) retainedBytes -= previous.bytes ?? 0;
         committed.delete(canonicalPath);
         committed.set(canonicalPath, entry);
         retainedBytes += entry.bytes ?? 0;
+        promoted += 1;
       }
+      if (promoted === 0) return 0;
       counters.commits += 1;
       evictToLimit();
-      return bucket.size;
+      return promoted;
     },
     /** 窗口不可证/不稳定 ⇒ **丢弃**本轮暂存（失效即重算，不粘住）。 */
     rollback(homeId) {
@@ -669,8 +674,11 @@ export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
   };
 }
 
-/** Build normalized M1 candidates for one confirmed thread and its complete rollout set. */
-export function buildCodexThreadPerfSamples(homeId, threadId, rollouts) {
+/**
+ * Build normalized M1 candidates for one confirmed thread and its complete rollout set.
+ * @param {{lookupRequestTiming?: import("./codex-candidates.js").CodexRequestTimingLookup}} [options]
+ */
+export function buildCodexThreadPerfSamples(homeId, threadId, rollouts, options = {}) {
   if (typeof homeId !== "string" || homeId.trim() === "")
     throw new TypeError("Codex homeId must be a non-empty string");
   if (typeof threadId !== "string" || threadId.trim() === "") throw new TypeError("Codex threadId must be non-empty");
@@ -685,7 +693,7 @@ export function buildCodexThreadPerfSamples(homeId, threadId, rollouts) {
     homeId,
     ordered.map((rollout) => rollout.projection),
   );
-  const built = buildCodexTurnCandidates(homeId, folded, rolloutFiles);
+  const built = buildCodexTurnCandidates(homeId, folded, rolloutFiles, options);
   const sourcePath = rolloutFiles[0];
   const samples = built.candidates.map((candidate) => {
     const normalized = normalizePerfSample({ ...candidate, sourcePath });

@@ -196,16 +196,16 @@ test("automatic prices require exact provider/model matches and compatible long 
 test("official CNY source adapters cover providers with lossless catalog rates", () => {
   const catalog = getDefaultPricingCatalog();
   const coverage = pricingSourceCoverage(catalog.models);
-  assert.equal(coverage.totalModelCount, 103);
-  assert.equal(coverage.supportedModelCount, 99);
-  assert.equal(coverage.supportedUsdModelCount, 66);
+  assert.equal(coverage.totalModelCount, 101);
+  assert.equal(coverage.supportedModelCount, 97);
+  assert.equal(coverage.supportedUsdModelCount, 64);
   assert.equal(coverage.supportedCnyModelCount, 33);
   assert.equal(coverage.unsupportedCurrencyModelCount, 4);
   assert.deepEqual(coverage.providers, {
     anthropic: 17,
     openai: 7,
     xai: 8,
-    alibaba: 9,
+    alibaba: 7,
     google: 12,
     minimax: 8,
     meta: 5,
@@ -626,7 +626,7 @@ test("discovery-only status changes do not report a price change and retry on th
     assert.equal(cooldown.changed, false);
     assert.equal(cooldown.statusChanged, false);
     assert.deepEqual(cooldown.discovery.results, [
-      { model: "gpt-test-pending", status: "deferred", reason: "retry-after" },
+      { model: "gpt-test-pending", status: "deferred", reason: "context-policy-unknown" },
     ]);
   } finally {
     resetPricingCatalog();
@@ -655,8 +655,8 @@ test("discovery accepts one complete source, respects cooldown, and force bypass
     });
     assert.equal(
       calls.length,
-      requestCount + 6,
-      "discovery fetches price sources without forcing an exchange-rate check",
+      requestCount + 2,
+      "discovery fetches only the two catalog sources without forcing maintenance or FX",
     );
     assert.deepEqual(cooldown.discovery.results, [
       { model: "gpt-test-discovery", status: "matched", reason: "exact" },
@@ -669,9 +669,9 @@ test("discovery accepts one complete source, respects cooldown, and force bypass
       usedModels: ["gpt-test-pending"],
       pricingFetcher: discoveryFetch(discoveryModelsDev({ model: "gpt-test-pending", tiers: false }), {}, calls),
     });
-    assert.equal(calls.length, requestCount + 6);
+    assert.equal(calls.length, requestCount + 2);
     assert.deepEqual(repeated.discovery.results, [
-      { model: "gpt-test-pending", status: "deferred", reason: "retry-after" },
+      { model: "gpt-test-pending", status: "deferred", reason: "context-policy-unknown" },
     ]);
     assert.equal(getAutomaticPricingStatus().discoveryAttemptedAt["gpt-test-pending"], failedAt);
 
@@ -773,7 +773,7 @@ test("automatic updates are cached and leave edited rates and exchange rate inta
     assert.equal(first.automaticModelCount, 34);
     assert.equal(first.totalModelCount, Object.keys(getDefaultPricingCatalog().models).length);
     assert.equal(first.unmatchedModelCount, first.totalModelCount - 34);
-    assert.equal(first.priceUpdateSummary.attemptedModelCount, 99);
+    assert.equal(first.priceUpdateSummary.attemptedModelCount, 97);
     assert.equal(first.priceUpdateSummary.verifiedModelCount, 34);
     assert.equal(first.priceUpdateSummary.unsupportedCurrencyModelCount, 4);
     assert.equal(first.priceUpdateSummary.fetchedSourceCount, 6);

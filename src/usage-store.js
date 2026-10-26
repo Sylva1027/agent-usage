@@ -1,8 +1,9 @@
 import { mkdir, stat } from "node:fs/promises";
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
 
 import {
@@ -13,28 +14,52 @@ import {
   discoverUsageSources,
   isQuotaPreset,
   planStableCodexHome,
+  proveCodexLiveAppend,
   perfStatsRangeBounds,
   previousUsageRange,
   resolveDateRange,
   selectQuotaWindows,
   streamUsageFileEvents,
+  summarizeUsage,
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 import { createRepositoryResolver } from "./repository-identity.js";
 import {
+  createUsageRollups,
+  listDirtyUsageRollupDays,
+  localUsageRollupDaysForUtcDays,
+  queryUsageRollupModelsWindow,
+  queryUsageRollupsRange,
+  rebuildUsageRollups,
+  rebuildUsageRollupsFromEvents,
+} from "./usage-rollups.js";
+import {
   createCostEstimateAccumulator,
+  createEventPricing,
   createEventCostMemo,
   estimateCostForEvents,
   estimateEventCost,
   getPricingCatalog,
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
-import { buildModelActivity, CODEX_AUTO_REVIEW_MODEL, isCodexAutoReview } from "../public/pricing-models.js";
+import { HistoryQuoteInputs } from "./history-quote-inputs.js";
+import {
+  buildModelActivity,
+  canonicalModelName,
+  CODEX_AUTO_REVIEW_MODEL,
+  isCodexAutoReview,
+} from "../public/pricing-models.js";
+import { addPeriodEvent, emptyPeriodMetrics, summarizePeriodComparison } from "../public/period-comparison.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
 import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
 import { claudeSessionFiles } from "./claude-code-usage.js";
-import { workbuddySessionFiles, workbuddyTraceFiles, workbuddyTraceSpans } from "./workbuddy-usage.js";
+import {
+  workbuddySessionFiles,
+  workbuddySessionMessageFiles,
+  workbuddyTraceFiles,
+  workbuddyTraceSpans,
+} from "./workbuddy-usage.js";
 import { isPerfSourceEnabled, streamPerfSamplesForFile, classifyPerfSources } from "./perf-sources/index.js";
 import {
   buildCodexThreadPerfSamples,
@@ -47,6 +72,14 @@ import {
   rankedCodexHomeIds,
   CODEX_PUBLICATION_POLICY_REVISION,
 } from "./perf-sources/codex-thread.js";
+import { foldCodexRolloutMetadata } from "./perf-sources/codex-fold.js";
+import { normalizeRequestTimingEvidence } from "./perf-request-timing.js";
+import { MAGPIE_TIMING_ORIGIN, MagpieRequestTimings } from "./perf-magpie-timing.js";
+import {
+  importRequestTimingEvidence as importStoredRequestTimingEvidence,
+  lookupRequestTiming as lookupStoredRequestTiming,
+  readRequestTimingRevision,
+} from "./perf-request-timing-store.js";
 import { PERF_METHOD_VERSION, PERF_SOURCE_WARNING_CODES, canonicalPerfSourceKind } from "./perf-stats.js";
 import { createHash } from "node:crypto";
 import {
@@ -58,10 +91,95 @@ import {
   quotaRecordValues,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 17;
+export const STORE_SCHEMA_VERSION = 21;
+
+const REQUEST_TIMING_PUBLISHED_REVISION_META = "perf_request_timing_published_revision";
+const REQUEST_TIMING_PUBLICATION_SEQ_META = "perf_request_timing_publication_seq";
+const MISSING_SOURCES_META = "perf_missing_sources";
+const LOCAL_ROLLUP_ZONE_META = "usage_rollup_local_zone_identity";
+const HISTORY_ARCHIVE_EVENT_AUTHORITY_META = "history_archive_event_authority";
+const HISTORY_ARCHIVE_PERF_AUTHORITY_META = "history_archive_perf_authority";
+const HISTORY_ARCHIVE_EVENT_REVISIONS_META = "history_archive_event_revisions";
+const HISTORY_ARCHIVE_PERF_REVISIONS_META = "history_archive_perf_revisions";
+const HISTORY_ARCHIVE_PERF_COMPONENT_META_KEYS = Object.freeze([
+  "history_archive_perf_sources_v1",
+  "history_archive_perf_samples_v1",
+  "history_archive_perf_index_v1",
+  "history_archive_perf_timing_v1",
+]);
+const HISTORY_ARCHIVE_PERF_REVISION_TABLES = Object.freeze(["perf_samples", "perf_request_timing_evidence"]);
+const HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS = Object.freeze([
+  "home_id",
+  "evidence_origin",
+  "response_id",
+  "variant_key",
+  "schema_version",
+  "requested_model",
+  "reported_output_tokens",
+  "duration_ms",
+  "status",
+  "completed_at_ms",
+]);
+const PROJECT_LOG_TRUNCATION_WARNING_CODE = "PROJECT_LOG_TRUNCATED";
+const PROJECT_LOG_MALFORMED_LINE_WARNING_CODE = "PROJECT_LOG_MALFORMED_JSONL";
+
+function currentLocalRollupZoneIdentity() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || `offset:${new Date().getTimezoneOffset()}`;
+}
+
+function historyArchiveError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+function assertHistoryArchiveRecordMatches(record, verified) {
+  const segmentId = String(record.segment_id);
+  if (
+    verified.manifest.database.sha256 !== segmentId ||
+    verified.manifest.database.sha256 !== String(record.database_sha256) ||
+    verified.candidate.startMs !== Number(record.start_ms) ||
+    verified.candidate.endMs !== Number(record.end_ms) ||
+    verified.candidate.events.rows !== Number(record.event_count)
+  ) {
+    throw historyArchiveError(
+      "HISTORY_ARCHIVE_SEGMENT_MISMATCH",
+      `archive segment ${segmentId} does not match its registered metadata`,
+    );
+  }
+  return segmentId;
+}
+
+const HARNESS_MODEL_NAMES = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy"];
+
+function harnessModelName(channel) {
+  const value = String(channel || "").toLowerCase();
+  return value.startsWith("zcode")
+    ? "ZCode"
+    : value.startsWith("dsh")
+      ? "DSH"
+      : value.startsWith("opencode")
+        ? "OpenCode"
+        : value.startsWith("claude")
+          ? "Claude"
+          : value.startsWith("workbuddy")
+            ? "WorkBuddy"
+            : "Codex";
+}
 
 /**
- * v17 唯一新增的表：WorkBuddy 的**响应时长 side table**。
+ * v18 request timing tables are created by the adapter's one frozen DDL.
+ * The empty import performs CREATE + schema self-check without changing rows.
+ * @param {import("node:sqlite").DatabaseSync} database
+ */
+function initializeRequestTimingSchema(database) {
+  importStoredRequestTimingEvidence(database, {
+    homeId: "__request_timing_schema__",
+    records: [],
+    requestLinks: [],
+  });
+}
+
+/**
+ * v17 的表：WorkBuddy 的**响应时长 side table**。
  *
  * 时长只存在于 `<home>/traces/<pid>/trace_*.jsonl` 的 `span_end`（`type = generation`），
  * 会话转录里没有可靠的首末时间戳 ⇒ 会话解析（用量）与 trace 解析（时长）必须分开，
@@ -86,6 +204,24 @@ const WORKBUDDY_DURATION_DDL = `
   );
 `;
 
+/**
+ * v19：按 home 归属、保留异值的 WorkBuddy 时长观测。
+ *
+ * 旧表继续作为无 home 信息的历史兼容层；新数据只写这里。主键包含时长 ⇒ 同值重复幂等，
+ * 异值不会互相覆盖，查询看到多种时长即可判定冲突。
+ */
+const WORKBUDDY_DURATION_OBSERVATION_DDL = `
+  CREATE TABLE IF NOT EXISTS workbuddy_generation_duration_observations (
+    home_id TEXT NOT NULL CHECK (home_id <> ''),
+    message_id TEXT NOT NULL CHECK (message_id <> ''),
+    duration_ms INTEGER NOT NULL CHECK (duration_ms > 0),
+    ended_at_ms INTEGER,
+    capture_version TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    PRIMARY KEY (home_id, message_id, duration_ms)
+  ) STRICT;
+`;
+
 /** 时长采集方法版本（写进 `capture_version` 列，不参与 perf 的 `methodVersion`）。 */
 const WORKBUDDY_CAPTURE_VERSION = "workbuddy.trace.v1";
 
@@ -96,6 +232,15 @@ const WORKBUDDY_DURATION_COLUMNS = Object.freeze([
   ["ended_at_ms", "INTEGER", 0],
   ["capture_version", "TEXT", 0],
   ["captured_at", "TEXT", 0],
+]);
+
+const WORKBUDDY_DURATION_OBSERVATION_COLUMNS = Object.freeze([
+  ["home_id", "TEXT", 1, 1],
+  ["message_id", "TEXT", 2, 1],
+  ["duration_ms", "INTEGER", 3, 1],
+  ["ended_at_ms", "INTEGER", 0, 0],
+  ["capture_version", "TEXT", 0, 1],
+  ["captured_at", "TEXT", 0, 1],
 ]);
 
 /**
@@ -123,6 +268,1063 @@ function assertWorkbuddyDurationSchema(database) {
     }
   }
 }
+
+function assertWorkbuddyDurationObservationSchema(database) {
+  const actualColumns = database.prepare("PRAGMA table_info(workbuddy_generation_duration_observations)").all();
+  if (actualColumns.length !== WORKBUDDY_DURATION_OBSERVATION_COLUMNS.length) {
+    throw new PerfSampleCodecError(
+      "WORKBUDDY_DURATION_SCHEMA_MISMATCH",
+      `workbuddy_generation_duration_observations 列数 ${actualColumns.length} ≠ 冻结 ${WORKBUDDY_DURATION_OBSERVATION_COLUMNS.length}`,
+    );
+  }
+  for (const [index, [name, type, pk, notNull]] of WORKBUDDY_DURATION_OBSERVATION_COLUMNS.entries()) {
+    const row = actualColumns[index];
+    if (
+      String(row.name) !== name ||
+      String(row.type || "").toUpperCase() !== type ||
+      Number(row.pk) !== pk ||
+      Number(row.notnull) !== notNull
+    ) {
+      throw new PerfSampleCodecError(
+        "WORKBUDDY_DURATION_SCHEMA_MISMATCH",
+        `workbuddy_generation_duration_observations 列 ${index} 实际 ${String(row.name)}/${String(row.type)}/pk=${Number(row.pk)}/notnull=${Number(row.notnull)} ≠ 冻结 ${name}/${type}/pk=${pk}/notnull=${notNull}`,
+      );
+    }
+  }
+  const ddl = String(
+    database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'workbuddy_generation_duration_observations'",
+      )
+      .get()?.sql ?? "",
+  );
+  if (!ddl.includes("STRICT")) {
+    throw new PerfSampleCodecError(
+      "WORKBUDDY_DURATION_SCHEMA_MISMATCH",
+      "workbuddy_generation_duration_observations 不是 STRICT 表",
+    );
+  }
+}
+
+/**
+ * v20: recoverable old event payloads replaced by a successful reparse.
+ * There is deliberately no foreign key to source_files: these facts must
+ * outlive the current source identity.
+ */
+const HISTORY_REPLACED_FACTS_DDL = `
+  CREATE TABLE IF NOT EXISTS history_replaced_facts (
+    fact_table TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    home_id TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    payload_digest TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL CHECK (occurrence_count > 0),
+    payload TEXT NOT NULL,
+    source_home_label TEXT NOT NULL,
+    source_home_path TEXT NOT NULL,
+    method_version TEXT NOT NULL,
+    revision_reason TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (fact_table, source_kind, home_id, source_path, payload_digest)
+  ) STRICT;
+`;
+
+const HISTORY_REPLACED_FACT_METHOD_VERSION = "events.v1";
+const HISTORY_REPLACED_QUOTA_METHOD_VERSION = "rate_limit_observations.v1";
+const HISTORY_REPLACED_FACT_INSERT_SQL = `
+  INSERT INTO history_replaced_facts (
+    fact_table, source_kind, home_id, source_path, payload_digest, occurrence_count, payload,
+    source_home_label, source_home_path, method_version, revision_reason, recorded_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(fact_table, source_kind, home_id, source_path, payload_digest) DO UPDATE SET
+    occurrence_count = MAX(history_replaced_facts.occurrence_count, excluded.occurrence_count)
+`;
+
+const HISTORY_REPLACED_FACT_COLUMNS = Object.freeze([
+  ["fact_table", "TEXT", 1, 1],
+  ["source_kind", "TEXT", 2, 1],
+  ["home_id", "TEXT", 3, 1],
+  ["source_path", "TEXT", 4, 1],
+  ["payload_digest", "TEXT", 5, 1],
+  ["occurrence_count", "INTEGER", 0, 1],
+  ["payload", "TEXT", 0, 1],
+  ["source_home_label", "TEXT", 0, 1],
+  ["source_home_path", "TEXT", 0, 1],
+  ["method_version", "TEXT", 0, 1],
+  ["revision_reason", "TEXT", 0, 1],
+  ["recorded_at", "TEXT", 0, 1],
+]);
+
+/** v21 reserves segment metadata only; a row is evidence that a later owner registered it. */
+const ARCHIVE_SEGMENTS_DDL = `
+  CREATE TABLE IF NOT EXISTS archive_segments (
+    segment_id TEXT PRIMARY KEY,
+    database_path TEXT NOT NULL,
+    database_sha256 TEXT NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    event_count INTEGER NOT NULL,
+    registered_at_ms INTEGER NOT NULL,
+    CHECK (end_ms > start_ms),
+    CHECK (event_count >= 0)
+  ) STRICT;
+`;
+
+const ARCHIVE_SEGMENT_COLUMNS = Object.freeze([
+  ["segment_id", "TEXT", 1, 1],
+  ["database_path", "TEXT", 0, 1],
+  ["database_sha256", "TEXT", 0, 1],
+  ["start_ms", "INTEGER", 0, 1],
+  ["end_ms", "INTEGER", 0, 1],
+  ["event_count", "INTEGER", 0, 1],
+  ["registered_at_ms", "INTEGER", 0, 1],
+]);
+
+function assertArchiveSegmentsSchema(database) {
+  const actualColumns = database.prepare("PRAGMA table_info(archive_segments)").all();
+  if (actualColumns.length !== ARCHIVE_SEGMENT_COLUMNS.length) {
+    throw new PerfSampleCodecError(
+      "ARCHIVE_SEGMENTS_SCHEMA_MISMATCH",
+      `archive_segments 列数 ${actualColumns.length} ≠ 冻结 ${ARCHIVE_SEGMENT_COLUMNS.length}`,
+    );
+  }
+  for (const [index, [name, type, pk, notNull]] of ARCHIVE_SEGMENT_COLUMNS.entries()) {
+    const row = actualColumns[index];
+    if (
+      String(row.name) !== name ||
+      String(row.type || "").toUpperCase() !== type ||
+      Number(row.pk) !== pk ||
+      Number(row.notnull) !== notNull
+    ) {
+      throw new PerfSampleCodecError(
+        "ARCHIVE_SEGMENTS_SCHEMA_MISMATCH",
+        `archive_segments 列 ${index} 实际 ${String(row.name)}/${String(row.type)}/pk=${Number(row.pk)}/notnull=${Number(row.notnull)} ≠ 冻结 ${name}/${type}/pk=${pk}/notnull=${notNull}`,
+      );
+    }
+  }
+  const ddl = String(
+    database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'archive_segments'").get()?.sql ??
+      "",
+  );
+  if (
+    !ddl.includes("STRICT") ||
+    !ddl.includes("CHECK (end_ms > start_ms)") ||
+    !ddl.includes("CHECK (event_count >= 0)")
+  ) {
+    throw new PerfSampleCodecError(
+      "ARCHIVE_SEGMENTS_SCHEMA_MISMATCH",
+      "archive_segments 不是带冻结 CHECK 的 STRICT 表",
+    );
+  }
+}
+
+function assertHistoryReplacedFactsSchema(database) {
+  const actualColumns = database.prepare("PRAGMA table_info(history_replaced_facts)").all();
+  if (actualColumns.length !== HISTORY_REPLACED_FACT_COLUMNS.length) {
+    throw new PerfSampleCodecError(
+      "HISTORY_REPLACED_FACTS_SCHEMA_MISMATCH",
+      `history_replaced_facts 列数 ${actualColumns.length} ≠ 冻结 ${HISTORY_REPLACED_FACT_COLUMNS.length}`,
+    );
+  }
+  for (const [index, [name, type, pk, notNull]] of HISTORY_REPLACED_FACT_COLUMNS.entries()) {
+    const row = actualColumns[index];
+    if (
+      String(row.name) !== name ||
+      String(row.type || "").toUpperCase() !== type ||
+      Number(row.pk) !== pk ||
+      Number(row.notnull) !== notNull
+    ) {
+      throw new PerfSampleCodecError(
+        "HISTORY_REPLACED_FACTS_SCHEMA_MISMATCH",
+        `history_replaced_facts 列 ${index} 实际 ${String(row.name)}/${String(row.type)}/pk=${Number(row.pk)}/notnull=${Number(row.notnull)} ≠ 冻结 ${name}/${type}/pk=${pk}/notnull=${notNull}`,
+      );
+    }
+  }
+  const ddl = String(
+    database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'history_replaced_facts'").get()
+      ?.sql ?? "",
+  );
+  if (!ddl.includes("STRICT")) {
+    throw new PerfSampleCodecError("HISTORY_REPLACED_FACTS_SCHEMA_MISMATCH", "history_replaced_facts 不是 STRICT 表");
+  }
+}
+
+function canonicalFactPayload(row, excludedColumns = []) {
+  const excluded = new Set(excludedColumns);
+  return Object.fromEntries(
+    Object.keys(row)
+      .filter((key) => !excluded.has(key))
+      .sort()
+      .map((key) => [key, row[key]]),
+  );
+}
+
+function historyPayloadDigest(payload) {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function historyArchiveStatementRows(statement, parameters = [], plain = false) {
+  if (typeof statement.setReturnArrays !== "function" || typeof statement.columns !== "function") {
+    const rows = statement.all(...parameters);
+    return plain ? rows.map((row) => ({ ...row })) : rows;
+  }
+  const columns = statement.columns().map((column) => column.name);
+  statement.setReturnArrays(true);
+  return Array.from(statement.iterate(...parameters), (values) => {
+    // Preserve every SQLite field and prototype without retaining dictionary objects.
+    const row = Object.fromEntries(columns.map((name, index) => [name, values[index]]));
+    return plain ? row : Object.setPrototypeOf(row, null);
+  });
+}
+
+function historyArchiveEventRows(database, startMs, endMs) {
+  return historyArchiveStatementRows(
+    database.prepare("SELECT * FROM events WHERE timestamp_ms >= ? AND timestamp_ms < ? ORDER BY id"),
+    [startMs, endMs],
+    true,
+  );
+}
+
+function historyArchiveSourceIdentities(database, startMs, endMs) {
+  return database
+    .prepare(
+      `SELECT sf.path, sf.kind, sf.home_id, sf.home_label, sf.home_path
+       FROM source_files sf
+       WHERE EXISTS (
+         SELECT 1 FROM events e
+         WHERE e.source_path = sf.path AND e.timestamp_ms >= ? AND e.timestamp_ms < ?
+       )
+       ORDER BY sf.path, sf.kind, sf.home_id, sf.home_label, sf.home_path`,
+    )
+    .all(startMs, endMs)
+    .map((row) => ({ ...row }));
+}
+
+function historyArchiveEventCounts(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const payload = JSON.stringify(canonicalFactPayload(row, ["id"]));
+    counts.set(payload, (counts.get(payload) || 0) + 1);
+  }
+  return counts;
+}
+
+function historyArchiveEventCountsEqual(left, right) {
+  if (left.size !== right.size) return false;
+  for (const [payload, count] of left) {
+    if (right.get(payload) !== count) return false;
+  }
+  return true;
+}
+
+function historyArchiveRevisionError(message) {
+  return historyArchiveError("HISTORY_ARCHIVE_REVISION_INVALID", message);
+}
+
+function hasExactObjectKeys(value, keys) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join(",") === [...keys].sort().join(",")
+  );
+}
+
+const HISTORY_SOURCE_IDENTITY_COLUMNS = Object.freeze(["path", "kind", "home_id", "home_label", "home_path"]);
+
+function historyArchiveRevisionPayload(payload, sourceIdentity) {
+  if (!hasExactObjectKeys(payload, EVENT_INSERT_COLUMNS)) {
+    throw historyArchiveRevisionError("archive revision payload must contain exactly the event columns without id");
+  }
+  if (typeof payload.source_path !== "string" || payload.source_path === "") {
+    throw historyArchiveRevisionError("archive revision payload source_path must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(payload.timestamp_ms)) {
+    throw historyArchiveRevisionError("archive revision payload timestamp_ms must be a safe integer");
+  }
+  for (const column of EVENT_INSERT_COLUMNS) {
+    if (EVENT_INTEGER_COLUMNS.includes(column)) {
+      if (!Number.isSafeInteger(payload[column])) {
+        throw historyArchiveRevisionError(`archive revision payload ${column} must be a safe integer`);
+      }
+    } else if (typeof payload[column] !== "string") {
+      throw historyArchiveRevisionError(`archive revision payload ${column} must be a string`);
+    }
+  }
+  for (const column of ["home_id", "home_label"]) {
+    if (payload[column] !== sourceIdentity[column]) {
+      throw historyArchiveRevisionError(`archive revision payload ${column} does not match its source binding`);
+    }
+  }
+  return payload;
+}
+
+function historyArchiveRevisionPayloadKey(payload) {
+  return JSON.stringify(canonicalFactPayload(payload, ["id"]));
+}
+
+function sameHistoryArchiveSourceIdentity(left, right) {
+  return HISTORY_SOURCE_IDENTITY_COLUMNS.every((column) => left[column] === right[column]);
+}
+
+function sameHistoryArchivePerfRevisionInputVersion(left, right) {
+  return left.dataVersion === right.dataVersion && left.totalChanges === right.totalChanges;
+}
+
+function canonicalHistoryArchiveRevisionDeltas(deltas) {
+  return deltas
+    .map(({ payload, count }) => ({ payload: canonicalFactPayload(payload, ["id"]), count }))
+    .sort((left, right) => {
+      const leftKey = historyArchiveRevisionPayloadKey(left.payload);
+      const rightKey = historyArchiveRevisionPayloadKey(right.payload);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : left.count - right.count;
+    });
+}
+
+function canonicalHistoryArchiveRevisionEntry(entry) {
+  return {
+    sourceIdentity: Object.fromEntries(
+      HISTORY_SOURCE_IDENTITY_COLUMNS.map((column) => [column, entry.sourceIdentity[column]]),
+    ),
+    removed: canonicalHistoryArchiveRevisionDeltas(entry.removed),
+    added: canonicalHistoryArchiveRevisionDeltas(entry.added),
+  };
+}
+
+function historyArchiveRevisionEntryKey(entry) {
+  return JSON.stringify(canonicalHistoryArchiveRevisionEntry(entry));
+}
+
+function historyArchiveRowsByNativeIdentity(rows, segmentId) {
+  const byIdentity = new Map();
+  for (const row of rows) {
+    const key = JSON.stringify([Number(row.timestamp_ms), String(row.session_id)]);
+    if (byIdentity.has(key)) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
+        `archive segment ${segmentId} requires one row per timestamp/session for a cold value revision`,
+      );
+    }
+    byIdentity.set(key, row);
+  }
+  return byIdentity;
+}
+
+function historyArchiveColdRevisionForRows(prefix) {
+  const originalByIdentity = historyArchiveRowsByNativeIdentity(prefix.originalRows, prefix.segmentId);
+  const effectiveByIdentity = historyArchiveRowsByNativeIdentity(prefix.effectiveRows, prefix.segmentId);
+  const observedByIdentity = historyArchiveRowsByNativeIdentity(prefix.observedRows, prefix.segmentId);
+  const removedIdentities = [...effectiveByIdentity.keys()].filter((identity) => !observedByIdentity.has(identity));
+  const addedIdentities = [...observedByIdentity.keys()].filter((identity) => !effectiveByIdentity.has(identity));
+  if (
+    observedByIdentity.size === 0 ||
+    (removedIdentities.length > 0 && addedIdentities.length > 0) ||
+    (removedIdentities.length > 0 && prefix.sourceIdentity.kind !== "project-log")
+  ) {
+    throw historyArchiveError(
+      "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
+      `reparsed source removes or migrates cold events in authorized segment ${prefix.segmentId}`,
+    );
+  }
+
+  const payloadFor = (row) => historyArchiveRevisionPayload(canonicalFactPayload(row, ["id"]), prefix.sourceIdentity);
+  const effectivePayloads = new Map([...effectiveByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
+  const observedPayloads = new Map([...observedByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
+  const removedColdEventCount = removedIdentities.length;
+  const changedIdentities = [
+    ...[...effectivePayloads.keys()].filter(
+      (identity) =>
+        !observedPayloads.has(identity) ||
+        historyArchiveRevisionPayloadKey(effectivePayloads.get(identity)) !==
+          historyArchiveRevisionPayloadKey(observedPayloads.get(identity)),
+    ),
+    ...addedIdentities,
+  ];
+  if (changedIdentities.length === 0) return null;
+
+  const originalPayloads = [...originalByIdentity.values()].map(payloadFor);
+  const deltas = new Map();
+  const addPayload = (payload, side) => {
+    const key = historyArchiveRevisionPayloadKey(payload);
+    const delta = deltas.get(key) || { payload, originalCount: 0, observedCount: 0 };
+    delta[side] += 1;
+    deltas.set(key, delta);
+  };
+  for (const payload of originalPayloads) addPayload(payload, "originalCount");
+  for (const payload of observedPayloads.values()) addPayload(payload, "observedCount");
+
+  const removed = [];
+  const added = [];
+  for (const { payload, originalCount, observedCount } of deltas.values()) {
+    if (originalCount > observedCount) removed.push({ payload, count: originalCount - observedCount });
+    else if (observedCount > originalCount) added.push({ payload, count: observedCount - originalCount });
+  }
+  // Keep the effective payload for recovery; the stored delta remains cumulative from the immutable candidate.
+  return {
+    entry: {
+      sourceIdentity: { ...prefix.sourceIdentity },
+      removed: canonicalHistoryArchiveRevisionDeltas(removed),
+      added: canonicalHistoryArchiveRevisionDeltas(added),
+    },
+    removedColdEventCount,
+    previousChangedRows: changedIdentities
+      .map((identity) => effectiveByIdentity.get(identity))
+      .filter((row) => row !== undefined),
+    currentChangedRows: changedIdentities
+      .map((identity) => observedByIdentity.get(identity))
+      .filter((row) => row !== undefined),
+  };
+}
+
+function writeHistoryArchiveEventRevisionState(database, revisionState) {
+  const revisions = [];
+  for (const [segmentId, entries] of revisionState.revisionsBySegment) {
+    const segment = revisionState.segmentsById.get(segmentId);
+    for (const entry of entries) {
+      revisions.push({
+        segmentId,
+        databaseSha256: String(segment.database_sha256),
+        ...canonicalHistoryArchiveRevisionEntry(entry),
+      });
+    }
+  }
+  const statement = database.prepare(
+    `INSERT INTO store_meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  );
+  if (revisions.length === 0) {
+    database.prepare("DELETE FROM store_meta WHERE key = ?").run(HISTORY_ARCHIVE_EVENT_REVISIONS_META);
+  } else {
+    statement.run(HISTORY_ARCHIVE_EVENT_REVISIONS_META, JSON.stringify({ formatVersion: 1, revisions }));
+  }
+}
+
+function markHistoryArchiveRevisionRollupDays(database, previousRows, currentRows) {
+  createUsageRollups(database);
+  const insertDirty = database.prepare("INSERT OR IGNORE INTO usage_rollup_dirty_days (day_key) VALUES (?)");
+  const deleteCoveringDays = database.prepare("DELETE FROM usage_rollup_days WHERE ? >= start_ms AND ? < end_ms");
+  const timestamps = new Set([...previousRows, ...currentRows].map((row) => Number(row.timestamp_ms)));
+  for (const timestampMs of timestamps) {
+    insertDirty.run(new Date(timestampMs).toISOString().slice(0, 10));
+    deleteCoveringDays.run(timestampMs, timestampMs);
+  }
+}
+
+function historyArchiveEventRevisions(rawValue, segmentsById) {
+  if (rawValue === undefined) return new Map();
+  let root;
+  try {
+    root = JSON.parse(String(rawValue));
+  } catch {
+    throw historyArchiveRevisionError("history archive event revisions are not valid JSON");
+  }
+  if (!hasExactObjectKeys(root, ["formatVersion", "revisions"]) || root.formatVersion !== 1) {
+    throw historyArchiveRevisionError("history archive event revisions must be a version-1 revisions list");
+  }
+  if (!Array.isArray(root.revisions)) {
+    throw historyArchiveRevisionError("history archive event revisions must be an array");
+  }
+
+  const revisionsBySegment = new Map();
+  const bindings = new Set();
+  for (const revision of root.revisions) {
+    if (
+      !hasExactObjectKeys(revision, ["segmentId", "databaseSha256", "sourceIdentity", "removed", "added"]) ||
+      typeof revision.segmentId !== "string" ||
+      typeof revision.databaseSha256 !== "string"
+    ) {
+      throw historyArchiveRevisionError("archive revision entry is malformed");
+    }
+    const segment = segmentsById.get(revision.segmentId);
+    if (!segment) {
+      throw historyArchiveRevisionError(`archive revision targets unregistered segment ${revision.segmentId}`);
+    }
+    if (revision.databaseSha256 !== segment.database_sha256) {
+      throw historyArchiveRevisionError(`archive revision digest does not match segment ${revision.segmentId}`);
+    }
+    const sourceIdentity = revision.sourceIdentity;
+    if (
+      !hasExactObjectKeys(sourceIdentity, HISTORY_SOURCE_IDENTITY_COLUMNS) ||
+      HISTORY_SOURCE_IDENTITY_COLUMNS.some((key) => typeof sourceIdentity[key] !== "string") ||
+      sourceIdentity.path === ""
+    ) {
+      throw historyArchiveRevisionError(
+        `archive revision source binding is malformed for segment ${segment.segment_id}`,
+      );
+    }
+    const binding = JSON.stringify([revision.segmentId, sourceIdentity.path]);
+    if (bindings.has(binding)) {
+      throw historyArchiveRevisionError(
+        `archive revision duplicates segment-source binding ${revision.segmentId}:${sourceIdentity.path}`,
+      );
+    }
+    bindings.add(binding);
+
+    const normalizeDeltas = (value, label) => {
+      if (!Array.isArray(value)) {
+        throw historyArchiveRevisionError(`archive revision ${label} must be an array`);
+      }
+      return value.map((delta) => {
+        if (
+          !hasExactObjectKeys(delta, ["payload", "count"]) ||
+          !Number.isSafeInteger(delta.count) ||
+          delta.count <= 0
+        ) {
+          throw historyArchiveRevisionError(`archive revision ${label} entries require a positive integer count`);
+        }
+        const payload = historyArchiveRevisionPayload(delta.payload, sourceIdentity);
+        if (payload.source_path !== sourceIdentity.path) {
+          throw historyArchiveRevisionError(
+            `archive revision ${label} payload source does not match its source binding`,
+          );
+        }
+        if (payload.timestamp_ms < Number(segment.start_ms) || payload.timestamp_ms >= Number(segment.end_ms)) {
+          throw historyArchiveRevisionError(
+            `archive revision ${label} payload is outside segment ${segment.segment_id}`,
+          );
+        }
+        return { payload, count: delta.count };
+      });
+    };
+    const entry = {
+      sourceIdentity: { ...sourceIdentity },
+      removed: normalizeDeltas(revision.removed, "removed"),
+      added: normalizeDeltas(revision.added, "added"),
+    };
+    const entries = revisionsBySegment.get(revision.segmentId) || [];
+    entries.push(entry);
+    revisionsBySegment.set(revision.segmentId, entries);
+  }
+  return revisionsBySegment;
+}
+
+function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
+  if (!revisions?.length) return cold.rows;
+  let rows = cold.rows;
+  for (const revision of revisions) {
+    const sourceIdentity = cold.sourceIdentities.find((identity) =>
+      sameHistoryArchiveSourceIdentity(identity, revision.sourceIdentity),
+    );
+    if (!sourceIdentity) {
+      throw historyArchiveRevisionError(`archive revision source binding does not match segment ${segment.segment_id}`);
+    }
+    const sourceRows = rows.filter((row) => String(row.source_path) === sourceIdentity.path);
+    const sourceCounts = historyArchiveEventCounts(sourceRows);
+    const removedCounts = new Map();
+    for (const removed of revision.removed) {
+      const key = historyArchiveRevisionPayloadKey(removed.payload);
+      const count = (removedCounts.get(key) || 0) + removed.count;
+      if (count > (sourceCounts.get(key) || 0)) {
+        throw historyArchiveRevisionError(
+          `archive revision removes more payloads than segment ${segment.segment_id} contains`,
+        );
+      }
+      removedCounts.set(key, count);
+    }
+
+    const remainingRemovals = new Map(removedCounts);
+    const revised = [];
+    for (const row of rows) {
+      if (String(row.source_path) !== sourceIdentity.path) {
+        revised.push(row);
+        continue;
+      }
+      const key = historyArchiveRevisionPayloadKey(row);
+      const remaining = remainingRemovals.get(key) || 0;
+      if (remaining > 0) {
+        remainingRemovals.set(key, remaining - 1);
+        continue;
+      }
+      revised.push(row);
+    }
+    for (const added of revision.added) {
+      for (let index = 0; index < added.count; index += 1) {
+        revised.push({ id: null, ...added.payload });
+      }
+    }
+    rows = revised;
+  }
+  return rows;
+}
+
+function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence) {
+  const timestampMs = Number(row.timestamp_ms);
+  const sessionId = String(row.session_id);
+  return {
+    timestamp: new Date(timestampMs).toISOString(),
+    sessionId,
+    homeId: String(row.home_id),
+    homeLabel: String(row.home_label),
+    sourceKind: String(sourceKind),
+    channel: String(row.channel),
+    project: String(row.project),
+    model: String(row.model),
+    cwd: String(row.cwd),
+    repositoryKey: String(row.repository_key),
+    repositoryPath: String(row.repository_path),
+    repositoryKind: String(row.repository_kind),
+    detailMask: Number(row.detail_mask || 0),
+    reconciliationGap: Number(row.reconciliation_gap || 0),
+    cacheWriteTokens: Number(row.cache_write_tokens || 0),
+    cacheWriteKnown: Boolean(row.cache_write_known),
+    requestInputTokens: Number(row.request_input_tokens || 0),
+    contextLevel: String(row.context_level),
+    serviceTier:
+      serviceTierEvidence?.resolve(sessionId, timestampMs, String(row.service_tier)) || String(row.service_tier),
+    priceVersion: String(row.price_version),
+    total: usageFromRow(row),
+  };
+}
+
+function metadataFromHistoryEvents(events, carrier, asOf) {
+  const asOfMs = asOf.getTime();
+  const sessions = new Set();
+  const homeRows = new Map();
+  const harnessModels = Object.fromEntries(HARNESS_MODEL_NAMES.map((name) => [name, new Set()]));
+  const observationRows = new Map();
+  for (const event of events) {
+    const sessionId = String(event.sessionId);
+    sessions.add(sessionId);
+    const homeId = String(event.homeId);
+    const homeRow = homeRows.get(homeId) || { eventCount: 0, sessions: new Set() };
+    homeRow.eventCount += 1;
+    homeRow.sessions.add(sessionId);
+    homeRows.set(homeId, homeRow);
+
+    const model = String(event.model || "").trim();
+    if (model && model.toLocaleLowerCase() !== "unknown model") {
+      harnessModels[harnessModelName(event.channel)].add(model);
+    }
+
+    const timestampMs = Date.parse(event.timestamp);
+    if (!Number.isFinite(timestampMs) || timestampMs > asOfMs) continue;
+    const key = JSON.stringify([event.channel, event.model, homeId]);
+    const observation = observationRows.get(key);
+    if (observation) observation.lastSeen = Math.max(observation.lastSeen, timestampMs);
+    else observationRows.set(key, { channel: event.channel, model: event.model, homeId, lastSeen: timestampMs });
+  }
+
+  const sourceKinds = homeSourceKinds(carrier.homes);
+  const observations = [...observationRows.values()].map((row) => {
+    const group = sourceGroup(row.channel, sourceKinds.get(row.homeId));
+    return {
+      model: row.model,
+      timestamp: row.lastSeen,
+      harness: ["ZCode", "DSH", "OpenCode", "Claude"].includes(group) ? group : "Codex",
+    };
+  });
+  return {
+    generatedAt: carrier.generatedAt,
+    eventCount: events.length,
+    sessionCount: sessions.size,
+    homeCount: carrier.homes.length,
+    harnessModels: Object.fromEntries(
+      HARNESS_MODEL_NAMES.map((name) => [name, [...harnessModels[name]].sort((a, b) => a.localeCompare(b))]),
+    ),
+    homes: carrier.homes.map((home) => {
+      const row = homeRows.get(String(home.id));
+      return {
+        ...home,
+        status: row ? "active" : "no-events",
+        eventCount: row?.eventCount || 0,
+        sessionCount: row?.sessions.size || 0,
+      };
+    }),
+    warnings: carrier.warnings,
+    ...buildModelActivity(observations, asOf),
+  };
+}
+
+function withoutExcludedHistoryHomes(report, excludeHomes = []) {
+  // The server helper cannot be imported here: server -> store would form a cycle.
+  const excluded = new Set((excludeHomes || []).map(String));
+  if (!excluded.size) return report;
+  return {
+    ...report,
+    events: report.events.filter((event) => !excluded.has(String(event.homeId))),
+    sessions: report.sessions.filter((session) => !excluded.has(String(session.homeId))),
+    perfSamples: report.perfSamples?.filter((sample) => !excluded.has(String(sample.homeId))),
+  };
+}
+
+function publishedUsageHomesFromDatabase(database) {
+  const rows = database
+    .prepare(
+      `SELECT DISTINCT home_id, home_label, home_path, kind
+       FROM source_files
+       ORDER BY home_id, home_label, home_path, kind`,
+    )
+    .all();
+  const homes = [];
+  for (const row of rows) {
+    const home = {
+      id: String(row.home_id),
+      label: String(row.home_label),
+      path: String(row.home_path),
+      kind: String(row.kind),
+    };
+    const previous = homes[homes.length - 1];
+    if (previous?.id === home.id) {
+      if (previous.label !== home.label || previous.path !== home.path || previous.kind !== home.kind) {
+        throw Object.assign(new Error(`Conflicting published identity for home ${home.id}`), {
+          code: "PUBLISHED_HOME_IDENTITY_CONFLICT",
+        });
+      }
+      continue;
+    }
+    homes.push(home);
+  }
+  return homes;
+}
+
+function quotaObservationsFromDatabase(database, attachedHot = false) {
+  return database
+    .prepare(`
+      SELECT source_path, line_number, role, observed_at_ms, limit_id, limit_name,
+        plan_type, window_minutes, resets_at_ms, used_percent
+      FROM ${attachedHot ? "history_hot." : ""}rate_limit_observations INDEXED BY rate_limit_window_lookup_idx
+      ORDER BY limit_id ASC, window_minutes ASC, observed_at_ms DESC
+    `)
+    .all()
+    .map((row) => ({
+      sourcePath: row.source_path,
+      lineNumber: Number(row.line_number),
+      role: row.role,
+      observedAtMs: Number(row.observed_at_ms),
+      limitId: row.limit_id,
+      limitName: row.limit_name,
+      planType: row.plan_type,
+      windowMinutes: Number(row.window_minutes),
+      resetsAtMs: Number(row.resets_at_ms),
+      usedPercent: row.used_percent === null ? null : Number(row.used_percent),
+    }));
+}
+
+function publishedUsageSessionsFromEvents(events, homes) {
+  const homesById = new Map(homes.map((home) => [home.id, home]));
+  /** @type {Map<string, ReturnType<UsageStore["publishedUsageSessions"]>[number]>} */
+  const sessions = new Map();
+  for (const event of events) {
+    const home = homesById.get(event.homeId);
+    if (!home) {
+      throw Object.assign(new Error(`Missing published home ${event.homeId}`), {
+        code: "PUBLISHED_SESSION_HOME_MISSING",
+      });
+    }
+    const key = JSON.stringify([event.homeId, event.sessionId]);
+    const current = sessions.get(key);
+    if (!current) {
+      sessions.set(key, {
+        id: event.sessionId,
+        homeId: event.homeId,
+        homeLabel: home.label,
+        homePath: home.path,
+        firstAt: event.timestamp,
+        lastAt: event.timestamp,
+        eventCount: 1,
+        total: { ...event.total },
+        channel: event.channel,
+        cwd: event.cwd || "",
+        model: event.model,
+      });
+      continue;
+    }
+    if (event.timestamp < current.firstAt) current.firstAt = event.timestamp;
+    if (event.timestamp > current.lastAt) current.lastAt = event.timestamp;
+    current.eventCount += 1;
+    current.total.total += event.total.total;
+    current.total.input += event.total.input;
+    current.total.cached += event.total.cached;
+    current.total.output += event.total.output;
+    current.total.reasoning += event.total.reasoning;
+    current.channel = event.channel;
+    current.cwd = event.cwd || "";
+    current.model = event.model;
+  }
+  return [...sessions.values()].sort(
+    (left, right) =>
+      left.lastAt.localeCompare(right.lastAt) ||
+      left.homeId.localeCompare(right.homeId) ||
+      left.id.localeCompare(right.id),
+  );
+}
+
+function publishedUsageEventsFromUnion(union, serviceTierEvidence) {
+  // This request owns the rows; release raw facts as their public projection replaces them.
+  for (let index = 0; index < union.rows.length; index += 1) {
+    const row = union.rows[index];
+    const sourceKind = union.sourceKinds.get(String(row.source_path));
+    if (sourceKind === undefined) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_SOURCE_CHANGED",
+        `published source ${String(row.source_path)} has no verified source identity`,
+      );
+    }
+    union.rows[index] = publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence);
+  }
+  return union.rows;
+}
+
+function historyArchiveAuthorizedSegmentIds(database) {
+  const authorityValue = database
+    .prepare("SELECT value FROM store_meta WHERE key = ?")
+    .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)?.value;
+  if (authorityValue === undefined) return new Set();
+  let authority;
+  try {
+    authority = JSON.parse(String(authorityValue));
+  } catch {
+    throw historyArchiveError("HISTORY_ARCHIVE_AUTHORITY_INVALID", "history archive event authority is not valid JSON");
+  }
+  if (
+    !authority ||
+    typeof authority !== "object" ||
+    Array.isArray(authority) ||
+    Object.keys(authority).sort().join(",") !== "formatVersion,segmentIds" ||
+    authority.formatVersion !== 1 ||
+    !Array.isArray(authority.segmentIds) ||
+    authority.segmentIds.some((segmentId) => typeof segmentId !== "string" || !/^[a-f0-9]{64}$/.test(segmentId)) ||
+    new Set(authority.segmentIds).size !== authority.segmentIds.length
+  ) {
+    throw historyArchiveError(
+      "HISTORY_ARCHIVE_AUTHORITY_INVALID",
+      "history archive event authority must be a version-1 unique segment id list",
+    );
+  }
+  const registeredSegmentIds = new Set(
+    database
+      .prepare("SELECT segment_id FROM archive_segments")
+      .all()
+      .map((segment) => String(segment.segment_id)),
+  );
+  for (const segmentId of authority.segmentIds) {
+    if (!registeredSegmentIds.has(segmentId)) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", `archive segment ${segmentId} is not registered`);
+    }
+  }
+  return new Set(authority.segmentIds);
+}
+
+function historyArchivePerfAuthority(database, authorizedSegmentIds, recordsById) {
+  const authorityValue = database
+    .prepare("SELECT value FROM store_meta WHERE key = ?")
+    .get(HISTORY_ARCHIVE_PERF_AUTHORITY_META)?.value;
+  if (authorityValue === undefined) return null;
+
+  let authority;
+  try {
+    authority = JSON.parse(String(authorityValue));
+  } catch {
+    throw historyArchiveError(
+      "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID",
+      "history archive perf authority is not valid JSON",
+    );
+  }
+  const keys = (value) =>
+    value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).sort().join(",") : "";
+  if (
+    keys(authority) !== "formatVersion,segments" ||
+    authority.formatVersion !== 1 ||
+    !Array.isArray(authority.segments) ||
+    authority.segments.length === 0
+  ) {
+    throw historyArchiveError(
+      "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID",
+      "history archive perf authority must grant one or more zcode or codex tps-v2 segments matching their database digests",
+    );
+  }
+
+  const segments = [];
+  const segmentIds = new Set();
+  for (const segment of authority.segments) {
+    const segmentId = segment?.segmentId;
+    if (
+      keys(segment) !== "databaseSha256,methodVersions,segmentId,sourceKinds" ||
+      typeof segmentId !== "string" ||
+      !/^[a-f0-9]{64}$/.test(segmentId) ||
+      segment.databaseSha256 !== segmentId ||
+      !Array.isArray(segment.sourceKinds) ||
+      segment.sourceKinds.length !== 1 ||
+      !["zcode", "codex"].includes(segment.sourceKinds[0]) ||
+      !Array.isArray(segment.methodVersions) ||
+      segment.methodVersions.length !== 1 ||
+      segment.methodVersions[0] !== PERF_METHOD_VERSION ||
+      segmentIds.has(segmentId)
+    ) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID",
+        "history archive perf authority must grant unique zcode or codex tps-v2 segments matching their database digests",
+      );
+    }
+    const sourceKind = segment.sourceKinds[0];
+    segmentIds.add(segmentId);
+    const record = recordsById.get(segmentId);
+    if (!authorizedSegmentIds.has(segmentId) || !record || String(record.database_sha256) !== segmentId) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+        `perf authority segment ${segmentId} is not the authorized registered segment`,
+      );
+    }
+    segments.push({ segmentId, record, sourceKind });
+  }
+  return segments;
+}
+
+function historyArchivePerfSamplePayloadKey(sample) {
+  return JSON.stringify(PERF_SAMPLE_FIELDS.map((entry) => sample[entry.field]));
+}
+
+function mergeHistoryArchivePerfSamples(perfCarrier, coldSamples, sourceKind, revisionsBySampleKey = new Map()) {
+  const samples = new Map(perfCarrier.samples.map((sample) => [String(sample.sampleKey), sample]));
+  const identities = new Map(perfCarrier.identities.map((identity) => [String(identity.sampleKey), identity]));
+  const knownSources = new Map(
+    perfCarrier.knownSources.map((source) => [JSON.stringify([String(source.kind), String(source.homeId)]), source]),
+  );
+  const coldSampleKeys = new Set(coldSamples.map((sample) => String(sample.sampleKey)));
+  for (const sample of coldSamples) {
+    if (sample.sourceKind !== sourceKind || sample.methodVersion !== PERF_METHOD_VERSION) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+        `perf authority declared ${sourceKind} but returned sample ${sample.sampleKey} from ${sample.sourceKind}`,
+      );
+    }
+    const sampleKey = String(sample.sampleKey);
+    const existing = samples.get(sampleKey);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(sample)) {
+      const removedPayloads = revisionsBySampleKey.get(sampleKey)?.removedPayloads;
+      if (!removedPayloads?.has(historyArchivePerfSamplePayloadKey(existing))) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_PERF_SAMPLE_CONFLICT",
+          `hot and cold perf sample ${sampleKey} have different payloads`,
+        );
+      }
+    }
+    if (!existing) samples.set(sampleKey, sample);
+    else if (JSON.stringify(existing) !== JSON.stringify(sample)) samples.set(sampleKey, sample);
+    const identity = { sampleKey, sourceKind: sample.sourceKind, homeId: sample.homeId };
+    const existingIdentity = identities.get(sampleKey);
+    if (
+      existingIdentity &&
+      (existingIdentity.sourceKind !== identity.sourceKind || existingIdentity.homeId !== identity.homeId)
+    ) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_PERF_SAMPLE_CONFLICT",
+        `hot and cold perf sample ${sampleKey} have different identities`,
+      );
+    }
+    if (!existingIdentity) identities.set(sampleKey, identity);
+    const sourceKey = JSON.stringify([sample.sourceKind, sample.homeId]);
+    if (!knownSources.has(sourceKey)) {
+      knownSources.set(sourceKey, { kind: sample.sourceKind, homeId: sample.homeId });
+    }
+  }
+  for (const [sampleKey, revision] of revisionsBySampleKey) {
+    if (coldSampleKeys.has(sampleKey)) continue;
+    const existing = samples.get(sampleKey);
+    if (!existing) continue;
+    if (!revision.removedPayloads.has(historyArchivePerfSamplePayloadKey(existing))) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_PERF_SAMPLE_CONFLICT",
+        `hot and cold perf sample ${sampleKey} have different payloads`,
+      );
+    }
+    samples.delete(sampleKey);
+    identities.delete(sampleKey);
+  }
+  return {
+    ...perfCarrier,
+    samples: [...samples.values()],
+    identities: [...identities.values()],
+    knownSources: [...knownSources.values()],
+  };
+}
+
+const EVENT_INSERT_COLUMNS = Object.freeze([
+  "source_path",
+  "timestamp_ms",
+  "session_id",
+  "home_id",
+  "home_label",
+  "channel",
+  "project",
+  "model",
+  "hour_key",
+  "day_key",
+  "week_key",
+  "month_key",
+  "cwd",
+  "repository_key",
+  "repository_path",
+  "repository_kind",
+  "detail_mask",
+  "reconciliation_gap",
+  "cache_write_tokens",
+  "cache_write_known",
+  "request_input_tokens",
+  "context_level",
+  "service_tier",
+  "price_version",
+  "total",
+  "input",
+  "cached",
+  "output",
+  "reasoning",
+]);
+
+const EVENT_INTEGER_COLUMNS = Object.freeze([
+  "timestamp_ms",
+  "detail_mask",
+  "reconciliation_gap",
+  "cache_write_tokens",
+  "cache_write_known",
+  "request_input_tokens",
+  "total",
+  "input",
+  "cached",
+  "output",
+  "reasoning",
+]);
+
+function saveMissingHistoryFacts(
+  insertReplacedFact,
+  { factTable, source, previousRows, currentRows, methodVersion, excludedColumns = [] },
+) {
+  const currentCounts = new Map();
+  for (const row of currentRows) {
+    const payloadDigest = historyPayloadDigest(canonicalFactPayload(row, excludedColumns));
+    currentCounts.set(payloadDigest, (currentCounts.get(payloadDigest) || 0) + 1);
+  }
+  const previousCounts = new Map();
+  for (const row of previousRows) {
+    const payload = canonicalFactPayload(row, excludedColumns);
+    const payloadDigest = historyPayloadDigest(payload);
+    const existing = previousCounts.get(payloadDigest);
+    previousCounts.set(payloadDigest, {
+      payload,
+      count: (existing?.count || 0) + 1,
+    });
+  }
+  const recordedAt = new Date().toISOString();
+  for (const [payloadDigest, previous] of previousCounts) {
+    const missingCount = previous.count - (currentCounts.get(payloadDigest) || 0);
+    if (missingCount <= 0) continue;
+    insertReplacedFact.run(
+      factTable,
+      String(source.kind),
+      String(source.home_id),
+      String(source.path),
+      payloadDigest,
+      missingCount,
+      JSON.stringify(previous.payload),
+      String(source.home_label),
+      String(source.home_path),
+      methodVersion,
+      "reparse_replaced",
+      recordedAt,
+    );
+  }
+}
+
 const CODEX_ROLLOUT_READER_VERSION = "zstd-jsonl-v1";
 
 /**
@@ -184,6 +1386,8 @@ export const PERF_SAMPLE_FIELDS = Object.freeze([
   { field: "diagnosticReasonChain", column: "diagnostic_reason_chain", kind: "reasonChain", notNull: false },
   { field: "methodVersion", column: "method_version", kind: "text", notNull: true },
 ]);
+
+const PERF_SAMPLE_COLUMNS = Object.freeze(PERF_SAMPLE_FIELDS.map((entry) => entry.column));
 
 /**
  * `perf_samples` 的冻结 DDL（**字面量，不从映射表生成**）。
@@ -610,6 +1814,555 @@ export function decodePerfSample(row) {
   return /** @type {import("./usage-types.js").PerfSampleRowDecoded} */ (sample);
 }
 
+function historyArchiveTimingVariantKey(payload) {
+  return JSON.stringify([
+    payload.schema_version,
+    payload.requested_model,
+    payload.reported_output_tokens,
+    payload.duration_ms,
+    payload.status,
+    payload.completed_at_ms,
+  ]);
+}
+
+function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, segment) {
+  if (factTable === "perf_samples") {
+    if (!hasExactObjectKeys(payload, PERF_SAMPLE_COLUMNS)) {
+      throw historyArchiveRevisionError("archive perf revision payload must contain exactly the perf_samples columns");
+    }
+    try {
+      decodePerfSample(payload);
+    } catch (error) {
+      throw historyArchiveRevisionError(`archive perf revision payload is invalid: ${error.message}`);
+    }
+    if (
+      typeof payload.sample_key !== "string" ||
+      payload.sample_key === "" ||
+      payload.source_path !== sourceIdentity.path ||
+      payload.source_kind !== canonicalPerfSourceKind(sourceIdentity.kind) ||
+      payload.home_id !== sourceIdentity.home_id ||
+      payload.source_kind === "" ||
+      payload.home_id === "" ||
+      !["main", "subagent", "unknown"].includes(payload.agent_kind) ||
+      !["request_e2e", "item_span_estimate"].includes(payload.timing_kind) ||
+      !["completed", "failed", "cancelled", "in_progress", "unverified"].includes(payload.status) ||
+      payload.method_version !== PERF_METHOD_VERSION ||
+      !Number.isSafeInteger(payload.ts_ms) ||
+      payload.ts_ms < Number(segment.start_ms) ||
+      payload.ts_ms >= Number(segment.end_ms)
+    ) {
+      throw historyArchiveRevisionError(
+        `archive perf revision sample does not match segment ${segment.segment_id} and its source binding`,
+      );
+    }
+    return Object.fromEntries(PERF_SAMPLE_COLUMNS.map((column) => [column, payload[column]]));
+  }
+
+  if (factTable === "perf_request_timing_evidence") {
+    if (!hasExactObjectKeys(payload, HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS)) {
+      throw historyArchiveRevisionError(
+        "archive timing revision payload must contain exactly the perf_request_timing_evidence columns",
+      );
+    }
+    const textColumns = ["home_id", "evidence_origin", "response_id", "variant_key", "requested_model", "status"];
+    if (
+      textColumns.some((column) => typeof payload[column] !== "string" || payload[column] === "") ||
+      payload.home_id !== sourceIdentity.home_id ||
+      payload.schema_version !== 1 ||
+      !Number.isSafeInteger(payload.reported_output_tokens) ||
+      payload.reported_output_tokens < 0 ||
+      !Number.isSafeInteger(payload.duration_ms) ||
+      payload.duration_ms <= 0 ||
+      payload.status !== "completed" ||
+      (payload.completed_at_ms !== null &&
+        (!Number.isSafeInteger(payload.completed_at_ms) || payload.completed_at_ms < 0)) ||
+      payload.variant_key !== historyArchiveTimingVariantKey(payload)
+    ) {
+      throw historyArchiveRevisionError("archive timing revision payload is invalid");
+    }
+    return Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, payload[column]]));
+  }
+
+  throw historyArchiveRevisionError(`archive perf revision table ${String(factTable)} is unsupported`);
+}
+
+function canonicalHistoryArchivePerfRevisionDeltas(deltas) {
+  return deltas
+    .map(({ payload, count }) => ({ payload, count }))
+    .sort((left, right) => {
+      const leftKey = historyArchiveRevisionPayloadKey(left.payload);
+      const rightKey = historyArchiveRevisionPayloadKey(right.payload);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : left.count - right.count;
+    })
+    .map((delta) => ({ payload: delta.payload, count: delta.count }));
+}
+
+function historyArchivePerfRevisions(rawValue, segmentsById, authorizedSegmentIds, perfSegmentIds) {
+  if (rawValue === undefined) return new Map();
+  let root;
+  try {
+    root = JSON.parse(String(rawValue));
+  } catch {
+    throw historyArchiveRevisionError("history archive perf revisions are not valid JSON");
+  }
+  if (!hasExactObjectKeys(root, ["formatVersion", "revisions"]) || root.formatVersion !== 1) {
+    throw historyArchiveRevisionError("history archive perf revisions must be a version-1 revisions list");
+  }
+  if (!Array.isArray(root.revisions)) {
+    throw historyArchiveRevisionError("history archive perf revisions must be an array");
+  }
+
+  const revisionsBySegment = new Map();
+  const bindings = new Set();
+  for (const revision of root.revisions) {
+    if (
+      !hasExactObjectKeys(revision, [
+        "segmentId",
+        "databaseSha256",
+        "factTable",
+        "sourceIdentity",
+        "removed",
+        "added",
+      ]) ||
+      typeof revision.segmentId !== "string" ||
+      typeof revision.databaseSha256 !== "string" ||
+      !HISTORY_ARCHIVE_PERF_REVISION_TABLES.includes(revision.factTable)
+    ) {
+      throw historyArchiveRevisionError("archive perf revision entry is malformed");
+    }
+    const segment = segmentsById.get(revision.segmentId);
+    if (!segment) {
+      throw historyArchiveRevisionError(`archive perf revision targets unregistered segment ${revision.segmentId}`);
+    }
+    if (
+      revision.databaseSha256 !== segment.database_sha256 ||
+      !authorizedSegmentIds.has(revision.segmentId) ||
+      !perfSegmentIds.has(revision.segmentId)
+    ) {
+      throw historyArchiveRevisionError(`archive perf revision does not bind authorized segment ${revision.segmentId}`);
+    }
+    const sourceIdentity = revision.sourceIdentity;
+    if (
+      !hasExactObjectKeys(sourceIdentity, HISTORY_SOURCE_IDENTITY_COLUMNS) ||
+      HISTORY_SOURCE_IDENTITY_COLUMNS.some((key) => typeof sourceIdentity[key] !== "string") ||
+      sourceIdentity.path === ""
+    ) {
+      throw historyArchiveRevisionError(
+        `archive perf revision source binding is malformed for segment ${segment.segment_id}`,
+      );
+    }
+    const binding = JSON.stringify([
+      revision.segmentId,
+      revision.factTable,
+      ...HISTORY_SOURCE_IDENTITY_COLUMNS.map((column) => sourceIdentity[column]),
+    ]);
+    if (bindings.has(binding)) {
+      throw historyArchiveRevisionError(
+        `archive perf revision duplicates segment-table-source binding ${revision.segmentId}:${revision.factTable}`,
+      );
+    }
+    bindings.add(binding);
+
+    const normalizeDeltas = (value, label) => {
+      if (!Array.isArray(value)) {
+        throw historyArchiveRevisionError(`archive perf revision ${label} must be an array`);
+      }
+      return value.map((delta) => {
+        if (
+          !hasExactObjectKeys(delta, ["payload", "count"]) ||
+          !Number.isSafeInteger(delta.count) ||
+          delta.count <= 0
+        ) {
+          throw historyArchiveRevisionError(`archive perf revision ${label} entries require a positive integer count`);
+        }
+        return {
+          payload: historyArchivePerfRevisionPayload(revision.factTable, delta.payload, sourceIdentity, segment),
+          count: delta.count,
+        };
+      });
+    };
+    const entry = {
+      factTable: revision.factTable,
+      sourceIdentity: { ...sourceIdentity },
+      removed: canonicalHistoryArchivePerfRevisionDeltas(normalizeDeltas(revision.removed, "removed")),
+      added: canonicalHistoryArchivePerfRevisionDeltas(normalizeDeltas(revision.added, "added")),
+    };
+    const entries = revisionsBySegment.get(revision.segmentId) || [];
+    entries.push(entry);
+    revisionsBySegment.set(revision.segmentId, entries);
+  }
+  return revisionsBySegment;
+}
+
+function applyHistoryArchivePerfRevisionDeltas(rows, revision, primaryKeyForRow, label) {
+  const available = new Map();
+  for (const row of rows) {
+    const key = historyArchiveRevisionPayloadKey(row);
+    available.set(key, (available.get(key) || 0) + 1);
+  }
+  for (const removed of revision.removed) {
+    const key = historyArchiveRevisionPayloadKey(removed.payload);
+    const count = available.get(key) || 0;
+    if (removed.count > count) {
+      throw historyArchiveRevisionError(`archive perf revision removes more ${label} rows than the segment contains`);
+    }
+    available.set(key, count - removed.count);
+  }
+
+  const remaining = new Map();
+  for (const removed of revision.removed) {
+    const key = historyArchiveRevisionPayloadKey(removed.payload);
+    remaining.set(key, (remaining.get(key) || 0) + removed.count);
+  }
+  const next = [];
+  for (const row of rows) {
+    const key = historyArchiveRevisionPayloadKey(row);
+    const count = remaining.get(key) || 0;
+    if (count > 0) remaining.set(key, count - 1);
+    else next.push(row);
+  }
+
+  const primaryKeys = new Set(next.map(primaryKeyForRow));
+  for (const added of revision.added) {
+    for (let index = 0; index < added.count; index += 1) {
+      const primaryKey = primaryKeyForRow(added.payload);
+      if (primaryKeys.has(primaryKey)) {
+        throw historyArchiveRevisionError(`archive perf revision adds a duplicate ${label} primary key`);
+      }
+      primaryKeys.add(primaryKey);
+      next.push(added.payload);
+    }
+  }
+  return next;
+}
+
+function assertHistoryArchiveRevisionColumns(database, table, expectedColumns) {
+  const actual = database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .map((row) => String(row.name));
+  if (JSON.stringify(actual) !== JSON.stringify(expectedColumns)) {
+    throw historyArchiveRevisionError(`${table} columns do not match the archive revision contract`);
+  }
+}
+
+function linkedPerfRequestTimingEvidence(database, sampleKey) {
+  return database
+    .prepare(
+      `SELECT DISTINCT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => `evidence.${column}`).join(", ")}
+       FROM perf_sample_sources AS dependencies
+       JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
+       JOIN perf_request_timing_threads AS timing
+         ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
+       JOIN perf_request_timing_evidence AS evidence
+         ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
+       WHERE dependencies.sample_key = ?
+       ORDER BY ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => `evidence.${column}`).join(", ")}`,
+    )
+    .all(String(sampleKey))
+    .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+}
+
+function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence) {
+  const required = samples.filter(
+    (sample) =>
+      sample.source_kind === "codex" &&
+      sample.status === "completed" &&
+      sample.timing_kind === "request_e2e" &&
+      sample.timing_source === "explicit",
+  );
+  if (required.length === 0) return;
+
+  const evidenceKeys = new Set(evidence.map((row) => JSON.stringify([String(row.home_id), String(row.response_id)])));
+  const linked = database.prepare(
+    `SELECT owners.home_id, timing.response_id
+     FROM perf_sample_sources AS dependencies
+     JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
+     JOIN perf_request_timing_threads AS timing
+       ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
+     WHERE dependencies.sample_key = ?`,
+  );
+  for (const sample of required) {
+    const sampleKey = String(sample.sample_key);
+    const links = linked.all(sampleKey);
+    if (
+      links.length === 0 ||
+      links.some((link) => !evidenceKeys.has(JSON.stringify([String(link.home_id), String(link.response_id)])))
+    ) {
+      throw historyArchiveRevisionError(
+        `archive perf revision left explicit Codex sample ${sampleKey} without native request-timing evidence`,
+      );
+    }
+  }
+}
+
+function applyHistoryArchivePerfRevisions(database, segment, samples, revisions = []) {
+  if (revisions.length === 0) {
+    return { samples: samples.map(decodePerfSample), revisionsBySampleKey: new Map() };
+  }
+
+  let effectiveSamples = samples;
+  let effectiveTimingEvidence;
+  const originalSampleKeys = new Set(samples.map((sample) => String(sample.sample_key)));
+  const revisionsBySampleKey = new Map();
+  for (const revision of revisions) {
+    const storedIdentity = database
+      .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
+      .get(revision.sourceIdentity.path);
+    if (!storedIdentity || !sameHistoryArchiveSourceIdentity(storedIdentity, revision.sourceIdentity)) {
+      throw historyArchiveRevisionError(
+        `archive perf revision source binding does not match segment ${segment.segment_id}`,
+      );
+    }
+
+    if (revision.factTable === "perf_samples") {
+      for (const removed of revision.removed) {
+        const sampleKey = String(removed.payload.sample_key);
+        const state = revisionsBySampleKey.get(sampleKey) || { removedPayloads: new Set() };
+        state.removedPayloads.add(historyArchivePerfSamplePayloadKey(decodePerfSample(removed.payload)));
+        revisionsBySampleKey.set(sampleKey, state);
+      }
+      for (const added of revision.added) {
+        const sampleKey = String(added.payload.sample_key);
+        if (!revisionsBySampleKey.has(sampleKey)) {
+          revisionsBySampleKey.set(sampleKey, { removedPayloads: new Set() });
+        }
+      }
+      for (const added of revision.added) {
+        if (!originalSampleKeys.has(String(added.payload.sample_key))) {
+          throw historyArchiveRevisionError(
+            "archive perf revisions cannot add a sample without an existing dependency graph",
+          );
+        }
+      }
+      effectiveSamples = applyHistoryArchivePerfRevisionDeltas(
+        effectiveSamples,
+        revision,
+        (row) => String(row.sample_key),
+        "perf sample",
+      );
+      continue;
+    }
+
+    assertHistoryArchiveRevisionColumns(
+      database,
+      "perf_request_timing_evidence",
+      HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS,
+    );
+    const linked = database.prepare(
+      `SELECT 1 AS present
+       FROM perf_request_timing_threads AS timing
+       JOIN perf_rollout_threads AS owners
+         ON owners.home_id = timing.home_id AND owners.thread_id = timing.thread_id
+       WHERE owners.source_path = ? AND timing.home_id = ? AND timing.response_id = ?
+       LIMIT 1`,
+    );
+    for (const delta of [...revision.removed, ...revision.added]) {
+      if (!linked.get(revision.sourceIdentity.path, delta.payload.home_id, delta.payload.response_id)) {
+        throw historyArchiveRevisionError(
+          "archive timing revision evidence is not reachable through its owner's existing response link",
+        );
+      }
+    }
+    effectiveTimingEvidence ??= database
+      .prepare(
+        `SELECT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.join(", ")}
+         FROM perf_request_timing_evidence
+         ORDER BY home_id, evidence_origin, response_id, variant_key`,
+      )
+      .all()
+      .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+    effectiveTimingEvidence = applyHistoryArchivePerfRevisionDeltas(
+      effectiveTimingEvidence,
+      revision,
+      (row) => JSON.stringify([row.home_id, row.evidence_origin, row.response_id, row.variant_key]),
+      "timing evidence",
+    );
+  }
+  effectiveTimingEvidence ??= database
+    .prepare(
+      `SELECT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.join(", ")}
+       FROM perf_request_timing_evidence
+       ORDER BY home_id, evidence_origin, response_id, variant_key`,
+    )
+    .all()
+    .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+  assertHistoryArchiveEffectiveTimingEvidence(database, effectiveSamples, effectiveTimingEvidence);
+  return {
+    samples: effectiveSamples.map(decodePerfSample),
+    rawSamples: effectiveSamples,
+    timingEvidence: effectiveTimingEvidence,
+    revisionsBySampleKey,
+  };
+}
+
+function historyArchivePerfRevisionBindingKey(revision) {
+  return JSON.stringify([
+    revision.segmentId,
+    revision.factTable,
+    ...HISTORY_SOURCE_IDENTITY_COLUMNS.map((column) => revision.sourceIdentity[column]),
+  ]);
+}
+
+function historyArchivePerfRevisionInputVersion(database) {
+  return {
+    dataVersion: Number(database.prepare("PRAGMA data_version").get().data_version),
+    totalChanges: Number(database.prepare("SELECT total_changes() AS value").get().value),
+  };
+}
+
+function historyArchivePerfRevisionChangesForSamples(database, candidatesBySampleKey, sampleKeys) {
+  const changes = new Map();
+  const selectSample = database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?");
+  const selectSource = database.prepare(
+    "SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+  );
+  const addDelta = (revision, side, payload, factTable) => {
+    const validated = historyArchivePerfRevisionPayload(factTable, payload, revision.sourceIdentity, revision.segment);
+    const deltas = revision[side];
+    const key = historyArchiveRevisionPayloadKey(validated);
+    if (!deltas.has(key)) deltas.set(key, { payload: validated, count: 1 });
+  };
+  const revisionFor = (candidate, factTable) => {
+    const draft = {
+      segmentId: candidate.segmentId,
+      databaseSha256: candidate.databaseSha256,
+      factTable,
+      sourceIdentity: candidate.sourceIdentity,
+      segment: candidate.segment,
+      removed: new Map(),
+      added: new Map(),
+    };
+    const key = historyArchivePerfRevisionBindingKey(draft);
+    const existing = changes.get(key);
+    if (existing) return existing;
+    changes.set(key, draft);
+    return draft;
+  };
+
+  for (const sampleKey of sampleKeys) {
+    const candidate = candidatesBySampleKey.get(String(sampleKey));
+    if (!candidate) continue;
+    const current = selectSample.get(String(sampleKey));
+    if (!current) continue;
+    const source = selectSource.get(String(candidate.sample.sourcePath));
+    if (!source || !sameHistoryArchiveSourceIdentity(source, candidate.sourceIdentity)) {
+      throw historyArchiveRevisionError(
+        `archive perf revision source ${candidate.sample.sourcePath} no longer matches the immutable candidate`,
+      );
+    }
+    if (String(current.source_path) !== String(candidate.sample.sourcePath)) {
+      throw historyArchiveRevisionError(`archive perf revision cannot move cold sample ${sampleKey} to another source`);
+    }
+    const currentSample = decodePerfSample(current);
+    const sampleRevision = revisionFor(candidate, "perf_samples");
+    if (historyArchivePerfSamplePayloadKey(currentSample) !== historyArchivePerfSamplePayloadKey(candidate.sample)) {
+      addDelta(sampleRevision, "removed", encodePerfSample(candidate.sample), "perf_samples");
+      addDelta(sampleRevision, "added", { ...current }, "perf_samples");
+    }
+
+    const timingRevision = revisionFor(candidate, "perf_request_timing_evidence");
+    const candidateEvidence = new Map(
+      candidate.timingEvidence.map((row) => [
+        JSON.stringify([row.home_id, row.evidence_origin, row.response_id, row.variant_key]),
+        row,
+      ]),
+    );
+    const currentEvidence = new Map(
+      linkedPerfRequestTimingEvidence(database, sampleKey).map((row) => [
+        JSON.stringify([row.home_id, row.evidence_origin, row.response_id, row.variant_key]),
+        row,
+      ]),
+    );
+    for (const [key, row] of candidateEvidence) {
+      if (!currentEvidence.has(key)) addDelta(timingRevision, "removed", row, "perf_request_timing_evidence");
+    }
+    for (const [key, row] of currentEvidence) {
+      if (!candidateEvidence.has(key)) addDelta(timingRevision, "added", row, "perf_request_timing_evidence");
+    }
+  }
+
+  for (const [key, revision] of changes) {
+    const removed = canonicalHistoryArchivePerfRevisionDeltas([...revision.removed.values()]);
+    const added = canonicalHistoryArchivePerfRevisionDeltas([...revision.added.values()]);
+    changes.set(key, { ...revision, removed, added });
+  }
+  return changes;
+}
+
+function writeHistoryArchivePerfRevisionChanges(database, changes) {
+  if (changes.size === 0) return;
+  const revisionSegmentsById = new Map(
+    database
+      .prepare(
+        `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+         FROM archive_segments`,
+      )
+      .all()
+      .map((segment) => [String(segment.segment_id), { ...segment }]),
+  );
+  const authorizedSegmentIds = historyArchiveAuthorizedSegmentIds(database);
+  const perfAuthority = historyArchivePerfAuthority(database, authorizedSegmentIds, revisionSegmentsById);
+  const perfSegmentIds = new Set((perfAuthority || []).map((entry) => String(entry.segmentId)));
+  const rawValue = database
+    .prepare("SELECT value FROM store_meta WHERE key = ?")
+    .get(HISTORY_ARCHIVE_PERF_REVISIONS_META)?.value;
+  const revisionsBySegment = historyArchivePerfRevisions(
+    rawValue,
+    revisionSegmentsById,
+    authorizedSegmentIds,
+    perfSegmentIds,
+  );
+
+  for (const [segmentId, entries] of revisionsBySegment) {
+    revisionsBySegment.set(
+      segmentId,
+      entries.filter((entry) => !changes.has(historyArchivePerfRevisionBindingKey({ segmentId, ...entry }))),
+    );
+  }
+  for (const revision of changes.values()) {
+    if (revision.removed.length === 0 && revision.added.length === 0) continue;
+    const entries = revisionsBySegment.get(revision.segmentId) || [];
+    entries.push({
+      factTable: revision.factTable,
+      sourceIdentity: { ...revision.sourceIdentity },
+      removed: revision.removed,
+      added: revision.added,
+    });
+    revisionsBySegment.set(revision.segmentId, entries);
+  }
+
+  const revisions = [];
+  for (const [segmentId, entries] of revisionsBySegment) {
+    const segment = revisionSegmentsById.get(segmentId);
+    for (const entry of entries) {
+      revisions.push({
+        segmentId,
+        databaseSha256: String(segment.database_sha256),
+        factTable: entry.factTable,
+        sourceIdentity: { ...entry.sourceIdentity },
+        removed: entry.removed,
+        added: entry.added,
+      });
+    }
+  }
+  revisions.sort((left, right) => {
+    const leftKey = historyArchivePerfRevisionBindingKey(left);
+    const rightKey = historyArchivePerfRevisionBindingKey(right);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  const value = JSON.stringify({ formatVersion: 1, revisions });
+  const statement = database.prepare(
+    `INSERT INTO store_meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  );
+  if (revisions.length === 0) {
+    database.prepare("DELETE FROM store_meta WHERE key = ?").run(HISTORY_ARCHIVE_PERF_REVISIONS_META);
+  } else if (value !== rawValue) {
+    statement.run(HISTORY_ARCHIVE_PERF_REVISIONS_META, value);
+  }
+}
+
 function localDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -642,7 +2395,7 @@ function usageFromRow(row) {
 }
 
 const COST_EVENT_COLUMNS =
-  "timestamp_ms, session_id, home_id, channel, model, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
+  "timestamp_ms, session_id, home_id, home_label, source_path, channel, model, project, detail_mask, cache_write_tokens, cache_write_known, request_input_tokens, context_level, service_tier, price_version, total, input, cached, output, reasoning";
 
 /** @returns {import("./usage-types.js").IndexedCostEvent} */
 function costEventFromRow(row, tierEvidence, sourceKind) {
@@ -652,9 +2405,12 @@ function costEventFromRow(row, tierEvidence, sourceKind) {
     timestamp,
     sessionId,
     homeId: String(row.home_id),
+    homeLabel: String(row.home_label),
+    sourcePath: String(row.source_path),
     sourceKind,
     channel: String(row.channel),
     model: String(row.model),
+    project: String(row.project),
     detailMask: Number(row.detail_mask || 0),
     cacheWriteTokens: Number(row.cache_write_tokens || 0),
     cacheWriteKnown: Boolean(row.cache_write_known),
@@ -666,10 +2422,309 @@ function costEventFromRow(row, tierEvidence, sourceKind) {
   };
 }
 
+/** @returns {import("./usage-types.js").IndexedCostEvent} */
+function costEventFromRowArray(row, tierEvidence, sourceKind) {
+  const timestamp = Number(row[0]);
+  const sessionId = String(row[1]);
+  return {
+    timestamp,
+    sessionId,
+    homeId: String(row[2]),
+    homeLabel: String(row[3]),
+    sourcePath: String(row[4]),
+    sourceKind,
+    channel: String(row[5]),
+    model: String(row[6]),
+    project: String(row[7]),
+    detailMask: Number(row[8] || 0),
+    cacheWriteTokens: Number(row[9] || 0),
+    cacheWriteKnown: Boolean(row[10]),
+    requestInputTokens: Number(row[11] || 0),
+    contextLevel: String(row[12]),
+    serviceTier: tierEvidence?.resolve(sessionId, timestamp, String(row[13])) || String(row[13]),
+    priceVersion: String(row[14]),
+    total: {
+      total: Number(row[15] || 0),
+      input: Number(row[16] || 0),
+      cached: Number(row[17] || 0),
+      output: Number(row[18] || 0),
+      reasoning: Number(row[19] || 0),
+    },
+  };
+}
+
+function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
+  const groupsByDimension = {
+    channels: new Map(),
+    models: new Map(),
+    homes: new Map(),
+    projects: new Map(),
+  };
+  const add = (groups, key, event) => {
+    const name = String(key);
+    const group = groups.get(name) || {
+      key: name,
+      name,
+      count: 0,
+      sessions: new Set(),
+      total: { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 },
+    };
+    group.count += 1;
+    group.sessions.add(event.sessionId);
+    group.total.total += event.total.total;
+    group.total.input += event.total.input;
+    group.total.cached += event.total.cached;
+    group.total.output += event.total.output;
+    group.total.reasoning += event.total.reasoning;
+    groups.set(name, group);
+  };
+  const materialize = (groups) => {
+    const rows = [...groups.values()]
+      .map(({ key, name, count, sessions, total }) => ({
+        key,
+        name,
+        count,
+        sessions: sessions.size,
+        total,
+      }))
+      .sort((left, right) => right.total.total - left.total.total);
+    // SQLite owns tie order, including UTF-8 BINARY collation, so tied dimensions use the old SQL path.
+    return rows.some((row, index) => index > 0 && row.total.total === rows[index - 1].total.total) ? null : rows;
+  };
+  return {
+    add(event) {
+      add(groupsByDimension.channels, sourceGroup(event.channel, sourceKindsByPath.get(event.sourcePath) ?? ""), event);
+      add(groupsByDimension.models, modelNameFor(event.model), event);
+      add(groupsByDimension.homes, event.homeLabel, event);
+      add(groupsByDimension.projects, event.project, event);
+    },
+    result() {
+      return {
+        channels: materialize(groupsByDimension.channels),
+        models: materialize(groupsByDimension.models),
+        homes: materialize(groupsByDimension.homes),
+        projects: materialize(groupsByDimension.projects),
+      };
+    },
+  };
+}
+
+function compareSqliteText(left, right) {
+  return left === right ? 0 : Buffer.compare(Buffer.from(left), Buffer.from(right));
+}
+
+function createFusedMetadataObservations() {
+  const channels = new Map();
+  return {
+    add(event) {
+      let models = channels.get(event.channel);
+      if (!models) {
+        models = new Map();
+        channels.set(event.channel, models);
+      }
+      let homes = models.get(event.model);
+      if (!homes) {
+        homes = new Map();
+        models.set(event.model, homes);
+      }
+      homes.set(event.homeId, Math.max(homes.get(event.homeId) ?? -Infinity, event.timestamp));
+    },
+    result() {
+      const rows = [];
+      for (const [channel, models] of channels) {
+        for (const [model, homes] of models) {
+          for (const [home_id, last_seen] of homes) rows.push({ channel, model, home_id, last_seen });
+        }
+      }
+      rows.sort(
+        (a, b) =>
+          compareSqliteText(a.channel, b.channel) ||
+          compareSqliteText(a.model, b.model) ||
+          compareSqliteText(a.home_id, b.home_id),
+      );
+      return rows;
+    },
+  };
+}
+
+function createFusedSummaryRepositories(periodRanges) {
+  const groups = new Map();
+  const windows = Object.entries(periodRanges).map(([key, range]) => [
+    key,
+    range.start?.getTime() ?? -Infinity,
+    range.end?.getTime() ?? Infinity,
+  ]);
+  let safe = true;
+  return {
+    add(event) {
+      const key = event.repositoryKey;
+      const group = groups.get(key) || {
+        key,
+        name: event.repositoryPath,
+        kind: event.repositoryKind,
+        minimumKind: event.repositoryKind,
+        paths: new Set(),
+        firsts: new Map(),
+        count: 0,
+        magnitude: 0,
+        periods: Object.fromEntries(COMPARISON_PERIOD_KEYS.map((key) => [key, emptyPeriodMetrics()])),
+        total: { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 },
+      };
+      if (compareSqliteText(event.repositoryPath, group.name) < 0) group.name = event.repositoryPath;
+      if (compareSqliteText(event.repositoryKind, group.kind) > 0) group.kind = event.repositoryKind;
+      if (compareSqliteText(event.repositoryKind, group.minimumKind) < 0) group.minimumKind = event.repositoryKind;
+      if (event.cwd) group.paths.add(event.cwd);
+      const first = group.firsts.get(event.sessionId);
+      if (first === undefined || event.timestamp < first) group.firsts.set(event.sessionId, event.timestamp);
+      group.count += 1;
+      group.total.total += event.total.total;
+      group.total.input += event.total.input;
+      group.total.cached += event.total.cached;
+      group.total.output += event.total.output;
+      group.total.reasoning += event.total.reasoning;
+      // Bound every subset metric too, so cancellation cannot hide an unsafe intermediate sum.
+      group.magnitude +=
+        Math.abs(event.total.total) +
+        Math.abs(event.total.input) +
+        Math.abs(event.total.cached) +
+        Math.abs(event.total.output) +
+        Math.abs(event.total.reasoning) +
+        Math.abs(event.reconciliationGap || 0);
+      safe &&= Number.isSafeInteger(group.magnitude);
+      if (safe) {
+        for (const [key, start, end] of windows) {
+          if (event.timestamp >= start && event.timestamp <= end) addPeriodEvent(group.periods[key], event);
+        }
+      }
+      groups.set(key, group);
+    },
+    result() {
+      if (!safe) return null;
+      const rows = [];
+      const firsts = [];
+      for (const { key, name, kind, paths, firsts: sessions, count, total } of groups.values()) {
+        rows.push({ key, name, kind, pathCount: paths.size, count, sessions: sessions.size, total });
+        for (const [session_id, first_ms] of sessions) firsts.push({ repository_key: key, session_id, first_ms });
+      }
+      rows.sort(
+        (a, b) => b.total.total - a.total.total || compareSqliteText(a.name, b.name) || compareSqliteText(a.key, b.key),
+      );
+      firsts.sort((a, b) => compareSqliteText(a.repository_key, b.repository_key) || a.first_ms - b.first_ms);
+      const periodRepositories = rows.map(({ key, name, pathCount }) => {
+        const group = groups.get(key);
+        return { key, name, kind: group.minimumKind, pathCount, periods: group.periods };
+      });
+      return { rows, firsts, periodRepositories };
+    },
+  };
+}
+
+function periodComparisonKey(now, zone, excludeHomes, pricingModels) {
+  const modelKeys = Object.keys(pricingModels).sort().join("\u0000");
+  return `${modelKeys}|${zone}|${zone === "utc" ? now.toISOString().slice(0, 10) : localDateKey(now)}|${[...excludeHomes].map(String).sort().join(",")}`;
+}
+
 function rangeParameters(range) {
   const start = range.start ? range.start.getTime() : null;
   const end = range.end ? range.end.getTime() : null;
   return [start, start, end, end];
+}
+
+function completeRollupDays(range) {
+  const zone = range?.calendarZone;
+  if (
+    (zone !== "utc" && zone !== "local") ||
+    isQuotaPreset(range?.preset) ||
+    range?.quotaWindow ||
+    range?.quotaPreset ||
+    !(range?.start instanceof Date) ||
+    !(range?.end instanceof Date)
+  ) {
+    return null;
+  }
+  const startMs = range.start.getTime();
+  const endMs = range.end.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+  if (zone === "utc") {
+    const dayMs = 86_400_000;
+    const endExclusiveMs = endMs + 1;
+    if (startMs % dayMs !== 0 || endExclusiveMs % dayMs !== 0) return null;
+    return {
+      calendarZone: zone,
+      startDay: new Date(startMs).toISOString().slice(0, 10),
+      endDay: new Date(endExclusiveMs - 1).toISOString().slice(0, 10),
+    };
+  }
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+  const localMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const nextLocalMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
+  if (localMidnight.getTime() !== startMs || nextLocalMidnight.getTime() - 1 !== endMs) return null;
+  return {
+    calendarZone: zone,
+    startDay: localDateKey(start),
+    endDay: localDateKey(end),
+  };
+}
+
+function readMetadataUsageCounts(database, completeBounds = null) {
+  database.exec("SAVEPOINT metadata_usage_counts_read");
+  try {
+    const hasAuthority = Boolean(
+      database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META),
+    );
+    const bounds =
+      completeBounds ??
+      (hasAuthority
+        ? { minimum: null, maximum: null }
+        : database.prepare("SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events").get());
+    if ((!hasAuthority || completeBounds) && bounds.minimum !== null && bounds.maximum !== null) {
+      const startDay = new Date(Number(bounds.minimum)).toISOString().slice(0, 10);
+      const endDay = new Date(Number(bounds.maximum)).toISOString().slice(0, 10);
+      try {
+        const complete = queryUsageRollupsRange(database, {
+          startDay,
+          endDay,
+          calendarZone: "utc",
+          includeHomeCounts: true,
+        });
+        return {
+          eventCount: complete.eventCount,
+          sessionCount: complete.sessionCount,
+          homeRows: new Map(
+            (complete.homeCounts ?? []).map((row) => [
+              row.homeId,
+              { event_count: row.eventCount, session_count: row.sessionCount },
+            ]),
+          ),
+        };
+      } catch (error) {
+        if (error?.code !== "ROLLUP_DAYS_MISSING") throw error;
+      }
+    }
+    const totals = database
+      .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
+      .get();
+    const homeRows = new Map(
+      database
+        .prepare(`
+          SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count
+          FROM events GROUP BY home_id
+        `)
+        .all()
+        .map((row) => [row.home_id, row]),
+    );
+    return {
+      eventCount: Number(totals.event_count || 0),
+      sessionCount: Number(totals.session_count || 0),
+      homeRows,
+    };
+  } catch (error) {
+    database.exec("ROLLBACK TO metadata_usage_counts_read");
+    throw error;
+  } finally {
+    database.exec("RELEASE metadata_usage_counts_read");
+  }
 }
 
 /**
@@ -813,6 +2868,132 @@ const RECORD_METRICS = Object.freeze({
 });
 
 const RECORD_UNIT_LABELS = Object.freeze({ day: "一日", week: "一周", month: "一个月" });
+
+function emptyRecordPeriods() {
+  return { day: new Map(), week: new Map(), month: new Map() };
+}
+
+function recordPeriodKeys(timestampMs, zone, storedKeys = null) {
+  const date = new Date(timestampMs);
+  if (zone === "utc") {
+    const day = date.toISOString().slice(0, 10);
+    const week = new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() || 7) - 1)),
+    )
+      .toISOString()
+      .slice(0, 10);
+    return { day, week, month: day.slice(0, 7) };
+  }
+  if (storedKeys) {
+    return {
+      day: String(storedKeys.day || ""),
+      week: String(storedKeys.week || ""),
+      month: String(storedKeys.month || ""),
+    };
+  }
+  const day = localDateKey(date);
+  return { day, week: localDateKey(startOfLocalWeek(date)), month: day.slice(0, 7) };
+}
+
+function accumulateRecordEstimate(
+  periods,
+  { timestampMs, sessionId, model, total, estimate, storedKeys = null },
+  zone,
+  rate,
+) {
+  const keys = recordPeriodKeys(timestampMs, zone, storedKeys);
+  const scale = estimate.currency === "CNY" ? 1 : rate;
+  for (const unit of ["day", "week", "month"]) {
+    const key = keys[unit];
+    let slot = periods[unit].get(key);
+    if (!slot) {
+      slot = {
+        key,
+        total: 0,
+        input: 0,
+        cached: 0,
+        output: 0,
+        reasoning: 0,
+        sessions: new Set(),
+        models: new Set(),
+        cost: { total: 0, input: 0, cached: 0, output: 0 },
+      };
+      periods[unit].set(key, slot);
+    }
+    slot.total += Number(total.total || 0);
+    slot.input += Number(total.input || 0);
+    slot.cached += Number(total.cached || 0);
+    slot.output += Number(total.output || 0);
+    slot.reasoning += Number(total.reasoning || 0);
+    slot.sessions.add(sessionId);
+    slot.models.add(model);
+    slot.cost.total += Number(estimate.totalUsd || 0) * scale;
+    slot.cost.input += Number(estimate.inputUsd || 0) * scale;
+    slot.cost.cached += Number(estimate.cachedInputUsd || 0) * scale;
+    slot.cost.output += Number(estimate.outputUsd || 0) * scale;
+  }
+}
+
+function rankRecordChampions(periods) {
+  const slotValues = (slot) => ({
+    totalTokens: slot.total,
+    inputTokens: slot.input,
+    cachedTokens: slot.cached,
+    outputTokens: slot.output,
+    reasoningTokens: slot.reasoning,
+    sessionCount: slot.sessions.size,
+    modelCount: slot.models.size,
+    cacheHitRate: slot.input > 0 ? slot.cached / slot.input : null,
+    totalCost: slot.cost.total,
+    inputCost: slot.cost.input,
+    cachedCost: slot.cost.cached,
+    outputCost: slot.cost.output,
+  });
+
+  const champions = { day: {}, week: {}, month: {} };
+  for (const metric of Object.keys(RECORD_METRICS)) {
+    for (const unit of ["day", "week", "month"]) {
+      const ranked = [...periods[unit].values()]
+        .map((slot) => ({ key: slot.key, value: slotValues(slot)[metric] }))
+        .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
+        .sort((left, right) => right.value - left.value);
+      // “至少两期可比”：少于两期无从比较；**并列**（前两名相等）不是新高 ⇒ 不点亮。
+      if (ranked.length < 2 || ranked[0].value <= ranked[1].value) continue;
+      champions[unit][metric] = { period: ranked[0].key, value: ranked[0].value };
+    }
+  }
+  return champions;
+}
+
+function summarizeQuotaRecordWindow(events, window, excludedHomeIds, usdToCnyRate, estimateEventCost) {
+  const start = window.start instanceof Date ? window.start.getTime() : Date.parse(window.start);
+  const end = window.end instanceof Date ? window.end.getTime() : Date.parse(window.end);
+  const scoped = events.filter((event) => {
+    const timestamp = Date.parse(event.timestamp);
+    return (
+      Number.isFinite(timestamp) &&
+      timestamp >= start &&
+      timestamp <= end &&
+      !excludedHomeIds.has(String(event.homeId)) &&
+      !isCodexAutoReview(event.model)
+    );
+  });
+  const total = { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
+  for (const event of scoped) {
+    for (const field of Object.keys(total)) {
+      total[field] += Number(event.total?.[field] || 0);
+    }
+  }
+  return {
+    eventCount: scoped.length,
+    values: quotaRecordValues(
+      total,
+      estimateCostForEvents(scoped, { estimateEventCost }),
+      new Set(scoped.map((event) => event.sessionId)).size,
+      usdToCnyRate,
+    ),
+  };
+}
 
 /**
  * M3.4：`perf_state` 的**取值域**。
@@ -1048,9 +3229,18 @@ function codexHomeContentSignature(kind, filePaths) {
  * @param {Map<string, Set<string>>} oldPathsByThread 已发布线程 → 其完整物理路径集
  * @param {Record<string, string>} afterFingerprints 本轮**读取后**稳定窗口的逐文件指纹
  * @param {Record<string, string>} publishedFingerprints 已提交的逐文件指纹
+ * @param {Set<string>} dirtyTimingThreadIds timing evidence changed but not republished
  * @returns {boolean} `true` = 必须重新构建（`false` = 可原样复用已发布候选）
  */
-function codexThreadNeedsBuild(thread, oldThreadIds, oldPathsByThread, afterFingerprints, publishedFingerprints) {
+function codexThreadNeedsBuild(
+  thread,
+  oldThreadIds,
+  oldPathsByThread,
+  afterFingerprints,
+  publishedFingerprints,
+  dirtyTimingThreadIds,
+) {
+  if (dirtyTimingThreadIds instanceof Set && dirtyTimingThreadIds.has(thread.threadId)) return true;
   if (!(oldThreadIds instanceof Set) || !oldThreadIds.has(thread.threadId)) return true;
   const oldPaths = oldPathsByThread instanceof Map ? oldPathsByThread.get(thread.threadId) : undefined;
   // 有归属却取不到路径集 ⇒ 不可判定 ⇒ 重算（绝不假设"没变"）。
@@ -1085,8 +3275,19 @@ function codexThreadNeedsBuild(thread, oldThreadIds, oldPathsByThread, afterFing
  * @param {ReadonlyArray<{id?: string, kind?: string, sourceKind?: string, path?: string, usageLogPath?: string}>} homes
  * @param {Record<string, string>} publishedFingerprints 已提交的 `path → 指纹` 映射
  * @param {ReadonlyArray<{path?: string, kind?: string, home_id?: string, home_path?: string}>} publishedFiles
+ * @param {number} [requestTimingPublicationSeq] committed count of timing publications
+ * @param {ReadonlyMap<string, { fingerprint: string, complete: boolean }>} [traceDependencies]
+ * @param {boolean | null} [legacyWorkbuddyFallbackAllowed]
  */
-function buildPublishedSourcesFingerprint(homes, publishedFingerprints, publishedFiles = []) {
+function buildPublishedSourcesFingerprint(
+  homes,
+  publishedFingerprints,
+  publishedFiles = [],
+  requestTimingPublicationSeq = 0,
+  traceDependencies = new Map(),
+  legacyWorkbuddyFallbackAllowed = null,
+  missingSources = [],
+) {
   const byPath = publishedFingerprints || {};
   const parts = [];
   const rowsByHome = new Map();
@@ -1103,6 +3304,21 @@ function buildPublishedSourcesFingerprint(homes, publishedFingerprints, publishe
     const homePath = typeof home?.path === "string" ? home.path : "";
     // Home identity remains present even when discovery finds zero physical files.
     parts.push(JSON.stringify(["home", kind, homeId]));
+    if (kind === "workbuddy") {
+      const traceDependency = traceDependencies.get(homeId);
+      parts.push(
+        JSON.stringify([
+          "workbuddy-trace",
+          homeId,
+          traceDependency?.complete ? traceDependency.fingerprint : "unavailable",
+        ]),
+      );
+      if (legacyWorkbuddyFallbackAllowed !== null) {
+        parts.push(
+          JSON.stringify(["workbuddy-legacy-fallback", homeId, legacyWorkbuddyFallbackAllowed ? "single" : "multi"]),
+        );
+      }
+    }
     const rows = rowsByHome.get(`${kind}\u0000${homeId}`) || [];
     for (const row of rows) {
       if (homePath !== "" && String(row?.home_path ?? "") !== homePath) continue;
@@ -1114,8 +3330,34 @@ function buildPublishedSourcesFingerprint(homes, publishedFingerprints, publishe
       parts.push(JSON.stringify(["file", kind, homeId, filePath, byPath[filePath] ?? "unpublished"]));
     }
   }
+  if (Number.isSafeInteger(requestTimingPublicationSeq) && requestTimingPublicationSeq > 0) {
+    parts.push(JSON.stringify(["request-timing-publication", String(requestTimingPublicationSeq)]));
+  }
+  for (const source of missingSources) {
+    parts.push(JSON.stringify(["missing", source.kind, source.homeId, source.path]));
+  }
   const unique = [...new Set(parts)].sort();
   return createHash("sha256").update(unique.join("\n")).digest("hex");
+}
+
+/**
+ * Trace files are WorkBuddy duration inputs but not session/perf files. Hash the
+ * same size+mtime+64KiB content probe used for published file evidence.
+ * @param {string} homePath
+ */
+async function inspectWorkbuddyTrace(homePath) {
+  const traceFiles = await workbuddyTraceFiles(homePath);
+  /** @type {Map<string, string>} */
+  const fingerprints = new Map();
+  const hash = createHash("sha256");
+  let complete = true;
+  for (const filePath of traceFiles) {
+    const fingerprint = enabledPerfSourceStat("workbuddy", filePath);
+    fingerprints.set(filePath, fingerprint);
+    if (fingerprint === null) complete = false;
+    hash.update(`${filePath}\t${fingerprint ?? "!"}\n`);
+  }
+  return { traceFiles, fingerprints, fingerprint: hash.digest("hex"), complete };
 }
 
 /**
@@ -1237,6 +3479,52 @@ function canonicalizeKind(kindRaw) {
     return canonicalPerfSourceKind(kindRaw);
   } catch {
     return String(kindRaw ?? "");
+  }
+}
+
+function requestTimingImportError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+/**
+ * Enforce the high-level admission boundary for one import batch. Reviewed
+ * origins are supplied by the caller and never inferred from record metadata.
+ *
+ * @param {unknown[]} records
+ * @param {unknown} reviewedOrigins
+ */
+export function assertRequestTimingOriginsReviewed(records, reviewedOrigins) {
+  if (!Array.isArray(records)) {
+    throw requestTimingImportError("REQUEST_TIMING_INVALID_INPUT", "records must be an array");
+  }
+  if (records.length === 0) return;
+  if (!Array.isArray(reviewedOrigins)) {
+    throw requestTimingImportError(
+      "REQUEST_TIMING_ORIGIN_UNREVIEWED",
+      "reviewedOrigins is required for a non-empty timing batch",
+    );
+  }
+  const reviewed = new Set();
+  for (const origin of reviewedOrigins) {
+    if (typeof origin !== "string" || origin.trim() === "") {
+      throw requestTimingImportError(
+        "REQUEST_TIMING_ORIGIN_UNREVIEWED",
+        "reviewedOrigins must contain non-empty strings",
+      );
+    }
+    reviewed.add(origin);
+  }
+  for (const record of records) {
+    const origin =
+      record !== null && typeof record === "object" && !Array.isArray(record)
+        ? /** @type {{evidenceOrigin?: unknown}} */ (record).evidenceOrigin
+        : undefined;
+    if (typeof origin !== "string" || !reviewed.has(origin)) {
+      throw requestTimingImportError(
+        "REQUEST_TIMING_ORIGIN_UNREVIEWED",
+        `Timing evidence origin ${String(origin)} was not reviewed for this batch`,
+      );
+    }
   }
 }
 
@@ -1551,14 +3839,15 @@ export function createPersistentCodexProjectionCache({
       return true;
     },
 
-    /** 稳定窗口成立 ⇒ 内存提升 + 本 home 的行**单事务**落盘。 */
-    commit(homeId) {
-      const promoted = inner.commit(homeId);
+    /** 稳定窗口（或已证明的 append 子集）⇒ 内存提升 + 本 home 的未排除行**单事务**落盘。 */
+    commit(homeId, excludedPaths = []) {
+      const excluded = new Set((excludedPaths ?? []).map(canonicalProjectionStorePath));
+      const promoted = inner.commit(homeId, excludedPaths);
       const id = String(homeId ?? "");
       const bucket = freshRows.get(id);
       freshRows.delete(id);
       if (bucket === undefined || bucket.size === 0) return promoted;
-      const rows = [...bucket.values()];
+      const rows = [...bucket.values()].filter((row) => !excluded.has(row.path));
       const ok = runInSavepoint(() => {
         const statement = database.prepare(UPSERT_ROW);
         for (const row of rows) {
@@ -1717,6 +4006,7 @@ export function createPersistentCodexProjectionCache({
  * @property {string} indexedAt
  * @property {string[]} degradedHomeIds
  * @property {{sourceKind: string, homeId: string, code: string, count: number}[]} sourceWarnings
+ * @property {{path: string, kind: string, homeId: string, homeLabel: string, homePath: string, missingSinceMs: number}[]} missingSources
  * @property {string | undefined} codexPublicationPolicy
  */
 
@@ -1730,6 +4020,33 @@ function decodeJsonStringArray(raw) {
   } catch {
     return [];
   }
+}
+
+/**
+ * Decode retained-but-missing source identities. Missing sources keep their
+ * `source_files` row so facts and native ownership remain queryable; this
+ * metadata only adds the current physical-availability state.
+ */
+function decodeMissingSources(raw) {
+  if (raw === undefined || raw === "") return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((entry) => entry && typeof entry === "object" && typeof entry.path === "string" && entry.path !== "")
+    .map((entry) => ({
+      path: String(entry.path),
+      kind: String(entry.kind ?? ""),
+      homeId: String(entry.homeId ?? ""),
+      homeLabel: String(entry.homeLabel ?? ""),
+      homePath: String(entry.homePath ?? ""),
+      missingSinceMs: Number.isSafeInteger(Number(entry.missingSinceMs)) ? Number(entry.missingSinceMs) : 0,
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 /**
@@ -1778,6 +4095,29 @@ function normalizeSourceWarnings(raw) {
     .filter((entry) => entry.sourceKind !== "" || entry.homeId !== "" || entry.code !== "");
 }
 
+function normalizePublishedFileWarnings(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    const [normalized] = normalizeSourceWarnings([entry]);
+    if (!normalized) return [];
+    if (normalized.code !== PROJECT_LOG_MALFORMED_LINE_WARNING_CODE) return [normalized];
+    const lineNumbers = Array.isArray(entry?.lineNumbers)
+      ? [...new Set(entry.lineNumbers.map(Number).filter((line) => Number.isSafeInteger(line) && line > 0))].sort(
+          (left, right) => left - right,
+        )
+      : [];
+    return [{ ...normalized, lineNumbers }];
+  });
+}
+
+function formatProjectLogTruncationWarning(filePath, lostEvents) {
+  return `project-log 来源文件缩短（截断）：${filePath}（丢失 ${Number(lostEvents)} 条事件）`;
+}
+
+function formatProjectLogMalformedLineWarning(filePath, lineNumber) {
+  return `project-log 来源存在无法解析的 JSONL 行：${filePath}（第 ${Number(lineNumber)} 行）`;
+}
+
 function recordUnitBoundaries(key, unit, zone = "local") {
   if (unit === "day") {
     const start = parseDateKey(key, zone);
@@ -1809,6 +4149,56 @@ function addDaysMs(date, days) {
   return date.getTime() + days * 24 * 60 * 60 * 1000;
 }
 
+function completeHistoryRollupDays(database, events, calendarZone = "utc") {
+  const days = new Set();
+  let firstMs = Infinity;
+  let lastMs = -Infinity;
+  if (events === null) {
+    const bounds = database
+      .prepare("SELECT MIN(timestamp_ms) AS first_ms, MAX(timestamp_ms) AS last_ms FROM events")
+      .get();
+    if (bounds.first_ms !== null) {
+      firstMs = Number(bounds.first_ms);
+      lastMs = Number(bounds.last_ms);
+    }
+  } else {
+    for (const event of events) {
+      const timestamp = Date.parse(event.timestamp);
+      if (!Number.isFinite(timestamp)) throw new TypeError("complete history contains an invalid event timestamp");
+      firstMs = Math.min(firstMs, timestamp);
+      lastMs = Math.max(lastMs, timestamp);
+    }
+  }
+  if (firstMs <= lastMs) {
+    const firstUtcDay = new Date(Math.floor(firstMs / 86_400_000) * 86_400_000);
+    const lastUtcDay = new Date(Math.floor(lastMs / 86_400_000) * 86_400_000);
+    const utcDays = [];
+    for (let cursor = firstUtcDay; cursor.getTime() <= lastUtcDay.getTime(); cursor = new Date(addDaysMs(cursor, 1))) {
+      utcDays.push(cursor.toISOString().slice(0, 10));
+    }
+    if (calendarZone === "utc") {
+      for (const day of utcDays) days.add(day);
+    } else {
+      // The module owns local calendar iteration so DST days are not fixed 24h steps.
+      const firstLocalDay = localDateKey(new Date(firstMs));
+      const lastLocalDay = localDateKey(new Date(lastMs));
+      for (const day of localUsageRollupDaysForUtcDays(utcDays)) {
+        if (day >= firstLocalDay && day <= lastLocalDay) days.add(day);
+      }
+    }
+  }
+  const tables = ["usage_rollup_days", "usage_rollup_daily", "usage_rollup_sessions"];
+  // Model rows are lazily created by a non-empty rebuild, so a fresh store may not have this table yet.
+  if (database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_rollup_models'").get()) {
+    tables.splice(2, 0, "usage_rollup_models");
+  }
+  const sources = tables.map((table) => `SELECT day_key FROM ${table} WHERE calendar_zone = ?`).join(" UNION ");
+  for (const row of database.prepare(sources).all(...tables.map(() => calendarZone))) {
+    days.add(String(row.day_key));
+  }
+  return [...days].sort();
+}
+
 function withScope(baseSql, scope) {
   return scope.sql ? `${baseSql} AND ${scope.sql}` : baseSql;
 }
@@ -1836,7 +4226,7 @@ function createPublishedFileMapsView(store) {
   return {
     /** @type {Record<string, string> | null} */
     fingerprints: null,
-    /** @type {Record<string, {sourceKind: string, homeId: string, code: string, count: number}[]> | null} */
+    /** @type {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]> | null} */
     warnings: null,
     /** 本轮已提交的 `path → 指纹` 映射（首次访问解码一次）；返回新对象。 */
     fingerprintsForRound() {
@@ -1852,7 +4242,7 @@ function createPublishedFileMapsView(store) {
      * 成功 `COMMIT` 之后写回视图。`null` = 本次提交**没有改**这份 map
      * （Codex 文件事务只写告警；已启用非 Codex 文件事务两份都写）。
      * @param {Record<string, string> | null} fingerprints
-     * @param {Record<string, {sourceKind: string, homeId: string, code: string, count: number}[]> | null} warnings
+     * @param {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]> | null} warnings
      */
     commit(fingerprints, warnings) {
       if (fingerprints !== null) this.fingerprints = { ...fingerprints };
@@ -1864,6 +4254,10 @@ function createPublishedFileMapsView(store) {
 export class UsageStore {
   constructor(options = {}) {
     this.options = options;
+    this.magpieRequestTimings = new MagpieRequestTimings();
+    this.magpieTimingLoaded = false;
+    this.magpieTimingPublication = "";
+    this.magpieTimingFile = "";
     this.metadataCache = null;
     /**
      * D4：`metadata()` 观测聚合的**静态输入**（`events` 未过滤分组行 + 全表最大 timestamp）。
@@ -1873,6 +4267,7 @@ export class UsageStore {
      * @type {{ revision: number, rows: object[], maxTimestampMs: number } | null}
      */
     this.metadataObservationCache = null;
+    /** Period-comparison results keyed by time scope and the catalog used for model normalization. */
     this.periodComparisonCache = new Map();
     /**
      * W4-b1 / D1：**实例私有**的"事件级计价" memo（跨形状共享）。
@@ -1892,6 +4287,8 @@ export class UsageStore {
     this.databaseFile =
       options.databaseFile || path.join(options.homeDir || os.homedir(), ".codex-usage", "usage-index.sqlite");
     this.database = null;
+    /** Per-read model catalog context for the `usage_model_group` UDF. */
+    this.readPricingModels = null;
     this.homes = [];
     this.warnings = [];
     this.generatedAt = "";
@@ -1915,7 +4312,7 @@ export class UsageStore {
      * 刻意是**进程内 Map**（实施计划 §0 第 5/6 条）：跨轮保留、进程重启自然清空 ⇒ 首轮自动全扫，
      * 零 schema 成本，也不建 trace 指纹表。`sync()` **不清空**（否则每轮都会重解析全部 trace）；
      * 只有 `close()` 丢弃。
-     * @type {Map<string, { size: number, mtimeMs: number }>}
+     * @type {Map<string, string>}
      */
     this.workbuddyTraceFingerprints = new Map();
     /**
@@ -1968,6 +4365,12 @@ export class UsageStore {
     this.storeRevision = 0;
     /** D1：派生缓存（`metadataCache` / `periodComparisonCache`）当前对齐到的修订。 */
     this.derivedRevision = 0;
+    /** 内部读快照：命中时跳过嵌套修订探测；共享缓存仍按快照前修订读写。 */
+    this.periodComparisonSnapshotRead = false;
+    /** Metadata history reads pin the marker and synchronous metadata in one savepoint. */
+    this.metadataSnapshotRead = false;
+    /** Summary history reads use the same guard for their marker + hot-summary savepoint. */
+    this.summarySnapshotRead = false;
     /** D1：本连接上一次观察到的 `PRAGMA data_version`（外部提交检测的基准，`open()` 里取初值）。 */
     this.observedDataVersion = 0;
     /** D1：检出过多少次**外部提交**（诊断用；不落盘、不进 report、不建计数表）。 */
@@ -1995,6 +4398,16 @@ export class UsageStore {
      */
     this.recordChampionCache = null;
     /**
+     * C19 static summary projection: one instance-private all-hot entry for
+     * timeline/cost and grouped detail rows. Dynamic range/quota/clock/status
+     * remain outside this slot.
+     * @type {{ key: string, factsKey: string, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
+     */
+    this.summaryProjectionCache = null;
+    /** SQL history projections stay separate from every hot-only public reader. */
+    this.historySqlDashboardCache = null;
+    this.verifiedHistorySqlRead = false;
+    /**
      * D3：**已提交 quota 观测的规范映射**（单槽，见 {@link UsageStore#quotaObservations}）。
      *
      * 契约（本卡红线）：缓存里**只有静态输入**——`rate_limit_observations` 已提交行的字段映射。
@@ -2020,15 +4433,17 @@ export class UsageStore {
     this.metadataObservationCache = null;
     // D2：历史冠军 memo 是**连接级**状态（键含实例修订，但连接/库可能已换）⇒ 重开时一并复位。
     this.recordChampionCache = null;
+    this.summaryProjectionCache = null;
     // D3：quota 观测映射同为连接级状态（键含实例修订，但连接/库可能已换）⇒ 重开时一并复位。
     this.quotaObservationCache = null;
     await mkdir(path.dirname(this.databaseFile), { recursive: true });
     this.database = new DatabaseSync(this.databaseFile);
-    this.database.function("usage_source_group", (channel, kind) => sourceGroup(channel, String(kind ?? "")));
+    this.registerReadFunctions();
     this.database.exec(`
       PRAGMA foreign_keys = ON;
       PRAGMA busy_timeout = 5000;
       PRAGMA journal_mode = WAL;
+      PRAGMA journal_size_limit = 67108864;
       CREATE TABLE IF NOT EXISTS store_meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -2296,6 +4711,30 @@ export class UsageStore {
       migrate(WORKBUDDY_DURATION_DDL, 17, () => assertWorkbuddyDurationSchema(this.database));
       version = 17;
     }
+    if (version === 17) {
+      // v18 stores request timing evidence plus the affected-thread dirty set.
+      // The adapter owns the only DDL; its empty import also verifies the
+      // resulting table shape inside this migration transaction.
+      migrate("SELECT 1;", 18, () => initializeRequestTimingSchema(this.database));
+      version = 18;
+    }
+    if (version === 18) {
+      // v19 keeps conflicting WorkBuddy trace durations instead of first-wins.
+      // The legacy table and its rows stay untouched: without a home_id they
+      // cannot be attributed safely, so they remain a read-only fallback.
+      migrate(WORKBUDDY_DURATION_OBSERVATION_DDL, 19, () => assertWorkbuddyDurationObservationSchema(this.database));
+      version = 19;
+    }
+    if (version === 19) {
+      // v20 stores only event payloads replaced by a successful reparse.
+      migrate(HISTORY_REPLACED_FACTS_DDL, 20, () => assertHistoryReplacedFactsSchema(this.database));
+      version = 20;
+    }
+    if (version === 20) {
+      // v21 reserves the archive directory. Registration and cold reads are wired by later cards.
+      migrate(ARCHIVE_SEGMENTS_DDL, 21, () => assertArchiveSegmentsSchema(this.database));
+      version = 21;
+    }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
@@ -2316,6 +4755,14 @@ export class UsageStore {
       // 中途失败留下的库仍是 version 0，下次打开可自愈）。
       this.database.exec(WORKBUDDY_DURATION_DDL);
       assertWorkbuddyDurationSchema(this.database);
+      this.database.exec(WORKBUDDY_DURATION_OBSERVATION_DDL);
+      assertWorkbuddyDurationObservationSchema(this.database);
+      initializeRequestTimingSchema(this.database);
+      this.database.exec(HISTORY_REPLACED_FACTS_DDL);
+      assertHistoryReplacedFactsSchema(this.database);
+      // v21: reserve the empty archive directory for later registration/cold-read cards.
+      this.database.exec(ARCHIVE_SEGMENTS_DDL);
+      assertArchiveSegmentsSchema(this.database);
       this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     }
     this.database.exec("CREATE INDEX IF NOT EXISTS events_repository_idx ON events(repository_key)");
@@ -2418,11 +4865,13 @@ export class UsageStore {
   /**
    * D1：把派生缓存对齐到当前修订（`metadataCache` / `periodComparisonCache` 的**统一**失效入口）。
    *
-   * 读路径（`metadata()` / `periodComparison()`）与轮末都必须先过这里：修订前进过 ⇒ 两个缓存一起失效
-   * （它们都是**用量侧**派生：`events` 聚合 + home 形状 + service-tier evidence）。
+   * 读路径（`metadata()` / `periodComparison()`）与轮末都必须先过这里：数据修订前进过 ⇒ 两个缓存
+   * 一起失效（`events` 聚合 + home 形状 + service-tier evidence）。价目目录不是数据修订的一部分，
+   * `periodComparisonCache` 通过缓存键里的目录键集自行隔离。
    * @returns {boolean} 本次是否发生了失效
    */
   syncDerivedRevision() {
+    if (this.summarySnapshotRead) return false;
     this.detectExternalCommit();
     if (this.derivedRevision === this.storeRevision) return false;
     this.metadataCache = null;
@@ -2431,6 +4880,7 @@ export class UsageStore {
     this.metadataObservationCache = null;
     // D3：quota 观测的**规范映射**同为"用量侧静态输入"派生物 ⇒ 与上面两个缓存同一失效入口。
     this.quotaObservationCache = null;
+    this.summaryProjectionCache = null;
     // W4-b1 / D1：事件计价 memo 的输入是"事件内容 + 生效价目"，**不含**修订；这里清空是**保守**的
     // 内存卫生（旧修订的事件可能已被删除/重写），不是正确性的必要条件 —— 键不同就绝不会命中。
     this.eventCostMemo.clear("store-revision");
@@ -2506,12 +4956,1326 @@ export class UsageStore {
     return row === undefined ? undefined : String(row.value);
   }
 
+  /** Lightweight publication check for status polling: one index key plus timing revisions. */
+  perfPublicationState() {
+    const timingRevision = readRequestTimingRevision(this.database);
+    const rawPublishedRevision = Number(this.readMetaRaw(REQUEST_TIMING_PUBLISHED_REVISION_META));
+    const publishedRevision =
+      Number.isSafeInteger(rawPublishedRevision) && rawPublishedRevision >= 0 ? rawPublishedRevision : 0;
+    const timingPending = this.requestTimingDirtyThreadCount() > 0 || timingRevision !== publishedRevision;
+    return {
+      indexVersion: this.readMeta("perf_index_version"),
+      timingRevision: timingPending ? String(timingRevision) : "",
+    };
+  }
+
   writeMeta(key, value) {
     this.database
       .prepare(
         "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(key, String(value));
+  }
+
+  /**
+   * Fold only published Codex rollout projections to recover the native
+   * response -> thread identity. A missing, stale, or ambiguous projection is
+   * rejected; model names and timestamps are never used as a fallback.
+   *
+   * @param {string} homeId
+   * @param {Set<string>} responseIds
+   * @returns {Array<{responseId: string, threadId: string}>}
+   */
+  requestTimingNativeLinks(homeId, responseIds) {
+    if (responseIds.size === 0) return [];
+
+    /** @type {Map<string, string[]>} */
+    const storedByResponse = new Map();
+    const storedLinks = this.database
+      .prepare(`
+        SELECT response_id, thread_id
+        FROM perf_request_timing_threads
+        WHERE home_id = ?
+        ORDER BY response_id, thread_id
+      `)
+      .all(homeId);
+    for (const row of storedLinks) {
+      const responseId = String(row.response_id);
+      if (!responseIds.has(responseId)) continue;
+      const threadIds = storedByResponse.get(responseId) ?? [];
+      threadIds.push(String(row.thread_id));
+      storedByResponse.set(responseId, threadIds);
+    }
+    for (const [responseId, threadIds] of storedByResponse) {
+      if (threadIds.length > 1) {
+        throw requestTimingImportError(
+          "REQUEST_TIMING_STORE_CORRUPT",
+          `Response ${responseId} already has multiple native thread links`,
+        );
+      }
+    }
+
+    const ownershipRows = this.database
+      .prepare(
+        "SELECT source_path, thread_id FROM perf_rollout_threads WHERE home_id = ? ORDER BY thread_id, source_path",
+      )
+      .all(homeId);
+    if (ownershipRows.length === 0) {
+      if (storedByResponse.size === responseIds.size) {
+        return [...responseIds].map((responseId) => ({
+          responseId,
+          threadId: storedByResponse.get(responseId)[0],
+        }));
+      }
+      throw requestTimingImportError(
+        "REQUEST_TIMING_LINK_MISSING",
+        "No published Codex rollout ownership exists for this home",
+      );
+    }
+
+    const publishedByPath = new Map(
+      Object.entries(this.readPublishedFileFingerprints()).map(([filePath, fingerprint]) => [
+        canonicalProjectionStorePath(filePath),
+        fingerprint,
+      ]),
+    );
+    const projectionsByPath = new Map();
+    for (const row of this.database
+      .prepare(
+        "SELECT path, home_id, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id = ?",
+      )
+      .all(homeId)) {
+      projectionsByPath.set(canonicalProjectionStorePath(String(row.path)), row);
+    }
+
+    const ownerRowsByThread = new Map();
+    for (const row of ownershipRows) {
+      const threadId = String(row.thread_id);
+      const rows = ownerRowsByThread.get(threadId) || [];
+      rows.push(String(row.source_path));
+      ownerRowsByThread.set(threadId, rows);
+    }
+
+    const currentMethodVersion = this.codexProjections.methodVersion();
+    const threadsByResponse = new Map();
+    for (const [threadId, paths] of ownerRowsByThread) {
+      const projections = [];
+      let trusted = true;
+      for (const sourcePath of [...paths].sort()) {
+        const canonicalPath = canonicalProjectionStorePath(sourcePath);
+        const row = projectionsByPath.get(canonicalPath);
+        if (!row) {
+          trusted = false;
+          continue;
+        }
+        if (
+          String(row.home_id) !== homeId ||
+          String(row.method_version) !== currentMethodVersion ||
+          String(row.fingerprint) !== String(publishedByPath.get(canonicalPath) ?? "")
+        ) {
+          trusted = false;
+        }
+        try {
+          const projection = JSON.parse(String(row.projection));
+          if (!projection || typeof projection !== "object" || !Array.isArray(projection.records)) {
+            trusted = false;
+            continue;
+          }
+          projections.push(projection);
+        } catch {
+          trusted = false;
+        }
+      }
+
+      const folded = foldCodexRolloutMetadata(homeId, projections);
+      for (const turn of folded.turns) {
+        const requests = /** @type {Array<Record<string, unknown>>} */ (turn.requests);
+        for (const request of requests) {
+          const responseId = request.responseId;
+          if (typeof responseId !== "string" || !responseIds.has(responseId)) continue;
+          const entries = threadsByResponse.get(responseId) || new Map();
+          entries.set(threadId, trusted);
+          threadsByResponse.set(responseId, entries);
+        }
+      }
+    }
+
+    const requestLinks = [];
+    for (const responseId of responseIds) {
+      const threads = threadsByResponse.get(responseId);
+      const storedThreadId = storedByResponse.get(responseId)?.[0];
+      if (!threads || threads.size === 0) {
+        if (storedThreadId !== undefined) {
+          requestLinks.push({ responseId, threadId: storedThreadId });
+          continue;
+        }
+        throw requestTimingImportError(
+          "REQUEST_TIMING_LINK_MISSING",
+          `No published native projection contains response ${responseId}`,
+        );
+      }
+      if (threads.size > 1) {
+        throw requestTimingImportError(
+          "REQUEST_TIMING_THREAD_CONFLICT",
+          `Response ${responseId} appears in multiple native threads`,
+        );
+      }
+      const [[threadId, trusted]] = threads;
+      if (storedThreadId !== undefined) {
+        if (threadId !== storedThreadId) {
+          throw requestTimingImportError(
+            "REQUEST_TIMING_THREAD_CONFLICT",
+            `Response ${responseId} is already linked to another native thread`,
+          );
+        }
+        requestLinks.push({ responseId, threadId });
+        continue;
+      }
+      if (!trusted) {
+        throw requestTimingImportError(
+          "REQUEST_TIMING_LINK_MISSING",
+          `Response ${responseId} is not backed by a current published native projection`,
+        );
+      }
+      requestLinks.push({ responseId, threadId });
+    }
+    return requestLinks;
+  }
+
+  /**
+   * Persist one normalized evidence batch, derive native response links from
+   * published local projections, and invalidate only the affected threads.
+   * The evidence revision, dirty rows, and removed published fingerprints
+   * commit atomically.
+   *
+   * @param {{homeId: string, records: unknown[], reviewedOrigins?: string[]}} input
+   * @returns {{revision: number, changed: boolean, affectedThreadIds: string[]}}
+   */
+  importRequestTimingEvidence(input) {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("Timing import input must be an object");
+    }
+    const homeId = input.homeId;
+    if (typeof homeId !== "string" || homeId.trim() === "") {
+      throw requestTimingImportError("REQUEST_TIMING_INVALID_INPUT", "homeId must be a non-empty string");
+    }
+    if (!Array.isArray(input.records)) {
+      throw requestTimingImportError("REQUEST_TIMING_INVALID_INPUT", "records must be an array");
+    }
+    assertRequestTimingOriginsReviewed(input.records, input.reviewedOrigins);
+    const records = input.records.map(normalizeRequestTimingEvidence);
+    const responseIds = new Set(records.map((record) => record.responseId));
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const requestLinks = this.requestTimingNativeLinks(homeId, responseIds);
+      const result = importStoredRequestTimingEvidence(this.database, {
+        homeId,
+        records,
+        requestLinks,
+      });
+      if (result.changed) {
+        const markDirty = this.database.prepare(`
+          INSERT INTO perf_request_timing_dirty_threads (home_id, thread_id)
+          VALUES (?, ?)
+          ON CONFLICT(home_id, thread_id) DO NOTHING
+        `);
+        for (const threadId of result.affectedThreadIds) markDirty.run(homeId, threadId);
+
+        this.codexStableAttempts.delete(homeId);
+      }
+      this.database.exec("COMMIT");
+      if (result.changed) this.commitStoreRevision("request-timing");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /**
+   * Register one verified archive package as metadata. This never deletes hot
+   * facts or makes the registered segment authoritative.
+   * @param {string} candidateFile
+   * @param {string} [manifestFile]
+   */
+  async registerHistoryArchiveCandidate(candidateFile, manifestFile = undefined) {
+    await this.open();
+    // Dynamic import avoids store -> archive -> backup -> store initialization cycles.
+    const { assertHistoryArchiveSourceMatches, verifyHistoryArchiveCandidate } = await import("./history-archive.js");
+    const verified = await verifyHistoryArchiveCandidate(candidateFile, manifestFile);
+    if (!verified.ok || !verified.candidate) {
+      throw new TypeError("verifiedCandidate must be the result of verifyHistoryArchiveCandidate");
+    }
+    const segmentId = String(verified.manifest.database.sha256);
+    const databasePath = path.resolve(verified.databaseFile);
+    const { startMs, endMs } = verified.candidate;
+    const eventCount = Number(verified.candidate.events.rows);
+    const registeredAtMs = Date.now();
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      assertHistoryArchiveSourceMatches(this.database, verified);
+      const existing = this.database
+        .prepare(
+          `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+           FROM archive_segments WHERE segment_id = ?`,
+        )
+        .get(segmentId);
+      if (existing) {
+        if (
+          String(existing.database_sha256) !== segmentId ||
+          Number(existing.start_ms) !== startMs ||
+          Number(existing.end_ms) !== endMs ||
+          Number(existing.event_count) !== eventCount
+        ) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_SEGMENT_CONFLICT",
+            `archive segment ${segmentId} is already registered with different metadata`,
+          );
+        }
+        this.database.exec("COMMIT");
+        return {
+          inserted: false,
+          segmentId,
+          databasePath: String(existing.database_path),
+          databaseSha256: String(existing.database_sha256),
+          startMs: Number(existing.start_ms),
+          endMs: Number(existing.end_ms),
+          eventCount: Number(existing.event_count),
+          registeredAtMs: Number(existing.registered_at_ms),
+        };
+      }
+
+      const overlap = this.database
+        .prepare(
+          `SELECT segment_id, start_ms, end_ms FROM archive_segments
+           WHERE start_ms < ? AND end_ms > ? LIMIT 1`,
+        )
+        .get(endMs, startMs);
+      if (overlap) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_SEGMENT_OVERLAP",
+          `archive range overlaps registered segment ${String(overlap.segment_id)}`,
+        );
+      }
+
+      this.database
+        .prepare(
+          `INSERT INTO archive_segments (
+             segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(segmentId, databasePath, segmentId, startMs, endMs, eventCount, registeredAtMs);
+      this.database.exec("COMMIT");
+      return {
+        inserted: true,
+        segmentId,
+        databasePath,
+        databaseSha256: segmentId,
+        startMs,
+        endMs,
+        eventCount,
+        registeredAtMs,
+      };
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /**
+   * Atomically publish one prepared archive segment. Supported perf
+   * samples move with events; timing, source identities, and native
+   * dependencies remain hot.
+   * @param {Record<string, any>} plan
+   */
+  async commitHistoryArchiveEvents(plan) {
+    await this.open();
+    if (this.database.isTransaction) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_COMMIT_TRANSACTION_ACTIVE",
+        "archive commit requires no active source transaction",
+      );
+    }
+    this.syncDerivedRevision();
+    const {
+      assertHistoryArchiveCommitPlan,
+      historyArchivePerfDeletion,
+      prepareHistoryArchiveCommit,
+      verifyHistoryArchiveCandidate,
+    } = await import("./history-archive.js");
+    if (realpathSync.native(path.resolve(this.databaseFile)) !== plan?.source?.databaseFile) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_COMMIT_SOURCE_MISMATCH",
+        "archive commit plan was prepared for a different source database",
+      );
+    }
+    this.database.exec("BEGIN IMMEDIATE");
+    this.writeTransactionDepth += 1;
+    try {
+      const segmentId = String(plan?.candidate?.databaseSha256 ?? "");
+      const existing = this.database
+        .prepare(
+          `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count
+           FROM archive_segments WHERE segment_id = ?`,
+        )
+        .get(segmentId);
+      const authorized = historyArchiveAuthorizedSegmentIds(this.database);
+      const candidate = plan?.candidate;
+      if (existing && authorized.has(segmentId)) {
+        const verified = await verifyHistoryArchiveCandidate(
+          String(candidate?.databaseFile),
+          candidate?.manifestFile === undefined ? undefined : String(candidate.manifestFile),
+        );
+        if (
+          String(existing.database_path) !== path.resolve(verified.databaseFile) ||
+          String(existing.database_sha256) !== verified.manifest.database.sha256 ||
+          Number(existing.start_ms) !== verified.candidate.startMs ||
+          Number(existing.end_ms) !== verified.candidate.endMs ||
+          Number(existing.event_count) !== verified.candidate.events.rows ||
+          candidate.databaseSha256 !== verified.manifest.database.sha256 ||
+          candidate.databaseFile !== verified.databaseFile ||
+          candidate.manifestFile !== verified.manifestFile ||
+          candidate.startMs !== verified.candidate.startMs ||
+          candidate.endMs !== verified.candidate.endMs ||
+          JSON.stringify(candidate.events) !== JSON.stringify(verified.candidate.events) ||
+          JSON.stringify(candidate.sources) !== JSON.stringify(verified.candidate.sources)
+        ) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COMMIT_CANDIDATE_MISMATCH",
+            "registered archive segment no longer matches the supplied plan",
+          );
+        }
+        const remaining = Number(
+          this.database
+            .prepare("SELECT COUNT(*) AS count FROM events WHERE timestamp_ms >= ? AND timestamp_ms < ?")
+            .get(verified.candidate.startMs, verified.candidate.endMs).count,
+        );
+        if (remaining !== 0) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+            `archive replay left ${remaining} hot event(s) in the sealed range`,
+          );
+        }
+        if (plan.perfDeletion !== undefined) {
+          const candidateDatabase = new DatabaseSync(verified.databaseFile, { readOnly: true });
+          let candidatePerfDeletion;
+          try {
+            candidateDatabase.exec("BEGIN");
+            candidatePerfDeletion = historyArchivePerfDeletion(
+              candidateDatabase,
+              verified.candidate.startMs,
+              verified.candidate.endMs,
+              { requireComponents: true },
+            );
+          } finally {
+            try {
+              candidateDatabase.exec("ROLLBACK");
+            } finally {
+              candidateDatabase.close();
+            }
+          }
+          if (JSON.stringify(candidatePerfDeletion) !== JSON.stringify(plan.perfDeletion)) {
+            throw historyArchiveError(
+              "HISTORY_ARCHIVE_COMMIT_CANDIDATE_MISMATCH",
+              "supplied perf deletion no longer matches the verified archive candidate",
+            );
+          }
+          const recordsById = new Map(
+            this.database
+              .prepare(
+                `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+                 FROM archive_segments`,
+              )
+              .all()
+              .map((record) => [String(record.segment_id), { ...record }]),
+          );
+          const perfSegment = (historyArchivePerfAuthority(this.database, authorized, recordsById) || []).find(
+            (segment) => segment.segmentId === segmentId,
+          );
+          if (perfSegment?.sourceKind !== plan.perfDeletion.sourceKind) {
+            throw historyArchiveError(
+              "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+              `archive segment ${segmentId} is missing its committed ${plan.perfDeletion.sourceKind} perf authority`,
+            );
+          }
+          const remainingPerf = Number(
+            this.database
+              .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE ts_ms >= ? AND ts_ms < ?")
+              .get(verified.candidate.startMs, verified.candidate.endMs).count,
+          );
+          if (remainingPerf !== 0) {
+            throw historyArchiveError(
+              "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+              `archive replay left ${remainingPerf} hot perf sample(s) in the sealed range`,
+            );
+          }
+        }
+        this.database.exec("ROLLBACK");
+        this.writeTransactionDepth -= 1;
+        this.syncDerivedRevision();
+        return {
+          segmentId,
+          inserted: false,
+          replay: true,
+          startMs: verified.candidate.startMs,
+          endMs: verified.candidate.endMs,
+          deletedEventCount: 0,
+          deletedPerfSampleCount: 0,
+          eventCount: verified.candidate.events.rows,
+        };
+      }
+      if (existing) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_COMMIT_CANDIDATE_MISMATCH",
+          `archive segment ${segmentId} is registered without authority`,
+        );
+      }
+
+      const prepared = await prepareHistoryArchiveCommit(this.database, String(candidate?.databaseFile));
+      assertHistoryArchiveCommitPlan(prepared, plan);
+      const overlap = this.database
+        .prepare(
+          `SELECT segment_id FROM archive_segments
+           WHERE start_ms < ? AND end_ms > ? LIMIT 1`,
+        )
+        .get(candidate.endMs, candidate.startMs);
+      if (overlap) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_SEGMENT_OVERLAP",
+          `archive range overlaps registered segment ${String(overlap.segment_id)}`,
+        );
+      }
+      this.database
+        .prepare(
+          `INSERT INTO archive_segments (
+             segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          segmentId,
+          String(candidate.databaseFile),
+          segmentId,
+          candidate.startMs,
+          candidate.endMs,
+          candidate.events.rows,
+          Date.now(),
+        );
+      authorized.add(segmentId);
+      this.writeMeta(
+        HISTORY_ARCHIVE_EVENT_AUTHORITY_META,
+        JSON.stringify({ formatVersion: 1, segmentIds: [...authorized].sort() }),
+      );
+
+      let deletedPerf = 0;
+      if (plan.perfDeletion !== undefined) {
+        const recordsById = new Map(
+          this.database
+            .prepare(
+              `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+               FROM archive_segments`,
+            )
+            .all()
+            .map((record) => [String(record.segment_id), { ...record }]),
+        );
+        const segments = new Map(
+          (historyArchivePerfAuthority(this.database, authorized, recordsById) || []).map((segment) => [
+            segment.segmentId,
+            {
+              segmentId: segment.segmentId,
+              databaseSha256: segment.segmentId,
+              sourceKinds: [segment.sourceKind],
+              methodVersions: [PERF_METHOD_VERSION],
+            },
+          ]),
+        );
+        segments.set(segmentId, {
+          segmentId,
+          databaseSha256: segmentId,
+          sourceKinds: [plan.perfDeletion.sourceKind],
+          methodVersions: [PERF_METHOD_VERSION],
+        });
+        this.writeMeta(
+          HISTORY_ARCHIVE_PERF_AUTHORITY_META,
+          JSON.stringify({
+            formatVersion: 1,
+            segments: [...segments.values()].sort((left, right) => left.segmentId.localeCompare(right.segmentId)),
+          }),
+        );
+      }
+
+      createUsageRollups(this.database);
+      const rollupDays = this.database.prepare("SELECT * FROM usage_rollup_days").all();
+      const dirtyDays = this.database.prepare("SELECT day_key FROM usage_rollup_dirty_days").all();
+      const deleteEvent = this.database.prepare(
+        "DELETE FROM events WHERE id = ? AND timestamp_ms >= ? AND timestamp_ms < ?",
+      );
+      let deleted = 0;
+      for (const id of plan.deletion.ids) {
+        deleted += Number(deleteEvent.run(id, candidate.startMs, candidate.endMs).changes);
+      }
+      if (deleted !== plan.deletion.ids.length) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+          `archive commit deleted ${deleted} event(s), expected ${plan.deletion.ids.length}`,
+        );
+      }
+      const remaining = Number(
+        this.database
+          .prepare("SELECT COUNT(*) AS count FROM events WHERE timestamp_ms >= ? AND timestamp_ms < ?")
+          .get(candidate.startMs, candidate.endMs).count,
+      );
+      if (remaining !== 0) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+          `archive commit left ${remaining} hot event(s) in the sealed range`,
+        );
+      }
+      if (plan.perfDeletion !== undefined) {
+        const deletePerf = this.database.prepare(
+          "DELETE FROM perf_samples WHERE sample_key = ? AND ts_ms >= ? AND ts_ms < ?",
+        );
+        for (const sampleKey of plan.perfDeletion.sampleKeys) {
+          deletedPerf += Number(deletePerf.run(sampleKey, candidate.startMs, candidate.endMs).changes);
+        }
+        if (deletedPerf !== plan.perfDeletion.sampleKeys.length) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+            `archive commit deleted ${deletedPerf} perf sample(s), expected ${plan.perfDeletion.sampleKeys.length}`,
+          );
+        }
+        const remainingPerf = Number(
+          this.database
+            .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE ts_ms >= ? AND ts_ms < ?")
+            .get(candidate.startMs, candidate.endMs).count,
+        );
+        if (remainingPerf !== 0) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COMMIT_SOURCE_CHANGED",
+            `archive commit left ${remainingPerf} hot perf sample(s) in the sealed range`,
+          );
+        }
+      }
+      // Moving verified, unchanged facts preserves rollups; retain any dirty work that predates the move.
+      this.database.exec("DELETE FROM usage_rollup_days; DELETE FROM usage_rollup_dirty_days");
+      const restoreDay = this.database.prepare("INSERT INTO usage_rollup_days VALUES (?, ?, ?, ?)");
+      for (const day of rollupDays) restoreDay.run(day.calendar_zone, day.day_key, day.start_ms, day.end_ms);
+      const restoreDirty = this.database.prepare("INSERT INTO usage_rollup_dirty_days (day_key) VALUES (?)");
+      for (const day of dirtyDays) restoreDirty.run(day.day_key);
+      this.database.exec("COMMIT");
+      this.writeTransactionDepth -= 1;
+      this.commitStoreRevision("history-archive-commit");
+      this.syncDerivedRevision();
+      return {
+        segmentId,
+        inserted: true,
+        replay: false,
+        startMs: candidate.startMs,
+        endMs: candidate.endMs,
+        deletedEventCount: deleted,
+        deletedPerfSampleCount: deletedPerf,
+        eventCount: candidate.events.rows,
+      };
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } finally {
+        this.rollbackReplaceFileTransaction();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Read one registered archive segment without merging it into hot facts.
+   * @param {string} segmentId
+   * @returns {Promise<Array<Record<string, unknown>>>}
+   */
+  async readHistoryArchiveEvents(segmentId) {
+    if (typeof segmentId !== "string" || segmentId.length === 0) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", "archive segment id is required");
+    }
+    await this.open();
+    const record = this.database
+      .prepare(
+        `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+         FROM archive_segments WHERE segment_id = ?`,
+      )
+      .get(segmentId);
+    if (!record) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", `archive segment ${segmentId} is not registered`);
+    }
+
+    const snapshot = await this.readHistoryArchiveSnapshot(record);
+    return snapshot.rows;
+  }
+
+  /**
+   * Read one keyset page of original sealed events without hot/overlay data.
+   * @param {string} segmentId
+   * @param {{startMs: number, endMs: number, afterId?: number, limit?: number} | undefined} range
+   */
+  async readHistoryArchiveEventPage(segmentId, range) {
+    const { startMs, endMs, afterId = 0, limit = 100 } = range ?? {};
+    if (typeof segmentId !== "string" || segmentId.length === 0) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", "archive segment id is required");
+    }
+    if (
+      !Number.isSafeInteger(startMs) ||
+      !Number.isSafeInteger(endMs) ||
+      startMs >= endMs ||
+      !Number.isSafeInteger(afterId) ||
+      afterId < 0 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 500
+    ) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_EVENT_PAGE_INVALID",
+        "event page requires safe integer startMs < endMs, afterId >= 0, and limit 1..500",
+      );
+    }
+    await this.open();
+    const record = this.database
+      .prepare(
+        `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+         FROM archive_segments WHERE segment_id = ?`,
+      )
+      .get(segmentId);
+    if (!record) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", `archive segment ${segmentId} is not registered`);
+    }
+    const page = await this.readHistoryArchiveSnapshot(record, { startMs, endMs, afterId, limit });
+    return {
+      segmentId,
+      view: "sealed",
+      range: { startMs, endMs },
+      events: page.rows,
+      nextAfterId: page.nextAfterId,
+    };
+  }
+
+  /**
+   * Read the decoded perf samples stored in one registered cold segment.
+   * Samples stay tied to the segment's registered [start_ms, end_ms) range.
+   * @param {string} segmentId
+   * @returns {Promise<import("./usage-types.js").PerfSampleRowDecoded[]>}
+   */
+  async readHistoryArchivePerfSamples(segmentId) {
+    if (typeof segmentId !== "string" || segmentId.length === 0) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", "archive segment id is required");
+    }
+    await this.open();
+    const record = this.database
+      .prepare(
+        `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+         FROM archive_segments WHERE segment_id = ?`,
+      )
+      .get(segmentId);
+    if (!record) {
+      throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_NOT_FOUND", `archive segment ${segmentId} is not registered`);
+    }
+    return (await this.#readHistoryArchivePerfRecord(segmentId, record)).samples;
+  }
+
+  async #readHistoryArchivePerfRecord(
+    segmentId,
+    record,
+    {
+      requirePerfComponents = false,
+      sourceKind = null,
+      revisions = [],
+      includeTimingEvidenceForSampleKeys = [],
+      includeSourceIdentityForSampleKeys = [],
+    } = {},
+  ) {
+    const {
+      assertHistoryArchiveSourceMatches,
+      verifyHistoryArchiveCandidate,
+      HISTORY_ARCHIVE_CODEX_REQUESTS_META_KEY,
+      validateCodexRequestEvidence,
+    } = await import("./history-archive.js");
+    const verified = await verifyHistoryArchiveCandidate(String(record.database_path));
+    assertHistoryArchiveRecordMatches(record, verified);
+
+    const database = new DatabaseSync(verified.databaseFile, { readOnly: true });
+    let began = false;
+    try {
+      database.exec("BEGIN");
+      began = true;
+      assertHistoryArchiveSourceMatches(database, verified);
+      if (requirePerfComponents) {
+        const componentKeys = new Set(
+          database
+            .prepare(
+              `SELECT key FROM store_meta
+               WHERE key IN (?, ?, ?, ?)`,
+            )
+            .all(...HISTORY_ARCHIVE_PERF_COMPONENT_META_KEYS)
+            .map((row) => String(row.key)),
+        );
+        if (componentKeys.size !== HISTORY_ARCHIVE_PERF_COMPONENT_META_KEYS.length) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+            `archive segment ${segmentId} does not contain all verified perf components`,
+          );
+        }
+        if (
+          sourceKind === "codex" &&
+          !database
+            .prepare("SELECT 1 AS present FROM store_meta WHERE key = ?")
+            .get(HISTORY_ARCHIVE_CODEX_REQUESTS_META_KEY)
+        ) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+            `archive segment ${segmentId} does not contain native Codex request facts`,
+          );
+        }
+      }
+      const table = database
+        .prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'perf_samples'")
+        .get();
+      if (!table) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_PERF_TABLE_MISSING",
+          `archive segment ${segmentId} does not contain perf_samples`,
+        );
+      }
+      assertPerfSamplesSchema(database);
+      const rows = database
+        .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ts_ms >= ? AND ts_ms < ? ORDER BY sample_key`)
+        .all(Number(record.start_ms), Number(record.end_ms));
+      const effective = applyHistoryArchivePerfRevisions(database, record, rows, revisions);
+      if (sourceKind === "codex" && revisions.length > 0) {
+        const requestFactsRow = database
+          .prepare("SELECT value FROM store_meta WHERE key = ?")
+          .get(HISTORY_ARCHIVE_CODEX_REQUESTS_META_KEY);
+        if (!requestFactsRow) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+            `archive segment ${segmentId} does not contain native Codex request facts`,
+          );
+        }
+        let requestFacts;
+        try {
+          requestFacts = JSON.parse(String(requestFactsRow.value));
+        } catch {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
+            `archive segment ${segmentId} has invalid native Codex request facts`,
+          );
+        }
+        try {
+          validateCodexRequestEvidence(database, requestFacts, Number(record.start_ms), Number(record.end_ms), {
+            samples: effective.rawSamples,
+            timingEvidence: effective.timingEvidence,
+          });
+        } catch (error) {
+          throw historyArchiveRevisionError(
+            `effective Codex perf revision contradicts native request timing: ${error.message}`,
+          );
+        }
+      }
+      const timingEvidenceBySampleKey = new Map();
+      const sourceIdentityBySampleKey = new Map();
+      if (includeTimingEvidenceForSampleKeys.length > 0) {
+        assertHistoryArchiveRevisionColumns(
+          database,
+          "perf_request_timing_evidence",
+          HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS,
+        );
+        for (const sampleKey of includeTimingEvidenceForSampleKeys) {
+          timingEvidenceBySampleKey.set(String(sampleKey), linkedPerfRequestTimingEvidence(database, sampleKey));
+        }
+      }
+      if (includeSourceIdentityForSampleKeys.length > 0) {
+        const selectSampleSource = database.prepare("SELECT source_path FROM perf_samples WHERE sample_key = ?");
+        const selectSourceIdentity = database.prepare(
+          `SELECT ${HISTORY_SOURCE_IDENTITY_COLUMNS.join(", ")} FROM source_files WHERE path = ?`,
+        );
+        const boundedSampleKeys = new Set(rows.map((row) => String(row.sample_key)));
+        for (const sampleKey of includeSourceIdentityForSampleKeys) {
+          const normalizedSampleKey = String(sampleKey);
+          if (!boundedSampleKeys.has(normalizedSampleKey)) continue;
+          const sampleSource = selectSampleSource.get(normalizedSampleKey);
+          const sourceIdentity = sampleSource ? selectSourceIdentity.get(String(sampleSource.source_path)) : undefined;
+          if (!sourceIdentity) {
+            throw historyArchiveError(
+              "HISTORY_ARCHIVE_PERF_SOURCE_MISSING",
+              `archive segment ${segmentId} does not contain the source identity for perf sample ${sampleKey}`,
+            );
+          }
+          sourceIdentityBySampleKey.set(normalizedSampleKey, { ...sourceIdentity });
+        }
+      }
+      return { ...effective, timingEvidenceBySampleKey, sourceIdentityBySampleKey };
+    } finally {
+      try {
+        if (began) database.exec("ROLLBACK");
+      } finally {
+        database.close();
+      }
+    }
+  }
+
+  async #captureHistoryArchivePerfRevisionCandidates(sampleKeys) {
+    const wanted = new Set([...sampleKeys].map(String));
+    if (wanted.size === 0) return new Map();
+    const revisionSegmentsById = new Map(
+      this.database
+        .prepare(
+          `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+           FROM archive_segments`,
+        )
+        .all()
+        .map((segment) => [String(segment.segment_id), { ...segment }]),
+    );
+    const authorizedSegmentIds = historyArchiveAuthorizedSegmentIds(this.database);
+    const perfAuthority = historyArchivePerfAuthority(this.database, authorizedSegmentIds, revisionSegmentsById);
+    const candidates = new Map();
+    for (const { segmentId, record, sourceKind } of perfAuthority || []) {
+      const cold = await this.#readHistoryArchivePerfRecord(segmentId, record, {
+        requirePerfComponents: true,
+        sourceKind,
+        includeTimingEvidenceForSampleKeys: [...wanted],
+        includeSourceIdentityForSampleKeys: [...wanted],
+      });
+      for (const sample of cold.samples) {
+        const sampleKey = String(sample.sampleKey);
+        if (!wanted.has(sampleKey)) continue;
+        if (candidates.has(sampleKey)) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_SAMPLE_CONFLICT",
+            `perf sample ${sampleKey} appears in more than one authorized segment`,
+          );
+        }
+        candidates.set(sampleKey, {
+          segmentId,
+          databaseSha256: String(record.database_sha256),
+          segment: record,
+          sample,
+          sourceIdentity: cold.sourceIdentityBySampleKey.get(sampleKey),
+          timingEvidence: cold.timingEvidenceBySampleKey.get(sampleKey) || [],
+        });
+      }
+    }
+    return candidates;
+  }
+
+  /**
+   * Read one captured registry record and its source identities from one
+   * verified cold snapshot. Internal to archived range reads.
+   * @param {Record<string, unknown>} record
+   * @param {{startMs: number, endMs: number, afterId: number, limit: number} | null} [page]
+   * @returns {Promise<{
+   *   rows: Array<Record<string, unknown>>,
+   *   sourceIdentities: Array<Record<string, unknown>>,
+   *   nextAfterId?: number | null
+   * }>}
+   */
+  async readHistoryArchiveSnapshot(record, page = null) {
+    const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
+    const eventCount = Number(record.event_count);
+    return withVerifiedHistoryArchiveCandidate(String(record.database_path), undefined, (database, verified) => {
+      const segmentId = assertHistoryArchiveRecordMatches(record, verified);
+      if (page) {
+        const total = Number(database.prepare("SELECT COUNT(*) AS count FROM events").get().count);
+        if (total !== eventCount) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_SEGMENT_MISMATCH",
+            `archive segment ${segmentId} contains ${total} event(s), expected ${eventCount}`,
+          );
+        }
+        const rows = historyArchiveStatementRows(
+          database.prepare(
+            `SELECT * FROM events
+             WHERE timestamp_ms >= ? AND timestamp_ms < ? AND id > ?
+             ORDER BY id LIMIT ?`,
+          ),
+          [page.startMs, page.endMs, page.afterId, page.limit + 1],
+        );
+        const hasMore = rows.length > page.limit;
+        if (hasMore) rows.pop();
+        return {
+          rows,
+          nextAfterId: hasMore ? Number(rows[rows.length - 1].id) : null,
+          sourceIdentities: [],
+        };
+      }
+      const rows = historyArchiveStatementRows(database.prepare("SELECT * FROM events ORDER BY id"));
+      if (rows.length !== eventCount) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_SEGMENT_MISMATCH",
+          `archive segment ${segmentId} contains ${rows.length} event(s), expected ${eventCount}`,
+        );
+      }
+      return {
+        rows,
+        sourceIdentities: historyArchiveSourceIdentities(database, Number(record.start_ms), Number(record.end_ms)),
+      };
+    });
+  }
+
+  /**
+   * Load the authorized cold prefixes for one source reparse. The returned
+   * rows are the only part of the re-parsed file allowed to stay cold.
+   * @param {string} filePath
+   * @param {Record<string, unknown>} source
+   * @returns {Promise<{prefixes: any[], revisionState: any | null}>}
+   */
+  async historyArchiveReparsePrefixes(filePath, source) {
+    const authorizedSegmentIds = historyArchiveAuthorizedSegmentIds(this.database);
+    if (authorizedSegmentIds.size === 0) return { prefixes: [], revisionState: null };
+    const allRecords = this.database
+      .prepare(
+        `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+         FROM archive_segments
+         ORDER BY start_ms, segment_id`,
+      )
+      .all();
+    const segmentsById = new Map(allRecords.map((record) => [String(record.segment_id), record]));
+    const revisionsBySegment = historyArchiveEventRevisions(
+      this.readMetaRaw(HISTORY_ARCHIVE_EVENT_REVISIONS_META),
+      segmentsById,
+    );
+    const records = allRecords.filter((record) => authorizedSegmentIds.has(String(record.segment_id)));
+    const prefixes = [];
+    for (const record of records) {
+      const snapshot = await this.readHistoryArchiveSnapshot(record);
+      const coldSource = snapshot.sourceIdentities.find((source) => String(source.path) === filePath);
+      if (!coldSource) continue;
+      const liveIdentity = {
+        path: filePath,
+        kind: String(source.kind || "codex"),
+        home_id: String(source.id ?? ""),
+        home_label: String(source.label ?? ""),
+        home_path: String(source.path ?? ""),
+      };
+      if (!sameHistoryArchiveSourceIdentity(liveIdentity, coldSource)) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
+          `live source identity no longer matches authorized archive segment ${String(record.segment_id)}`,
+        );
+      }
+      const startMs = Number(record.start_ms);
+      const endMs = Number(record.end_ms);
+      const inPrefix = (row) =>
+        String(row.source_path) === filePath && Number(row.timestamp_ms) >= startMs && Number(row.timestamp_ms) < endMs;
+      const originalRows = snapshot.rows.filter(inPrefix);
+      const effectiveRows = applyHistoryArchiveEventRevisions(
+        record,
+        snapshot,
+        revisionsBySegment.get(String(record.segment_id)),
+      ).filter(
+        (row) =>
+          String(row.source_path) === filePath &&
+          Number(row.timestamp_ms) >= startMs &&
+          Number(row.timestamp_ms) < endMs,
+      );
+      prefixes.push({
+        segmentId: String(record.segment_id),
+        startMs,
+        endMs,
+        sourceIdentity: { ...coldSource },
+        originalRows,
+        effectiveRows,
+        observedRows: [],
+      });
+    }
+    return { prefixes, revisionState: { segmentsById, revisionsBySegment } };
+  }
+
+  /**
+   * Return raw event rows for a range, using a cold segment only when the
+   * committed authority marker explicitly lists it and its hot range is empty.
+   * @param {{startMs: number, endMs: number}} range
+   * @returns {Promise<Array<Record<string, unknown>>>}
+   */
+  async mergeHistoryArchiveEventsForRange(range) {
+    return (await this.historyArchiveEventUnionForRange(range)).rows;
+  }
+
+  /**
+   * Return the range union together with source kinds captured from the same
+   * verified snapshot, so callers can project cold rows without a second read.
+   * @param {{startMs: number, endMs: number}} range
+   * @param {{completeHistory?: boolean, includeUsageCarrier?: boolean, includePerfCarrier?: boolean, includeMetadataCarrier?: boolean}} [options]
+   * @returns {Promise<{
+   *   rows: Array<Record<string, unknown>>,
+   *   sourceKinds: Map<string, string>,
+   *   homes?: Array<{ id: string, label: string, path: string, kind: string }>,
+   *   rateLimitObservations?: import("./usage-types.js").RateLimitObservation[],
+   *   perfCarrier?: any,
+   *   metadataCarrier?: {generatedAt: string, homes: any[], warnings: string[]}
+   * }>}
+   */
+  async historyArchiveEventUnionForRange(
+    range,
+    {
+      completeHistory = false,
+      includeUsageCarrier = false,
+      includePerfCarrier = false,
+      includeMetadataCarrier = false,
+    } = {},
+  ) {
+    let startMs;
+    let endMs;
+    if (!completeHistory) {
+      if (
+        !range ||
+        typeof range !== "object" ||
+        Array.isArray(range) ||
+        !Number.isSafeInteger(range.startMs) ||
+        !Number.isSafeInteger(range.endMs) ||
+        range.startMs >= range.endMs
+      ) {
+        throw new TypeError("startMs and endMs must be safe integer milliseconds with startMs < endMs");
+      }
+      startMs = range.startMs;
+      endMs = range.endMs;
+    }
+    await this.open();
+
+    let snapshot;
+    this.database.exec("SAVEPOINT history_archive_union_read");
+    try {
+      const usageCarrier = includeUsageCarrier
+        ? {
+            homes: publishedUsageHomesFromDatabase(this.database),
+            rateLimitObservations: quotaObservationsFromDatabase(this.database),
+          }
+        : {};
+      const perfCarrier = includePerfCarrier ? this.capturePerfCarrier() : undefined;
+      const metadataCarrier = includeMetadataCarrier
+        ? {
+            generatedAt: this.generatedAt,
+            homes: structuredClone(this.homes),
+            warnings: structuredClone(this.warnings),
+          }
+        : undefined;
+      const revisionRawValue = this.database
+        .prepare("SELECT value FROM store_meta WHERE key = ?")
+        .get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)?.value;
+      const perfRevisionRawValue = includePerfCarrier
+        ? this.database.prepare("SELECT value FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_PERF_REVISIONS_META)
+            ?.value
+        : undefined;
+      const revisionSegmentsById = new Map(
+        this.database
+          .prepare(
+            `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+             FROM archive_segments`,
+          )
+          .all()
+          .map((segment) => [String(segment.segment_id), { ...segment }]),
+      );
+      const authorizedSegmentIds = historyArchiveAuthorizedSegmentIds(this.database);
+      const perfAuthority = includePerfCarrier
+        ? historyArchivePerfAuthority(this.database, authorizedSegmentIds, revisionSegmentsById)
+        : null;
+      const eventRevisions = historyArchiveEventRevisions(revisionRawValue, revisionSegmentsById);
+      const perfRevisions = includePerfCarrier
+        ? historyArchivePerfRevisions(
+            perfRevisionRawValue,
+            revisionSegmentsById,
+            authorizedSegmentIds,
+            new Set((perfAuthority || []).map((entry) => String(entry.segmentId))),
+          )
+        : new Map();
+      if (completeHistory) {
+        const hotBounds = this.database
+          .prepare("SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events")
+          .get();
+        const archiveBounds = this.database
+          .prepare("SELECT MIN(start_ms) AS minimum, MAX(end_ms) AS maximum FROM archive_segments")
+          .get();
+        const starts = [hotBounds.minimum, archiveBounds.minimum].filter((value) => value !== null).map(Number);
+        const ends = [hotBounds.maximum === null ? null : Number(hotBounds.maximum) + 1, archiveBounds.maximum]
+          .filter((value) => value !== null)
+          .map(Number);
+        if (starts.length === 0 || ends.length === 0) {
+          this.database.exec("RELEASE history_archive_union_read");
+          return {
+            rows: [],
+            sourceKinds: new Map(),
+            ...usageCarrier,
+            ...(perfCarrier === undefined ? {} : { perfCarrier }),
+            ...(metadataCarrier === undefined ? {} : { metadataCarrier }),
+          };
+        }
+        startMs = Math.min(...starts);
+        endMs = Math.max(...ends);
+      }
+      const hotRows = historyArchiveEventRows(this.database, startMs, endMs);
+      const segments = this.database
+        .prepare(
+          `SELECT segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms
+           FROM archive_segments
+           WHERE start_ms < ? AND end_ms > ?
+           ORDER BY start_ms, segment_id`,
+        )
+        .all(endMs, startMs)
+        .map((segment) => {
+          const record = {
+            segment_id: String(segment.segment_id),
+            database_path: String(segment.database_path),
+            database_sha256: String(segment.database_sha256),
+            start_ms: Number(segment.start_ms),
+            end_ms: Number(segment.end_ms),
+            event_count: Number(segment.event_count),
+            registered_at_ms: Number(segment.registered_at_ms),
+          };
+          return {
+            segmentId: record.segment_id,
+            record,
+            hotRows: historyArchiveEventRows(this.database, record.start_ms, record.end_ms),
+            sourceIdentities: historyArchiveSourceIdentities(this.database, record.start_ms, record.end_ms),
+            authorized: authorizedSegmentIds.has(record.segment_id),
+          };
+        });
+      const liveSourceIdentities = new Map(
+        this.database
+          .prepare(
+            `SELECT path, kind, home_id, home_label, home_path
+             FROM source_files
+             ORDER BY path, kind, home_id, home_label, home_path`,
+          )
+          .all()
+          .map((row) => [String(row.path), { ...row }]),
+      );
+      this.database.exec("RELEASE history_archive_union_read");
+      snapshot = {
+        hotRows,
+        segments,
+        liveSourceIdentities,
+        usageCarrier,
+        perfCarrier,
+        perfAuthority,
+        perfRevisions,
+        metadataCarrier,
+        eventRevisions,
+      };
+    } catch (error) {
+      this.database.exec("ROLLBACK TO history_archive_union_read");
+      this.database.exec("RELEASE history_archive_union_read");
+      throw error;
+    }
+
+    const rows = snapshot.hotRows;
+    for (const segment of snapshot.segments) {
+      if (segment.authorized && segment.hotRows.length > 0) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+          `authorized archive segment ${segment.segmentId} still has hot facts`,
+        );
+      }
+      const cold = await this.readHistoryArchiveSnapshot(segment.record);
+      if (segment.authorized) {
+        const coldSourceByPath = new Map(cold.sourceIdentities.map((source) => [String(source.path), source]));
+        const coldSourcePaths = new Set(cold.rows.map((row) => String(row.source_path)));
+        if (
+          coldSourceByPath.size !== coldSourcePaths.size ||
+          [...coldSourcePaths].some((sourcePath) => !coldSourceByPath.has(sourcePath))
+        ) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+            `archive segment ${segment.segmentId} does not contain complete source identities`,
+          );
+        }
+        for (const source of cold.sourceIdentities) {
+          const liveSource = snapshot.liveSourceIdentities.get(String(source.path));
+          if (!liveSource || JSON.stringify(liveSource) !== JSON.stringify(source)) {
+            throw historyArchiveError(
+              "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+              `live source identity no longer matches archive segment ${segment.segmentId}`,
+            );
+          }
+        }
+        const revisedColdRows = applyHistoryArchiveEventRevisions(
+          segment.record,
+          cold,
+          snapshot.eventRevisions.get(segment.segmentId),
+        );
+        for (const row of revisedColdRows) {
+          if (Number(row.timestamp_ms) >= startMs && Number(row.timestamp_ms) < endMs) rows.push(row);
+        }
+        continue;
+      }
+      const hotCounts = historyArchiveEventCounts(segment.hotRows);
+      const coldCounts = historyArchiveEventCounts(cold.rows);
+      if (!historyArchiveEventCountsEqual(hotCounts, coldCounts)) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+          `hot facts do not mirror archive segment ${segment.segmentId}`,
+        );
+      }
+
+      if (JSON.stringify(cold.sourceIdentities) !== JSON.stringify(segment.sourceIdentities)) {
+        throw historyArchiveError(
+          "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+          `hot source identities do not mirror archive segment ${segment.segmentId}`,
+        );
+      }
+    }
+
+    if (snapshot.perfAuthority) {
+      for (const { segmentId, record, sourceKind } of snapshot.perfAuthority) {
+        const coldPerf = await this.#readHistoryArchivePerfRecord(segmentId, record, {
+          requirePerfComponents: true,
+          sourceKind,
+          revisions: snapshot.perfRevisions.get(segmentId),
+        });
+        snapshot.perfCarrier = mergeHistoryArchivePerfSamples(
+          snapshot.perfCarrier,
+          coldPerf.samples,
+          sourceKind,
+          coldPerf.revisionsBySampleKey,
+        );
+      }
+    }
+
+    rows.sort((left, right) => {
+      const timeDelta = Number(left.timestamp_ms) - Number(right.timestamp_ms);
+      if (timeDelta !== 0) return timeDelta;
+      const leftPayload = JSON.stringify(canonicalFactPayload(left, ["id"]));
+      const rightPayload = JSON.stringify(canonicalFactPayload(right, ["id"]));
+      return leftPayload < rightPayload ? -1 : leftPayload > rightPayload ? 1 : 0;
+    });
+    const sourceKinds = new Map();
+    for (const row of rows) {
+      const sourcePath = String(row.source_path);
+      const source = snapshot.liveSourceIdentities.get(sourcePath);
+      if (source) sourceKinds.set(sourcePath, String(source.kind));
+    }
+    return {
+      rows,
+      sourceKinds,
+      ...snapshot.usageCarrier,
+      ...(snapshot.perfCarrier === undefined ? {} : { perfCarrier: snapshot.perfCarrier }),
+      ...(snapshot.metadataCarrier === undefined ? {} : { metadataCarrier: snapshot.metadataCarrier }),
+    };
+  }
+
+  /** Read timing evidence through the store's one SQLite connection. */
+  lookupRequestTiming(query) {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    return lookupStoredRequestTiming(this.database, query);
+  }
+
+  /** @returns {string[]} */
+  requestTimingDirtyThreads(homeId) {
+    return this.database
+      .prepare("SELECT thread_id FROM perf_request_timing_dirty_threads WHERE home_id = ? ORDER BY thread_id")
+      .all(homeId)
+      .map((row) => String(row.thread_id));
+  }
+
+  requestTimingDirtyThreadCount() {
+    return Number(
+      this.database.prepare("SELECT COUNT(*) AS count FROM perf_request_timing_dirty_threads").get()?.count ?? 0,
+    );
   }
 
   /**
@@ -2539,6 +6303,7 @@ export class UsageStore {
       indexedAt: this.readMeta("perf_indexed_at"),
       degradedHomeIds: decodeJsonStringArray(degradedRaw),
       sourceWarnings: decodeJsonWarnings(warningsRaw),
+      missingSources: decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META)),
       codexPublicationPolicy: this.readMetaRaw("perf_codex_publication_policy"),
     };
   }
@@ -2570,10 +6335,12 @@ export class UsageStore {
   }
 
   /**
-   * Read the last successfully published reader warnings for each physical file.
-   * This sidecar is committed atomically with that file's candidates, so an
+   * Read the last successfully published file diagnostics.
+   * Besides reader warnings, this includes committed project-log truncation
+   * and malformed-line markers.
+   * The sidecar is committed atomically with that file's candidates, so an
    * interrupted/failed replacement cannot erase diagnostics for old rows.
-   * @returns {Record<string, {sourceKind: string, homeId: string, code: string, count: number}[]>}
+   * @returns {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]>}
    */
   readPublishedFileWarnings() {
     const raw = this.readMetaRaw("perf_file_warnings");
@@ -2581,10 +6348,10 @@ export class UsageStore {
     try {
       const parsed = JSON.parse(raw);
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-      /** @type {Record<string, {sourceKind: string, homeId: string, code: string, count: number}[]>} */
+      /** @type {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]>} */
       const out = {};
       for (const [filePath, warnings] of Object.entries(parsed)) {
-        if (Array.isArray(warnings)) out[filePath] = normalizeSourceWarnings(warnings);
+        if (Array.isArray(warnings)) out[filePath] = normalizePublishedFileWarnings(warnings);
       }
       return out;
     } catch {
@@ -2607,7 +6374,7 @@ export class UsageStore {
    * S1：**本轮**（`sync()` 内）已解码的 published 告警映射 —— 轮内全轮复用同一份，整轮至多
    * 解码一次；`sync()` 之外（视图为 `null`）与 `readPublishedFileWarnings()` 逐字等价。
    * 返回值是**新对象**（数组分量共享，读方只做键级改写）。
-   * @returns {Record<string, {sourceKind: string, homeId: string, code: string, count: number}[]>}
+   * @returns {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]>}
    */
   publishedFileWarningsForRound() {
     const view = this.publishedFileMapsView;
@@ -2947,7 +6714,7 @@ export class UsageStore {
   }
 
   /**
-   * S4：把 WorkBuddy trace 里的 `generation` 时长同步进 `workbuddy_generation_durations`。
+   * S4：把 WorkBuddy trace 里的 `generation` 时长同步进按 home 归属的 observation 表。
    *
    * 调用纪律（实施计划 §0 最后一段 + §5 S4）：
    *   * **必须在 `replaceFile` 之外**调用 —— 那里是唯一跨 `await` 的写事务，事务内做文件 I/O
@@ -2958,40 +6725,59 @@ export class UsageStore {
    *   * 单文件失败不影响其它文件；目录不存在是正常状态，不告警。
    *
    * @param {string} homePath
-   * @param {{ onWarning?: (warning: string) => void }} [options]
-   * @returns {Promise<{ filesScanned: number, filesParsed: number, spans: number, written: boolean }>}
+   * @param {{ homeId?: string, onWarning?: (warning: string) => void }} [options]
+   * @returns {Promise<{
+   *   filesScanned: number,
+   *   filesParsed: number,
+   *   spans: number,
+   *   written: boolean,
+   *   insertedMessageIds: string[],
+   *   traceDependency: string | null,
+   *   traceComplete: boolean
+   * }>}
    */
-  async refreshWorkbuddyDurations(homePath, { onWarning } = {}) {
+  async refreshWorkbuddyDurations(homePath, { homeId, onWarning } = {}) {
     const database = this.database;
-    const outcome = { filesScanned: 0, filesParsed: 0, spans: 0, written: false };
+    const outcome = {
+      filesScanned: 0,
+      filesParsed: 0,
+      spans: 0,
+      written: false,
+      insertedMessageIds: [],
+      traceDependency: null,
+      traceComplete: false,
+    };
     if (!database) return outcome;
-    let traceFiles;
+    const scopedHomeId = String(homeId ?? "").trim() || homePath;
+    let traceState;
     try {
-      traceFiles = await workbuddyTraceFiles(homePath);
+      traceState = await inspectWorkbuddyTrace(homePath);
     } catch (error) {
       onWarning?.(`无法读取 WorkBuddy trace 目录 ${homePath}: ${error.message}`);
       return outcome;
     }
-    outcome.filesScanned = traceFiles.length;
-    if (traceFiles.length === 0) return outcome;
+    outcome.filesScanned = traceState.traceFiles.length;
+    outcome.traceComplete = traceState.complete;
+    outcome.traceDependency = traceState.complete ? traceState.fingerprint : null;
 
     const changed = [];
-    for (const filePath of traceFiles) {
-      let info;
-      try {
-        info = await stat(filePath);
-      } catch {
-        // 单文件不可读：本轮跳过，指纹不动 ⇒ 下轮重试。
-        continue;
-      }
+    for (const [filePath, fingerprint] of traceState.fingerprints) {
+      if (fingerprint === null) continue;
       const previous = this.workbuddyTraceFingerprints.get(filePath);
-      if (previous && previous.size === info.size && previous.mtimeMs === info.mtimeMs) continue;
-      changed.push({ filePath, size: info.size, mtimeMs: info.mtimeMs });
+      if (previous === fingerprint) continue;
+      changed.push({ filePath, fingerprint });
+    }
+    const homePrefix = `${canonicalPerfProbePath(homePath)}${path.sep}`;
+    for (const knownPath of this.workbuddyTraceFingerprints.keys()) {
+      if (canonicalPerfProbePath(knownPath).startsWith(homePrefix) && !traceState.fingerprints.has(knownPath)) {
+        this.workbuddyTraceFingerprints.delete(knownPath);
+      }
     }
     if (changed.length === 0) return outcome;
 
     const rows = [];
     const parsed = [];
+    const insertedMessageIds = new Set();
     for (const file of changed) {
       try {
         const spans = await workbuddyTraceSpans(file.filePath, { onWarning });
@@ -3003,18 +6789,30 @@ export class UsageStore {
       }
     }
     outcome.spans = rows.length;
+    if (parsed.length !== changed.length) {
+      outcome.traceComplete = false;
+      outcome.traceDependency = null;
+    }
 
     if (rows.length > 0) {
       const insert = database.prepare(`
-        INSERT OR IGNORE INTO workbuddy_generation_durations
-          (message_id, duration_ms, ended_at_ms, capture_version, captured_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO workbuddy_generation_duration_observations
+          (home_id, message_id, duration_ms, ended_at_ms, capture_version, captured_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
       const capturedAt = new Date().toISOString();
       database.exec("BEGIN IMMEDIATE");
       try {
         for (const row of rows) {
-          insert.run(row.messageId, row.durationMs, row.endedAtMs, WORKBUDDY_CAPTURE_VERSION, capturedAt);
+          const result = insert.run(
+            scopedHomeId,
+            row.messageId,
+            row.durationMs,
+            row.endedAtMs,
+            WORKBUDDY_CAPTURE_VERSION,
+            capturedAt,
+          );
+          if (Number(result.changes) > 0) insertedMessageIds.add(row.messageId);
         }
         database.exec("COMMIT");
         outcome.written = true;
@@ -3022,13 +6820,16 @@ export class UsageStore {
         database.exec("ROLLBACK");
         // 写失败 ⇒ 指纹一律不更新（下轮重试），本轮 sync 不因预扫失败而整体失败。
         onWarning?.(`无法写入 WorkBuddy 响应时长: ${error.message}`);
+        outcome.traceComplete = false;
+        outcome.traceDependency = null;
         return outcome;
       }
     }
 
     for (const file of parsed) {
-      this.workbuddyTraceFingerprints.set(file.filePath, { size: file.size, mtimeMs: file.mtimeMs });
+      this.workbuddyTraceFingerprints.set(file.filePath, file.fingerprint);
     }
+    outcome.insertedMessageIds = [...insertedMessageIds].sort();
     return outcome;
   }
 
@@ -3036,36 +6837,32 @@ export class UsageStore {
    * @param {any} file
    * @param {{
    *   onWarning?: (warning: string) => void,
-   *   liveChangeWarnings?: any[],
+   *   noteLiveChangeWarning?: (sourceKind: string, homeId: string) => void,
    *   liveChangedPaths?: Set<string>,
    *   blockedHomeIds?: Set<string>,
    *   committedFingerprints?: Map<string, string>,
    *   onPerfWarning?: (warning: any) => void,
    *   onWorkbuddyDurationGap?: (homeLabel: string, count: number) => void,
+   *   legacyWorkbuddyFallbackAllowed?: boolean,
    * }} [options]
    */
   async replaceFile(
     { filePath, source, info },
     {
       onWarning,
-      liveChangeWarnings,
+      noteLiveChangeWarning,
       liveChangedPaths,
       blockedHomeIds,
       committedFingerprints,
       onPerfWarning,
       onWorkbuddyDurationGap,
+      legacyWorkbuddyFallbackAllowed = false,
     } = {},
   ) {
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
     const siblingPath = filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`;
-    const sibling = codexThreaded
-      ? database.prepare("SELECT path FROM source_files WHERE path = ? AND home_id = ?").get(siblingPath, source.id)
-      : null;
-    const representationFingerprint =
-      codexThreaded && (filePath.endsWith(".jsonl.zst") || sibling)
-        ? enabledPerfSourceStat(source.kind, filePath)
-        : undefined;
+    let representationFingerprint;
     const insertSource = database.prepare(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -3092,6 +6889,7 @@ export class UsageStore {
         plan_type, window_minutes, resets_at_ms, used_percent
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const insertReplacedFact = database.prepare(HISTORY_REPLACED_FACT_INSERT_SQL);
     const previousStatement = database.prepare(`
       SELECT COUNT(*) AS count, COALESCE(SUM(total), 0) AS total,
         COALESCE(SUM(input), 0) AS input, COALESCE(SUM(cached), 0) AS cached,
@@ -3119,12 +6917,59 @@ export class UsageStore {
     };
     /** D1：本事务是否真的写入了 **quota 观测行**（`rate_limit_observations`）—— 修订理由用。 */
     let quotaWritten = false;
+    let truncationWarning;
+    let truncationEventCount = 0;
+    let coldRemovedEventCount = 0;
     const filePerfWarnings = [];
+    // Stage current-round diagnostics until this replacement commits.
+    const projectLogWarnings = [];
+    const projectLogMalformedLines = new Set();
     database.exec("BEGIN IMMEDIATE");
     // D1：这是**唯一**跨 `await` 的写事务（下面的 `streamUsageFileEvents` / `streamPerfSamplesForFile`）
     // ⇒ 读路径可能在本事务开着的时候被调用。深度 > 0 时 `metadata()`/`periodComparison()` **不落**缓存。
     this.writeTransactionDepth += 1;
     try {
+      const previousSource = database
+        .prepare("SELECT path, kind, home_id, home_label, home_path, size FROM source_files WHERE path = ?")
+        .get(filePath);
+      const coldReparse = await this.historyArchiveReparsePrefixes(filePath, source);
+      const coldReparsePrefixes = coldReparse.prefixes;
+      const previousEvents = database.prepare("SELECT * FROM events WHERE source_path = ?").all(filePath);
+      const previousQuotaRows = database
+        .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
+        .all(filePath);
+      const previousSiblingSource = codexThreaded
+        ? database
+            .prepare(
+              "SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ? AND home_id = ?",
+            )
+            .get(siblingPath, source.id)
+        : null;
+      const previousSiblingEvents = previousSiblingSource
+        ? database.prepare("SELECT * FROM events WHERE source_path = ?").all(previousSiblingSource.path)
+        : [];
+      const previousSiblingQuotaRows = previousSiblingSource
+        ? database
+            .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
+            .all(previousSiblingSource.path)
+        : [];
+      const previousPerfSamples = !codexThreaded
+        ? database.prepare("SELECT * FROM perf_samples WHERE source_path = ?").all(filePath)
+        : [];
+      const previousPerfSampleSources = !codexThreaded
+        ? database
+            .prepare(
+              `SELECT dependencies.*
+               FROM perf_sample_sources AS dependencies
+               JOIN perf_samples AS samples ON samples.sample_key = dependencies.sample_key
+               WHERE samples.source_path = ?`,
+            )
+            .all(filePath)
+        : [];
+      representationFingerprint =
+        codexThreaded && (filePath.endsWith(".jsonl.zst") || previousSiblingSource)
+          ? enabledPerfSourceStat(source.kind, filePath)
+          : undefined;
       insertSource.run(
         filePath,
         source.kind || "codex",
@@ -3137,8 +6982,12 @@ export class UsageStore {
       );
       database.prepare("DELETE FROM events WHERE source_path = ?").run(filePath);
       database.prepare("DELETE FROM rate_limit_observations WHERE source_path = ?").run(filePath);
-      // A representation change replaces its old events inside this rollback-able transaction.
-      if (sibling) database.prepare("DELETE FROM source_files WHERE path = ?").run(sibling.path);
+      // Replace the sibling representation's usage rows, but keep its source row
+      // until Codex publication has moved the native ownership.
+      if (previousSiblingSource) {
+        database.prepare("DELETE FROM events WHERE source_path = ?").run(previousSiblingSource.path);
+        database.prepare("DELETE FROM rate_limit_observations WHERE source_path = ?").run(previousSiblingSource.path);
+      }
       // M3.2：性能候选的**显式**替换。必须显式 DELETE —— `source_files` 行是上面的 upsert，
       // **没有**被删除，因此 `ON DELETE CASCADE` 在这条路径上**不会触发**（M3.1 实测级联只在
       // 真删父行时生效）。旧候选保留在同一事务里，任何后续失败都会被 ROLLBACK 一起撤销。
@@ -3148,37 +6997,45 @@ export class UsageStore {
         source,
         (event) => {
           const date = new Date(event.timestampMs);
-          insertEvent.run(
-            filePath,
-            event.timestampMs,
-            event.sessionId,
-            event.homeId,
-            event.homeLabel,
-            event.channel,
-            event.project || "Unknown cwd",
-            event.model || "Unknown model",
-            localHourKey(date),
-            localDateKey(date),
-            localDateKey(startOfLocalWeek(date)),
-            localDateKey(date).slice(0, 7),
-            event.project || "",
-            event.repositoryKey || "unknown:cwd",
-            event.repositoryPath || "Unknown cwd",
-            event.repositoryKind || "unknown",
-            Number(event.detailMask || 0),
-            Number(event.reconciliationGap || 0),
-            Number(event.cacheWriteTokens || 0),
-            event.cacheWriteKnown ? 1 : 0,
-            Number(event.requestInputTokens || 0),
-            event.contextLevel || "unknown",
-            event.serviceTier || "unknown",
-            event.priceVersion || "",
-            event.usage.total,
-            event.usage.input,
-            event.usage.cached,
-            event.usage.output,
-            event.usage.reasoning,
+          const row = {
+            source_path: filePath,
+            timestamp_ms: event.timestampMs,
+            session_id: event.sessionId,
+            home_id: event.homeId,
+            home_label: event.homeLabel,
+            channel: event.channel,
+            project: event.project || "Unknown cwd",
+            model: event.model || "Unknown model",
+            hour_key: localHourKey(date),
+            day_key: localDateKey(date),
+            week_key: localDateKey(startOfLocalWeek(date)),
+            month_key: localDateKey(date).slice(0, 7),
+            cwd: event.project || "",
+            repository_key: event.repositoryKey || "unknown:cwd",
+            repository_path: event.repositoryPath || "Unknown cwd",
+            repository_kind: event.repositoryKind || "unknown",
+            detail_mask: Number(event.detailMask || 0),
+            reconciliation_gap: Number(event.reconciliationGap || 0),
+            cache_write_tokens: Number(event.cacheWriteTokens || 0),
+            cache_write_known: event.cacheWriteKnown ? 1 : 0,
+            request_input_tokens: Number(event.requestInputTokens || 0),
+            context_level: event.contextLevel || "unknown",
+            service_tier: event.serviceTier || "unknown",
+            price_version: event.priceVersion || "",
+            total: event.usage.total,
+            input: event.usage.input,
+            cached: event.usage.cached,
+            output: event.usage.output,
+            reasoning: event.usage.reasoning,
+          };
+          const coldPrefix = coldReparsePrefixes.find(
+            (prefix) => row.timestamp_ms >= prefix.startMs && row.timestamp_ms < prefix.endMs,
           );
+          if (coldPrefix) {
+            coldPrefix.observedRows.push({ ...row });
+            return;
+          }
+          insertEvent.run(...EVENT_INSERT_COLUMNS.map((column) => row[column]));
         },
         {
           repositoryResolver: this.repositoryResolver,
@@ -3201,9 +7058,110 @@ export class UsageStore {
                 quotaWritten = true;
               }
             : undefined,
-          onWarning,
+          onWarning:
+            String(source.kind ?? "") === "project-log"
+              ? (warning, details) => {
+                  projectLogWarnings.push(String(warning));
+                  const lineNumber = Number(details?.lineNumber);
+                  if (Number.isSafeInteger(lineNumber) && lineNumber > 0) projectLogMalformedLines.add(lineNumber);
+                }
+              : onWarning,
         },
       );
+      let coldRevisionStateChanged = false;
+      for (const prefix of coldReparsePrefixes) {
+        const revision = historyArchiveColdRevisionForRows(prefix);
+        // Removed cold rows are absent from the hot event tables, so count them explicitly.
+        if (revision) coldRemovedEventCount += revision.removedColdEventCount;
+        if (!revision || !coldReparse.revisionState) continue;
+        const { revisionsBySegment } = coldReparse.revisionState;
+        const entries = revisionsBySegment.get(prefix.segmentId) || [];
+        const existingIndex = entries.findIndex((entry) =>
+          sameHistoryArchiveSourceIdentity(entry.sourceIdentity, revision.entry.sourceIdentity),
+        );
+        const existing = existingIndex < 0 ? null : entries[existingIndex];
+        if (existing && historyArchiveRevisionEntryKey(existing) === historyArchiveRevisionEntryKey(revision.entry)) {
+          continue;
+        }
+        if (existing) {
+          saveMissingHistoryFacts(insertReplacedFact, {
+            factTable: "events",
+            source: prefix.sourceIdentity,
+            previousRows: prefix.effectiveRows,
+            currentRows: prefix.observedRows,
+            methodVersion: HISTORY_REPLACED_FACT_METHOD_VERSION,
+            excludedColumns: ["id"],
+          });
+        }
+        if (revision.entry.removed.length === 0 && revision.entry.added.length === 0) {
+          if (existingIndex >= 0) entries.splice(existingIndex, 1);
+        } else if (existingIndex >= 0) {
+          entries[existingIndex] = revision.entry;
+        } else {
+          entries.push(revision.entry);
+        }
+        revisionsBySegment.set(prefix.segmentId, entries);
+        markHistoryArchiveRevisionRollupDays(database, revision.previousChangedRows, revision.currentChangedRows);
+        coldRevisionStateChanged = true;
+      }
+      if (coldRevisionStateChanged && coldReparse.revisionState) {
+        writeHistoryArchiveEventRevisionState(database, coldReparse.revisionState);
+      }
+      if (previousSource && previousEvents.length > 0) {
+        const currentEvents = database.prepare("SELECT * FROM events WHERE source_path = ?").all(filePath);
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "events",
+          source: previousSource,
+          previousRows: previousEvents,
+          currentRows: currentEvents,
+          methodVersion: HISTORY_REPLACED_FACT_METHOD_VERSION,
+          excludedColumns: ["id"],
+        });
+        if (
+          String(previousSource.kind ?? "") === "project-log" &&
+          String(source.kind ?? "") === "project-log" &&
+          info.size < Number(previousSource.size) &&
+          currentEvents.length < previousEvents.length
+        ) {
+          truncationEventCount = previousEvents.length - currentEvents.length;
+        }
+      }
+      if (String(source.kind ?? "") === "project-log") {
+        truncationEventCount += coldRemovedEventCount;
+        if (truncationEventCount > 0) {
+          truncationWarning = formatProjectLogTruncationWarning(filePath, truncationEventCount);
+        }
+      }
+      if (previousSiblingSource && previousSiblingEvents.length > 0) {
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "events",
+          source: previousSiblingSource,
+          previousRows: previousSiblingEvents,
+          currentRows: database.prepare("SELECT * FROM events WHERE source_path = ?").all(previousSiblingSource.path),
+          methodVersion: HISTORY_REPLACED_FACT_METHOD_VERSION,
+          excludedColumns: ["id"],
+        });
+      }
+      if (previousSiblingSource && previousSiblingQuotaRows.length > 0) {
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "rate_limit_observations",
+          source: previousSiblingSource,
+          previousRows: previousSiblingQuotaRows,
+          currentRows: database
+            .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
+            .all(previousSiblingSource.path),
+          methodVersion: HISTORY_REPLACED_QUOTA_METHOD_VERSION,
+        });
+      }
+      if (previousSource && previousQuotaRows.length > 0) {
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "rate_limit_observations",
+          source: previousSource,
+          previousRows: previousQuotaRows,
+          currentRows: database.prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?").all(filePath),
+          methodVersion: HISTORY_REPLACED_QUOTA_METHOD_VERSION,
+        });
+      }
       // M3.2：性能候选。位置在 events 之后、COMMIT 之前，与前三类共享**同一个** `BEGIN IMMEDIATE`
       // 事务 ⇒ 任一类失败都会一起回滚（gate A 逐类实测）。
       //
@@ -3241,9 +7199,17 @@ export class UsageStore {
         // 由 `onWarning`/catch 另路处理）；而 `statAfter` **取不到**（`null`）本身就是
         // "读完之后来源不再可读"的证据 —— 与"指纹变了"同属**候选不完整**，且更强。
         const statBefore = enabledPerfSourceStat(source.kind, filePath);
-        // S4：WorkBuddy 的时长来自 side table（trace 预扫写入）。查表按调用建**局部**缓存，
-        // 跨调用不复用 —— 同一文件内同一 messageId 至多出现一次，缓存只是防御重复。
-        const durationStatement = database.prepare(
+        // S4/C2：WorkBuddy 的时长来自按 home 归属的 observation 表。只有恰好一种时长时可用；
+        // 多种时长必须返回 null，不能按先后、MIN/MAX 或时间相近猜一个。旧表无 home_id，
+        // 仅在 observation 为空时兜底，避免升级立即丢掉已持久化的可用值。
+        const observationStatement = database.prepare(
+          `SELECT duration_ms, ended_at_ms
+           FROM workbuddy_generation_duration_observations
+           WHERE home_id = ? AND message_id = ?
+           ORDER BY duration_ms
+           LIMIT 2`,
+        );
+        const legacyDurationStatement = database.prepare(
           "SELECT duration_ms, ended_at_ms FROM workbuddy_generation_durations WHERE message_id = ?",
         );
         const durationCache = new Map();
@@ -3251,13 +7217,18 @@ export class UsageStore {
           const key = String(messageId ?? "");
           if (key === "") return null;
           if (durationCache.has(key)) return durationCache.get(key);
-          const row = durationStatement.get(key);
-          const value = row
-            ? {
-                durationMs: Number(row.duration_ms),
-                endedAtMs: row.ended_at_ms === null ? null : Number(row.ended_at_ms),
-              }
-            : null;
+          const observations = observationStatement.all(String(source.id ?? ""), key);
+          const row =
+            observations.length <= 1
+              ? (observations[0] ?? (legacyWorkbuddyFallbackAllowed ? legacyDurationStatement.get(key) : null))
+              : null;
+          const value =
+            row && observations.length <= 1
+              ? {
+                  durationMs: Number(row.duration_ms),
+                  endedAtMs: row.ended_at_ms === null ? null : Number(row.ended_at_ms),
+                }
+              : null;
           durationCache.set(key, value);
           return value;
         };
@@ -3295,12 +7266,7 @@ export class UsageStore {
           // 到 `statAfter` 时**取不到**，即"来源在**读取窗口内**发生了变化"—— 这是**字面为真**，
           // 不是类比。而 `READ_ONLY_OPEN_FAILED` 已被 reader 自身失败（文件坏/缺表）占用，
           // 复用它会把**两种不同成因**混成一个码，破坏归因（AN-6）。
-          liveChangeWarnings.push({
-            sourceKind: canonicalizeKind(source.kind),
-            homeId: String(source.id ?? ""),
-            code: "LIVE_SOURCE_CHANGED",
-            count: 1,
-          });
+          noteLiveChangeWarning(canonicalizeKind(source.kind), String(source.id ?? ""));
           // `blockedHomeIds` 由 `sync()` 拥有（本方法不能直接访问其作用域）⇒ 经 options 注入。
           blockedHomeIds?.add(String(source.id ?? ""));
           liveChangedPaths.add(filePath);
@@ -3349,8 +7315,65 @@ export class UsageStore {
           for (const [p, fp] of Object.entries(nextFingerprints)) committedFingerprints.set(p, fp);
         }
       }
+      if (!codexThreaded && previousSource && previousPerfSamples.length > 0) {
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "perf_samples",
+          source: previousSource,
+          previousRows: previousPerfSamples,
+          currentRows: database.prepare("SELECT * FROM perf_samples WHERE source_path = ?").all(filePath),
+          methodVersion: PERF_METHOD_VERSION,
+        });
+      }
+      if (!codexThreaded && previousSource && previousPerfSampleSources.length > 0) {
+        saveMissingHistoryFacts(insertReplacedFact, {
+          factTable: "perf_sample_sources",
+          source: previousSource,
+          previousRows: previousPerfSampleSources,
+          currentRows: database
+            .prepare(
+              `SELECT dependencies.*
+               FROM perf_sample_sources AS dependencies
+               JOIN perf_samples AS samples ON samples.sample_key = dependencies.sample_key
+               WHERE samples.source_path = ?`,
+            )
+            .all(filePath),
+          methodVersion: PERF_METHOD_VERSION,
+        });
+      }
       const nextFileWarnings = this.publishedFileWarningsForRound();
-      if (isPerfSourceEnabled(source.kind) && canonicalizeKind(source.kind) !== "codex") {
+      if (String(source.kind ?? "") === "project-log") {
+        let projectLogFileWarnings = (nextFileWarnings[filePath] || []).filter(
+          (warning) =>
+            warning.code === PROJECT_LOG_TRUNCATION_WARNING_CODE ||
+            warning.code === PROJECT_LOG_MALFORMED_LINE_WARNING_CODE,
+        );
+        if (truncationEventCount > 0) {
+          projectLogFileWarnings = projectLogFileWarnings.filter(
+            (warning) => warning.code !== PROJECT_LOG_TRUNCATION_WARNING_CODE,
+          );
+          projectLogFileWarnings.push({
+            sourceKind: "project-log",
+            homeId: String(source.id ?? ""),
+            code: PROJECT_LOG_TRUNCATION_WARNING_CODE,
+            count: truncationEventCount,
+          });
+        }
+        const malformedLines = [...projectLogMalformedLines].sort((left, right) => left - right);
+        projectLogFileWarnings = projectLogFileWarnings.filter(
+          (warning) => warning.code !== PROJECT_LOG_MALFORMED_LINE_WARNING_CODE,
+        );
+        if (malformedLines.length > 0) {
+          projectLogFileWarnings.push({
+            sourceKind: "project-log",
+            homeId: String(source.id ?? ""),
+            code: PROJECT_LOG_MALFORMED_LINE_WARNING_CODE,
+            count: malformedLines.length,
+            lineNumbers: malformedLines,
+          });
+        }
+        if (projectLogFileWarnings.length > 0) nextFileWarnings[filePath] = projectLogFileWarnings;
+        else delete nextFileWarnings[filePath];
+      } else if (isPerfSourceEnabled(source.kind) && canonicalizeKind(source.kind) !== "codex") {
         nextFileWarnings[filePath] = normalizeSourceWarnings(filePerfWarnings);
       } else if (canonicalizeKind(source.kind) !== "codex") {
         delete nextFileWarnings[filePath];
@@ -3373,7 +7396,7 @@ export class UsageStore {
       // 事务内任何抛错）都保留旧值，失败轮次的新值不会泄漏进视图。
       this.publishedFileMapsView?.commit(committedFingerprintMap, nextFileWarnings);
       // D1：告诉调用点"这一次替换真的提交了"（+ 有没有 quota 观测行）⇒ 调用点据此推进修订。
-      return { committed: true, quotaWritten };
+      return { committed: true, quotaWritten, truncationWarning, projectLogWarnings };
     } catch (error) {
       database.exec("ROLLBACK");
       // D1：抛错 ⇒ 整个替换事务回滚 ⇒ **不推进修订**，只复原深度 + 安全清理事务内的派生缓存。
@@ -3391,10 +7414,116 @@ export class UsageStore {
     const view = createPublishedFileMapsView(this);
     this.publishedFileMapsView = view;
     try {
-      return await this.syncRound(args);
+      let status = await this.syncRound(args);
+      const timingWarnings = [];
+      try {
+        if (await this.importMagpieRequestTimings(timingWarnings)) status = await this.syncRound(args);
+        if (timingWarnings.length === 0) {
+          this.magpieTimingPublication = `${this.fingerprint}\u0000${this.readMeta("perf_index_version")}`;
+        }
+      } catch {
+        // Timing enrichment must not discard a successful native-source publication.
+        timingWarnings.push("MAGPIE_TIMING_SYNC_FAILED: 本地请求计时暂不可用，下次同步重试");
+        this.magpieTimingPublication = "";
+      }
+      if (timingWarnings.length > 0) {
+        this.warnings.push(...timingWarnings);
+        this.metadataCache = null;
+      }
+      return status;
     } finally {
       if (this.publishedFileMapsView === view) this.publishedFileMapsView = null;
     }
+  }
+
+  async importMagpieRequestTimings(warnings) {
+    const filePath = path.join(this.options.homeDir || os.homedir(), ".config", "magpie", "usage.jsonl");
+    const ledgerChanged = await this.magpieRequestTimings.read(filePath);
+    if (ledgerChanged) this.magpieTimingLoaded = true;
+    if (!this.magpieTimingLoaded) return false;
+    const publication = `${this.fingerprint}\u0000${this.readMeta("perf_index_version")}`;
+    if (!ledgerChanged && filePath === this.magpieTimingFile && publication === this.magpieTimingPublication)
+      return false;
+    this.magpieTimingFile = filePath;
+    const published = new Map(
+      Object.entries(this.readPublishedFileFingerprints()).map(([file, fingerprint]) => [
+        canonicalProjectionStorePath(file),
+        fingerprint,
+      ]),
+    );
+    const methodVersion = this.codexProjections.methodVersion();
+    const projectionsByPath = new Map();
+    for (const row of this.database
+      .prepare(
+        "SELECT path, home_id, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id IN (SELECT DISTINCT home_id FROM perf_rollout_threads)",
+      )
+      .all()) {
+      projectionsByPath.set(`${String(row.home_id)}\u0000${canonicalProjectionStorePath(String(row.path))}`, row);
+    }
+    let changed = false;
+    for (const home of this.homes.filter((entry) => canonicalPerfSourceKind(entry.kind) === "codex")) {
+      const homeId = String(home.id);
+      try {
+        const foreignResponses = new Set(
+          this.database
+            .prepare(
+              "SELECT DISTINCT response_id FROM perf_request_timing_evidence WHERE home_id = ? AND evidence_origin <> ?",
+            )
+            .all(homeId, MAGPIE_TIMING_ORIGIN)
+            .map((row) => String(row.response_id)),
+        );
+        const threads = new Map();
+        for (const owner of this.database
+          .prepare(
+            "SELECT thread_id, source_path FROM perf_rollout_threads WHERE home_id = ? ORDER BY thread_id, source_path",
+          )
+          .all(homeId)) {
+          const thread = threads.get(String(owner.thread_id)) || { trusted: true, projections: [] };
+          threads.set(String(owner.thread_id), thread);
+          const row = projectionsByPath.get(
+            `${homeId}\u0000${canonicalProjectionStorePath(String(owner.source_path))}`,
+          );
+          if (
+            !row ||
+            String(row.method_version) !== methodVersion ||
+            String(row.fingerprint) !== published.get(canonicalProjectionStorePath(String(owner.source_path)))
+          ) {
+            thread.trusted = false;
+            continue;
+          }
+          thread.projections.push(JSON.parse(String(row.projection)));
+        }
+        const records = new Map();
+        for (const thread of threads.values()) {
+          if (!thread.trusted) continue;
+          for (const turn of foldCodexRolloutMetadata(homeId, thread.projections).turns) {
+            const requests = /** @type {Array<Record<string, unknown>>} */ (turn.requests);
+            for (const request of requests) {
+              if (typeof request.responseId !== "string" || typeof request.outputTokens !== "number") continue;
+              if (foreignResponses.has(request.responseId)) continue;
+              for (const record of this.magpieRequestTimings.recordsForRequest(
+                request.responseId,
+                typeof turn.model === "string" ? turn.model : "",
+                request.outputTokens,
+              ))
+                records.set(JSON.stringify(record), record);
+            }
+          }
+        }
+        if (records.size > 0) {
+          const result = this.importRequestTimingEvidence({
+            homeId,
+            records: [...records.values()],
+            reviewedOrigins: [MAGPIE_TIMING_ORIGIN],
+          });
+          changed ||= result.changed;
+        }
+      } catch {
+        warnings.push("MAGPIE_TIMING_IMPORT_FAILED: 本地请求计时未通过原生映射验证，下次同步重试");
+      }
+    }
+    if (warnings.length > 0) this.magpieTimingPublication = "";
+    return changed;
   }
 
   /**
@@ -3407,6 +7536,8 @@ export class UsageStore {
     // D1：轮首先**检出外部提交**（同连接 `PRAGMA data_version`）⇒ 失效派生缓存 + 重载必要元数据，
     // 这样本轮的"要不要保留缓存"判定（轮末守卫）以及随后的读路径都建立在正确的修订上。
     this.syncDerivedRevision();
+    // install invalidation triggers before this round writes event facts
+    createUsageRollups(this.database);
     const syncOptions = options || this.options;
     this.options = syncOptions;
     const homes = await discoverUsageSources(syncOptions);
@@ -3417,13 +7548,77 @@ export class UsageStore {
     const failedHomeIds = new Set(failedHomes.map((home) => home.id));
     const failedHomePaths = new Set(failedHomes.map((home) => home.path));
     let updatedFileCount = 0;
+    const sourceRowsBefore = this.database
+      .prepare("SELECT path, kind, home_id, home_label, home_path, size, mtime_ms FROM source_files")
+      .all();
+    const sourceRowsBeforeByPath = new Map(sourceRowsBefore.map((row) => [String(row.path), row]));
+    const publishedFingerprintsBefore = this.publishedFileFingerprintsForRound();
+    const committedUsagePaths = new Set();
+    /** Current paths that were discovered but failed replacement this round. */
+    const failedUsagePaths = new Set();
+
+    /**
+     * A rename is not a missing source: when one old path disappears and one
+     * new path with the same native kind/home/content appears, the old row may
+     * be removed only after the new row is successfully published.
+     */
+    const replacementKey = (kind, homeId, signature) =>
+      `${canonicalizeKind(kind)}\u0000${String(homeId ?? "")}\u0000${signature}`;
+    const oldByReplacementKey = new Map();
+    const newByReplacementKey = new Map();
+    const oldCodexRepresentations = new Map();
+    const newCodexRepresentations = new Map();
+    for (const row of sourceRowsBefore) {
+      const filePath = String(row.path);
+      if (knownFiles.has(filePath)) continue;
+      if (failedHomeIds.has(row.home_id) || failedHomePaths.has(row.home_path)) continue;
+      if (canonicalizeKind(String(row.kind ?? "")) === "codex") {
+        const logicalPath = canonicalPerfProbePath(plainRolloutPath(filePath));
+        const paths = oldCodexRepresentations.get(logicalPath) || [];
+        paths.push(filePath);
+        oldCodexRepresentations.set(logicalPath, paths);
+      }
+      const fingerprint = publishedFingerprintsBefore[filePath];
+      if (typeof fingerprint !== "string" || fingerprint === "") continue;
+      const key = replacementKey(row.kind, row.home_id, `fingerprint:${fingerprint}`);
+      const entries = oldByReplacementKey.get(key) || [];
+      entries.push(filePath);
+      oldByReplacementKey.set(key, entries);
+    }
+    for (const file of files) {
+      if (canonicalizeKind(file.source.kind) === "codex") {
+        const logicalPath = canonicalPerfProbePath(plainRolloutPath(file.filePath));
+        const paths = newCodexRepresentations.get(logicalPath) || [];
+        paths.push(file.filePath);
+        newCodexRepresentations.set(logicalPath, paths);
+      }
+      const fingerprint = enabledPerfSourceStat(file.source.kind, file.filePath);
+      if (typeof fingerprint !== "string" || fingerprint === "") continue;
+      const key = replacementKey(file.source.kind, file.source.id, `fingerprint:${fingerprint}`);
+      const entries = newByReplacementKey.get(key) || [];
+      entries.push(file.filePath);
+      newByReplacementKey.set(key, entries);
+    }
+    const replacementTargetByOldPath = new Map();
+    for (const [logicalPath, oldPaths] of oldCodexRepresentations) {
+      const newPaths = newCodexRepresentations.get(logicalPath);
+      if (oldPaths.length !== 1 || newPaths?.length !== 1) continue;
+      replacementTargetByOldPath.set(oldPaths[0], newPaths[0]);
+    }
+    for (const [key, oldPaths] of oldByReplacementKey) {
+      const newPaths = newByReplacementKey.get(key);
+      if (oldPaths.length !== 1 || newPaths?.length !== 1) continue;
+      if (replacementTargetByOldPath.has(oldPaths[0])) continue;
+      replacementTargetByOldPath.set(oldPaths[0], newPaths[0]);
+    }
     /**
      * C5 卡：**本轮是否真的写了用量数据**（= 派生缓存的输入是否变了）。
      *
-     * `this.metadataCache` 与 `this.periodComparisonCache` 的输入**只有用量侧**：
+     * `this.metadataCache` 与 `this.periodComparisonCache` 的数据输入只有用量侧：
      * `metadata()` 读 `events` + 本轮 home 集合（`metadata()` 里的 `events` 聚合与 `this.homes`），
-     * `periodComparison()` 走 `periodAggregate()` —— 那条 SQL **只读 `events`**，
-     * 不用价目、不用 `source_files`、不用任何 perf 表。
+     * `periodComparison()` 走 `periodAggregate()` —— 原始行仍只读 `events`，但模型行名还会
+     * 经过当前价目目录的规范化；缓存键包含目录键集，纯费率变化无需重建事实。
+     * 这里不读费率、不用 `source_files`、不用任何 perf 表。
      *
      * 因此"要不要清空派生缓存"必须由**真正的数据变更点**决定，而不是由"源指纹变了""本轮开过
      * 什么事务"决定（卡面："主审检查真正的数据变更点，不只凭源 fingerprint 判断"）。下面每个
@@ -3443,12 +7638,15 @@ export class UsageStore {
      */
     let usageDerivedChanged = false;
     const changedSessions = new Set();
-    /**
-     * S4：本轮**已做过** trace 预扫的 WorkBuddy home（`source.id`）。
-     * 同一 home 的多个会话文件共享同一份 trace ⇒ 每轮至多扫一次。
-     * @type {Set<string>}
-     */
-    const workbuddyRefreshedHomes = new Set();
+    const workbuddyHomes = homes.filter(
+      (home) =>
+        canonicalizeKind(String(home?.kind ?? home?.sourceKind ?? "")) === "workbuddy" &&
+        isPerfSourceEnabled("workbuddy"),
+    );
+    /** @type {Map<string, { fingerprint: string | null, complete: boolean }>} */
+    const workbuddyTraceDependencies = new Map();
+    /** @type {Map<string, Set<string>>} */
+    const workbuddyTraceTargets = new Map();
     /**
      * S4：本轮每个 WorkBuddy home 的"缺时长"计数（`homeId → { label, count }`）。
      * 轮末合并成**每 home 一条**普通 warning（走既有字符串通道，不新增告警码域）。
@@ -3461,12 +7659,166 @@ export class UsageStore {
     const fileFailures = [];
     /** M3.4 返工 **BB-1**：读取期间来源变化的告警（冻结码 `LIVE_SOURCE_CHANGED`）。 */
     const liveChangeWarnings = [];
+    const liveChangeWarningKeys = new Set();
+    const noteLiveChangeWarning = (sourceKind, homeId) => {
+      const key = `${sourceKind}\u0000${homeId}\u0000LIVE_SOURCE_CHANGED`;
+      if (liveChangeWarningKeys.has(key)) return;
+      liveChangeWarningKeys.add(key);
+      liveChangeWarnings.push({ sourceKind, homeId, code: "LIVE_SOURCE_CHANGED", count: 1 });
+    };
     /** M3.4 返工 **BB-1**：读取期间变过的文件 ⇒ 必须置脏以强制下一轮重提取。 */
     const liveChangedPaths = new Set();
     /** M3.4 返工2 **BC-2**：因**真实删除**而移除的指纹分量（需写回映射）。 */
     const removedFingerprintPaths = new Set();
     /** Successful physical-file deletion also clears its committed reader diagnostics. */
     const removedSourcePaths = new Set();
+    const legacyWorkbuddyFallbackAllowed = workbuddyHomes.length === 1;
+    const samplePathForWorkbuddyMessage = this.database.prepare(
+      "SELECT source_path FROM perf_samples WHERE sample_key = ?",
+    );
+    for (const home of workbuddyHomes) {
+      const homeId = String(home.id ?? "");
+      const outcome = await this.refreshWorkbuddyDurations(home.path, {
+        homeId,
+        onWarning: (warning) => warnings.push(warning),
+      });
+      workbuddyTraceDependencies.set(homeId, {
+        fingerprint: outcome.traceDependency,
+        complete: outcome.traceComplete,
+      });
+      if (!outcome.traceComplete) {
+        blockedHomeIds.add(homeId);
+        fileFailures.push({
+          sourceKind: "workbuddy",
+          homeId,
+          code: "READ_ONLY_OPEN_FAILED",
+        });
+      }
+      if (outcome.insertedMessageIds.length === 0) continue;
+
+      const targets = workbuddyTraceTargets.get(homeId) || new Set();
+      const unresolved = [];
+      for (const messageId of outcome.insertedMessageIds) {
+        const sampleKey = JSON.stringify(["workbuddy", homeId, messageId]);
+        const sourcePath = samplePathForWorkbuddyMessage.get(sampleKey)?.source_path;
+        if (sourcePath) targets.add(String(sourcePath));
+        else unresolved.push(messageId);
+      }
+      if (unresolved.length > 0) {
+        try {
+          const sessionFilesByMessage = await workbuddySessionMessageFiles(home.path);
+          for (const messageId of unresolved) {
+            for (const filePath of sessionFilesByMessage.get(messageId) || []) targets.add(filePath);
+          }
+        } catch (error) {
+          blockedHomeIds.add(homeId);
+          fileFailures.push({
+            sourceKind: "workbuddy",
+            homeId,
+            code: "READ_ONLY_OPEN_FAILED",
+          });
+          // The trace rows are already committed. Force every known session file
+          // in this home through replaceFile so the next readable pass can recover
+          // even when the trace file itself is unchanged.
+          const dirty = this.database
+            .prepare("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE home_id = ? AND kind = 'workbuddy'")
+            .run(homeId);
+          if (Number(dirty.changes) > 0) {
+            usageDerivedChanged = true;
+            this.commitStoreRevision("workbuddy-trace-resolution");
+          }
+          warnings.push(`无法定位 WorkBuddy 响应所属会话 ${home.path}: ${error.message}`);
+        }
+      }
+      if (targets.size > 0) workbuddyTraceTargets.set(homeId, targets);
+    }
+
+    const legacyFallbackModeRaw = this.readMetaRaw("perf_workbuddy_legacy_fallback_allowed");
+    const legacyFallbackModeChanged =
+      (legacyFallbackModeRaw !== "0" && legacyFallbackModeRaw !== "1") ||
+      legacyFallbackModeRaw !== (legacyWorkbuddyFallbackAllowed ? "1" : "0");
+    if (legacyFallbackModeChanged) {
+      if (!legacyWorkbuddyFallbackAllowed) {
+        // A sample without a home-owned observation could only have come from
+        // the legacy table. Multi-home mode withdraws that proof.
+        const observations = new Set(
+          this.database
+            .prepare("SELECT home_id, message_id FROM workbuddy_generation_duration_observations")
+            .all()
+            .map((row) => `${String(row.home_id)}\u0000${String(row.message_id)}`),
+        );
+        for (const row of this.database
+          .prepare("SELECT sample_key, source_path FROM perf_samples WHERE source_kind = 'workbuddy'")
+          .all()) {
+          /** @type {unknown} */
+          let sampleKey;
+          try {
+            sampleKey = JSON.parse(String(row.sample_key));
+          } catch {
+            continue;
+          }
+          if (!Array.isArray(sampleKey) || sampleKey.length < 3) continue;
+          const homeId = String(sampleKey[1] ?? "");
+          const messageId = String(sampleKey[2] ?? "");
+          const sourcePath = String(row.source_path ?? "");
+          if (
+            homeId === "" ||
+            messageId === "" ||
+            sourcePath === "" ||
+            observations.has(`${homeId}\u0000${messageId}`)
+          ) {
+            continue;
+          }
+          const targets = workbuddyTraceTargets.get(homeId) || new Set();
+          targets.add(sourcePath);
+          workbuddyTraceTargets.set(homeId, targets);
+        }
+      } else {
+        const home = workbuddyHomes[0];
+        const homeId = String(home.id ?? "");
+        const observations = new Set(
+          this.database
+            .prepare("SELECT message_id FROM workbuddy_generation_duration_observations WHERE home_id = ?")
+            .all(homeId)
+            .map((row) => String(row.message_id)),
+        );
+        const legacyMessageIds = [
+          ...new Set(
+            this.database
+              .prepare("SELECT message_id FROM workbuddy_generation_durations")
+              .all()
+              .map((row) => String(row.message_id))
+              .filter((messageId) => messageId !== "" && !observations.has(messageId)),
+          ),
+        ];
+        if (legacyMessageIds.length > 0) {
+          try {
+            const sessionFilesByMessage = await workbuddySessionMessageFiles(home.path);
+            const targets = workbuddyTraceTargets.get(homeId) || new Set();
+            for (const messageId of legacyMessageIds) {
+              for (const filePath of sessionFilesByMessage.get(messageId) || []) targets.add(filePath);
+            }
+            if (targets.size > 0) workbuddyTraceTargets.set(homeId, targets);
+          } catch (error) {
+            blockedHomeIds.add(homeId);
+            fileFailures.push({
+              sourceKind: "workbuddy",
+              homeId,
+              code: "READ_ONLY_OPEN_FAILED",
+            });
+            const dirty = this.database
+              .prepare("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE home_id = ? AND kind = 'workbuddy'")
+              .run(homeId);
+            if (Number(dirty.changes) > 0) {
+              usageDerivedChanged = true;
+              this.commitStoreRevision("workbuddy-legacy-scope");
+            }
+            warnings.push(`无法恢复 WorkBuddy legacy 时长会话 ${home.path}: ${error.message}`);
+          }
+        }
+      }
+    }
+
     const previousCodexThreadsByPath = new Map();
     const addPreviousCodexThread = (sourcePath, homeId, threadId) => {
       const associations = previousCodexThreadsByPath.get(sourcePath) || [];
@@ -3532,12 +7884,12 @@ export class UsageStore {
       if (!homeId) return;
       bumpCodexBlockEvent(homeId);
       blockedHomeIds.add(homeId);
-      fileFailures.push({
-        sourceKind: "codex",
-        homeId,
-        code: perfWarningCodeForError(error),
-        sourcePath,
-      });
+      const code = perfWarningCodeForError(error);
+      if (code === "LIVE_SOURCE_CHANGED") {
+        noteLiveChangeWarning("codex", homeId);
+        return;
+      }
+      fileFailures.push({ sourceKind: "codex", homeId, code, sourcePath });
     };
     const codexFiles = files.filter((file) => canonicalizeKind(file.source?.kind) === "codex");
     const currentCodexPaths = new Set(codexFiles.map((file) => file.filePath));
@@ -3596,6 +7948,15 @@ export class UsageStore {
       codexOldSampleKeysByHome.set(homeId, byThread);
     }
 
+    /** @type {Map<string, Set<string>>} */
+    const codexDirtyTimingThreadsByHome = new Map();
+    for (const row of this.database.prepare("SELECT home_id, thread_id FROM perf_request_timing_dirty_threads").all()) {
+      const homeId = String(row.home_id);
+      const threadIds = codexDirtyTimingThreadsByHome.get(homeId) || new Set();
+      threadIds.add(String(row.thread_id));
+      codexDirtyTimingThreadsByHome.set(homeId, threadIds);
+    }
+
     const codexHomeById = new Map(
       homes
         .filter((home) => canonicalizeKind(String(home?.kind ?? home?.sourceKind ?? "")) === "codex")
@@ -3623,6 +7984,7 @@ export class UsageStore {
       ...codexHomeById.keys(),
       ...oldCodexRowsByHome.keys(),
       ...codexOldThreadIdsByHome.keys(),
+      ...codexDirtyTimingThreadsByHome.keys(),
       ...priorPartialHomeIds,
     ]);
     // C1 卡：本轮**不再存在**的 home ⇒ 清掉它的稳定失败尝试记录（真实删除 / 归档迁移 / 来源移除）。
@@ -3671,9 +8033,27 @@ export class UsageStore {
             }
           : null);
       if (!home) continue;
+      if (!currentHome) {
+        // A whole Codex home disappearing is retention, not a parse failure.
+        // Failed discovery for a home still known this round must stay degraded.
+        if (crossHomeBlockedIds.has(homeId)) {
+          // The paths are still present under another home. The old failure
+          // signature therefore describes an attribution this round disproved.
+          this.codexStableAttempts.delete(homeId);
+          if (policyNeedsUpgrade) policyUpgradeComplete = false;
+        }
+        if (failedHomeIds.has(homeId) || failedHomePaths.has(String(home.path ?? ""))) {
+          blockCodexHome(
+            homeId,
+            Object.assign(new Error("Codex home discovery failed"), { code: "READ_ONLY_OPEN_FAILED" }),
+          );
+        }
+        continue;
+      }
       const homeFiles = codexFilesByHome.get(homeId) || [];
       const expectedPaths = homeFiles.map((file) => file.filePath).sort();
       const oldPaths = oldRows.map((row) => String(row.path));
+      const dirtyTimingThreadIds = codexDirtyTimingThreadsByHome.get(homeId) || new Set();
       const pathSetChanged =
         oldPaths.length !== expectedPaths.length || oldPaths.some((filePath) => !expectedPaths.includes(filePath));
       const metadataChanged = homeFiles.some((file) => {
@@ -3700,6 +8080,7 @@ export class UsageStore {
         policyNeedsUpgrade ||
         priorDegradedHomeIds.has(homeId) ||
         priorPartialHomeIds.has(homeId) ||
+        dirtyTimingThreadIds.size > 0 ||
         pathSetChanged ||
         metadataChanged ||
         codexHomesWithUnkeyableOldSamples.has(homeId);
@@ -3770,8 +8151,11 @@ export class UsageStore {
             partialHomesById.set(homeId, new Set(reusedAttempt.blockedThreadIds));
             for (const failure of reusedAttempt.failedThreads) {
               const failedPaths = failure.failedFilePaths || [];
-              if (failedPaths.length === 0) fileFailures.push({ sourceKind: "codex", homeId, code: failure.reason });
-              else {
+              if (failure.reason === "LIVE_SOURCE_CHANGED") {
+                noteLiveChangeWarning("codex", homeId);
+              } else if (failedPaths.length === 0) {
+                fileFailures.push({ sourceKind: "codex", homeId, code: failure.reason });
+              } else {
                 fileFailures.push(
                   ...failedPaths.map((sourcePath) => ({
                     sourceKind: "codex",
@@ -3811,10 +8195,12 @@ export class UsageStore {
           window = await planStableCodexHome({ ...home, projectionCache: this.codexProjections }, expectedPaths);
         } finally {
           if (window !== null && window.stable === true) this.codexProjections.commit(homeId);
-          else this.codexProjections.rollback(homeId);
+          else if (window !== null && window.partial === true) {
+            this.codexProjections.commit(homeId, window.liveChangedPaths);
+          } else this.codexProjections.rollback(homeId);
           this.codexProjections.prune(homeId, expectedPaths);
         }
-        if (!window.ok || !window.stable || !window.plan?.ok) {
+        if (!window.ok || (!window.stable && window.partial !== true) || !window.plan?.ok) {
           const code =
             window.code ??
             window.plan?.homeBlocking?.[0]?.code ??
@@ -3868,8 +8254,10 @@ export class UsageStore {
         const stageOldPathsByThread = codexOldThreadPathsByHome.get(homeId) || new Map();
         const stagedThreads = [];
         const retainedThreadIds = [];
+        const liveThreadIds = new Set(window.liveChangedThreadIds ?? []);
         for (const thread of window.plan.threads) {
           const rolloutFiles = thread.rollouts.map((rollout) => rollout.filePath).sort();
+          if (liveThreadIds.has(thread.threadId)) continue;
           if (
             !codexThreadNeedsBuild(
               { threadId: thread.threadId, rolloutFiles },
@@ -3877,12 +8265,15 @@ export class UsageStore {
               stageOldPathsByThread,
               window.after.fileFingerprints,
               publishedCodexFingerprints,
+              dirtyTimingThreadIds,
             )
           ) {
             retainedThreadIds.push(thread.threadId);
             continue;
           }
-          const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts);
+          const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts, {
+            lookupRequestTiming: (query) => this.lookupRequestTiming(query),
+          });
           stagedThreads.push({
             homeId,
             threadId: thread.threadId,
@@ -3918,8 +8309,11 @@ export class UsageStore {
           partialHomesById.set(homeId, blockedThreadIds);
           for (const failure of window.plan.failedThreads) {
             const failedPaths = failure.failedFilePaths || [];
-            if (failedPaths.length === 0) fileFailures.push({ sourceKind: "codex", homeId, code: failure.reason });
-            else {
+            if (failure.reason === "LIVE_SOURCE_CHANGED") {
+              noteLiveChangeWarning("codex", homeId);
+            } else if (failedPaths.length === 0) {
+              fileFailures.push({ sourceKind: "codex", homeId, code: failure.reason });
+            } else {
               fileFailures.push(
                 ...failedPaths.map((sourcePath) => ({ sourceKind: "codex", homeId, code: failure.reason, sourcePath })),
               );
@@ -3968,6 +8362,7 @@ export class UsageStore {
      */
     const pendingChange =
       codexPendingChange ||
+      [...workbuddyTraceTargets.values()].some((targets) => targets.size > 0) ||
       files.some((file) => {
         const existing = this.database
           .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
@@ -4085,21 +8480,20 @@ export class UsageStore {
           reusedCurrent,
         );
       }
-      if (!needsRefresh) continue;
-      // S4：trace 预扫**必须**落在 `replaceFile` 之外（那里是唯一跨 `await` 的写事务）。
-      // 每个 home 每轮至多一次：同一 home 的第二个 WorkBuddy 文件不再触发。
-      if (canonicalizeKind(file.source.kind) === "workbuddy" && !workbuddyRefreshedHomes.has(String(file.source.id))) {
-        workbuddyRefreshedHomes.add(String(file.source.id));
-        await this.refreshWorkbuddyDurations(file.source.path, {
-          onWarning: (warning) => warnings.push(warning),
-        });
+      if (
+        canonicalizeKind(file.source.kind) === "workbuddy" &&
+        workbuddyTraceTargets.get(String(file.source.id))?.has(file.filePath)
+      ) {
+        needsRefresh = true;
       }
+      if (!needsRefresh) continue;
       try {
         const replaceOutcome = await this.replaceFile(file, {
           onWarning: (warning) => warnings.push(warning),
-          liveChangeWarnings,
+          noteLiveChangeWarning,
           liveChangedPaths,
           blockedHomeIds,
+          legacyWorkbuddyFallbackAllowed,
           onWorkbuddyDurationGap: (homeLabel, count) => {
             const key = String(file.source.id);
             const entry = workbuddyDurationGaps.get(key) || { label: homeLabel, count: 0 };
@@ -4114,14 +8508,20 @@ export class UsageStore {
           changedSessions.add(row.session_id);
         }
         updatedFileCount += 1;
+        if (replaceOutcome?.committed) committedUsagePaths.add(file.filePath);
+        else failedUsagePaths.add(file.filePath);
         // C5 提交点 ①：`replaceFile` 成功 ⇒ `source_files` 与 `events` 都被写过。
         usageDerivedChanged = true;
         // D1：**只有真的 `COMMIT` 了**才推进实例修订 —— 读取窗口内变化那条路径会整笔 `ROLLBACK`
         // 并返回 `committed: false`（那种情况由下面的 `liveChangedPaths` 置脏点推进修订）。
         if (replaceOutcome?.committed) {
+          // Malformed-line diagnostics belong only to the committed replacement that parsed them.
+          if (replaceOutcome.truncationWarning) warnings.push(replaceOutcome.truncationWarning);
+          for (const warning of replaceOutcome.projectLogWarnings || []) warnings.push(warning);
           this.commitStoreRevision(replaceOutcome.quotaWritten ? "usage+quota" : "usage");
         }
       } catch (error) {
+        failedUsagePaths.add(file.filePath);
         // ⚠️ **保留原用量告警**（用户明示）：这条字符串带着路径与原因，是**用量侧**的告警，
         // 不因我们另外做 perf 归因而被吞掉。
         warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
@@ -4158,12 +8558,42 @@ export class UsageStore {
           ? discovered.map((filePath) => enabledPerfSourceStat("codex", filePath))
           : [];
         const unreadable = currentFingerprints.some((fingerprint) => fingerprint === null);
-        const contentsStable =
-          pathsStable &&
-          !unreadable &&
-          discovered.every(
-            (filePath, index) => currentFingerprints[index] === plan.window.after.fileFingerprints[filePath],
-          );
+        const liveThreadIds = new Set(plan.window.liveChangedThreadIds ?? []);
+        const ownersByPath = new Map();
+        for (const thread of plan.threadPaths) {
+          for (const filePath of thread.filePaths) {
+            const owners = ownersByPath.get(filePath) ?? new Set();
+            owners.add(thread.threadId);
+            ownersByPath.set(filePath, owners);
+          }
+        }
+        const provenPaths = new Set(plan.window.liveChangedPaths ?? []);
+        let contentsStable = pathsStable && !unreadable;
+        if (contentsStable) {
+          for (const [index, filePath] of discovered.entries()) {
+            const current = currentFingerprints[index];
+            const expected = plan.window.after.fileFingerprints[filePath];
+            if (current !== expected) {
+              const owners = ownersByPath.get(filePath);
+              const threadId = owners?.size === 1 ? [...owners][0] : "";
+              if (
+                !threadId ||
+                !(await proveCodexLiveAppend(
+                  filePath,
+                  expected,
+                  current,
+                  threadId,
+                  plan.window.before.filePrefixEvidence?.[filePath],
+                ))
+              ) {
+                contentsStable = false;
+                break;
+              }
+              provenPaths.add(filePath);
+              liveThreadIds.add(threadId);
+            }
+          }
+        }
         if (!contentsStable) {
           blockCodexHome(
             homeId,
@@ -4173,6 +8603,26 @@ export class UsageStore {
           );
           partialHomesById.delete(homeId);
           if (policyNeedsUpgrade) policyUpgradeComplete = false;
+        } else if (liveThreadIds.size > 0) {
+          // A first append after planning has the same thread boundary as an append during planning.
+          plan.window.liveChangedThreadIds = [...liveThreadIds];
+          plan.window.liveChangedPaths = [...provenPaths];
+          plan.stagedThreads = plan.stagedThreads.filter((thread) => !liveThreadIds.has(thread.threadId));
+          plan.retainedThreadIds = plan.retainedThreadIds.filter((threadId) => !liveThreadIds.has(threadId));
+          const blockedThreads = partialHomesById.get(homeId) ?? new Set();
+          for (const threadId of liveThreadIds) blockedThreads.add(threadId);
+          partialHomesById.set(homeId, blockedThreads);
+          for (const filePath of provenPaths) liveChangedPaths.add(filePath);
+          this.codexProjections.prune(
+            homeId,
+            plan.expectedPaths.filter((filePath) => !provenPaths.has(filePath)),
+          );
+          this.codexThreadBuildPlan.set(homeId, {
+            staged: plan.stagedThreads.map((thread) => thread.threadId),
+            retained: [...plan.retainedThreadIds],
+          });
+          bumpCodexBlockEvent(homeId);
+          noteLiveChangeWarning("codex", homeId);
         }
       } catch (error) {
         blockCodexHome(homeId, error);
@@ -4201,9 +8651,13 @@ export class UsageStore {
       const oldThreadIds = codexOldThreadIdsByHome.get(homeId) || new Set();
       const oldPathsByThread = codexOldThreadPathsByHome.get(homeId) || new Map();
       const blockedOldThreadIds = new Set();
+      const liveThreadIds = new Set(plan.window.liveChangedThreadIds ?? []);
       for (const threadId of oldThreadIds) {
         const oldPaths = oldPathsByThread.get(threadId) || new Set();
-        if (failedThreadIds.has(threadId) || [...oldPaths].some((sourcePath) => failedPaths.has(sourcePath))) {
+        if (
+          !liveThreadIds.has(threadId) &&
+          (failedThreadIds.has(threadId) || [...oldPaths].some((sourcePath) => failedPaths.has(sourcePath)))
+        ) {
           blockedOldThreadIds.add(threadId);
         }
       }
@@ -4233,44 +8687,116 @@ export class UsageStore {
       // may contribute to the partial publication while the replacement fails.
       const blockedThreadIds = partialHomesById.get(homeId) || new Set();
       for (const threadId of failedThreadIds) blockedThreadIds.add(threadId);
+      for (const threadId of liveThreadIds) blockedThreadIds.add(threadId);
       for (const threadId of blockedOldThreadIds) blockedThreadIds.add(threadId);
       if (blockedThreadIds.size > 0) partialHomesById.set(homeId, blockedThreadIds);
 
       const stagedThreads = plan.stagedThreads;
       const stagedThreadIds = new Set(stagedThreads.map((staged) => staged.threadId));
       const currentThreadIds = new Set(plan.threadPaths.map((thread) => thread.threadId));
+      const currentPathSet = new Set(plan.expectedPaths);
+      const replacementCommitted = (sourcePath) => {
+        const replacement = replacementTargetByOldPath.get(sourcePath);
+        return (
+          replacement !== undefined &&
+          (committedUsagePaths.has(replacement) ||
+            (sourceRowsBeforeByPath.has(replacement) && !failedUsagePaths.has(replacement)))
+        );
+      };
+      const retainedMissingOldPaths = new Set();
+      for (const threadId of oldThreadIds) {
+        for (const sourcePath of oldPathsByThread.get(threadId) || []) {
+          if (!currentPathSet.has(sourcePath) && !replacementCommitted(sourcePath)) {
+            retainedMissingOldPaths.add(sourcePath);
+          }
+        }
+      }
+      const retainedMissingThreadIds = new Set();
+      for (const threadId of oldThreadIds) {
+        if ([...(oldPathsByThread.get(threadId) || [])].some((sourcePath) => retainedMissingOldPaths.has(sourcePath))) {
+          retainedMissingThreadIds.add(threadId);
+        }
+      }
       // C4：旧线程要删除+重插 ⟺ （本轮受影响）或（本轮已不存在）。**当前存在且未受影响**的
       // 旧线程不在其中 ⇒ 它的候选与指纹/告警分量原样留在库里。
       const replaceOldThreadIds = [...oldThreadIds].filter(
         (threadId) =>
-          !blockedOldThreadIds.has(threadId) && (stagedThreadIds.has(threadId) || !currentThreadIds.has(threadId)),
+          !liveThreadIds.has(threadId) &&
+          !blockedOldThreadIds.has(threadId) &&
+          !retainedMissingThreadIds.has(threadId) &&
+          (stagedThreadIds.has(threadId) || !currentThreadIds.has(threadId)),
       );
+      const stagedThreadsToReplace = stagedThreads.filter((staged) => !retainedMissingThreadIds.has(staged.threadId));
+      const stagedThreadsToMerge = stagedThreads.filter((staged) => retainedMissingThreadIds.has(staged.threadId));
       const nextFingerprints = { ...this.publishedFileFingerprintsForRound() };
       const nextWarnings = this.publishedFileWarningsForRound();
       const oldPathsToClear = new Set();
       for (const threadId of replaceOldThreadIds) {
         for (const sourcePath of oldPathsByThread.get(threadId) || []) oldPathsToClear.add(sourcePath);
       }
-      const currentPathSet = new Set(plan.expectedPaths);
       for (const row of oldCodexRowsByHome.get(homeId) || []) {
         const sourcePath = String(row.path);
         if (currentPathSet.has(sourcePath)) continue;
+        if (retainedMissingOldPaths.has(sourcePath)) continue;
         const retainedOwner = (previousCodexThreadsByPath.get(sourcePath) || []).some(
           (entry) => entry.homeId !== homeId || blockedOldThreadIds.has(entry.threadId),
         );
-        if (!retainedOwner) oldPathsToClear.add(sourcePath);
+        if (!retainedOwner && replacementCommitted(sourcePath)) oldPathsToClear.add(sourcePath);
       }
-      const deletedCodexPaths = [...oldPathsToClear].filter((sourcePath) => !currentCodexPaths.has(sourcePath));
+      const deletedCodexPaths = [...oldPathsToClear].filter(
+        (sourcePath) => !currentCodexPaths.has(sourcePath) && replacementCommitted(sourcePath),
+      );
       // C4 卡：本 home **没有**受影响线程、没有要清掉的旧线程、也没有真实删除 ⇒ **整个替换事务都不开**。
       // 这就是"无关线程复用已发布候选（不 delete/insert、不空发布）"的可执行判据：一个只被
       // 未受影响线程占据的 home，本轮的 `perf_samples` / `perf_sample_sources` /
       // `perf_rollout_threads` 行**一个字节都不动**，也不会留下空发布。
       if (replaceOldThreadIds.length === 0 && stagedThreads.length === 0 && deletedCodexPaths.length === 0) continue;
 
+      const replacedSampleKeys = new Set();
+      for (const threadId of replaceOldThreadIds) {
+        for (const sampleKey of codexOldSampleKeysByHome.get(homeId)?.get(threadId) || []) {
+          replacedSampleKeys.add(sampleKey);
+        }
+      }
+      // An evicted cold sample has no hot row to discover through old keys.
+      for (const staged of stagedThreads) {
+        for (const sample of staged.samples) replacedSampleKeys.add(String(sample.sampleKey));
+      }
+      const perfRevisionInputVersion = historyArchivePerfRevisionInputVersion(this.database);
+      const perfRevisionCandidates = await this.#captureHistoryArchivePerfRevisionCandidates(replacedSampleKeys);
+
       // D1：本事务**全同步**（没有 `await`）⇒ 读路径不可能插进来读到未提交状态，因此**不需要**
       // `writeTransactionDepth` 记账（深度只服务 `replaceFile` 那个跨 `await` 的事务）。
       this.database.exec("BEGIN IMMEDIATE");
       try {
+        if (
+          !sameHistoryArchivePerfRevisionInputVersion(
+            perfRevisionInputVersion,
+            historyArchivePerfRevisionInputVersion(this.database),
+          )
+        ) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_PERF_REVISION_INPUT_CHANGED",
+            "archive perf revision inputs changed while candidate facts were read; retry the sync",
+          );
+        }
+        const previousPerfSamplesByPath = new Map();
+        const previousPerfSampleSourcesByPath = new Map();
+        const selectPerfSample = this.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?");
+        const selectPerfSampleSources = this.database.prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ?");
+        const pushByPath = (groups, row) => {
+          const sourcePath = String(row.source_path);
+          const rows = groups.get(sourcePath) || [];
+          rows.push(row);
+          groups.set(sourcePath, rows);
+        };
+        for (const sampleKey of replacedSampleKeys) {
+          const sample = selectPerfSample.get(sampleKey);
+          if (sample) pushByPath(previousPerfSamplesByPath, sample);
+          for (const dependency of selectPerfSampleSources.all(sampleKey)) {
+            pushByPath(previousPerfSampleSourcesByPath, dependency);
+          }
+        }
         const committedDeletedPaths = [];
         for (const threadId of replaceOldThreadIds) {
           for (const sampleKey of codexOldSampleKeysByHome.get(homeId)?.get(threadId) || []) {
@@ -4284,7 +8810,7 @@ export class UsageStore {
         }
         for (const sourcePath of oldPathsToClear) delete nextWarnings[sourcePath];
 
-        for (const staged of stagedThreads) {
+        for (const staged of stagedThreadsToReplace) {
           for (const sourcePath of staged.rolloutFiles) {
             this.database
               .prepare("INSERT INTO perf_rollout_threads (source_path, home_id, thread_id) VALUES (?, ?, ?)")
@@ -4303,6 +8829,57 @@ export class UsageStore {
           Object.assign(nextFingerprints, staged.fingerprints);
         }
 
+        for (const staged of stagedThreadsToMerge) {
+          for (const sourcePath of staged.rolloutFiles) {
+            this.database
+              .prepare("INSERT OR IGNORE INTO perf_rollout_threads (source_path, home_id, thread_id) VALUES (?, ?, ?)")
+              .run(sourcePath, homeId, staged.threadId);
+          }
+          const oldKeys = codexOldSampleKeysByHome.get(homeId)?.get(staged.threadId) || new Set();
+          for (const sample of staged.samples) {
+            // Keep the last complete publication for an incomplete dependency set;
+            // only genuinely new turn identities are added.
+            if (oldKeys.has(sample.sampleKey)) continue;
+            this.insertPerfSample(sample);
+            for (const sourcePath of staged.rolloutFiles) {
+              this.database
+                .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)")
+                .run(sample.sampleKey, sourcePath, sourcePath === sample.sourcePath ? "primary" : "dependency");
+            }
+          }
+          if (staged.rolloutFiles.length > 0)
+            nextWarnings[staged.rolloutFiles[0]] = normalizeSourceWarnings(staged.warnings);
+          Object.assign(nextFingerprints, staged.fingerprints);
+        }
+
+        const insertReplacedFact = this.database.prepare(HISTORY_REPLACED_FACT_INSERT_SQL);
+        const currentPerfSamplesForPath = this.database.prepare("SELECT * FROM perf_samples WHERE source_path = ?");
+        const currentPerfSampleSourcesForPath = this.database.prepare(
+          "SELECT * FROM perf_sample_sources WHERE source_path = ?",
+        );
+        const selectHistorySource = this.database.prepare(
+          "SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+        );
+        const saveReplacedPerfFacts = (factTable, previousByPath, selectCurrent) => {
+          for (const [sourcePath, previousRows] of previousByPath) {
+            const source = oldCodexRowsByPath.get(sourcePath) ?? selectHistorySource.get(sourcePath);
+            if (!source) continue;
+            saveMissingHistoryFacts(insertReplacedFact, {
+              factTable,
+              source,
+              previousRows,
+              currentRows: selectCurrent.all(sourcePath),
+              methodVersion: PERF_METHOD_VERSION,
+            });
+          }
+        };
+        saveReplacedPerfFacts("perf_samples", previousPerfSamplesByPath, currentPerfSamplesForPath);
+        saveReplacedPerfFacts("perf_sample_sources", previousPerfSampleSourcesByPath, currentPerfSampleSourcesForPath);
+        writeHistoryArchivePerfRevisionChanges(
+          this.database,
+          historyArchivePerfRevisionChangesForSamples(this.database, perfRevisionCandidates, replacedSampleKeys),
+        );
+
         for (const sourcePath of deletedCodexPaths) {
           const retainedOwner = (previousCodexThreadsByPath.get(sourcePath) || []).some(
             (entry) => entry.homeId !== homeId || blockedOldThreadIds.has(entry.threadId),
@@ -4315,6 +8892,23 @@ export class UsageStore {
         }
         this.writeMeta("perf_file_fingerprints", JSON.stringify(nextFingerprints));
         this.writeMeta("perf_file_warnings", JSON.stringify(nextWarnings));
+        const clearTimingDirty = this.database.prepare(
+          "DELETE FROM perf_request_timing_dirty_threads WHERE home_id = ? AND thread_id = ?",
+        );
+        const replacedStagedThreadIds = new Set(stagedThreadsToReplace.map((staged) => staged.threadId));
+        let clearedTimingDirty = 0;
+        for (const threadId of replacedStagedThreadIds) {
+          clearedTimingDirty += Number(clearTimingDirty.run(homeId, threadId).changes);
+        }
+        for (const threadId of replaceOldThreadIds) {
+          clearedTimingDirty += Number(clearTimingDirty.run(homeId, threadId).changes);
+        }
+        if (clearedTimingDirty > 0) {
+          const rawPublicationSeq = Number(this.readMetaRaw(REQUEST_TIMING_PUBLICATION_SEQ_META));
+          const publicationSeq =
+            Number.isSafeInteger(rawPublicationSeq) && rawPublicationSeq >= 0 ? rawPublicationSeq : 0;
+          this.writeMeta(REQUEST_TIMING_PUBLICATION_SEQ_META, String(publicationSeq + 1));
+        }
         if (this.database.prepare("PRAGMA foreign_key_check").all().length > 0) {
           throw Object.assign(new Error("Codex publication violated a foreign key"), { code: "READ_ONLY_OPEN_FAILED" });
         }
@@ -4339,6 +8933,7 @@ export class UsageStore {
         if (committedDeletedPaths.length > 0) this.commitStoreRevision("usage-delete");
       } catch (error) {
         this.database.exec("ROLLBACK");
+        if (error?.code === "HISTORY_ARCHIVE_PERF_REVISION_INPUT_CHANGED") throw error;
         blockCodexHome(homeId, error);
         partialHomesById.delete(homeId);
         if (policyNeedsUpgrade) policyUpgradeComplete = false;
@@ -4353,10 +8948,11 @@ export class UsageStore {
     //     ⇒ 版本不再表征一个已不存在的来源。
     //   ⚠️ 这正是 `★4` 已立的区分（"文件整体消失"≠"文件存在但不可读"），本修复**不破坏**它，
     //     只是把**指纹映射**也按同一判据同步。
-    const publishedFingerprintsBefore = this.publishedFileFingerprintsForRound();
     for (const row of this.database.prepare("SELECT path, kind, home_id, home_path FROM source_files").all()) {
       if (!knownFiles.has(row.path) && !failedHomeIds.has(row.home_id) && !failedHomePaths.has(row.home_path)) {
         if (canonicalizeKind(String(row.kind)) === "codex") continue;
+        const replacement = replacementTargetByOldPath.get(String(row.path));
+        if (replacement === undefined || !committedUsagePaths.has(replacement)) continue;
         this.database.prepare("DELETE FROM source_files WHERE path = ?").run(row.path);
         removedSourcePaths.add(String(row.path));
         // C5 提交点 ③：非 codex 来源的真实删除 ⇒ `events` 经 `ON DELETE CASCADE` 一并消失。
@@ -4372,6 +8968,35 @@ export class UsageStore {
       }
     }
 
+    const previousMissingSources = decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META));
+    const previousMissingByPath = new Map(previousMissingSources.map((source) => [source.path, source]));
+    const missingSinceMs = Date.now();
+    const missingSources = [];
+    for (const row of this.database
+      .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files")
+      .all()) {
+      const sourcePath = String(row.path);
+      if (knownFiles.has(sourcePath)) continue;
+      if (failedHomeIds.has(row.home_id) || failedHomePaths.has(row.home_path)) continue;
+      const replacement = replacementTargetByOldPath.get(sourcePath);
+      if (replacement !== undefined && committedUsagePaths.has(replacement)) continue;
+      const previous = previousMissingByPath.get(sourcePath);
+      // Missing-source identity is provenance, not the perf-kind projection:
+      // keep values such as project-log distinguishable from unsupported.
+      const kind = String(row.kind ?? "");
+      const homeId = String(row.home_id ?? "");
+      missingSources.push({
+        path: sourcePath,
+        kind,
+        homeId,
+        homeLabel: String(row.home_label ?? ""),
+        homePath: String(row.home_path ?? ""),
+        missingSinceMs:
+          previous?.kind === kind && previous?.homeId === homeId ? previous.missingSinceMs : missingSinceMs,
+      });
+    }
+    missingSources.sort((left, right) => left.path.localeCompare(right.path));
+
     // M3.4 返工 **BB-1**：读取期间变过的文件 ⇒ **确保下次重新提取**。
     // 做法：把 `source_files.size/mtime_ms` 置 `-1`（沿用 v12 迁移的同一"置脏"手法）
     // ⇒ 下一轮增量判据（`size===info.size && mtime===info.mtimeMs`）**必然**不成立 ⇒ 重解析。
@@ -4385,6 +9010,32 @@ export class UsageStore {
     // D1：置脏的 `UPDATE` 已提交（autocommit）⇒ 推进修订。注意**不**在这里推进"替换成功"的修订
     // —— 那个文件的替换事务已经整笔 `ROLLBACK` 了（`replaceFile` 返回 `committed: false`）。
     if (liveChangedPaths.size > 0) this.commitStoreRevision("live-dirty");
+
+    for (const home of workbuddyHomes) {
+      const homeId = String(home.id ?? "");
+      const before = workbuddyTraceDependencies.get(homeId);
+      let after = null;
+      try {
+        after = await inspectWorkbuddyTrace(home.path);
+      } catch {
+        after = null;
+      }
+      const changed = before?.complete === true && after?.complete === true && before.fingerprint !== after.fingerprint;
+      if (after === null || !after.complete || before?.complete !== true || changed) {
+        workbuddyTraceDependencies.set(homeId, {
+          fingerprint: after?.fingerprint ?? null,
+          complete: false,
+        });
+        if (!blockedHomeIds.has(homeId)) {
+          blockedHomeIds.add(homeId);
+          fileFailures.push({
+            sourceKind: "workbuddy",
+            homeId,
+            code: changed ? "LIVE_SOURCE_CHANGED" : "READ_ONLY_OPEN_FAILED",
+          });
+        }
+      }
+    }
 
     // ── M3.4：解析本轮最终状态 ───────────────────────────────────────────────
     //
@@ -4500,7 +9151,6 @@ export class UsageStore {
       if (count > 0) warnings.push(`${label || "WorkBuddy"}：${count} 个响应缺少 generation 时长`);
     }
     this.homes = homes;
-    this.warnings = warnings;
     this.generatedAt = new Date().toISOString();
     this.fingerprint = status.fingerprint;
     this.checkedAt = status.checkedAt;
@@ -4508,6 +9158,21 @@ export class UsageStore {
     for (const removedPath of removedFingerprintPaths) delete publishedFingerprints[removedPath];
     const publishedWarnings = this.publishedFileWarningsForRound();
     for (const removedPath of removedSourcePaths) delete publishedWarnings[removedPath];
+    // Rebuild human-facing warnings from the committed sidecar, not only this round's return values.
+    for (const [filePath, fileWarnings] of Object.entries(publishedWarnings)) {
+      for (const warning of fileWarnings) {
+        if (warning.code === PROJECT_LOG_TRUNCATION_WARNING_CODE) {
+          const message = formatProjectLogTruncationWarning(filePath, warning.count);
+          if (!warnings.includes(message)) warnings.push(message);
+        } else if (warning.code === PROJECT_LOG_MALFORMED_LINE_WARNING_CODE) {
+          for (const lineNumber of warning.lineNumbers || []) {
+            const message = formatProjectLogMalformedLineWarning(filePath, lineNumber);
+            if (!warnings.includes(message)) warnings.push(message);
+          }
+        }
+      }
+    }
+    this.warnings = warnings;
 
     // **D3 + BC-2**：`perf_index_version` = **已提交指纹 + 来源身份** 的聚合。
     // ⚠️ **不再**在整轮结束时重新 stat 上游（用户在 BC-2 中复现了由此产生的错误版本）。
@@ -4552,11 +9217,33 @@ export class UsageStore {
     const publishedFiles = sourceFileRows
       .filter((row) => canonicalizeKind(String(row.kind ?? "")) !== "codex")
       .concat(publishedCodexFiles);
-    const publishedFingerprint = buildPublishedSourcesFingerprint(
-      fingerprintHomes,
-      publishedFingerprints,
-      publishedFiles,
+    // The publication sequence advances only in the transaction that consumes
+    // timing dirt, so a successful home still publishes while another fails.
+    const currentRequestTimingRevision = readRequestTimingRevision(this.database);
+    const rawPublishedTimingRevision = Number(this.readMetaRaw(REQUEST_TIMING_PUBLISHED_REVISION_META));
+    const lastPublishedTimingRevision =
+      Number.isSafeInteger(rawPublishedTimingRevision) && rawPublishedTimingRevision >= 0
+        ? rawPublishedTimingRevision
+        : 0;
+    const timingPublicationPending = this.requestTimingDirtyThreadCount() > 0;
+    const requestTimingRevision = timingPublicationPending ? lastPublishedTimingRevision : currentRequestTimingRevision;
+    const rawTimingPublicationSeq = Number(this.readMetaRaw(REQUEST_TIMING_PUBLICATION_SEQ_META));
+    const timingPublicationSeq =
+      Number.isSafeInteger(rawTimingPublicationSeq) && rawTimingPublicationSeq >= 0 ? rawTimingPublicationSeq : 0;
+    const traceDependencyUnavailable = workbuddyHomes.some(
+      (home) => workbuddyTraceDependencies.get(String(home.id ?? ""))?.complete !== true,
     );
+    const publishedFingerprint = traceDependencyUnavailable
+      ? ""
+      : buildPublishedSourcesFingerprint(
+          fingerprintHomes,
+          publishedFingerprints,
+          publishedFiles,
+          timingPublicationSeq,
+          workbuddyTraceDependencies,
+          legacyWorkbuddyFallbackAllowed,
+          missingSources,
+        );
     // 源告警只投影 {sourceKind, homeId, code, count}（**不含路径**）。
     // Preserve successful per-file reader diagnostics (for example UNKEYABLE_RECORD)
     // alongside current file failures. Sidecar entries describe committed rows;
@@ -4575,6 +9262,9 @@ export class UsageStore {
       this.writeMeta("perf_file_warnings", JSON.stringify(publishedWarnings));
       this.writeMeta("perf_method_version", PERF_METHOD_VERSION);
       this.writeMeta("perf_index_version", publishedFingerprint);
+      this.writeMeta("perf_workbuddy_legacy_fallback_allowed", legacyWorkbuddyFallbackAllowed ? "1" : "0");
+      this.writeMeta(REQUEST_TIMING_PUBLISHED_REVISION_META, String(requestTimingRevision));
+      this.writeMeta(MISSING_SOURCES_META, JSON.stringify(missingSources));
       this.writeMeta("perf_indexed_at", this.generatedAt);
       this.writePerfState(nextState, {
         degradedHomeIds,
@@ -4597,7 +9287,8 @@ export class UsageStore {
     // ── C5：派生缓存**定向失效**（不再"每轮无条件清空"）────────────────────────────────
     // 卡面："无实际变更时……**不无条件清空派生缓存**"。两个缓存都是**用量侧**派生：
     //   * `metadataCache`：`events` 聚合 + `this.homes`（见 `metadata()`）；
-    //   * `periodComparisonCache`：`periodAggregate()` 的 `events` 聚合（键已含时区/日期/排除集）。
+    //   * `periodComparisonCache`：`periodAggregate()` 的 `events` 聚合（键已含时区/日期/排除集、
+    //     目录键集）。
     // ⇒ 判据只有两条**真实事实**：① 本轮是否写过用量数据（`usageDerivedChanged`，见上面的提交点
     // ①②③④）；② 本轮 home 集合是否变过（缓存里存着建它那一刻的 home 形状）。
     // 无实际变更的轮次**保留**昂贵的派生结构（不清空），只把**按契约每轮更新**的例行时刻字段
@@ -4631,7 +9322,95 @@ export class UsageStore {
     // D1：轮末把"缓存 ↔ 修订"的对齐落到当前值。不变量：走到这里若缓存被**保留**，则修订必然没前进过
     // （否则上面的折行已把 `usageDerivedChanged` 置真）⇒ 这行对保留分支是恒等赋值、对失效分支是记账。
     this.derivedRevision = this.storeRevision;
-    return { ...status, updatedFileCount, perfState: nextState, degradedHomeIds, unsupportedSources };
+    // 缓存失效已完成后才维护 rollup；重建抛错不能让本轮留下可跳过失效的旧缓存。
+    const dirtyRollupDays = listDirtyUsageRollupDays(this.database);
+    const localRollupZone = currentLocalRollupZoneIdentity();
+    const localRollupZoneChanged = this.readMetaRaw(LOCAL_ROLLUP_ZONE_META) !== localRollupZone;
+    if (dirtyRollupDays.length > 0 || localRollupZoneChanged) {
+      if (historyArchiveAuthorizedSegmentIds(this.database).size > 0) {
+        // Hold the write lock while the async complete-history read and both
+        // rollup publishes run; otherwise an external commit could mix revisions.
+        this.database.exec("BEGIN IMMEDIATE");
+        this.writeTransactionDepth += 1;
+        try {
+          const roundDirtyDays = listDirtyUsageRollupDays(this.database);
+          const events = await this.publishedHistoryUsageEvents();
+          if (roundDirtyDays.length > 0) {
+            rebuildUsageRollupsFromEvents(this.database, { days: roundDirtyDays, events });
+          }
+          const localDays = new Set(localUsageRollupDaysForUtcDays(roundDirtyDays));
+          if (localRollupZoneChanged) {
+            const eventUtcDays = new Set();
+            for (const event of events) {
+              const timestamp = Date.parse(event.timestamp);
+              if (!Number.isFinite(timestamp)) {
+                throw new TypeError("complete history contains an invalid event timestamp");
+              }
+              const day = new Date(Math.floor(timestamp / 86_400_000) * 86_400_000).toISOString().slice(0, 10);
+              eventUtcDays.add(day);
+            }
+            for (const day of localUsageRollupDaysForUtcDays([...eventUtcDays])) localDays.add(day);
+            for (const row of this.database
+              .prepare("SELECT day_key FROM usage_rollup_days WHERE calendar_zone = 'local'")
+              .all()) {
+              localDays.add(String(row.day_key));
+            }
+          }
+          rebuildUsageRollupsFromEvents(this.database, {
+            days: [...localDays].sort(),
+            events,
+            calendarZone: "local",
+          });
+          this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
+          this.database.exec("COMMIT");
+        } catch (error) {
+          try {
+            this.database.exec("ROLLBACK");
+          } finally {
+            this.writeTransactionDepth -= 1;
+          }
+          throw error;
+        }
+        this.writeTransactionDepth -= 1;
+      } else {
+        // UTC/local 共用外层 savepoint：任一侧失败都恢复 dirty 队列和两侧缓存。
+        this.database.exec("SAVEPOINT usage_rollup_sync");
+        try {
+          if (dirtyRollupDays.length > 0) {
+            rebuildUsageRollups(this.database, { days: dirtyRollupDays, calendarZone: "utc" });
+          }
+          const localDays = new Set(localUsageRollupDaysForUtcDays(dirtyRollupDays));
+          if (localRollupZoneChanged) {
+            // Zone changes are rare, so scan event days here instead of on every no-op round.
+            const eventUtcDays = this.database
+              .prepare("SELECT DISTINCT date(timestamp_ms / 1000.0, 'unixepoch') AS day_key FROM events")
+              .all()
+              .map((row) => String(row.day_key));
+            for (const day of localUsageRollupDaysForUtcDays(eventUtcDays)) localDays.add(day);
+            for (const row of this.database
+              .prepare("SELECT day_key FROM usage_rollup_days WHERE calendar_zone = 'local'")
+              .all()) {
+              localDays.add(String(row.day_key));
+            }
+          }
+          rebuildUsageRollups(this.database, { days: [...localDays].sort(), calendarZone: "local" });
+          this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
+          this.database.exec("RELEASE usage_rollup_sync");
+        } catch (error) {
+          this.database.exec("ROLLBACK TO usage_rollup_sync");
+          this.database.exec("RELEASE usage_rollup_sync");
+          throw error;
+        }
+      }
+    }
+    return {
+      ...status,
+      updatedFileCount,
+      perfState: nextState,
+      degradedHomeIds,
+      unsupportedSources,
+      missingSources,
+    };
   }
 
   /**
@@ -4654,37 +9433,20 @@ export class UsageStore {
    * （自身写入、外部提交 `PRAGMA data_version`、service-tier evidence 都会推进它）；
    * `syncDerivedRevision()` / `open()` / `close()` 复位；写事务内
    * （`writeTransactionDepth > 0`）读到的是**未提交**状态 ⇒ **不读也不写**（D1 的回滚语义）。
+   * 调用方自有快照可传 `useCache: false`，复用同一 SELECT/codec 但绕过 memo。
    *
+   * @param {{ useCache?: boolean }} [options]
    * @returns {object[]} 规范映射本身（**只读**；调用方不得就地改写）
    */
-  quotaObservations() {
+  quotaObservations({ useCache = true } = {}) {
     // D1：读路径先对齐修订（外部提交在这里被检出 ⇒ 缓存失效 + 必要元数据重载）。
     this.syncDerivedRevision();
     // D1：写事务内**不读也不写**共享缓存（读到的是未提交状态 ⇒ 回滚后它会说谎）。
-    const cacheable = this.writeTransactionDepth === 0;
+    const cacheable = useCache && this.writeTransactionDepth === 0;
     if (cacheable && this.quotaObservationCache?.revision === this.storeRevision) {
       return this.quotaObservationCache.rows;
     }
-    const rows = this.database
-      .prepare(`
-      SELECT source_path, line_number, role, observed_at_ms, limit_id, limit_name,
-        plan_type, window_minutes, resets_at_ms, used_percent
-      FROM rate_limit_observations INDEXED BY rate_limit_window_lookup_idx
-      ORDER BY limit_id ASC, window_minutes ASC, observed_at_ms DESC
-    `)
-      .all()
-      .map((row) => ({
-        sourcePath: row.source_path,
-        lineNumber: Number(row.line_number),
-        role: row.role,
-        observedAtMs: Number(row.observed_at_ms),
-        limitId: row.limit_id,
-        limitName: row.limit_name,
-        planType: row.plan_type,
-        windowMinutes: Number(row.window_minutes),
-        resetsAtMs: Number(row.resets_at_ms),
-        usedPercent: row.used_percent === null ? null : Number(row.used_percent),
-      }));
+    const rows = quotaObservationsFromDatabase(this.database, Boolean(this.verifiedHistorySqlRead));
     if (cacheable) this.quotaObservationCache = { revision: this.storeRevision, rows };
     return rows;
   }
@@ -4703,25 +9465,14 @@ export class UsageStore {
 
   metadata(asOf = new Date()) {
     // D1：读路径先对齐修订（外部提交在这里被检出 ⇒ 缓存失效 + 必要元数据重载）。
-    this.syncDerivedRevision();
+    if (!this.metadataSnapshotRead) this.syncDerivedRevision();
     // D1：写事务内读到的是**未提交**状态 ⇒ 这一轮**不落**共享缓存（验收："事务内已读的派生缓存
     // 被安全清理" —— 预防 + 回滚时再清一次，见 `rollbackReplaceFileTransaction`）。
     const cacheable = this.writeTransactionDepth === 0;
     /** D1：不可缓存时（写事务内）用的**本次调用**快照；绝不写回 `this.metadataCache`。 */
     let builtMetadata = null;
     if (!this.metadataCache) {
-      const totals = this.database
-        .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
-        .get();
-      const homeRows = new Map(
-        this.database
-          .prepare(`
-          SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count
-          FROM events GROUP BY home_id
-        `)
-          .all()
-          .map((row) => [row.home_id, row]),
-      );
+      const counts = readMetadataUsageCounts(this.database, this.verifiedHistorySqlRead ? this.eventBounds() : null);
       // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode / Claude / WorkBuddy）用到的模型名称。
       const harnessModels = {
         Codex: new Set(),
@@ -4731,27 +9482,19 @@ export class UsageStore {
         Claude: new Set(),
         WorkBuddy: new Set(),
       };
-      for (const row of this.database.prepare("SELECT DISTINCT channel, model FROM events").all()) {
+      const modelRows =
+        cacheable && this.metadataObservationCache?.revision === this.storeRevision
+          ? this.metadataObservationCache.rows
+          : this.database.prepare("SELECT DISTINCT channel, model FROM events").all();
+      for (const row of modelRows) {
         const model = String(row.model || "").trim();
         if (!model || model.toLocaleLowerCase() === "unknown model") continue;
-        const channel = String(row.channel || "").toLowerCase();
-        const bucket = channel.startsWith("zcode")
-          ? "ZCode"
-          : channel.startsWith("dsh")
-            ? "DSH"
-            : channel.startsWith("opencode")
-              ? "OpenCode"
-              : channel.startsWith("claude")
-                ? "Claude"
-                : channel.startsWith("workbuddy")
-                  ? "WorkBuddy"
-                  : "Codex";
-        harnessModels[bucket].add(model);
+        harnessModels[harnessModelName(row.channel)].add(model);
       }
       builtMetadata = {
         generatedAt: this.generatedAt,
-        eventCount: Number(totals.event_count || 0),
-        sessionCount: Number(totals.session_count || 0),
+        eventCount: counts.eventCount,
+        sessionCount: counts.sessionCount,
         homeCount: this.homes.length,
         harnessModels: {
           Codex: [...harnessModels.Codex].sort((a, b) => a.localeCompare(b)),
@@ -4762,7 +9505,7 @@ export class UsageStore {
           WorkBuddy: [...harnessModels.WorkBuddy].sort((a, b) => a.localeCompare(b)),
         },
         homes: this.homes.map((home) => {
-          const row = homeRows.get(home.id);
+          const row = counts.homeRows.get(home.id);
           return {
             ...home,
             status: row ? "active" : "no-events",
@@ -4825,7 +9568,85 @@ export class UsageStore {
     };
   }
 
+  /**
+   * Explicit cold-aware metadata. Without authority this preserves the
+   * synchronous metadata fast path in one savepoint; with authority it derives
+   * every field from the same verified complete event carrier.
+   * @param {Date} [asOf]
+   */
+  async metadataHistory(asOf = new Date()) {
+    await this.open();
+    this.syncDerivedRevision();
+    let hasAuthority = false;
+    this.database.exec("SAVEPOINT metadata_history_read");
+    try {
+      hasAuthority = Boolean(
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META),
+      );
+      if (!hasAuthority) {
+        this.metadataSnapshotRead = true;
+        try {
+          return this.metadata(asOf);
+        } finally {
+          this.metadataSnapshotRead = false;
+        }
+      }
+    } finally {
+      this.database.exec("RELEASE metadata_history_read");
+    }
+
+    const union = await this.historyArchiveEventUnionForRange(undefined, {
+      completeHistory: true,
+      includeMetadataCarrier: true,
+    });
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    return metadataFromHistoryEvents(events, union.metadataCarrier, asOf);
+  }
+
+  eventBounds(excludeHomes = []) {
+    if (this.verifiedHistorySqlRead && excludeHomes.length === 0) {
+      return this.database
+        .prepare(`
+        SELECT MIN(minimum) AS minimum, MAX(maximum) AS maximum FROM (
+          SELECT (SELECT MIN(timestamp_ms) FROM history_hot.events) AS minimum,
+                 (SELECT MAX(timestamp_ms) FROM history_hot.events) AS maximum
+          UNION ALL
+          SELECT (SELECT MIN(timestamp_ms) FROM main.events),
+                 (SELECT MAX(timestamp_ms) FROM main.events)
+        )
+      `)
+        .get();
+    }
+    const scope = scopeFilterSql(excludeHomes);
+    return this.database
+      .prepare(
+        `SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`,
+      )
+      .get(...scope.params);
+  }
+
   aggregateRange(range, excludeHomes = []) {
+    const rollupDays = completeRollupDays(range);
+    if (rollupDays) {
+      try {
+        const totals = queryUsageRollupsRange(this.database, {
+          ...rollupDays,
+          excludeHomes,
+        });
+        return {
+          event_count: totals.eventCount,
+          session_count: totals.sessionCount,
+          home_count: totals.homeCount,
+          total: totals.total,
+          input: totals.input,
+          cached: totals.cached,
+          output: totals.output,
+          reasoning: totals.reasoning,
+        };
+      } catch (error) {
+        if (error?.code !== "ROLLUP_DAYS_MISSING") throw error;
+      }
+    }
     const scope = scopeFilterSql(excludeHomes);
     const where = eventRangeScope(range, scope);
     return this.database
@@ -4845,6 +9666,193 @@ export class UsageStore {
       .get(...where.params);
   }
 
+  /**
+   * Read every complete published usage event. Source kind comes from the
+   * joined source row rather than a caller-supplied home projection.
+   * @returns {import("./usage-types.js").UsageEvent[]}
+   */
+  publishedUsageEvents() {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    const rows = this.database
+      .prepare(
+        `SELECT e.*, sf.kind AS source_kind
+         FROM events e
+         JOIN source_files sf ON sf.path = e.source_path
+         ORDER BY e.timestamp_ms, e.id`,
+      )
+      .all();
+    return rows.map((row) => publishedUsageEventFromRow(row, row.source_kind, this.serviceTierEvidence));
+  }
+
+  /**
+   * Read the complete published event carrier across hot facts and explicitly
+   * authorized cold segments. This is async because verified cold packages
+   * must be read; the original synchronous hot-only reader stays unchanged.
+   * @returns {Promise<import("./usage-types.js").UsageEvent[]>}
+   */
+  async publishedHistoryUsageEvents() {
+    const union = await this.historyArchiveEventUnionForRange(undefined, { completeHistory: true });
+    return publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+  }
+
+  /**
+   * Rebuild one UTC day from the complete authorized hot+cold event carrier.
+   * BEGIN IMMEDIATE prevents another writer from changing captured facts while
+   * verified cold files are awaited and the rollup rows are published.
+   * @param {string} day
+   */
+  async rebuildHistoryRollupDay(day) {
+    if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      throw new TypeError(`day must be a YYYY-MM-DD string: ${String(day)}`);
+    }
+    const [year, month, date] = day.split("-").map(Number);
+    const startMs = Date.UTC(year, month - 1, date);
+    if (!Number.isFinite(startMs) || new Date(startMs).toISOString().slice(0, 10) !== day) {
+      throw new RangeError(`invalid UTC day: ${day}`);
+    }
+    await this.open();
+    await this.#rebuildHistoryRollupsTransaction("rebuildHistoryRollupDay", (database, events) => {
+      if (events === null) rebuildUsageRollups(database, { days: [day] });
+      else rebuildUsageRollupsFromEvents(database, { days: [day], events });
+    });
+  }
+
+  /**
+   * Rebuild every UTC and local day covered by the complete authorized
+   * hot+cold history. Existing derived dates are included so stale rows and
+   * rows from a previous local timezone are cleared, including when empty.
+   */
+  async rebuildHistoryRollups() {
+    await this.open();
+    await this.#rebuildHistoryRollupsTransaction("rebuildHistoryRollups", (database, events) => {
+      createUsageRollups(database);
+      const utcDays = completeHistoryRollupDays(database, events, "utc");
+      const localDays = completeHistoryRollupDays(database, events, "local");
+      if (events === null) {
+        rebuildUsageRollups(database, { days: utcDays });
+        rebuildUsageRollups(database, { days: localDays, calendarZone: "local" });
+      } else {
+        rebuildUsageRollupsFromEvents(database, { days: utcDays, events });
+        rebuildUsageRollupsFromEvents(database, { days: localDays, events, calendarZone: "local" });
+      }
+      this.writeMeta(LOCAL_ROLLUP_ZONE_META, currentLocalRollupZoneIdentity());
+    });
+  }
+
+  async #rebuildHistoryRollupsTransaction(methodName, publish) {
+    if (this.database.isTransaction) {
+      throw new Error(`${methodName} requires no active transaction`);
+    }
+    this.syncDerivedRevision();
+    this.database.exec("BEGIN IMMEDIATE");
+    this.writeTransactionDepth += 1;
+    try {
+      // Hot-only rebuilds aggregate in SQLite instead of materializing every event twice.
+      const events =
+        historyArchiveAuthorizedSegmentIds(this.database).size > 0 ? await this.publishedHistoryUsageEvents() : null;
+      publish(this.database, events);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } finally {
+        this.rollbackReplaceFileTransaction();
+      }
+      throw error;
+    }
+    if (this.writeTransactionDepth > 0) this.writeTransactionDepth -= 1;
+    this.commitStoreRevision("history-rollup");
+    this.syncDerivedRevision();
+  }
+
+  /**
+   * Read the persistent source identity for every published home.
+   * @returns {Array<{id: string, label: string, path: string, kind: string}>}
+   */
+  publishedUsageHomes() {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    return publishedUsageHomesFromDatabase(this.database);
+  }
+
+  /**
+   * Read one session carrier per (home_id, session_id) from published facts.
+   * The last event in timestamp/id order supplies channel, cwd, and model.
+   * @returns {Array<{
+   *   id: string,
+   *   homeId: string,
+   *   homeLabel: string,
+   *   homePath: string,
+   *   firstAt: string,
+   *   lastAt: string,
+   *   eventCount: number,
+   *   total: import("./usage-types.js").UsageTotals,
+   *   channel: string,
+   *   cwd: string,
+   *   model: string
+   * }>}
+   */
+  publishedUsageSessions() {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    return publishedUsageSessionsFromEvents(this.publishedUsageEvents(), this.publishedUsageHomes());
+  }
+
+  /**
+   * Read the complete historical report from one hot snapshot plus verified
+   * cold segments. Hot homes and quota are captured before cold reads start.
+   * @param {{ includePerfCarrier?: boolean }} [options]
+   * @returns {Promise<{
+   *   events: import("./usage-types.js").UsageEvent[],
+   *   homes: Array<{ id: string, label: string, path: string, kind: string }>,
+   *   sessions: ReturnType<UsageStore["publishedUsageSessions"]>,
+   *   rateLimitObservations: import("./usage-types.js").RateLimitObservation[],
+   *   perfCarrier?: any
+   * }>}
+   */
+  async publishedHistoryUsageReport({ includePerfCarrier = false } = {}) {
+    const union = await this.historyArchiveEventUnionForRange(undefined, {
+      completeHistory: true,
+      includeUsageCarrier: true,
+      includePerfCarrier,
+    });
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    const homes = union.homes ?? [];
+    return {
+      events,
+      homes,
+      sessions: publishedUsageSessionsFromEvents(events, homes),
+      rateLimitObservations: union.rateLimitObservations ?? [],
+      ...(union.perfCarrier === undefined ? {} : { perfCarrier: union.perfCarrier }),
+    };
+  }
+
+  /**
+   * Read the complete published carrier under one SAVEPOINT snapshot.
+   * @returns {{
+   *   events: import("./usage-types.js").UsageEvent[],
+   *   homes: Array<{ id: string, label: string, path: string, kind: string }>,
+   *   sessions: ReturnType<UsageStore["publishedUsageSessions"]>,
+   *   rateLimitObservations: import("./usage-types.js").RateLimitObservation[]
+   * }}
+   */
+  publishedUsageReport() {
+    if (!this.database) throw new TypeError("UsageStore is not open");
+    this.database.exec("SAVEPOINT published_usage_report_read");
+    try {
+      const report = {
+        events: this.publishedUsageEvents(),
+        homes: this.publishedUsageHomes(),
+        sessions: this.publishedUsageSessions(),
+        rateLimitObservations: this.quotaObservations({ useCache: false }),
+      };
+      this.database.exec("RELEASE published_usage_report_read");
+      return report;
+    } catch (error) {
+      this.database.exec("ROLLBACK TO published_usage_report_read");
+      this.database.exec("RELEASE published_usage_report_read");
+      throw error;
+    }
+  }
+
   groupedRange(column, range, orderBy = "total DESC", excludeHomes = []) {
     const allowedColumns = new Set([
       "channel",
@@ -4860,9 +9868,11 @@ export class UsageStore {
       throw new Error(`不支持的聚合字段：${column}`);
     }
     const dimension =
-      column === "channel" && !isQuotaPreset(range.preset) && !range.quotaWindow && !range.quotaPreset
-        ? "usage_source_group(channel, (SELECT kind FROM source_files WHERE path = events.source_path))"
-        : column;
+      column === "model"
+        ? "usage_model_group(model)"
+        : column === "channel" && !isQuotaPreset(range.preset) && !range.quotaWindow && !range.quotaPreset
+          ? "usage_source_group(channel, (SELECT kind FROM source_files WHERE path = events.source_path))"
+          : column;
     const scope = scopeFilterSql(excludeHomes);
     const where = eventRangeScope(range, scope);
     const rows = this.database
@@ -4894,13 +9904,39 @@ export class UsageStore {
   /** @param {import("./usage-types.js").UsageRange} range
    * @returns {Generator<import("./usage-types.js").IndexedCostEvent>}
    */
-  *costEventsForRange(range, excludeHomes = []) {
+  *costEventsForRange(range, excludeHomes = [], includeRepositories = false) {
     const scope = scopeFilterSql(excludeHomes);
     const where = eventRangeScope(range, scope);
-    const statement = this.database.prepare(`SELECT ${COST_EVENT_COLUMNS} FROM events WHERE ${where.sql}`);
+    const columns = includeRepositories
+      ? `${COST_EVENT_COLUMNS}, repository_key, repository_path, repository_kind, cwd, reconciliation_gap`
+      : COST_EVENT_COLUMNS;
+    const statement = this.database.prepare(`SELECT ${columns} FROM events WHERE ${where.sql}`);
     const sourceKinds = homeSourceKinds(this.homes);
+    if (typeof statement.setReturnArrays === "function") {
+      statement.setReturnArrays(true);
+      for (const row of statement.iterate(...where.params)) {
+        const event = costEventFromRowArray(row, this.serviceTierEvidence, sourceKinds.get(String(row[2])));
+        if (includeRepositories) {
+          event.repositoryKey = String(row[20]);
+          event.repositoryPath = String(row[21]);
+          event.repositoryKind = String(row[22]);
+          event.cwd = String(row[23]);
+          event.reconciliationGap = Number(row[24]);
+        }
+        yield event;
+      }
+      return;
+    }
     for (const row of statement.iterate(...where.params)) {
-      yield costEventFromRow(row, this.serviceTierEvidence, sourceKinds.get(String(row.home_id)));
+      const event = costEventFromRow(row, this.serviceTierEvidence, sourceKinds.get(String(row.home_id)));
+      if (includeRepositories) {
+        event.repositoryKey = String(row.repository_key);
+        event.repositoryPath = String(row.repository_path);
+        event.repositoryKind = String(row.repository_kind);
+        event.cwd = String(row.cwd);
+        event.reconciliationGap = Number(row.reconciliation_gap);
+      }
+      yield event;
     }
   }
 
@@ -4934,17 +9970,29 @@ export class UsageStore {
 
   /** @param {import("./usage-types.js").UsageRange} range
    * @param {string} bucket
-   * @param {{ onEstimate?: (event: any, estimate: any) => void, excludeHomes?: string[] }} [options]
+   * @param {{ onEstimate?: (event: any, estimate: any, bucketKey?: string) => void, excludeHomes?: string[], pricingModels?: Record<string, any>, factRows?: any[], includeRepositories?: boolean, pricing?: ReturnType<typeof createEventPricing>, quoteInputs?: HistoryQuoteInputs }} [options]
    */
-  timelineRange(range, bucket, { onEstimate, excludeHomes = [] } = {}) {
-    // W4-b1 / D1：同一个事件对象的计价在**同一请求内**只应发生一次（此前 `buildRecordChampions`
-    // 与这里会对同一份全历史各算一遍），跨请求则由 memo 直接复用。
+  timelineRange(
+    range,
+    bucket,
+    { onEstimate, excludeHomes = [], pricingModels, factRows, includeRepositories = false, pricing, quoteInputs } = {},
+  ) {
+    // Quote replay uses the same price and timeline accumulators as the original streaming read.
     return this.withEventCostMemoRound(() =>
-      buildTimelineRows(this.costEventsForRange(range, excludeHomes), range, bucket, {
-        sourceKinds: homeSourceKinds(this.homes),
-        estimateCost: (event) => this.eventCostMemo.estimate(event),
-        onEstimate,
-      }),
+      buildTimelineRows(
+        quoteInputs ? quoteInputs.events() : this.costEventsForRange(range, excludeHomes, includeRepositories),
+        range,
+        bucket,
+        {
+          sourceKinds: homeSourceKinds(this.homes),
+          pricingModels,
+          factRows,
+          eventBucketKey: quoteInputs ? (event) => event.quoteBucketKey : undefined,
+          modelName: pricing?.modelName,
+          estimateCost: pricing?.estimate ?? estimateEventCost,
+          onEstimate,
+        },
+      ),
     );
   }
 
@@ -4972,6 +10020,7 @@ export class UsageStore {
         ORDER BY total DESC, name ASC
       `)
       .all(...where.params);
+    const orderedSessions = this.verifiedHistorySqlRead ? this.historyRepositorySessionOrder(where) : undefined;
     return rows.map((row) => ({
       key: row.key,
       name: row.name,
@@ -4979,15 +10028,71 @@ export class UsageStore {
       pathCount: Number(row.path_count || 0),
       count: Number(row.count || 0),
       sessions: Number(row.sessions || 0),
-      sessionIds: JSON.parse(String(row.session_ids || "[]")),
+      sessionIds: orderedSessions?.get(row.key) ?? JSON.parse(String(row.session_ids || "[]")),
       total: usageFromRow(row),
     }));
   }
 
-  periodAggregate(groupColumn, nameColumn, _now, ranges, { includeKind = false, excludeHomes = [] } = {}) {
-    const dimensionKey = groupColumn;
+  historyRepositorySessionOrder(where, firsts = null) {
+    firsts ??= this.database
+      .prepare(`
+      SELECT repository_key, session_id, MIN(timestamp_ms) AS first_ms FROM events
+      WHERE ${where.sql} GROUP BY repository_key, session_id ORDER BY repository_key, first_ms
+    `)
+      .all(...where.params);
+    const tieRows = this.database.prepare(`
+      SELECT * FROM (SELECT * FROM history_hot.events UNION ALL SELECT * FROM main.events)
+      WHERE repository_key = ? AND timestamp_ms = ? AND ${where.sql}
+    `);
+    const orderedSessions = new Map();
+    for (let first = 0; first < firsts.length; ) {
+      let end = first + 1;
+      const row = firsts[first];
+      while (
+        end < firsts.length &&
+        firsts[end].repository_key === row.repository_key &&
+        firsts[end].first_ms === row.first_ms
+      )
+        end++;
+      const group = firsts.slice(first, end);
+      if (group.length > 1) {
+        const payloads = new Map();
+        for (const event of tieRows.iterate(row.repository_key, row.first_ms, ...where.params)) {
+          const payload = JSON.stringify(canonicalFactPayload(event, ["id"]));
+          if (!payloads.has(event.session_id) || payload < payloads.get(event.session_id))
+            payloads.set(event.session_id, payload);
+        }
+        group.sort((left, right) => {
+          const a = payloads.get(left.session_id),
+            b = payloads.get(right.session_id);
+          return a < b ? -1 : a > b ? 1 : 0;
+        });
+      }
+      const sessions = orderedSessions.get(row.repository_key) || [];
+      for (const entry of group) sessions.push(entry.session_id);
+      orderedSessions.set(row.repository_key, sessions);
+      first = end;
+    }
+    return orderedSessions;
+  }
+
+  periodAggregate(groupColumn, nameColumn, _now, ranges, options = {}) {
+    const pricingModels = options.pricingModels ?? getPricingCatalog().models;
+    const previousPricingModels = this.readPricingModels;
+    this.readPricingModels = pricingModels;
+    try {
+      return this.periodAggregateCore(groupColumn, nameColumn, _now, ranges, options);
+    } finally {
+      this.readPricingModels = previousPricingModels;
+    }
+  }
+
+  periodAggregateCore(groupColumn, nameColumn, _now, ranges, { includeKind = false, excludeHomes = [] } = {}) {
+    const modelDimension = groupColumn === "model" && nameColumn === "model" && !includeKind;
+    const dimensionKey = modelDimension ? "usage_model_group(model)" : groupColumn;
+    const dimensionName = modelDimension ? dimensionKey : nameColumn;
     const dimensions = dimensionKey
-      ? `${dimensionKey} AS dimension_key, ${includeKind ? `MIN(${nameColumn}) AS dimension_name, MIN(repository_kind) AS dimension_kind, COUNT(DISTINCT NULLIF(cwd, '')) AS path_count` : `${nameColumn} AS dimension_name`},`
+      ? `${dimensionKey} AS dimension_key, ${includeKind ? `MIN(${nameColumn}) AS dimension_name, MIN(repository_kind) AS dimension_kind, COUNT(DISTINCT NULLIF(cwd, '')) AS path_count` : `${dimensionName} AS dimension_name`},`
       : "";
     const fields = [
       ["total", "total"],
@@ -5007,22 +10112,135 @@ export class UsageStore {
       ["inconsistentTokens", "CASE WHEN (detail_mask & 16) != 0 THEN total ELSE 0 END"],
       ["reconciliationGap", "reconciliation_gap"],
     ];
-    const parameters = [];
-    const measures = [];
-    for (const period of COMPARISON_PERIOD_KEYS) {
-      for (const [field, expression] of fields) {
-        measures.push(
-          `COALESCE(SUM(CASE WHEN (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?) THEN ${expression} ELSE 0 END), 0) AS "${period}__${field}"`,
-        );
-        parameters.push(...rangeParameters(ranges[period]));
+    if (modelDimension) {
+      this.database.exec("SAVEPOINT period_model_rollup");
+      try {
+        const bounds = this.eventBounds(excludeHomes);
+        if (bounds.minimum === null) {
+          this.database.exec("RELEASE period_model_rollup");
+          return [];
+        }
+
+        const minimum = Number(bounds.minimum);
+        const maximum = Number(bounds.maximum);
+        const sourceEndMs = maximum + 1;
+        const windows = {};
+        let valid = Number.isSafeInteger(sourceEndMs);
+        for (const period of COMPARISON_PERIOD_KEYS) {
+          const range = ranges[period] || {};
+          const startMs = range.start == null ? minimum : range.start instanceof Date ? range.start.getTime() : NaN;
+          const endMs = range.end == null ? maximum : range.end instanceof Date ? range.end.getTime() : NaN;
+          const endExclusiveMs = endMs + 1;
+          if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endExclusiveMs) || startMs > endExclusiveMs) {
+            valid = false;
+            break;
+          }
+          // Only complete days inside the scoped fact range may require rollup markers.
+          const clampedStartMs = Math.max(startMs, minimum);
+          const clampedEndMs = Math.min(endExclusiveMs, sourceEndMs);
+          windows[period] = clampedStartMs < clampedEndMs ? { startMs: clampedStartMs, endMs: clampedEndMs } : null;
+        }
+
+        if (valid) {
+          const models = new Map();
+          const emptyPeriod = () => Object.fromEntries(fields.map(([field]) => [field, 0]));
+          const modelResult = (model) => {
+            let result = models.get(model);
+            if (!result) {
+              result = {
+                key: model,
+                name: model,
+                periods: Object.fromEntries(COMPARISON_PERIOD_KEYS.map((key) => [key, emptyPeriod()])),
+              };
+              models.set(model, result);
+            }
+            return result;
+          };
+          // Seed models that the requested period windows do not touch.
+          if (!windows.all || windows.all.startMs > minimum || windows.all.endMs < sourceEndMs) {
+            const sourceRows = queryUsageRollupModelsWindow(this.database, {
+              startMs: minimum,
+              endMs: sourceEndMs,
+              excludeHomes,
+              canonicalModels: true,
+            });
+            for (const row of sourceRows) modelResult(row.model);
+          }
+          for (const period of COMPARISON_PERIOD_KEYS) {
+            const window = windows[period];
+            if (!window) continue;
+            const rows = queryUsageRollupModelsWindow(this.database, {
+              ...window,
+              excludeHomes,
+              canonicalModels: true,
+            });
+            for (const row of rows) {
+              const result = modelResult(row.model);
+              result.periods[period] = Object.fromEntries(fields.map(([field]) => [field, Number(row[field] || 0)]));
+            }
+          }
+          this.database.exec("RELEASE period_model_rollup");
+          return [...models.values()].sort(
+            (left, right) =>
+              right.periods.all.total - left.periods.all.total ||
+              (left.name < right.name ? -1 : left.name > right.name ? 1 : 0),
+          );
+        }
+        this.database.exec("RELEASE period_model_rollup");
+      } catch (error) {
+        this.database.exec("ROLLBACK TO period_model_rollup");
+        this.database.exec("RELEASE period_model_rollup");
+        if (error?.code !== "ROLLUP_DAYS_MISSING") throw error;
       }
     }
-    const select = `SELECT ${dimensions} ${measures.join(", ")} FROM events`;
     const scope = scopeFilterSql(excludeHomes);
     const where = scope.sql ? ` WHERE ${scope.sql}` : "";
     const groupBy = dimensionKey ? ` GROUP BY ${dimensionKey}` : "";
     const orderBy = dimensionKey ? " ORDER BY all__total DESC, dimension_name ASC" : "";
-    const rows = this.database.prepare(`${select}${where}${groupBy}${orderBy}`).all(...parameters, ...scope.params);
+    let rows;
+    this.database.exec("SAVEPOINT period_interval_pruning");
+    try {
+      const bounds = this.eventBounds(excludeHomes);
+      const minimum = bounds.minimum === null ? null : Number(bounds.minimum);
+      const maximum = bounds.maximum === null ? null : Number(bounds.maximum);
+      const parameters = [];
+      const measures = [];
+      for (const period of COMPARISON_PERIOD_KEYS) {
+        const range = ranges[period] || {};
+        const start = range.start == null ? null : range.start instanceof Date ? range.start.getTime() : undefined;
+        const end = range.end == null ? null : range.end instanceof Date ? range.end.getTime() : undefined;
+        const empty =
+          minimum === null ||
+          (start !== undefined && end !== undefined && start !== null && end !== null && start > end) ||
+          (start !== undefined && start !== null && start > maximum) ||
+          (end !== undefined && end !== null && end < minimum);
+        const coversAll =
+          !empty &&
+          start !== undefined &&
+          end !== undefined &&
+          (start === null || start <= minimum) &&
+          (end === null || end >= maximum);
+        for (const [field, expression] of fields) {
+          if (empty) {
+            measures.push(`COALESCE(SUM(0), 0) AS "${period}__${field}"`);
+          } else if (coversAll) {
+            measures.push(`COALESCE(SUM(${expression}), 0) AS "${period}__${field}"`);
+          } else {
+            measures.push(
+              `COALESCE(SUM(CASE WHEN (? IS NULL OR timestamp_ms >= ?) AND (? IS NULL OR timestamp_ms <= ?) THEN ${expression} ELSE 0 END), 0) AS "${period}__${field}"`,
+            );
+            parameters.push(...rangeParameters(range));
+          }
+        }
+      }
+      const select = `SELECT ${dimensions} ${measures.join(", ")} FROM events`;
+      rows = this.database.prepare(`${select}${where}${groupBy}${orderBy}`).all(...parameters, ...scope.params);
+      this.database.exec("RELEASE period_interval_pruning");
+    } catch (error) {
+      this.database.exec("ROLLBACK TO period_interval_pruning");
+      this.database.exec("RELEASE period_interval_pruning");
+      throw error;
+    }
     return rows.map((row) => {
       const result = {
         key: dimensionKey ? String(row.dimension_key) : "all",
@@ -5045,21 +10263,18 @@ export class UsageStore {
 
   periodComparison(options = {}) {
     // D1：读路径先对齐修订（外部提交在这里被检出 ⇒ 缓存失效 + 必要元数据重载）。
-    this.syncDerivedRevision();
+    const snapshotRead = this.periodComparisonSnapshotRead;
+    if (!snapshotRead) this.syncDerivedRevision();
     // D1：写事务内**不读也不写**共享缓存（读到的是未提交状态 ⇒ 回滚后它会说谎）。
     const cacheable = this.writeTransactionDepth === 0;
     const now = options.now ? new Date(options.now) : new Date();
     const excludeHomes = options.excludeHomes || [];
     const zone = options.calendarZone === "utc" ? "utc" : "local";
-    const cacheKey = `${zone}|${zone === "utc" ? now.toISOString().slice(0, 10) : localDateKey(now)}|${[...excludeHomes].map(String).sort().join(",")}`;
+    const pricingModels = options.pricingModels ?? getPricingCatalog().models;
+    const cacheKey = periodComparisonKey(now, zone, excludeHomes, pricingModels);
     const cached = cacheable ? this.periodComparisonCache.get(cacheKey) : undefined;
     if (cached) return { ...structuredClone(cached), asOf: now.toISOString() };
-    const scope = scopeFilterSql(excludeHomes);
-    const bounds = this.database
-      .prepare(
-        `SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`,
-      )
-      .get(...scope.params);
+    const bounds = this.eventBounds(excludeHomes);
     const timestamps =
       bounds.minimum === null
         ? []
@@ -5073,7 +10288,7 @@ export class UsageStore {
         resolveDateRange({ preset: key, now, calendarZone: zone }, timestamps),
       ]),
     );
-    const models = this.periodAggregate("model", "model", now, ranges, { excludeHomes });
+    const models = this.periodAggregate("model", "model", now, ranges, { excludeHomes, pricingModels });
     const totals = models.length
       ? Object.fromEntries(
           COMPARISON_PERIOD_KEYS.map((period) => {
@@ -5086,7 +10301,9 @@ export class UsageStore {
             return [period, periodTotals];
           }),
         )
-      : this.periodAggregate(null, null, now, ranges, { excludeHomes })[0].periods;
+      : this.periodAggregate(null, null, now, ranges, { excludeHomes, pricingModels })[0].periods;
+    // shortcut: a new calendar scope uses SQL until facts rebuild; fuse it only if that fallback becomes costly.
+    const repositoryProjection = cacheable ? this.summaryProjectionCache?.projection.repositoryPeriods : null;
     const value = {
       periods: COMPARISON_PERIOD_KEYS.map((key) => ({
         key,
@@ -5095,10 +10312,14 @@ export class UsageStore {
       })),
       totals,
       models,
-      repositories: this.periodAggregate("repository_key", "repository_path", now, ranges, {
-        includeKind: true,
-        excludeHomes,
-      }),
+      repositories:
+        repositoryProjection?.key === cacheKey
+          ? repositoryProjection.rows
+          : this.periodAggregate("repository_key", "repository_path", now, ranges, {
+              includeKind: true,
+              excludeHomes,
+              pricingModels,
+            }),
     };
     // D1：只有**不在写事务里**才写共享缓存（写事务内的结果只用于本次调用）。
     if (cacheable) {
@@ -5106,6 +10327,43 @@ export class UsageStore {
       this.periodComparisonCache.set(cacheKey, value);
     }
     return { ...structuredClone(value), asOf: now.toISOString() };
+  }
+
+  /**
+   * Explicit cold-aware period comparison. Without an authority marker this
+   * pins the marker and synchronous hot-only cached read in one savepoint; with
+   * authority it uses the verified complete event carrier and shared algorithm.
+   * @param {{ now?: string | Date, calendarZone?: string, excludeHomes?: string[], pricingModels?: Record<string, any> }} [options]
+   */
+  async periodComparisonHistory(options = {}) {
+    await this.open();
+    this.syncDerivedRevision();
+    let hasAuthority = false;
+    // 无 authority 时，marker 与首次 period 读取必须共享同一 SQLite 读快照。
+    // 快照内不再探测外部提交；缓存仍记在快照前的修订上，下一轮会按 data_version 失效。
+    this.database.exec("SAVEPOINT period_comparison_history_read");
+    try {
+      hasAuthority = Boolean(
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META),
+      );
+      if (!hasAuthority) {
+        this.periodComparisonSnapshotRead = true;
+        try {
+          return this.periodComparison(options);
+        } finally {
+          this.periodComparisonSnapshotRead = false;
+        }
+      }
+    } finally {
+      this.database.exec("RELEASE period_comparison_history_read");
+    }
+    const events = await this.publishedHistoryUsageEvents();
+    const excludedHomeIds = new Set((options.excludeHomes || []).map(String));
+    const pricingModels = options.pricingModels ?? getPricingCatalog().models;
+    return summarizePeriodComparison(
+      excludedHomeIds.size === 0 ? events : events.filter((event) => !excludedHomeIds.has(event.homeId)),
+      { ...options, pricingModels },
+    );
   }
 
   // New Record：对日/周/月三种自然周期求各指标的历史最高期（严格新高、至少两期可比），
@@ -5177,25 +10435,7 @@ export class UsageStore {
    * 冠军期的**范围包含判定不在这里**（见 `recordsWithinRange`）。
    */
   buildRecordChampions(zone, where, params, usdToCnyRate, estimateEventCost = DEFAULT_EVENT_COST_ESTIMATOR) {
-    const periods = { day: new Map(), week: new Map(), month: new Map() };
-    const ensureSlot = (unit, key) => {
-      let slot = periods[unit].get(key);
-      if (!slot) {
-        slot = {
-          key,
-          total: 0,
-          input: 0,
-          cached: 0,
-          output: 0,
-          reasoning: 0,
-          sessions: new Set(),
-          models: new Set(),
-          cost: { total: 0, input: 0, cached: 0, output: 0 },
-        };
-        periods[unit].set(key, slot);
-      }
-      return slot;
-    };
+    const periods = emptyRecordPeriods();
 
     // Record ranking scans the full scoped history. Its pricing projection is
     // intentionally smaller: estimates use the active catalog and do not read
@@ -5237,70 +10477,58 @@ export class UsageStore {
           reasoning: Number(row.reasoning || 0),
         },
       });
-      // 跨币种比较与图表比例一致：统一折算到人民币。
-      const scale = estimate.currency === "CNY" ? 1 : usdToCnyRate;
-      const date = zone === "utc" ? new Date(Number(row.timestamp_ms)) : null;
-      const utcDay = date?.toISOString().slice(0, 10);
-      const utcWeek = date
-        ? new Date(
-            Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() || 7) - 1)),
-          )
-            .toISOString()
-            .slice(0, 10)
-        : null;
-      for (const unit of ["day", "week", "month"]) {
-        const key =
-          zone === "utc"
-            ? unit === "day"
-              ? utcDay
-              : unit === "week"
-                ? utcWeek
-                : utcDay.slice(0, 7)
-            : String(row[`${unit}_key`] || "");
-        const slot = ensureSlot(unit, key);
-        slot.total += Number(row.total || 0);
-        slot.input += Number(row.input || 0);
-        slot.cached += Number(row.cached || 0);
-        slot.output += Number(row.output || 0);
-        slot.reasoning += Number(row.reasoning || 0);
-        slot.sessions.add(row.session_id);
-        slot.models.add(row.model);
-        slot.cost.total += Number(estimate.totalUsd || 0) * scale;
-        slot.cost.input += Number(estimate.inputUsd || 0) * scale;
-        slot.cost.cached += Number(estimate.cachedInputUsd || 0) * scale;
-        slot.cost.output += Number(estimate.outputUsd || 0) * scale;
-      }
+      accumulateRecordEstimate(
+        periods,
+        {
+          timestampMs: Number(row.timestamp_ms),
+          sessionId: row.session_id,
+          model: row.model,
+          total: usageFromRow(row),
+          estimate,
+          storedKeys: {
+            day: row.day_key,
+            week: row.week_key,
+            month: row.month_key,
+          },
+        },
+        zone,
+        usdToCnyRate,
+      );
     }
-
-    const slotValues = (slot) => ({
-      totalTokens: slot.total,
-      inputTokens: slot.input,
-      cachedTokens: slot.cached,
-      outputTokens: slot.output,
-      reasoningTokens: slot.reasoning,
-      sessionCount: slot.sessions.size,
-      modelCount: slot.models.size,
-      cacheHitRate: slot.input > 0 ? slot.cached / slot.input : null,
-      totalCost: slot.cost.total,
-      inputCost: slot.cost.input,
-      cachedCost: slot.cost.cached,
-      outputCost: slot.cost.output,
-    });
 
     // ── 冠军选择（**与 `range` 无关**）：严格新高 + 至少两期可比 ─────────────────────────────
-    const champions = { day: {}, week: {}, month: {} };
-    for (const metric of Object.keys(RECORD_METRICS)) {
-      for (const unit of ["day", "week", "month"]) {
-        const ranked = [...periods[unit].values()]
-          .map((slot) => ({ key: slot.key, value: slotValues(slot)[metric] }))
-          .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
-          .sort((left, right) => right.value - left.value);
-        // “至少两期可比”：少于两期无从比较；**并列**（前两名相等）不是新高 ⇒ 不点亮。
-        if (ranked.length < 2 || ranked[0].value <= ranked[1].value) continue;
-        champions[unit][metric] = { period: ranked[0].key, value: ranked[0].value };
-      }
+    return rankRecordChampions(periods);
+  }
+
+  buildRecordChampionsFromEvents(events, zone, usdToCnyRate) {
+    const periods = emptyRecordPeriods();
+    for (const event of events) {
+      const timestampMs = Date.parse(event.timestamp);
+      if (!Number.isFinite(timestampMs)) continue;
+      accumulateRecordEstimate(
+        periods,
+        {
+          timestampMs,
+          sessionId: event.sessionId,
+          model: event.model,
+          total: event.total,
+          estimate: this.eventCostMemo.estimate(event),
+        },
+        zone,
+        usdToCnyRate,
+      );
     }
-    return champions;
+    return rankRecordChampions(periods);
+  }
+
+  recordsForHistoryEvents(events, range) {
+    const zone = range.calendarZone === "utc" ? "utc" : "local";
+    const rate = Number(getPricingCatalog().usdToCnyRate);
+    const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    const champions = this.withEventCostMemoRound(() =>
+      this.buildRecordChampionsFromEvents(events, zone, usdToCnyRate),
+    );
+    return this.recordsWithinRange(champions, range, zone);
   }
 
   /**
@@ -5345,16 +10573,418 @@ export class UsageStore {
     }
   }
 
-  summarizeInReadTransaction(filters = {}, { includeDetails = true } = {}) {
+  registerReadFunctions() {
+    this.database.function("usage_source_group", (channel, kind) => sourceGroup(channel, String(kind ?? "")));
+    this.database.function("usage_model_group", (model) =>
+      canonicalModelName(String(model ?? ""), this.readPricingModels),
+    );
+  }
+
+  /** SQL fast path for one unchanged event segment; other scopes retain the complete carrier. */
+  async trySqlHistoryDashboard(filters, options, periodOptions) {
+    const hot = this.database;
+    // shortcut: pinned/writing readers, overlays and multiple segments use the existing carrier until SQL parity covers them.
+    if (filters.preset !== "all" || hot.isTransaction !== false || this.writeTransactionDepth > 0) return null;
+    const records = hot.prepare("SELECT * FROM archive_segments").all();
+    const authorized = historyArchiveAuthorizedSegmentIds(hot);
+    if (records.length !== 1 || authorized.size !== 1 || !authorized.has(String(records[0].segment_id))) return null;
+    if (
+      hot
+        .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?, ?)")
+        .get(
+          HISTORY_ARCHIVE_EVENT_REVISIONS_META,
+          HISTORY_ARCHIVE_PERF_REVISIONS_META,
+          HISTORY_ARCHIVE_PERF_AUTHORITY_META,
+        )
+    )
+      return null;
+    const input = JSON.stringify(historyArchivePerfRevisionInputVersion(hot));
+    const record = records[0];
+    const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
+    return withVerifiedHistoryArchiveCandidate(String(record.database_path), undefined, (database, verified) => {
+      assertHistoryArchiveRecordMatches(record, verified);
+      const coldSources = historyArchiveSourceIdentities(database, Number(record.start_ms), Number(record.end_ms));
+      const sourceCount = Number(database.prepare("SELECT COUNT(DISTINCT source_path) AS n FROM events").get().n);
+      if (sourceCount !== coldSources.length) {
+        throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "archive source identities are incomplete");
+      }
+      database.prepare("ATTACH DATABASE ? AS history_hot").run(`${pathToFileURL(this.databaseFile).href}?mode=ro`);
+      // Pin the hot revision only for the synchronous SQL consumer, never across file-hash awaits.
+      database.prepare("SELECT value FROM history_hot.store_meta LIMIT 1").get();
+      if (this.database !== hot) {
+        throw historyArchiveError("HISTORY_ARCHIVE_READ_CLOSED", "usage store closed during archive verification");
+      }
+      if (
+        hot.isTransaction !== false ||
+        this.writeTransactionDepth > 0 ||
+        JSON.stringify(historyArchivePerfRevisionInputVersion(hot)) !== input
+      )
+        return null;
+      if (
+        database
+          .prepare("SELECT 1 FROM history_hot.events WHERE timestamp_ms >= ? AND timestamp_ms < ? LIMIT 1")
+          .get(record.start_ms, record.end_ms)
+      ) {
+        throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "authorized archive still has hot facts");
+      }
+      const liveSource = database.prepare(
+        "SELECT path, kind, home_id, home_label, home_path FROM history_hot.source_files WHERE path = ?",
+      );
+      for (const source of coldSources) {
+        const live = liveSource.get(source.path);
+        if (!live || JSON.stringify({ ...live }) !== JSON.stringify(source)) {
+          throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
+        }
+      }
+      const quote = (name) => `"${String(name).replaceAll('"', '""')}"`;
+      const columns = database.prepare("PRAGMA history_hot.table_info(events)").all();
+      const shape = (rows) => JSON.stringify(rows.map(({ name, type }) => [name, type]));
+      if (shape(columns) !== shape(database.prepare("PRAGMA main.table_info(events)").all())) return null;
+      const projection = columns
+        .map(({ name }) =>
+          name === "project" ? "CASE WHEN cwd = '' THEN 'Unknown cwd' ELSE cwd END AS project" : quote(name),
+        )
+        .join(",");
+      for (const { name } of database
+        .prepare("SELECT name FROM history_hot.sqlite_master WHERE type = 'table'")
+        .all()) {
+        if (name !== "events" && !String(name).startsWith("sqlite_")) {
+          database.exec(`CREATE TEMP VIEW ${quote(name)} AS SELECT * FROM history_hot.${quote(name)}`);
+        }
+      }
+      database.exec(
+        `CREATE TEMP VIEW events AS SELECT ${projection} FROM history_hot.events UNION ALL SELECT ${projection} FROM main.events`,
+      );
+      const key = JSON.stringify([input, this.storeRevision, record, this.homes, this.warnings, this.generatedAt]);
+      let reader = this.historySqlDashboardCache?.store;
+      if (this.historySqlDashboardCache?.key !== key || reader?.serviceTierEvidence !== this.serviceTierEvidence) {
+        reader?.close();
+        reader = new UsageStore({ databaseFile: this.databaseFile });
+        this.historySqlDashboardCache = { key, store: reader };
+      }
+      reader.database = database;
+      reader.homes = structuredClone(this.homes);
+      reader.warnings = [...this.warnings];
+      reader.generatedAt = this.generatedAt;
+      reader.serviceTierEvidence = this.serviceTierEvidence;
+      reader.serviceTierEvidenceInput = this.serviceTierEvidenceInput;
+      reader.storeRevision = reader.derivedRevision = this.storeRevision;
+      reader.summarySnapshotRead = true;
+      reader.verifiedHistorySqlRead = true;
+      reader.registerReadFunctions();
+      try {
+        return {
+          summary: reader.summarizeInReadTransaction(filters, options),
+          metadata: reader.metadata(filters.now ?? new Date()),
+          periodComparison: reader.periodComparison(periodOptions),
+        };
+      } catch (error) {
+        this.historySqlDashboardCache = null;
+        throw error;
+      } finally {
+        reader.database = null;
+      }
+    });
+  }
+
+  /** Build one dashboard from one verified carrier when cold event authority exists.
+   * @param {any} [filters]
+   * @param {any} [options]
+   */
+  async dashboardHistory(filters = {}, options = {}) {
+    await this.open();
+    this.syncDerivedRevision();
+    const periodOptions = {
+      now: filters.now,
+      excludeHomes: filters.excludeHomes,
+      calendarZone: filters.calendarZone,
+      pricingModels: filters.pricingModels ?? getPricingCatalog().models,
+    };
+    const hasAuthority = this.database
+      .prepare("SELECT 1 FROM store_meta WHERE key = ?")
+      .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META);
+    if (!hasAuthority) {
+      return {
+        summary: await this.summarizeHistory(filters, options),
+        metadata: await this.metadataHistory(filters.now),
+        periodComparison: await this.periodComparisonHistory(periodOptions),
+      };
+    }
+    const sqlDashboard = await this.trySqlHistoryDashboard(filters, options, periodOptions);
+    if (sqlDashboard) return sqlDashboard;
+    const union = await this.historyArchiveEventUnionForRange(undefined, {
+      completeHistory: true,
+      includeUsageCarrier: true,
+      includePerfCarrier: true,
+      includeMetadataCarrier: true,
+    });
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    const homes = union.homes ?? [];
+    const report = {
+      events,
+      homes,
+      // Dashboard session counts come from events; no session detail list is consumed.
+      sessions: [],
+      rateLimitObservations: union.rateLimitObservations ?? [],
+      perfCarrier: union.perfCarrier,
+    };
+    const excluded = new Set((filters.excludeHomes || []).map(String));
+    return {
+      summary: this.summarizeHistoryReport(report, filters, options),
+      metadata: metadataFromHistoryEvents(events, union.metadataCarrier, filters.now ?? new Date()),
+      periodComparison: summarizePeriodComparison(
+        excluded.size ? events.filter((event) => !excluded.has(event.homeId)) : events,
+        periodOptions,
+      ),
+    };
+  }
+
+  /**
+   * Explicit cold-aware summary. Without an authority marker this pins the
+   * marker and synchronous hot summary in one savepoint; with authority it
+   * summarizes the verified complete event carrier with the shared algorithm.
+   * @param {object} [filters]
+   * @param {{ includeDetails?: boolean }} [options]
+   */
+  async summarizeHistory(filters = {}, options = {}) {
+    await this.open();
+    this.syncDerivedRevision();
+    let hasAuthority = false;
+    this.database.exec("SAVEPOINT summary_history_read");
+    try {
+      hasAuthority = Boolean(
+        this.database
+          .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+          .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META),
+      );
+      if (!hasAuthority) {
+        this.summarySnapshotRead = true;
+        try {
+          return this.summarizeInReadTransaction(filters, options);
+        } finally {
+          this.summarySnapshotRead = false;
+        }
+      }
+    } finally {
+      this.database.exec("RELEASE summary_history_read");
+    }
+
+    const report = await this.publishedHistoryUsageReport({ includePerfCarrier: true });
+    return this.summarizeHistoryReport(report, filters, options);
+  }
+
+  /**
+   * Build a cold-aware summary synchronously from an already prepared complete report.
+   * @param {any} report
+   * @param {object} [filters]
+   * @param {{ includeDetails?: boolean }} [options]
+   */
+  summarizeHistoryReport(report, filters = {}, options = {}) {
+    let scoped = report;
+    if (filters.excludeHomes?.length) {
+      scoped = withoutExcludedHistoryHomes(report, filters.excludeHomes);
+    }
+    const summary = summarizeUsage({ ...scoped, generatedAt: this.generatedAt, warnings: this.warnings }, filters);
+    const summaryWithRecords = /** @type {any} */ (summary);
+    const range = /** @type {any} */ (summary.range);
+    const excludeHomes = filters.excludeHomes || [];
+    const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
+    if (range.preset === "all") {
+      summaryWithRecords.records = {};
+    } else if (range.quotaWindow) {
+      const excludedHomeIds = new Set(
+        (scoped.homes || [])
+          .filter((home) => canonicalPerfSourceKind(home.kind) !== "codex")
+          .map((home) => String(home.id)),
+      );
+      const rate = Number(getPricingCatalog().usdToCnyRate);
+      const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+      summaryWithRecords.records = this.withEventCostMemoRound(() =>
+        quotaRecordsForRange(range, summary.quota, scoped.rateLimitObservations, (window) =>
+          summarizeQuotaRecordWindow(scoped.events, window, excludedHomeIds, usdToCnyRate, (event) =>
+            this.eventCostMemo.estimate(event),
+          ),
+        ),
+      );
+    } else if (!isQuotaPreset(range.preset) && !range.quotaWindow) {
+      summaryWithRecords.records = this.recordsForHistoryEvents(scoped.events, {
+        ...range,
+        start: range.start ? new Date(range.start) : null,
+        end: range.end ? new Date(range.end) : null,
+      });
+    }
+    const perfExclusions = quotaPreset
+      ? [
+          ...new Set([
+            ...excludeHomes,
+            ...(scoped.homes || [])
+              .filter((home) => canonicalPerfSourceKind(home.kind) !== "codex")
+              .map((home) => String(home.id)),
+          ]),
+        ]
+      : excludeHomes;
+    // The cold awaits have finished; build only from the carrier's perf capture.
+    summaryWithRecords.perf = this.buildPerfSummaryForRange(
+      {
+        ...range,
+        start: range.start ? new Date(range.start) : null,
+        end: range.end ? new Date(range.end) : null,
+        windowEndExclusive: range.windowEndExclusive ? new Date(range.windowEndExclusive) : null,
+      },
+      perfExclusions,
+      quotaPreset,
+      /** @type {any} */ (report).perfCarrier,
+    );
+    if (options.includeDetails === false) {
+      delete summary.homes;
+      delete summary.projects;
+      delete summary.repositories;
+    }
+    return summary;
+  }
+
+  /**
+   * Build the indexed perf projection inside the caller's current SQLite read snapshot.
+   * This method is synchronous by contract so callers cannot accidentally mix revisions.
+   */
+  perfSummaryForRange(range, scopeExclusions, quotaPreset) {
+    return this.buildPerfSummaryForRange(
+      range,
+      scopeExclusions,
+      quotaPreset,
+      this.capturePerfCarrier({ range, scopeExclusions }),
+    );
+  }
+
+  /**
+   * Capture every perf input used by a later build. Passing no range captures
+   * the full table so cold-aware callers can apply the final carrier range.
+   */
+  capturePerfCarrier({ range = null, scopeExclusions = [] } = {}) {
+    const perfState = this.perfState();
+    const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
+    const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
+    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
+    const perfBounds = range === null ? null : perfStatsRangeBounds(range);
+    const perfExclusions = [
+      ...new Set([...scopeExclusions, ...perfState.degradedHomeIds.filter((homeId) => !partialHomeIds.has(homeId))]),
+    ];
+    return {
+      perfState,
+      samples: [
+        ...this.perfCandidatesForRange(perfBounds, perfExclusions),
+        ...this.unplacedPerfSamples(perfExclusions),
+      ],
+      identities: this.perfSampleIdentities(),
+      knownSources: (this.homes || []).map((home) => ({
+        kind: canonicalPerfSourceKind(home?.kind),
+        homeId: String(home?.id ?? ""),
+      })),
+      unsupportedSources: decodeJsonWarnings(this.readMetaRaw("perf_unsupported_sources")),
+    };
+  }
+
+  buildPerfSummaryForRange(range, scopeExclusions, quotaPreset, perfCarrier) {
+    const perfState = perfCarrier.perfState;
+    const degraded = new Set(perfState.degradedHomeIds);
+    const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
+    const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
+    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
+    const publicationFilter = createCodexPublishFilter(perfState.degradedHomeIds, partialHomes);
+
+    // Convert usage range keys once so the shared summary kernel sees the final carrier range.
+    const perfBounds = perfStatsRangeBounds(range);
+    const perfExclusions = [
+      ...new Set([...scopeExclusions, ...perfState.degradedHomeIds.filter((homeId) => !partialHomeIds.has(homeId))]),
+    ];
+    const publishableInRange = (sample) =>
+      codexSampleAllowed(publicationFilter, sample) && (!quotaPreset || !isCodexAutoReview(sample.model));
+    const perfStats = buildPerfStatsBlock({
+      samples: perfCarrier.samples.filter(publishableInRange),
+      bounds: perfBounds,
+      excludedHomeIds: perfExclusions,
+      knownSources: perfCarrier.knownSources,
+      meta: {
+        methodVersion: perfState.methodVersion,
+        state: perfState.state,
+        indexVersion: perfState.indexVersion ?? null,
+        indexedAt: perfState.indexedAt ?? null,
+        sourceWarnings: perfState.sourceWarnings,
+      },
+    });
+
+    return {
+      state: perfState.state,
+      ready: perfState.state === PERF_STATE_READY,
+      methodVersion: perfState.methodVersion,
+      indexVersion: perfState.indexVersion,
+      indexedAt: perfState.indexedAt,
+      degradedHomeIds: perfState.degradedHomeIds,
+      missingSources: perfState.missingSources.filter((source) => !scopeExclusions.includes(source.homeId)),
+      sourceWarnings: perfStats.meta.sourceWarnings,
+      unsupportedSources: perfCarrier.unsupportedSources,
+      rankedHomeIds: (() => {
+        const identities = perfCarrier.identities;
+        const codexHomeIds = rankedCodexHomeIds(publicationFilter, identities);
+        const otherHomeIds = identities
+          .filter((sample) => sample.sourceKind !== "codex")
+          .filter((sample) => !degraded.has(sample.homeId))
+          .map((sample) => sample.homeId)
+          .filter(Boolean);
+        return [...new Set([...codexHomeIds, ...otherHomeIds])].sort();
+      })(),
+      groups: perfStats.groups,
+      models: perfStats.models,
+      coverage: perfStats.coverage,
+      codexTimingCoverage: perfStats.codexTimingCoverage,
+      meta: perfStats.meta,
+    };
+  }
+
+  summaryProjectionKeys(range, bucket, excludeHomes, includeDetails, pricingModels) {
+    const catalog = getPricingCatalog();
+    const rate = Number(catalog.usdToCnyRate);
+    const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    const totalChanges = Number(this.database.prepare("SELECT total_changes() AS value").get()?.value ?? -1);
+    const canonicalExcludedHomes = [...new Set((excludeHomes || []).map(String).filter(Boolean))].sort();
+    const pricingModelKeys =
+      pricingModels && typeof pricingModels === "object" && !Array.isArray(pricingModels)
+        ? JSON.stringify(Object.keys(pricingModels).sort())
+        : "";
+    const factsKey = [
+      `store-revision\u0000${this.storeRevision}`,
+      `derived-revision\u0000${this.derivedRevision}`,
+      `total-changes\u0000${totalChanges}`,
+      `data-version\u0000${this.readDataVersion()}`,
+      `pricing-model-keys\u0000${pricingModelKeys}`,
+      `service-tier-evidence\u0000${this.serviceTierEvidenceInput === null ? "<unsynced>" : this.serviceTierEvidenceInput}`,
+      `resolved-range\u0000${JSON.stringify(range)}`,
+      `bucket\u0000${bucket}`,
+      `excluded-homes\u0000${canonicalExcludedHomes.join("\u0000")}`,
+      `include-details\u0000${includeDetails ? "1" : "0"}`,
+    ].join("\u0001");
+    return {
+      factsKey,
+      key: `${factsKey}\u0001pricing-catalog\u0000${String(catalog.version ?? "")}\u0001usd-to-cny-rate\u0000${usdToCnyRate}`,
+    };
+  }
+
+  summarizeInReadTransaction(filters = {}, options = {}) {
+    const previousPricingModels = this.readPricingModels;
+    const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
+    this.readPricingModels = pricingModels;
+    try {
+      return this.summarizeInReadTransactionCore(filters, options, pricingModels);
+    } finally {
+      this.readPricingModels = previousPricingModels;
+    }
+  }
+
+  summarizeInReadTransactionCore(filters = {}, { includeDetails = true } = {}, pricingModels) {
     const excludeHomes = filters.excludeHomes || [];
     const asOf = filters.now ? new Date(filters.now) : new Date();
     const quota = selectQuotaWindows(this.quotaObservations(), asOf);
-    const scope = scopeFilterSql(excludeHomes);
-    const bounds = this.database
-      .prepare(
-        `SELECT MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum FROM events${scope.sql ? ` WHERE ${scope.sql}` : ""}`,
-      )
-      .get(...scope.params);
+    const bounds = this.eventBounds(excludeHomes);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {
       boundaryEvents.push({ timestamp: new Date(Number(bounds.minimum)).toISOString() });
@@ -5365,6 +10995,32 @@ export class UsageStore {
     const range = resolveDateRange({ ...filters, now: asOf, quota }, boundaryEvents);
     const quotaPreset = isQuotaPreset(range.preset) || Boolean(range.quotaWindow);
     const scopeExclusions = quotaPreset ? [...new Set([...excludeHomes, ...this.nonCodexHomeIds()])] : excludeHomes;
+    const bucket = deriveTimelineBucket(
+      range,
+      range.bucket ||
+        (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
+    );
+    const projectionCacheable =
+      range.preset === "all" &&
+      !quotaPreset &&
+      this.writeTransactionDepth === 0 &&
+      (this.verifiedHistorySqlRead ||
+        !this.database
+          .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+          .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META));
+    const projectionKeys = projectionCacheable
+      ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
+      : null;
+    const factProjection =
+      projectionKeys && this.summaryProjectionCache?.factsKey === projectionKeys.factsKey
+        ? structuredClone(this.summaryProjectionCache.projection)
+        : null;
+    const projection = factProjection && this.summaryProjectionCache.key === projectionKeys.key ? factProjection : null;
+    let quoteInputs = factProjection ? this.summaryProjectionCache.quoteInputs : null;
+    if (projectionCacheable && !factProjection && this.summaryProjectionCache?.quoteInputs) {
+      this.summaryProjectionCache.quoteInputs.discard();
+      this.summaryProjectionCache.quoteInputs = null;
+    }
     const aggregate = this.aggregateRange(range, scopeExclusions);
     const totals = usageFromRow(aggregate);
     const previousRange = quotaPreset ? null : previousUsageRange(range);
@@ -5379,25 +11035,82 @@ export class UsageStore {
           previousSessionCount: Number(previousAggregate?.session_count || 0),
           now: asOf,
         });
-    const bucket = deriveTimelineBucket(
-      range,
-      range.bucket ||
-        (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
-    );
-    let timeline = [];
-    let timelineError = null;
-    let costEstimate;
-    const costAccumulator = createCostEstimateAccumulator();
-    try {
-      timeline = this.timelineRange(range, bucket, {
-        onEstimate: (event, estimate) => costAccumulator.add(event, estimate),
-        excludeHomes: scopeExclusions,
-      });
-      costEstimate = costAccumulator.result();
-    } catch (error) {
-      if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
-      timelineError = error.message;
-      costEstimate = this.costEstimateRange(range, scopeExclusions);
+    let timeline = projection?.timeline ?? [];
+    let timelineError = projection?.timelineError ?? null;
+    let costEstimate = projection?.costEstimate;
+    let fusedGroups = null;
+    let fusedRepositories = null;
+    if (!projection) {
+      const quoteCapture = projectionCacheable && !factProjection ? new HistoryQuoteInputs() : null;
+      const pricing = createEventPricing(pricingModels);
+      const costAccumulator = createCostEstimateAccumulator({ modelName: pricing.costModelName });
+      const sourceKindsByPath =
+        projectionCacheable && !factProjection
+          ? new Map(
+              this.database
+                .prepare("SELECT path, kind FROM source_files")
+                .all()
+                .map((row) => [String(row.path), String(row.kind)]),
+            )
+          : null;
+      const groupAccumulator = sourceKindsByPath
+        ? createFusedSummaryGroups(sourceKindsByPath, pricing.modelName)
+        : null;
+      // shortcut: hot-only repository session order stays on SQL; this collector serves the verified cold reader.
+      const repositoryAccumulator =
+        this.verifiedHistorySqlRead && includeDetails && sourceKindsByPath
+          ? createFusedSummaryRepositories(
+              Object.fromEntries(
+                COMPARISON_PERIOD_KEYS.map((key) => [
+                  key,
+                  resolveDateRange({ preset: key, now: asOf, calendarZone: range.calendarZone }, boundaryEvents),
+                ]),
+              ),
+            )
+          : null;
+      const observationAccumulator =
+        this.verifiedHistorySqlRead &&
+        scopeExclusions.length === 0 &&
+        sourceKindsByPath &&
+        this.metadataObservationCache?.revision !== this.storeRevision
+          ? createFusedMetadataObservations()
+          : null;
+      try {
+        timeline = this.timelineRange(range, bucket, {
+          onEstimate: (event, estimate, bucketKey) => {
+            quoteCapture?.append(event, bucketKey);
+            costAccumulator.add(event, estimate);
+            groupAccumulator?.add(event);
+            repositoryAccumulator?.add(event);
+            observationAccumulator?.add(event);
+          },
+          excludeHomes: scopeExclusions,
+          pricingModels,
+          pricing,
+          quoteInputs,
+          factRows: factProjection?.timelineError ? undefined : factProjection?.timeline,
+          includeRepositories: Boolean(repositoryAccumulator),
+        });
+        costEstimate = costAccumulator.result();
+        quoteInputs = quoteInputs ?? quoteCapture?.finish() ?? null;
+        fusedGroups = factProjection ?? groupAccumulator?.result() ?? null;
+        fusedRepositories = repositoryAccumulator?.result() ?? null;
+        if (observationAccumulator) {
+          const rows = observationAccumulator.result();
+          this.metadataObservationCache = {
+            revision: this.storeRevision,
+            rows,
+            maxTimestampMs: rows.reduce((max, row) => Math.max(max, row.last_seen), -Infinity),
+          };
+        }
+      } catch (error) {
+        quoteCapture?.discard();
+        quoteInputs = null;
+        fusedGroups = null;
+        if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
+        timelineError = error.message;
+        costEstimate = this.costEstimateRange(range, scopeExclusions);
+      }
     }
     const summary = {
       generatedAt: this.generatedAt,
@@ -5455,121 +11168,84 @@ export class UsageStore {
       timeline,
       timelineError,
       quota,
-      channels: this.groupedRange("channel", range, "total DESC", scopeExclusions),
-      models: this.groupedRange("model", range, "total DESC", scopeExclusions),
+      channels:
+        projection?.channels ??
+        fusedGroups?.channels ??
+        this.groupedRange("channel", range, "total DESC", scopeExclusions),
+      models:
+        projection?.models ?? fusedGroups?.models ?? this.groupedRange("model", range, "total DESC", scopeExclusions),
     };
 
-    /**
-     * M3.4：把 **perf 状态机**接进读路径。
-     *
-     * ⚠️ **必须在同一读事务内读取**（本方法已由 `summarize` 包在 `BEGIN … COMMIT` 里）：
-     * `perf_state` 会在一轮 sync 的多次 `replaceFile` **之间**变化，事务外读会拿到撕裂的
-     * "状态 + 候选"组合。
-     *
-     * **D4**：`degraded` 时默认排名**只含未受阻 home** —— 卡片明文"旧成功候选可保留在
-     * 数据库以便失败回滚，但**不得悄悄参与当前排名**"。受阻 home 的陈旧候选仍在库里
-     * （回滚可用），但被**明确排除在 `rankedHomeIds` 之外**，且**指名**列在
-     * `degradedHomeIds` 里，使下游**无法**把它当作干净排名（AN-6：归因字段本身是验收对象）。
-     */
-    const perfState = this.perfState();
-    const degraded = new Set(perfState.degradedHomeIds);
-    const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
-    const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
-    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
-    const publicationFilter = createCodexPublishFilter(perfState.degradedHomeIds, partialHomes);
-
-    // ── M4.2：**与内存路径同一个统计入口** ────────────────────────────────────
-    //
-    // ⚠️ 范围必须由本模块**先转成 M1 的键名**再同时喂给 SQL 与 `summarizePerf`：
-    //    `perfRangeBounds` 明文拒绝 usage-core 的原始形状（`start/end/windowEndExclusive`），
-    //    否则"SQL 有界而 M1 无界"，两端计数必然分叉（M3 记录过同一实测成因）。
-    const perfBounds = perfStatsRangeBounds(range);
-    // 卡片明文："`degraded` 时按 M3.4 排除受阻 home 并显示告警"。M3.4 只在 `rankedHomeIds`
-    // 里排除了受阻 home；**统计侧必须同样排除**，否则受阻 home 的陈旧候选仍会进入 `groups`。
-    const perfExclusions = [
-      ...new Set([...scopeExclusions, ...perfState.degradedHomeIds.filter((homeId) => !partialHomeIds.has(homeId))]),
-    ];
-    const publishableInRange = (sample) =>
-      codexSampleAllowed(publicationFilter, sample) && (!quotaPreset || !isCodexAutoReview(sample.model));
-    const perfStats = buildPerfStatsBlock({
-      // ⚠️ **必须并入 unplaced**：`perfCandidatesForRange` 刻意排除 `ts_ms IS NULL`
-      //（M3.3 的设计），但内存路径把 unplaced 样本一并交给 M1（它们进 `coverage.unplaced`）。
-      // 若索引路径不并入，`coverage.unplaced` 会恒为 0 ⇒ 两端计数分叉（卡片明文要求
-      // "所有计数相同"，并把 unplaced 列为固定 fixture 之一）。
-      samples: [
-        ...this.perfCandidatesForRange(perfBounds, perfExclusions),
-        ...this.unplacedPerfSamples(perfExclusions),
-      ].filter(publishableInRange),
-      bounds: perfBounds,
-      excludedHomeIds: perfExclusions,
-      // 与内存路径同形（`perfMeta.knownSources`）：未启用/不支持来源也申报，供 M1 单列。
-      knownSources: (this.homes || []).map((home) => ({
-        kind: canonicalPerfSourceKind(home?.kind),
-        homeId: String(home?.id ?? ""),
-      })),
-      meta: {
-        methodVersion: perfState.methodVersion,
-        state: perfState.state,
-        indexVersion: perfState.indexVersion ?? null,
-        indexedAt: perfState.indexedAt ?? null,
-        sourceWarnings: perfState.sourceWarnings,
-      },
-    });
-
-    summary.perf = {
-      state: perfState.state,
-      // `rebuilding` 时**不得**把部分候选当 ready 排名 ⇒ 显式告知调用者。
-      ready: perfState.state === PERF_STATE_READY,
-      methodVersion: perfState.methodVersion,
-      indexVersion: perfState.indexVersion,
-      indexedAt: perfState.indexedAt,
-      degradedHomeIds: perfState.degradedHomeIds,
-      // M4.3 返工1（复核 §3）：顶层与 `meta.sourceWarnings` 用**同一份**规范结果 —— 内核会按冻结
-      // 码域过滤掉域外码、并补算 `AGGREGATE_OVERFLOW` 等运行期告警，而 `perfState.sourceWarnings`
-      // 只是持久化的原始状态告警 ⇒ 两者曾实测不一致（meta 有 overflow、顶层为 []）。
-      // `perfState` 仍作为**内部状态**读取（持久数据与冻结内核都不动）。
-      sourceWarnings: perfStats.meta.sourceWarnings,
-      unsupportedSources: decodeJsonWarnings(this.readMetaRaw("perf_unsupported_sources")),
-      // 默认排名应包含的 home：库里出现过、且**未**被标退化的。
-      rankedHomeIds: (() => {
-        // D5：只读**必要身份列**（`perfSampleIdentities()`），不再为取排名解码全量样本 JSON。
-        // 判定逐项沿用原实现：Codex 走**同一个** `rankedCodexHomeIds`（其内部用
-        // `codexSampleAllowed` ⇒ `publicationFilter.threadAllowed` + `codexSampleThreadId`
-        // 的线程身份校验），非 Codex 只要求 home 未被标退化。行集 = 全表（与旧实现同集）。
-        const identities = this.perfSampleIdentities();
-        const codexHomeIds = rankedCodexHomeIds(publicationFilter, identities);
-        const otherHomeIds = identities
-          .filter((sample) => sample.sourceKind !== "codex")
-          .filter((sample) => !degraded.has(sample.homeId))
-          .map((sample) => sample.homeId)
-          .filter(Boolean);
-        return [...new Set([...codexHomeIds, ...otherHomeIds])].sort();
-      })(),
-      // M4.2：冻结的 `PerfSummary` 三件套（`usage-types.js:178`）。`state='rebuilding'`
-      //（含读取投影专有的 `uninitialized`）时 `groups` 为空 —— **不返回部分排名**（卡片明文）。
-      groups: perfStats.groups,
-      coverage: perfStats.coverage,
-      meta: perfStats.meta,
-    };
+    summary.perf = this.perfSummaryForRange(range, scopeExclusions, quotaPreset);
 
     if (includeDetails) {
-      summary.homes = this.groupedRange("home_label", range, "total DESC", scopeExclusions);
-      summary.projects = this.groupedRange("project", range, "total DESC", scopeExclusions);
-      summary.repositories = this.repositoriesRange(range, scopeExclusions);
+      summary.homes =
+        projection?.homes ??
+        fusedGroups?.homes ??
+        this.groupedRange("home_label", range, "total DESC", scopeExclusions);
+      summary.projects =
+        projection?.projects ??
+        fusedGroups?.projects ??
+        this.groupedRange("project", range, "total DESC", scopeExclusions);
+      const repositorySessions = fusedRepositories
+        ? this.historyRepositorySessionOrder(
+            eventRangeScope(range, scopeFilterSql(scopeExclusions)),
+            fusedRepositories.firsts,
+          )
+        : null;
+      summary.repositories =
+        factProjection?.repositories ??
+        fusedRepositories?.rows.map((row) => ({ ...row, sessionIds: repositorySessions.get(row.key) })) ??
+        this.repositoriesRange(range, scopeExclusions);
+    }
+    if (projectionCacheable && !projection) {
+      const cachedProjection = {
+        timeline,
+        timelineError,
+        costEstimate,
+        channels: summary.channels,
+        models: summary.models,
+      };
+      if (includeDetails) {
+        cachedProjection.homes = summary.homes;
+        cachedProjection.projects = summary.projects;
+        cachedProjection.repositories = summary.repositories;
+        const repositoryPeriods =
+          factProjection?.repositoryPeriods ??
+          (fusedRepositories
+            ? {
+                key: periodComparisonKey(
+                  asOf,
+                  range.calendarZone === "utc" ? "utc" : "local",
+                  scopeExclusions,
+                  pricingModels,
+                ),
+                rows: fusedRepositories.periodRepositories,
+              }
+            : null);
+        if (repositoryPeriods) cachedProjection.repositoryPeriods = repositoryPeriods;
+      }
+      this.summaryProjectionCache = { ...projectionKeys, projection: structuredClone(cachedProjection), quoteInputs };
     }
     return summary;
   }
 
   close() {
+    this.historySqlDashboardCache?.store.close();
+    this.historySqlDashboardCache = null;
+    this.magpieRequestTimings.clear();
+    this.magpieTimingLoaded = false;
+    this.magpieTimingPublication = "";
+    this.magpieTimingFile = "";
     // C1 卡：**实例私有**记录在 `close()` 时清空 —— 卡面/规格明文"close/open、实例销毁和方法变更
     // 使记录失效"。记录不跨实例、不跨 close 存活（重开后重新预热一次规划）。
     this.codexStableAttempts.clear();
     // C3 卡：投影缓存同为**实例私有** ⇒ `close()` 一并清空（重开后重新预热一次；不跨实例）。
     this.codexProjections.clear();
     this.codexThreadBuildPlan.clear();
-    // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
     // S4：trace 指纹是**进程内**状态（刻意不落盘）⇒ `close()` 丢弃；重开后首轮自然全扫一次。
     this.workbuddyTraceFingerprints.clear();
+    // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
     // `observedDataVersion` 重新取基准（外部提交检测在重开后**从零**开始计），
     // 而 `storeRevision` 是这个**实例**的单调修订号，跨 `close()/open()` 保留。
     this.metadataCache = null;
@@ -5581,6 +11257,7 @@ export class UsageStore {
     this.recordChampionCache = null;
     // D3：quota 观测映射同为连接级状态（`storeRevision` 跨 close/open **保留** ⇒ 必须显式复位）。
     this.quotaObservationCache = null;
+    this.summaryProjectionCache = null;
     // W4-b1 / D1：事件计价 memo 是**实例私有** ⇒ `close()` 一并清空（重开后重新预热一次；
     // 不跨实例）。键里已含内容与价目版本，所以这里同样是内存卫生而非正确性要求。
     this.eventCostMemo.clear("close");

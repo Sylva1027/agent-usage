@@ -24,12 +24,14 @@
 import assert from "node:assert/strict";
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -47,8 +49,17 @@ const M34_BASE = 1_700_000_000_000;
 // 刻意**本地字面量**（不从 `src/usage-store.js` import）：这样"独立钉住当前 schema 版本"不会被
 // 变成"自我引用"（T1 把 13 → 14 时，这里必须被人**显式**改一次，改不动就是红灯）。
 // T1（handoffs/T1-design.md，C6 触发 + 用户批准）把 STORE_SCHEMA_VERSION 抬到 16；
-// WorkBuddy 接入（docs/plans/2026-10-21-workbuddy-implementation-plan.md）再抬到 17。
-const STORE_SCHEMA_VERSION = 17;
+// WorkBuddy 接入（docs/plans/2026-10-21-workbuddy-implementation-plan.md）再抬到 17；
+// request timing 抬到18，WorkBuddy observation抬到19，历史修订恢复事实抬到20。
+const STORE_SCHEMA_VERSION = 21;
+
+// The Windows sandbox rejects rename(2) even for ordinary temp files.
+function moveFixtureFile(from, to) {
+  const info = statSync(from);
+  copyFileSync(from, to);
+  utimesSync(to, info.atime, info.mtime);
+  unlinkSync(from);
+}
 
 /**
  * 建一个**能被真实 discovery 发现**的 zcode home。
@@ -277,6 +288,7 @@ test("★1c ★卡片核心：一次同步【期间】调用 summarize 必须得
         "rebuilding",
         "summarize 必须把 rebuilding 透出，调用者才能拒绝把它当 ready 排名",
       );
+      assert.deepEqual(midSummary.perf?.models, [], "rebuilding 时不得返回部分模型速度行");
       // 整轮结束后回到 ready，且中途状态不再残留
       assert.equal(readMetaValue(store, "perf_state"), "ready", "整轮成功后必须回到 ready");
       assert.equal(store.summarize({}, {}).perf?.state, "ready", "成功轮后 summarize 报告 ready");
@@ -344,8 +356,7 @@ test("★2 主源文件不可读被删 ⇒ degraded，且受阻 homeId 可归因
       // ⚠️ 注意 `discoverZcodeHomes` 依赖 `zcodeDatabaseFile` 存在 ⇒ 直接删库会让该 home
       // 在**发现阶段**就消失（不是"受阻"）。因此改用**目录不可读**的方式？
       // 实测：用 rename 把库换成**坏文件**（discovery 仍能发现 → 进入 replaceFile → 抛错）。
-      const { renameSync } = await import("node:fs");
-      renameSync(homeB.dbFile, `${homeB.dbFile}.bak`);
+      moveFixtureFile(homeB.dbFile, `${homeB.dbFile}.bak`);
       writeFileSync(homeB.dbFile, "not a sqlite database at all");
 
       const result = await store.sync({ options: m34Options(root, [homeA, homeB]) });
@@ -405,14 +416,13 @@ test("★2b 恢复：下一次完整同步成功必须清除退化标记", async
     const store = await openM34Store(root);
     try {
       await store.sync({ options: m34Options(root, [homeA, homeB]) });
-      const { renameSync } = await import("node:fs");
-      renameSync(homeB.dbFile, `${homeB.dbFile}.bak`);
+      moveFixtureFile(homeB.dbFile, `${homeB.dbFile}.bak`);
       writeFileSync(homeB.dbFile, "broken");
       await store.sync({ options: m34Options(root, [homeA, homeB]) });
       assert.equal(readMetaValue(store, "perf_state"), "degraded", "前置：先进入 degraded");
 
       // 恢复：把好的库放回去
-      renameSync(`${homeB.dbFile}.bak`, homeB.dbFile);
+      moveFixtureFile(`${homeB.dbFile}.bak`, homeB.dbFile);
       const restored = await store.sync({ options: m34Options(root, [homeA, homeB]) });
       console.log("  [实测] 恢复后 perf_state =", JSON.stringify(readMetaValue(store, "perf_state")));
       console.log("  [实测] 恢复后 degradedHomeIds =", readMetaValue(store, "perf_degraded_home_ids"));
@@ -444,8 +454,7 @@ test("★3 D4 排序过滤：degraded 时受阻 home 的陈旧候选必须被排
       assert.equal(readyPerf.state, "ready");
       assert.equal(readyPerf.rankedHomeIds.length, 2, "ready 时两个 home 都参与排名");
 
-      const { renameSync } = await import("node:fs");
-      renameSync(homeB.dbFile, `${homeB.dbFile}.bak`);
+      moveFixtureFile(homeB.dbFile, `${homeB.dbFile}.bak`);
       writeFileSync(homeB.dbFile, "broken");
       await store.sync({ options: m34Options(root, [homeA, homeB]) });
 
@@ -478,7 +487,7 @@ test("★3 D4 排序过滤：degraded 时受阻 home 的陈旧候选必须被排
 // ★ 4. 删除、未启用来源、迁移、指纹 -1 重索引
 // ---------------------------------------------------------------------------
 
-test("★4 删除来源：home 目录消失 ⇒ 候选级联删除，且**不**计入退化（真删除 ≠ 受阻）", async () => {
+test("★4 删除来源：home 目录消失 ⇒ 保留历史并登记 missing，且**不**计入退化", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "m34-delete-"));
   try {
     const homeA = makeZcodeHome(root, "home-A", { rows: 3 });
@@ -495,9 +504,14 @@ test("★4 删除来源：home 目录消失 ⇒ 候选级联删除，且**不**�
       console.log("  [实测] 删除前候选 =", before, " 删除后 =", after);
       console.log("  [实测] perf_state =", JSON.stringify(readMetaValue(store, "perf_state")));
       console.log("  [实测] degradedHomeIds =", readMetaValue(store, "perf_degraded_home_ids"));
-      assert.ok(after < before, "消失来源的候选必须被删除");
-      assert.equal(readMetaValue(store, "perf_state"), "ready", "真删除**不是**退化");
-      assert.deepEqual(result.degradedHomeIds, [], "真删除不得计入退化");
+      assert.equal(after, before, "消失来源的最后成功候选必须保留");
+      assert.equal(readMetaValue(store, "perf_state"), "ready", "来源缺失**不是**读取失败");
+      assert.deepEqual(result.degradedHomeIds, [], "来源缺失不得计入退化");
+      assert.deepEqual(
+        result.missingSources.map((source) => source.path),
+        [homeB.dbFile],
+        "缺失 home 的文件必须可机读",
+      );
     } finally {
       store.close();
     }
@@ -613,6 +627,7 @@ test("★5 M5 判别式：summarize 的 perf.ready 必须与 state 一致（不�
       console.log("  [实测] 未同步 state =", before.state, " ready =", before.ready);
       assert.equal(before.state, "uninitialized", "未同步必须 uninitialized");
       assert.equal(before.ready, false, "未同步**绝不得**报 ready（M6 判别式）");
+      assert.deepEqual(before.models, [], "未同步不得返回模型速度行");
 
       await store.sync({ options: m34Options(root, [homeA]) });
       const ready = store.summarize({}, {}).perf;
@@ -637,6 +652,7 @@ test("★5 M5 判别式：summarize 的 perf.ready 必须与 state 一致（不�
       console.log("  [实测] 中途 state =", mid[0].state, " ready =", mid[0].ready);
       assert.equal(mid[0].state, "rebuilding", "中途必须 rebuilding");
       assert.equal(mid[0].ready, false, "rebuilding 时 ready 必须为 **false**（否则调用者会展示部分排名）");
+      assert.deepEqual(mid[0].models, [], "rebuilding 时不得返回模型速度行");
     } finally {
       store.close();
     }
@@ -1595,7 +1611,7 @@ test("★BC-1 reader 完成后删除上游文件：必须 degraded + LIVE_SOURCE
   }
 });
 
-test("★BC-1b 读后文件消失后：若文件**真实回归**则下一轮恢复 ready；若**真实删除**则候选清除", async () => {
+test("★BC-1b 读后文件消失后：回归恢复 ready；整个 home 消失时保留历史并登记 missing", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bc1b-"));
   try {
     const homeA = makeZcodeHome(root, "home-A", { rows: 3 });
@@ -1688,7 +1704,7 @@ test("★BC-1b 读后文件消失后：若文件**真实回归**则下一轮恢�
       assert.equal(readMetaValue(store, "perf_state"), "ready", "文件真实回归 ⇒ 下一轮恢复 ready");
       assert.equal(countBack, 3, "回归后候选完整");
 
-      // ③ 整个 home **真实删除** ⇒ 发现不到 ⇒ 候选级联清除、状态 ready（**不是** degraded）
+      // ③ 整个 home **真实删除** ⇒ 发现不到 ⇒ 历史保留、登记 missing，状态 ready（不是 degraded）
       rmSync(homeA.path, { recursive: true, force: true });
       const gone = await store.sync({ options: m34Options(root, [homeA]) });
       const countGone = store.database.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c;
@@ -1700,13 +1716,14 @@ test("★BC-1b 读后文件消失后：若文件**真实回归**则下一轮恢�
         " degraded =",
         JSON.stringify(gone.degradedHomeIds),
       );
-      assert.equal(countGone, 0, "真实删除 ⇒ 候选被级联清除");
-      assert.equal(gone.perfState, "ready", "真实删除不是 degraded（不得破坏 ★4 的区分）");
-      assert.deepEqual(gone.degradedHomeIds, [], "真实删除不登记受阻 home");
-      // ★ BC-2 契约"**真实删除移除对应分量**"：已发布指纹映射**不得**残留该文件的键。
-      //   ⚠️ 我实测该残留**对 `perf_index_version` 无影响**（被删 home 不再出现在 `homes` 里
-      //   ⇒ 聚合根本不读该键）；但它是**元数据污染**（映射里留一个不存在的路径），
-      //   且违反卡片明文的"移除分量"。⇒ 本断言使 B10 突变可被检出（见报告 §4）。
+      assert.equal(countGone, 3, "来源缺失不得删除最后一次成功候选");
+      assert.equal(gone.perfState, "ready", "来源缺失不是 degraded");
+      assert.deepEqual(gone.degradedHomeIds, [], "来源缺失不登记受阻 home");
+      assert.deepEqual(
+        gone.missingSources.map((source) => source.path),
+        [homeA.dbFile],
+        "缺失文件必须可机读",
+      );
       const mapGone = readPublishedFingerprints(store);
       const staleKeys = Object.keys(mapGone).filter((p) => p.includes("home-A"));
       console.log(
@@ -1715,7 +1732,7 @@ test("★BC-1b 读后文件消失后：若文件**真实回归**则下一轮恢�
         " 残留 home-A 键 =",
         JSON.stringify(staleKeys),
       );
-      assert.deepEqual(staleKeys, [], "真实删除必须移除该文件的已发布指纹分量（不得残留）");
+      assert.deepEqual(staleKeys, [homeA.dbFile], "最后成功指纹必须保留以支持回归/变更检测");
     } finally {
       store.close();
     }

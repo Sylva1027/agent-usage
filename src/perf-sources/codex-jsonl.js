@@ -54,6 +54,7 @@ const IGNORED_ITEM_TYPES = new Set([
   "DynamicToolCall",
   "Plan",
   "FunctionCallOutput",
+  "WebSearch",
 ]);
 
 function isRecord(value) {

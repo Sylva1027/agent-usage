@@ -20,11 +20,18 @@ import {
   USAGE_PRESETS,
 } from "./usage-core.js";
 import { UsageStore } from "./usage-store.js";
-import { createUsageExecutor } from "./usage-executor.js";
-import { loadServiceTierEvidence } from "./service-tier-evidence.js";
+import { createUsageExecutor, readHistoryArchiveDays, readHistoryArchiveStatus } from "./usage-executor.js";
+import { loadHistoryArchiveImport } from "./history-archive.js";
+import { serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 import { buildUsagePricingCoverage } from "../public/pricing-models.js";
 import { AUTO_RETRY_INTERVAL_MS } from "./pricing-auto.js";
-import { getPricingCatalog, pricingVersionForTimestamp, validatePricingCatalog } from "./pricing.js";
+import {
+  getPricingCatalog,
+  pricingVersionForTimestamp,
+  runWithPricingCatalog,
+  runWithoutPricingCatalog,
+  validatePricingCatalog,
+} from "./pricing.js";
 import {
   getAutomaticPricingStatus,
   loadPricingFile,
@@ -36,6 +43,8 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 const MIN_FULL_DETAIL_HEAP_BYTES = 512 * 1024 * 1024;
+const STATUS_PERF_READ_TIMEOUT_MS = 50;
+const PRICING_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_IMPORT_STORE_FILE = path.join(os.homedir(), ".codex-usage", "imports.json");
 const execFileAsync = promisify(execFile);
 
@@ -234,8 +243,21 @@ async function usageOptions(options = {}) {
   return { ...options, importDirs };
 }
 
-function clientFingerprint(sourceFingerprint) {
-  return createHash("sha256").update(sourceFingerprint).update("\0").update(pricingVersionForTimestamp()).digest("hex");
+function clientFingerprint(
+  sourceFingerprint,
+  perfIndexVersion = "",
+  pendingTimingRevision = "",
+  pricingVersion = pricingVersionForTimestamp(),
+) {
+  return createHash("sha256")
+    .update(String(sourceFingerprint ?? ""))
+    .update("\0")
+    .update(String(perfIndexVersion ?? ""))
+    .update("\0")
+    .update(String(pendingTimingRevision ?? ""))
+    .update("\0")
+    .update(String(pricingVersion ?? ""))
+    .digest("hex");
 }
 
 function httpError(statusCode, message, code) {
@@ -324,22 +346,61 @@ async function serveStatic(requestPath, response) {
   }
 }
 
+/**
+ * @param {Record<string, any> & {
+ *   importContext?: {
+ *     pricingCatalog: ReturnType<typeof getPricingCatalog>,
+ *     automaticPricingStatus: ReturnType<typeof getAutomaticPricingStatus> | null,
+ *     serviceTierEvidenceSnapshot: ReturnType<typeof serviceTierEvidenceSnapshot> | null
+ *   }
+ * }} options
+ */
 export function createUsageServer(options = {}) {
   // W1：阻塞工作（`sync`/`summarize`/`periodComparison`/`snapshot`）移入**唯一**持有
   // `DatabaseSync` 的执行器；主线程只保留读侧快照与轻量端点（`/api/status` 就地扫 fs）。
-  const usageStore = createUsageExecutor(options);
-  const pricingReady = loadPricingFile(options);
+  const importContext = options.importContext ?? null;
+  const localPricingCatalog = () => importContext?.pricingCatalog || getPricingCatalog();
+  const liveAutomaticPricingStatus = () =>
+    importContext ? (importContext.automaticPricingStatus ?? null) : getAutomaticPricingStatus();
+  const usageStore = createUsageExecutor(options, { pricing: localPricingCatalog });
+  const pricingReady = importContext ? Promise.resolve() : loadPricingFile(options);
+  const pricingRefreshSchedulerEnabled = !importContext && options.pricingRefreshSchedulerEnabled !== false;
   let pricingRefreshPromise = null;
   let pricingRefreshOptions = null;
   let pricingRefreshPending = null;
+  let pricingMutationTail = Promise.resolve();
+  let pricingRefreshTimer = null;
   let storeStatus = null;
   let syncPromise = null;
+  let statusPerfReadPromise = null;
   let snapshotDirectoryPromise = null;
   let discoveryTimer = null;
   let discoveryTimerSignature = null;
   let activeDiscoverySignature = null;
   let serverClosed = false;
   const snapshots = new Map();
+  let snapshotDirectoryCleanup = Promise.resolve();
+
+  function isPrivateSnapshotPath(candidate, snapshotDirectory) {
+    const relative = path.relative(path.resolve(snapshotDirectory), path.resolve(candidate));
+    return (
+      Boolean(relative) && !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`)
+    );
+  }
+
+  async function removeSnapshotArtifacts(snapshot, snapshotDirectory) {
+    snapshot.store?.close();
+    const databaseFile = path.resolve(snapshot.databaseFile);
+    if (!isPrivateSnapshotPath(databaseFile, snapshotDirectory)) return;
+    for (const file of [databaseFile, `${databaseFile}-wal`, `${databaseFile}-shm`]) {
+      await rm(file, { force: true, maxRetries: 10, retryDelay: 50 });
+    }
+    // Never trust the executor-provided path for deletion; only remove our derived private child.
+    const cleanupDirectory = `${databaseFile}.segments`;
+    if (isPrivateSnapshotPath(cleanupDirectory, snapshotDirectory)) {
+      await rm(cleanupDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
+  }
 
   function usedModelNames(value) {
     const groups = Array.isArray(value)
@@ -366,6 +427,12 @@ export function createUsageServer(options = {}) {
     };
   }
 
+  function runPricingMutation(task) {
+    const result = pricingMutationTail.then(task);
+    pricingMutationTail = result.catch(() => {});
+    return result;
+  }
+
   function requestPricingRefresh(refreshOptions) {
     const normalized = {
       ...refreshOptions,
@@ -373,10 +440,12 @@ export function createUsageServer(options = {}) {
     };
     if (!pricingRefreshPromise) {
       pricingRefreshOptions = normalized;
-      pricingRefreshPromise = refreshAutomaticPricing({ ...options, ...normalized }).finally(() => {
-        pricingRefreshPromise = null;
-        pricingRefreshOptions = null;
-      });
+      pricingRefreshPromise = runPricingMutation(() => refreshAutomaticPricing({ ...options, ...normalized })).finally(
+        () => {
+          pricingRefreshPromise = null;
+          pricingRefreshOptions = null;
+        },
+      );
       return pricingRefreshPromise;
     }
 
@@ -397,6 +466,54 @@ export function createUsageServer(options = {}) {
       });
     }
     return pricingRefreshPromise;
+  }
+
+  function requestTargetedPricingRefresh(model) {
+    return runPricingMutation(() =>
+      refreshAutomaticPricing({
+        ...options,
+        model,
+        force: false,
+        discoveryReady: true,
+        automaticDiscoveryEnabled: options.automaticDiscoveryEnabled !== false,
+      }),
+    );
+  }
+
+  function clearPricingRefreshTimer() {
+    if (pricingRefreshTimer === null) return;
+    (options.cancelPricingRefresh || clearTimeout)(pricingRefreshTimer);
+    pricingRefreshTimer = null;
+  }
+
+  function schedulePricingRefreshCheck() {
+    if (serverClosed || !pricingRefreshSchedulerEnabled) return;
+    const schedule = options.schedulePricingRefresh || setTimeout;
+    pricingRefreshTimer = schedule(() => {
+      pricingRefreshTimer = null;
+      void runPricingRefreshCheck();
+    }, PRICING_REFRESH_INTERVAL_MS);
+    pricingRefreshTimer?.unref?.();
+  }
+
+  async function runPricingRefreshCheck() {
+    if (serverClosed || !pricingRefreshSchedulerEnabled) return;
+    try {
+      await runWithoutPricingCatalog(() => {
+        const now = options.pricingRefreshNow;
+        const discoveryReady = storeStatus !== null;
+        return requestPricingRefresh({
+          force: false,
+          discoveryReady,
+          ...(discoveryReady ? { usedModels: usageStore.metadata().harnessModels } : {}),
+          ...(now === undefined ? {} : { now: typeof now === "function" ? now() : now }),
+        });
+      });
+    } catch {
+      // The next hourly check retries a background source or disk failure.
+    } finally {
+      schedulePricingRefreshCheck();
+    }
   }
 
   function clearDiscoveryTimer() {
@@ -420,9 +537,18 @@ export function createUsageServer(options = {}) {
         ? options.pricingDiscoveryNow()
         : options.pricingDiscoveryNow || new Date();
     const nowMs = nowValue instanceof Date ? nowValue.getTime() : Date.parse(nowValue);
-    const attemptedAt = getAutomaticPricingStatus().discoveryAttemptedAt || {};
+    const status = getAutomaticPricingStatus();
+    const attemptedAt = status.discoveryAttemptedAt || {};
+    const resultsByModel = new Map((status.discoveryResults || []).map((result) => [result.model, result]));
     const dueModels = missing.filter((model) => {
-      const lastAttempt = Date.parse(attemptedAt[model] || "");
+      const key = model.toLowerCase();
+      const result = resultsByModel.get(key);
+      if (result) {
+        if (!result.retryable) return false;
+        const retryAt = Date.parse(result.nextRetryAt || "");
+        return Number.isFinite(retryAt) && (!Number.isFinite(nowMs) || nowMs >= retryAt);
+      }
+      const lastAttempt = Date.parse(attemptedAt[key] || "");
       return !Number.isFinite(lastAttempt) || !Number.isFinite(nowMs) || nowMs - lastAttempt >= AUTO_RETRY_INTERVAL_MS;
     });
     if (!dueModels.length) {
@@ -435,88 +561,104 @@ export function createUsageServer(options = {}) {
     clearDiscoveryTimer();
     discoveryTimerSignature = signature;
     const schedule = options.schedulePricingDiscovery || setTimeout;
-    discoveryTimer = schedule(async () => {
-      discoveryTimer = null;
-      discoveryTimerSignature = null;
-      if (serverClosed || storeStatus === null) return;
-      activeDiscoverySignature = signature;
-      try {
-        const models = usageStore.metadata().harnessModels;
-        await requestPricingRefresh({ force: false, usedModels: models, discoveryReady: true });
-      } catch {
-        // A background source or disk failure is returned by the pricing API on its next explicit refresh.
-      } finally {
-        activeDiscoverySignature = null;
-        if (!serverClosed && storeStatus !== null) scheduleUsageDiscovery(usageStore.metadata().harnessModels);
-      }
-    }, options.pricingDiscoveryDelayMs ?? 1_000);
+    discoveryTimer = schedule(
+      () =>
+        runWithoutPricingCatalog(async () => {
+          discoveryTimer = null;
+          discoveryTimerSignature = null;
+          if (serverClosed || storeStatus === null) return;
+          activeDiscoverySignature = signature;
+          try {
+            const models = usageStore.metadata().harnessModels;
+            await requestPricingRefresh({ force: false, usedModels: models, discoveryReady: true });
+          } catch {
+            // A background source or disk failure is returned by the pricing API on its next explicit refresh.
+          } finally {
+            activeDiscoverySignature = null;
+            if (!serverClosed && storeStatus !== null) scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+          }
+        }),
+      options.pricingDiscoveryDelayMs ?? 1_000,
+    );
     discoveryTimer?.unref?.();
   }
 
   async function createSnapshot({ check = false } = {}) {
+    const pricingCatalog = localPricingCatalog();
+    const automatic = importContext
+      ? (importContext.automaticPricingStatus ?? null)
+      : runWithPricingCatalog(pricingCatalog, getAutomaticPricingStatus);
     const status = await loadUsageStore({ check });
     snapshotDirectoryPromise ||= mkdtemp(path.join(os.tmpdir(), "codex-usage-snapshot-"));
     const snapshotDirectory = await snapshotDirectoryPromise;
     const id = randomUUID();
     const databaseFile = path.join(snapshotDirectory, `${id}.sqlite`);
+    let store = null;
+    let snapshot;
     try {
       // `id` / `asOf` / `snapshots.set(...)` 是**纯主线程簿记**（快照句柄与淘汰策略属 HTTP 层）；
       // 连接归执行器独占 ⇒ 备份只能在执行器内做，它返回绑定该 `asOf` 的读侧状态。
       const asOf = new Date();
-      const frozen = await usageStore.snapshot({ databaseFile, asOf: asOf.getTime() });
-      const store = new UsageStore({ databaseFile });
+      const frozen = await runWithPricingCatalog(pricingCatalog, () =>
+        usageStore.snapshot({ databaseFile, asOf: asOf.getTime() }),
+      );
+      store = new UsageStore({ databaseFile });
       await store.open();
       store.homes = structuredClone(frozen.homes ?? []);
-      // 证据 resolver 是**类实例**（`resolve()`），过不了跨线程 JSON ⇒ 在冻结副本自己的
-      // homes 上重建一份（与执行器 `sync` 时用的是同一个工厂与同一份输入，语义等价）。
-      store.serviceTierEvidence = loadServiceTierEvidence(store.homes);
+      // 使用 executor 随事实快照传回的证据，避免在备份后重读已经变化的来源。
+      store.serviceTierEvidence = frozen.serviceTierEvidence;
       store.warnings = [...(frozen.warnings ?? [])];
-      const snapshot = {
+      snapshot = {
         store,
+        pricingCatalog,
+        automatic,
+        cleanupDirectory: frozen.cleanupDirectory ? `${databaseFile}.segments` : null,
         status: { ...status, checkedAt: frozen.checkedAt || status.checkedAt },
         asOf,
         metadata: { ...frozen.metadata, imports: await listImportEntries(options) },
         databaseFile,
       };
-      snapshots.set(id, snapshot);
-      while (snapshots.size > 8) {
-        const oldestId = snapshots.keys().next().value;
-        const oldest = snapshots.get(oldestId);
-        snapshots.delete(oldestId);
-        oldest.store.close();
-        await rm(oldest.databaseFile, { force: true });
-      }
-      return { id, ...snapshot };
     } catch (error) {
-      await rm(databaseFile, { force: true });
+      await removeSnapshotArtifacts({ store, databaseFile }, snapshotDirectory);
       throw error;
     }
+    snapshots.set(id, snapshot);
+    while (snapshots.size > 8) {
+      const oldestId = snapshots.keys().next().value;
+      const oldest = snapshots.get(oldestId);
+      snapshots.delete(oldestId);
+      await removeSnapshotArtifacts(oldest, snapshotDirectory);
+    }
+    return { id, ...snapshot };
   }
 
-  async function metadataForStore(asOf = new Date()) {
-    // The dashboard needs both active scan sources and stored imports that may currently be unsupported.
-    // `metadata` 的时点必须**按请求的 `asOf`** 现算（主线程的读侧快照只是"最后一次发布"，忽略时点）。
-    return {
-      ...(await usageStore.metadataFor(asOf)),
-      imports: await listImportEntries(options),
-    };
-  }
-
-  function usagePricingCoverage(metadata = undefined) {
-    if (storeStatus === null && !metadata) return buildUsagePricingCoverage(null, getPricingCatalog().models, false);
-    return buildUsagePricingCoverage(
-      (metadata || usageStore.metadata()).activeHarnessModels,
-      getPricingCatalog().models,
-      true,
-    );
+  function usagePricingCoverage(metadata = undefined, catalog = localPricingCatalog()) {
+    if (storeStatus === null && !metadata) return buildUsagePricingCoverage(null, catalog.models, false);
+    return buildUsagePricingCoverage((metadata || usageStore.metadata()).activeHarnessModels, catalog.models, true);
   }
 
   async function loadUsageStore({ check = true } = {}) {
-    const currentUsageOptions = await usageOptions(options);
     if (!check && storeStatus && usageStore.status) return storeStatus;
     if (syncPromise) {
       return syncPromise;
     }
+    if (importContext) {
+      syncPromise = usageStore
+        .open({
+          imported: true,
+          pricing: localPricingCatalog(),
+          serviceTierEvidence: importContext.serviceTierEvidenceSnapshot,
+        })
+        .then((status) => {
+          storeStatus = status;
+          return status;
+        })
+        .finally(() => {
+          syncPromise = null;
+        });
+      return syncPromise;
+    }
+    const currentUsageOptions = await usageOptions(options);
     if (!syncPromise) {
       syncPromise = usageStore
         .sync({ options: currentUsageOptions })
@@ -532,6 +674,29 @@ export function createUsageServer(options = {}) {
     return syncPromise;
   }
 
+  async function currentPerfPublicationState() {
+    const cached = {
+      indexVersion: usageStore.perfIndexVersion,
+      timingRevision: usageStore.perfTimingRevision,
+    };
+    if (syncPromise) return cached;
+    statusPerfReadPromise ||= usageStore.perfPublicationState().finally(() => {
+      statusPerfReadPromise = null;
+    });
+    try {
+      const fresh = await Promise.race([
+        statusPerfReadPromise,
+        new Promise((resolve) => {
+          const timer = setTimeout(() => resolve(null), STATUS_PERF_READ_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+      return fresh || cached;
+    } catch {
+      return cached;
+    }
+  }
+
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://127.0.0.1");
 
@@ -543,10 +708,11 @@ export function createUsageServer(options = {}) {
           const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
           if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
           const metadata = snapshot?.metadata || (storeStatus === null ? undefined : usageStore.metadata());
+          const catalog = snapshot?.pricingCatalog || localPricingCatalog();
           sendJson(response, 200, {
-            ...getPricingCatalog(),
-            automatic: getAutomaticPricingStatus(),
-            usageCoverage: usagePricingCoverage(metadata),
+            ...catalog,
+            automatic: snapshot ? snapshot.automatic : liveAutomaticPricingStatus(),
+            usageCoverage: usagePricingCoverage(metadata, catalog),
             modelActivity: metadata
               ? {
                   activeHarnessModels: metadata.activeHarnessModels,
@@ -558,36 +724,45 @@ export function createUsageServer(options = {}) {
           return;
         }
         if (request.method === "PUT") {
+          if (importContext) {
+            sendJson(response, 405, {
+              code: "IMPORT_PRICING_READ_ONLY",
+              error: "Imported runtime pricing is read-only.",
+            });
+            return;
+          }
           let catalog;
           let restoreAutomaticExchangeRate = false;
-          try {
-            const body = await readJsonBody(request, { maxBytes: 128 * 1024 });
-            restoreAutomaticExchangeRate = body.restoreAutomaticExchangeRate === true;
-            if (body.version && body.version !== getPricingCatalog().version) {
-              throw httpError(
-                409,
-                "Pricing changed while this editor was open. Reopen it and retry.",
-                "PRICING_CHANGED",
-              );
+          const body = await readJsonBody(request, { maxBytes: 128 * 1024 });
+          await runPricingMutation(async () => {
+            try {
+              restoreAutomaticExchangeRate = body.restoreAutomaticExchangeRate === true;
+              if (body.version && body.version !== getPricingCatalog().version) {
+                throw httpError(
+                  409,
+                  "Pricing changed while this editor was open. Reopen it and retry.",
+                  "PRICING_CHANGED",
+                );
+              }
+              if (
+                body.models &&
+                typeof body.models === "object" &&
+                !Array.isArray(body.models) &&
+                Object.keys(body.models).length > MAX_PRICING_MODELS
+              ) {
+                throw httpError(
+                  400,
+                  `Pricing catalog cannot contain more than ${MAX_PRICING_MODELS} models.`,
+                  "PRICING_CAPACITY",
+                );
+              }
+              catalog = validatePricingCatalog(body);
+              await savePricingFile(options, catalog, {
+                restoreAutomaticExchangeRate,
+              });
+            } catch (error) {
+              throw httpError(error.statusCode || 400, error.message, error.code || "INVALID_PRICING");
             }
-            if (
-              body.models &&
-              typeof body.models === "object" &&
-              !Array.isArray(body.models) &&
-              Object.keys(body.models).length > MAX_PRICING_MODELS
-            ) {
-              throw httpError(
-                400,
-                `Pricing catalog cannot contain more than ${MAX_PRICING_MODELS} models.`,
-                "PRICING_CAPACITY",
-              );
-            }
-            catalog = validatePricingCatalog(body);
-          } catch (error) {
-            throw httpError(error.statusCode || 400, error.message, error.code || "INVALID_PRICING");
-          }
-          await savePricingFile(options, catalog, {
-            restoreAutomaticExchangeRate,
           });
           sendJson(response, 200, getPricingCatalog());
           return;
@@ -601,17 +776,37 @@ export function createUsageServer(options = {}) {
           sendJson(response, 405, { error: "Method not allowed" });
           return;
         }
+        if (importContext) {
+          sendJson(response, 405, {
+            code: "IMPORT_PRICING_READ_ONLY",
+            error: "Imported runtime pricing is read-only.",
+          });
+          return;
+        }
         const body = await readJsonBody(request);
+        let model = null;
+        if (Object.hasOwn(body, "model")) {
+          if (typeof body.model !== "string" || !body.model.trim() || body.model.trim().length > 128) {
+            throw httpError(
+              400,
+              "Pricing model must be a non-empty string up to 128 characters.",
+              "INVALID_PRICING_MODEL",
+            );
+          }
+          model = body.model.trim();
+        }
         const discoveryReady = storeStatus !== null;
-        const refreshResult = await requestPricingRefresh({
-          force: body.force === true,
-          usedModels: discoveryReady ? usageStore.metadata().harnessModels : [],
-          discoveryReady,
-        });
+        const refreshResult = model
+          ? await requestTargetedPricingRefresh(model)
+          : await requestPricingRefresh({
+              force: body.force === true,
+              usedModels: discoveryReady ? usageStore.metadata().harnessModels : [],
+              discoveryReady,
+            });
         sendJson(
           response,
           200,
-          discoveryReady
+          model || discoveryReady
             ? refreshResult
             : {
                 ...refreshResult,
@@ -625,13 +820,145 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/status") {
-        const status = await buildUsageFingerprint(await usageOptions(options));
+        const [status, perf] = await Promise.all([
+          buildUsageFingerprint(await usageOptions(options)),
+          currentPerfPublicationState(),
+        ]);
         const since = url.searchParams.get("since") || "";
+        const fingerprint = clientFingerprint(
+          status.fingerprint,
+          perf.indexVersion,
+          perf.timingRevision,
+          localPricingCatalog().version,
+        );
         sendJson(response, 200, {
-          fingerprint: clientFingerprint(status.fingerprint),
-          changed: since ? clientFingerprint(status.fingerprint) !== since : true,
+          fingerprint,
+          changed: since ? fingerprint !== since : true,
           checkedAt: status.checkedAt,
         });
+        return;
+      }
+
+      const archiveEventsMatch = /^\/api\/history\/archives\/([^/]+)\/events$/.exec(url.pathname);
+      if (archiveEventsMatch) {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+          return;
+        }
+        let segmentId;
+        try {
+          segmentId = decodeURIComponent(archiveEventsMatch[1]);
+        } catch {
+          throw httpError(400, "Invalid archive segment id.", "INVALID_ARCHIVE_SEGMENT_ID");
+        }
+        /** @type {{startMs: number, endMs: number, afterId?: number, limit?: number}} */
+        const page = { startMs: 0, endMs: 0 };
+        for (const key of ["startMs", "endMs", "afterId", "limit"]) {
+          const values = url.searchParams.getAll(key);
+          if (!values.length && (key === "afterId" || key === "limit")) continue;
+          if (values.length !== 1 || !/^-?\d+$/.test(values[0]) || !Number.isSafeInteger(Number(values[0]))) {
+            throw httpError(400, "Archive page requires integer bounds and cursor.", "INVALID_ARCHIVE_EVENT_PAGE");
+          }
+          page[key] = Number(values[0]);
+        }
+        if (
+          page.startMs >= page.endMs ||
+          (page.afterId !== undefined && page.afterId < 0) ||
+          (page.limit !== undefined && (page.limit < 1 || page.limit > 500))
+        ) {
+          throw httpError(400, "Invalid archive page bounds, cursor or limit.", "INVALID_ARCHIVE_EVENT_PAGE");
+        }
+        const snapshotId = url.searchParams.get("snapshot");
+        const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
+        if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        try {
+          sendJson(
+            response,
+            200,
+            snapshot
+              ? await snapshot.store.readHistoryArchiveEventPage(segmentId, page)
+              : await usageStore.historyArchiveEventPage(segmentId, page),
+          );
+        } catch (error) {
+          if (error.code === "HISTORY_ARCHIVE_SEGMENT_NOT_FOUND") throw httpError(404, error.message, error.code);
+          throw error;
+        }
+        return;
+      }
+
+      const archiveDaysMatch = /^\/api\/history\/archives\/([^/]+)\/days$/.exec(url.pathname);
+      if (archiveDaysMatch) {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+          return;
+        }
+        let segmentId;
+        try {
+          segmentId = decodeURIComponent(archiveDaysMatch[1]);
+        } catch {
+          throw httpError(400, "Invalid archive segment id.", "INVALID_ARCHIVE_SEGMENT_ID");
+        }
+        const snapshotId = url.searchParams.get("snapshot");
+        const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
+        if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        try {
+          sendJson(
+            response,
+            200,
+            snapshot
+              ? await readHistoryArchiveDays(snapshot.store, segmentId)
+              : await usageStore.historyArchiveDays(segmentId),
+          );
+        } catch (error) {
+          if (error.code === "HISTORY_ARCHIVE_SEGMENT_NOT_FOUND") {
+            throw httpError(404, error.message, error.code);
+          }
+          throw error;
+        }
+        return;
+      }
+
+      if (url.pathname === "/api/history/archives") {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+          return;
+        }
+        const snapshotId = url.searchParams.get("snapshot");
+        const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
+        if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
+        sendJson(
+          response,
+          200,
+          snapshot ? await readHistoryArchiveStatus(snapshot.store) : await usageStore.historyArchives(),
+        );
+        return;
+      }
+
+      if (url.pathname === "/api/history/imports") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+          return;
+        }
+        const body = await readJsonBody(request);
+        if ([body.sourceDirectory, body.importDirectory].some((value) => typeof value !== "string" || !value.trim())) {
+          throw httpError(
+            400,
+            "sourceDirectory and importDirectory must be non-empty paths.",
+            "INVALID_HISTORY_IMPORT_PATH",
+          );
+        }
+        try {
+          const result = await usageStore.historyArchiveImport({
+            sourceDirectory: body.sourceDirectory,
+            importDirectory: body.importDirectory,
+          });
+          sendJson(response, 201, result);
+        } catch (error) {
+          if (error.code === "HISTORY_ARCHIVE_IMPORT_DESTINATION_EXISTS") {
+            throw httpError(409, error.message, error.code);
+          }
+          throw error;
+        }
         return;
       }
 
@@ -719,6 +1046,13 @@ export function createUsageServer(options = {}) {
         const snapshotCoupled = Boolean(frozen) || requestedFreeze;
 
         if (wantsFullDetail) {
+          if (importContext) {
+            sendJson(response, 400, {
+              code: "IMPORT_FULL_DETAIL_UNSUPPORTED",
+              error: "detail=full is unavailable for an imported runtime; use the indexed summary API.",
+            });
+            return;
+          }
           // M4.3 返工1：`detail=full` 走的是**内存**报告路径（`buildUsageReport`），它读的是当前
           // 文件系统，无法与某个已冻结的 SQLite/`asOf` 对齐。冻结请求**不得**用 live 结果冒充 ⇒
           // 明确拒绝并登记该参数组合（卡片允许"提供同一冻结数据"或"明确拒绝"二选一）。
@@ -731,46 +1065,83 @@ export function createUsageServer(options = {}) {
             });
             return;
           }
-          if (!isFullDetailHeapAvailable()) {
-            await loadUsageStore();
-            const summary = await usageStore.summarize({ ...filters, now: new Date() });
-            sendJson(response, 413, {
-              code: "FULL_DETAIL_UNAVAILABLE",
-              error:
-                "Full detail report is disabled in low-memory gateway mode. Restart with codex-usage gateway --memory-mb 512.",
-              quota: summary.quota,
-            });
-            return;
-          }
+          const pricingCatalog = localPricingCatalog();
+          const payload = await runWithPricingCatalog(pricingCatalog, async () => {
+            if (!isFullDetailHeapAvailable()) {
+              await loadUsageStore();
+              const summary = await usageStore.summarize({ ...filters, now: new Date() });
+              sendJson(response, 413, {
+                code: "FULL_DETAIL_UNAVAILABLE",
+                error:
+                  "Full detail report is disabled in low-memory gateway mode. Restart with codex-usage gateway --memory-mb 512.",
+                quota: summary.quota,
+              });
+              return null;
+            }
 
-          const currentUsageOptions = await usageOptions(options);
-          const status = await buildUsageFingerprint(currentUsageOptions);
-          const fullReport = await buildUsageReport(currentUsageOptions);
-          const report = withoutExcludedHomes(fullReport, filters.excludeHomes);
-          const asOf = new Date();
-          const quota = selectQuotaWindows(fullReport.rateLimitObservations || [], asOf);
-          Object.assign(filters, { now: asOf, quota });
-          const summary = summarizeUsage(report, filters);
-          sendJson(response, 200, {
-            fingerprint: clientFingerprint(status.fingerprint),
-            checkedAt: status.checkedAt,
-            metadata: {
-              generatedAt: fullReport.generatedAt,
-              eventCount: fullReport.events.length,
-              sessionCount: fullReport.sessions.length,
-              homeCount: fullReport.homes.length,
-              homes: fullReport.homes,
-              imports: await listImportEntries(options),
-              warnings: fullReport.warnings,
-            },
-            report: toPublicUsageReport(report),
-            summary,
-            quota: summary.quota,
-            periodComparison: summarizePeriodComparison(report.events, {
-              now: asOf,
-              calendarZone: filters.calendarZone,
-            }),
+            const indexedStatus = await loadUsageStore({ check });
+            const currentUsageOptions = await usageOptions(options);
+            const status = await buildUsageFingerprint(currentUsageOptions);
+            const fullReport = await buildUsageReport(currentUsageOptions);
+            fullReport.perfMeta.missingSources = indexedStatus.missingSources ?? [];
+            let usePublishedHistory = fullReport.perfMeta.missingSources.length > 0;
+            if (!usePublishedHistory) {
+              const archives = await usageStore.historyArchives();
+              usePublishedHistory = (archives.authority?.segmentIds?.length ?? 0) > 0;
+            }
+            if (usePublishedHistory) {
+              const publishedReport = await usageStore.publishedUsageReport();
+              fullReport.events = publishedReport.events;
+              fullReport.rateLimitObservations = publishedReport.rateLimitObservations;
+              const sessions = new Map(
+                fullReport.sessions.map((session) => [JSON.stringify([session.homeId, session.id]), session]),
+              );
+              fullReport.sessions = publishedReport.sessions.map((session) => ({
+                ...sessions.get(JSON.stringify([session.homeId, session.id])),
+                ...session,
+              }));
+              const homes = new Map(fullReport.homes.map((home) => [home.id, home]));
+              for (const home of publishedReport.homes) homes.set(home.id, { ...homes.get(home.id), ...home });
+              fullReport.homes = [...homes.values()];
+            }
+            const report = withoutExcludedHomes(fullReport, filters.excludeHomes);
+            const asOf = new Date();
+            const quota = selectQuotaWindows(fullReport.rateLimitObservations || [], asOf);
+            Object.assign(filters, { now: asOf, quota, pricingModels: pricingCatalog.models });
+            const summary = summarizeUsage(report, filters);
+            if (fullReport.perfMeta.missingSources.length > 0) {
+              // A live scan cannot reconstruct samples from missing rollouts; use the retained published statistics.
+              summary.perf = (await usageStore.summarize(filters)).perf;
+            }
+            return {
+              fingerprint: clientFingerprint(
+                status.fingerprint,
+                summary.perf?.meta?.indexVersion,
+                "",
+                pricingCatalog.version,
+              ),
+              checkedAt: status.checkedAt,
+              metadata: {
+                generatedAt: fullReport.generatedAt,
+                eventCount: fullReport.events.length,
+                sessionCount: fullReport.sessions.length,
+                homeCount: fullReport.homes.length,
+                homes: fullReport.homes,
+                imports: await listImportEntries(options),
+                warnings: fullReport.warnings,
+              },
+              report: { ...toPublicUsageReport(report), pricingCatalog },
+              pricingCatalog,
+              summary,
+              quota: summary.quota,
+              periodComparison: summarizePeriodComparison(report.events, {
+                now: asOf,
+                calendarZone: filters.calendarZone,
+                pricingModels: pricingCatalog.models,
+              }),
+            };
           });
+          if (payload) sendJson(response, 200, payload);
           return;
         }
 
@@ -782,39 +1153,68 @@ export function createUsageServer(options = {}) {
         const usage = frozen?.status || (await loadUsageStore({ check }));
         const store = frozen?.store || usageStore;
         const asOf = frozen?.asOf || new Date();
-        Object.assign(filters, { now: asOf });
+        const pricingCatalog = frozen?.pricingCatalog || localPricingCatalog();
+        Object.assign(filters, { now: asOf, pricingModels: pricingCatalog.models });
         if (!frozen) {
           const result = await usageStore.dashboard(filters, {
             includeDetails: url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard",
           });
+          const responseCatalog = result.pricingCatalog || pricingCatalog;
           const published = result.status || usage;
           sendJson(response, 200, {
-            fingerprint: clientFingerprint(published.fingerprint),
+            fingerprint: clientFingerprint(
+              published.fingerprint,
+              result.summary.perf?.meta?.indexVersion,
+              "",
+              responseCatalog.version,
+            ),
             checkedAt: published.checkedAt,
             snapshotId: requestedSnapshotId || null,
             metadata: { ...result.metadata, imports: await listImportEntries(options) },
+            pricingCatalog: responseCatalog,
             summary: result.summary,
             quota: result.summary.quota,
             periodComparison: result.periodComparison,
           });
           return;
         }
-        const summary =
-          url.pathname === "/api/usage"
-            ? await store.summarize(filters, { includeDetails: url.searchParams.get("view") !== "dashboard" })
-            : await store.summarize(filters);
+        const hasColdSegments =
+          Number(store.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count) > 0;
+        const coldReport = hasColdSegments
+          ? await store.publishedHistoryUsageReport({ includePerfCarrier: true })
+          : null;
+        const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
+        const { summary, periodComparison } = runWithPricingCatalog(frozen.pricingCatalog, () => ({
+          summary: coldReport
+            ? store.summarizeHistoryReport(coldReport, filters, { includeDetails })
+            : store.summarize(filters, { includeDetails }),
+          periodComparison: coldReport
+            ? summarizePeriodComparison(withoutExcludedHomes(coldReport, filters.excludeHomes).events, {
+                now: asOf,
+                calendarZone: filters.calendarZone,
+                pricingModels: pricingCatalog.models,
+              })
+            : store.periodComparison({
+                now: asOf,
+                excludeHomes: filters.excludeHomes,
+                calendarZone: filters.calendarZone,
+                pricingModels: pricingCatalog.models,
+              }),
+        }));
         sendJson(response, 200, {
-          fingerprint: clientFingerprint(usage.fingerprint),
+          fingerprint: clientFingerprint(
+            usage.fingerprint,
+            summary.perf?.meta?.indexVersion,
+            "",
+            pricingCatalog.version,
+          ),
           checkedAt: usage.checkedAt,
-          snapshotId: frozen?.id || requestedSnapshotId || null,
-          metadata: frozen?.metadata || (await metadataForStore(asOf)),
+          snapshotId: frozen.id || requestedSnapshotId || null,
+          metadata: frozen.metadata,
+          pricingCatalog,
           summary,
           quota: summary.quota,
-          periodComparison: await store.periodComparison({
-            now: asOf,
-            excludeHomes: filters.excludeHomes,
-            calendarZone: filters.calendarZone,
-          }),
+          periodComparison,
         });
         return;
       }
@@ -839,13 +1239,16 @@ export function createUsageServer(options = {}) {
   }
   server.on("close", () => {
     serverClosed = true;
+    clearPricingRefreshTimer();
     clearDiscoveryTimer();
     void closeUsageExecutor();
     for (const snapshot of snapshots.values()) snapshot.store.close();
     snapshots.clear();
-    if (snapshotDirectoryPromise) {
-      void snapshotDirectoryPromise.then((directory) => rm(directory, { recursive: true, force: true }));
-    }
+    snapshotDirectoryCleanup = snapshotDirectoryPromise
+      ? snapshotDirectoryPromise
+          .then((directory) => rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
+          .catch(() => {})
+      : Promise.resolve();
   });
   // W1：执行器独占数据库连接 ⇒ `server.close(cb)` 的回调必须等它**真正退出**再触发，
   // 否则调用方（测试 / CLI）随后删除临时目录会在 Windows 上 EBUSY。
@@ -857,10 +1260,15 @@ export function createUsageServer(options = {}) {
   // （调用方 `await server.close()`）；用一次 JSDoc 断言保留该契约，**运行期逐字不变**。
   /** @type {(callback?: (err?: Error) => void) => unknown} */
   const closeWithExecutorRelease = (callback) => {
+    serverClosed = true;
+    clearPricingRefreshTimer();
+    clearDiscoveryTimer();
     const done = new Promise((resolve) => closeHttpServer(() => resolve())).then(async () => {
       await closeUsageExecutor();
       // A refresh can start its merged successor in a fulfillment continuation.
       while (pricingRefreshPromise) await pricingRefreshPromise.catch(() => {});
+      await pricingMutationTail;
+      await snapshotDirectoryCleanup;
     });
     if (typeof callback === "function") {
       done.then(
@@ -872,7 +1280,38 @@ export function createUsageServer(options = {}) {
     return done;
   };
   server.close = /** @type {typeof server.close} */ (closeWithExecutorRelease);
+  if (pricingRefreshSchedulerEnabled) {
+    server.once("listening", () => {
+      void pricingReady.then(
+        () => void runPricingRefreshCheck(),
+        () => {},
+      );
+    });
+  }
   return server;
+}
+
+/**
+ * Verify a completed import, then create a server bound to its runtime and pricing context.
+ * @param {string} importDirectory
+ * @param {Record<string, any>} [options]
+ */
+export async function createHistoryArchiveImportServer(importDirectory, options = {}) {
+  const loaded = await loadHistoryArchiveImport(importDirectory);
+  return createUsageServer({
+    ...options,
+    automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
+    databaseFile: loaded.runtimeFile,
+    importContext: {
+      pricingCatalog: loaded.context.pricingCatalog,
+      automaticPricingStatus: null,
+      serviceTierEvidenceSnapshot:
+        loaded.context.serviceTierEvidence === null
+          ? null
+          : serviceTierEvidenceSnapshot(loaded.context.serviceTierEvidence),
+    },
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

@@ -15,7 +15,13 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { normalizePerfSample, perfFlagNamesOf, perfGroupKey, perfSampleKey } from "../src/perf-stats.js";
+import {
+  normalizePerfSample,
+  PERF_METHOD_VERSION,
+  perfFlagNamesOf,
+  perfGroupKey,
+  perfSampleKey,
+} from "../src/perf-stats.js";
 import {
   buildOpencodeMalformedCountSql,
   buildOpencodePerfSql,
@@ -63,10 +69,9 @@ function messageData(options = {}) {
   const data = {
     time: {
       created: values.created === undefined ? BASE_TS : values.created,
-      completed: values.completed === undefined ? BASE_TS + 1000 : values.completed,
-      // streamed 是 epoch 毫秒时间戳（不是布尔）：故意放一个"比 completed 晚 1 小时"的值，
-      // 一旦实现误用它做时长，测试立刻变红。
-      streamed: values.streamed === undefined ? BASE_TS + 3_600_000 : values.streamed,
+      streamed: values.streamed === undefined ? BASE_TS + 1000 : values.streamed,
+      // completed 是工具执行后的 step-ended 时间：故意晚 1 小时，误用它会立刻变红。
+      completed: values.completed === undefined ? BASE_TS + 3_600_000 : values.completed,
     },
     model: {
       id: values.modelId === undefined ? "fixture-model" : values.modelId,
@@ -242,6 +247,7 @@ const SELECT_ALIASES = [
   "session_id",
   "seq",
   "created_ms",
+  "streamed_ms",
   "completed_ms",
   "output_tokens",
   "reasoning_tokens",
@@ -276,6 +282,7 @@ test("SQL 只投影白名单别名，且 m.data 只作为 json 函数实参出�
 /** 冻结的投影路径全集：M0 已验证的路径 + 终态 + `$.error`（仅类型）。三方锁定（测试字面量 / 导出 / SQL 文本）。 */
 const EXPECTED_JSON_PATHS = [
   "$.time.created",
+  "$.time.streamed",
   "$.time.completed",
   "$.tokens.output",
   "$.tokens.reasoning",
@@ -286,7 +293,7 @@ const EXPECTED_JSON_PATHS = [
   "$.error",
 ];
 
-test("SQL 的 JSON 路径集合与冻结白名单双向一致；streamed/variant/content/item_json 永不进入", () => {
+test("SQL 的 JSON 路径集合与冻结白名单双向一致；variant/content/item_json 永不进入", () => {
   const sql = buildOpencodePerfSql();
   /** @type {Map<string, number>} */
   const pathCounts = new Map();
@@ -321,8 +328,8 @@ test("SQL 的 JSON 路径集合与冻结白名单双向一致；streamed/variant
     assert.ok(sql.includes(`json_extract(m.data, '${jsonPath}')`), `缺取值：${jsonPath}`);
   }
 
-  // 三类**必须永不出现**的取值：streamed（时长陷阱）、variant（effort 不能回填）、content（正文）。
-  for (const forbidden of ["streamed", "variant", "content", "item_json", "SELECT *", "data AS"]) {
+  // variant（effort 不能回填）、content（正文）与整串读取必须永不出现。
+  for (const forbidden of ["variant", "content", "item_json", "SELECT *", "data AS"]) {
     assert.ok(!sql.includes(forbidden), `SQL 不得包含 ${forbidden}`);
   }
   // `$.error` 只取类型，绝不取它的值。
@@ -866,18 +873,19 @@ test("裁定 AL-4：输入侧未验证路径不投影 —— inputTokens 恒 nul
   }
 });
 
-// ---------------------------------------------------------------- 7. 时长与时间（绝不用 streamed）
+// ---------------------------------------------------------------- 7. 时长与时间（响应流结束，排除工具执行）
 
-test("durationMs = completed − created（手算 1000）；缺任一侧 → null，绝不用 streamed 顶替", async () => {
+test("durationMs = streamed − created（手算 1000）；不用工具后的 completed 或缺失端顶替", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
       messages: [
-        // 手算：BASE_TS+1000 − BASE_TS = 1000。streamed 故意比 completed 晚 1 小时（3600000）。
+        // 手算：BASE_TS+1000 − BASE_TS = 1000。completed 故意晚 1 小时。
         message({ id: "normal" }),
-        message({ id: "no-completed", seq: 2, data: messageData({ drop: ["time.completed"] }) }),
+        message({ id: "no-streamed", seq: 2, data: messageData({ drop: ["time.streamed"] }) }),
         message({ id: "no-created", seq: 3, data: messageData({ drop: ["time.created"] }) }),
-        message({ id: "completed-null", seq: 4, data: messageData({ completed: null }) }),
+        message({ id: "streamed-null", seq: 4, data: messageData({ streamed: null }) }),
+        message({ id: "no-completed", seq: 5, data: messageData({ drop: ["time.completed"] }) }),
       ],
       sessions: [{ id: "ses-1", version: "2.0.20" }],
     });
@@ -885,38 +893,43 @@ test("durationMs = completed − created（手算 1000）；缺任一侧 → nul
     const rows = byMessageId(samples);
 
     assert.equal(rows.get("normal").durationMs, 1000);
-    assert.notEqual(rows.get("normal").durationMs, 3_600_000, "绝不能用 streamed 当结束时间");
-    assert.equal(rows.get("no-completed").durationMs, null);
-    assert.notEqual(rows.get("no-completed").durationMs, 0, "缺失不得变成 0");
+    assert.equal(rows.get("normal").windowEndMs, BASE_TS + 1000, "观测窗口结束仍取 streamed");
+    assert.equal(rows.get("normal").tsMs, BASE_TS + 3_600_000, "日历归属仍取 completed");
+    assert.notEqual(rows.get("normal").durationMs, 3_600_000, "completed 在工具结束后，不能当时长终点");
+    assert.equal(rows.get("no-streamed").durationMs, null);
+    assert.notEqual(rows.get("no-streamed").durationMs, 0, "缺失不得变成 0");
     assert.equal(rows.get("no-created").durationMs, null);
-    assert.equal(rows.get("completed-null").durationMs, null, "JSON null 与键缺失等价");
+    assert.equal(rows.get("streamed-null").durationMs, null, "JSON null 与键缺失等价");
+    assert.equal(rows.get("no-completed").durationMs, 1000, "completed 缺失不影响请求时长");
 
-    // 缺 completed 的候选仍能被定位诊断（§17.1:201：用 created 定位），但进 MISSING_DURATION。
-    assert.equal(rows.get("no-completed").tsMs, BASE_TS);
-    assert.equal(rows.get("no-completed").windowEndMs, null);
-    assert.deepEqual(flagNamesOf(rows.get("no-completed")), ["MISSING_DURATION"]);
+    // 缺 streamed 不影响日历归属：completed 仍优先于 created。
+    assert.equal(rows.get("no-streamed").tsMs, BASE_TS + 3_600_000);
+    assert.equal(rows.get("no-streamed").windowEndMs, null);
+    assert.deepEqual(flagNamesOf(rows.get("no-streamed")), ["MISSING_DURATION"]);
     assert.deepEqual(flagNamesOf(rows.get("normal")), []);
-    // 「缺 completed」是**时间面**问题，不是终态问题（契约 §2-F 把 OpenCode 的结束证据定义为 `$.finish`）：
-    // 手算：no-completed + completed-null = 2 行缺可用 completed；no-created 的 completed 正常。
-    assert.equal(stats.completedMissingRows, 2);
-    assert.equal(rows.get("no-completed").terminalVerified, true, "finish 仍在 ⇒ 不因缺 completed 降级终态");
-    assert.deepEqual(flagNamesOf(rows.get("no-completed")), ["MISSING_DURATION"], "不得同时置 TERMINAL_UNVERIFIED");
+    assert.equal(stats.completedMissingRows, 1, "step-ended 诊断仍独立计数");
+    assert.equal(rows.get("no-streamed").terminalVerified, true, "finish 仍在 ⇒ 不因缺 streamed 降级终态");
+    assert.deepEqual(flagNamesOf(rows.get("no-completed")), [], "缺失工具后的 completed 不制造扣除位");
   } finally {
     workspace.cleanup();
   }
 });
 
-test("时序矛盾（completed < created）与显式真 0 各自可达：负数/0 都不得被抹平", async () => {
+test("时序矛盾（streamed < created）与显式真 0 各自可达：负数/0 都不得被抹平", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
       messages: [
         // 手算：BASE_TS − (BASE_TS+500) = −500。
-        message({ id: "inverted", data: messageData({ created: BASE_TS, completed: BASE_TS - 500 }) }),
+        message({ id: "inverted", data: messageData({ created: BASE_TS, streamed: BASE_TS - 500 }) }),
         // 手算：真 0 跨度（同一时刻结束）。
-        message({ id: "zero-span", seq: 2, data: messageData({ created: BASE_TS, completed: BASE_TS }) }),
+        message({ id: "zero-span", seq: 2, data: messageData({ created: BASE_TS, streamed: BASE_TS }) }),
         // 秒级时间戳（1.79e9 < 1e12 阈值）→ 单位不可支持，绝不乘 1000。
-        message({ id: "seconds", seq: 3, data: messageData({ created: 1_790_000_000, completed: 1_790_000_001 }) }),
+        message({
+          id: "seconds",
+          seq: 3,
+          data: messageData({ created: 1_790_000_000, streamed: 1_790_000_001, completed: null }),
+        }),
       ],
       sessions: [{ id: "ses-1", version: "2.0.20" }],
     });
@@ -931,7 +944,7 @@ test("时序矛盾（completed < created）与显式真 0 各自可达：负数/
     );
     assert.ok(
       flagNamesOf(rows.get("inverted")).includes("TIME_INVALID"),
-      "completed < created 必须被诊断为 TIME_INVALID",
+      "streamed < created 必须被诊断为 TIME_INVALID",
     );
     assert.ok(flagNamesOf(rows.get("zero-span")).includes("DURATION_NONPOSITIVE"), "真 0 时长同样是非正");
     assert.equal(rows.get("seconds").durationMs, 1);
@@ -948,11 +961,11 @@ test("超长窗口（≥300000ms）只提示不剔除：仍然产出候选并置
     createFixtureDb(workspace.dbFile, {
       messages: [
         // 手算：300000ms 恰好等于阈值（`>` 才置位 → 恰好等于不置位）。
-        message({ id: "exactly-threshold", data: messageData({ created: BASE_TS, completed: BASE_TS + 300_000 }) }),
+        message({ id: "exactly-threshold", data: messageData({ created: BASE_TS, streamed: BASE_TS + 300_000 }) }),
         message({
           id: "over-threshold",
           seq: 2,
-          data: messageData({ created: BASE_TS, completed: BASE_TS + 300_001 }),
+          data: messageData({ created: BASE_TS, streamed: BASE_TS + 300_001 }),
         }),
       ],
       sessions: [{ id: "ses-1", version: "2.0.20" }],
@@ -1205,7 +1218,7 @@ test("合成 >1000 tok/s 反例不自动剔除：候选照常产出，只如实�
       messages: [
         message({
           id: "absurd-speed",
-          data: messageData({ created: BASE_TS, completed: BASE_TS + 100, output: 200_000, reasoning: 0 }),
+          data: messageData({ created: BASE_TS, streamed: BASE_TS + 100, output: 200_000, reasoning: 0 }),
         }),
       ],
       sessions: [{ id: "ses-1", version: "2.0.20" }],
@@ -1308,7 +1321,7 @@ test("raw 候选与 M1.1 输入契约自洽：normalizePerfSample 零警告，�
     assert.equal(sample.durationMs, 1000);
     assert.equal(sample.status, "completed");
     assert.equal(sample.timingSource, "explicit");
-    assert.equal(sample.methodVersion, "tps-v1");
+    assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
     assert.deepEqual(flagNamesOf(sample), []);
   } finally {
     workspace.cleanup();

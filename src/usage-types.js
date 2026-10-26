@@ -52,12 +52,20 @@
  * timeline aggregation and the range-wide cost estimate.
  * @typedef {object} IndexedCostEvent
  * @property {string} [homeId]
+ * @property {string} [homeLabel]
+ * @property {string} [sourcePath]
  * @property {string} [sourceKind]
  * @property {number} timestamp
  * @property {string} sessionId
  * @property {string} channel
  * @property {string} model
+ * @property {string} [project]
+ * @property {string} [repositoryKey]
+ * @property {string} [repositoryPath]
+ * @property {string} [repositoryKind]
+ * @property {string} [cwd]
  * @property {number} detailMask
+ * @property {number} [reconciliationGap]
  * @property {number} cacheWriteTokens
  * @property {boolean} cacheWriteKnown
  * @property {number} requestInputTokens
@@ -129,7 +137,7 @@
  * @property {object[]} models
  * @property {object[]} projects
  * @property {object[]} repositories
- * @property {PerfSummary} [perf] TPS groups, coverage and method metadata; absent until M4 wires it.
+ * @property {PerfSummary} [perf] TPS groups, model speed rows, coverage and method metadata.
  */
 
 /**
@@ -153,7 +161,8 @@
  * @property {string} reasoningEffort
  * @property {string} modelEvidence
  * @property {string} window `request` | `step` | `message` | `turn`
- * @property {string} timingKind `request_e2e` | `item_span_estimate`
+ * @property {string} timingKind `request_e2e` (Codex v2 sums complete request durations
+ *   within one turn) | `item_span_estimate` (historical diagnostic only)
  * @property {string} timingSource `explicit` | `timestamp_fallback` | `mixed` | `unknown`
  * @property {string} tokenScope `reported_output_includes_reasoning` | `visible_plus_reasoning` | `reported_output_unspecified`
  * @property {string} status `completed` | `failed` | `cancelled` | `in_progress` | `unverified`
@@ -175,14 +184,69 @@
  */
 
 /**
- * TPS summary exposed as `summary.perf = { groups, coverage, meta }`. `groups` only
- * contains statistical groups with `sampled > 0`; coverage uses the §17.5 count shape;
- * `meta` carries at least `methodVersion`, `state`, `indexVersion`, `indexedAt`,
- * `minSamples`, `longWindowMs`, `eraCutoffMs` and encoded `sourceWarnings`.
+ * A retained source that is currently unavailable.
+ * @typedef {object} PerfMissingSource
+ * @property {string} path Last successfully published physical source path.
+ * @property {string} kind Original source kind, not the canonical perf kind.
+ * @property {string} homeId
+ * @property {string} homeLabel
+ * @property {string} homePath
+ * @property {number} missingSinceMs
+ */
+
+/**
+ * TPS statistics and source availability exposed as `summary.perf`.
  * @typedef {object} PerfSummary
+ * @property {PerfMissingSource[]} missingSources Retained sources currently unavailable, independent of the event date range.
  * @property {PerfSummaryGroup[]} groups
+ * @property {PerfModelRow[]} models One source/model/effort/provider speed row per canonical identity.
  * @property {PerfCoverageShape} coverage
+ * @property {PerfCodexTimingCoverage | null} codexTimingCoverage Current-method Codex
+ *   coverage, or `null` when no applicable Codex source is configured.
  * @property {PerfSummaryMeta} meta
+ */
+
+/**
+ * Current-method Codex coverage on the summary's selection.
+ * @typedef {object} PerfCodexTimingCoverage
+ * @property {string} methodVersion
+ * @property {number | null} recordedOutputTokens Sum of known valid non-negative
+ *   output tokens across current-method Codex candidates; `null` when the integer
+ *   sum overflows.
+ * @property {number | null} sampledOutputTokens Sum over the non-pending candidates
+ *   that pass `isPerfSampled`; `null` when the integer sum overflows.
+ * @property {number} unknownOutputCandidates Eligible candidates whose output is not
+ *   a known safe non-negative integer. Unknown output is never counted as zero.
+ * @property {PerfCoverageShape} counts
+ */
+
+/**
+ * One source/model/reasoning-effort/provider speed row of `summary.perf.models`.
+ * Home, channel and agents are deliberately folded into this projection.
+ * @typedef {object} PerfModelRow
+ * @property {string} key `[sourceKind, model, reasoningEffort, modelProvider]` JSON identity and stable tie-break.
+ * @property {string} sourceKind
+ * @property {string} model
+ * @property {string} reasoningEffort
+ * @property {string} modelProvider Empty string means provider unknown.
+ * @property {"request" | "step" | "message" | "turn" | "mixed"} window
+ *   Sample unit for this row; `mixed` cannot be rank-admitted.
+ * @property {number | null} firstSampleAtMs Earliest actual sample `tsMs` in this row.
+ * @property {number | null} lastSampleAtMs Latest actual sample `tsMs` in this row.
+ * @property {number} [candidateCount] Deduplicated current-method candidates missing
+ *   duration, present only on `missing_duration` rows; never a valid sample count.
+ * @property {number} [firstCandidateAtMs] Earliest actual candidate `tsMs` in the selected range.
+ * @property {number} [lastCandidateAtMs] Latest actual candidate `tsMs` in the selected range.
+ * @property {number | null} averageTps Sum of output tokens × 1000 / sum of durations.
+ * @property {number | null} p10
+ * @property {number | null} p90
+ * @property {number} n Valid sample count; zero when request duration is missing.
+ * @property {"ok" | "overflow" | "missing_duration"} state
+ * @property {"overflow" | "unverified" | "insufficient_samples" | "eligible"} rankState
+ *   Admission, sample-count and overflow state in that priority order.
+ * @property {number | null} rank `null` when overflowing or not admitted to the
+ *   reviewed v2 unified ranking, or when `n < meta.minSamples`. This does not remove
+ *   diagnostics or statistics.
  */
 
 /**
@@ -215,7 +279,8 @@
  * @property {{ outputTokens: number | null, durationMs: number | null }} sums
  * @property {"ok" | "overflow"} state
  * @property {number | null} rank 1-based display rank, or `null` for a group that is
- *   under-sampled or overflowing — those are deliberately never numbered.
+ *   under-sampled, overflowing, historical v1, or otherwise not admitted to the
+ *   reviewed v2 ranking.
  * @property {boolean} insufficientSamples `n < minSamples`; the group is still
  *   reported, just not ranked.
  * @property {string[]} warnings Codes from the frozen `sourceWarnings` domain.
@@ -246,7 +311,8 @@
  * accepts only the eight codes frozen by plan §3:83; ruling Q keeps the M1
  * normalization warning codes out of this shape.
  * @typedef {object} PerfSummaryMeta
- * @property {string} methodVersion Defaults to `tps-v1`.
+ * @property {string} methodVersion Defaults to `tps-v2`. Historical `tps-v1`
+ *   samples remain diagnostic and are never rank-admitted.
  * @property {"rebuilding" | "ready" | "degraded"} state
  * @property {string | null} indexVersion Fingerprint of the published sources.
  * @property {string | null} indexedAt Build timestamp; may legitimately differ between

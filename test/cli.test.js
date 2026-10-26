@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
+import { automaticPricingFile } from "../src/pricing-store.js";
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -38,6 +39,19 @@ async function makeFixtureHome() {
         },
       },
     ]),
+  );
+  // CLI lifecycle tests use a fresh pricing cache instead of depending on the public network.
+  const timestamp = new Date().toISOString();
+  const pricingCache = automaticPricingFile({ homeDir: fakeHome });
+  await mkdir(path.dirname(pricingCache), { recursive: true });
+  await writeFile(
+    pricingCache,
+    JSON.stringify({
+      priceAttemptedAt: timestamp,
+      priceUpdatedAt: timestamp,
+      exchangeRateAttemptedAt: timestamp,
+      exchangeRateUpdatedAt: timestamp,
+    }),
   );
   return fakeHome;
 }
@@ -157,13 +171,16 @@ test("cli summary --json returns lightweight summary metadata without full repor
   // 摘要**不得**携带任何完整历史报告：事件明细只可能出现在 `report(s)` 里
   assert.ok(!output.includes('"events"'), "摘要输出不得包含完整事件数组");
   assert.ok(!output.includes('"rollout'), "摘要输出不得包含会话文件名");
-  // 索引摘要仍然要给出公开的 `summary.perf`（12 键）
+  // 索引摘要仍然要给出公开的 `summary.perf`（15 键）
   assert.deepEqual(
     Object.keys(parsed.summary.perf).sort(),
     [
+      "codexTimingCoverage",
       "coverage",
       "degradedHomeIds",
+      "missingSources",
       "groups",
+      "models",
       "indexVersion",
       "indexedAt",
       "methodVersion",
@@ -219,6 +236,37 @@ test("cli gateway uses a safer default heap budget for dashboard refreshes", asy
     );
   } finally {
     await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));
+  }
+});
+
+test("cli stop waits for accepted shutdown cleanup beyond five seconds", async () => {
+  const homeDir = await makeFixtureHome();
+  const stateFile = path.join(homeDir, "services.json");
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { createServer } from 'node:http';
+       const server = createServer((request, response) => {
+         response.writeHead(202).end();
+         server.close();
+         setTimeout(() => process.exit(0), 6000);
+       });
+       server.listen(0, '127.0.0.1', () => console.log('http://127.0.0.1:' + server.address().port));`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  try {
+    const url = await waitForServerUrl(child);
+    await writeFile(stateFile, JSON.stringify({ services: [{ pid: child.pid, url, shutdownToken: "fixture-token" }] }));
+    const output = await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));
+    assert.match(output, /Stopped 1 Agent Usage service/);
+    assert.equal(await waitForExit(child), 0);
+    assert.deepEqual(JSON.parse(await readFile(stateFile, "utf8")).services, []);
+  } finally {
+    if (child.exitCode === null) child.kill();
+    await waitForExit(child);
   }
 });
 

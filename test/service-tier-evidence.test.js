@@ -5,7 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { loadServiceTierEvidence } from "../src/service-tier-evidence.js";
+import {
+  loadServiceTierEvidence,
+  serviceTierEvidenceFromSnapshot,
+  serviceTierEvidenceSnapshot,
+} from "../src/service-tier-evidence.js";
 import { buildUsageReport } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
 
@@ -34,7 +38,7 @@ test("turn evidence identifies Fast and Standard while request input determines 
       submission(
         "TurnInput",
         'Some(Some("priority"))',
-        'service_tier: Some(Some("default")), collaboration_mode: None',
+        'PRIVATE_USER_TEXT service_tier: Some(Some("default")), collaboration_mode: None',
       ),
     );
     insert.run(timestamp("2026-09-24T10:02:00Z"), threadId, submission("TurnInput", 'Some(Some("default"))'));
@@ -96,6 +100,19 @@ test("turn evidence identifies Fast and Standard while request input determines 
     assert.equal(evidence.resolve(threadId, Date.parse("2026-09-24T10:02:05Z")), "default");
     assert.equal(evidence.resolve(threadId, Date.parse("2026-09-24T10:03:05Z"), "default"), "default");
 
+    const snapshotJson = JSON.stringify(serviceTierEvidenceSnapshot(evidence));
+    assert.equal(snapshotJson.includes("PRIVATE_USER_TEXT"), false);
+    const restoredEvidence = serviceTierEvidenceFromSnapshot(JSON.parse(snapshotJson));
+    for (const time of [
+      "2026-09-24T10:00:59Z",
+      "2026-09-24T10:01:05Z",
+      "2026-09-24T10:02:05Z",
+      "2026-09-24T10:03:05Z",
+    ]) {
+      assert.equal(restoredEvidence.resolve(threadId, Date.parse(time)), evidence.resolve(threadId, Date.parse(time)));
+    }
+    assert.equal(restoredEvidence.resolve(threadId, Date.parse("2026-09-24T10:02:05Z"), "priority"), "priority");
+
     const report = await buildUsageReport({ homes: [home] });
     assert.deepEqual(
       report.events.map((event) => event.serviceTier),
@@ -134,5 +151,31 @@ test("turn evidence identifies Fast and Standard while request input determines 
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service tier evidence snapshot rejects malformed input and foreign resolvers", () => {
+  const turn = (time, tier, extra = {}) => ({ time, tier, ...extra });
+  const snapshot = (threads, extra = {}) => ({ formatVersion: 1, threads, ...extra });
+  const thread = (threadId, turns, extra = {}) => ({ threadId, turns, ...extra });
+  const invalid = [
+    snapshot([], { extra: true }),
+    { ...snapshot([]), formatVersion: 2 },
+    snapshot([thread("thread-a", [turn(1, "slow")])]),
+    snapshot([thread("thread-a", [turn("1", "default")])]),
+    snapshot([thread("thread-a", [turn(Infinity, "default")])]),
+    snapshot([thread("thread-b", []), thread("thread-a", [])]),
+    snapshot([thread("thread-a", []), thread("thread-a", [])]),
+    snapshot([thread("thread-a", [turn(2, "default"), turn(1, "priority")])]),
+    snapshot([thread("thread-a", [turn(1, "default", { extra: true })])]),
+    snapshot([thread("thread-a", [], { extra: true })]),
+  ];
+
+  assert.throws(
+    () => serviceTierEvidenceSnapshot({ resolve: () => "unknown" }),
+    /expected service-tier evidence returned by this module/,
+  );
+  for (const [index, value] of invalid.entries()) {
+    assert.throws(() => serviceTierEvidenceFromSnapshot(value), TypeError, `invalid case ${index}`);
   }
 });

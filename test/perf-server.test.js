@@ -4,11 +4,11 @@
 //
 // 三条独立断言面：
 //   ① 形状：`/api/usage`（默认、`view=dashboard`）、`/api/summary`、`/api/usage?detail=full`
-//      都返回**同形状**的完整 `summary.perf`（12 键）；`view=dashboard` 只掉重详情，**不掉** perf；
+//      都返回同形状的完整 summary.perf；view=dashboard 只掉重详情，不掉 perf。
 //   ② 脱敏：`detail=full` 的 `report` 与 CLI `json` **不得**序列化 `perfSamples`/`sampleKey`/
 //      `sourcePath`/会话路径/`perfMeta`（冻结契约 §3 第 10 条；上游方案 :73）；
 //   ③ 来源排除：`exclude=` 必须**同时**作用于两条路径的内部 perf 候选与统计口径；
-//   ④ 冻结：`freeze=1` 后继续追加 live 源，旧 snapshot 的 `groups/coverage/meta` 一字不变；
+//   ④ 冻结：`freeze=1` 后继续追加 live 源，旧 snapshot 的 `groups/models/coverage/meta` 一字不变；
 //      过期 snapshot 仍是 410。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -21,6 +21,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createUsageServer, withoutExcludedHomes } from "../src/server.js";
+import { buildUsageReport, discoverUsageSources, summarizeUsage } from "../src/usage-core.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 const ROW_FIELDS = [
@@ -120,6 +121,28 @@ function makeCodexHome(root) {
   writeFileSync(path.join(dir, "rollout-m43.jsonl"), `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
 }
 
+/** 一个结构上不支持性能观测的 project-log home。 */
+function makeProjectLogHome(root, name) {
+  const projectRoot = path.join(root, name);
+  const usageDir = path.join(projectRoot, ".codex-usage");
+  mkdirSync(usageDir, { recursive: true });
+  writeFileSync(
+    path.join(usageDir, "usage.jsonl"),
+    `${JSON.stringify({
+      schema_version: "codex-usage.project-log.v1",
+      timestamp: "2026-07-12T12:00:00.000Z",
+      source: "codex-oauth",
+      channel: "Codex OAuth",
+      project_root: projectRoot,
+      cwd: projectRoot,
+      session_id: "project-log-session",
+      model: "project-log-model",
+      usage: { total: 77, input: 50, cached: 10, output: 27, reasoning: 6 },
+    })}\n`,
+  );
+  return projectRoot;
+}
+
 /** 起一个真实 server（`v8` 高堆 ⇒ `detail=full` 可用）。 */
 async function startServer(homeDir, extra = {}) {
   const server = createUsageServer({
@@ -140,7 +163,7 @@ async function startServer(homeDir, extra = {}) {
   };
 }
 
-/** 卡片要求的 12 键（与 `★M4.2-j` 同一组）。 */
+/** 公开键，包含历史来源状态与当前方法的 Codex 计时覆盖。 */
 const PERF_KEYS = [
   "state",
   "ready",
@@ -148,22 +171,59 @@ const PERF_KEYS = [
   "indexVersion",
   "indexedAt",
   "degradedHomeIds",
+  "missingSources",
   "sourceWarnings",
   "unsupportedSources",
   "rankedHomeIds",
   "groups",
+  "models",
   "coverage",
+  "codexTimingCoverage",
   "meta",
+];
+
+const MODEL_ROW_KEYS = [
+  "key",
+  "sourceKind",
+  "model",
+  "reasoningEffort",
+  "modelProvider",
+  "window",
+  "firstSampleAtMs",
+  "lastSampleAtMs",
+  "rankState",
+  "averageTps",
+  "p10",
+  "p90",
+  "n",
+  "state",
+  "rank",
 ];
 
 function perfKeys(value) {
   return Object.keys(value ?? {}).sort();
 }
 
+function assertModelRows(models, where) {
+  assert.ok(Array.isArray(models), `${where}：models 必须是数组`);
+  for (const [index, model] of models.entries()) {
+    assert.deepEqual(
+      Object.keys(model).sort(),
+      [...MODEL_ROW_KEYS].sort(),
+      `${where}：models[${index}] 必须恰好是公开的 15 字段`,
+    );
+    for (const internal of ["sampleKey", "sourcePath", "sessionId", "turnKey"]) {
+      assert.equal(model[internal], undefined, `${where}：models[${index}] 不得泄露 ${internal}`);
+    }
+  }
+}
+
 function assertFullPerfShape(perf, where) {
-  assert.deepEqual(perfKeys(perf), [...PERF_KEYS].sort(), `${where}：summary.perf 必须是 12 键完整形状`);
+  assert.deepEqual(perfKeys(perf), [...PERF_KEYS].sort(), `${where}：summary.perf 必须是完整公开形状`);
   assert.ok(Array.isArray(perf.groups), `${where}：groups 必须是数组`);
+  assertModelRows(perf.models, where);
   assert.ok(perf.coverage && typeof perf.coverage === "object", `${where}：coverage 必须是对象`);
+  assert.ok(perf.codexTimingCoverage === null || typeof perf.codexTimingCoverage === "object");
   assert.equal(perf.meta.methodVersion, perf.methodVersion, `${where}：meta.methodVersion 与顶层一致`);
 }
 
@@ -208,23 +268,32 @@ test("★M4.3-a 四个入口都返回同形状的完整 summary.perf，dashboard
         ].join("/"),
         " state =",
         def.summary.perf.state,
+        " models =",
+        def.summary.perf.models.length,
       );
 
-      // 前置判别力：确实有真实排名，否则"四入口一致"可能只是"四处都空"
+      // 前置判别力：确实有采样统计，否则"四入口一致"可能只是"四处都空"
       assert.equal(def.summary.perf.groups.length, 1);
       assert.equal(def.summary.perf.groups[0].n, 25);
-      assert.equal(def.summary.perf.groups[0].rank, 1);
+      assert.equal(def.summary.perf.groups[0].rank, null);
+      assert.notEqual(def.summary.perf.groups[0].tps.p50, null);
+      assert.equal(def.summary.perf.models.length, 1);
+      assert.equal(def.summary.perf.models[0].n, 25);
+      assert.equal(def.summary.perf.models[0].rank, null);
+      assert.notEqual(def.summary.perf.models[0].p10, null);
       assert.equal(def.summary.perf.meta.state, "ready");
 
       // 卡片明文：`view=dashboard` 仍包含分组与覆盖率（只掉重详情）
       assert.equal(dashboard.summary.homes, undefined, "前置：dashboard 确实掉了重详情");
       assert.equal(dashboard.summary.projects, undefined);
       assert.deepEqual(dashboard.summary.perf.groups, def.summary.perf.groups, "dashboard 的 perf 组必须完整");
+      assert.deepEqual(dashboard.summary.perf.models, def.summary.perf.models, "dashboard 的模型速度行必须完整");
       assert.deepEqual(dashboard.summary.perf.coverage, def.summary.perf.coverage, "dashboard 的覆盖率必须完整");
 
-      // 卡片明文：两个 API 返回**同形状** ⇒ perf 的 groups/coverage/meta 逐字相同
+      // 卡片明文：两个 API 返回**同形状** ⇒ perf 的 groups/models/coverage/meta 逐字相同
       //（`state/indexVersion/indexedAt` 按路径来源不同，M4.2 已裁定不锚）
       assert.deepEqual(summaryApi.summary.perf.groups, def.summary.perf.groups);
+      assert.deepEqual(summaryApi.summary.perf.models, def.summary.perf.models);
       assert.deepEqual(summaryApi.summary.perf.coverage, def.summary.perf.coverage);
       // `indexedAt` 是"本进程何时索引的"时刻，两次请求间会前进（M4.2 已裁定不锚它）⇒ 只锚稳定部分
       const metaForParity = (meta) => ({ ...meta, indexedAt: null });
@@ -248,6 +317,7 @@ test("★M4.3-b 公开投影：detail=full 的 report 与 CLI json 都不序列�
       assert.ok(full.summary.perf.groups.length === 1, "前置：确有真实 perf 候选，投影才有判别力");
       const serialized = JSON.stringify(full.report);
       console.log("  [实测] report 键 =", Object.keys(full.report).sort().join(","), " 长度 =", serialized.length);
+      assertModelRows(full.summary.perf.models, "detail=full");
       for (const key of INTERNAL_REPORT_KEYS) {
         assert.equal(full.report[key], undefined, `公开 report 不得含内部键 ${key}`);
       }
@@ -260,12 +330,13 @@ test("★M4.3-b 公开投影：detail=full 的 report 与 CLI json 都不序列�
       // 那些是**冻结前**的既有公开形状，本卡不改既有字段（改它们会动到既有消费者）。
       const candidatePath = path.join(zcodePath, "cli", "db", "db.sqlite");
       assert.ok(!serialized.includes(candidatePath), `公开 report 不得含候选源路径 ${candidatePath}`);
-      // 原有公开字段仍在（不得为了脱敏把功能砍掉）
+      // HTTP 完整报告携带本次计价快照；CLI 保持基础公开报告形状。
       assert.deepEqual(
         Object.keys(full.report).sort(),
-        ["events", "generatedAt", "homes", "rateLimitObservations", "sessions", "warnings"],
-        "公开投影必须是既有 6 个公开字段",
+        ["events", "generatedAt", "homes", "pricingCatalog", "rateLimitObservations", "sessions", "warnings"],
+        "HTTP 完整报告必须包含基础公开字段与计价快照",
       );
+      assert.deepEqual(full.report.pricingCatalog, full.pricingCatalog, "报告与响应使用同一份计价快照");
       // 公开报告只投影既有字段，且**不**把 `perfSamples`（候选内部载体）带出来
       assert.equal(full.report.perfSamples, undefined, "公开 report 不得携带内部候选");
       assert.ok(full.report.events.length >= 1, "公开报告的既有事件仍在");
@@ -401,10 +472,13 @@ test("★M4.3-c 来源排除必须同时作用于两条路径的内部候选与�
         "M3.4 语义：`rankedHomeIds` 是**未受阻来源**的全集（与 `exclude` 筛选无关），本卡不改",
       );
       assert.equal(indexed.summary.perf.groups.length, 1);
+      assert.equal(indexed.summary.perf.models.length, 1);
+      assert.equal(indexed.summary.perf.models[0].n, 25);
       assert.equal(memory.summary.perf.groups.length, 1);
       assert.notEqual(indexed.summary.perf.groups[0].homeId, excludedId, "被排除的 home 不得出现在分组里");
       // 两条路径的 perf 必须逐字相同（上游方案 :66"同一候选过滤"）
       assert.deepEqual(indexed.summary.perf.groups, memory.summary.perf.groups);
+      assert.deepEqual(indexed.summary.perf.models, memory.summary.perf.models);
       assert.deepEqual(indexed.summary.perf.coverage, memory.summary.perf.coverage);
       // `indexVersion`/`indexedAt` 按卡片 parity 面**不在**比较范围（M4.2 已裁定，两条路径
       // 的"何时索引/索引了哪个来源集合"本就不同）；这里锚 groups/coverage + 方法学字段。
@@ -434,6 +508,7 @@ test("★M4.3-f 冻结组合：全文/摘要入口不得静默忽略 snapshot，
       const snapshotId = frozen.snapshotId;
       assert.ok(snapshotId, "前置：freeze=1 必须给出 snapshotId");
       assert.equal(frozen.summary.perf.coverage.eligible, 50, "前置：冻结时 50 条候选");
+      assertFullPerfShape(frozen.summary.perf, "组合冻结快照");
 
       // 冻结后让 live 真实变化：给两个 home 各追加 25 行
       for (let i = 100; i < 125; i += 1) {
@@ -449,11 +524,13 @@ test("★M4.3-f 冻结组合：全文/摘要入口不得静默忽略 snapshot，
       // ① 默认入口：冻结值不变且带 snapshotId
       const defaultFrozen = await json(`?snapshot=${snapshotId}&preset=all`);
       assert.equal(defaultFrozen.summary.perf.coverage.eligible, 50, "默认入口必须用冻结数据");
+      assert.deepEqual(defaultFrozen.summary.perf.models, frozen.summary.perf.models);
       assert.equal(defaultFrozen.snapshotId, snapshotId);
 
       // ② dashboard 入口：同上
       const dashboardFrozen = await json(`?snapshot=${snapshotId}&view=dashboard&preset=all`);
       assert.equal(dashboardFrozen.summary.perf.coverage.eligible, 50, "dashboard 必须用冻结数据");
+      assert.deepEqual(dashboardFrozen.summary.perf.models, frozen.summary.perf.models);
 
       // ③ `/api/summary` 入口：复核点名它此前"始终读 live"（200 + eligible=100）
       const summaryFrozen = await summaryEntry(`?snapshot=${snapshotId}&preset=all`).then((r) => r.json());
@@ -471,6 +548,7 @@ test("★M4.3-f 冻结组合：全文/摘要入口不得静默忽略 snapshot，
       assert.equal(summaryFrozen.snapshotId, snapshotId, "/api/summary 必须回显 snapshotId");
       // 摘要入口不能"只冻结 perf、其余字段走 live" ⇒ metadata/asOf 也要绑定
       assert.deepEqual(summaryFrozen.summary.perf.groups, frozen.summary.perf.groups, "摘要入口分组不变");
+      assert.deepEqual(summaryFrozen.summary.perf.models, frozen.summary.perf.models, "摘要入口模型速度行不变");
       assert.deepEqual(summaryFrozen.summary.perf.coverage, frozen.summary.perf.coverage, "摘要入口覆盖率不变");
       assert.deepEqual(summaryFrozen.summary.perf.meta, frozen.summary.perf.meta, "摘要入口 meta 不变");
       assert.deepEqual(
@@ -631,8 +709,14 @@ test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 overflow �
       // 裁定：两条汇总路径的顶层与 meta 使用**同一份**规范结果
       assert.deepEqual(top, meta, "顶层与 meta.sourceWarnings 必须逐字相同");
       assert.equal(perf.groups.length, 1, "前置：确实产出了一个组（overflow 才可能出现）");
-      // 12 键形状不变
+      // 13 键形状不变
       assert.deepEqual(Object.keys(perf).sort(), [...PERF_KEYS].sort());
+      assert.equal(perf.models.length, 1);
+      assert.equal(perf.models[0].state, "overflow");
+      assert.equal(perf.models[0].rank, null);
+      assert.equal(perf.models[0].averageTps, null);
+      assert.equal(perf.models[0].p10, null);
+      assert.equal(perf.models[0].p90, null);
 
       // **内存路径**（`/api/usage?detail=full` → `summarizeUsage`）也必须同源：
       // 只钉索引路径时，`summarizeUsage` 单独回退到原始状态告警不会被发现（本卡实测变异 L 未打死）。
@@ -667,6 +751,7 @@ test("★M4.3-h 冻结后的告警稳定：顶层与 meta 一起冻结", async (
       const frozen = await json("?freeze=1&preset=all");
       const snapshotId = frozen.snapshotId;
       const before = frozen.summary.perf.sourceWarnings;
+      const beforeModels = frozen.summary.perf.models;
       console.log("  [实测] 冻结时 sourceWarnings =", JSON.stringify(before.map((w) => w.code)));
       assert.deepEqual(before, frozen.summary.perf.meta.sourceWarnings, "冻结时两字段同源");
 
@@ -674,6 +759,7 @@ test("★M4.3-h 冻结后的告警稳定：顶层与 meta 一起冻结", async (
       for (let i = 100; i < 125; i += 1) appendZcodeRow(root, "z-h", i);
       const reread = await fetch(`${baseUrl}/api/summary?snapshot=${snapshotId}&preset=all`).then((r) => r.json());
       assert.deepEqual(reread.summary.perf.sourceWarnings, before, "旧快照告警不得随 live 变化");
+      assert.deepEqual(reread.summary.perf.models, beforeModels, "旧快照模型速度行不得随 live 变化");
       assert.deepEqual(
         reread.summary.perf.sourceWarnings,
         reread.summary.perf.meta.sourceWarnings,
@@ -737,10 +823,12 @@ test("★M4.3-d 冻结快照：live 源变化不影响旧 snapshot；过期 snap
       assertFullPerfShape(frozen.summary.perf, "冻结快照");
       const before = {
         groups: frozen.summary.perf.groups,
+        models: frozen.summary.perf.models,
         coverage: frozen.summary.perf.coverage,
         meta: frozen.summary.perf.meta,
       };
       assert.equal(before.coverage.eligible, 25);
+      assert.equal(before.models[0].n, 25);
 
       // 冻结后改动 live 源：追加 25 行（另一个 home 也一起变，确保是"旧 snapshot 不变"而非"没变化"）
       for (let i = 100; i < 125; i += 1) appendZcodeRow(root, "z-d", i);
@@ -755,9 +843,12 @@ test("★M4.3-d 冻结快照：live 源变化不影响旧 snapshot；过期 snap
         frozen.summary.perf.coverage.eligible,
       );
       assert.equal(live.summary.perf.coverage.eligible, 50, "前置：live 索引确实变了");
+      assert.equal(live.summary.perf.models[0].n, 50, "live 模型速度行必须反映新增样本");
+      assert.notDeepEqual(live.summary.perf.models, before.models, "live 模型速度必须随来源变化");
 
       const reread = await json(`?snapshot=${encodeURIComponent(frozen.snapshotId)}&preset=all`);
       assert.deepEqual(reread.summary.perf.groups, before.groups, "旧 snapshot 的 groups 不得随 live 变化");
+      assert.deepEqual(reread.summary.perf.models, before.models, "旧 snapshot 的 models 不得随 live 变化");
       assert.deepEqual(reread.summary.perf.coverage, before.coverage, "旧 snapshot 的 coverage 不得随 live 变化");
       assert.deepEqual(reread.summary.perf.meta, before.meta, "旧 snapshot 的 meta 不得随 live 变化");
       assert.equal(reread.snapshotId, frozen.snapshotId);
@@ -794,6 +885,7 @@ test("★M4.3-e 冻结路径也走 store：dashboard/full/summary 的 perf 与�
         summaryApi.summary.perf.groups.length,
       );
       assert.deepEqual(dashboard.summary.perf.groups, summaryApi.summary.perf.groups);
+      assert.deepEqual(dashboard.summary.perf.models, summaryApi.summary.perf.models);
       assert.deepEqual(dashboard.summary.perf.coverage, summaryApi.summary.perf.coverage);
       assert.equal(dashboard.summary.homes, undefined, "dashboard 仍只掉重详情");
       assertFullPerfShape(dashboard.summary.perf, "冻结 dashboard");
@@ -833,9 +925,11 @@ test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable s
     };
     const assertExpected = (body, name) => {
       const actual = body.summary.perf;
+      assertModelRows(actual.models, name);
       assert.equal(actual.state, "ready");
       assert.deepEqual(actual.sourceWarnings, []);
       assert.equal(actual.groups.length, fixture.expected[name].groups.length);
+      assert.equal(actual.models.length, fixture.expected[name].groups.length);
       fixture.expected[name].groups.forEach((expected, i) => {
         for (const [key, value] of Object.entries(expected))
           assert.deepEqual(actual.groups[i][key], value, `${name}.${key}`);
@@ -923,6 +1017,7 @@ test("M4.5 mixed DSH/ZCode APIs and frozen snapshot survive corrupted multiframe
       return response.json();
     };
     const assertExpected = (perf, expected) => {
+      assertModelRows(perf.models, "M4.5");
       assert.equal(perf.groups.length, expected.groups.length);
       expected.groups.forEach((group, i) => {
         for (const [key, value] of Object.entries(group)) assert.deepEqual(perf.groups[i][key], value, key);
@@ -1132,6 +1227,7 @@ test("M4.6 OpenCode is consistent across both APIs, full details and immutable s
     };
     const assertExpected = (perf, expected) => {
       assert.equal(perf.state, "ready");
+      assertModelRows(perf.models, "M4.6");
       assert.equal(perf.groups.length, expected.groups.length);
       expected.groups.forEach((group, index) => {
         for (const [key, value] of Object.entries(group)) assert.deepEqual(perf.groups[index][key], value, key);
@@ -1212,5 +1308,118 @@ test("M4.6 OpenCode is consistent across both APIs, full details and immutable s
   } finally {
     if (running) await running.close();
     fixture.close();
+  }
+});
+
+test("D3 unsupported project-log sources stay out of model speed rows", async () => {
+  const fixture = createPerfIntegrationFixture({ sources: ["zcode"] });
+  let running;
+  try {
+    const projectRoot = makeProjectLogHome(fixture.reportOptions.homeDir, "project-log-unsupported");
+    running = await startServer(fixture.reportOptions.homeDir, {
+      ...fixture.serverOptions,
+      importDirs: [projectRoot],
+    });
+    const get = async (route, query) => {
+      const response = await fetch(`${running.baseUrl}/api/${route}?${query}`);
+      assert.equal(response.status, 200, `${route}?${query}`);
+      return response.json();
+    };
+    const bodies = [
+      await get("usage", "preset=all&skipCheck=1"),
+      await get("usage", "preset=all&view=dashboard&skipCheck=1"),
+      await get("summary", "preset=all&skipCheck=1"),
+      await get("usage", "preset=all&detail=full&skipCheck=1"),
+    ];
+    const baseline = bodies[0].summary.perf.models;
+    assert.equal(baseline.length, 2);
+    assert.ok(baseline.every((model) => model.model !== "project-log-model"));
+    const unsupported = bodies[0].summary.perf.unsupportedSources;
+    const projectHome = bodies[0].metadata.homes.find((home) => home.kind === "project-log");
+    assert.ok(projectHome, "fixture must discover the project-log home");
+    assert.ok(unsupported.some((source) => source.homeId === projectHome.id));
+    assert.equal(JSON.stringify(unsupported).includes(projectRoot), false);
+    for (const body of bodies) {
+      const perf = body.summary.perf;
+      assertModelRows(perf.models, "project-log");
+      assert.deepEqual(perf.models, baseline);
+      assert.ok(perf.unsupportedSources.some((source) => source.homeId === projectHome.id));
+      assert.equal(JSON.stringify(perf.unsupportedSources).includes(projectRoot), false);
+    }
+  } finally {
+    if (running) await running.close();
+    fixture.close();
+  }
+});
+
+test("C2 WorkBuddy API keeps the valid sample and drops the conflicting message", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-api-"));
+  const homePath = path.join(root, ".workbuddy-ai");
+  const projectDir = path.join(homePath, "projects", "fixture");
+  const traceDir = path.join(homePath, "traces", "102284");
+  mkdirSync(projectDir, { recursive: true });
+  mkdirSync(traceDir, { recursive: true });
+  const timestamp = Date.parse("2026-10-21T00:08:41.249Z");
+  const usageRecord = (messageId) => ({
+    timestamp,
+    type: "function_call",
+    providerData: {
+      messageId,
+      model: "deepseek-v4.1-flash",
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 200,
+        totalTokens: 1200,
+        inputTokensDetails: [{ cached_tokens: 0 }],
+        outputTokensDetails: [{ reasoning_tokens: 10 }],
+      },
+    },
+    sessionId: "c2-api-session",
+    cwd: "/work/c2-api",
+  });
+  const traceRow = (messageId, duration) => ({
+    type: "span_end",
+    span: {
+      type: "generation",
+      status: "ok",
+      duration,
+      endedAt: "2026-10-21T00:08:56.704Z",
+      toolOutput: JSON.stringify([{ id: messageId }]),
+    },
+  });
+  const jsonl = (rows) => `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  let running;
+  try {
+    writeFileSync(
+      path.join(projectDir, "c2-api-session.jsonl"),
+      jsonl([usageRecord("msg-same"), usageRecord("msg-conflict")]),
+    );
+    writeFileSync(
+      path.join(traceDir, "trace_c2.jsonl"),
+      jsonl([traceRow("msg-same", 900), traceRow("msg-conflict", 800), traceRow("msg-conflict", 850)]),
+    );
+
+    const options = { homeDir: root, env: {} };
+    const homes = await discoverUsageSources(options);
+    const memory = summarizeUsage(await buildUsageReport({ homes }), {
+      preset: "all",
+      now: new Date("2026-10-21T01:00:00.000Z"),
+    }).perf;
+
+    running = await startServer(root);
+    const usage = await running.json("?preset=all&skipCheck=1");
+    const summary = await fetch(`${running.baseUrl}/api/summary?preset=all&skipCheck=1`).then((response) =>
+      response.json(),
+    );
+
+    for (const perf of [usage.summary.perf, summary.summary.perf]) {
+      assert.equal(perf.coverage.eligible, 1);
+      assert.deepEqual(perf.groups, memory.groups);
+      assert.deepEqual(perf.models, memory.models);
+      assert.deepEqual(perf.coverage, memory.coverage);
+    }
+  } finally {
+    if (running) await running.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

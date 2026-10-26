@@ -317,6 +317,10 @@ test("★M4.1-b 一个 home 读失败：只标该 home degraded，其他来源�
       perfSamples.every((sample) => sample.homeId === "zcode-good"),
       "候选只能来自未受阻的 home",
     );
+    const summary = summarizeUsage(report, { preset: "all", now: FIXED_NOW }).perf;
+    assert.equal(summary.state, "degraded");
+    assert.equal(summary.models.length, 1, "健康来源仍须保留模型速度行");
+    assert.equal(summary.models[0].n, 3, "失败 home 的候选不得混入健康来源的速度行");
     assert.deepEqual(perfMeta.rankedHomeIds, ["zcode-good"], "受阻 home 必须排除出默认排名（D4）");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -853,7 +857,7 @@ test("★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮�
 // 且收到**同一个范围表达**（M1 键名）与**同一组排除**。任何一处不同都会让计数/分位分叉。
 //
 // 因此本组每一条都是**双路径比对**：同一批真实 ZCode SQLite 行、同一个 `filters`，
-// 断言 `groups`/`coverage`/`meta.methodVersion` 与所有计数**完全相同**。
+// 断言 `groups`/`models`/`coverage`/`meta.methodVersion` 与所有计数**完全相同**。
 // **不得**用"两边都有 groups"代替"两边 groups 逐字相同"。
 
 /** 打开一个隔离的索引库（与本用例的 ZCode home 同处一个临时根）。 */
@@ -922,10 +926,14 @@ async function bothPerfBlocks(root, specs, filters = {}, options = {}) {
   }
 }
 
-/** 卡片要求的 parity 面：`groups` / `coverage` / `methodVersion` + 所有计数。 */
+/** 卡片要求的 parity 面：`groups` / `models` / `coverage` / `methodVersion` + 所有计数。 */
 function assertStatsParity(memory, indexed, label) {
   assert.deepEqual(indexed.groups, memory.groups, `${label}：groups 必须逐字相同`);
+  assert.deepEqual(indexed.models, memory.models, `${label}：models 必须逐字相同`);
   assert.deepEqual(indexed.coverage, memory.coverage, `${label}：coverage 必须逐字相同`);
+  assert.ok(Object.hasOwn(memory, "codexTimingCoverage"), `${label}：内存路径必须公开当前方法覆盖字段`);
+  assert.ok(Object.hasOwn(indexed, "codexTimingCoverage"), `${label}：索引路径必须公开当前方法覆盖字段`);
+  assert.deepEqual(indexed.codexTimingCoverage, memory.codexTimingCoverage, `${label}：Codex 当前方法覆盖相同`);
   assert.equal(indexed.meta.methodVersion, memory.meta.methodVersion, `${label}：methodVersion`);
   assert.equal(indexed.meta.minSamples, memory.meta.minSamples, `${label}：minSamples`);
   assert.equal(indexed.meta.longWindowMs, memory.meta.longWindowMs, `${label}：longWindowMs`);
@@ -945,7 +953,7 @@ function assertStatsParity(memory, indexed, label) {
   }
 }
 
-test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐字相同（且确实有排名）", async () => {
+test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐字相同（诊断统计保留、未获统一排名）", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "m42-a-"));
   try {
     const { memory, indexed } = await bothPerfBlocks(root, [{ name: "z-a", rows: 25 }], {
@@ -964,10 +972,39 @@ test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐
     );
     assert.equal(memory.groups.length, 1, "前置：恰好一个组（否则 parity 无判别力）");
     assert.equal(memory.groups[0].n, 25);
-    assert.equal(memory.groups[0].rank, 1, "n=25 ≥ minSamples ⇒ 必须真的被排名");
+    assert.equal(memory.groups[0].rank, null, "ZCode 输出范围未知 ⇒ 保留诊断统计但不进入统一排名");
     // 判别力前置：行 id 必须是真的，否则『两端相同』可能只是『两端都空/都错』
     assert.equal(memory.groups[0].sums.outputTokens, 2800, "前置：确实读到了 25 行 fixture 输出");
     assert.equal(memory.groups[0].insufficientSamples, false);
+    assert.equal(memory.models.length, 1);
+    assert.equal(memory.models[0].n, 25);
+    assert.equal(memory.models[0].rank, null);
+    assert.equal(memory.models[0].modelProvider, "fixture-provider");
+    assert.equal(memory.models[0].window, "request");
+    assert.equal(memory.models[0].rankState, "unverified");
+    assert.equal(memory.models[0].firstSampleAtMs, BASE + 500);
+    assert.equal(memory.models[0].lastSampleAtMs, BASE + 24_500);
+    assert.deepEqual(
+      Object.keys(memory.models[0]).sort(),
+      [
+        "averageTps",
+        "firstSampleAtMs",
+        "key",
+        "lastSampleAtMs",
+        "model",
+        "modelProvider",
+        "n",
+        "p10",
+        "p90",
+        "rank",
+        "rankState",
+        "reasoningEffort",
+        "sourceKind",
+        "state",
+        "window",
+      ].sort(),
+    );
+    assert.equal(memory.codexTimingCoverage, null, "没有 Codex 来源，不伪造零覆盖统计");
     assert.equal(memory.coverage.eligible, 25);
     assert.equal(memory.coverage.sampled, 25);
     assertStatsParity(memory, indexed, "普通范围");
@@ -1071,6 +1108,7 @@ test("★M4.2-e n=0：无候选时两端都只给 coverage/诊断，不给任何
     });
     console.log("  [实测] n=0 时 groups =", JSON.stringify(memory.groups), " eligible =", memory.coverage.eligible);
     assert.deepEqual(memory.groups, [], "n=0 不得造出统计组");
+    assert.deepEqual(memory.models, [], "n=0 不得造出模型速度行");
     assert.equal(memory.coverage.eligible, 0);
     assertStatsParity(memory, indexed, "n=0");
   } finally {
@@ -1122,6 +1160,7 @@ test("★M4.2-g includeDetails=false：只门控原有重详情，不删 perf �
     assertStatsParity(full.memory, full.indexed, "includeDetails=true");
     assertStatsParity(lean.memory, lean.indexed, "includeDetails=false");
     assert.deepEqual(lean.indexed.groups, full.indexed.groups, "perf 组不得被详情门控删掉");
+    assert.deepEqual(lean.indexed.models, full.indexed.models, "perf 模型速度行不得被详情门控删掉");
     assert.deepEqual(lean.indexed.coverage, full.indexed.coverage, "覆盖率不得被详情门控删掉");
     // 反向判别力：重详情**确实**被门控掉了（否则上面的断言可能只是常量）
     const store = await openParityStore(root);
@@ -1160,6 +1199,8 @@ test("★M4.2-h rebuilding/uninitialized：不返回部分排名，也不因状�
       );
       assert.equal(summary.perf.state, "uninitialized", "M3.4 的读取投影语义保持不变");
       assert.deepEqual(summary.perf.groups, [], "未就绪时不得返回部分排名");
+      assert.deepEqual(summary.perf.models, [], "未就绪时不得返回部分模型速度行");
+      assert.equal(summary.perf.codexTimingCoverage, null, "未就绪不能宣称零计时覆盖");
       assert.equal(summary.perf.meta.state, "rebuilding", "M1 只接受 rebuilding/ready/degraded");
       assert.ok(summary.perf.coverage, "诊断用的 coverage 仍应存在");
       // ⚠️ 上一条 `groups` 断言必须**有判别力**：先把真实候选写进库（`replaceFile` 只写候选、
@@ -1182,6 +1223,8 @@ test("★M4.2-h rebuilding/uninitialized：不返回部分排名，也不因状�
         );
         assert.equal(rebuilding.perf.coverage.eligible, 5, "前置：候选已在库里（否则空组不构成证据）");
         assert.deepEqual(rebuilding.perf.groups, [], "候选就绪但状态未就绪 ⇒ 仍不得返回部分排名");
+        assert.deepEqual(rebuilding.perf.models, [], "候选就绪但状态未就绪 ⇒ 仍不得返回模型速度行");
+        assert.equal(rebuilding.perf.codexTimingCoverage, null);
       } finally {
         probe.close();
       }
@@ -1192,6 +1235,8 @@ test("★M4.2-h rebuilding/uninitialized：不返回部分排名，也不因状�
       assert.equal(ready.perf.state, "ready", "sync 收尾写入 ready");
       assert.equal(ready.perf.meta.state, "ready");
       assert.ok(ready.perf.groups.length > 0, "ready 后必须给出组");
+      assert.equal(ready.perf.models.length, 1);
+      assert.equal(ready.perf.models[0].n, 5);
       assert.equal(ready.perf.coverage.eligible, 5);
       assert.equal(homes.length, 1, "前置：真实 discovery 发现一个 home");
     } finally {
@@ -1239,11 +1284,14 @@ test("★M4.2-j 状态投影字段与冻结三件套共存：既有键一个不�
       "indexVersion",
       "indexedAt",
       "degradedHomeIds",
+      "missingSources",
       "sourceWarnings",
       "unsupportedSources",
       "rankedHomeIds",
       "groups",
+      "models",
       "coverage",
+      "codexTimingCoverage",
       "meta",
     ];
     assert.deepEqual(Object.keys(memory).sort(), [...expectedKeys].sort(), "内存路径键集");
@@ -1394,6 +1442,7 @@ test("★M4.2-l 配额范围：同一 quota_5h 窗口下两端排除同一批非
       // ⇒ 该 fixture 里唯一的性能来源是 ZCode（非 Codex）⇒ 配额窗口下两端都应为空。
       assert.equal(memory.coverage.eligible, 0, "配额窗口必须排除非 Codex home 的候选");
       assert.deepEqual(memory.groups, []);
+      assert.deepEqual(memory.models, []);
       // 对照：同一 fixture 的非配额范围**有**候选 ⇒ 上面的 0 是"排除"造成的，不是数据为空
       // 对照必须与配额范围**同时刻**，否则两次调用默认 `now` 略有差异，比较不可信
       const all = await bothPerfBlocks(root, specs, { preset: "all", now: QUOTA_AS_OF });
@@ -1808,7 +1857,13 @@ test("M4.5 published indexVersion tracks committed DSH files, including partial 
     unlinkSync(fileC);
     await store.sync({ options: fixture.reportOptions });
     const afterDeleteC = store.summarize({ preset: "all" }).perf.indexVersion;
-    assert.notEqual(afterDeleteC, recoveredVersion, "true file deletion removes its published component");
+    assert.notEqual(afterDeleteC, recoveredVersion, "missing-source diagnosis changes the published index version");
+    assert.ok(
+      store
+        .summarize({ preset: "all" })
+        .perf.missingSources.some((source) => source.path === fileC && source.kind === "dsh"),
+      "deleted DSH file remains diagnosed as a missing source",
+    );
 
     // DSH is multi-file: append one valid new turn to a single file and then delete the other.
     appendFileSync(
@@ -1836,12 +1891,26 @@ test("M4.5 published indexVersion tracks committed DSH files, including partial 
     await store.sync({ options: fixture.reportOptions });
     const afterUpdateA = store.summarize({ preset: "all" }).perf.indexVersion;
     assert.notEqual(afterUpdateA, afterDeleteC, "successful update of one DSH file changes indexVersion");
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind='dsh'").get().n, 5);
+    assert.equal(
+      store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind='dsh'").get().n,
+      6,
+      "source deletion retains its published perf samples",
+    );
     unlinkSync(fileB);
     await store.sync({ options: fixture.reportOptions });
     const afterDeleteB = store.summarize({ preset: "all" }).perf.indexVersion;
     assert.notEqual(afterDeleteB, afterUpdateA, "deleting a different DSH file changes indexVersion");
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind='dsh'").get().n, 3);
+    assert.ok(
+      store
+        .summarize({ preset: "all" })
+        .perf.missingSources.some((source) => source.path === fileB && source.kind === "dsh"),
+      "second deleted DSH file also remains diagnosed as missing",
+    );
+    assert.equal(
+      store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind='dsh'").get().n,
+      6,
+      "deleting another source keeps all published perf samples",
+    );
     assert.equal((await store.sync({ options: fixture.reportOptions })).updatedFileCount, 0);
     assert.equal(store.summarize({ preset: "all" }).perf.indexVersion, afterDeleteB, "published version is stable");
   } finally {
@@ -1850,7 +1919,7 @@ test("M4.5 published indexVersion tracks committed DSH files, including partial 
   }
 });
 
-test("M4.5 nonfatal DSH warnings persist per file, aggregate raw counts and clear on repair/deletion", async () => {
+test("M4.5 nonfatal DSH warnings persist per file, clear on repair, and survive source deletion", async () => {
   const fixture = createPerfIntegrationFixture({ sources: ["zcode", "dsh"] });
   const store = new UsageStore({ ...fixture.serverOptions });
   const files = ["fixture-session-a", "fixture-session-b"].map((id) =>
@@ -1924,10 +1993,25 @@ test("M4.5 nonfatal DSH warnings persist per file, aggregate raw counts and clea
     );
     unlinkSync(files[1]);
     await store.sync({ options: fixture.reportOptions });
+    const deleted = store.summarize({ preset: "all" }).perf;
+    assert.ok(
+      deleted.missingSources.some((source) => source.path === files[1] && source.kind === "dsh"),
+      "deleted DSH file remains diagnosed as missing",
+    );
+    assert.deepEqual(deleted.sourceWarnings, oneFileWarning, "source deletion retains its warning component");
+
+    writeFileSync(files[1], warningBytes[1]);
+    await store.sync({ options: fixture.reportOptions });
+    const restored = store.summarize({ preset: "all" }).perf;
+    assert.equal(
+      restored.missingSources.some((source) => source.path === files[1]),
+      false,
+      "restored DSH file clears its missing-source diagnosis",
+    );
     assert.deepEqual(
-      store.summarize({ preset: "all" }).perf.sourceWarnings,
-      [],
-      "true deletion clears its warning component",
+      restored.sourceWarnings,
+      oneFileWarning,
+      "restoration keeps the reader warning without duplication",
     );
   } finally {
     store.close();
@@ -2231,11 +2315,11 @@ test("M4.6 OpenCode multi-database fixture has independent literal parity and co
       openSamples.find((sample) => identityOf(sample).at(-1) === "legacy-only"),
       undefined,
     );
-    const missingCompleted = openSamples.find((sample) => identityOf(sample).at(-1) === "missing-completed");
-    assert.ok(missingCompleted);
-    assert.equal(missingCompleted.durationMs, null);
-    assert.equal(missingCompleted.status, "completed");
-    assert.ok(!perfFlagNamesOf(missingCompleted.sampleFlags).includes("TERMINAL_UNVERIFIED"));
+    const missingStreamed = openSamples.find((sample) => identityOf(sample).at(-1) === "missing-streamed");
+    assert.ok(missingStreamed);
+    assert.equal(missingStreamed.durationMs, null);
+    assert.equal(missingStreamed.status, "completed");
+    assert.ok(!perfFlagNamesOf(missingStreamed.sampleFlags).includes("TERMINAL_UNVERIFIED"));
 
     await store.open();
     await store.sync({ options: fixture.reportOptions });
@@ -2524,7 +2608,7 @@ test("★D5-a 全局有可信样本、今日无样本：该 home 仍在默认排
   try {
     const homes = await d5CodexHomes(fixture);
     const homeId = homes[0].id;
-    const report = await buildUsageReport({ homes });
+    const report = await buildUsageReport({ ...fixture.reportOptions, homes });
 
     const memoryToday = summarizeUsage(report, { preset: "today", now: D5_NEXT_DAY }).perf;
     // 前置：今天**真的**没有样本（否则这个用例什么都没测到）
@@ -2540,12 +2624,13 @@ test("★D5-a 全局有可信样本、今日无样本：该 home 仍在默认排
     assert.deepEqual(memoryAll.rankedHomeIds, [homeId]);
 
     const store = new UsageStore({
-      homeDir: fixture.reportOptions.homeDir,
+      ...fixture.reportOptions,
       databaseFile: path.join(fixture.reportOptions.homeDir, "d5-a.sqlite"),
     });
     await store.open();
     try {
       await store.sync({ options: fixture.reportOptions });
+      await fixture.seedRequestTiming(store);
       const indexedToday = store.summarize({ preset: "today", now: D5_NEXT_DAY }, {}).perf;
       assert.equal(indexedToday.coverage.eligible, 0, "索引路径：今日同样没有样本");
       assert.deepEqual(indexedToday.rankedHomeIds, [homeId], "索引路径：全局排名保留该 home");
@@ -2569,12 +2654,13 @@ test("★D5-b 失败 home 的陈旧候选：既不排名也不进可信统计（
     const homes = await d5CodexHomes(fixture);
     const homeId = homes[0].id;
     const store = new UsageStore({
-      homeDir: fixture.reportOptions.homeDir,
+      ...fixture.reportOptions,
       databaseFile: path.join(fixture.reportOptions.homeDir, "d5-b.sqlite"),
     });
     await store.open();
     try {
       await store.sync({ options: fixture.reportOptions });
+      await fixture.seedRequestTiming(store);
       const baseline = store.summarize({ preset: "all", now: D5_FIXED_NOW }, {}).perf;
       assert.deepEqual(baseline.rankedHomeIds, [homeId], "前置：未受阻时该 home 在排名里");
       assert.equal(baseline.coverage.eligible, 25);
@@ -2628,12 +2714,13 @@ test("★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解�
     const homes = await d5CodexHomes(fixture);
     const homeId = homes[0].id;
     const store = new UsageStore({
-      homeDir: fixture.reportOptions.homeDir,
+      ...fixture.reportOptions,
       databaseFile: path.join(fixture.reportOptions.homeDir, "d5-c.sqlite"),
     });
     await store.open();
     try {
       await store.sync({ options: fixture.reportOptions });
+      await fixture.seedRequestTiming(store);
       const total = store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples").get().n;
       assert.equal(total, 25, "前置：25 个 Codex 样本");
 
@@ -2671,5 +2758,166 @@ test("★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解�
     }
   } finally {
     fixture.close();
+  }
+});
+
+test("C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一致", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-parity-"));
+  const homePath = path.join(root, ".workbuddy-ai");
+  const projectDir = path.join(homePath, "projects", "fixture");
+  const traceDir = path.join(homePath, "traces", "102284");
+  mkdirSync(projectDir, { recursive: true });
+  mkdirSync(traceDir, { recursive: true });
+  const timestamp = Date.parse("2026-10-21T00:08:41.249Z");
+  const usageRecord = (messageId) => ({
+    timestamp,
+    type: "function_call",
+    providerData: {
+      messageId,
+      model: "deepseek-v4.1-flash",
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 200,
+        totalTokens: 1200,
+        inputTokensDetails: [{ cached_tokens: 0 }],
+        outputTokensDetails: [{ reasoning_tokens: 10 }],
+      },
+    },
+    sessionId: "c2-session",
+    cwd: "/work/c2",
+  });
+  const traceRow = (messageId, duration) => ({
+    type: "span_end",
+    span: {
+      traceId: "trace_1",
+      spanId: `span-${messageId}-${duration}`,
+      name: "generation",
+      type: "generation",
+      endedAt: "2026-10-21T00:08:56.704Z",
+      duration,
+      status: "ok",
+      toolOutput: JSON.stringify([{ id: messageId }]),
+    },
+  });
+  const jsonl = (rows) => `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+
+  try {
+    writeFileSync(
+      path.join(projectDir, "c2-session.jsonl"),
+      jsonl([usageRecord("msg-same"), usageRecord("msg-conflict")]),
+    );
+    writeFileSync(
+      path.join(traceDir, "trace_c2.jsonl"),
+      jsonl([
+        traceRow("msg-same", 900),
+        traceRow("msg-same", 900),
+        traceRow("msg-conflict", 800),
+        traceRow("msg-conflict", 850),
+      ]),
+    );
+
+    const options = { homeDir: root, env: {} };
+    const homes = await discoverUsageSources(options);
+    const workbuddyHome = homes.find((home) => home.kind === "workbuddy");
+    assert.ok(workbuddyHome, "真实 discovery 必须发现 WorkBuddy home");
+    const filters = { preset: "all", now: new Date("2026-10-21T01:00:00.000Z") };
+
+    const report = await buildUsageReport({ homes: [workbuddyHome] });
+    assert.equal(report.perfSamples.length, 1, "冲突 messageId 在内存路径不得产生候选");
+    assert.match(report.perfSamples[0].sampleKey, /msg-same/);
+    const memory = summarizeUsage(report, filters).perf;
+
+    const store = new UsageStore({ homeDir: root, databaseFile: path.join(root, "usage-index.sqlite") });
+    await store.open();
+    try {
+      await store.sync({ options });
+      const indexed = store.summarize(filters).perf;
+      assert.deepEqual(
+        store.database
+          .prepare("SELECT duration_ms FROM workbuddy_generation_duration_observations ORDER BY duration_ms")
+          .all()
+          .map((row) => row.duration_ms),
+        [800, 850, 900],
+      );
+      assert.equal(
+        Number(
+          store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind = 'workbuddy'").get().n,
+        ),
+        1,
+      );
+      assert.equal(memory.coverage.eligible, 1);
+      assertStatsParity(memory, indexed, "C2 WorkBuddy same/conflict");
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("C2 WorkBuddy：trace-only duration change moves memory candidates and indexVersion", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-version-"));
+  const homePath = path.join(root, ".workbuddy-ai");
+  const projectDir = path.join(homePath, "projects", "fixture");
+  const traceDir = path.join(homePath, "traces", "102284");
+  mkdirSync(projectDir, { recursive: true });
+  mkdirSync(traceDir, { recursive: true });
+  const tracePath = path.join(traceDir, "trace_c2.jsonl");
+  const timestamp = Date.parse("2026-10-21T00:08:41.249Z");
+  const usageRecord = {
+    timestamp,
+    type: "function_call",
+    providerData: {
+      messageId: "msg-version",
+      model: "deepseek-v4.1-flash",
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 200,
+        totalTokens: 1200,
+        inputTokensDetails: [{ cached_tokens: 0 }],
+        outputTokensDetails: [{ reasoning_tokens: 10 }],
+      },
+    },
+    sessionId: "c2-version-session",
+    cwd: "/work/c2-version",
+  };
+  const traceRow = (duration) => ({
+    type: "span_end",
+    span: {
+      type: "generation",
+      status: "ok",
+      duration,
+      endedAt: "2026-10-21T00:08:56.704Z",
+      toolOutput: JSON.stringify([{ id: "msg-version" }]),
+    },
+  });
+
+  try {
+    writeFileSync(path.join(projectDir, "c2-version-session.jsonl"), `${JSON.stringify(usageRecord)}\n`);
+    writeFileSync(tracePath, `${JSON.stringify(traceRow(800))}\n`);
+    const options = { homeDir: root, env: {} };
+    const workbuddyHome = (await discoverUsageSources(options)).find((home) => home.kind === "workbuddy");
+    assert.ok(workbuddyHome);
+    const filters = { preset: "all", now: new Date("2026-10-21T01:00:00.000Z") };
+
+    const firstReport = await buildUsageReport({ homes: [workbuddyHome] });
+    const first = summarizeUsage(firstReport, filters).perf;
+    assert.equal(firstReport.perfSamples[0].durationMs, 800);
+    assert.equal(first.state, "ready");
+    assert.equal(first.coverage.eligible, 1);
+    assert.match(String(first.indexVersion), /^[0-9a-f]{64}$/);
+
+    writeFileSync(tracePath, `${JSON.stringify(traceRow(900))}\n`);
+    const changedReport = await buildUsageReport({ homes: [workbuddyHome] });
+    const changed = summarizeUsage(changedReport, filters).perf;
+    assert.equal(changedReport.perfSamples[0].durationMs, 900);
+    assert.equal(changed.state, "ready");
+    assert.equal(changed.coverage.eligible, 1);
+    assert.notEqual(changed.indexVersion, first.indexVersion);
+
+    const repeated = summarizeUsage(await buildUsageReport({ homes: [workbuddyHome] }), filters).perf;
+    assert.equal(repeated.indexVersion, changed.indexVersion);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

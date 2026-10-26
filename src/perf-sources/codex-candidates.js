@@ -1,5 +1,7 @@
 /** Build one M1 raw performance candidate per stable Codex turn ledger. */
 
+import { resolveCodexTurnRequestTiming } from "./codex-request-timing.js";
+
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
 
 /** @typedef {{timestampMs: number | null, outputTokens: number | null}} CodexRequestLedger */
@@ -30,48 +32,32 @@ function validIdentityPart(value) {
   return typeof value === "string" && value.trim() !== "";
 }
 
-/** @param {CodexItemLedger[]} items */
-function getTimedSpans(items) {
-  const spans = [];
-  for (const item of items) {
-    const startMs = item.startedAtMs;
-    const endMs = item.completedAtMs;
-    if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || endMs <= startMs) continue;
-    spans.push({ startMs, endMs, durationMs: endMs - startMs });
-  }
-  return spans;
-}
+/**
+ * @typedef {{homeId: string, threadId: string, turnId: string, responseId: string, model: string | null, outputTokens: unknown}} CodexRequestTimingQuery
+ * @typedef {(query: CodexRequestTimingQuery) => {state: string, durationMs: unknown, reportedOutputTokens: unknown, requestedModel: unknown}} CodexRequestTimingLookup
+ */
 
-/** @param {string} homeId @param {CodexTurnLedger} turn */
-function buildCandidate(homeId, turn) {
+/**
+ * @param {string} homeId
+ * @param {CodexTurnLedger} turn
+ * @param {{lookupRequestTiming?: CodexRequestTimingLookup}} [options]
+ */
+function buildCandidate(homeId, turn, options = {}) {
   const requests = turn.requests;
   // M6.1 admits only these item types; null here means M6.2 found conflicting target types.
   const targetItems = turn.items.filter((item) => item.itemType === null || TARGET_ITEM_TYPES.has(item.itemType));
-  const spans = getTimedSpans(targetItems);
-  const sortedSpans = [...spans].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
-  let furthestEnd = Number.NEGATIVE_INFINITY;
-  let overlappingItemSpan = false;
-  let durationMs = 0;
-  let durationOverflow = false;
-  let windowStartMs = null;
-  let windowEndMs = null;
+  const timedItemCount = targetItems.filter(
+    (item) =>
+      Number.isSafeInteger(item.startedAtMs) &&
+      Number.isSafeInteger(item.completedAtMs) &&
+      /** @type {number} */ (item.completedAtMs) > /** @type {number} */ (item.startedAtMs),
+  ).length;
 
-  for (const span of sortedSpans) {
-    if (span.startMs < furthestEnd) overlappingItemSpan = true;
-    furthestEnd = Math.max(furthestEnd, span.endMs);
-    windowStartMs = windowStartMs === null ? span.startMs : Math.min(windowStartMs, span.startMs);
-    windowEndMs = windowEndMs === null ? span.endMs : Math.max(windowEndMs, span.endMs);
-    if (!durationOverflow) {
-      durationMs += span.durationMs;
-      if (!Number.isSafeInteger(durationMs)) durationOverflow = true;
-    }
-  }
-
-  const partialItemSpan =
-    spans.length > 0 && (spans.length < targetItems.length || (turn.diagnostics?.unkeyableItemCount ?? 0) > 0);
+  const timing = resolveCodexTurnRequestTiming(homeId, turn, options.lookupRequestTiming);
   const flags = new Set(Array.isArray(turn.flags) ? turn.flags : []);
-  if (partialItemSpan) flags.add("PARTIAL_ITEM_SPAN");
-  if (overlappingItemSpan) flags.add("OVERLAPPING_ITEM_SPAN");
+  if (timing.state === "missing") flags.add("MISSING_DURATION");
+  if (timing.state === "conflict") flags.add("RECORD_CONFLICT");
+  if (timing.state === "invalid") flags.add("TIME_INVALID");
 
   // An incomplete request identity set cannot prove either the total output or its final request time.
   const requestSetComplete = turn.requestSetComplete === true;
@@ -92,18 +78,18 @@ function buildCandidate(homeId, turn) {
     modelProvider: "",
     reasoningEffort: typeof turn.effort === "string" ? turn.effort : "",
     modelEvidence: turn.modelEvidence === "turn_context" ? "turn_context" : "",
-    timingSource: "timestamp_fallback",
+    timingSource: timing.state === "complete" ? "explicit" : "unknown",
     terminalVerified: ended,
     tsMs:
       ended && requestSetComplete && Number.isSafeInteger(lastRequest?.timestampMs) ? lastRequest.timestampMs : null,
-    windowStartMs,
-    windowEndMs,
-    durationMs: spans.length === 0 ? null : durationOverflow ? Number.MAX_SAFE_INTEGER + 1 : durationMs,
+    windowStartMs: null,
+    windowEndMs: null,
+    durationMs: timing.durationMs,
     outputTokens: requestSetComplete ? turn.requestOutputSum : null,
     inputTokens: null,
     requestCount: requests.length,
     itemCount: targetItems.length,
-    timedItemCount: spans.length,
+    timedItemCount,
     sampleFlags: [...flags],
   };
 }
@@ -127,9 +113,10 @@ function hasTurnEvidence(turn) {
  * @param {string} homeId
  * @param {{turns: any[], stats?: Record<string, unknown>}} folded
  * @param {string[]} rolloutFiles Complete discovered file set for downstream dependency tracking.
+ * @param {{lookupRequestTiming?: CodexRequestTimingLookup}} [options]
  * @returns {{candidates: Array<Record<string, unknown>>, warnings: Array<{sourceKind: string, homeId: string, code: string, count: number}>, rolloutFiles: string[]}}
  */
-export function buildCodexTurnCandidates(homeId, folded, rolloutFiles) {
+export function buildCodexTurnCandidates(homeId, folded, rolloutFiles, options = {}) {
   if (typeof homeId !== "string" || homeId.trim() === "")
     throw new TypeError("Codex homeId must be a non-empty string");
   if (!isRecord(folded) || !Array.isArray(folded.turns)) throw new TypeError("Codex folded turns must be an array");
@@ -148,7 +135,7 @@ export function buildCodexTurnCandidates(homeId, folded, rolloutFiles) {
       unkeyableTurns += 1;
       continue;
     }
-    candidates.push(buildCandidate(homeId, turn));
+    candidates.push(buildCandidate(homeId, turn, options));
   }
 
   const stats = isRecord(folded.stats) ? folded.stats : {};

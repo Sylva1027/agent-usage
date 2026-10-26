@@ -14,7 +14,8 @@
  * Persistent method version (plan §4). An unrecognized version is never silently
  * rewritten: normalization keeps the supplied value and reports a warning.
  */
-export const PERF_METHOD_VERSION = "tps-v1";
+export const PERF_METHOD_VERSION = "tps-v2";
+const PERF_HISTORICAL_METHOD_VERSIONS = Object.freeze(new Set(["tps-v1"]));
 
 /** Groups with fewer samples are shown but not ranked (plan §17.6). */
 export const PERF_MIN_SAMPLES = 20;
@@ -55,7 +56,7 @@ export const PERF_FLAG_BITS = Object.freeze([
   "OVERLAPPING_ITEM_SPAN", // 13 target item spans overlap; dropped
   "TIME_INVALID", // 14 non-finite, contradictory or unsupported-unit time; dropped
   "TIME_UNPLACED", // 15 ts_ms missing; global placement diagnostic, not in eligible
-  "METHOD_ESTIMATE", // 16 Codex item-window estimate; still sampled, explicitly labelled
+  "METHOD_ESTIMATE", // 16 historical/explicit estimate hint; still sampled, never rank-admitted
   "TOKEN_INVALID", // 17 negative, non-integer or non-finite output; dropped
 ]);
 
@@ -92,8 +93,8 @@ export const PERF_FLAGS = Object.freeze(
 /**
  * Per-source window/timing/token semantics frozen by plan §17.1 and contract §1.
  * Normalization is the enforcement point: a reader-supplied value never overrides
- * these, so Codex (`item_span_estimate` + reported output including reasoning) and the
- * three request-level sources can never be merged into one group by accident.
+ * these. Codex v2 sums complete request durations within one turn while retaining
+ * turn-level sampling.
  * @type {Readonly<Record<string, { window: string, timingKind: string, tokenScope: string }>>}
  */
 export const PERF_SOURCE_SEMANTICS = Object.freeze({
@@ -102,7 +103,7 @@ export const PERF_SOURCE_SEMANTICS = Object.freeze({
   opencode: Object.freeze({ window: "message", timingKind: "request_e2e", tokenScope: "visible_plus_reasoning" }),
   codex: Object.freeze({
     window: "turn",
-    timingKind: "item_span_estimate",
+    timingKind: "request_e2e",
     tokenScope: "reported_output_includes_reasoning",
   }),
   // WorkBuddy：一次模型响应 = 一个 request 窗口，时长取自 trace 里 `generation` span 的
@@ -113,10 +114,15 @@ export const PERF_SOURCE_SEMANTICS = Object.freeze({
     timingKind: "request_e2e",
     tokenScope: "reported_output_includes_reasoning",
   }),
+  claude: Object.freeze({
+    window: "request",
+    timingKind: "request_e2e",
+    tokenScope: "reported_output_includes_reasoning",
+  }),
 });
 
 /** Canonical perf source kinds. Anything else is `unsupported`. */
-export const PERF_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "codex", "workbuddy"]);
+export const PERF_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
 /** The only accepted §17.1 `status` values. */
 export const PERF_STATUSES = Object.freeze(["completed", "failed", "cancelled", "in_progress", "unverified"]);
@@ -304,12 +310,13 @@ export function perfFlagNamesOf(mask) {
  * anything unknown are `unsupported`. The input value is never mutated: raw kinds stay
  * available to source discovery and quota eligibility.
  * @param {unknown} kind
- * @returns {"zcode" | "dsh" | "opencode" | "codex" | "workbuddy" | "unsupported"}
+ * @returns {"zcode" | "dsh" | "opencode" | "codex" | "workbuddy" | "claude" | "unsupported"}
  */
 export function canonicalPerfSourceKind(kind) {
   const value = typeof kind === "string" ? kind.trim() : "";
   if (value === "main" || value === "jetbrains" || value === "extra" || value === "codex") return "codex";
   if (value === "zcode" || value === "dsh" || value === "opencode" || value === "workbuddy") return value;
+  if (value === "claude") return "claude";
   return "unsupported";
 }
 
@@ -853,8 +860,6 @@ export function normalizePerfSample(raw) {
     warnings.push("SOURCE_SEMANTICS_MISMATCH");
     setReason("source_semantics_mismatch", REASON_RANK.semantics);
   }
-  if (timingKind === "item_span_estimate") flags = setPerfFlag(flags, "METHOD_ESTIMATE");
-
   // --- counts and provenance ---
   const requestCount = safeIntegerOrNull(raw.requestCount);
   const itemCount = safeIntegerOrNull(raw.itemCount);
@@ -874,7 +879,11 @@ export function normalizePerfSample(raw) {
   }
   const providedMethodVersion = trimmedString(raw.methodVersion);
   const methodVersion = providedMethodVersion === "" ? PERF_METHOD_VERSION : providedMethodVersion;
-  if (providedMethodVersion !== "" && providedMethodVersion !== PERF_METHOD_VERSION) {
+  if (
+    providedMethodVersion !== "" &&
+    providedMethodVersion !== PERF_METHOD_VERSION &&
+    !PERF_HISTORICAL_METHOD_VERSIONS.has(providedMethodVersion)
+  ) {
     warnings.push("UNRECOGNIZED_METHOD_VERSION");
   }
 
@@ -1050,6 +1059,33 @@ function isPerfSampled(sample, flags) {
   if (sample.outputTokens === null || sample.outputTokens <= 0) return false;
   if (sample.durationMs === null || sample.durationMs <= 0) return false;
   return true;
+}
+
+/**
+ * Unified ranking uses reviewed evidence, not a source label or a `request_e2e`
+ * string alone. Two tuples are admitted today: v2 Codex (complete turn request
+ * timing with explicit provenance and known output scope) and v2 Claude
+ * (request-level samples whose duration is the transcript timestamp fallback,
+ * with the same known output scope). DSH/ZCode have unknown output scope;
+ * OpenCode/WorkBuddy samples still lack per-sample reviewed origin and
+ * installed-version provenance. Those stay sampled for diagnostics with no rank,
+ * as do historical Codex v1 candidates.
+ * @param {PerfSample} sample
+ * @param {Set<string>} [flags]
+ * @returns {boolean}
+ */
+function isPerfRankAdmitted(sample, flags = perfFlagSetOf(sample)) {
+  if (sample.methodVersion !== PERF_METHOD_VERSION) return false;
+  if (sample.timingKind !== "request_e2e") return false;
+  if (sample.tokenScope !== "reported_output_includes_reasoning") return false;
+  if (flags.has("METHOD_ESTIMATE")) return false;
+  if (sample.sourceKind === "codex") {
+    return sample.window === "turn" && sample.timingSource === "explicit";
+  }
+  if (sample.sourceKind === "claude") {
+    return sample.window === "request" && sample.timingSource === "timestamp_fallback";
+  }
+  return false;
 }
 
 /**
@@ -1504,12 +1540,10 @@ export function selectPerfSamples(samples, options = {}) {
     const first = perfConflictSignature(group[0]);
     const consistent = group.every((row) => perfConflictSignature(row) === first);
     if (consistent) {
-      // Row order must not decide which duplicate represents the group, and it must
-      // not decide which member's filter evidence survives either: merge the flags
-      // and the reason chain instead of keeping only the first row. This is the fold
-      // half of the shared evidence-retention duty; the conflict path below calls the
-      // same merge, so the two can never drift apart.
-      deduped.push({ ...group[0], ...perfMergedDiagnosticEvidence(group) });
+      // Identical evidence folds once. Prefer the current method version so a stale
+      // v1 duplicate cannot hide an admitted v2 row, then merge every diagnostic.
+      const representative = group.find((row) => row.methodVersion === PERF_METHOD_VERSION) ?? group[0];
+      deduped.push({ ...representative, ...perfMergedDiagnosticEvidence(group) });
       continue;
     }
     deduped.push(perfResolveConflictGroup(group, bounds));
@@ -1834,6 +1868,8 @@ const PERF_SUMMARY_STATES = Object.freeze(["rebuilding", "ready", "degraded"]);
  * aggregation results. The authoritative shape (with per-field notes) is the
  * `PerfSummaryGroup` typedef in `src/usage-types.js`.
  * @typedef {import("./usage-types.js").PerfSummaryGroup} PerfSummaryGroup
+ * @typedef {import("./usage-types.js").PerfModelRow} PerfModelRow
+ * @typedef {import("./usage-types.js").PerfCodexTimingCoverage} PerfCodexTimingCoverage
  */
 
 /**
@@ -1872,6 +1908,243 @@ function perfNearestRank(sorted, p) {
 }
 
 /**
+ * Count Codex timing coverage for the current method on the same selection as the
+ * summary. This filters only source and method version, never `sampled`, so missing
+ * duration/output evidence remains in the denominator.
+ * @param {PerfSelection} selection
+ * @param {Array<{ kind?: unknown, homeId?: unknown }> | null | undefined} knownSources
+ * @param {string[] | Set<string> | null | undefined} excludedHomeIds
+ * @param {number} eraCutoffMs
+ * @returns {PerfCodexTimingCoverage | null}
+ */
+function computeCodexTimingCoverage(selection, knownSources, excludedHomeIds, eraCutoffMs) {
+  const excluded = new Set();
+  for (const homeId of excludedHomeIds ?? []) {
+    if (typeof homeId === "string" && homeId.trim() !== "") excluded.add(homeId.trim());
+  }
+  let applicable = false;
+  for (const source of knownSources ?? []) {
+    if (
+      source !== null &&
+      typeof source === "object" &&
+      canonicalPerfSourceKind(source.kind) === "codex" &&
+      typeof source.homeId === "string" &&
+      source.homeId.trim() !== "" &&
+      !excluded.has(source.homeId.trim())
+    ) {
+      applicable = true;
+      break;
+    }
+  }
+  if (!applicable) return null;
+
+  const currentCodex = (sample) => sample?.sourceKind === "codex" && sample.methodVersion === PERF_METHOD_VERSION;
+  const eligible = selection.eligible.filter(currentCodex);
+  const unplaced = selection.unplaced.filter(currentCodex);
+  let recordedOutputTokens = 0;
+  let sampledOutputTokens = 0;
+  let unknownOutputCandidates = 0;
+  for (const sample of eligible) {
+    const output = sample.outputTokens;
+    if (!isPerfSafeCount(output) || output < 0) {
+      unknownOutputCandidates += 1;
+      continue;
+    }
+    if (recordedOutputTokens !== null) {
+      const next = recordedOutputTokens + output;
+      recordedOutputTokens = isPerfSafeCount(next) ? next : null;
+    }
+    const flags = perfFlagSetOf(sample);
+    if (sample.status === "in_progress" || !isPerfSampled(sample, flags)) continue;
+    if (sampledOutputTokens !== null) {
+      const next = sampledOutputTokens + output;
+      sampledOutputTokens = isPerfSafeCount(next) ? next : null;
+    }
+  }
+  return {
+    methodVersion: PERF_METHOD_VERSION,
+    recordedOutputTokens,
+    sampledOutputTokens,
+    unknownOutputCandidates,
+    counts: computePerfCoverage(
+      {
+        ...selection,
+        eligible,
+        unplaced,
+      },
+      { eraCutoffMs },
+    ),
+  };
+}
+
+/**
+ * Project the single sampled set into source/model/effort/provider speed rows. Home,
+ * channel and main/subagent identity deliberately do not participate. Historical
+ * Codex estimates remain in diagnostics but never enter the speed overview. Current
+ * Codex candidates without duration retain a separate row with no speed statistics.
+ * @param {PerfSample[]} sampled
+ * @param {number} [minSamples]
+ * @param {PerfSample[]} [candidates] Already selected, deduplicated candidates.
+ * @returns {PerfModelRow[]}
+ */
+export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candidates = []) {
+  if (!Array.isArray(sampled)) throw new TypeError("projectPerfModels expects an array of sampled perf rows");
+
+  /** @type {Map<string, { key: string, sourceKind: string, model: string, reasoningEffort: string, modelProvider: string, members: PerfSample[], rankAdmitted: boolean }>} */
+  const buckets = new Map();
+  for (const sample of sampled) {
+    const sourceKind = canonicalPerfSourceKind(sample?.sourceKind);
+    const model = trimmedString(sample?.model);
+    if (sourceKind === "unsupported" || model === "") continue;
+    if (sourceKind === "codex" && !isPerfRankAdmitted(sample)) continue;
+    const reasoningEffort = trimmedString(sample.reasoningEffort);
+    const modelProvider = trimmedString(sample.modelProvider);
+    const key = JSON.stringify([sourceKind, model, reasoningEffort, modelProvider]);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.members.push(sample);
+      bucket.rankAdmitted &&= isPerfRankAdmitted(sample);
+    } else {
+      buckets.set(key, {
+        key,
+        sourceKind,
+        model,
+        reasoningEffort,
+        modelProvider,
+        members: [sample],
+        rankAdmitted: isPerfRankAdmitted(sample),
+      });
+    }
+  }
+
+  /** @type {PerfModelRow[]} */
+  const models = [];
+  for (const bucket of buckets.values()) {
+    let sumOutputTokens = 0;
+    let sumDurationMs = 0;
+    let firstSampleAtMs = null;
+    let lastSampleAtMs = null;
+    const windows = new Set();
+    for (const member of bucket.members) {
+      sumOutputTokens += /** @type {number} */ (member.outputTokens);
+      sumDurationMs += /** @type {number} */ (member.durationMs);
+      if (typeof member.tsMs === "number") {
+        if (firstSampleAtMs === null || member.tsMs < firstSampleAtMs) firstSampleAtMs = member.tsMs;
+        if (lastSampleAtMs === null || member.tsMs > lastSampleAtMs) lastSampleAtMs = member.tsMs;
+      }
+      windows.add(trimmedString(member.window));
+    }
+    const overflow = !isPerfSafeCount(sumOutputTokens) || !isPerfSafeCount(sumDurationMs);
+    const n = bucket.members.length;
+    /** @type {PerfModelRow["window"]} */
+    const window =
+      windows.size === 1
+        ? /** @type {PerfModelRow["window"]} */ (trimmedString(windows.values().next().value))
+        : "mixed";
+    const rankState = overflow
+      ? "overflow"
+      : bucket.rankAdmitted !== true || window === "mixed"
+        ? "unverified"
+        : n < minSamples
+          ? "insufficient_samples"
+          : "eligible";
+    const rates = overflow
+      ? []
+      : bucket.members
+          .map(
+            (member) => /** @type {number} */ (member.outputTokens * 1000) / /** @type {number} */ (member.durationMs),
+          )
+          .sort((a, b) => a - b);
+
+    models.push({
+      key: bucket.key,
+      sourceKind: bucket.sourceKind,
+      model: bucket.model,
+      reasoningEffort: bucket.reasoningEffort,
+      modelProvider: bucket.modelProvider,
+      window,
+      firstSampleAtMs,
+      lastSampleAtMs,
+      averageTps: overflow ? null : (sumOutputTokens * 1000) / sumDurationMs,
+      p10: overflow ? null : perfNearestRank(rates, 0.1),
+      p90: overflow ? null : perfNearestRank(rates, 0.9),
+      n,
+      state: overflow ? "overflow" : "ok",
+      rankState,
+      rank: null,
+    });
+  }
+
+  // Missing request timing must hide the speed, not the observed Codex model.
+  /** @type {Map<string, PerfModelRow>} */
+  const missing = new Map();
+  for (const sample of candidates) {
+    if (sample.sourceKind !== "codex" || sample.methodVersion !== PERF_METHOD_VERSION) continue;
+    if (typeof sample.tsMs !== "number") continue;
+    if (sample.durationMs !== null && sample.durationMs > 0) continue;
+    const model = trimmedString(sample.model);
+    const flags = perfFlagSetOf(sample);
+    if (model === "" || flags.has("MODEL_AMBIGUOUS") || flags.has("METHOD_ESTIMATE")) continue;
+    if (sample.timingKind !== "request_e2e") continue;
+    const reasoningEffort = trimmedString(sample.reasoningEffort);
+    const modelProvider = trimmedString(sample.modelProvider);
+    const key = JSON.stringify(["codex", model, reasoningEffort, modelProvider]);
+    if (buckets.has(key)) continue;
+    let row = missing.get(key);
+    if (!row) {
+      row = {
+        key,
+        sourceKind: "codex",
+        model,
+        reasoningEffort,
+        modelProvider,
+        window: "turn",
+        firstSampleAtMs: null,
+        lastSampleAtMs: null,
+        averageTps: null,
+        p10: null,
+        p90: null,
+        n: 0,
+        state: "missing_duration",
+        rankState: "unverified",
+        rank: null,
+        candidateCount: 0,
+        firstCandidateAtMs: sample.tsMs,
+        lastCandidateAtMs: sample.tsMs,
+      };
+      missing.set(key, row);
+    }
+    row.candidateCount += 1;
+    row.firstCandidateAtMs = Math.min(row.firstCandidateAtMs, sample.tsMs);
+    row.lastCandidateAtMs = Math.max(row.lastCandidateAtMs, sample.tsMs);
+  }
+  models.push(...missing.values());
+
+  models.sort((a, b) => {
+    const aMissing = a.state === "missing_duration";
+    const bMissing = b.state === "missing_duration";
+    if (aMissing !== bMissing) return aMissing ? 1 : -1;
+    const aOverflow = a.rankState === "overflow";
+    const bOverflow = b.rankState === "overflow";
+    if (aOverflow !== bOverflow) return aOverflow ? 1 : -1;
+    const aEligible = a.rankState === "eligible";
+    const bEligible = b.rankState === "eligible";
+    if (aEligible !== bEligible) return aEligible ? -1 : 1;
+    if (a.averageTps !== null && b.averageTps !== null && a.averageTps !== b.averageTps) {
+      return b.averageTps - a.averageTps;
+    }
+    return perfCodeUnitCompare(a.key, b.key);
+  });
+  let rank = 1;
+  for (const model of models) {
+    if (model.rankState !== "eligible") continue;
+    model.rank = rank;
+    rank += 1;
+  }
+  return models;
+}
+
+/**
  * Aggregate one already-filtered sample set into a `PerfSummary` (plan §17.2 is
  * the only aggregation algorithm; the plan requires both production summary paths
  * to share this one function).
@@ -1890,7 +2163,7 @@ function perfNearestRank(sorted, p) {
  *   or input order (plan §17.3: "显示排序用未舍入 p50，稳定同值排序用规范 key").
  * @param {PerfSample[]} samples
  * @param {{ range?: object | null, excludedHomeIds?: string[] | Set<string>, knownSources?: { kind?: unknown, homeId?: unknown }[], meta?: object }} [options]
- * @returns {{ groups: PerfSummaryGroup[], coverage: PerfCoverage, meta: object }}
+ * @returns {{ groups: PerfSummaryGroup[], models: PerfModelRow[], coverage: PerfCoverage, codexTimingCoverage: PerfCodexTimingCoverage | null, meta: object }}
  */
 export function summarizePerf(samples, options = {}) {
   const opts = options ?? {};
@@ -1911,6 +2184,12 @@ export function summarizePerf(samples, options = {}) {
   // fell back to the default).
   const eraCutoffMs = resolvePerfEraCutoffMs(opts.meta?.eraCutoffMs);
   const coverage = computePerfCoverageWithBreakdown(selection, eraCutoffMs);
+  const codexTimingCoverage = computeCodexTimingCoverage(
+    selection,
+    knownSources,
+    opts.excludedHomeIds ?? [],
+    eraCutoffMs,
+  );
 
   const minSamples = opts.meta?.minSamples ?? PERF_MIN_SAMPLES;
   if (typeof minSamples !== "number" || !Number.isFinite(minSamples) || minSamples < 0) {
@@ -1925,15 +2204,22 @@ export function summarizePerf(samples, options = {}) {
     throw new TypeError("meta.sourceWarnings must be an array of {sourceKind, homeId, code, count}");
   }
 
+  // Build the sampled set once; the old groups and the model projection must agree.
+  /** @type {PerfSample[]} */
+  const sampled = [];
+  for (const sample of selection.eligible) {
+    const flags = perfFlagSetOf(sample);
+    if (sample.status === "in_progress") continue;
+    if (!isPerfSampled(sample, flags)) continue;
+    sampled.push(sample);
+  }
+
   // Group the `sampled` members by the canonical §17.1 key. `perfGroupKey` is
   // reused rather than rebuilt so grouping can never disagree with M1.1/M1.2.
   /** @type {Map<string, PerfSample[]>} */
   const byGroup = new Map();
   let overflowCount = 0;
-  for (const sample of selection.eligible) {
-    const flags = perfFlagSetOf(sample);
-    if (sample.status === "in_progress") continue;
-    if (!isPerfSampled(sample, flags)) continue;
+  for (const sample of sampled) {
     const key = perfGroupKey(sample);
     if (key === null) continue;
     const group = byGroup.get(key);
@@ -2023,7 +2309,15 @@ export function summarizePerf(samples, options = {}) {
   // (its rank stays `null`), so a low-n group can never masquerade as a rank.
   let nextRank = 1;
   for (const group of groups) {
-    if (group.insufficientSamples || group.state === "overflow") continue;
+    const members = byGroup.get(group.groupKey);
+    if (
+      group.insufficientSamples ||
+      group.state === "overflow" ||
+      members === undefined ||
+      !members.every((member) => isPerfRankAdmitted(member))
+    ) {
+      continue;
+    }
     group.rank = nextRank;
     nextRank += 1;
   }
@@ -2067,5 +2361,11 @@ export function summarizePerf(samples, options = {}) {
     eraCutoffMs,
     sourceWarnings: warnings,
   };
-  return { groups, coverage, meta };
+  return {
+    groups,
+    models: projectPerfModels(sampled, minSamples, selection.eligible),
+    coverage,
+    codexTimingCoverage,
+    meta,
+  };
 }

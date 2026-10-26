@@ -366,10 +366,10 @@ test("M1.3-6 ordering: unrounded p50 descending, ties broken by canonical key", 
 test("M1.3-7 ranking numbers only sufficiently sampled groups", () => {
   // With minSamples = 2, a 2-member group is ranked and a 1-member group is not.
   const two = [
-    sample({ identity: ["r-1"], model: "ranked", durationMs: 1_000, outputTokens: 1_000 }),
-    sample({ identity: ["r-2"], model: "ranked", durationMs: 1_000, outputTokens: 1_000 }),
+    codexSample({ identity: ["r-1"], model: "ranked", durationMs: 1_000, outputTokens: 1_000 }),
+    codexSample({ identity: ["r-2"], model: "ranked", durationMs: 1_000, outputTokens: 1_000 }),
   ];
-  const one = sample({ identity: ["r-3"], model: "lonely", durationMs: 1_000, outputTokens: 2_000 });
+  const one = codexSample({ identity: ["r-3"], model: "lonely", durationMs: 1_000, outputTokens: 2_000 });
   const summary = summarizePerf([...two, one], { range: RANGE, meta: { minSamples: 2 } });
 
   const ranked = summary.groups.find((group) => group.model === "ranked");
@@ -899,8 +899,8 @@ test("M1.3-20 reachability ledger: every 0, null and error branch has a trigger"
   assert.equal(
     summarizePerf(
       [
-        sample({ identity: ["led-r1"], durationMs: 1_000, outputTokens: 1_000 }),
-        sample({ identity: ["led-r2"], durationMs: 1_000, outputTokens: 1_000 }),
+        codexSample({ identity: ["led-r1"], durationMs: 1_000, outputTokens: 1_000 }),
+        codexSample({ identity: ["led-r2"], durationMs: 1_000, outputTokens: 1_000 }),
       ],
       { range: RANGE, meta: { minSamples: 1 } },
     ).groups[0].rank,
@@ -938,14 +938,15 @@ test("M1.3-20 reachability ledger: every 0, null and error branch has a trigger"
 
 /**
  * Build a codex sample. Codex is the only source with an era split, so every
- * era assertion needs this semantic combination (`turn` window, item-span estimate,
- * reasoning-inclusive tokens).
+ * era assertion needs this semantic combination (`turn` window, explicit request
+ * timing, reasoning-inclusive tokens).
  */
 function codexSample(overrides = {}) {
   return sample({
     sourceKind: "codex",
     window: "turn",
-    timingKind: "item_span_estimate",
+    timingKind: "request_e2e",
+    timingSource: "explicit",
     tokenScope: "reported_output_includes_reasoning",
     ...overrides,
   });
@@ -1592,4 +1593,230 @@ test("M1.3-35 unplaced attribution survives every input permutation, including u
     assert.equal(summary.coverage.eligible, 0);
     assert.equal(summary.coverage.unplaced, 2);
   }
+});
+
+test("A4 codexTimingCoverage: only an applicable, non-excluded Codex source enables counts", () => {
+  const row = codexSample({ identity: ["a4-no-source"], outputTokens: 1_000, durationMs: 1_000 });
+  assert.equal(summarizePerf([row], { range: RANGE }).codexTimingCoverage, null);
+  assert.equal(
+    summarizePerf([row], {
+      range: RANGE,
+      knownSources: [{ kind: "zcode", homeId: "h1" }],
+    }).codexTimingCoverage,
+    null,
+  );
+  assert.equal(
+    summarizePerf([], {
+      range: RANGE,
+      knownSources: [{ kind: "codex", homeId: "h1" }],
+      excludedHomeIds: ["h1"],
+    }).codexTimingCoverage,
+    null,
+  );
+
+  const empty = summarizePerf([], {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage;
+  assert.equal(empty.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(empty.counts.eligible, 0);
+  assert.equal(empty.counts.sampled, 0);
+  assert.equal(empty.counts.dropped, 0);
+  assert.equal(empty.counts.pending, 0);
+  assert.equal(empty.counts.sampleRate, null);
+});
+
+test("A4 codexTimingCoverage: v1/v2 mix counts only current-method Codex candidates", () => {
+  const rows = [
+    codexSample({ identity: ["a4-v2"], outputTokens: 1_000, durationMs: 1_000 }),
+    codexSample({
+      identity: ["a4-v1"],
+      methodVersion: "tps-v1",
+      outputTokens: 1_000,
+      durationMs: 1_000,
+    }),
+  ];
+  const summary = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  });
+  const counts = summary.codexTimingCoverage.counts;
+
+  assert.equal(summary.coverage.eligible, 2, "old coverage keeps v1");
+  assert.equal(counts.eligible, 1);
+  assert.equal(counts.sampled, 1);
+  assert.equal(counts.dropped, 0);
+  assert.equal(counts.pending, 0);
+  assert.equal(counts.eligible, counts.sampled + counts.dropped + counts.pending);
+});
+
+test("A4 codexTimingCoverage: missing timing stays in the denominator and overlapping flags are not a dropped sum", () => {
+  const rows = [
+    codexSample({
+      identity: ["a4-missing-duration"],
+      outputTokens: 1_000,
+      durationMs: null,
+    }),
+    codexSample({
+      identity: ["a4-missing-both"],
+      outputTokens: null,
+      durationMs: null,
+    }),
+  ];
+  const counts = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage.counts;
+
+  assert.equal(counts.eligible, 2);
+  assert.equal(counts.sampled, 0);
+  assert.equal(counts.dropped, 2);
+  assert.equal(counts.pending, 0);
+  assert.equal(counts.droppedByReason.duration_missing_nonpositive_invalid, 1);
+  assert.equal(counts.droppedByReason.output_missing_zero_invalid, 1);
+  assert.equal(counts.byFlag.MISSING_DURATION, 2);
+  assert.equal(counts.byFlag.MISSING_OUTPUT, 1);
+  assert.ok(Object.values(counts.byFlag).reduce((sum, value) => sum + value, 0) > counts.dropped);
+  assert.equal(counts.eligible, counts.sampled + counts.dropped + counts.pending);
+  assert.equal(
+    Object.values(counts.droppedByReason).reduce((sum, value) => sum + value, 0),
+    counts.dropped,
+  );
+});
+
+test("A4 codexTimingCoverage: pending and current-method unplaced stay distinct from ranged eligible", () => {
+  const rows = [
+    codexSample({ identity: ["a4-pending"], status: "in_progress" }),
+    codexSample({ identity: ["a4-unplaced"], tsMs: null }),
+    codexSample({ identity: ["a4-unplaced-v1"], tsMs: null, methodVersion: "tps-v1" }),
+    sample({ identity: ["a4-unplaced-zcode"], tsMs: null }),
+  ];
+  const counts = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage.counts;
+
+  assert.equal(counts.eligible, 1);
+  assert.equal(counts.sampled, 0);
+  assert.equal(counts.dropped, 0);
+  assert.equal(counts.pending, 1);
+  assert.equal(counts.unplaced, 1, "v1 and non-Codex unplaced rows stay out");
+  assert.equal(counts.eligible, counts.sampled + counts.dropped + counts.pending);
+});
+
+test("A4 codexTimingCoverage: an empty range yields zero eligible without losing unplaced history", () => {
+  const rows = [
+    codexSample({ identity: ["a4-out-of-range"], tsMs: T }),
+    codexSample({ identity: ["a4-unplaced-empty-range"], tsMs: null }),
+  ];
+  const counts = summarizePerf(rows, {
+    range: EMPTY_RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage.counts;
+
+  assert.equal(counts.eligible, 0);
+  assert.equal(counts.sampled, 0);
+  assert.equal(counts.dropped, 0);
+  assert.equal(counts.pending, 0);
+  assert.equal(counts.unplaced, 1);
+  assert.equal(counts.sampleRate, null);
+});
+
+test("A5 codexTimingCoverage: known zero and unknown output stay separate; missing duration is still recorded", () => {
+  const rows = [
+    codexSample({ identity: ["a5-zero"], outputTokens: 0, durationMs: 2_000 }),
+    codexSample({ identity: ["a5-missing-duration"], outputTokens: 2_000, durationMs: null }),
+    codexSample({ identity: ["a5-unknown-output"], outputTokens: null, durationMs: 2_000 }),
+  ];
+  const coverage = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage;
+
+  assert.equal(coverage.recordedOutputTokens, 2_000, "0 is known and adds nothing; missing output is not 0");
+  assert.equal(coverage.sampledOutputTokens, 0);
+  assert.equal(coverage.unknownOutputCandidates, 1);
+  assert.equal(coverage.counts.eligible, 3);
+  assert.equal(coverage.counts.sampled, 0);
+});
+
+test("A5 codexTimingCoverage: sampled output is a strict subset of all recorded output", () => {
+  const rows = [
+    codexSample({ identity: ["a5-sampled"], outputTokens: 1_000, durationMs: 1_000 }),
+    codexSample({
+      identity: ["a5-pending"],
+      status: "in_progress",
+      outputTokens: 3_000,
+      durationMs: 1_000,
+    }),
+    codexSample({
+      identity: ["a5-failed"],
+      status: "failed",
+      outputTokens: 500,
+      durationMs: 1_000,
+    }),
+  ];
+  const coverage = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage;
+
+  assert.equal(coverage.recordedOutputTokens, 4_500);
+  assert.equal(coverage.sampledOutputTokens, 1_000);
+  assert.equal(coverage.unknownOutputCandidates, 0);
+  assert.equal(coverage.counts.sampled, 1);
+});
+
+test("A5 codexTimingCoverage: unknown-only output has a zero token denominator; unplaced is excluded", () => {
+  const rows = [
+    codexSample({ identity: ["a5-unknown-in-range"], outputTokens: null, durationMs: 2_000 }),
+    codexSample({ identity: ["a5-known-unplaced"], outputTokens: 5_000, tsMs: null }),
+  ];
+  const coverage = summarizePerf(rows, {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  }).codexTimingCoverage;
+
+  assert.equal(coverage.recordedOutputTokens, 0);
+  assert.equal(coverage.sampledOutputTokens, 0);
+  assert.equal(coverage.unknownOutputCandidates, 1);
+  assert.equal(coverage.counts.eligible, 1);
+  assert.equal(coverage.counts.unplaced, 1);
+});
+
+test("A5 codexTimingCoverage: each token sum becomes null on integer overflow", () => {
+  const options = {
+    range: RANGE,
+    knownSources: [{ kind: "codex", homeId: "h1" }],
+  };
+  const recordedOverflow = summarizePerf(
+    [
+      codexSample({
+        identity: ["a5-overflow-recorded-a"],
+        outputTokens: Number.MAX_SAFE_INTEGER,
+        durationMs: null,
+      }),
+      codexSample({ identity: ["a5-overflow-recorded-b"], outputTokens: 1, durationMs: null }),
+      codexSample({ identity: ["a5-overflow-sampled-safe"], outputTokens: 10, durationMs: 1_000 }),
+    ],
+    options,
+  ).codexTimingCoverage;
+  assert.equal(recordedOverflow.recordedOutputTokens, null);
+  assert.equal(recordedOverflow.sampledOutputTokens, 10);
+  assert.equal(recordedOverflow.unknownOutputCandidates, 0);
+
+  const sampledOverflow = summarizePerf(
+    [
+      codexSample({
+        identity: ["a5-overflow-sampled-a"],
+        outputTokens: Number.MAX_SAFE_INTEGER,
+        durationMs: 1_000,
+      }),
+      codexSample({ identity: ["a5-overflow-sampled-b"], outputTokens: 1, durationMs: 1_000 }),
+    ],
+    options,
+  ).codexTimingCoverage;
+  assert.equal(sampledOverflow.recordedOutputTokens, null);
+  assert.equal(sampledOverflow.sampledOutputTokens, null);
+  assert.equal(sampledOverflow.unknownOutputCandidates, 0);
 });
