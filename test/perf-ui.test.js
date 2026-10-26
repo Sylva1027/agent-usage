@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { englishCopyEntries } from "../public/i18n.js";
@@ -7,9 +8,14 @@ import {
   formatPerfNumber,
   formatPerfRate,
   formatPerfTps,
+  layoutPerfModelBands,
   renderPerfCoverageHtml,
   renderPerfDetailHtml,
   renderPerfListHtml,
+  renderPerfModelDetailHtml,
+  renderPerfModelTableHtml,
+  renderPerfModelsHtml,
+  sourceLabel,
 } from "../public/perf-ui.js";
 
 function group(overrides = {}) {
@@ -363,11 +369,20 @@ test("unplaced coverage identifies its all-history scope without changing the cu
   assert.match(english, /Unknown source/);
   assert.doesNotMatch(english, /未知来源/);
   assert.match(english, /Unplaced in time[\s\S]*?17/);
+  const englishDetailsStart = english.indexOf('<details class="perf-coverage-more">');
+  assert.ok(englishDetailsStart >= 0);
+  assert.doesNotMatch(english.slice(0, englishDetailsStart), /all history for the selected sources/i);
   assert.match(
-    english,
+    english.slice(englishDetailsStart),
     /all history for the selected sources[\s\S]*?excluded from the eligible-record denominator for the current range/i,
   );
-  assert.match(chinese, /时间未定位统计所选来源的全历史记录，不计入当前范围的适用候选分母。/);
+  const chineseDetailsStart = chinese.indexOf('<details class="perf-coverage-more">');
+  assert.ok(chineseDetailsStart >= 0);
+  assert.doesNotMatch(chinese.slice(0, chineseDetailsStart), /时间未定位统计所选来源的全历史记录/);
+  assert.match(
+    chinese.slice(chineseDetailsStart),
+    /时间未定位统计所选来源的全历史记录，不计入当前范围的适用候选分母。/,
+  );
   assert.equal(perf.coverage.eligible, 0, "unplaced records do not enter current-range eligible counts");
   assert.equal(perf.coverage.unplaced, 17);
 });
@@ -415,11 +430,29 @@ test("degraded, unsupported, long, and hostile source labels remain visible and 
   assert.ok(list.length > 600, "a long model label is retained in escaped markup and title");
 });
 
+test("missing sources show a preserved-history status without changing ready state", () => {
+  const perf = summary();
+  perf.missingSources = [{ homeId: "private-home", sourcePath: "C:\\private\\usage.jsonl" }];
+  const chinese = renderPerfCoverageHtml(perf, { locale: "zh-CN" });
+  const english = renderPerfCoverageHtml(perf, { locale: "en-US" });
+  assert.match(chinese, /<p class="perf-notice status" role="status">部分来源已缺失，已保留历史数据。<\/p>/);
+  assert.match(english, /Some sources are missing\. Historical data is preserved\./);
+  assert.equal(perf.state, "ready");
+  assert.equal(perf.meta.state, "ready");
+  assert.doesNotMatch(chinese + english, /private-home|private\\usage|部分数据来源不可用/);
+
+  perf.missingSources = [];
+  assert.doesNotMatch(renderPerfCoverageHtml(perf, { locale: "zh-CN" }), /保留历史数据/);
+  delete perf.missingSources;
+  assert.doesNotMatch(renderPerfCoverageHtml(perf, { locale: "zh-CN" }), /保留历史数据/);
+});
+
 test("every fixed performance label has an explicit English copy entry", () => {
   const english = new Map(englishCopyEntries());
   const labels = [
     "查看方式",
     "选择一组模型查看详情。",
+    "部分来源已缺失，已保留历史数据。",
     "统计更新中，当前不展示部分排名。",
     "部分数据来源不可用，当前结果可能不完整。",
     "存在适用候选，但当前没有可计算的 TPS 样本。",
@@ -468,8 +501,45 @@ test("every fixed performance label has an explicit English copy entry", () => {
     "样本不足",
     "聚合溢出",
     "排名",
+    "参考行",
+    "计量条件未验证",
+    "排名信息不可用",
+    "满足当前计量条件",
+    "满足当前计量条件的历史样本排序；分隔线以下为参考读数。",
+    "样本数不可用",
+    "样本日期",
+    "样本日期范围",
+    "样本日期不可用",
+    "请求",
+    "步骤",
+    "消息",
+    "回合",
+    "混合样本",
+    "样本",
+    "p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。",
+    "Codex 计时覆盖",
+    "候选采样覆盖率",
+    "已记录输出覆盖率",
+    "没有适用的 Codex 来源。",
+    "此响应未提供 Codex 计时覆盖信息。",
+    "本范围没有 Codex 候选。",
+    "Codex 计时覆盖信息不可用。",
+    "性能索引正在重建，覆盖信息不可用。",
+    "性能索引尚未初始化，覆盖信息不可用。",
+    "性能索引尚未初始化，当前没有可展示的模型速度。",
+    "部分来源降级，覆盖保留已发布的健康数据。",
+    "输出 token 合计溢出，已记录输出比例不可用。",
+    "输出 token 汇总字段缺失或无效，已记录输出比例不可用。",
+    "已记录输出覆盖率只统计已知输出。",
+    "缺失或无效时长",
+    "进行中",
+    "另有输出 token 未知的候选",
+    "全历史、无法定位日期的记录",
+    "不计入当前范围分母",
     "推理强度",
     "提供方",
+    "provider 未知",
+    "provider 信息不可用",
     "p10（慢端）",
     "p90（快端）",
     "合并样本 TPS",
@@ -494,4 +564,719 @@ test("every fixed performance label has an explicit English copy entry", () => {
     "来源计时语义不匹配",
   ];
   for (const label of labels) assert.ok(english.has(label), `missing English translation for ${label}`);
+});
+
+const MODEL_SAMPLE_START = Date.parse("2026-10-04T10:00:00Z");
+const MODEL_SAMPLE_END = Date.parse("2026-10-04T11:00:00Z");
+
+function model(overrides = {}) {
+  const value = {
+    sourceKind: "codex",
+    model: "gpt-6.1-sol",
+    reasoningEffort: "high",
+    window: "turn",
+    firstSampleAtMs: MODEL_SAMPLE_START,
+    lastSampleAtMs: MODEL_SAMPLE_END,
+    averageTps: 81.6,
+    p10: 58.2,
+    p90: 96.4,
+    n: 207,
+    state: "ok",
+    rankState: "eligible",
+    rank: 1,
+    ...overrides,
+  };
+  const key = [value.sourceKind, value.model, value.reasoningEffort];
+  if (Object.hasOwn(value, "modelProvider")) key.push(value.modelProvider);
+  return {
+    key: JSON.stringify(key),
+    ...value,
+  };
+}
+
+function timingCoverage(overrides = {}) {
+  return {
+    methodVersion: "tps-v2",
+    counts: { eligible: 3, sampled: 1, sampleRate: 1 / 3, unplaced: 0 },
+    recordedOutputTokens: 4500,
+    sampledOutputTokens: 1000,
+    unknownOutputCandidates: 0,
+    ...overrides,
+  };
+}
+
+function legacyModel(overrides = {}) {
+  const row = model(overrides);
+  delete row.rankState;
+  return row;
+}
+
+function modelRowHtml(html, index) {
+  const marker = html.indexOf(`data-perf-model-index="${index}"`);
+  const start = html.lastIndexOf("<tr", marker);
+  const next = html.indexOf("<tr", marker + 1);
+  return html.slice(start, next < 0 ? undefined : next);
+}
+
+function visibleText(html) {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+}
+
+test("Codex with usage but no request duration stays selectable and explains the missing speed once", () => {
+  const row = model({
+    state: "missing_duration",
+    averageTps: null,
+    p10: null,
+    p90: null,
+    n: 0,
+    candidateCount: 407,
+    firstCandidateAtMs: MODEL_SAMPLE_START,
+    lastCandidateAtMs: MODEL_SAMPLE_END,
+  });
+  for (const locale of ["zh-CN", "en-US"]) {
+    const html = renderPerfModelsHtml({ models: [row] }, { locale });
+    const table = renderPerfModelTableHtml([row], { locale });
+    assert.match(table, /Codex/);
+    assert.match(table, /data-perf-model-key=/);
+    assert.doesNotMatch(table, /mini-fill|\bn=|407/);
+    assert.match(html, /407/);
+    assert.match(html, locale === "en-US" ? /Request duration is missing from the log/ : /日志未记录请求耗时/);
+    assert.doesNotMatch(html, /perf-model-band|0\.0|0 个回合|0 turns/);
+  }
+});
+
+test("model list uses the comparison rail with three plain headers and no ranking or row sample count", () => {
+  for (const locale of ["zh-CN", "en-US"]) {
+    const rows = [
+      model({ n: 151 }),
+      legacyModel({ model: "legacy", n: 9 }),
+      model({ model: "small", rankState: "insufficient_samples", n: 1 }),
+    ];
+    const html = renderPerfModelTableHtml(rows, { locale, selectedKey: rows[2].key });
+    assert.equal((html.match(/<th scope="col">/g) || []).length, 3);
+    assert.match(html, /class="comparison-table-frame"/);
+    assert.match(html, /class="comparison-table-scroll perf-model-table-scroll"/);
+    assert.match(html, /class="comparison-table perf-model-table perf-model-data-table"/);
+    assert.doesNotMatch(html, /perf-model-rank|rankState|is-reference|\bn=|▼|Reasoning Effort|推理强度|排名|参考行/);
+    assert.match(html, /aria-pressed="true"/);
+    assert.equal((html.match(/data-perf-model-index=/g) || []).length, 3);
+    assert.match(html, locale === "en-US" ? /<th scope="col">Models<\/th>/ : /<th scope="col">模型<\/th>/);
+  }
+});
+
+test("model table handles 0, 1, 5, 6, and 11 rows without dropping the scroll region", () => {
+  for (const count of [0, 1, 5, 6, 11]) {
+    const rows = Array.from({ length: count }, (_, index) =>
+      model({
+        model: `model-${index}`,
+        averageTps: 100 - index,
+        rank: index + 1,
+      }),
+    );
+    const html = renderPerfModelTableHtml(rows, { locale: "zh-CN" });
+    assert.equal((html.match(/class="perf-model-data-row/g) || []).length, count);
+    if (count === 0) {
+      assert.match(html, /当前范围没有可评估的性能样本/);
+    } else {
+      assert.match(html, /class="comparison-table-scroll perf-model-table-scroll"/);
+    }
+  }
+});
+
+test("model rows escape hostile model, effort, key, and long labels while preserving full title text", () => {
+  const hostile = model({
+    model: `<img src=x onerror="alert(1)">${"long-model-".repeat(20)}`,
+    reasoningEffort: `max"><script>alert(1)</script>`,
+    sourceKind: `codex"><img src=x>`,
+  });
+  const html = renderPerfModelTableHtml([hostile], { locale: "zh-CN" });
+  const detail = renderPerfModelDetailHtml(hostile, { locale: "zh-CN" });
+  assert.doesNotMatch(html + detail, /<img|<script/);
+  assert.match(html, /&lt;img/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /title="[^"]*&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(detail, /class="perf-model-detail-title" title="[^"]*long-model-[^"]*"/);
+});
+
+test("model identities group source and provider above model and optional effort without separator dots", () => {
+  for (const locale of ["zh-CN", "en-US"]) {
+    const row = model({ sourceKind: "workbuddy", reasoningEffort: "" });
+    const table = renderPerfModelTableHtml([row], { locale });
+    const detail = renderPerfModelDetailHtml(row, { locale });
+    assert.doesNotMatch(table, /class="perf-model-effort"| · —/);
+    assert.doesNotMatch(detail, /class="perf-model-title-effort"| · —/);
+    assert.doesNotMatch(detail, /class="perf-model-separator"/);
+    assert.match(
+      detail,
+      /class="perf-model-identity-context"><span class="perf-model-source-name">WorkBuddy<\/span><\/div><div class="perf-model-identity-model">/,
+    );
+    assert.match(
+      table,
+      /<td class="perf-model-source" title="WorkBuddy"><span class="perf-model-source-kind">WorkBuddy<\/span><\/td>/,
+    );
+    const withEffort = renderPerfModelDetailHtml(model({ reasoningEffort: "max" }), { locale });
+    assert.match(
+      withEffort,
+      /class="perf-model-identity-model"><span class="perf-model-title-name">[^<]+<\/span><span class="perf-model-title-effort">max<\/span><\/div>/,
+    );
+  }
+});
+
+test("same-named models remain distinct by provider in source cells, detail, and accessible names", () => {
+  const alpha = model({ model: "identical-model", modelProvider: "provider-alpha" });
+  const beta = model({ model: "identical-model", modelProvider: "provider-beta" });
+  const table = renderPerfModelTableHtml([alpha, beta], { locale: "zh-CN" });
+  const alphaDetail = renderPerfModelDetailHtml(alpha, { locale: "zh-CN" });
+
+  assert.match(
+    table,
+    /title="Codex · provider-alpha"><span class="perf-model-source-kind">Codex<\/span><span class="perf-model-source-provider">provider-alpha<\/span>/,
+  );
+  assert.match(
+    table,
+    /title="Codex · provider-beta"><span class="perf-model-source-kind">Codex<\/span><span class="perf-model-source-provider">provider-beta<\/span>/,
+  );
+  assert.match(table, /aria-label="Codex · provider-alpha · identical-model · high,/);
+  assert.match(table, /aria-label="Codex · provider-beta · identical-model · high,/);
+  assert.match(alphaDetail, /aria-label="Codex · provider-alpha · identical-model · high"/);
+  assert.match(alphaDetail, /<span class="perf-model-provider-name" title="provider-alpha">provider-alpha<\/span>/);
+});
+
+test("missing providers are omitted while known identities remain escaped and readable", () => {
+  const empty = model({ modelProvider: "" });
+  const missing = model();
+  const hostileProvider = `provider <script>alert(1)</script> ${"long-provider-".repeat(20)}`;
+  const hostile = model({ modelProvider: hostileProvider });
+
+  const chinese = renderPerfModelTableHtml([empty, missing, hostile], { locale: "zh-CN" });
+  const english = renderPerfModelTableHtml([empty, missing], { locale: "en-US" });
+  const missingDetail = renderPerfModelDetailHtml(missing, { locale: "zh-CN" });
+  const hostileDetail = renderPerfModelDetailHtml(hostile, { locale: "zh-CN" });
+  assert.equal((chinese.match(/class="perf-model-source-provider"/g) || []).length, 1);
+  assert.doesNotMatch(english, /perf-model-source-provider|Provider unknown|Provider information unavailable/);
+  assert.match(missingDetail, /aria-label="Codex · gpt-6\.1-sol · high"/);
+  assert.doesNotMatch(missingDetail, /perf-model-provider-name|provider 信息不可用|provider 未知/);
+  assert.doesNotMatch(chinese, /<script>/);
+  assert.match(chinese, /provider &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(chinese, /title="Codex · provider &lt;script&gt;alert\(1\)&lt;\/script&gt; long-provider-/);
+  assert.doesNotMatch(hostileDetail, /<script>/);
+  assert.match(hostileDetail, /class="perf-model-provider-name" title="provider &lt;script&gt;/);
+  assert.doesNotMatch(chinese, /官方直连|official direct/i);
+});
+
+test("model overflow rows have no rank, speed, or bar and detail has no stale band", () => {
+  const overflow = model({
+    averageTps: null,
+    p10: null,
+    p90: null,
+    state: "overflow",
+    rankState: "overflow",
+    rank: null,
+  });
+  const html = renderPerfModelTableHtml([model(), overflow], { locale: "zh-CN" });
+  const overflowRow = modelRowHtml(html, 1);
+  assert.doesNotMatch(overflowRow, /perf-model-rank/);
+  assert.doesNotMatch(overflowRow, /perf-model-row-note|\bn=/);
+
+  assert.match(overflowRow, /<span><\/span><span class="perf-model-speed-value">—<\/span>/);
+  assert.doesNotMatch(overflowRow, /perf-model-mini-fill/);
+  const detail = renderPerfModelDetailHtml(overflow, { locale: "zh-CN" });
+  assert.match(detail, /聚合溢出/);
+  assert.doesNotMatch(detail, /perf-model-band|tok\/s/);
+});
+
+test("small sample rows retain speed and detail count without ranking labels", () => {
+  const row = model({ n: 2, rankState: "insufficient_samples" });
+  const html = renderPerfModelTableHtml([row]);
+  assert.match(html, /81.6/);
+  assert.doesNotMatch(html, /样本不足|排名|参考行|\bn=/);
+  assert.match(renderPerfModelDetailHtml(row), /2 个回合/);
+});
+
+test("model list preserves supplied row order without ranking segments", () => {
+  const rows = [
+    model({ model: "first", averageTps: 10 }),
+    model({ model: "second", averageTps: 100, rankState: "unverified" }),
+  ];
+  const html = renderPerfModelTableHtml(rows);
+  assert.ok(html.indexOf("first") < html.indexOf("second"));
+  assert.doesNotMatch(html, /perf-model-rank|is-reference/);
+});
+
+test("old rank fields have no effect on model list markup", () => {
+  const row = legacyModel({ rank: 99 });
+  assert.equal(renderPerfModelTableHtml([row]), renderPerfModelTableHtml([{ ...row, rank: null }]));
+});
+
+test("model detail shows actual member dates in local and UTC across a day boundary", () => {
+  const previousTimeZone = process.env.TZ;
+  try {
+    process.env.TZ = "Asia/Shanghai";
+    const row = model({
+      firstSampleAtMs: Date.parse("2026-10-04T15:30:00Z"),
+      lastSampleAtMs: Date.parse("2026-10-04T16:50:00Z"),
+    });
+    const local = renderPerfModelDetailHtml(row, { locale: "zh-CN", calendarZone: "local" });
+    const utc = renderPerfModelDetailHtml(row, { locale: "zh-CN", calendarZone: "utc" });
+    const models = renderPerfModelsHtml({ models: [row] }, { locale: "en-US", calendarZone: "utc" });
+
+    assert.match(local, /样本日期范围 2026-10-04–2026-10-05/);
+    assert.match(utc, /样本日期 2026-10-04/);
+    assert.match(models, /Sample date 2026-10-04/);
+    assert.doesNotMatch(models, /2026-10-05/);
+  } finally {
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+});
+
+test("model detail collapses a same-day date and omits missing or invalid dates", () => {
+  const sameDay = model({
+    firstSampleAtMs: Date.parse("2026-10-04T12:00:00Z"),
+    lastSampleAtMs: Date.parse("2026-10-04T13:00:00Z"),
+  });
+  const sameHtml = renderPerfModelDetailHtml(sameDay, { locale: "en-US", calendarZone: "utc" });
+  assert.match(sameHtml, /Sample date 2026-10-04/);
+  assert.doesNotMatch(sameHtml, /2026-10-04–2026-10-04/);
+
+  const missing = model();
+  delete missing.firstSampleAtMs;
+  const invalid = model({ firstSampleAtMs: Number.NaN });
+  const reversed = model({
+    firstSampleAtMs: Date.parse("2026-10-05T00:00:00Z"),
+    lastSampleAtMs: Date.parse("2026-10-04T00:00:00Z"),
+  });
+  for (const row of [missing, invalid, reversed]) {
+    assert.doesNotMatch(renderPerfModelDetailHtml(row, { locale: "zh-CN" }), /样本日期|<br>/);
+  }
+});
+
+test("model detail names each sample window and never calls Codex turns requests", () => {
+  const cases = [
+    ["request", 6, "6 个请求", "6 requests"],
+    ["step", 6, "6 个步骤", "6 steps"],
+    ["message", 6, "6 条消息", "6 messages"],
+    ["turn", 6, "6 个回合", "6 turns"],
+    ["mixed", 6, "6 个混合样本", "6 mixed samples"],
+  ];
+  for (const [window, n, chinese, english] of cases) {
+    const row = model({ window, n });
+    assert.match(renderPerfModelDetailHtml(row, { locale: "zh-CN" }), new RegExp(chinese));
+    assert.match(renderPerfModelDetailHtml(row, { locale: "en-US" }), new RegExp(english));
+  }
+  const codex = renderPerfModelDetailHtml(model({ window: "turn", n: 6 }), { locale: "zh-CN" });
+  assert.doesNotMatch(codex, /6 个请求|326 个请求/);
+});
+
+test("model band keeps a mean outside p10-p90 outside the distribution and handles n=1", () => {
+  const outside = model({
+    averageTps: (2000 * 1000) / 119000,
+    p10: 100,
+    p90: 100,
+    n: 20,
+  });
+  const html = renderPerfModelDetailHtml(outside, { locale: "zh-CN" });
+  assert.match(html, /perf-model-band-fill" style="left: 86\.96%; width: 0\.00%"/);
+  assert.match(html, /perf-model-tick is-up" style="left: 14\.61%"/);
+  assert.match(html, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
+  assert.match(html, /常见速度区间 100\.0–100\.0 tok\/s/);
+  assert.match(html, /p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。/);
+  assert.doesNotMatch(html, /80%|请求/);
+
+  const one = model({ averageTps: 100, p10: 100, p90: 100, n: 1 });
+  const oneHtml = renderPerfModelDetailHtml(one, { locale: "zh-CN" });
+  assert.match(oneHtml, /1 个回合/);
+  assert.match(oneHtml, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
+});
+
+test("model band leaves endpoint labels in geometric position and provides a measured fallback row", () => {
+  const close = model({ averageTps: 59.1, p10: 58.2, p90: 60, n: 17 });
+  const closeHtml = renderPerfModelDetailHtml(close, { locale: "zh-CN" });
+  assert.match(closeHtml, /perf-model-close-endpoints" hidden/);
+  assert.match(closeHtml, /perf-model-tick is-down" style="left: 84\.35%"/);
+  assert.match(closeHtml, /perf-model-tick is-down" style="left: 86\.96%"/);
+
+  const low = model({ averageTps: 10, p10: 20, p90: 80, n: 20 });
+  const lowHtml = renderPerfModelDetailHtml(low, { locale: "zh-CN" });
+  assert.match(lowHtml, /perf-model-tick is-up" style="left: 10\.87%"/);
+  assert.match(lowHtml, /perf-model-tick is-down" style="left: 21\.74%"/);
+
+  const high = model({ averageTps: 110, p10: 10, p90: 20, n: 20 });
+  const highHtml = renderPerfModelDetailHtml(high, { locale: "zh-CN" });
+  assert.match(highHtml, /perf-model-tick is-up" style="left: 95\.24%"/);
+  assert.match(highHtml, /perf-model-tick is-down" style="left: 8\.66%"/);
+  assert.match(highHtml, /perf-model-tick is-down" style="left: 17\.32%"/);
+});
+
+test("model band measures label boxes and collapses colliding endpoints", () => {
+  const classList = () => {
+    const values = new Set();
+    return {
+      add: (...names) =>
+        names.forEach((name) => {
+          values.add(name);
+        }),
+      remove: (...names) =>
+        names.forEach((name) => {
+          values.delete(name);
+        }),
+      toggle: (name, force) => (force ? values.add(name) : values.delete(name)),
+      contains: (name) => values.has(name),
+    };
+  };
+  const rect = (left, right) => ({ left, right, width: right - left });
+  const plotRect = rect(0, 270);
+  const makeTick = (_kind, center, width) => {
+    const classes = classList();
+    const label = {
+      getBoundingClientRect() {
+        if (classes.contains("edge-right")) return rect(center - width, center);
+        if (classes.contains("edge-left")) return rect(center, center + width);
+        return rect(center - width / 2, center + width / 2);
+      },
+    };
+    return {
+      classList: classes,
+      querySelector: (selector) => (selector === "[data-perf-tick-label]" ? label : null),
+    };
+  };
+  const average = makeTick("up", 205, 60);
+  const slow = makeTick("down", 176, 60);
+  const fast = makeTick("down", 235, 70);
+  const fallback = { hidden: true, classList: classList() };
+  const plotClasses = classList();
+  const plot = {
+    classList: plotClasses,
+    getBoundingClientRect: () => plotRect,
+    querySelectorAll: (selector) =>
+      selector === ".perf-model-tick"
+        ? [average, slow, fast]
+        : selector === ".perf-model-tick.is-down"
+          ? [slow, fast]
+          : [],
+    querySelector: (selector) => (selector === ".perf-model-close-endpoints" ? fallback : null),
+  };
+
+  layoutPerfModelBands({ querySelectorAll: () => [plot] });
+  assert.equal(fast.classList.contains("edge-right"), true);
+  assert.equal(plotClasses.contains("is-crowded"), true);
+  assert.equal(fallback.hidden, false);
+});
+
+test("model band restores natural endpoint labels before remeasuring a crowded plot", () => {
+  const oldResizeObserver = globalThis.ResizeObserver;
+  delete globalThis.ResizeObserver;
+  const classes = new Set(["is-crowded"]);
+  const toggles = [];
+  let measurements = 0;
+  const label = (left, right) => ({
+    getBoundingClientRect() {
+      assert.equal(classes.has("is-crowded"), false);
+      measurements += 1;
+      return { left, right, width: right - left };
+    },
+  });
+  const tick = (_kind, box) => ({
+    classList: { add() {}, remove() {} },
+    querySelector: (selector) =>
+      selector === "[data-perf-tick-label]" || selector === ".perf-model-tick-label" ? box : null,
+  });
+  const average = tick("up", label(145, 205));
+  const slow = tick("down", label(80, 100));
+  const fast = tick("down", label(230, 260));
+  const fallback = { hidden: false };
+  const plot = {
+    classList: {
+      remove(name) {
+        classes.delete(name);
+      },
+      toggle(name, force) {
+        toggles.push(force);
+        if (force) classes.add(name);
+        else classes.delete(name);
+      },
+      contains: (name) => classes.has(name),
+    },
+    getBoundingClientRect: () => ({ left: 0, right: 270 }),
+    querySelectorAll: (selector) =>
+      selector === ".perf-model-tick"
+        ? [average, slow, fast]
+        : selector === ".perf-model-tick.is-down"
+          ? [slow, fast]
+          : [],
+    querySelector: (selector) => (selector === ".perf-model-close-endpoints" ? fallback : null),
+  };
+  try {
+    layoutPerfModelBands({ querySelectorAll: () => [plot] });
+    assert.equal(measurements, 5);
+    assert.deepEqual(toggles, [false]);
+    assert.equal(classes.has("is-crowded"), false);
+    assert.equal(fallback.hidden, true);
+  } finally {
+    if (oldResizeObserver === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = oldResizeObserver;
+  }
+});
+
+test("model band layout disconnects removed plots instead of retaining them", () => {
+  const oldResizeObserver = globalThis.ResizeObserver;
+  const active = new Set();
+  class FakeResizeObserver {
+    observe(plot) {
+      active.add(plot);
+    }
+    disconnect() {
+      active.clear();
+    }
+  }
+  globalThis.ResizeObserver = FakeResizeObserver;
+  const classList = () => ({ add() {}, remove() {}, toggle() {} });
+  const plot = (name) => ({
+    name,
+    classList: classList(),
+    querySelectorAll: () => [],
+    querySelector: () => null,
+  });
+  const first = plot("first");
+  const second = plot("second");
+  try {
+    layoutPerfModelBands({ querySelectorAll: () => [first] });
+    assert.deepEqual([...active], [first]);
+    layoutPerfModelBands({ querySelectorAll: () => [second] });
+    assert.deepEqual([...active], [second]);
+  } finally {
+    layoutPerfModelBands({ querySelectorAll: () => [] });
+    if (oldResizeObserver === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = oldResizeObserver;
+  }
+});
+
+test("model speed copy is complete in English and keeps the selected key", () => {
+  const rows = [model(), model({ sourceKind: "dsh", model: "gpt-6-astra", reasoningEffort: "", rank: 2 })];
+  const html = renderPerfModelsHtml({ models: rows }, { locale: "en-US", selectedKey: rows[1].key });
+  assert.match(html, /<th scope="col">Models<\/th>/);
+  assert.match(html, /Average Speed \(tok\/s\)/);
+  assert.match(html, /207 turns/);
+  assert.match(html, /Common speed range 58\.2–96\.4 tok\/s/);
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /data-perf-model-key="\[&quot;dsh&quot;,&quot;gpt-6-astra&quot;,&quot;&quot;\]"/);
+});
+
+test("percentile endpoints use only percentages in both languages and only mean has a marker", () => {
+  for (const locale of ["zh-CN", "en-US"]) {
+    const html = renderPerfModelDetailHtml(model(), { locale });
+    assert.match(html, /perf-model-tick-name">10%/);
+    assert.match(html, /perf-model-tick-name">90%/);
+    assert.doesNotMatch(visibleText(html), /慢端|快端|Slow end|Fast end/);
+  }
+  const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.perf-model-tick::before/);
+  assert.match(css, /\.perf-model-tick\.is-up::before/);
+});
+
+test("model speed CSS reserves five rows, keeps native focus, and disables gradient fills", () => {
+  const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+  assert.match(
+    css,
+    /\.perf-model-table-scroll \{[\s\S]*?height: calc\(5 \* var\(--perf-row-height\) \+ var\(--perf-head-height\)\);[\s\S]*?overflow-y: auto;[\s\S]*?scrollbar-gutter: stable;/,
+  );
+  assert.match(css, /\.perf-model-mini-fill \{[\s\S]*?display: block;[\s\S]*?background-image: none;/);
+  assert.match(css, /\.perf-model-band-fill \{[\s\S]*?background-image: none;/);
+  assert.match(css, /\.perf-model-speed-cell \{[\s\S]*?display: grid;/);
+  assert.doesNotMatch(css, /\.perf-model-speed \{[\s\S]*?display: grid;/);
+  assert.match(css, /\.perf-model-detail-panel \{[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+  assert.match(css, /\.perf-model-source-name \{[\s\S]*?flex: none;/);
+  assert.match(
+    css,
+    /\.perf-model-title-name \{[\s\S]*?overflow: hidden;[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/,
+  );
+  assert.match(
+    css,
+    /\.perf-model-source-kind,[\s\S]*?\.perf-model-source-provider \{[\s\S]*?display: block;[\s\S]*?overflow: hidden;[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/,
+  );
+  assert.match(
+    css,
+    /\.perf-model-provider-name \{[\s\S]*?overflow: hidden;[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/,
+  );
+
+  assert.match(css, /\.perf-model-row-action:focus-visible \{[\s\S]*?outline: 2px solid var\(--blue\);/);
+  assert.match(css, /\.perf-model-table-scroll:focus-visible \{/);
+});
+
+test("Codex timing coverage adds no summary row to populated or empty model panels in either language", () => {
+  const coverage = timingCoverage({
+    counts: { eligible: 3, sampled: 1, sampleRate: 1 / 3, unplaced: 12 },
+    unknownOutputCandidates: 2,
+  });
+  for (const locale of ["zh-CN", "en-US"]) {
+    for (const models of [[model()], []]) {
+      const html = renderPerfModelsHtml({ models, codexTimingCoverage: coverage }, { locale });
+      assert.doesNotMatch(
+        html,
+        /perf-codex-coverage|Codex 计时覆盖|候选采样覆盖率|已记录输出覆盖率|Codex timing coverage|Candidate sampling coverage|Recorded-output coverage/,
+      );
+    }
+  }
+});
+
+test("Codex coverage states stay silent in the model region", () => {
+  const missingField = renderPerfModelsHtml({ models: [] }, { locale: "zh-CN" });
+  assert.doesNotMatch(missingField, /perf-codex-coverage|未提供|不可用/);
+  assert.doesNotMatch(missingField, /0%/);
+
+  const noSource = renderPerfModelsHtml({ models: [], codexTimingCoverage: null }, { locale: "zh-CN" });
+  assert.doesNotMatch(noSource, /perf-codex-coverage|没有适用的 Codex 来源/);
+  assert.doesNotMatch(noSource, /0%/);
+
+  const zeroCandidates = renderPerfModelsHtml(
+    {
+      models: [],
+      codexTimingCoverage: timingCoverage({
+        counts: { eligible: 0, sampled: 0, sampleRate: null, unplaced: 4 },
+        recordedOutputTokens: 0,
+        sampledOutputTokens: 0,
+      }),
+    },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(zeroCandidates, /perf-codex-coverage|本范围没有 Codex 候选|不可用/);
+  assert.doesNotMatch(zeroCandidates, /0%/);
+
+  const zeroSampled = renderPerfModelsHtml(
+    {
+      models: [],
+      codexTimingCoverage: timingCoverage({
+        counts: { eligible: 6, sampled: 0, sampleRate: 0, unplaced: 0 },
+        recordedOutputTokens: 4500,
+        sampledOutputTokens: 0,
+      }),
+    },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(zeroSampled, /perf-codex-coverage|候选采样覆盖率|已记录输出覆盖率/);
+
+  const overflow = renderPerfModelsHtml(
+    {
+      models: [],
+      codexTimingCoverage: timingCoverage({ recordedOutputTokens: null, sampledOutputTokens: null }),
+    },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(overflow, /已记录输出覆盖率|输出 token 合计溢出|不可用/);
+
+  const missingTokens = timingCoverage();
+  delete missingTokens.recordedOutputTokens;
+  delete missingTokens.sampledOutputTokens;
+  assert.doesNotMatch(
+    renderPerfModelsHtml({ models: [], codexTimingCoverage: missingTokens }, { locale: "zh-CN" }),
+    /已记录输出覆盖率|输出 token 汇总字段缺失或无效/,
+  );
+
+  const oldCoverage = {
+    models: [],
+    coverage: { bySource: { codex: { eligible: 777, sampled: 600, sampleRate: 0.77 } } },
+  };
+  const oldHtml = renderPerfModelsHtml(oldCoverage, { locale: "zh-CN" });
+  assert.doesNotMatch(oldHtml, /perf-codex-coverage|此响应未提供/);
+  assert.doesNotMatch(oldHtml, /77%|777|600/);
+
+  const rebuilding = renderPerfModelsHtml(
+    { state: "rebuilding", models: [], codexTimingCoverage: timingCoverage() },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(rebuilding, /perf-codex-coverage|覆盖信息不可用/);
+  assert.doesNotMatch(rebuilding, /33\.3%|22\.2%/);
+
+  const uninitialized = renderPerfModelsHtml(
+    { state: "uninitialized", models: [], codexTimingCoverage: timingCoverage() },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(uninitialized, /perf-codex-coverage|覆盖信息不可用/);
+  assert.match(uninitialized, /性能索引尚未初始化，当前没有可展示的模型速度/);
+  assert.doesNotMatch(uninitialized, /33\.3%|22\.2%/);
+
+  const degraded = renderPerfModelsHtml(
+    {
+      state: "degraded",
+      degradedHomeIds: ["codex-home"],
+      models: [model()],
+      codexTimingCoverage: timingCoverage(),
+    },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(degraded, /perf-codex-coverage|候选采样覆盖率|已记录输出覆盖率/);
+  assert.doesNotMatch(visibleText(degraded), /部分来源降级|已记录输出覆盖率/);
+});
+
+test("model panels show measurements without persistent disclaimers", () => {
+  for (const locale of ["zh-CN", "en-US"]) {
+    const row = legacyModel({ n: 151 });
+    delete row.firstSampleAtMs;
+    delete row.lastSampleAtMs;
+    const html = renderPerfModelsHtml({ models: [row] }, { locale });
+    const text = visibleText(html);
+    assert.match(text, /81\.6/);
+    assert.match(text, /151/);
+    assert.doesNotMatch(
+      text,
+      /不可用|未提供|参考行|排名信息|provider|p90|unavailable|not include|Reference row|Provider|90th percentile/i,
+    );
+    assert.doesNotMatch(html, /perf-model-table-note|perfModelTableNote|perf-codex-coverage/);
+    assert.match(
+      html,
+      /title="(?:常见速度区间|Common speed range)[^"]*(?:p90 是第 90 百分位|p90 is the 90th percentile)/,
+    );
+    assert.doesNotMatch(text, /常见速度区间|Common speed range/);
+  }
+});
+
+test("Codex coverage diagnostics add no rows or counts to empty model panels", () => {
+  const html = renderPerfModelsHtml(
+    {
+      models: [],
+      codexTimingCoverage: timingCoverage({
+        counts: {
+          eligible: 6,
+          sampled: 0,
+          sampleRate: 0,
+          pending: 2,
+          unplaced: 0,
+          droppedByReason: { duration_missing_nonpositive_invalid: 4 },
+          byFlag: { duration_missing_nonpositive_invalid: 99 },
+        },
+        recordedOutputTokens: 4500,
+        sampledOutputTokens: 0,
+      }),
+    },
+    { locale: "zh-CN" },
+  );
+  assert.doesNotMatch(html, /perf-codex-coverage|缺失或无效时长|进行中/);
+  assert.doesNotMatch(html, /99|perf-model-data-row|\bn=0/);
+});
+
+test("the formal page places model speed directly after timeline details and before period comparisons", () => {
+  const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const timeline = html.indexOf('<section class="main-grid"');
+  const timelineDetails = html.indexOf('id="detailPanel"');
+  const periodComparison = html.indexOf('<section class="period-comparison-grid"');
+  const modelSpeed = html.indexOf('id="perfModelsSection"');
+  const scannedDirectories = html.indexOf('<section class="bottom-grid"');
+  assert.ok(timeline >= 0);
+  assert.ok(timeline < timelineDetails);
+  assert.ok(timelineDetails < modelSpeed);
+  assert.match(
+    html.slice(html.indexOf("</section>", timelineDetails), modelSpeed),
+    /^<\/section>\s*<\/section>\s*<section $/,
+  );
+  assert.ok(modelSpeed < periodComparison);
+  assert.ok(periodComparison < scannedDirectories);
+});
+
+test("perf 来源标签包含 WorkBuddy，未知来源仍是兜底", () => {
+  assert.equal(sourceLabel("workbuddy", "zh-CN"), "WorkBuddy");
+  assert.equal(sourceLabel("workbuddy", "en-US"), "WorkBuddy");
+  assert.equal(sourceLabel("claude", "zh-CN"), "Claude");
+  assert.equal(sourceLabel("claude", "en-US"), "Claude");
+  assert.equal(sourceLabel("codex", "zh-CN"), "Codex");
+  assert.equal(sourceLabel("unsupported", "en-US"), "Unknown source");
 });

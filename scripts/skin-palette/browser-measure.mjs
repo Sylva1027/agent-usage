@@ -1975,7 +1975,7 @@ function buildHideSource(selector, index, mode, attemptToken = null, identityCon
     attemptToken !== null &&
     selector === "#costEstimateNote a" &&
     identityContext?.roleId === "cost.note-link" &&
-    identityContext?.stateId === "dashboard-default";
+    identityContext?.stateId === "cost-details-open";
   if (attemptToken === null) {
     return `// skinProbe: hide
 (() => {
@@ -8010,11 +8010,11 @@ async function measureTextRoleAttempt(role, runtime, recordContext, rawSelector)
     spotlightLanguageFixedViewport;
   const includeOwnTextRanges =
     role.id === "cost.note-text" &&
-    recordContext.stateId === "dashboard-default" &&
+    recordContext.stateId === "cost-details-open" &&
     rawSelector === "#costEstimateNote > p, #costEstimateNote li";
   const includeCostNoteLinkDecorationProof =
     role.id === "cost.note-link" &&
-    recordContext.stateId === "dashboard-default" &&
+    recordContext.stateId === "cost-details-open" &&
     rawSelector === "#costEstimateNote a";
   const fixedViewport = hoverFixedViewport || toastFixedViewport || spotlightFixedViewport;
   const fixedViewportLabel = spotlightDetailRowFixedViewport

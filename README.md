@@ -27,7 +27,8 @@ node src/cli.js run
 - **时间与趋势：** 支持今日、本周、本月、全部、自定义日期及最近范围。“本周”按自然周计算。时间分布可按渠道、模型或估算花销查看；较长的“全部”、自定义和最近范围会自动从日柱合并为周柱或月柱，副标题和悬浮提示会标出合并粒度与覆盖日期。
 - **最近范围：** “上一个5h”和“上一个7d”分别从上一轮对应额度实际开始统计到下一轮实际开始，跨度可以不足或超过五小时、七天；额度到期但下一轮尚未开始时，不切换上一轮。“上个月”是上一个完整自然月；“今年”从本年 1 月 1 日统计至今。
 - **Codex 限额：** `5h / week` 在当前 5 小时与每周限额窗口之间切换。这两个限额范围以及“上一个5h”“上一个7d”只统计 Codex 来源；普通的今日、本周、本月等范围仍统计所有已选来源。窗口边界取自本机 Codex 限额观察值。当前5小时图按半小时、当前每周图按连续24小时显示；上一个5h只画有用量的半小时，最后一段截止到下一轮开始；上一个7d只画有用量的日历日期。后台保留完整起止时间和时长。没有可靠记录时不会推测边界。未选中 Codex 数据来源时，限额按钮及对应的最近范围选项会置灰。
-- **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。模型名在界面上统一小写显示，原始模型标识仍用于聚合和计价。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode/Claude/WorkBuddy；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
+- **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。用量表中的模型名统一小写显示，原始模型标识仍用于聚合和计价；模型速度区保留原名。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode/Claude/WorkBuddy；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
+- **模型速度：** 独立区域按平均输出速度从快到慢排列，模型原名与推理强度分开显示，并区分 Codex / DSH / OpenCode / ZCode / WorkBuddy / Claude。选择一行查看平均速度、样本数与 p10–p90 区间；沿用现有时间范围、来源编辑和冻结快照。Claude 的时长由转录时间戳回退得到（请求端到端，含请求等待与 TTFT），只对紧随 prompt/attachment 行的请求计时，同轮续写不采样；TPS 分子比事件路径的 output 少 0.0137%。WorkBuddy 的时长取自 trace 中 generation span 的显式 duration。
 - **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
 - **来源与刷新：** 自动发现本机 Codex、ZCode、DSH、OpenCode、Claude Code 和 WorkBuddy 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录、Claude Code home、WorkBuddy home，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；失败后下次检查会重试，错误详情在原刷新框内切换查看。暂停自动刷新后，切换范围仍使用冻结的数据快照。
 - **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前提供 ChatGPT、Claude、DeepSeek、Kimi、Muse 五款皮肤及简洁模式，采用更新的整页配色。浅深缩略图同时预览，桌面五款一行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
@@ -48,9 +49,9 @@ Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `
 - `CODEX_USAGE_OPENCODE=0`：关闭 OpenCode 自动发现。
 - `CODEX_USAGE_CLAUDE_HOMES`：追加 Claude Code home，路径分隔符同上（`CLAUDE_CONFIG_DIR` 会自动发现）。
 - `CODEX_USAGE_CLAUDE=0`：关闭 Claude Code 自动发现。
-
 - `CODEX_USAGE_WORKBUDDY_HOMES`：追加 WorkBuddy home，路径分隔符同上。
 - `CODEX_USAGE_WORKBUDDY=0`：关闭 WorkBuddy 自动发现。
+
 普通范围统计全部已选来源；**5 小时与每周限额窗口只衡量 Codex 用量**，其余来源不参与。
 
 `codex-auto-review` 按[官方免费政策](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)计为零费用，不参与当前或上一限额窗口统计；普通范围仍显示它的实际 Token 与运行记录。旧的同名手动费率也不能覆盖该免费规则。

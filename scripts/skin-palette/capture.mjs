@@ -2139,6 +2139,7 @@ const STATE_MATRIX_GROUPS = Object.freeze([
     id: "S4",
     label: "计价（计价弹窗、非零费用、缺价徽标、填值与焦点）",
     units: [
+      { id: "cost-details-open", kind: "catalog", stateId: "cost-details-open", clipSelector: ".pricing-note-panel" },
       { id: "dialog-pricing-open", kind: "catalog", stateId: "dialog-pricing-open", clipSelector: "#pricingDialog" },
       { id: "pricing-input-filled", kind: "catalog", stateId: "pricing-input-filled", clipSelector: "#pricingDialog" },
       { id: "input-focus", kind: "catalog", stateId: "input-focus", clipSelector: "#pricingDialog" },

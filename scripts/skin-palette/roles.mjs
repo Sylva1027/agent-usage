@@ -59,7 +59,9 @@
 // v37（M5.2.P-A51）：排除来源名称/路径叶 opacity 0.55 -> 0.75，并同步四个前景 alpha。
 // v38（M5.2.C-C45）：语言按钮使用实际迷你凸起面，并登记 zh-CN 选中叶独立聚光文字角色/状态。
 // v39（M5.2 recovery A）：聚光覆盖改为装饰；详情条形按已有可见名称/数值降为冗余图形。
-export const ROLES_VERSION = 39;
+// v40：费用估算直接展示，取证不再操作已移除的折叠入口。
+// v41：自动刷新标题移至凸起面，时间留在凹槽，按实际文字色与承载面登记。
+export const ROLES_VERSION = 41;
 
 /** {kind:"var"} 颜色表达式简写。 */
 const v = (name) => ({ kind: "var", name });
@@ -116,7 +118,7 @@ export const ROLE_CATALOG = Object.freeze([
     id: "page.body-text",
     kind: "text",
     selector: CSS(
-      "#homeList .home-row:not(.excluded) > .home-label > strong, #homeList .home-row:not(.excluded) > .home-meta > .home-status, #homeList .home-row:not(.excluded) > .home-path",
+      "#homeList .home-row:not(.excluded) > .home-label > strong, #homeList .home-row:not(.excluded) > .home-path",
     ),
     states: ["dashboard-default"],
     foreground: v("--ink"),
@@ -128,7 +130,6 @@ export const ROLE_CATALOG = Object.freeze([
       REF("public/app.js", "renderHomesHtml", 2878),
       REF("public/styles.css", "body --ink", 54),
       REF("public/styles.css", ".home-path inherits text color", 1826),
-      REF("public/styles.css", ".home-status --ink", 1850),
       REF("public/styles.css", ".home-list --ceramic-well", 3108),
       REF("public/styles.css", ".home-list .home-row transparent", 3125),
     ],
@@ -136,19 +137,16 @@ export const ROLE_CATALOG = Object.freeze([
   {
     id: "page.body-muted",
     kind: "text",
-    selector: CSS(
-      "#homeList .home-row:not(.excluded) > .home-label > .home-kind, #homeList .home-row:not(.excluded) > .home-meta > span:not(.home-status):not(.home-excluded)",
-    ),
+    selector: CSS("#homeList .home-row:not(.excluded) > .home-label > .home-kind"),
     states: ["dashboard-default"],
     foreground: v("--muted"),
     background: solid(v("--ceramic-well")),
     threshold: 4.5,
     required: true,
-    applicability: "仅主页面非排除来源行的 --muted 类型与计数文字；不包括排除标记",
+    applicability: "仅主页面非排除来源行的 --muted 类型文字；不包括排除标记",
     sourceRefs: [
       REF("public/app.js", "renderHomesHtml", 2878),
       REF("public/styles.css", ".home-kind --muted", 1834),
-      REF("public/styles.css", ".home-meta --muted", 1840),
       REF("public/styles.css", ".home-list --ceramic-well", 3108),
       REF("public/styles.css", ".home-list .home-row transparent", 3125),
     ],
@@ -188,10 +186,10 @@ export const ROLE_CATALOG = Object.freeze([
   {
     id: "panel.heading-label",
     kind: "text",
-    selector: CSS(".panel-heading span, .panel-heading .comparison-as-of"),
+    selector: CSS(".panel-heading span"),
     states: ["dashboard-default", "spotlight-timeline-heading", "spotlight-detail-bars"],
     selectorsByState: {
-      "dashboard-default": ".panel-heading span, .panel-heading .comparison-as-of",
+      "dashboard-default": ".panel-heading span",
       "spotlight-timeline-heading":
         ".chart-panel[data-spotlight-active] > .timeline-heading > .timeline-title > #rangeLabel",
       "spotlight-detail-bars": "#detailPanel[data-spotlight-active] > .panel-heading > #detailModeLabel:not(:empty)",
@@ -200,13 +198,8 @@ export const ROLE_CATALOG = Object.freeze([
     background: BG_PANEL_CERAMIC,
     threshold: 4.5,
     required: true,
-    applicability:
-      "13px 面板标题辅助说明小字；含跨周期对比面板 .comparison-as-of 的『统计截至』截止时间（renderPeriodComparisons 以 textContent 更新，无子元素）；实际非空与像素比值仍待实机核验",
-    sourceRefs: [
-      REF("public/styles.css", ".panel-heading span", 143),
-      REF("public/styles.css", ".comparison-as-of --muted", 1120),
-      REF("public/app.js", "renderPeriodComparisons 更新 data-comparison-as-of textContent", 1919),
-    ],
+    applicability: "面板标题行内的范围与查看方式文字；实际非空与像素比值仍待实机核验",
+    sourceRefs: [REF("public/styles.css", ".panel-heading span", 143)],
   },
   {
     id: "panel.section-title",
@@ -574,37 +567,37 @@ export const ROLE_CATALOG = Object.freeze([
   {
     id: "toolbar.autorefresh-text",
     kind: "text",
-    selector: CSS("#autoRefreshInterval, #lastSuccessfulCheck"),
-    states: ["dashboard-default"],
-    foreground: v("--ink"),
-    background: solid(v("--ceramic-well")),
-    threshold: 4.5,
-    required: true,
-    applicability:
-      "自动刷新凹槽内的刷新间隔数值与上次成功检查时间文字；继承 body --ink 前景，直接承载于 .auto-refresh-well 的 --ceramic-well 凹槽表面；实际像素比值与实机可测性仍待实机核验",
-    sourceRefs: [
-      REF("public/index.html", "#autoRefreshInterval", 143),
-      REF("public/index.html", "#lastSuccessfulCheck", 151),
-      REF("public/app.js", "renderAutoRefreshControls", 3225),
-      REF("public/styles.css", "body --ink", 54),
-      REF("public/styles.css", ".auto-refresh-well --ceramic-well", 159),
-    ],
-  },
-  {
-    id: "toolbar.autorefresh-muted",
-    kind: "text",
-    selector: CSS("#autoRefreshStatus .auto-refresh-label"),
+    selector: CSS("#lastSuccessfulCheck"),
     states: ["dashboard-default"],
     foreground: v("--muted"),
     background: solid(v("--ceramic-well")),
     threshold: 4.5,
     required: true,
     applicability:
-      "自动刷新凹槽内的『自动刷新』标签文字；显式 --muted 前景，承载于 .auto-refresh-well 的 --ceramic-well 表面；实际像素比值与实机可测性仍待实机核验",
+      "自动刷新凹槽内的上次成功检查时间，继承控件组 span 的 --muted 前景，承载于 .auto-refresh-well 的 --ceramic-well 表面；实际像素比值与实机可测性仍待实机核验",
+    sourceRefs: [
+      REF("public/index.html", "#lastSuccessfulCheck", 151),
+      REF("public/app.js", "renderAutoRefreshControls", 3225),
+      REF("public/styles.css", ".control-group span --muted", 154),
+      REF("public/styles.css", ".auto-refresh-well --ceramic-well", 159),
+    ],
+  },
+  {
+    id: "toolbar.autorefresh-muted",
+    kind: "text",
+    selector: CSS("#autoRefreshStatus .auto-refresh-label, #autoRefreshInterval"),
+    states: ["dashboard-default"],
+    foreground: v("--muted"),
+    background: BG_GROUP_CERAMIC,
+    threshold: 4.5,
+    required: true,
+    applicability:
+      "自动刷新标题行的标签与间隔数值，使用 --muted 前景，承载于工具栏控件组的陶瓷渐变表面；实际像素比值与实机可测性仍待实机核验",
     sourceRefs: [
       REF("public/index.html", ".auto-refresh-label", 143),
+      REF("public/index.html", "#autoRefreshInterval", 143),
       REF("public/styles.css", ".auto-refresh-label --muted", 201),
-      REF("public/styles.css", ".auto-refresh-well --ceramic-well", 159),
+      REF("public/styles.css", ".toolbar > .control-group", 703),
     ],
   },
   {
@@ -917,20 +910,17 @@ export const ROLE_CATALOG = Object.freeze([
   {
     id: "dialog.source-option-text",
     kind: "text",
-    selector: CSS(
-      "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > strong, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-meta > .home-status",
-    ),
+    selector: CSS("#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > strong"),
     states: ["dialog-import-open"],
     foreground: v("--ink"),
     background: solid(v("--ceramic-well")),
     threshold: 4.5,
     required: true,
     applicability:
-      "导入弹窗来源列表非排除行的 --ink 普通文字（来源名称 strong 与状态 .home-status）；路径为 --muted 不在此列，排除行 0.75 opacity 已由专门角色编码；实机样本待后续核验",
+      "导入弹窗来源列表非排除行的 --ink 来源名称；路径为 --muted 不在此列，排除行 0.75 opacity 已由专门角色编码；实机样本待后续核验",
     sourceRefs: [
       REF("public/app.js", "renderSourceOptionsHtml", 2846),
       REF("public/styles.css", ".source-option-label --ink", 1991),
-      REF("public/styles.css", ".home-status --ink", 1850),
       REF("public/styles.css", ".source-picker --ceramic-well", 3115),
     ],
   },
@@ -938,7 +928,7 @@ export const ROLE_CATALOG = Object.freeze([
     id: "dialog.source-option-muted",
     kind: "text",
     selector: CSS(
-      "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > .home-kind, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-meta > span:not(.home-status):not(.home-excluded), #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-path",
+      "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > .home-kind, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-path",
     ),
     states: ["dialog-import-open"],
     foreground: v("--muted"),
@@ -946,11 +936,10 @@ export const ROLE_CATALOG = Object.freeze([
     threshold: 4.5,
     required: true,
     applicability:
-      "导入弹窗来源列表非排除行的 --muted 次要文字（类型 .home-kind、事件/会话计数与路径 .source-option-path）；不包括排除标记 .home-excluded，排除行路径 0.75 opacity 已由专门角色编码",
+      "导入弹窗来源列表非排除行的 --muted 类型与路径；不包括排除标记 .home-excluded，排除行路径 0.75 opacity 已由专门角色编码",
     sourceRefs: [
       REF("public/app.js", "renderSourceOptionsHtml", 2846),
       REF("public/styles.css", ".home-kind --muted", 1834),
-      REF("public/styles.css", ".source-option-meta --muted", 2006),
       REF("public/styles.css", ".source-option-path --muted", 2020),
       REF("public/styles.css", ".source-picker --ceramic-well", 3115),
     ],
@@ -1284,7 +1273,7 @@ export const ROLE_CATALOG = Object.freeze([
     id: "cost.note-text",
     kind: "text",
     selector: "#costEstimateNote > p, #costEstimateNote li",
-    states: ["dashboard-default"],
+    states: ["cost-details-open"],
     foreground: v("--muted"),
     background: solid(v("--ceramic-well")),
     threshold: 4.5,
@@ -1302,7 +1291,7 @@ export const ROLE_CATALOG = Object.freeze([
     id: "cost.note-link",
     kind: "text",
     selector: "#costEstimateNote a",
-    states: ["dashboard-default"],
+    states: ["cost-details-open"],
     foreground: { kind: "computed", property: "color" },
     background: solid(v("--ceramic-well")),
     threshold: 4.5,
@@ -1353,9 +1342,20 @@ export const STATE_CATALOG = Object.freeze([
       "toolbar.autorefresh-muted",
       "toolbar.range-label",
       "chart.legend-label",
-      "cost.note-text",
-      "cost.note-link",
     ],
+  },
+  {
+    // 沿用既有取证状态 ID，费用详情在产品中直接展示。
+    id: "cost-details-open",
+    label: "费用估算详情直接展示",
+    steps: [{ action: "click", selector: '#presetButtons button[data-preset="all"]' }],
+    ready: {
+      kind: "visible",
+      selector: "#costEstimateNote p",
+      description: "费用估算内容可见",
+    },
+    restore: [],
+    expectedRoleIds: ["cost.note-text", "cost.note-link"],
   },
   {
     id: "autorefresh-on",

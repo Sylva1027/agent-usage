@@ -16,6 +16,17 @@ test("GPT-6.1 pricing notes distinguish the 500K Codex policy from the API tier 
     const english = pricingModelNoteParts({ longContextThreshold: 272_000 }, "gpt-6.1-sol").join("; ");
     assert.match(english, /500K context; short-context rates apply at every length/);
     assert.match(english, /Other sources \/ API.*272,000/);
+    assert.match(
+      pricingModelNoteParts({ outputThreshold: 200, offPeakMultiplier: 0.5 }, "glm-4.7").join("; "),
+      /Long-output rates apply at 200 output tokens or more; Off-peak rates are 50% of peak rates/,
+    );
+    assert.doesNotMatch(
+      pricingModelNoteParts(
+        { longContextThreshold: 32_000, outputThreshold: 200, offPeakMultiplier: 0.5, cacheWriteTtl: "5m" },
+        "glm-4.7",
+      ).join("; "),
+      /[\u3400-\u9fff]/u,
+    );
     assert.ok(!pricingModelNoteParts({ longContextThreshold: 272_000 }, "gpt-6-sol").join(" ").includes("500K"));
   } finally {
     setLocale(locale);
@@ -69,12 +80,12 @@ import {
   getChannelColors,
   getModelColors,
   renderTimelineLegendHtml,
+  reconcilePerfModelSelection,
   getRange,
   maxTimelineValue,
   modelPricingInputsChanged,
   nextComparisonSort,
   pricingIssueText,
-  pricingModelBadges,
   pricingProvenanceText,
   pricingUpdateSummaryText,
   discoveryReasonText,
@@ -95,7 +106,6 @@ import {
   formatCostPair,
   costPairFromSlots,
   costScaleValue,
-  fitTextToWidth,
   formatAutoRefreshTimestamp,
   usagePricingCoverageText,
   renderPeriodComparisonTableHtml,
@@ -107,6 +117,33 @@ import {
 import { state } from "../public/app-state.js";
 import { selectDateRange } from "../public/calendar.js";
 import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
+
+test("perf model selection keeps an existing key and otherwise chooses the first valid row", () => {
+  const rows = [
+    { key: "overflow", state: "overflow", averageTps: null },
+    { key: "first-valid", state: "ok", averageTps: 10 },
+    { key: "second-valid", state: "ok", averageTps: 9 },
+  ];
+  assert.equal(reconcilePerfModelSelection(rows, "second-valid"), "second-valid");
+  assert.equal(reconcilePerfModelSelection(rows, "missing"), "first-valid");
+  assert.equal(reconcilePerfModelSelection([rows[0]], null), "overflow");
+  assert.equal(reconcilePerfModelSelection([], "first-valid"), null);
+  assert.equal(reconcilePerfModelSelection(null, null), null);
+});
+
+test("perf model selection does not guess a provider when the old merged key disappears", () => {
+  const oldKey = JSON.stringify(["codex", "same-model", "high"]);
+  const firstKey = JSON.stringify(["codex", "same-model", "high", "provider-b"]);
+  const secondKey = JSON.stringify(["codex", "same-model", "high", "provider-a"]);
+  const rows = [
+    { key: firstKey, state: "ok", averageTps: 100 },
+    { key: secondKey, state: "ok", averageTps: 90 },
+  ];
+  assert.equal(reconcilePerfModelSelection(rows, oldKey), firstKey);
+  assert.equal(reconcilePerfModelSelection(rows, secondKey), secondKey);
+  assert.equal(reconcilePerfModelSelection([...rows].reverse(), secondKey), secondKey);
+  assert.equal(reconcilePerfModelSelection([], secondKey), null);
+});
 
 // ---------------------------------------------------------------- harness 归组（DSH）
 
@@ -299,9 +336,6 @@ test("pricing status gives total coverage and marks each price source", () => {
     automaticPricingStatusText(status, "en-US"),
     /USD source mappings 49\/86, CNY adapters 33, CNY manual-only 4/,
   );
-  assert.match(pricingModelBadges("gpt-6-sol", status), /自动匹配.*手动覆盖/);
-  assert.match(pricingModelBadges("deepseek-flash", status), /未自动匹配/);
-  assert.match(pricingModelBadges("gpt-6-sol", {}, "https://models.dev/api.json"), /自动匹配/);
   assert.equal(
     pricingIssueText({ source: "LiteLLM", code: "timeout", timeoutMs: 30_000 }, false),
     "LiteLLM 请求超时（30 秒）",
@@ -890,7 +924,7 @@ test("renderHomesHtml shows escaped statuses and removable imported directories"
   assert.match(html, /Project &lt;unsafe&gt;/);
   assert.match(html, /\/tmp\/project&amp;one/);
   assert.match(html, /data-import-action="remove"/);
-  assert.match(html, /有用量记录/);
+  assert.doesNotMatch(html, /有用量记录|条事件|个会话|class="home-status"/);
 });
 
 test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", () => {
@@ -921,8 +955,7 @@ test("renderSourceOptionsHtml 勾选默认选中的来源并跳过无 id 项", (
   assert.doesNotMatch(html, /data-source-id="zcode-1" checked/);
   assert.match(html, /Main ZCode/);
   assert.match(html, /source-option excluded/);
-  assert.match(html, /5 条事件 · 2 个会话/);
-  assert.match(html, /有用量记录/);
+  assert.doesNotMatch(html, /条事件|个会话|class="home-status"/);
   assert.equal((html.match(/不计入统计/g) || []).length, 1);
   // 没有稳定 id 的条目（如不支持的导入）不进入多选列表。
   assert.doesNotMatch(html, /unsafe/);
@@ -977,36 +1010,6 @@ test("费用金额按币种显示符号，混合币种并列展示", () => {
   assert.deepEqual(costPairFromSlots({}), { usd: null, cny: null });
 });
 
-test("fitTextToWidth 只缩小字号且不破下限，放得下时不改动", () => {
-  const oldGetComputedStyle = globalThis.getComputedStyle;
-  const makeElement = (fitsAtSize) => {
-    const element = { style: { fontSize: "" }, clientWidth: 100 };
-    Object.defineProperty(element, "scrollWidth", {
-      get() {
-        const size = this.style.fontSize ? parseFloat(this.style.fontSize) : 22;
-        return size <= fitsAtSize ? 100 : 140;
-      },
-    });
-    return element;
-  };
-  globalThis.getComputedStyle = () => ({ fontSize: "22px" });
-  try {
-    const needsShrink = makeElement(16);
-    fitTextToWidth(needsShrink);
-    assert.equal(needsShrink.style.fontSize, "16px");
-
-    const hopeless = makeElement(5);
-    fitTextToWidth(hopeless);
-    assert.equal(hopeless.style.fontSize, "11px");
-
-    const alreadyFits = makeElement(22);
-    fitTextToWidth(alreadyFits);
-    assert.equal(alreadyFits.style.fontSize, "");
-  } finally {
-    globalThis.getComputedStyle = oldGetComputedStyle;
-  }
-});
-
 test("图例按名称字母排序，跨币种费用按汇率折算比较", () => {
   const summary = {
     timeline: [
@@ -1038,6 +1041,29 @@ test("图例按名称字母排序，跨币种费用按汇率折算比较", () =>
   assert.ok(Math.abs(costScaleValue(60.11, "USD", 7.2, "CNY") - 432.792) < 1e-9);
 });
 
+test("comparison cards keep their frames and use dashes until the selected period has loaded", () => {
+  const previousPreset = state.preset;
+  try {
+    for (const [preset, label, previousLabel] of [
+      ["today", "较昨日", "昨日 tokens"],
+      ["week", "较上周", "上周 tokens"],
+      ["month", "较上月", "上月 tokens"],
+      ["custom", "较上一等长周期", "前一等长区间 tokens"],
+    ]) {
+      setSummaryFilters({ preset });
+      const html = renderComparisonHtml(null);
+      assert.equal((html.match(/<article /g) || []).length, 3);
+      assert.equal((html.match(/<strong>—<\/strong>/g) || []).length, 3);
+      assert.match(html, new RegExp(`<span>${label}</span>`));
+      assert.match(html, new RegExp(`<span>${previousLabel}</span>`));
+      assert.match(html, /<span>同比流速<\/span>/);
+      assert.doesNotMatch(html, /0\.00|加载|暂无对比/);
+    }
+  } finally {
+    setSummaryFilters({ preset: previousPreset });
+  }
+});
+
 test("renderComparisonHtml renders trend, average trend, and previous totals", () => {
   const html = renderComparisonHtml({
     label: "较上周",
@@ -1060,7 +1086,8 @@ test("renderComparisonHtml renders trend, average trend, and previous totals", (
   assert.match(html, /<strong title="-25,518,704">-25\.52M<\/strong>/);
   assert.match(html, /<strong title="\+8,581,809">\+8\.58M<\/strong>/);
   assert.match(html, /<strong title="62,617,267">62\.62M<\/strong>/);
-  assert.match(html, /2 个会话/);
+  assert.doesNotMatch(html, /个会话/);
+  assert.equal((html.match(/<small>/g) || []).length, 2);
 });
 
 test("renderComparisonHtml names the previous token period for day, week, and month", () => {
@@ -1086,12 +1113,14 @@ test("renderComparisonHtml names the previous token period for day, week, and mo
   }
 });
 
-test("renderComparisonHtml explains all-time comparisons and dates custom baselines", () => {
+test("renderComparisonHtml explains unavailable comparisons and keeps the previous-period card compact", () => {
   const allTimeHtml = renderComparisonHtml({ label: "暂无对比", previousRange: null });
-  assert.match(allTimeHtml, /全部范围没有可比较的上一周期/);
+  assert.match(allTimeHtml, /暂无对比/);
+  assert.doesNotMatch(allTimeHtml, /<small>/);
   assert.doesNotMatch(allTimeHtml, /上一周期 tokens/);
   const incompleteCustomHtml = renderComparisonHtml({ label: "较上一等长周期", previousRange: null });
-  assert.match(incompleteCustomHtml, /当前范围没有可比较的上一周期/);
+  assert.match(incompleteCustomHtml, /暂无对比/);
+  assert.doesNotMatch(incompleteCustomHtml, /<small>/);
 
   const customHtml = renderComparisonHtml({
     label: "较上一等长周期",
@@ -1107,7 +1136,8 @@ test("renderComparisonHtml explains all-time comparisons and dates custom baseli
     averagePercentChange: 4.2,
   });
   assert.match(customHtml, /前一等长区间 tokens/);
-  assert.match(customHtml, /2026-08-31 至 2026-09-09 · 4 个会话/);
+  assert.doesNotMatch(customHtml, /2026-08-31|2026-09-09|个会话/);
+  assert.equal((customHtml.match(/<small>/g) || []).length, 2);
 });
 
 test("datePickerMonthModel starts weeks on Monday and keeps outside-month days selectable", () => {

@@ -1,6 +1,17 @@
 /* Base palette. The selector list lets a light preview reproduce this exact mode
    inside a dark page (and vice versa) without duplicating any declared value. */
 :root,
+.skin-preview-scope {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 20px;
+  --radius-panel: 21px;
+  --radius-card: 17px;
+  --radius-inner: 9px;
+}
+
+:root,
 .skin-preview-scope[data-preview-theme="light"] {
   color-scheme: light;
   --ui-font-sans:
@@ -99,7 +110,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   padding: 12px 18px;
   border: 1px solid var(--neo-edge);
   border-radius: 21px;
@@ -160,21 +171,22 @@ label {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
-  grid-template-areas: "heading zone" "last last";
+  grid-template-areas: "last zone";
   align-items: center;
   align-content: center;
   gap: 8px 10px;
-  min-height: 78px;
+  min-height: var(--range-control-height);
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--ceramic-well);
   box-shadow: var(--neo-inset);
 }
-.auto-refresh-heading {
-  display: inline-flex;
+.range-heading.auto-refresh-heading {
+  display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
-  grid-area: heading;
+  line-height: 19px;
 }
 .auto-refresh-spinner {
   width: 1em;
@@ -202,6 +214,7 @@ label {
   gap: 8px;
   min-width: 0;
   height: 19px;
+  line-height: 19px;
 }
 
 .auto-refresh-label {
@@ -209,7 +222,7 @@ label {
 }
 
 #autoRefreshToggle {
-  min-height: 20px;
+  min-height: 19px;
   padding: 0 2px;
   border: 0;
   border-radius: 3px;
@@ -247,10 +260,11 @@ label {
 
 .auto-refresh-details {
   position: absolute;
-  inset: 8px 12px;
+  inset: 6px 12px;
   display: grid;
-  grid-template-rows: 20px minmax(0, 1fr);
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
 }
 
 .auto-refresh-details[hidden] {
@@ -262,9 +276,13 @@ label {
 }
 
 .auto-refresh-details-heading {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  line-height: 19px;
 }
 
 .auto-refresh-details-heading button {
@@ -274,6 +292,8 @@ label {
 }
 
 .auto-refresh-error-text {
+  grid-column: 1;
+  grid-row: 1;
   width: 100%;
   min-height: 0;
   margin: 0;
@@ -405,6 +425,7 @@ label {
 
 #pickImportDirectoryButton,
 .panel-action,
+#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -420,6 +441,7 @@ label {
 
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
+#pricingForm .pricing-rematch-button:hover,
 .dialog-actions button:hover,
 .ceramic-toggle:hover,
 .segmented > button:hover,
@@ -516,6 +538,11 @@ label {
   color: var(--toggle-muted);
   opacity: 1;
   transition: none;
+  transform: translateY(-1px);
+}
+
+.language-toggle > [data-language="en-US"] {
+  font-size: 17px;
 }
 
 .language-toggle .language-divider {
@@ -537,7 +564,7 @@ label {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  gap: 12px;
+  gap: var(--space-4);
   padding: 0;
   margin-bottom: 20px;
   border: 0;
@@ -547,16 +574,18 @@ label {
 
 .control-group {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .range-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 18px;
-  gap: 12px;
+  height: 19px;
+  min-height: 19px;
+  gap: var(--space-3);
   padding-right: 6px;
+  line-height: 19px;
 }
 
 #calendarZoneSelect {
@@ -568,6 +597,7 @@ label {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+  line-height: 19px;
   cursor: pointer;
 }
 #calendarZoneSelect:hover,
@@ -693,7 +723,6 @@ label {
 
 .topbar {
   padding: 0;
-  margin-bottom: 14px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -849,6 +878,7 @@ input[type="checkbox"]:checked::after {
   color: var(--ink);
   padding: 0 30px 0 10px;
   outline: 0;
+  line-height: 19px;
 }
 
 .recent-combobox {
@@ -978,42 +1008,48 @@ input[type="checkbox"]:checked::after {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .pricing-note-panel {
   min-width: 0;
+  align-self: start;
 }
 
-.cost-estimate-tools {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: start;
-  gap: 12px;
+details.panel:not([open]) > .panel-heading {
+  margin-bottom: 0;
 }
 
-.cost-estimate-details {
+.pricing-update-details > summary,
+.pricing-model-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pricing-update-details[open] > summary,
+.pricing-model-details[open] > summary {
+  margin-bottom: 12px;
+}
+
+.pricing-update-details {
+  flex: 1;
   min-width: 0;
 }
 
-.cost-estimate-details h2 {
-  min-height: 30px;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 30px;
-}
-
-#costEstimateDate {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-#updatePricingButton {
+.bottom-grid .panel-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 30px;
-  min-height: 30px;
+  line-height: var(--content-heading-line-height);
   white-space: nowrap;
+}
+
+@media (min-width: 721px) {
+  .bottom-grid .panel-heading {
+    align-items: baseline;
+  }
 }
 
 .cost-estimate-note {
@@ -1042,18 +1078,22 @@ input[type="checkbox"]:checked::after {
 
 .comparison-strip {
   /* 趋势卡片放在指标和图表之间，方便横向比较变化、均速变化和上一周期总量。 */
+  --comparison-strip-height: 77px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 12px;
-  margin-bottom: 16px;
+  min-height: var(--comparison-strip-height);
+  margin-bottom: var(--space-4);
 }
 
 .comparison-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, max-content) max-content;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
+  min-height: var(--comparison-strip-height);
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1061,47 +1101,50 @@ input[type="checkbox"]:checked::after {
   box-shadow: var(--shadow);
 }
 
-.comparison-item.previous-period-equal-range {
-  grid-template-columns: minmax(0, 1fr) auto;
+.comparison-item.previous-period {
+  grid-template-columns: minmax(96px, 1fr) minmax(0, max-content);
 }
 
 .comparison-item.comparison-unavailable {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
 }
 
 .comparison-unavailable > span {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .comparison-unavailable > strong {
+  min-width: 0;
   max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.comparison-unavailable > small {
-  flex: 0 0 100%;
-  min-width: 0;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.comparison-item.previous-period-equal-range small {
-  grid-column: 1 / -1;
-  min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .comparison-item span,
 .comparison-item small {
   color: var(--muted);
   font-size: 13px;
+  line-height: 17px;
+}
+
+.comparison-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .comparison-item strong {
   font-size: 18px;
-  line-height: 1.1;
+  line-height: 23px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1139,7 +1182,7 @@ input[type="checkbox"]:checked::after {
 
 .metric strong {
   display: block;
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 22px;
   line-height: 1.1;
   letter-spacing: 0;
@@ -1170,10 +1213,6 @@ input[type="checkbox"]:checked::after {
   min-width: 0;
 }
 
-.period-comparison-heading > div {
-  min-width: 0;
-}
-
 .period-comparison-heading {
   flex-wrap: wrap;
 }
@@ -1186,13 +1225,6 @@ html[lang="en-US"] #repositoryComparisonSearch {
   flex: 0 0 auto;
   width: 224px;
   max-width: 100%;
-}
-
-.comparison-as-of {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .comparison-table-frame {
@@ -1414,8 +1446,8 @@ html[lang="en-US"] #repositoryComparisonSearch {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .list-tools {
@@ -1616,6 +1648,14 @@ html[lang="en-US"] #repositoryComparisonSearch {
   line-height: 1.45;
 }
 
+.dialog-message:empty {
+  display: none;
+}
+
+#pricingForm .dialog-copy {
+  margin: 0;
+}
+
 .dialog form {
   display: grid;
   gap: 14px;
@@ -1693,10 +1733,6 @@ html[lang="en-US"] #repositoryComparisonSearch {
   line-height: 1.3;
 }
 
-.source-option-meta .home-status {
-  font-size: 11px;
-}
-
 .source-option-path {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1731,10 +1767,10 @@ html[lang="en-US"] #repositoryComparisonSearch {
 .pricing-auto-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: start;
   justify-content: space-between;
   gap: 8px;
-  margin: 10px 0;
+  margin: 0;
 }
 
 .pricing-status-stack {
@@ -1894,26 +1930,6 @@ html[lang="en-US"] #repositoryComparisonSearch {
   white-space: nowrap;
 }
 
-.pricing-match-badge {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 6px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.pricing-match-badge.auto {
-  border-color: var(--blue);
-  color: var(--blue);
-}
-
-.pricing-match-badge.manual {
-  border-color: var(--muted);
-}
-
 .pricing-model-hint {
   color: var(--muted);
   font-size: 11px;
@@ -2007,9 +2023,6 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 @media (max-width: 640px) {
   .pricing-contexts {
-    grid-template-columns: 1fr;
-  }
-  .cost-estimate-tools {
     grid-template-columns: 1fr;
   }
   #updatePricingButton {
@@ -2136,7 +2149,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
     grid-template-columns: 1fr;
   }
 
-  .comparison-item.previous-period-equal-range {
+  .comparison-item.previous-period {
     grid-template-columns: 1fr;
   }
 
@@ -2241,7 +2254,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 .toolbar,
 .panel,
 .dialog {
-  border-radius: 21px;
+  border-radius: var(--radius-panel);
 }
 
 .toolbar {
@@ -2251,7 +2264,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .metric,
 .comparison-item {
-  border-radius: 17px;
+  border-radius: var(--radius-card);
   box-shadow: var(--neo-raised-small);
 }
 
@@ -2259,14 +2272,13 @@ html[lang="en-US"] #repositoryComparisonSearch {
   padding: 17px;
 }
 .comparison-item {
-  padding: 16px;
+  padding: 13px;
 }
 .panel {
-  padding: 20px;
+  padding: var(--space-4);
 }
 .chart-panel {
-  padding: 20px 22px 22px;
-  border-radius: 24px;
+  border-radius: var(--radius-panel);
 }
 .dialog {
   padding: 22px;
@@ -2277,6 +2289,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 }
 #pickImportDirectoryButton,
 .panel-action,
+#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -2292,6 +2305,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
+#pricingForm .pricing-rematch-button:hover,
 .dialog-actions button:hover,
 .ceramic-toggle:hover,
 .segmented > button:hover,
@@ -2513,7 +2527,6 @@ select:focus-visible {
 }
 .topbar {
   padding: 16px 22px;
-  margin-bottom: 14px;
   border: 1px solid var(--neo-edge);
   border-radius: 21px;
   box-shadow: var(--neo-raised);
@@ -2551,7 +2564,7 @@ select:focus-visible {
 }
 .metrics,
 .comparison-strip {
-  gap: 20px;
+  gap: var(--space-4);
 }
 .metrics {
   margin-bottom: 20px;
@@ -2559,27 +2572,43 @@ select:focus-visible {
 .main-grid,
 .period-comparison-grid,
 .bottom-grid {
-  gap: 20px;
+  gap: var(--space-4);
+}
+.main-grid,
+.period-comparison-grid {
   margin-bottom: 24px;
 }
 .metric {
   padding: 13px;
-  border-radius: 17px;
+  border-radius: var(--radius-card);
 }
 .metric > span:not(.metric-new) {
-  padding-left: 4px;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: var(--space-1);
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.metric strong {
+
+.metric strong,
+.comparison-item:not(.comparison-unavailable) > strong {
+  min-width: 0;
+  max-width: 100%;
   padding: 9px 10px;
-  margin-top: 10px;
-  border-radius: 9px;
+  border-radius: var(--radius-inner);
   background: var(--ceramic-well);
   box-shadow: var(--neo-inset-small);
   font-size: 24px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 31px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .metric .metric-new {
   top: 7px;
   right: 10px;
@@ -2588,6 +2617,7 @@ select:focus-visible {
 .theme-toggle,
 #pickImportDirectoryButton,
 .panel-action,
+#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -2766,16 +2796,6 @@ button:disabled {
 .detail-panel .bar-track {
   height: calc(10px * 4 / 3);
 }
-.comparison-item:not(.comparison-unavailable) > strong {
-  padding: 9px 10px;
-  border-radius: 9px;
-  background: var(--ceramic-well);
-  box-shadow: var(--neo-inset-small);
-  font-size: 24px;
-}
-.cost-estimate-tools {
-  align-items: center;
-}
 .cost-estimate-note {
   grid-column: 1 / -1;
   max-width: none;
@@ -2908,6 +2928,7 @@ button:disabled {
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
+  line-height: 17px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3063,6 +3084,7 @@ button:disabled {
 #presetButtons > .recent-segment,
 .segmented-well > button {
   min-height: 36px;
+  line-height: 19px;
   background: transparent;
   border: 1px solid transparent;
   box-shadow: none;
@@ -3155,6 +3177,8 @@ button:disabled {
 }
 
 #themeToggle svg {
+  width: 39.9px;
+  height: 21.85px;
   overflow: visible;
 }
 
@@ -3163,7 +3187,6 @@ button:disabled {
   .toolbar {
     display: grid;
     grid-template-columns: minmax(510px, 1.35fr) minmax(220px, 0.65fr) minmax(340px, 1fr);
-    gap: 12px;
   }
   .toolbar > .range-controls {
     grid-column: 1;
@@ -3270,48 +3293,12 @@ html[lang="en-US"] #presetButtons > .recent-segment {
   }
 }
 
-/* Keep spacing in the data-source dialog deliberate, including its empty status line. */
+/* Keep the data-source shell within the viewport; A5 group spacing lives in the
+   dialog anatomy rules below. */
 #importDialog .dialog {
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: 24px;
-}
-
-#importForm {
-  gap: 0;
-}
-
-#importForm .dialog-copy {
-  margin-top: 14px;
-}
-
-#importForm .source-picker-field {
-  margin-top: 20px;
-}
-
-#importForm .source-picker {
-  margin-top: 10px;
-}
-
-#importForm > label {
-  gap: 8px;
-  margin-top: 20px;
-}
-
-#importForm .dialog-message {
-  margin-top: 14px;
-}
-
-#importForm .dialog-message:empty {
-  margin-top: 0;
-}
-
-#importForm .dialog-actions {
-  margin-top: 24px;
-}
-
-#importForm .dialog-message:not(:empty) + .dialog-actions {
-  margin-top: 18px;
 }
 
 @media (max-width: 720px) {
@@ -3374,8 +3361,16 @@ html[lang="en-US"] #presetButtons > .recent-segment {
   }
   .shell .detail-panel[data-spotlight-active] > .panel-heading,
   .shell .detail-panel[data-spotlight-active] .bar-label,
+  .shell .perf-model-detail-panel[data-spotlight-active] > .perf-model-detail-head,
+  .shell .perf-model-detail-panel[data-spotlight-active] > .perf-model-hero,
+  .shell .perf-model-detail-panel[data-spotlight-active] > .perf-model-overflow,
+  .shell .perf-model-detail-panel[data-spotlight-active] > .perf-model-timing-missing,
   .shell .detail-panel[data-spotlight-active] .empty {
     position: relative;
+    z-index: 1;
+  }
+  .shell .perf-model-detail-panel[data-spotlight-active] .perf-model-tick,
+  .shell .perf-model-detail-panel[data-spotlight-active] .perf-model-close-endpoints {
     z-index: 1;
   }
   /* A local context must not trap a currently open menu behind later panels. */
@@ -3394,4 +3389,1015 @@ html[lang="en-US"] #presetButtons > .recent-segment {
   .shell [data-spotlight-active]::after {
     transition: none;
   }
+}
+
+/* Model speed view. All rules stay inside this grid so older tables and bars
+   keep their existing geometry and material. */
+.perf-models-grid {
+  --perf-row-height: 42px;
+  --perf-head-height: 32px;
+  align-items: stretch;
+}
+
+.perf-models-grid > .panel {
+  height: calc(5 * var(--perf-row-height) + var(--perf-head-height) + 2 * var(--space-4) + 2px);
+  padding: var(--space-4);
+}
+
+.perf-models-grid > .perf-model-table-panel {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+
+.perf-model-table-panel > .comparison-table-frame {
+  border-radius: var(--radius-inner);
+}
+
+.perf-model-table-scroll {
+  flex: none;
+  height: calc(5 * var(--perf-row-height) + var(--perf-head-height));
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.perf-model-table-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.perf-model-table-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--track) 35%, transparent);
+}
+
+.perf-model-table-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+
+.perf-model-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.perf-model-table-scroll:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: inherit;
+}
+
+.perf-model-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.perf-model-table th,
+.perf-model-table td {
+  min-width: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.perf-model-table thead th {
+  height: var(--perf-head-height);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-table thead th:last-child {
+  text-align: right;
+}
+
+.perf-model-data-table tbody tr {
+  height: var(--perf-row-height);
+}
+
+.perf-model-data-table tbody tr:last-child th,
+.perf-model-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.perf-model-col-source {
+  width: 108px;
+}
+
+.perf-model-col-speed {
+  width: 38%;
+}
+
+.perf-model-data-row.selected th {
+  color: var(--blue);
+  box-shadow: inset 2px 0 var(--blue);
+}
+
+.perf-model-data-row.selected th,
+.perf-model-data-row.selected td {
+  background: transparent;
+}
+
+.perf-model-row-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.perf-model-row-action > .comparison-row-name {
+  width: 100%;
+}
+
+.perf-model-row-action:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
+
+.perf-model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-effort {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.perf-model-source {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.perf-model-source-kind,
+.perf-model-source-provider {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-source-provider {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.perf-model-speed-cell {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) 52px;
+  align-items: center;
+  gap: 10px;
+}
+
+.perf-model-speed-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.perf-model-mini-track {
+  width: 100%;
+  height: 9px;
+}
+
+.perf-model-mini-fill {
+  display: block;
+  background: var(--blue);
+  background-image: none;
+}
+
+.perf-model-detail-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 8px;
+}
+
+.perf-model-detail-head {
+  min-height: 30px;
+}
+
+.perf-model-detail-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  line-height: 1.55;
+}
+
+.perf-model-identity-context,
+.perf-model-identity-model {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.perf-model-source-name {
+  flex: none;
+  min-width: 0;
+  max-width: 35%;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  opacity: 0.68;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-provider-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-title-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-model-title-effort {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.perf-model-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-model-hero strong {
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1;
+}
+
+.perf-model-unit {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.perf-model-sample-count {
+  margin-left: auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: normal;
+}
+
+.perf-model-band {
+  display: grid;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.perf-model-plot {
+  position: relative;
+  height: 104px;
+  min-width: 0;
+}
+
+.perf-model-band-track {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  left: 0;
+}
+
+.perf-model-band-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--blue) 40%, var(--ceramic-well));
+  background-image: none;
+}
+
+.perf-model-tick {
+  position: absolute;
+  top: 46px;
+  width: 0;
+  height: 0;
+  color: var(--muted);
+}
+
+.perf-model-tick.is-up::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: -1px;
+  width: 2px;
+  height: 22px;
+  background: var(--blue);
+}
+
+.perf-model-tick-label {
+  position: absolute;
+  left: 0;
+  display: grid;
+  gap: 1px;
+  justify-items: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.perf-model-tick.is-up .perf-model-tick-label {
+  bottom: 12px;
+}
+
+.perf-model-tick.is-down .perf-model-tick-label {
+  top: 10px;
+}
+
+.perf-model-tick.edge-left .perf-model-tick-label {
+  justify-items: start;
+  transform: none;
+}
+
+.perf-model-tick.edge-right .perf-model-tick-label {
+  justify-items: end;
+  transform: translateX(-100%);
+}
+
+.perf-model-tick-value {
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-model-tick-name {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.perf-model-close-endpoints {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.perf-model-close-endpoints[hidden],
+.perf-model-plot.is-crowded .perf-model-tick.is-down .perf-model-tick-label {
+  display: none;
+}
+
+.perf-model-plot.is-crowded .perf-model-close-endpoints {
+  display: flex;
+}
+
+.perf-model-close-endpoints strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-model-overflow,
+.perf-model-timing-missing {
+  margin: auto 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.perf-model-empty {
+  margin: 0;
+}
+
+.perf-model-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1020px) {
+  .perf-models-grid > .perf-model-table-panel {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .perf-models-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-model-table-panel {
+    height: calc(5 * var(--perf-row-height) + var(--perf-head-height) + 2 * var(--space-4) + 2px);
+  }
+}
+
+@media (max-width: 560px) {
+  .perf-model-col-speed {
+    width: 76px;
+  }
+
+  .perf-model-speed-cell {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-model-mini-track {
+    display: none;
+  }
+
+  .perf-model-table {
+    font-size: 12px;
+  }
+}
+
+/* A4 content surfaces: explicit line boxes and stable empty/loading/error slots. */
+main.shell {
+  --content-heading-line-height: 21px;
+  --content-label-line-height: 24px;
+  --content-meta-line-height: 18px;
+  --content-table-line-height: 19px;
+  --content-empty-line-height: 24px;
+  --main-panel-stable-height: 384px;
+}
+
+main.shell > .main-grid {
+  min-height: var(--main-panel-stable-height);
+}
+
+main.shell .panel .panel-heading {
+  line-height: var(--content-heading-line-height);
+}
+
+main.shell .panel .panel-heading > h2,
+main.shell .panel .panel-heading > span,
+main.shell .panel .timeline-title h2 {
+  line-height: var(--content-heading-line-height);
+}
+
+main.shell .timeline-title #rangeLabel {
+  line-height: 17px;
+}
+
+main.shell .timeline-range-warning {
+  line-height: var(--content-table-line-height);
+}
+
+main.shell .chart-panel .timeline-legend,
+main.shell .chart-panel .timeline-legend-item {
+  line-height: 16px;
+}
+
+main.shell .bar-label,
+main.shell .home-label,
+main.shell .bar-name,
+main.shell .bar-value,
+main.shell .home-kind,
+main.shell .home-row .home-path {
+  line-height: var(--content-label-line-height);
+}
+
+main.shell .home-meta,
+main.shell .home-reason {
+  line-height: var(--content-meta-line-height);
+}
+
+main.shell .empty {
+  line-height: var(--content-empty-line-height, 24px);
+}
+
+main.shell .cost-estimate-note {
+  line-height: 21px;
+}
+
+main.shell .comparison-table,
+main.shell .perf-model-table {
+  line-height: var(--content-table-line-height, 19px);
+}
+
+main.shell .panel .comparison-table th,
+main.shell .panel .comparison-table td,
+main.shell .panel .perf-model-table th,
+main.shell .panel .perf-model-table td {
+  line-height: var(--content-table-line-height, 19px);
+}
+
+main.shell .comparison-table .comparison-detail-title,
+main.shell .comparison-table .comparison-detail-metric span,
+main.shell .comparison-table .comparison-detail-metric small {
+  line-height: 17px;
+}
+
+main.shell .period-comparison-panel {
+  --period-comparison-slot-height: 496px;
+}
+
+main.shell .period-comparison-table {
+  height: var(--period-comparison-slot-height);
+  min-height: var(--period-comparison-slot-height);
+  overflow-y: auto;
+}
+
+main.shell .period-comparison-table > .empty {
+  display: grid;
+  min-height: 100%;
+  padding: 20px;
+  place-items: center;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+main.shell .perf-model-unit {
+  line-height: 20px;
+}
+
+main.shell .perf-model-sample-count {
+  line-height: var(--content-meta-line-height, 18px);
+}
+
+main.shell .perf-model-overflow,
+main.shell .perf-model-timing-missing,
+main.shell .perf-model-tick-value,
+main.shell .perf-model-tick-name,
+main.shell .perf-model-plot.is-crowded .perf-model-close-endpoints {
+  line-height: 16px;
+}
+
+main.shell .perf-model-table-panel > .perf-model-empty,
+main.shell .perf-model-detail-panel > .perf-model-empty {
+  margin: auto;
+  text-align: center;
+}
+
+/* A5 dialog anatomy. Keep layout on the two backdrop dialogs so the native
+   #modelPricingDialog retains its closed display:none behavior. */
+.dialog {
+  --dialog-heading-line-height: 21px;
+  --dialog-body-line-height: 19px;
+  --dialog-feedback-line-height: 21px;
+  --dialog-control-height: 36px;
+  --dialog-gap: var(--space-3);
+}
+
+.dialog-heading {
+  min-width: 0;
+}
+
+.dialog-heading > h2 {
+  min-width: 0;
+  line-height: var(--dialog-heading-line-height);
+}
+
+.dialog-copy,
+.dialog-message {
+  line-height: var(--dialog-body-line-height);
+}
+
+.dialog-message {
+  min-height: 0;
+  margin: 0;
+}
+
+.dialog-message:empty {
+  display: none;
+}
+
+.dialog-actions {
+  min-height: var(--dialog-control-height);
+  margin: 0;
+}
+
+.dialog-actions > button {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#importDialog .dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+#importForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--dialog-gap);
+  min-width: 0;
+  margin: 0;
+}
+
+#importForm > * {
+  min-width: 0;
+  margin-block: 0;
+}
+
+#importForm > .dialog-copy {
+  line-height: var(--dialog-body-line-height);
+}
+
+#importForm > fieldset.source-picker-field {
+  gap: var(--space-2);
+}
+
+#importForm .source-picker-field > legend {
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  line-height: var(--dialog-body-line-height);
+}
+
+#importForm > label {
+  display: grid;
+  gap: var(--space-2);
+  line-height: var(--dialog-body-line-height);
+}
+
+#importForm .path-picker {
+  gap: var(--space-2);
+}
+
+#importForm input,
+#importForm button {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#importForm .source-option input {
+  height: 16px;
+  min-height: 16px;
+}
+
+#importForm > .dialog-message {
+  line-height: var(--dialog-feedback-line-height);
+}
+
+#importForm > .dialog-actions {
+  gap: var(--dialog-gap);
+}
+
+#skinDialog .dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dialog-gap);
+}
+
+#skinDialog .skin-toggle-row,
+#skinDialog .skin-opacity-row,
+#skinDialog .skin-card-head,
+#skinDialog .skin-card-name,
+#skinDialog .dialog-actions > button {
+  line-height: var(--dialog-body-line-height);
+}
+
+#skinDialog .skin-controls {
+  gap: var(--dialog-gap) var(--space-4);
+}
+
+#skinDialog .skin-toggle-row,
+#skinDialog .skin-opacity-row {
+  min-height: var(--dialog-control-height);
+}
+
+#skinDialog .skin-opacity-row output {
+  height: var(--dialog-body-line-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#skinDialog .dialog-heading > .ceramic-toggle {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#skinDialog .dialog-actions {
+  min-height: var(--dialog-control-height);
+}
+
+/* A6 pricing surfaces: explicit groups, stable list rows, and a native dialog
+   whose layout applies only while it is actually open. */
+#pricingDialog .pricing-dialog {
+  --pricing-model-row-height: 52px;
+  --pricing-model-list-height: 240px;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+#pricingForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--dialog-gap);
+  min-width: 0;
+  margin: 0;
+}
+
+#pricingForm > * {
+  min-width: 0;
+  margin-block: 0;
+}
+
+#pricingForm > .dialog-copy {
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-auto-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--dialog-gap);
+}
+
+#pricingForm .pricing-update-details > summary {
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-update-details[open] > summary {
+  margin-bottom: var(--dialog-gap);
+}
+
+#pricingForm .pricing-status-stack {
+  gap: var(--space-1);
+}
+
+#pricingForm .pricing-status-stack .pricing-model-note {
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-auto-row > button {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: var(--dialog-gap);
+}
+
+#pricingForm #pricingSearch {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+#pricingForm .pricing-rate-label {
+  gap: var(--space-2);
+  margin-left: 0;
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-rate-label input {
+  flex: none;
+  width: 90px;
+}
+
+#pricingForm .pricing-toolbar input,
+#pricingForm .pricing-toolbar button {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-scope {
+  width: min(100%, 320px);
+  min-height: calc(var(--dialog-control-height) + 16px);
+}
+
+#pricingForm .pricing-scope > button {
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-model-list {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  height: var(--pricing-model-list-height);
+  min-height: var(--pricing-model-list-height);
+  max-height: var(--pricing-model-list-height);
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
+}
+
+#pricingForm .pricing-harness-group {
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+#pricingForm .pricing-harness-group > h3 {
+  margin: 0;
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--dialog-gap);
+  height: var(--pricing-model-row-height);
+  min-height: var(--pricing-model-row-height);
+  padding: 7px 10px;
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-model-unpriced {
+  flex-wrap: nowrap;
+}
+
+#pricingForm .pricing-model-name {
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-model-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pricingForm .currency-badge,
+#pricingForm .pricing-state-badge {
+  flex: none;
+  line-height: 17px;
+}
+
+#pricingForm .pricing-model-hint {
+  max-width: none;
+  justify-self: end;
+  text-align: right;
+  line-height: var(--dialog-body-line-height);
+  white-space: nowrap;
+}
+
+#pricingForm .pricing-rematch-button {
+  justify-self: end;
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  padding: 0 10px;
+  line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-model-list > .empty {
+  display: grid;
+  height: 100%;
+  min-height: 100%;
+  padding: var(--space-4);
+  place-items: center;
+  line-height: var(--content-empty-line-height, 24px);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+#pricingForm > .dialog-message {
+  line-height: var(--dialog-feedback-line-height);
+}
+
+#pricingForm > .dialog-actions {
+  gap: var(--dialog-gap);
+}
+
+#modelPricingDialog[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--dialog-gap);
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+#modelPricingDialog[open] > * {
+  min-width: 0;
+  margin-block: 0;
+}
+
+#modelPricingDialog[open] #modelPricingTitle {
+  position: relative;
+  padding-right: 46px;
+  overflow: hidden;
+  line-height: var(--dialog-heading-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#modelPricingDialog[open] #modelPricingTitle .currency-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  line-height: var(--dialog-heading-line-height);
+}
+
+#modelPricingDialog[open] .pricing-contexts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dialog-gap);
+  min-width: 0;
+}
+
+#modelPricingDialog[open] .pricing-context {
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+#modelPricingDialog[open] .pricing-context > strong {
+  line-height: var(--dialog-heading-line-height);
+  overflow-wrap: anywhere;
+}
+
+#modelPricingDialog[open] .pricing-context label {
+  gap: 5px;
+  line-height: var(--dialog-body-line-height);
+}
+
+#modelPricingDialog[open] .pricing-context input {
+  height: var(--dialog-control-height);
+  min-height: var(--dialog-control-height);
+  line-height: var(--dialog-body-line-height);
+}
+
+#modelPricingDialog[open] .pricing-fast-block {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  padding-top: var(--dialog-gap);
+}
+
+#modelPricingDialog[open] .pricing-fast-block > strong {
+  margin: 0 0 var(--space-2);
+  line-height: var(--dialog-body-line-height);
+}
+
+#modelPricingDialog[open] .pricing-model-details > summary {
+  line-height: var(--dialog-body-line-height);
+}
+
+#modelPricingDialog[open] .pricing-model-details[open] > summary {
+  margin-bottom: var(--dialog-gap);
+}
+
+#modelPricingDialog[open] .pricing-model-details .pricing-model-note {
+  line-height: var(--dialog-body-line-height);
+  overflow-wrap: anywhere;
+}
+
+#modelPricingDialog[open] > .dialog-actions {
+  gap: var(--dialog-gap);
 }

@@ -93,13 +93,12 @@
    and the button carries no visible text (plan 2 and 4.2).
    --------------------------------------------------------------------------- */
 .skin-toggle svg {
-  /* Matches the theme toggle's 42x23 box so the three buttons align optically. */
-  width: 26px;
-  height: 26px;
+  width: 22.1px;
+  height: 22.1px;
   fill: none;
   /* Use the same neutral colour as the language divider and inactive sun/moon. */
   stroke: var(--toggle-muted);
-  stroke-width: 1.7;
+  stroke-width: 2.04;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -152,6 +151,8 @@
   align-items: center;
   gap: 8px;
   margin: 0;
+  min-height: 36px;
+  line-height: 19px;
 }
 
 /* The opacity slider is a range input, not a text field: styles.css draws every
@@ -173,6 +174,10 @@
      sync on first open, restore, dragging and programmatic changes. */
   --skin-slider-accent: var(--skin-active-accent, var(--blue));
   --skin-opacity-fill: 50%;
+}
+
+.skin-toggle-row input[type="checkbox"] {
+  flex: 0 0 auto;
 }
 
 .skin-opacity-row input[type="range"]::-webkit-slider-runnable-track {
@@ -230,7 +235,12 @@
 }
 
 .skin-opacity-row output {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 19px;
   min-width: 44px;
+  line-height: 19px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -243,6 +253,9 @@
    recipes; only its header placement belongs to the picker. */
 .skin-dialog .dialog-heading > .ceramic-toggle {
   flex-shrink: 0;
+  height: 36px;
+  min-height: 36px;
+  line-height: 19px;
   white-space: nowrap;
 }
 
@@ -291,6 +304,7 @@
   align-content: start;
   gap: 12px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 /* Tablet layout keeps both mode previews; desktop 1024px retains five columns. */
@@ -323,6 +337,7 @@
   /* A light rise above the shared well floor; selection presses it back down. */
   box-shadow: var(--neo-raised-small);
   cursor: pointer;
+  min-width: 0;
 }
 
 .skin-card.is-selected {
@@ -335,9 +350,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-height: 19px;
+  line-height: 19px;
 }
 
 .skin-card-name {
+  min-width: 0;
+  line-height: 19px;
   font-weight: 700;
 }
 
@@ -400,7 +419,10 @@
 }
 
 .skin-preview-mode {
+  display: block;
+  min-height: 16px;
   font-size: 11px;
+  line-height: 16px;
   color: var(--muted);
 }
 

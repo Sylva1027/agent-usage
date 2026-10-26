@@ -1804,7 +1804,7 @@ test("B18: 费用说明只对精确角色/状态/selector走自身文字范围�
     if (!includeMarker) delete node.ownTextRangeProbe;
     return node;
   };
-  const makeRole = ({ id = "cost.note-text", stateId = "dashboard-default", rawSelector = selector } = {}) =>
+  const makeRole = ({ id = "cost.note-text", stateId = "cost-details-open", rawSelector = selector } = {}) =>
     m32Role("page.body-text", { id, states: [stateId], selector: rawSelector });
   const enabledIn = (source) => /const useOwnTextRanges = true;/.test(source);
   const scripted = (nodeProbe) => {
@@ -1824,7 +1824,7 @@ test("B18: 费用说明只对精确角色/状态/selector走自身文字范围�
     );
     return { page, sources };
   };
-  const run = async (page, role, stateId = "dashboard-default") => {
+  const run = async (page, role, stateId = "cost-details-open") => {
     try {
       return await measureBrowserRoles({
         page,
@@ -1879,9 +1879,9 @@ test("B18: 费用说明只对精确角色/状态/selector走自身文字范围�
 
   await t.test("近似角色、状态或 selector 均保留默认 false", async () => {
     const cases = [
-      { label: "role", role: makeRole({ id: "cost.note-text-near" }), stateId: "dashboard-default" },
+      { label: "role", role: makeRole({ id: "cost.note-text-near" }), stateId: "cost-details-open" },
       { label: "state", role: makeRole({ stateId: "quota-toast" }), stateId: "quota-toast" },
-      { label: "selector", role: makeRole({ rawSelector: `${selector} ` }), stateId: "dashboard-default" },
+      { label: "selector", role: makeRole({ rawSelector: `${selector} ` }), stateId: "cost-details-open" },
     ];
     for (const item of cases) {
       const { sources, page } = scripted(() => ({
@@ -8780,15 +8780,31 @@ test("M3.2：真实浏览器集成——纯色/渐变/placeholder/聚光/Canvas 
           scaledPage = await scaled.newPage();
           installBrowserColorObserver(scaledPage);
           await scaledPage.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });
+          await scaledPage.waitForSelector(".comparison-table thead th", { timeout: 20000 });
           await scaledPage.waitForSelector("#timelineChart", { timeout: 20000 });
-          const result = await measureBrowserRoles({
-            page: scaledPage,
-            candidate: null,
-            mode: "light",
-            stateId: "dashboard-default",
-            roleCatalog: [m32Role("chart.axis-text")],
-            policy: M31_POLICY,
-          });
+          let result;
+          try {
+            result = await measureBrowserRoles({
+              page: scaledPage,
+              candidate: null,
+              mode: "light",
+              stateId: "dashboard-default",
+              roleCatalog: [m32Role("chart.axis-text")],
+              policy: M31_POLICY,
+            });
+          } catch (error) {
+            const layoutError =
+              error instanceof AggregateError ? error.errors.find((item) => item?.layoutDifference) : null;
+            if (!layoutError) throw error;
+            const difference = layoutError.layoutDifference;
+            assert.fail(
+              `DPR=2 页面恢复差异 ${difference.path}: ${JSON.stringify({
+                before: difference.before,
+                after: difference.after,
+                element: difference.element,
+              })}`,
+            );
+          }
           const record = recordOf(result, "chart.axis-text");
           assert.equal(record.result, "pass", `DPR=2 下画布标签实测未达标：${record.reason}`);
           const evidence = evidenceOf(record);
@@ -10190,6 +10206,37 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
   }
 });
 
+async function captureSettledE1dPage(screenshot, attempts) {
+  let previous = await screenshot();
+  for (let count = 2; count <= 3; count += 1) {
+    const current = await screenshot();
+    if (previous.equals(current)) {
+      attempts.push(count);
+      return current;
+    }
+    previous = current;
+  }
+  throw new Error("E1d fullPage paint did not converge within three captures");
+}
+
+test("E1d：真实截图基准要求连续相同，短暂重绘有界收敛，持续变化拒绝", async () => {
+  const a = Buffer.from("a"),
+    b = Buffer.from("b"),
+    c = Buffer.from("c");
+  const attempts = [];
+  const frames = [a, b, b];
+  assert.equal(await captureSettledE1dPage(async () => frames.shift(), attempts), b);
+  assert.deepEqual(attempts, [3]);
+  const unstable = [a, b, c];
+  await assert.rejects(
+    captureSettledE1dPage(async () => unstable.shift(), []),
+    /within three captures/,
+  );
+  assert.equal(unstable.length, 0);
+  const changed = [b, b];
+  assert.notDeepEqual(await captureSettledE1dPage(async () => changed.shift(), []), a, "稳定的真实变化不能变回原基准");
+});
+
 test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基准", async () => {
   const browserRuntime = await resolveBrowserRuntime();
   assert.ok(browserRuntime, "E1d 必须使用真实 Edge/Chromium，不得跳过或以 Node 替代");
@@ -10207,6 +10254,8 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
   const evidenceDir = path.resolve(evidenceRoot, runId);
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(evidenceDir, { recursive: false });
+  let measurementStates = null;
+  const fullPageCaptureAttempts = [];
   const writeEvidence = (result, metadata) => {
     writeFileSync(path.join(evidenceDir, "before.png"), fullPageScreenshots[0]);
     writeFileSync(path.join(evidenceDir, "after.png"), fullPageScreenshots[1]);
@@ -10219,6 +10268,8 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
           browser: metadata,
           blockedRemoteRequests,
           animationInspection,
+          measurementStates,
+          fullPageCaptureAttempts,
           record: result.records[0],
           restoration: result.diagnostics.restoration,
           notes: result.diagnostics.notes,
@@ -10349,11 +10400,44 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
         },
       }),
       screenshot: async (options) => {
-        const png = await page.screenshot(options);
+        // Verify painted pixels, rather than assuming an ended transition has already rasterized.
+        const png =
+          options?.fullPage === true
+            ? await captureSettledE1dPage(() => page.screenshot(options), fullPageCaptureAttempts)
+            : await page.screenshot(options);
         if (options?.fullPage === true) fullPageScreenshots.push(png);
         return png;
       },
     };
+    const readMeasurementState = () =>
+      page.evaluate(() => {
+        const hosts = Array.from(document.querySelectorAll(".shell [data-spotlight-active]"), (host) => {
+          const style = host.style;
+          const pseudo = getComputedStyle(host, "::after");
+          return {
+            id: host.id || null,
+            attributes: Object.fromEntries(Array.from(host.attributes, ({ name, value }) => [name, value])),
+            x: style.getPropertyValue("--spotlight-x"),
+            y: style.getPropertyValue("--spotlight-y"),
+            radius: style.getPropertyValue("--spotlight-radius"),
+            mask: style.getPropertyValue("--spotlight-mask"),
+            opacity: pseudo.opacity,
+            animations: host.getAnimations({ subtree: true }).map((animation) => {
+              const timing = animation.effect?.getComputedTiming?.();
+              return {
+                playState: animation.playState,
+                transitionProperty: animation.transitionProperty ?? null,
+                pseudoElement: animation.effect?.pseudoElement ?? null,
+                duration: timing?.duration ?? null,
+                endTime: timing?.endTime ?? null,
+                currentTime: animation.currentTime ?? null,
+              };
+            }),
+          };
+        });
+        return { scroll: { x: window.scrollX, y: window.scrollY }, hosts };
+      });
+    measurementStates = { before: await readMeasurementState() };
     const result = await measureBrowserRoles({
       page: measurementPage,
       candidate: null,
@@ -10362,6 +10446,13 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
       roleCatalog: [role],
       policy: M31_POLICY,
     });
+    measurementStates.after = await readMeasurementState();
+    assert.deepEqual(measurementStates.after.scroll, measurementStates.before.scroll, "测量前后滚动位置一致");
+    assert.deepEqual(
+      measurementStates.after.hosts.map(({ id, x, y, radius, mask }) => ({ id, x, y, radius, mask })),
+      measurementStates.before.hosts.map(({ id, x, y, radius, mask }) => ({ id, x, y, radius, mask })),
+      "测量前后聚光宿主与有限样式参数一致",
+    );
     assert.equal(fullPageScreenshots.length, 2, "保存稳定等待后的内部基准/恢复整页截图");
     const metadata = {
       version: browser.version(),
@@ -16425,7 +16516,7 @@ test("B22：默认关闭不新增装饰读取、证明字段或文本/URL泄露"
   assert.doesNotMatch(JSON.stringify(probe), /private default label|private.invalid/);
 });
 
-const B23_COST_NOTE_LINK_CONTEXT = Object.freeze({ roleId: "cost.note-link", stateId: "dashboard-default" });
+const B23_COST_NOTE_LINK_CONTEXT = Object.freeze({ roleId: "cost.note-link", stateId: "cost-details-open" });
 
 function hideB23CostNoteLink(fixture, options = {}) {
   const {
@@ -16697,7 +16788,7 @@ function createB24CostNoteLinkSample({
     return result;
   };
   const role = ROLE_CATALOG.find((entry) => entry.id === "cost.note-link");
-  const run = (selectedRole = role, stateId = "dashboard-default") =>
+  const run = (selectedRole = role, stateId = "cost-details-open") =>
     measureBrowserRoles({
       page: harness.page,
       candidate: null,
@@ -16718,7 +16809,7 @@ test("B24：真实 cost.note-link 精确路由验证探测、隐藏、前景色�
   const evidence = JSON.parse(record.evidence);
 
   assert.equal(record.roleId, "cost.note-link");
-  assert.equal(record.stateId, "dashboard-default");
+  assert.equal(record.stateId, "cost-details-open");
   assert.equal(record.result, "pass");
   assert.ok(record.ratio > 4.5);
   assert.equal(probes.length, 2);

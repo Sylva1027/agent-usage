@@ -19,7 +19,7 @@
     "version": "oklab-distance-v1"
   },
   "versions": {
-    "roles": 39,
+    "roles": 41,
     "colourMath": 1,
     "fixture": 3
   }

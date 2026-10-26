@@ -1816,10 +1816,10 @@ test("D8u2A：第二 preview/browser 启动失败及主错+清理错都完整关
   assert.deepEqual(closeProbe.calls.previewCloses, ["browser", "warning", "base"]);
 });
 
-test("矩阵完整性：40 个 catalog 状态全部有归属、单元 id 唯一、S0 在前且兼任 50% 角色态", () => {
+test("矩阵完整性：41 个 catalog 状态全部有归属、单元 id 唯一、S0 在前且兼任 50% 角色态", () => {
   const groupIds = STATE_MATRIX_GROUPS.map((group) => group.id);
   const ids = ALL_MATRIX_UNITS.map((unit) => unit.id);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.equal(new Set(groupIds).size, groupIds.length, "矩阵组 id 必须唯一");
   assert.equal(new Set(ids).size, ids.length, "单元 id 必须唯一");
   for (const unit of ALL_MATRIX_UNITS) {
@@ -1837,7 +1837,7 @@ test("矩阵完整性：40 个 catalog 状态全部有归属、单元 id 唯一�
   }
   assert.equal(STATE_MATRIX_GROUPS[0].id, "S0", "S0 基准必须是第一个组");
   assert.equal(ALL_MATRIX_UNITS[0].id, "baseline");
-  assert.equal(ALL_MATRIX_UNITS.length, 45, "每个模式必须有 45 个已登记捕获单元");
+  assert.equal(ALL_MATRIX_UNITS.length, 46, "每个模式必须有 46 个已登记捕获单元");
   const coverage = describeMatrixCoverage();
   assert.equal(
     coverage.size,
@@ -1871,8 +1871,8 @@ test("D8b-sort：S5 为排序指示使用独立 catalog 单元", () => {
   const s5 = matrixGroup("S5").units;
   const state = STATE_CATALOG.find((item) => item.id === "comparison-sort-active");
   const unit = s5.find((item) => item.id === "comparison-sort-active");
-  assert.equal(STATE_CATALOG.length, 40);
-  assert.equal(ALL_MATRIX_UNITS.length, 45);
+  assert.equal(STATE_CATALOG.length, 41);
+  assert.equal(ALL_MATRIX_UNITS.length, 46);
   assert.deepEqual(state.expectedRoleIds, ["indicator.sort"]);
   assert.equal(state.ready.kind, "matches");
   assert.equal(state.ready.selector, "#modelComparisonTable .comparison-sort-indicator:not([hidden])");
@@ -1887,8 +1887,8 @@ test("D8e-badge：S5 在 dense-data 后接入固定日期可见状态并正确�
   const state = STATE_CATALOG.find((item) => item.id === "metric-record-visible");
   const unit = s5.find((item) => item.id === "metric-record-visible");
 
-  assert.equal(STATE_CATALOG.length, 40);
-  assert.equal(ALL_MATRIX_UNITS.length, 45);
+  assert.equal(STATE_CATALOG.length, 41);
+  assert.equal(ALL_MATRIX_UNITS.length, 46);
   assert.deepEqual(
     s5.map((item) => item.id),
     ["dense-data", "metric-record-visible", "comparison-sort-active", "bar-fill-visual"],
@@ -2050,8 +2050,8 @@ test("D8h-ready-fix：Chromium 原生编译全部 ready 并约束到闭层 total
 
 test("D7d：S2 将日历选区与闭层上行分开，并保留下行与同日状态", () => {
   const s2 = matrixGroup("S2").units;
-  assert.equal(STATE_CATALOG.length, 40);
-  assert.equal(ALL_MATRIX_UNITS.length, 45);
+  assert.equal(STATE_CATALOG.length, 41);
+  assert.equal(ALL_MATRIX_UNITS.length, 46);
   assert.deepEqual(
     s2.map(({ id, stateId }) => [id, stateId]),
     [
@@ -2376,8 +2376,8 @@ test("D8s5-warning：S8 独立登记告警状态，并在实际单元前置拒�
   const [unit] = group.units;
   const state = STATE_CATALOG.find((item) => item.id === "timeline-range-warning");
 
-  assert.equal(STATE_CATALOG.length, 40);
-  assert.equal(ALL_MATRIX_UNITS.length, 45);
+  assert.equal(STATE_CATALOG.length, 41);
+  assert.equal(ALL_MATRIX_UNITS.length, 46);
   assert.deepEqual(
     group.units.map((item) => item.id),
     ["timeline-range-warning"],

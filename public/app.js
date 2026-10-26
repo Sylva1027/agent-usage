@@ -34,6 +34,7 @@ import {
 } from "./pricing-models.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
+import { layoutPerfModelBands, renderPerfModelDetailHtml, renderPerfModelsHtml } from "./perf-ui.js";
 import {
   dateKey,
   datePickerMonthModel,
@@ -207,24 +208,6 @@ function setTokenMetric(selector, value) {
   if (!element) return;
   element.textContent = formatTokenMillions(value);
   element.title = formatTokens(value);
-}
-
-const MIN_METRIC_FONT_PX = 11;
-
-// 只缩不涨的字号适配：文本超出容器宽度时逐级缩小，直到放下或触及下限。
-// 不设下限以上的目标字号，保证最大字号就是 CSS 里的默认值（与 tokens 行一致）。
-export function fitTextToWidth(element, { minFontSize = MIN_METRIC_FONT_PX } = {}) {
-  if (!element || typeof element.clientWidth !== "number") return;
-  element.style.fontSize = "";
-  const available = element.clientWidth;
-  if (!available || element.scrollWidth <= available) return;
-  const baseSize = parseFloat(getComputedStyle(element).fontSize) || 22;
-  let size = baseSize;
-  while (size > minFontSize) {
-    size = Math.max(minFontSize, size - 1);
-    element.style.fontSize = `${size}px`;
-    if (element.scrollWidth <= available) return;
-  }
 }
 
 function setCurrencyMetric(selector, usd, cny = null) {
@@ -1355,7 +1338,6 @@ function renderCostMetrics(summary) {
   const estimate = summary.costEstimate;
   const note = $("#costEstimateNote");
   if (!estimate) {
-    $("#costEstimateDate").textContent = "";
     for (const selector of [
       "#totalCost",
       "#inputCost",
@@ -1381,7 +1363,6 @@ function renderCostMetrics(summary) {
   $("#cacheHitRate").title = $("#cacheHitRate").textContent;
   setMetric("#priceModelCount", estimate.modelCount);
 
-  $("#costEstimateDate").textContent = estimate.priceCheckedAt ? `· ${estimate.priceCheckedAt}` : "";
   const checkedAt = estimate.priceCheckedAt ? `价格基准 ${estimate.priceCheckedAt}` : "当前价格基准";
   const totalTokens = formatTokens(summary.totals.total);
   const caveats = [];
@@ -1629,17 +1610,25 @@ export function timelineDetailRows(summary, mode) {
   if (mode === "model") return summary.models || [];
   const byModel = new Map();
   for (const slot of summary.timeline || []) {
-    for (const [name, cost] of Object.entries(slot.costByModel || {})) {
+    for (const [key, cost] of Object.entries(slot.costByModel || {})) {
       const amount = Number(cost?.totalUsd || 0);
       if (!Number.isFinite(amount) || amount <= 0) continue;
-      const entry = byModel.get(name) || { name, totalUsd: 0, currency: cost?.currency || "USD" };
+      const name = costBucketModelName(key, cost);
+      const currency = cost?.currency || "USD";
+      const bucketKey = `${name}\u0000${currency}`;
+      const entry = byModel.get(bucketKey) || { name, totalUsd: 0, currency };
       entry.totalUsd += amount;
-      byModel.set(name, entry);
+      byModel.set(bucketKey, entry);
     }
   }
   return [...byModel.values()]
     .map((entry) => ({ ...entry, scaleValue: scaledCost(entry.totalUsd, entry.currency) }))
-    .sort((left, right) => right.scaleValue - left.scaleValue || left.name.localeCompare(right.name));
+    .sort(
+      (left, right) =>
+        right.scaleValue - left.scaleValue ||
+        left.name.localeCompare(right.name) ||
+        left.currency.localeCompare(right.currency),
+    );
 }
 
 export function renderCostDetailHtml(rows, colorMap = null) {
@@ -1917,13 +1906,6 @@ function renderPeriodComparisons(comparison) {
     totals: comparison?.totals,
     sort: state.repositoryComparisonSort,
   });
-  const asOf = comparison?.asOf ? new Date(comparison.asOf).toLocaleString(getLocale()) : "";
-  const asOfText = asOf ? `统计截至 ${asOf}` : "";
-  for (const node of document.querySelectorAll("[data-comparison-as-of]")) {
-    // Re-writing the same string still emits a mutation record (and a translation round), so an
-    // unchanged timestamp is left alone.
-    if (node.textContent !== asOfText) node.textContent = asOfText;
-  }
 }
 
 const MONTH_NAMES_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -2089,12 +2071,6 @@ function previousTokensLabel(comparisonLabel) {
   );
 }
 
-function previousPeriodDateLabel(range) {
-  const start = asDate(range?.start);
-  const end = asDate(range?.end);
-  return start && end ? `${dateKey(start, state.calendarZone)} 至 ${dateKey(end, state.calendarZone)}` : "";
-}
-
 function formatPercent(value) {
   if (value === null || value === undefined) {
     return "无基准";
@@ -2111,21 +2087,32 @@ function comparisonClass(value) {
 
 export function renderComparisonHtml(comparison) {
   if (!comparison) {
-    return "";
+    const label = comparisonLabel();
+    return `
+      <article class="comparison-item flat">
+        <span>${escapeHtml(label)}</span>
+        <strong>—</strong>
+        <small>—</small>
+      </article>
+      <article class="comparison-item flat">
+        <span>同比流速</span>
+        <strong>—</strong>
+        <small>—</small>
+      </article>
+      <article class="comparison-item previous-period flat">
+        <span>${previousTokensLabel(label)}</span>
+        <strong>—</strong>
+      </article>
+    `;
   }
   if (!comparison.previousRange) {
-    const message = comparison.label === "暂无对比" ? "全部范围没有可比较的上一周期" : "当前范围没有可比较的上一周期";
     return `
       <article class="comparison-item comparison-unavailable flat">
         <span>趋势变化</span>
         <strong>暂无对比</strong>
-        <small>${message}</small>
       </article>
     `;
   }
-  const equalLengthPreviousRange = comparison.label === "较上一等长周期";
-  const previousPeriodDetail = equalLengthPreviousRange ? previousPeriodDateLabel(comparison.previousRange) : "";
-  const previousSessionDetail = `${formatTokens(comparison.previousSessionCount)} 个会话`;
   return `
     <article class="comparison-item ${comparisonClass(comparison.totalDelta)}">
       <span>${escapeHtml(comparison.label)}</span>
@@ -2137,10 +2124,9 @@ export function renderComparisonHtml(comparison) {
       <strong title="${formatExactDelta(comparison.averageDelta)}">${formatDelta(comparison.averageDelta)}</strong>
       <small>${formatPercent(comparison.averagePercentChange)}</small>
     </article>
-    <article class="comparison-item${equalLengthPreviousRange ? " previous-period-equal-range" : ""}">
+    <article class="comparison-item previous-period">
       <span>${previousTokensLabel(comparison.label)}</span>
       <strong title="${formatTokens(comparison.previousTotals.total)}">${formatTokenMillions(comparison.previousTotals.total)}</strong>
-      <small>${previousPeriodDetail ? `${previousPeriodDetail} · ` : ""}${previousSessionDetail}</small>
     </article>
   `;
 }
@@ -2150,7 +2136,9 @@ function renderComparison(summary) {
   if (!container) {
     return;
   }
-  container.innerHTML = renderComparisonHtml(summary.comparison);
+  const quotaMode = isQuotaPreset(summary?.range?.preset || state.preset) || Boolean(summary?.range?.quotaWindow);
+  container.hidden = quotaMode;
+  container.innerHTML = quotaMode ? "" : renderComparisonHtml(summary?.comparison);
 }
 
 function getModelColor(name) {
@@ -2192,14 +2180,18 @@ function timelineModelSegments(row, modelRows = []) {
 
 function timelineCostSegments(row, modelRows = []) {
   const costByModel = row?.costByModel || {};
-  const orderedNames = modelRows.map((model) => model.name);
-  for (const name of Object.keys(costByModel)) {
-    if (!orderedNames.includes(name)) orderedNames.push(name);
+  const orderedNames = [];
+  const valuesByName = new Map();
+  for (const model of modelRows) {
+    if (!orderedNames.includes(model.name)) orderedNames.push(model.name);
   }
-  return orderedNames
-    .filter((name) => costByModel[name])
-    .map((name) => ({ name, value: scaledCost(costByModel[name].totalUsd, costByModel[name].currency) }))
-    .filter((segment) => segment.value > 0);
+  for (const [key, cost] of Object.entries(costByModel)) {
+    const name = costBucketModelName(key, cost);
+    if (!orderedNames.includes(name)) orderedNames.push(name);
+    const value = scaledCost(cost.totalUsd, cost.currency);
+    if (value > 0) valuesByName.set(name, (valuesByName.get(name) || 0) + value);
+  }
+  return orderedNames.filter((name) => valuesByName.has(name)).map((name) => ({ name, value: valuesByName.get(name) }));
 }
 
 function timelineValue(row, mode) {
@@ -2268,6 +2260,10 @@ export function costPairFromSlots(costByModel = {}) {
   return { usd: hasUsd ? usd : null, cny: hasCny ? cny : null };
 }
 
+function costBucketModelName(key, cost) {
+  return String(cost?.model || key);
+}
+
 // 混合币种的排序与图表比例按汇率折算到同一标尺（含人民币时统一折人民币），
 // 展示金额始终保留各模型的原币种。
 export function costScaleValue(amount, currency, rate, targetCurrency) {
@@ -2308,9 +2304,11 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
     .sort(
       (left, right) =>
         scaledCost(left[1].totalUsd, left[1].currency) - scaledCost(right[1].totalUsd, right[1].currency) ||
-        left[0].localeCompare(right[0]),
+        costBucketModelName(left[0], left[1]).localeCompare(costBucketModelName(right[0], right[1])) ||
+        String(left[1].currency || "USD").localeCompare(String(right[1].currency || "USD")),
     )
-    .map(([name, cost]) => {
+    .map(([key, cost]) => {
+      const name = costBucketModelName(key, cost);
       const native = formatPreciseCost(cost.totalUsd, cost.currency);
       const converted =
         cost.currency === state.costScaleTarget
@@ -2350,9 +2348,9 @@ export function renderTimelineLegendHtml(summary, mode, channelColors, modelColo
     if (isChannel) {
       segments = slot.channels || [];
     } else if (isCost) {
-      segments = Object.entries(slot.costByModel || {}).map(([name, cost]) => ({
-        name,
-        value: Number(cost.totalUsd || 0),
+      segments = Object.entries(slot.costByModel || {}).map(([key, cost]) => ({
+        name: costBucketModelName(key, cost),
+        value: scaledCost(cost.totalUsd, cost.currency),
       }));
     } else {
       segments = slot.models || [];
@@ -2704,20 +2702,6 @@ function setupUsageTooltip() {
   );
 }
 
-function homeStatusLabel(home) {
-  // Convert machine-friendly scan states into compact dashboard labels.
-  if (home.type === "unsupported" || home.status === "unsupported") {
-    return "不可用";
-  }
-  if (home.status === "active" && home.eventCount > 0) {
-    return "有用量记录";
-  }
-  if (home.status === "no-events") {
-    return "无用量记录";
-  }
-  return "可扫描";
-}
-
 function homeRowsFromMetadata(metadata) {
   // Preserve unsupported stored imports so users can remove or fix them.
   const homes = [...(metadata.homes || [])];
@@ -2751,9 +2735,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
       const id = escapeHtml(home.id);
       const label = escapeHtml(home.label || home.path || home.id);
       const kind = escapeHtml((home.kind || home.type) === "main" ? "codex" : home.kind || home.type || "");
-      const status = escapeHtml(homeStatusLabel(home));
       const pathText = escapeHtml(home.path || "");
-      const counts = `${formatTokens(home.eventCount || 0)} 条事件 · ${formatTokens(home.sessionCount || 0)} 个会话`;
       const isExcluded = excluded.has(home.id);
       const checked = isExcluded ? "" : " checked";
       const excludedBadge = isExcluded ? `<span class="home-excluded">不计入统计</span>` : "";
@@ -2762,7 +2744,7 @@ export function renderSourceOptionsHtml(homes, excludedIds = []) {
           <input type="checkbox" data-source-id="${id}"${checked} />
           <span class="source-option-text">
             <span class="source-option-label"><strong>${label}</strong><span class="home-kind">${kind}</span></span>
-            <span class="source-option-meta"><span class="home-status">${status}</span><span>${counts}</span>${excludedBadge}</span>
+            ${excludedBadge ? `<span class="source-option-meta">${excludedBadge}</span>` : ""}
             <span class="source-option-path" title="${pathText}">${pathText}</span>
           </span>
         </label>
@@ -2781,10 +2763,8 @@ export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } =
     .map((home) => {
       const label = escapeHtml(home.label);
       const kind = escapeHtml((home.kind || home.type) === "main" ? "codex" : home.kind || home.type || "");
-      const status = escapeHtml(homeStatusLabel(home));
       const pathText = escapeHtml(home.path);
       const reason = home.reason ? `<div class="home-reason">${escapeHtml(home.reason)}</div>` : "";
-      const counts = `${formatTokens(home.eventCount || 0)} 条事件 · ${formatTokens(home.sessionCount || 0)} 个会话`;
       const removeButton =
         canModify && home.imported
           ? `<button class="home-remove" type="button" data-import-action="remove" data-import-path="${pathText}" aria-label="移除 ${label}">移除</button>`
@@ -2797,12 +2777,7 @@ export function renderHomesHtml(homes, { canModify = false, excludedIds = [] } =
             <strong>${label}</strong>
             <span class="home-kind">${kind}</span>
           </div>
-          <div class="home-meta">
-            <span class="home-status">${status}</span>
-            <span>${counts}</span>
-            ${excludedBadge}
-            ${removeButton}
-          </div>
+          ${excludedBadge || removeButton ? `<div class="home-meta">${excludedBadge}${removeButton}</div>` : ""}
           <div class="home-path" title="${pathText}">${pathText}</div>
           ${reason}
         </div>
@@ -2912,6 +2887,60 @@ function currentMetadata() {
   return state.metadata;
 }
 
+export function reconcilePerfModelSelection(models, previousKey = null) {
+  const rows = Array.isArray(models) ? models.filter((model) => model && typeof model === "object") : [];
+  if (previousKey && rows.some((model) => model.key === previousKey)) return previousKey;
+  return rows.find((model) => model.state === "ok" && Number.isFinite(model.averageTps))?.key ?? rows[0]?.key ?? null;
+}
+
+function renderPerfModels(perf) {
+  const container = $("#perfModels");
+  if (!container) return;
+  const oldScroll = container.querySelector(".perf-model-table-scroll");
+  const oldScrollTop = oldScroll?.scrollTop || 0;
+  const oldFocus = document.activeElement;
+  const oldFocusKey = oldFocus?.closest?.("[data-perf-model-key]")?.dataset.perfModelKey || null;
+  const hadScrollFocus = Boolean(oldScroll && oldFocus === oldScroll);
+  const models = Array.isArray(perf?.models) ? perf.models : [];
+  state.selectedPerfModelKey = reconcilePerfModelSelection(models, state.selectedPerfModelKey);
+  container.innerHTML = renderPerfModelsHtml(perf, {
+    locale: getLocale(),
+    selectedKey: state.selectedPerfModelKey,
+    calendarZone: state.calendarZone,
+  });
+  translatePage(container);
+  layoutPerfModelBands(container);
+  const nextScroll = container.querySelector(".perf-model-table-scroll");
+  if (nextScroll) nextScroll.scrollTop = oldScrollTop;
+  if (hadScrollFocus) nextScroll?.focus({ preventScroll: true });
+  else if (oldFocusKey) {
+    [...container.querySelectorAll("[data-perf-model-key]")]
+      .find((button) => button.dataset.perfModelKey === oldFocusKey)
+      ?.focus({ preventScroll: true });
+  }
+}
+
+function selectPerfModel(key) {
+  const models = state.summary?.perf?.models;
+  const model = Array.isArray(models) ? models.find((row) => row.key === key) : null;
+  if (!model) return false;
+  state.selectedPerfModelKey = key;
+  const container = $("#perfModels");
+  for (const row of container?.querySelectorAll(".perf-model-data-row") || []) {
+    const button = row.querySelector("[data-perf-model-key]");
+    const selected = button?.dataset.perfModelKey === key;
+    row.classList.toggle("selected", selected);
+    button?.setAttribute("aria-pressed", String(selected));
+  }
+  const detail = container?.querySelector(".perf-model-detail-panel");
+  if (detail) {
+    detail.innerHTML = renderPerfModelDetailHtml(model, { locale: getLocale(), calendarZone: state.calendarZone });
+    translatePage(detail);
+    layoutPerfModelBands(detail);
+  }
+  return true;
+}
+
 function renderUnavailableQuota(reason, range = null) {
   hideUsageTooltip();
   const message = reason || QUOTA_UI_COPY.waiting;
@@ -2969,6 +2998,7 @@ function renderUnavailableQuota(reason, range = null) {
   if (legend) legend.innerHTML = "";
   const detailList = $("#detailList");
   if (detailList) detailList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+  renderPerfModels(null);
   updateTimelineModeButtons();
   drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
   updateQuotaPresetButton();
@@ -2978,6 +3008,7 @@ function renderUnavailableQuota(reason, range = null) {
 function renderEmptySummaryState() {
   hideUsageTooltip();
   updateTimelineModeButtons();
+  renderComparison(null);
   const message = state.emptySummaryMessage || "用量摘要暂不可用。";
   const warning = $("#timelineRangeWarning");
   if (warning) {
@@ -2988,6 +3019,7 @@ function renderEmptySummaryState() {
   if (legend) legend.innerHTML = "";
   const details = $("#detailList");
   if (details) details.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+  renderPerfModels(null);
   drawTimeline($("#timelineChart"), [], [], new Map(), state.emptySummaryRange, state.timelineMode);
 }
 
@@ -3019,11 +3051,9 @@ function render() {
   hideUsageTooltip();
   renderMetrics(summary);
   const quotaMode = isQuotaPreset(summary.range?.preset || state.preset) || Boolean(summary.range?.quotaWindow);
-  const comparisonStrip = $("#comparisonSummary");
-  if (comparisonStrip) comparisonStrip.hidden = quotaMode;
-  if (quotaMode) comparisonStrip.innerHTML = "";
-  else renderComparison(summary);
+  renderComparison(summary);
   renderPeriodComparisons(state.periodComparison);
+  renderPerfModels(summary.perf);
   const rangeNode = $("#rangeLabel");
   rangeNode.textContent = rangeLabel(summary);
   const rangeStart = asDate(summary.range.start);
@@ -3413,10 +3443,16 @@ async function refreshPricingAutomatically(force = false) {
         .filter(Boolean)
         .join(english ? "; " : "；");
       const details = [issueMessages, discoveryMessage].filter(Boolean).join(english ? "; " : "；");
-      const message = details
+      $("#pricingUpdateDetails").textContent = [
+        details,
+        force ? pricingUpdateSummaryText(result.priceUpdateSummary, getLocale()) : "",
+      ]
+        .filter(Boolean)
+        .join(english ? " · " : "；");
+      const message = issueMessages
         ? english
-          ? `${result.pricesUpdated || result.exchangeRateUpdated || discoveryAdded ? "Partially updated" : "Update incomplete; using saved rates"}: ${details}.`
-          : `${result.pricesUpdated || result.exchangeRateUpdated || discoveryAdded ? "部分更新完成" : "更新未完成，继续使用已有费率"}：${details}。`
+          ? "Some prices could not be updated. See update details."
+          : "部分价格未能更新，可展开更新详情查看。"
         : force
           ? result.changed || result.statusChanged
             ? getLocale() === "en-US"
@@ -3430,15 +3466,13 @@ async function refreshPricingAutomatically(force = false) {
               ? "Checked. Rates are unchanged."
               : "已检查，费率未变化。"
           : "";
-      const summaryMessage = force ? pricingUpdateSummaryText(result.priceUpdateSummary, getLocale()) : "";
-      setPricingMessage([message, summaryMessage].filter(Boolean).join(english ? " · " : "；"), Boolean(issueMessages));
+      setPricingMessage(force ? message : "", Boolean(issueMessages));
     }
   } catch (error) {
-    if (state.pricingCatalog)
-      setPricingMessage(
-        getLocale() === "en-US" ? `Automatic update failed: ${error.message}` : `自动更新失败：${error.message}`,
-        true,
-      );
+    if (state.pricingCatalog) {
+      $("#pricingUpdateDetails").textContent = error.message;
+      if (force) setPricingMessage(getLocale() === "en-US" ? "Update failed. Try again." : "更新失败，请重试。", true);
+    }
   } finally {
     if (button) button.disabled = false;
   }
@@ -3446,56 +3480,54 @@ async function refreshPricingAutomatically(force = false) {
 
 export function pricingModelNoteParts(contexts, model) {
   const parts = [];
+  const english = getLocale() === "en-US";
   if (model === "gpt-6.1-sol")
     parts.push(
-      getLocale() === "en-US"
+      english
         ? `Codex / ChatGPT Work: ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K context; short-context rates apply at every length. Fast uses Fast short-context rates`
         : `Codex / ChatGPT Work：上下文 ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K，所有长度均按短上下文价；Fast 使用快速短上下文价`,
     );
   if (Number.isInteger(contexts.longContextThreshold))
     parts.push(
       model === "gpt-6.1-sol"
-        ? getLocale() === "en-US"
+        ? english
           ? `Other sources / API: long-context rates apply above ${formatTokens(contexts.longContextThreshold)} input tokens per request`
           : `其他来源 / API：单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`
-        : `单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`,
+        : english
+          ? `Long-context rates apply above ${formatTokens(contexts.longContextThreshold)} input tokens per request`
+          : `单次输入超过 ${formatTokens(contexts.longContextThreshold)} tokens 按长上下文价`,
     );
   if (Number.isInteger(contexts.outputThreshold))
-    parts.push(`输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`);
+    parts.push(
+      english
+        ? `Long-output rates apply at ${formatTokens(contexts.outputThreshold)} output tokens or more`
+        : `输出达到 ${formatTokens(contexts.outputThreshold)} tokens 起按长输出价`,
+    );
   if (contexts.offPeakMultiplier)
     parts.push(
-      `谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`,
+      english
+        ? `Off-peak rates are ${Number(contexts.offPeakMultiplier) * 100}% of peak rates (Beijing time, weekdays 09:00–12:00 and 14:00–18:00; holidays are treated as peak)`
+        : `谷时按 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折计（北京时间工作日 9:00-12:00、14:00-18:00 为高峰，节假日未建模按高峰计）`,
     );
   if (contexts.cacheWriteTtl === "5m")
     parts.push(
-      getLocale() === "en-US"
+      english
         ? "Cache writes use 5-minute rates; unknown TTL is an estimated scenario"
         : "缓存写入使用 5 分钟费率，TTL 未确认时为场景估算",
     );
   if (contexts.standardContextLimit)
     parts.push(
-      getLocale() === "en-US"
+      english
         ? `Standard context verified through ${formatTokens(contexts.standardContextLimit)} tokens`
         : `标准上下文已核验至 ${formatTokens(contexts.standardContextLimit)} tokens`,
     );
   return parts;
 }
 
-function pricingModelHint(contexts, model) {
+function pricingModelHint(contexts) {
   const short = contexts.short || {};
-  const parts = [`${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}（入/缓/出）`];
-  if (model === "gpt-6.1-sol")
-    parts.push(
-      getLocale() === "en-US"
-        ? `Codex / Work: ${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K context, no context surcharge`
-        : `Codex / Work：${CODEX_GPT_61_CONTEXT_WINDOW / 1_000}K 上下文，无长上下文加价`,
-    );
-  else if (Number.isInteger(contexts.longContextThreshold))
-    parts.push(`上下文 ${formatTokens(contexts.longContextThreshold)} 分档`);
-  if (Number.isInteger(contexts.outputThreshold)) parts.push(`输出 ${formatTokens(contexts.outputThreshold)} 分档`);
-  if (contexts.offPeakMultiplier) parts.push(`谷时 ${Number((contexts.offPeakMultiplier * 10).toFixed(2))} 折`);
-  if (contexts.fast) parts.push("快速模式价");
-  return parts.join(" · ");
+  const rates = `${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}`;
+  return getLocale() === "en-US" ? `${rates} (in/cache/out)` : `${rates}（入/缓/出）`;
 }
 
 function pricingContextsHtml(model, contexts) {
@@ -3642,16 +3674,6 @@ export function pricingHarnessGroups() {
   );
 }
 
-export function pricingModelBadges(model, automatic = {}, source = "", locale = "zh-CN") {
-  const english = locale === "en-US";
-  const matched = Array.isArray(automatic.automaticModels)
-    ? automatic.automaticModels.includes(model)
-    : String(source || "").startsWith("https://models.dev/") ||
-      String(source || "").includes("raw.githubusercontent.com/BerriAI/litellm/");
-  const manual = automatic.manualModels?.includes(model) || false;
-  return `<span class="pricing-match-badge ${matched ? "auto" : "unmatched"}">${matched ? (english ? "Auto-matched" : "自动匹配") : english ? "Not auto-matched" : "未自动匹配"}</span>${manual ? `<span class="pricing-match-badge manual">${english ? "Manual override" : "手动覆盖"}</span>` : ""}`;
-}
-
 function renderPricingModelList() {
   const container = $("#pricingModelList");
   const catalog = state.pricingCatalog;
@@ -3663,26 +3685,22 @@ function renderPricingModelList() {
     if (row.matchType === "missing") {
       return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
         <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge missing">${english ? "Missing rate" : "缺少费率"}</span></span>
-        <span class="pricing-model-hint">${english ? "No model-specific rate; currently estimated with the lowest listed rates." : "缺少模型费率，当前按最低费率估算。"}</span>
         <button type="button" class="pricing-rematch-button" data-pricing-rematch>${english ? "Match again" : "重新匹配"}</button>
       </div>`;
     }
     if (row.matchType === "free") {
-      const autoReview = isCodexAutoReview(row.model);
       return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
-        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${autoReview ? (english ? "Officially free" : "官方免费") : english ? "Free rule" : "免费规则"}</span></span>
-        <span class="pricing-model-hint">${autoReview ? (english ? "ChatGPT auto-review is free and does not count toward plan usage limits." : "ChatGPT 自动安全审核免费，不消耗套餐用量。") : english ? "Estimated as free by the -free rule." : "按 -free 规则估算为免费。"}</span>
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${english ? "Free" : "免费"}</span></span>
       </div>`;
     }
     const contexts = catalog.models[row.catalogKey];
-    const badges = pricingModelBadges(row.catalogKey, catalog.automatic, contexts.source, getLocale());
-    const priceName =
+    const alias =
       row.model.toLowerCase() === row.catalogKey.toLowerCase()
         ? ""
-        : `<span class="pricing-model-hint">${english ? "Priced as" : "计价名称"} ${escapeHtml(row.catalogKey)}</span>`;
-    return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
-      <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span>${badges}</span>
-      <span class="pricing-model-hint">${priceName || escapeHtml(pricingModelHint(contexts, row.catalogKey))}</span>
+        : ` · ${english ? "Priced as" : "计价名称"} ${row.catalogKey}`;
+    return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" title="${escapeHtml((english ? "Edit this model's rates" : "点击编辑该模型费率") + alias)}">
+      <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span></span>
+      <span class="pricing-model-hint">${escapeHtml(pricingModelHint(contexts))}</span>
     </button>`;
   };
 
@@ -3713,13 +3731,7 @@ function renderPricingModelList() {
       .join("");
     return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
   }).join("");
-  const activity = pricingUsageModels();
-  const notice =
-    !activity.recent && activity.harnessModels
-      ? `<p class="pricing-model-note pricing-activity-notice">${localizeText("近期使用时间尚未可用，暂显示已观测模型；重启本地服务后按近一个月筛选。")}</p>`
-      : "";
-  container.innerHTML =
-    notice + (sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`);
+  container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
 }
 
 function updatePricingScopeButtons() {
@@ -3737,7 +3749,9 @@ function openModelPricing(model) {
   $("#modelPricingTitle").innerHTML =
     `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
   const provenance = pricingProvenanceText(state.pricingCatalog?.automatic?.modelMetadata?.[model], getLocale());
-  $("#modelPricingNote").textContent = [...pricingModelNoteParts(entry, model), provenance].filter(Boolean).join("；");
+  $("#modelPricingNote").textContent = [...pricingModelNoteParts(entry, model), provenance]
+    .filter(Boolean)
+    .join(getLocale() === "en-US" ? "; " : "；");
   $("#modelPricingFields").innerHTML = pricingContextsHtml(model, entry);
   updateModelPricingApplyState();
   // 原生顶层弹窗：showModal 负责置顶、焦点圈定，关闭时焦点自动还原。
@@ -3851,6 +3865,9 @@ async function submitPricing(event) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(localizeServerError(data, response.status));
+    // The open snapshot carries the pre-save pricing catalog. Force the next usage load
+    // to freeze a catalog that includes the rates just written.
+    state.snapshotId = null;
     await loadUsage({ skipCheck: true });
     closePricingDialog();
   } catch (error) {
@@ -4472,7 +4489,7 @@ function setupFrameSpotlight(root) {
   // Detail tracks/fills belong to the panel's continuous light: neither hit
   // testing nor the parent mask should treat them as separate wells.
   const recesses =
-    ".metric > strong,.comparison-item:not(.comparison-unavailable) > strong,.bar-track:not(.detail-panel .bar-track),.timeline-chart-well,.comparison-table-frame,.home-list,.cost-estimate-note,.auto-refresh-well,#presetButtons,.segmented-well,.recent-combobox,.date-range-button,input,select,textarea,button:disabled,.date-picker-popover";
+    ".metric > strong,.comparison-item:not(.comparison-unavailable) > strong,.bar-track:not(.detail-panel .bar-track),.timeline-chart-well,.comparison-table-scroll,.home-list,.cost-estimate-note,.auto-refresh-well,#presetButtons,.segmented-well,.recent-combobox,.date-range-button,input,select,textarea,button:disabled,.date-picker-popover";
   const capability = window.matchMedia("(hover: hover) and (pointer: fine)");
   let point = null;
   let active = null;
@@ -4559,6 +4576,8 @@ function setupFrameSpotlight(root) {
       // Remove whole wells, plus child raised surfaces, from the parent's light.
       // A raised button inside a well can still light its own surface when hit.
       if (observed.some((ancestor) => ancestor.contains(node))) continue;
+      // Closed details can retain layout boxes for content that is not painted.
+      if (!node.checkVisibility({ visibilityProperty: true })) continue;
       const childCss = getComputedStyle(node);
       if (!node.matches(recesses) && !inset(childCss) && !raised(node, childCss)) continue;
       const box = node.getBoundingClientRect();
@@ -4666,7 +4685,7 @@ function setupFrameSpotlight(root) {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ["class", "style", "hidden", "disabled", "aria-pressed", "aria-selected", "aria-expanded"],
+    attributeFilter: ["class", "style", "hidden", "open", "disabled", "aria-pressed", "aria-selected", "aria-expanded"],
   });
   // Dialogs sit outside .shell. Opening one must also clear a main-page light
   // under its backdrop without waiting for the user to move the pointer.
@@ -4857,6 +4876,29 @@ function bootDashboard() {
     if (!button || button.dataset.timelineMode === state.timelineMode) return;
     state.timelineMode = button.dataset.timelineMode;
     render();
+  });
+  $("#perfModels").addEventListener("click", (event) => {
+    const row = event.target.closest(".perf-model-data-row");
+    const key = row?.querySelector("[data-perf-model-key]")?.dataset.perfModelKey;
+    if (key) selectPerfModel(key);
+  });
+  $("#perfModels").addEventListener("keydown", (event) => {
+    const button = event.target.closest(".perf-model-row-action");
+    if (!button || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const buttons = [...$("#perfModels").querySelectorAll(".perf-model-row-action")];
+    const index = buttons.indexOf(button);
+    if (index < 0) return;
+    event.preventDefault();
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    const target = buttons[next];
+    selectPerfModel(target.dataset.perfModelKey);
+    target.focus({ preventScroll: true });
+    target.closest(".perf-model-data-row")?.scrollIntoView({ block: "nearest" });
   });
 
   $("#updatePricingButton").addEventListener("click", openPricingDialog);

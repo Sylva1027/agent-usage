@@ -91,12 +91,12 @@ const A48_FIRST_CANDIDATE_TOKENS = Object.freeze({
 
 test("B2-1：详情面板行名称与数值角色精确登记、双向状态镜像与版本同步", () => {
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
 
   const roleIds = ROLE_CATALOG.map((role) => role.id);
   assert.equal(new Set(roleIds).size, roleIds.length, "ROLE_CATALOG 角色 id 必须唯一");
@@ -202,11 +202,11 @@ test("B2-1：renderBarListHtml 与 renderCostDetailHtml 共用 .bar-name/.bar-va
 
 test("B2-2：来源弹窗非排除普通行 ink/muted 两角色精确登记、叶选择器边界与 dialog-import-open 双向镜像", () => {
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
 
   const roleIds = ROLE_CATALOG.map((role) => role.id);
   assert.equal(new Set(roleIds).size, roleIds.length, "ROLE_CATALOG 角色 id 必须唯一");
@@ -223,9 +223,9 @@ test("B2-2：来源弹窗非排除普通行 ink/muted 两角色精确登记、�
   assert.ok(importExcluded, "缺少 dialog-import-source-excluded 状态");
 
   const expectedTextSelector =
-    "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > strong, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-meta > .home-status";
+    "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > strong";
   const expectedMutedSelector =
-    "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > .home-kind, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-meta > span:not(.home-status):not(.home-excluded), #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-path";
+    "#sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-label > .home-kind, #sourcePicker .source-option:not(.excluded) > .source-option-text > .source-option-path";
 
   assert.equal(textRole.selector, expectedTextSelector);
   assert.equal(mutedRole.selector, expectedMutedSelector);
@@ -303,11 +303,11 @@ test("B2-2：renderSourceOptionsHtml 普通行、排除行与空来源列表的�
 
   assert.match(
     html,
-    /<label class="source-option">\s*<input type="checkbox" data-source-id="codex-main" checked \/>\s*<span class="source-option-text">\s*<span class="source-option-label"><strong>主目录<\/strong><span class="home-kind">codex<\/span><\/span>\s*<span class="source-option-meta"><span class="home-status">有用量记录<\/span><span>120 条事件 · 5 个会话<\/span><\/span>\s*<span class="source-option-path" title="\/Users\/dev\/\.codex">\/Users\/dev\/\.codex<\/span>\s*<\/span>\s*<\/label>/,
+    /<label class="source-option">\s*<input type="checkbox" data-source-id="codex-main" checked \/>\s*<span class="source-option-text">\s*<span class="source-option-label"><strong>主目录<\/strong><span class="home-kind">codex<\/span><\/span>\s*<span class="source-option-path" title="\/Users\/dev\/\.codex">\/Users\/dev\/\.codex<\/span>\s*<\/span>\s*<\/label>/,
   );
   assert.match(
     html,
-    /<label class="source-option excluded">\s*<input type="checkbox" data-source-id="zcode-imported" \/>\s*<span class="source-option-text">\s*<span class="source-option-label"><strong>ZCode备份<\/strong><span class="home-kind">zcode<\/span><\/span>\s*<span class="source-option-meta"><span class="home-status">无用量记录<\/span><span>0 条事件 · 0 个会话<\/span><span class="home-excluded">不计入统计<\/span><\/span>\s*<span class="source-option-path" title="\/Users\/dev\/\.zcode">\/Users\/dev\/\.zcode<\/span>\s*<\/span>\s*<\/label>/,
+    /<label class="source-option excluded">\s*<input type="checkbox" data-source-id="zcode-imported" \/>\s*<span class="source-option-text">\s*<span class="source-option-label"><strong>ZCode备份<\/strong><span class="home-kind">zcode<\/span><\/span>\s*<span class="source-option-meta"><span class="home-excluded">不计入统计<\/span><\/span>\s*<span class="source-option-path" title="\/Users\/dev\/\.zcode">\/Users\/dev\/\.zcode<\/span>\s*<\/span>\s*<\/label>/,
   );
 
   const emptyHtml = renderSourceOptionsHtml([], []);
@@ -321,12 +321,12 @@ test("B7-2：排除来源必要文字只登记真实名称与路径叶节点并�
   const badge = ROLE_CATALOG.find((role) => role.id === "status.home-excluded");
   const excludedState = STATE_CATALOG.find((state) => state.id === "dialog-import-source-excluded");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.ok(name);
   assert.ok(path);
   assert.ok(badge);
@@ -391,12 +391,12 @@ test("B10：主页排除名称与路径绑定独立状态、真实转义叶节�
   const reason = ROLE_CATALOG.find((role) => role.id === "status.home-reason");
   const reasonState = STATE_CATALOG.find((item) => item.id === "home-list-reason");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.ok(name);
   assert.ok(path);
   assert.ok(state);
@@ -466,12 +466,12 @@ test("B13：主页导入目录移除按钮在 home-list-reason 中按必要文�
   const role = ROLE_CATALOG.find((item) => item.id === "home.remove");
   const state = STATE_CATALOG.find((item) => item.id === "home-list-reason");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.ok(role);
   assert.equal(role.kind, "text");
   assert.equal(role.selector, "#homeList .home-remove:enabled");
@@ -503,14 +503,14 @@ test("B13：主页导入目录移除按钮在 home-list-reason 中按必要文�
   assert.doesNotMatch(render(false, false), /class="home-remove"/);
 });
 
-test("B3-3：自动刷新凹槽 ink/muted 两角色精确登记、叶节点边界与 dashboard-default 双向镜像", () => {
+test("B3-3：自动刷新标题与凹槽两角色精确登记、叶节点边界与 dashboard-default 双向镜像", () => {
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
 
   const roleIds = ROLE_CATALOG.map((role) => role.id);
   assert.equal(new Set(roleIds).size, roleIds.length, "ROLE_CATALOG 角色 id 必须唯一");
@@ -522,8 +522,8 @@ test("B3-3：自动刷新凹槽 ink/muted 两角色精确登记、叶节点边�
   assert.ok(mutedRole, "缺少 toolbar.autorefresh-muted 角色");
   assert.ok(dashboard, "缺少 dashboard-default 状态");
 
-  assert.equal(textRole.selector, "#autoRefreshInterval, #lastSuccessfulCheck");
-  assert.equal(mutedRole.selector, "#autoRefreshStatus .auto-refresh-label");
+  assert.equal(textRole.selector, "#lastSuccessfulCheck");
+  assert.equal(mutedRole.selector, "#autoRefreshStatus .auto-refresh-label, #autoRefreshInterval");
   assert.notEqual(textRole.selector, mutedRole.selector);
 
   // 叶节点边界：不得混入开关按钮/spinner/错误行/时区组合控件或凹槽与标题父容器
@@ -535,7 +535,6 @@ test("B3-3：自动刷新凹槽 ink/muted 两角色精确登记、叶节点边�
     assert.equal(role.kind, "text");
     assert.equal(role.required, true);
     assert.equal(role.threshold, 4.5);
-    assert.deepEqual(role.background, EXPECTED_CERAMIC_WELL_BG);
     assert.deepEqual(role.states, ["dashboard-default"]);
     assert.equal(role.selectorsByState, undefined);
     const mirroredStates = STATE_CATALOG.filter((state) => state.expectedRoleIds.includes(role.id)).map(
@@ -545,12 +544,13 @@ test("B3-3：自动刷新凹槽 ink/muted 两角色精确登记、叶节点边�
     assert.match(role.applicability, /待实机核验/);
     assert.doesNotMatch(role.applicability, /已实测/);
     assert.ok(role.sourceRefs.some((ref) => ref.file === "public/index.html"));
-    assert.ok(role.sourceRefs.some((ref) => ref.file === "public/styles.css" && ref.symbol.includes("--ceramic-well")));
+    assert.ok(role.sourceRefs.some((ref) => ref.file === "public/styles.css"));
   }
 
-  assert.deepEqual(textRole.foreground, { kind: "var", name: "--ink" });
+  assert.deepEqual(textRole.background, EXPECTED_CERAMIC_WELL_BG);
+  assert.deepEqual(mutedRole.background, EXPECTED_GROUP_CERAMIC_BG);
+  assert.deepEqual(textRole.foreground, { kind: "var", name: "--muted" });
   assert.deepEqual(mutedRole.foreground, { kind: "var", name: "--muted" });
-  assert.notDeepEqual(textRole.foreground, mutedRole.foreground);
   assert.ok(
     textRole.sourceRefs.some((ref) => ref.file === "public/app.js" && ref.symbol === "renderAutoRefreshControls"),
   );
@@ -568,7 +568,7 @@ test("B3-3：自动刷新凹槽 ink/muted 两角色精确登记、叶节点边�
   assertRoleSelectorsByState(ROLE_CATALOG, STATE_CATALOG);
 });
 
-test("B3-3：真实 index/app/CSS 的自动刷新凹槽三文本叶节点与色源结构", () => {
+test("B3-3：真实 index/app/CSS 的自动刷新标题与凹槽文本叶节点及色源结构", () => {
   const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
@@ -583,7 +583,7 @@ test("B3-3：真实 index/app/CSS 的自动刷新凹槽三文本叶节点与色�
     assert.equal(matches?.length, 1, `index.html 应恰有一个叶节点：${String(pattern)}`);
   }
 
-  // 三个叶节点都位于 #autoRefreshStatus 块内、错误行 #autoRefreshError 之前（同一凹槽区域）
+  // 三个叶节点都位于同一个刷新框，标题和间隔位于凹槽之前。
   const statusAt = html.indexOf('id="autoRefreshStatus"');
   const errorAt = html.indexOf('id="autoRefreshError"');
   const targets = [
@@ -593,14 +593,16 @@ test("B3-3：真实 index/app/CSS 的自动刷新凹槽三文本叶节点与色�
   ];
   assert.ok(statusAt >= 0 && errorAt > statusAt, "index.html 缺少 #autoRefreshStatus 或 #autoRefreshError");
   for (const [name, at] of targets) {
-    assert.ok(at > statusAt && at < errorAt, `${name} 必须位于 #autoRefreshStatus 凹槽块内且早于 #autoRefreshError`);
+    assert.ok(at > statusAt && at < errorAt, `${name} 必须位于 #autoRefreshStatus 内且早于 #autoRefreshError`);
   }
+  const wellAt = html.indexOf('class="auto-refresh-well"');
+  assert.ok(targets[0][1] < wellAt && targets[1][1] < wellAt && targets[2][1] > wellAt);
 
   // app 文字更新点：间隔数值与上次检查时间由 renderAutoRefreshControls 写 textContent
   assert.match(app, /querySelector\("#autoRefreshInterval"\)\.textContent/);
   assert.match(app, /querySelector\("#lastSuccessfulCheck"\)\.textContent/);
 
-  // 色源结构：标签显式 --muted；ink 两节点自身无 color 声明（继承 body --ink）；凹槽表面 --ceramic-well
+  // 标签与数值继承控件文字色；实际承载面分别由上述两个角色登记。
   assert.match(css, /\.auto-refresh-label\s*\{[^}]*color:\s*var\(--muted\)/);
   assert.doesNotMatch(css, /#autoRefreshInterval[^{}]*\{[^}]*\bcolor\s*:/);
   assert.doesNotMatch(css, /#lastSuccessfulCheck[^{}]*\{[^}]*\bcolor\s*:/);
@@ -610,12 +612,12 @@ test("B3-3：真实 index/app/CSS 的自动刷新凹槽三文本叶节点与色�
 
 test("B3-4：图例名称叶节点角色与面板标题辅助说明扩展的精确登记", () => {
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
 
   const roleIds = ROLE_CATALOG.map((role) => role.id);
   assert.equal(new Set(roleIds).size, roleIds.length, "ROLE_CATALOG 角色 id 必须唯一");
@@ -669,10 +671,10 @@ test("B3-4：图例名称叶节点角色与面板标题辅助说明扩展的精�
 
   // 原始 selector 保持；两个新增状态分别限定时间分布与详情面板宿主
   const headingBranches = headingRole.selector.split(",").map((branch) => branch.trim());
-  assert.deepEqual(headingBranches, [".panel-heading span", ".panel-heading .comparison-as-of"]);
+  assert.deepEqual(headingBranches, [".panel-heading span"]);
   assert.deepEqual(headingRole.states, ["dashboard-default", "spotlight-timeline-heading", "spotlight-detail-bars"]);
   assert.deepEqual(headingRole.selectorsByState, {
-    "dashboard-default": ".panel-heading span, .panel-heading .comparison-as-of",
+    "dashboard-default": ".panel-heading span",
     "spotlight-timeline-heading":
       ".chart-panel[data-spotlight-active] > .timeline-heading > .timeline-title > #rangeLabel",
     "spotlight-detail-bars": "#detailPanel[data-spotlight-active] > .panel-heading > #detailModeLabel:not(:empty)",
@@ -687,18 +689,13 @@ test("B3-4：图例名称叶节点角色与面板标题辅助说明扩展的精�
   );
   assert.deepEqual(headingMirror, ["dashboard-default", "spotlight-timeline-heading", "spotlight-detail-bars"]);
   assert.ok(
-    headingRole.sourceRefs.some((ref) => ref.file === "public/styles.css" && ref.symbol.includes(".comparison-as-of")),
-  );
-  assert.ok(
-    headingRole.sourceRefs.some(
-      (ref) => ref.file === "public/app.js" && ref.symbol.includes("renderPeriodComparisons"),
-    ),
+    headingRole.sourceRefs.some((ref) => ref.file === "public/styles.css" && ref.symbol === ".panel-heading span"),
   );
 
   assertRoleSelectorsByState(ROLE_CATALOG, STATE_CATALOG);
 });
 
-test("B3-4：renderTimelineLegendHtml 三模式真实名称叶节点，及 comparison-as-of 真实结构", () => {
+test("B3-4：renderTimelineLegendHtml 三模式名称叶节点，表头不再插入统计截止说明", () => {
   // channel：显式颜色 Map，输出真实名称叶 span（与色块兄弟节点分离）
   const channelHtml = renderTimelineLegendHtml(
     { timeline: [{ channels: [{ name: "Codex CLI", total: { total: 1200 } }] }] },
@@ -755,16 +752,10 @@ test("B3-4：renderTimelineLegendHtml 三模式真实名称叶节点，及 compa
     "",
   );
 
-  // comparison-as-of 真实结构：两处空 <p>，app 以 textContent 写入，CSS muted
   const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
-  const asOfMatches = html.match(/<p class="comparison-as-of" data-comparison-as-of><\/p>/g);
-  assert.equal(asOfMatches?.length, 2, "index.html 应恰有两处空的 comparison-as-of 叶节点");
-  assert.match(app, /document\.querySelectorAll\("\[data-comparison-as-of\]"\)/);
-  assert.match(app, /统计截至/);
-  assert.match(app, /node\.textContent = asOfText/);
-  assert.match(css, /\.comparison-as-of\s*\{[^}]*color:\s*var\(--muted\)/);
+  assert.doesNotMatch(html + app + css, /comparison-as-of|asOfText/);
 });
 
 test("B4-3：范围标签作为普通必要文字精确登记并镜像到 dashboard-default", () => {
@@ -774,10 +765,10 @@ test("B4-3：范围标签作为普通必要文字精确登记并镜像到 dashbo
   const role = ROLE_CATALOG.find((item) => item.id === "toolbar.range-label");
   const dashboard = STATE_CATALOG.find((item) => item.id === "dashboard-default");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.equal(ROLE_CATALOG.filter((item) => item.id === "toolbar.range-label").length, 1);
   assert.ok(role, "缺少 toolbar.range-label 角色");
   assert.equal(role.kind, "text");
@@ -831,12 +822,12 @@ test("B5-2/B15：总 tokens 标签与数值聚光态在角色、状态与 S6 矩
   const s6 = STATE_MATRIX_GROUPS.find((group) => group.id === "S6");
   const unit = s6?.units.find((item) => item.id === stateId);
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(policy.versions.fixture, 3);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.equal(STATE_CATALOG.filter((item) => item.id === stateId).length, 1);
   assert.ok(role);
   assert.ok(valueRole);
@@ -927,11 +918,11 @@ test("C45：语言按钮普通背景对齐迷你凸起面，zh-CN 选中叶进�
   const readySelector =
     ".shell #languageToggle[data-spotlight-active][aria-pressed='false']:has(> [data-language='zh-CN'].is-selected:not(:empty)):has(> [data-language='en-US']:not(.is-selected):not(:empty))";
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.ok(ordinary);
   assert.ok(role);
   assert.ok(state);
@@ -1001,11 +992,11 @@ test("A11：时间分布标题与范围说明共享宿主聚光状态，详情�
   const detailName = ROLE_CATALOG.find((item) => item.id === "panel.detail-bar-name");
   const detailValue = ROLE_CATALOG.find((item) => item.id === "panel.detail-bar-value");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.equal(STATE_CATALOG.filter((item) => item.id === stateId).length, 1);
   assert.ok(state);
   assert.deepEqual(state, {
@@ -1028,7 +1019,7 @@ test("A11：时间分布标题与范围说明共享宿主聚光状态，详情�
   assert.ok(detailName);
   assert.ok(detailValue);
   assert.equal(title.selector, ".panel-heading h2");
-  assert.equal(heading.selector, ".panel-heading span, .panel-heading .comparison-as-of");
+  assert.equal(heading.selector, ".panel-heading span");
   assert.deepEqual(title.states, ["dashboard-default", stateId, "spotlight-detail-bars"]);
   assert.deepEqual(heading.states, ["dashboard-default", stateId, "spotlight-detail-bars"]);
   assert.deepEqual(title.selectorsByState, {
@@ -1037,7 +1028,7 @@ test("A11：时间分布标题与范围说明共享宿主聚光状态，详情�
     "spotlight-detail-bars": "#detailPanel[data-spotlight-active] > .panel-heading > #detailPanelTitle:not(:empty)",
   });
   assert.deepEqual(heading.selectorsByState, {
-    "dashboard-default": ".panel-heading span, .panel-heading .comparison-as-of",
+    "dashboard-default": ".panel-heading span",
     [stateId]: ".chart-panel[data-spotlight-active] > .timeline-heading > .timeline-title > #rangeLabel",
     "spotlight-detail-bars": "#detailPanel[data-spotlight-active] > .panel-heading > #detailModeLabel:not(:empty)",
   });
@@ -1072,7 +1063,7 @@ test("A17：详情文字聚光态复用四个必需角色并绑定独立详情�
   const readySelector =
     ".shell #detailPanel[data-spotlight-active]:has(> .panel-heading > #detailPanelTitle:not(:empty)):has(> .panel-heading > #detailModeLabel:not(:empty)):has(> #detailList:not([hidden]) > .bar-row > .bar-label > .bar-name:not(:empty) + .bar-value:not(:empty))";
 
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.equal(ROLE_CATALOG.length, 77);
   assert.ok(state);
   assert.ok(title);
@@ -1130,20 +1121,24 @@ test("A17：详情文字聚光态复用四个必需角色并绑定独立详情�
   assertRoleSelectorsByState(ROLE_CATALOG, STATE_CATALOG);
 });
 
-test("B20：估价说明自身文字与来源链接分区登记，并保留真实链接渲染", () => {
+test("B20：估价说明直接展示，保留真实链接渲染与独立取证单元", () => {
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
   const noteText = ROLE_CATALOG.find((role) => role.id === "cost.note-text");
   const noteLink = ROLE_CATALOG.find((role) => role.id === "cost.note-link");
   const dashboard = STATE_CATALOG.find((state) => state.id === "dashboard-default");
+  const details = STATE_CATALOG.find((state) => state.id === "cost-details-open");
 
-  assert.equal(ROLES_VERSION, 39);
-  assert.equal(policy.versions.roles, 39);
+  assert.equal(ROLES_VERSION, 41);
+  assert.equal(policy.versions.roles, 41);
   assert.equal(validatePolicy(policy).valid, true);
   assert.equal(ROLE_CATALOG.length, 77);
-  assert.equal(STATE_CATALOG.length, 40);
+  assert.equal(STATE_CATALOG.length, 41);
   assert.ok(noteText);
   assert.ok(noteLink);
-  assert.deepEqual(dashboard.expectedRoleIds.slice(-2), ["cost.note-text", "cost.note-link"]);
+  assert.deepEqual(details.expectedRoleIds, ["cost.note-text", "cost.note-link"]);
+  assert.deepEqual(details.steps, [{ action: "click", selector: '#presetButtons button[data-preset="all"]' }]);
+  assert.equal(details.ready.selector, "#costEstimateNote p");
+  assert.deepEqual(details.restore, []);
   assert.equal(noteText.selector, "#costEstimateNote > p, #costEstimateNote li");
   assert.equal(noteLink.selector, "#costEstimateNote a");
   assert.doesNotMatch(noteText.selector, /#costEstimateNote a(?:$|\s|,)/);
@@ -1152,14 +1147,15 @@ test("B20：估价说明自身文字与来源链接分区登记，并保留真�
 
   for (const role of [noteText, noteLink]) {
     assert.equal(role.kind, "text");
-    assert.deepEqual(role.states, ["dashboard-default"]);
+    assert.deepEqual(role.states, ["cost-details-open"]);
     assert.deepEqual(role.background, EXPECTED_CERAMIC_WELL_BG);
     assert.equal(role.threshold, 4.5);
     assert.equal(role.required, true);
-    assert.equal(dashboard.expectedRoleIds.filter((id) => id === role.id).length, 1);
+    assert.equal(dashboard.expectedRoleIds.includes(role.id), false);
+    assert.equal(details.expectedRoleIds.filter((id) => id === role.id).length, 1);
     assert.deepEqual(
       STATE_CATALOG.filter((state) => state.expectedRoleIds.includes(role.id)).map((state) => state.id),
-      ["dashboard-default"],
+      ["cost-details-open"],
     );
     assert.ok(role.sourceRefs.some((ref) => ref.file === "public/app.js" && ref.symbol === "renderCostMetrics"));
     assert.ok(

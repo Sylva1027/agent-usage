@@ -38,6 +38,9 @@
       <header class="topbar">
         <h1>Agent Usage</h1>
         <div class="topbar-actions">
+          <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
+            <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
+          </button>
           <button
             class="theme-toggle skin-toggle"
             id="skinToggle"
@@ -53,14 +56,11 @@
               <path class="skin-icon-accent" d="M9.6 8.9h4.8" />
             </svg>
           </button>
-          <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
-            <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
-          </button>
           <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题" aria-pressed="false">
             <svg viewBox="-1 0 42 24" aria-hidden="true" focusable="false">
               <circle class="theme-sun" cx="11" cy="12" r="4" />
               <path class="theme-sun" d="M11 1.8v2.1m0 16.2v2.1M.8 12h2.1m16.2 0h2.1M4.3 5.3l1.5 1.5m10.4 10.4 1.5 1.5M4.3 18.7l1.5-1.5M16.2 6.8l1.5-1.5" />
-              <g class="theme-moon" transform="translate(21.4 2.4) scale(0.8)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
+              <g class="theme-moon" transform="translate(22.527 1.44) scale(0.88)"><path d="M20.985 12.486A9 9 0 1 1 11.514 3.015c.405-.022.617.46.402.802a6 6 0 0 0 8.268 8.268c.344-.215.824-.004.803.402" /></g>
             </svg>
           </button>
         </div>
@@ -139,8 +139,8 @@
           <div id="dateRangePicker" class="date-picker-popover" role="dialog" aria-label="日期范围日历" hidden></div>
         </div>
         <div id="autoRefreshStatus" class="control-group auto-refresh-status" aria-live="polite">
+          <div class="range-heading auto-refresh-heading"><span class="auto-refresh-label">自动刷新</span><span id="autoRefreshInterval">60s</span><button id="autoRefreshToggle" type="button" aria-pressed="true">开</button><span id="autoRefreshSpinner" class="auto-refresh-spinner" role="status" aria-hidden="true" aria-label="正在检查更新"></span></div>
           <div class="auto-refresh-well">
-            <span class="auto-refresh-heading"><span id="autoRefreshInterval">60s</span><span class="auto-refresh-label">自动刷新</span><button id="autoRefreshToggle" type="button" aria-pressed="true">开</button><span id="autoRefreshSpinner" class="auto-refresh-spinner" role="status" aria-hidden="true" aria-label="正在检查更新"></span></span>
             <div class="calendar-zone">
               <button id="calendarZoneSelect" class="recent-combobox" type="button" role="combobox" aria-label="日期范围时区" aria-controls="calendarZoneMenu" aria-expanded="false" aria-haspopup="listbox"><span id="calendarZoneValue">本地时间</span><span class="calendar-zone-arrow" aria-hidden="true"></span></button>
               <div id="calendarZoneMenu" class="recent-range-menu" role="listbox" aria-label="日期范围时区" hidden>
@@ -225,7 +225,22 @@
           <strong id="priceModelCount">—</strong>
         </article>
       </section>
-      <section id="comparisonSummary" class="comparison-strip" aria-label="趋势变化"></section>
+      <section id="comparisonSummary" class="comparison-strip" aria-label="趋势变化">
+        <article class="comparison-item flat">
+          <span>较昨日</span>
+          <strong>—</strong>
+          <small>—</small>
+        </article>
+        <article class="comparison-item flat">
+          <span>同比流速</span>
+          <strong>—</strong>
+          <small>—</small>
+        </article>
+        <article class="comparison-item previous-period flat">
+          <span>昨日 tokens</span>
+          <strong>—</strong>
+        </article>
+      </section>
 
       <section class="main-grid">
         <section class="panel chart-panel" aria-labelledby="timelinePanelTitle">
@@ -258,25 +273,22 @@
         </section>
       </section>
 
+      <section id="perfModelsSection" class="perf-model-speed-section" aria-labelledby="perfModelsTitle">
+        <h2 id="perfModelsTitle" class="perf-model-visually-hidden">模型速度</h2>
+        <div id="perfModels"></div>
+      </section>
+
       <section class="period-comparison-grid" aria-label="跨时间范围用量对比">
         <section class="panel period-comparison-panel">
           <div class="panel-heading period-comparison-heading">
-            <div>
-              <h2>按模型</h2>
-
-              <p class="comparison-as-of" data-comparison-as-of></p>
-            </div>
+            <h2>按模型</h2>
             <input id="modelComparisonSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型用量对比" />
           </div>
           <div id="modelComparisonTable" class="period-comparison-table" aria-live="polite"></div>
         </section>
         <section class="panel period-comparison-panel">
           <div class="panel-heading period-comparison-heading">
-            <div>
-              <h2>按仓库</h2>
-
-              <p class="comparison-as-of" data-comparison-as-of></p>
-            </div>
+            <h2>按仓库</h2>
             <input id="repositoryComparisonSearch" type="search" autocomplete="off" placeholder="搜索仓库" aria-label="搜索仓库用量对比" />
           </div>
           <div id="repositoryComparisonTable" class="period-comparison-table" aria-live="polite"></div>
@@ -293,15 +305,14 @@
         </section>
 
         <section class="panel pricing-note-panel" aria-label="费用估算说明">
-          <div class="cost-estimate-tools">
-            <div id="costEstimateDetails" class="cost-estimate-details">
-              <h2>费用估算说明 <span id="costEstimateDate"></span></h2>
-            </div>
+          <div class="panel-heading">
+            <h2>费用估算</h2>
             <button id="updatePricingButton" class="panel-action" type="button">计价标准</button>
-            <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
           </div>
+          <div id="costEstimateNote" class="cost-estimate-note" aria-live="polite"></div>
         </section>
       </section>
+
     </main>
     <span id="quotaPresetStatus" class="quota-preset-status" role="status" aria-live="polite" hidden></span>
     <div id="importDialog" class="dialog-backdrop" hidden>
@@ -310,7 +321,7 @@
           <div class="dialog-heading">
             <h2 id="importDialogTitle">数据来源</h2>
           </div>
-          <p class="dialog-copy">勾选要统计的来源，取消勾选的来源不计入用量、费用和时间线，修改立即生效。</p>
+          <p class="dialog-copy">勾选统计来源，修改立即生效。</p>
           <fieldset class="source-picker-field">
             <legend>统计来源</legend>
             <div id="sourcePicker" class="source-picker"></div>
@@ -336,12 +347,16 @@
           <div class="dialog-heading">
             <h2 id="pricingDialogTitle">更新计价标准</h2>
           </div>
-          <p class="dialog-copy">单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。支持自动更新匹配的模型价格与美元兑人民币汇率；点击模型名或汇率可手动调整。保存后按当天日期重算历史估算。</p>
+          <p class="dialog-copy">点击模型调整单价，单位为每百万 tokens。</p>
           <div class="pricing-auto-row">
-            <div class="pricing-status-stack">
-              <span id="pricingAutomaticStatus" class="pricing-model-note">正在读取更新状态…</span>
-              <span id="pricingUsageCoverage" class="pricing-model-note" aria-live="polite"></span>
-            </div>
+            <details class="pricing-update-details">
+              <summary>更新详情</summary>
+              <div class="pricing-status-stack">
+                <span id="pricingAutomaticStatus" class="pricing-model-note">正在读取更新状态…</span>
+                <span id="pricingUsageCoverage" class="pricing-model-note" aria-live="polite"></span>
+                <span id="pricingUpdateDetails" class="pricing-model-note"></span>
+              </div>
+            </details>
             <button id="refreshPricingButton" class="panel-action" type="button">立即更新</button>
           </div>
           <div class="pricing-toolbar">
@@ -370,8 +385,11 @@
       <div class="dialog-heading">
         <h2 id="modelPricingTitle">模型计价</h2>
       </div>
-      <p id="modelPricingNote" class="pricing-model-note"></p>
       <div id="modelPricingFields" class="pricing-contexts"></div>
+      <details class="pricing-model-details">
+        <summary>计价详情</summary>
+        <p id="modelPricingNote" class="pricing-model-note"></p>
+      </details>
       <div class="dialog-actions">
         <button id="cancelModelPricingButton" type="button">取消</button>
         <button id="applyModelPricingButton" type="button" disabled>应用</button>

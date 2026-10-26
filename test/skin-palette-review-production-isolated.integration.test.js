@@ -36,6 +36,14 @@ import {
 
 const execFile = promisify(execFileCallback);
 const FIXTURE_PREFIX = "m4-4-7-e1-i1-";
+// 本用例要跑两次进程内完整校验（buildRun、verifyReviewEvidence）和四次子进程完整验证
+// （沙箱验证、首次 CLI、索引装配、装配后 CLI），空载实测各阶段 13–40s、整例约 3 分钟。
+// 子进程原先没有 timeout：任何一个卡住时 node:test 的 --test-timeout 只把用例标成 cancelled，
+// 不会杀掉子进程（实测 5s 预算下进程仍活了 49s），于是整个套件被 87 MB 的沙箱拖住。
+// 现在每个子进程拿 min(单进程上限, 整例剩余预算)，在用例级上限之前触发，卡住会变成一次
+// 带 finally 清理的失败，而不是无限占用套件。
+const SANDBOX_TIMEOUT_MS = 8 * 60 * 1000;
+const SANDBOX_CHILD_TIMEOUT_MS = 4 * 60 * 1000;
 const ORIGINAL_PUBLIC_THREE = ["public/skin-palettes.js", "public/skin-picker.js", "public/skin-bootstrap.js"];
 
 function execFileWithExitCode(file, args, options) {
@@ -48,6 +56,12 @@ function execFileWithExitCode(file, args, options) {
       resolve({ code: error?.code ?? 0, stdout, stderr });
     });
   });
+}
+
+function remainingSandboxBudget(deadline, label) {
+  const remaining = deadline - Date.now();
+  assert.ok(remaining > 0, `${label} exceeded the sandbox's ${SANDBOX_TIMEOUT_MS / 1000}s budget`);
+  return Math.min(SANDBOX_CHILD_TIMEOUT_MS, remaining);
 }
 
 function repoRelative(repoRoot, absolutePath) {
@@ -149,7 +163,9 @@ function assertAssetSnapshotEqual(before, after) {
   assert.deepEqual(after.toolHashes, before.toolHashes);
 }
 
-test("E1 clean-source branch runs C5c and both post checks in a copied validation sandbox", async (t) => {
+test("E1 clean-source branch runs C5c and both post checks in a copied validation sandbox", {
+  timeout: SANDBOX_TIMEOUT_MS,
+}, async (t) => {
   if (!existsSync(path.join(REPO_ROOT, "lineart assets"))) {
     t.skip(
       "authoring source images are not in this tree (release archive); the sandbox copies them from the authoring repository",
@@ -157,6 +173,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     return;
   }
   const startedAt = Date.now();
+  const deadline = startedAt + SANDBOX_TIMEOUT_MS;
   const repoReal = await realpath(REPO_ROOT);
   const validationRoot = await realpath(path.join(repoReal, "docs", "validation"));
   const frozenPaths = [
@@ -672,7 +689,11 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         manifestRunDir,
         formalIndexPath,
       ],
-      { cwd: sandboxRoot, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: sandboxRoot,
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: remainingSandboxBudget(deadline, "sandbox verification child"),
+      },
     );
     const result = JSON.parse(child.stdout.trim());
     const assembleFormalIndex = async () => {
@@ -742,7 +763,11 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
           originRunDir,
           formalShardPath,
         ],
-        { cwd: sandboxRoot, maxBuffer: 1024 * 1024 },
+        {
+          cwd: sandboxRoot,
+          maxBuffer: 1024 * 1024,
+          timeout: remainingSandboxBudget(deadline, "index assembly child"),
+        },
       );
       assert.equal(assemblyChild.stderr, "");
       const assemblyLine = /^([^\r\n]+)\r?\n$/.exec(assemblyChild.stdout);
@@ -916,7 +941,11 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         "docs/validation/origin-run",
         "--require-selections",
       ],
-      { cwd: foreignCwd, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: foreignCwd,
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: remainingSandboxBudget(deadline, "first real CLI"),
+      },
     );
     const cliElapsedMs = Date.now() - cliStartedAt;
     assert.equal(cli.code, 2, `real CLI exit code; stderr=${cli.stderr}`);
@@ -955,7 +984,11 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         "docs/validation/origin-run",
         "--require-selections",
       ],
-      { cwd: foreignCwd, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: foreignCwd,
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: remainingSandboxBudget(deadline, "post-assembly real CLI"),
+      },
     );
     const consumerElapsedMs = Date.now() - consumerStartedAt;
     const consumerEvidenceAfter = await Promise.all(consumerEvidencePaths.map((filePath) => readFile(filePath)));

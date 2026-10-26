@@ -23,6 +23,7 @@ export const state = {
   autoRefreshCheckInFlight: false,
   lastSuccessfulCheck: null,
   timelineMode: "channel",
+  selectedPerfModelKey: null,
   theme: "light",
   locale: null,
   repositoryComparisonQuery: "",

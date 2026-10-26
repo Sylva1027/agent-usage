@@ -73,6 +73,60 @@ test("English recent ranges preserve the existing Chinese request values", () =>
   assert.equal(displayRecentValue("3个月", "en-US"), "3 months");
 });
 
+test("provider fallback copy stays distinct in both locales", () => {
+  assert.equal(localizeText("provider 未知", "en-US"), "Provider unknown");
+  assert.equal(localizeText("provider 信息不可用", "en-US"), "Provider information unavailable");
+  assert.equal(localizeText("provider 未知", "zh-CN"), "provider 未知");
+  assert.notEqual(localizeText("provider 未知", "en-US"), localizeText("provider 信息不可用", "en-US"));
+});
+
+test("ranking reference copy stays explainable in both locales", () => {
+  assert.equal(localizeText("参考行", "en-US"), "Reference row");
+  assert.equal(localizeText("计量条件未验证", "en-US"), "Metering conditions unverified");
+  assert.equal(localizeText("排名信息不可用", "en-US"), "Ranking information unavailable");
+  assert.match(
+    localizeText("满足当前计量条件的历史样本排序；分隔线以下为参考读数。", "en-US"),
+    /current metering conditions.*references/i,
+  );
+});
+
+test("sample dates, units, and the p90 percentile are explicit in both locales", () => {
+  assert.equal(localizeText("样本日期", "en-US"), "Sample date");
+  assert.equal(localizeText("样本日期范围", "en-US"), "Sample date range");
+  assert.equal(localizeText("样本日期不可用", "en-US"), "Sample dates unavailable");
+  assert.equal(localizeText("回合", "en-US"), "turn");
+  assert.equal(localizeText("消息", "en-US"), "message");
+  assert.equal(localizeText("混合样本", "en-US"), "mixed sample");
+  assert.equal(localizeText("样本日期", "zh-CN"), "样本日期");
+  assert.match(
+    localizeText("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", "en-US"),
+    /90th percentile.*not the average of the fastest 10%.*not a speed ceiling/i,
+  );
+});
+
+test("Codex timing coverage labels and unavailable states stay explicit in both locales", () => {
+  assert.equal(localizeText("Codex 计时覆盖", "en-US"), "Codex timing coverage");
+  assert.equal(localizeText("候选采样覆盖率", "en-US"), "Candidate sampling coverage");
+  assert.equal(localizeText("已记录输出覆盖率", "en-US"), "Recorded-output coverage");
+  assert.equal(localizeText("没有适用的 Codex 来源。", "en-US"), "No applicable Codex source.");
+  assert.equal(
+    localizeText("此响应未提供 Codex 计时覆盖信息。", "en-US"),
+    "This response does not include Codex timing coverage.",
+  );
+  assert.equal(localizeText("本范围没有 Codex 候选。", "en-US"), "No Codex candidates in this range.");
+  assert.equal(localizeText("缺失或无效时长", "en-US"), "Missing or invalid duration");
+  assert.equal(localizeText("进行中", "en-US"), "In progress");
+  assert.match(
+    localizeText("性能索引正在重建，覆盖信息不可用。", "en-US"),
+    /rebuilding.*coverage information is unavailable/i,
+  );
+  assert.match(
+    localizeText("部分来源降级，覆盖保留已发布的健康数据。", "en-US"),
+    /degraded.*last published healthy data/i,
+  );
+  assert.match(localizeText("全历史、无法定位日期的记录", "en-US"), /all-history records.*cannot be placed in time/i);
+});
+
 test("translated dashboard copy preserves cost and limit semantics", () => {
   assert.equal(localizeText("总花销", "en-US"), "Estimated Cost");
   assert.equal(localizeText("缓存读取", "en-US"), "Cache Hit");

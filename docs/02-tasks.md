@@ -1,6 +1,24 @@
 # 任务清单
 
-更新：2026-10-21（WorkBuddy 数据源已实施）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-26（修订自动刷新同步延迟计划）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+
+## 当前：自动刷新同步延迟
+
+状态：**v2 静态复核已修订；当前仅文档变更，待历史保留计划完成后复测并决定实施范围**。唯一规格入口为[自动刷新同步延迟治理方案](plans/2026-10-26-refresh-sync-latency-plan.md)，待执行的复核入口见其 §15；包括 M0 前端小修在内，全部产品任务均未开工。
+
+原报告的 13.6/16.3 s 转圈、26 s 首屏与 14.8 s 单次同步作为历史测量保留，本轮未独立复测。代码确认刷新等待同步、Magpie 条件性第二轮及热路径整映射复制；全文前缀存证有 Codex 重规划触发条件，转圈后数秒空窗尚未完整复现，未发现无限重试链不等于排除全部悬挂场景。撤回“14.8 s 降到 6 s”和优先加响应缓存的承诺，修正 size/mtime 复用、Merkle/整文件 SHA-256、指纹与发布一致性验收；不以旧值缓存命中或 spinner 提前关闭认定修复。后续优先去除映射复制和重复同步，再缩小 Magpie 关联/折叠范围，其余改动按复测残余决定。**现在不改产品代码、不跑性能探针、不重启服务；历史保留完成后，使用真实工作树的新隔离实例复测，形成实施范围裁定后再安排任务。**
+
+## 当前：UI 几何稳定性
+
+状态：**UI 施工与专项验收完成，报告字段契约失败已修复并通过定向回归**。设计要求见[主方案](plans/2026-10-25-ui-geometry-stability-plan.md)，施工交付唯一入口为[Implementation Plan](plans/2026-10-26-ui-geometry-stability-implementation-plan.md)；worker 均显式使用 `group/deepseek`，已关闭。实际检查见[验收](validation/2026-10-26-ui-geometry-stability.md)。
+
+实施计划 15 张中等大小任务卡已完成：A 统一写入几何 CSS，B 交付生产样板、结构与文案；主审接回后期正式回归。16 项真实 UI 测试零失败零跳过，八组合主页面及四弹窗 40 图完成；类型、lint、最终格式和配色检查通过。HTTP 报告字段断言已包含现有 `pricingCatalog` 并补验快照一致性，报告相关 17 项与计价快照 1 项均通过；CLI 六字段不变。全仓首轮及后续复测分开登记，本次未重跑全仓。
+
+文案约束立即生效，token 与生产样板先行；行高与间距按区域落实，正式测试按原定顺序后置。不因说明“可能有用”增加常驻提示，不为 `0.015625px` 改列结构，不用自动缩字号迁就框体。原测量数字的适用范围与修正结论见主方案 §8，不在本页复制历史快照。
+
+## 当前：TPS 计量范围修订
+
+状态：**v2内核已存在；2026-10-23展示修正与证据链验证正在逐卡验收**。当前施工入口为[双worker修复计划](plans/2026-10-23-tps-audit-remediation-implementation-plan.md)，进度与测试以[执行账本](validation/2026-10-23-tps-remediation/README.md)为准；[实测审计](../output/tps-audit/2026-10-23-tps-formula-audit.md)保留01:45历史快照并另列后续实施状态。provider拆行、排名门槛、成员日期/单位及当前方法覆盖已贯通内存/索引/API/界面；已有证据在临时库正常sync发布通过。真实索引未导入、用户服务未重启，原生逐请求时长与account/official精确外部对账仍缺输入，不宣称原生TPS已恢复。原[修订方案](plans/2026-10-21-tps-measurement-correction-plan.md)、[三worker执行单](plans/2026-10-21-tps-measurement-parallel-execution.md)和[只读调查证据](validation/2026-10-21-tps-scope-audit/README.md)保留历史。
 
 ## 当前：WorkBuddy 数据源
 
@@ -18,9 +36,10 @@
 
 - 适配器 `src/claude-code-usage.js`：`~/.claude/projects/**/*.jsonl`（含 `subagents`），按 `message.id` 去重取 token 最大者，子代理并入主渠道 `Claude Code`，`input` 重构成 `input_tokens + cache_read + cache_creation` 超集。
 - 接线：`usage-core` 发现/分类/指纹/分派/报告/索引；`usage-store` schema 14→15（表结构不变）、`usageFiles`、`harnessModels.Claude`；`server` 导入标签；前端 `sourceGroup` / `HARNESS_ORDER` / `bucketForChannel` / 限额排除 / i18n。
-- 已确认口径：不借用旧 Claude 价，也不为 Claude 改 `src/pricing.js`。2026-10-20 起模型身份取**线路模型** `message.model`（`requestedModel` 只是 harness 别名/网关路由名），因此本机的 `mythos-magpie-*` 与 `claude-haiku-5-5` 都按真实上游 `deepseek-v4.1-flash`（含 `-sg` 后缀命中）计价，不再走未知模型回退；识别依据是转录 `message.id` = 网关账本 `response_id`（1,498/1,499，0 分歧）与逐项 token 计数（1,498/1,498 精确相等）两项独立核对，见[验收记录](validation/2026-10-20-claude-model-identity/README.md)。子代理计入并合并；不做 TPS（转录无请求时长）。
+- 已确认口径：不借用旧 Claude 价，也不为 Claude 改 `src/pricing.js`。2026-10-20 起模型身份取**线路模型** `message.model`（`requestedModel` 只是 harness 别名/网关路由名），因此本机的 `mythos-magpie-*` 与 `claude-haiku-5-5` 都按真实上游 `deepseek-v4.1-flash`（含 `-sg` 后缀命中）计价，不再走未知模型回退；识别依据是转录 `message.id` = 网关账本 `response_id`（1,498/1,499，0 分歧）与逐项 token 计数（1,498/1,498 精确相等）两项独立核对，见[验收记录](validation/2026-10-20-claude-model-identity/README.md)。子代理计入并合并；TPS 见[Claude Code TPS 方案](plans/2026-10-21-claude-code-tps-plan.md)。
 - 验证：`test/claude-code-usage.test.js` 10 项、`usage-core` 7 项、`usage-store` 3 项（含 v15→16 只标脏 Claude 的迁移）、三路一致 1 项、服务端导入 1 项，均通过；typecheck 通过；改动文件 lint/format 通过。完整套件 2,633 项：2,605 通过 / 8 失败 / 20 跳过，8 项均为既有问题（配额窗口 3 项 + 皮肤套件 5 项，见来源接入验收）。
-- **验收（2026-10-20）**：本机 `~/.claude` 接入后，`GET /api/usage` 显示 `Main Claude Code` 活跃（1,167 事件 / 7 会话），`harnessModels.Claude` 4 个模型，渠道 `Claude` 独立成组，限额通道为空；headless Chromium 截图核对图例、模型视图、计价弹窗「缺少费率」、只选 Claude 时限额按钮禁用、TPS 列为「不支持来源」。子代理占事件 25.4% / tokens 24.2%。未点「重新匹配/保存并重算」（会写 `~/.codex-usage/pricing.json`）。另：`test/recent-selections.test.js` 3 项与 5 项皮肤套件在 HEAD 上即失败，属既有问题，未在本次修复。
+- **验收（2026-10-20）**：本机 `~/.claude` 接入后，`GET /api/usage` 显示 `Main Claude Code` 活跃（1,167 事件 / 7 会话），`harnessModels.Claude` 4 个模型，渠道 `Claude` 独立成组，限额通道为空；headless Chromium 截图核对图例、模型视图、计价弹窗「缺少费率」、只选 Claude 时限额按钮禁用、TPS 列为「不支持来源」。子代理占事件 25.4% / tokens 24.2%。未点「重新匹配/保存并重算」（会写 `~/.codex-usage/pricing.json`）。另：`test/recent-selections.test.js` 3 项与 5 项皮肤套件在 HEAD 上即失败，属既有问题，未在本次修复。TPS 列为「不支持来源」是该次验收的历史快照，该结论已由[Claude Code TPS 方案](plans/2026-10-21-claude-code-tps-plan.md)取代。
+- **Claude Code TPS：** 状态：**实施中：R1/K1/U1 已派发（2026-10-21），未验收**。按转录时间戳回退计算请求端到端 TPS，只对紧随 prompt/attachment 行的请求计时、同轮续写不采样，已纳入统一排名；施工与验收见[Claude Code TPS 实施计划](plans/2026-10-21-claude-code-tps-implementation-plan.md)，口径见[方案](plans/2026-10-21-claude-code-tps-plan.md)。
 
 ## 当前：看板刷新性能修复
 
@@ -36,9 +55,9 @@
 
 ## 当前：模型输出吞吐（TPS）
 
-**2026-10-20 入口已删除：** 用户确认“按性能”不是 TPS 项目的实现路径，只是早期遗留入口；`#perfModeButton`、`#perfPanel`、`#perfDetailList`、对应渲染分支/样式/状态与浏览器性能视图测试已移除，时间图只剩渠道/模型/花销。数据侧（`summary.perf.groups`、`src/perf-stats.js`、`src/perf-sources/*`、`public/perf-ui.js` 及其测试）保持不变，等独立吞吐区域方案恢复后再接 UI。
+**2026-10-20 入口已删除：** 用户确认“按性能”不是 TPS 项目的实现路径，只是早期遗留入口；`#perfModeButton`、`#perfPanel`、`#perfDetailList`、对应渲染分支/样式/状态与浏览器性能视图测试已移除，时间图只剩渠道/模型/花销。当时保留数据侧；2026-10-21 新增 models 投影与独立区域接线，旧 groups/coverage/meta 行为保留。
 
-**界面后续：** 用户于2026-10-08否决原入口与信息布局，已选独立模型吞吐区域。[重构方案与交互原型](plans/2026-10-08-tps-ui-restructure.md)已完成，具体布局待用户审阅；正式页面尚未替换。下列 G4 结果保留原受测版本归属，不表示用户接受原 UI，也不覆盖新界面。
+**界面后续（2026-10-21）：** 当前以 [round5](validation/2026-10-20-tps-detail-panel-samples/round5.html)为视觉基线，[模型速度视图方案](plans/2026-10-20-model-speed-view-plan.md)已吸收本轮评审建议，[后续工作计划](plans/2026-10-21-model-speed-implementation-plan.md)分为数据、界面、集成验收三个模块、10 张小卡；用户本轮指定两位 worker 并授权实施，数据/界面及独立浏览器验收已完成；当前检查与服务激活边界见[实施账本](validation/2026-10-21-model-speed-implementation/README.md)。原优先级 SKIN → TPS → 计价 → SHARE 保留。[2026-10-08 稿](plans/2026-10-08-tps-ui-restructure.md)保留历史过程。下列 G4 结果只归属旧受测版本，不覆盖新界面。
 
 状态：**功能已实现，M0–M8 收口，M8.3与TPS G4于2026-10-08通过最终独立审核**，见[主审裁定](validation/2026-10-04-perf-metrics/20261004T035100/handoffs/M8.3-G4-主审最终复核-20261008.md)。规格入口为[模型输出吞吐指标（TPS）计划](plans/2026-10-03-model-latency-throughput-plan.md)，实现细节见[来源与统计口径](10-data-sources.md)、来源专题与[看板行为](12-dashboard.md)。功能按来源、代理、模型展示 p10/p50/p90、样本量与覆盖率；ZCode/DSH/OpenCode 使用请求端到端时长，Codex 单列轮级 item 时窗估算，WorkBuddy 用 trace 中 generation span 的显式 `duration`（同为请求端到端，`timingSource = "explicit"`）；不交付 TTFT。
 
@@ -68,6 +87,11 @@
 
 ## 来源、计价与验证候选
 
+- **价目双 worker 实施计划（2026-10-26，21/23 卡已验收）。** 用户确认同时覆盖最新模型合并与官方计价、覆盖计数/费用详情、刷新状态与 FX 改进，见[统一实施计划](plans/2026-10-26-pricing-two-worker-implementation-plan.md)。W1 负责共用解析、目录、自动更新与服务，W2 负责聚合、缓存、时间图与界面；23 张约 15–20 分钟卡中 2 张来源扩展等待完整官方证据，前三批可独立验收。原始模型事实、现有混币修复与 TPS 维度保留，未知继续现行最低费率估算，不恢复旧 A/B 线路机制或新增模型入口。后端已合根，界面隔离通过后待共享 UI 窗口，来源扩展两卡等材料；见[验收与待合补丁](validation/2026-10-26-pricing/FINAL-REPORT.md)。
+
+- **价目覆盖、代理线路与汇率（2026-10-24 计划统一修订）。** 原 2026-10-21/22 诊断快照保留，不视为最新价格或账单验证。费用采用 API 等价估算，历史按当前价目回算；交付顺序为费用可见性/状态说明/普通模型手动纠正、明确线路手动价、独立后台调度、逐提供商发现。自动缓存继续更新，手动字段优先且可撤销；账本差异检测为可选后续。统一边界与分批验收见[设计方案](plans/2026-10-22-pricing-coverage-and-route-pricing-plan.md)；[A 实施计划](plans/2026-10-24-pricing-implementation-A.md)由用户手动外派、外部 LLM 监工，成果回交 Codex 验收；[B 实施计划](plans/2026-10-24-pricing-implementation-B.md)由 Codex 监督两个用户指定的 worker。两线按约 15–20 分钟小卡并行。**2026-10-25：A经独立复核与修正，已与B联合通过隔离副本G1/G2/G3；最终318项定向测试、类型和lint通过，G4等完整来源证据。AB补丁当时检查可应用，但现已无法整包应用（两处冲突），详见[执行记录](validation/2026-10-24-pricing-implementation/README.md)。** 同日用户重定方向：pricing 不是账本而是「从金额看出满足感」的展示功能，不探测 plan、不按卖家定价；线路定价（原方案 §5）由[模型合并与官方价计价](plans/2026-10-25-model-merge-and-official-pricing.md)取代。**2026-10-25 用户决定：AB 补丁整包作废、不合并任何一行**（`routes` 与合并方案直接冲突，且补丁已无法整包应用），650 MB 产物在 `output/pricing-implementation-20261024/`（未跟踪、未 ignore）留作归档，不删除；「缺价模型手动补价」记为独立后继，不复用 AB 代码；「新增模型」入口本批不做。新方案已于 2026-10-26 按双 worker 计划开工，实际窗口与逐卡接受见新执行记录。
+- **索引库 WAL 异常增长待修。** `~/.codex-usage/usage-index.sqlite-wal` 已涨到 **6.58 GB**（2026-10-21 08:25 复测，文档原记 5.4 GB），随轮询持续增长；根因是 executor 在整轮 sync 期间钉住读快照，提交时的自动 checkpoint 永远越不过它。归属、证据与修法见[WAL 增长诊断](validation/2026-10-21-wal-growth/wal-growth-diagnosis.md)。建议先做"sync 结束后 `wal_checkpoint(TRUNCATE)` + `journal_size_limit`"止血，再单独立项改快照生命周期。
+- **历史保留与卷宗归档实施中（2026-10-22）。** 唯一施工入口：[Implementation Plan](plans/2026-10-22-history-retention-implementation-plan.md)；[执行账本](validation/2026-10-22-history-retention/README.md)记录主审监督的A/B/C三worker进度。先完成一致性备份与恢复、WAL收敛、源消失保留和成功修订保全，再做汇总对拍、冷热分卷/转移与归档界面。当前schema19，旧第二稿的v18落点、整轮指纹只读一次及费用汇总已保真结论均已修订。08点约一万行历史差额仍未定性；原[研究稿](plans/2026-10-21-history-retention-plan.md)保留为历史证据。
 - **ZCode 缓存包含关系待核实。** 缺少上游写库证据，不能确认 input 是否包含缓存读写；保持当前映射。见 [ZCode 边界](data-sources/zcode.md#字段与渠道)。
 - **缓存 TTL 明细待核实。** 当前来源未提供已核实的 TTL 字段，Claude 非零写入保留带提示的 5 分钟估算场景；不宣称支持精确的 1 小时或混合 TTL 账单。见[计价规则](11-pricing.md)。
 - **真实来源专项 UI 待补证据。** 合成数据页面检查不能证明 DSH/OpenCode 真库的全部图例、提示和来源组合；新模型自动补录成功后的页面更新也需专项浏览器证据。相关后端已有回归，不据此勾选全部 UI 路径。旧候选来源见[归档 GPT 清单](archive/2026-10-01/gpt-6.1-sol-pricing-implementation-plan.md#v3-浏览器与三路验收)。

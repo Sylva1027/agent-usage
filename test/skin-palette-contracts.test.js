@@ -1015,9 +1015,8 @@ test("D17：主页面来源行文字分为 ink 与 muted 两个同表面角色",
   const dashboard = STATE_CATALOG.find((state) => state.id === "dashboard-default");
   const policy = JSON.parse(readFileSync(new URL("../scripts/skin-palette/policy.json", import.meta.url), "utf8"));
   const expectedInkSelector =
-    "#homeList .home-row:not(.excluded) > .home-label > strong, #homeList .home-row:not(.excluded) > .home-meta > .home-status, #homeList .home-row:not(.excluded) > .home-path";
-  const expectedMutedSelector =
-    "#homeList .home-row:not(.excluded) > .home-label > .home-kind, #homeList .home-row:not(.excluded) > .home-meta > span:not(.home-status):not(.home-excluded)";
+    "#homeList .home-row:not(.excluded) > .home-label > strong, #homeList .home-row:not(.excluded) > .home-path";
+  const expectedMutedSelector = "#homeList .home-row:not(.excluded) > .home-label > .home-kind";
 
   assert.equal(policy.versions.roles, ROLES_VERSION);
   assert.equal(policy.versions.fixture, 3);
@@ -1044,7 +1043,7 @@ test("D17：主页面来源行文字分为 ink 与 muted 两个同表面角色",
     );
   }
   assert.equal(ink.applicability, "仅主页面非排除来源行的 --ink 普通文字；不作为全站兜底");
-  assert.equal(muted.applicability, "仅主页面非排除来源行的 --muted 类型与计数文字；不包括排除标记");
+  assert.equal(muted.applicability, "仅主页面非排除来源行的 --muted 类型文字；不包括排除标记");
   assertRoleSelectorsByState(ROLE_CATALOG, STATE_CATALOG);
 });
 

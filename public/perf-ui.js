@@ -74,10 +74,22 @@ function copy(value, locale) {
   return escapeHtml(localizeText(value, locale));
 }
 
+export function sourceLabel(kind, locale) {
+  const labels = {
+    codex: "Codex",
+    zcode: "ZCode",
+    dsh: "DSH",
+    opencode: "OpenCode",
+    workbuddy: "WorkBuddy",
+    claude: "Claude",
+    unsupported: "未知来源",
+  };
+  if (kind === "unsupported" || !kind) return localizeText("未知来源", locale);
+  return labels[kind] || String(kind);
+}
+
 function sourceName(kind, locale) {
-  const labels = { codex: "Codex", zcode: "ZCode", dsh: "DSH", opencode: "OpenCode", unsupported: "未知来源" };
-  if (kind === "unsupported" || !kind) return copy("未知来源", locale);
-  return labels[kind] || escapeHtml(kind);
+  return escapeHtml(sourceLabel(kind, locale));
 }
 
 function homeName(homeId, homeLabels) {
@@ -87,6 +99,56 @@ function homeName(homeId, homeLabels) {
 
 function dimension(value, locale) {
   return value ? escapeHtml(value) : copy("未提供", locale);
+}
+
+const SAMPLE_UNITS = {
+  request: { label: "请求", measure: "个" },
+  step: { label: "步骤", measure: "个" },
+  message: { label: "消息", measure: "条" },
+  turn: { label: "回合", measure: "个" },
+  mixed: { label: "混合样本", measure: "个" },
+};
+
+function sampleCountText(model, locale) {
+  const count = model?.n;
+  if (!Number.isFinite(count)) return "";
+  const formatted = formatPerfNumber(count, locale);
+  const unit = SAMPLE_UNITS[model?.window] || { label: "样本", measure: "个" };
+  if (locale === "en-US") return `${formatted} ${localizeText(unit.label, locale)}${count === 1 ? "" : "s"}`;
+  return `${formatted} ${unit.measure}${unit.label}`;
+}
+
+function sampleDateKey(value, calendarZone) {
+  if (!Number.isFinite(value)) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    ...(calendarZone === "utc" ? { timeZone: "UTC" } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((entry) => entry.type === type)?.value;
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  return year && month && day ? `${year}-${month}-${day}` : null;
+}
+
+function sampleDateText(model, locale, calendarZone) {
+  const firstMs = model?.firstSampleAtMs;
+  const lastMs = model?.lastSampleAtMs;
+  if (!Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) {
+    return "";
+  }
+  const first = sampleDateKey(firstMs, calendarZone);
+  const last = sampleDateKey(lastMs, calendarZone);
+  if (!first || !last) return "";
+  return first === last ? `${copy("样本日期", locale)} ${first}` : `${copy("样本日期范围", locale)} ${first}–${last}`;
+}
+
+function sampleMetaText(model, locale, calendarZone) {
+  return [sampleCountText(model, locale), sampleDateText(model, locale, calendarZone)].filter(Boolean).join(" · ");
 }
 
 function agentName(group, locale) {
@@ -323,6 +385,7 @@ export function renderPerfCoverageHtml(perf, { locale = "zh-CN", homeLabels = {}
   const state = perf?.state || perf?.meta?.state;
   const warnings = perf?.sourceWarnings?.length ? perf.sourceWarnings : perf?.meta?.sourceWarnings || [];
   const notices = [];
+  if (perf?.missingSources?.length) notices.push(["status", "部分来源已缺失，已保留历史数据。"]);
   if (state === "rebuilding") notices.push(["status", "统计更新中，当前不展示部分排名。"]);
   if (state === "degraded" || (perf?.degradedHomeIds || []).length)
     notices.push(["warning", "部分数据来源不可用，当前结果可能不完整。"]);
@@ -401,8 +464,8 @@ export function renderPerfCoverageHtml(perf, { locale = "zh-CN", homeLabels = {}
   const flagsHtml = flagRows
     .map(([flag, value]) => `<li>${escapeHtml(flag)}: ${countCell(value, locale)}</li>`)
     .join("");
-  const breakdown = `<div class="perf-coverage-breakdown"><table class="perf-coverage-table"><tbody>${countRowsHtml}</tbody></table>${sourceHtml ? `<div class="perf-source-coverages">${sourceHtml}</div>` : ""}${reasonRows.length ? `<section><h4>${copy("丢弃原因", locale)}</h4><table class="perf-coverage-table"><tbody>${reasonHtml}</tbody></table></section>` : ""}${flagRows.length ? `<section><h4>${copy("诊断标记", locale)}</h4><p class="perf-overlap-note">${copy("诊断标记可能相互重叠，不要把它们相加为丢弃数。", locale)}</p><ul class="perf-flag-list">${flagsHtml}</ul></section>` : ""}${unsupported ? `<section><h4>${copy("不支持来源", locale)}</h4><ul class="perf-flag-list">${unsupported}</ul></section>` : ""}${warningHtml ? `<section><h4>${copy("来源告警", locale)}</h4><ul class="perf-flag-list">${warningHtml}</ul></section>` : ""}</div>`;
-  return `${noticeHtml}<section class="perf-coverage-block"><h3>${copy("覆盖情况", locale)}</h3><dl class="perf-coverage-overview">${overviewHtml}</dl>${unplacedNote}<dl class="perf-coverage-rates">${ratesHtml}</dl><details class="perf-coverage-more"><summary>${copy("覆盖明细与诊断", locale)}</summary>${breakdown}</details></section>`;
+  const breakdown = `<div class="perf-coverage-breakdown"><table class="perf-coverage-table"><tbody>${countRowsHtml}</tbody></table>${unplacedNote}${sourceHtml ? `<div class="perf-source-coverages">${sourceHtml}</div>` : ""}${reasonRows.length ? `<section><h4>${copy("丢弃原因", locale)}</h4><table class="perf-coverage-table"><tbody>${reasonHtml}</tbody></table></section>` : ""}${flagRows.length ? `<section><h4>${copy("诊断标记", locale)}</h4><p class="perf-overlap-note">${copy("诊断标记可能相互重叠，不要把它们相加为丢弃数。", locale)}</p><ul class="perf-flag-list">${flagsHtml}</ul></section>` : ""}${unsupported ? `<section><h4>${copy("不支持来源", locale)}</h4><ul class="perf-flag-list">${unsupported}</ul></section>` : ""}${warningHtml ? `<section><h4>${copy("来源告警", locale)}</h4><ul class="perf-flag-list">${warningHtml}</ul></section>` : ""}</div>`;
+  return `${noticeHtml}<section class="perf-coverage-block"><h3>${copy("覆盖情况", locale)}</h3><dl class="perf-coverage-overview">${overviewHtml}</dl><dl class="perf-coverage-rates">${ratesHtml}</dl><details class="perf-coverage-more"><summary>${copy("覆盖明细与诊断", locale)}</summary>${breakdown}</details></section>`;
 }
 
 function reasonLabel(reason) {
@@ -460,4 +523,197 @@ export function renderPerfDetailHtml(group, coverage, { locale = "zh-CN", homeLa
       ? `<p class="perf-notice warning">${group.warnings.map((warning) => escapeHtml(warning)).join(" · ")}</p>`
       : "";
   return `<article class="perf-detail"><h3>${escapeHtml(group.model || copy("模型未知", locale))}</h3><p class="perf-method-note">${measurementName(group, locale)} · ${tokenScopeName(group, locale)}</p><dl class="perf-detail-meta">${metadata}</dl><dl class="perf-detail-stats">${stats}</dl><p class="perf-overlap-note">${copy("p10 表示较慢端，p90 表示较快端；合并样本 TPS 不代表日历时间整体效率。", locale)}</p>${warnings}${diagnostic}</article>`;
+}
+
+function perfModels(perf) {
+  const values = Array.isArray(perf) ? perf : perf?.models;
+  return Array.isArray(values) ? values.filter((model) => model && typeof model === "object") : [];
+}
+
+function selectedPerfModel(models, selectedKey) {
+  return (
+    models.find((model) => model.key === selectedKey) ||
+    models.find((model) => model.state === "ok" && Number.isFinite(model.averageTps)) ||
+    models[0] ||
+    null
+  );
+}
+
+function modelEmptyMessage(perf, locale) {
+  const state = perf?.meta?.state || perf?.state;
+  if (state === "rebuilding") return copy("统计更新中，当前不展示部分排名。", locale);
+  if (state === "uninitialized") return copy("性能索引尚未初始化，当前没有可展示的模型速度。", locale);
+  const eligible = perf?.codexTimingCoverage?.counts?.eligible;
+  return copy(eligible > 0 ? "存在适用候选，但当前没有可计算的 TPS 样本。" : "当前范围没有可评估的性能样本。", locale);
+}
+
+function modelBandGeometry(model) {
+  if (
+    model?.state !== "ok" ||
+    !Number.isFinite(model.averageTps) ||
+    !Number.isFinite(model.p10) ||
+    !Number.isFinite(model.p90)
+  ) {
+    return null;
+  }
+  const max = Math.max(model.p90 * 1.15, model.averageTps * 1.05, 1);
+  const percentage = (value) => Math.max(0, Math.min(100, (value / max) * 100));
+  const p10 = percentage(model.p10);
+  const p90 = percentage(model.p90);
+  return {
+    average: percentage(model.averageTps),
+    p10,
+    p90,
+    same: p10 === p90,
+  };
+}
+
+function bandTickHtml(percentage, value, name, direction, locale, { labelled = true } = {}) {
+  const label = labelled
+    ? `<span class="perf-model-tick-label" data-perf-tick-label="${direction}"><span class="perf-model-tick-value">${escapeHtml(formatPerfTps(value, locale))}</span><span class="perf-model-tick-name">${copy(name, locale)}</span></span>`
+    : "";
+  return `<span class="perf-model-tick is-${direction}" style="left: ${percentage.toFixed(2)}%">${label}</span>`;
+}
+
+function renderModelBand(model, locale) {
+  const geometry = modelBandGeometry(model);
+  if (!geometry) return "";
+  const p10 = formatPerfTps(model.p10, locale);
+  const p90 = formatPerfTps(model.p90, locale);
+  const average = formatPerfTps(model.averageTps, locale);
+  const summary = `10% ${p10}, ${localizeText("平均", locale)} ${average} tok/s, 90% ${p90} tok/s, ${localizeText("样本数", locale)} ${formatPerfNumber(model.n, locale)}`;
+  const endpoints = geometry.same
+    ? bandTickHtml(geometry.p10, model.p10, "10% / 90%", "down", locale)
+    : `${bandTickHtml(geometry.p10, model.p10, "10%", "down", locale)}${bandTickHtml(geometry.p90, model.p90, "90%", "down", locale)}<span class="perf-model-close-endpoints" hidden><span>${copy("10%", locale)} <strong>${escapeHtml(p10)}</strong></span><span>${copy("90%", locale)} <strong>${escapeHtml(p90)}</strong></span></span>`;
+  return `<div class="perf-model-band">
+  <div class="perf-model-plot" role="img" aria-label="${escapeHtml(summary)}" title="${copy("常见速度区间", locale)} ${escapeHtml(p10)}–${escapeHtml(p90)} tok/s · ${copy("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", locale)}">
+    <div class="bar-track perf-model-band-track" aria-hidden="true"><div class="bar-fill perf-model-band-fill" style="left: ${geometry.p10.toFixed(2)}%; width: ${(geometry.p90 - geometry.p10).toFixed(2)}%"></div></div>
+    ${bandTickHtml(geometry.average, model.averageTps, "平均", "up", locale)}
+    ${endpoints}
+  </div>
+</div>`;
+}
+
+function renderPerfModelRow(model, index, maxAverage, selectedKey, locale) {
+  const validAverage = model.state === "ok" && Number.isFinite(model.averageTps);
+  const width = validAverage && maxAverage > 0 ? Math.max(0, Math.min(100, (model.averageTps / maxAverage) * 100)) : 0;
+  const selected = model.key === selectedKey;
+  const source = sourceLabel(model.sourceKind, locale);
+  const modelLabel = model.model || localizeText("模型未知", locale);
+  const provider = model.modelProvider || "";
+  const identity = [source, provider, modelLabel, model.reasoningEffort].filter(Boolean).join(" · ");
+  const speed = validAverage ? formatPerfTps(model.averageTps, locale) : dash;
+  const effort = model.reasoningEffort
+    ? `<span class="perf-model-effort">${escapeHtml(model.reasoningEffort)}</span>`
+    : "";
+  const speedCell = validAverage
+    ? `<span class="bar-track perf-model-mini-track" aria-hidden="true"><span class="bar-fill perf-model-mini-fill" style="width: ${width.toFixed(2)}%"></span></span><span class="perf-model-speed-value">${escapeHtml(speed)}</span>`
+    : `<span></span><span class="perf-model-speed-value">${dash}</span>`;
+  const label = `${identity}, ${localizeText("平均", locale)} ${speed} tok/s`;
+  return `<tr class="perf-model-data-row${selected ? " selected" : ""}${model.state === "overflow" ? " is-overflow" : ""}" data-perf-model-index="${index}"><th scope="row"><button class="perf-model-row-action" type="button" data-perf-model-key="${escapeHtml(model.key)}" aria-pressed="${selected}" aria-label="${escapeHtml(label)}" title="${escapeHtml(identity)}"><span class="comparison-row-name"><span class="comparison-row-label perf-model-name">${escapeHtml(modelLabel)}</span>${effort}</span></button></th><td class="perf-model-source" title="${escapeHtml([source, provider].filter(Boolean).join(" · "))}"><span class="perf-model-source-kind">${escapeHtml(source)}</span>${provider ? `<span class="perf-model-source-provider">${escapeHtml(provider)}</span>` : ""}</td><td class="perf-model-speed"><span class="perf-model-speed-cell">${speedCell}</span></td></tr>`;
+}
+
+export function renderPerfModelTableHtml(perf, { locale = "zh-CN", selectedKey = null } = {}) {
+  const models = perfModels(perf);
+  if (!models.length)
+    return `<section class="panel perf-model-table-panel" aria-label="${copy("模型速度", locale)}"><p class="empty perf-model-empty">${modelEmptyMessage(perf, locale)}</p></section>`;
+  const maxAverage = Math.max(
+    0,
+    ...models
+      .filter((model) => model.state === "ok" && Number.isFinite(model.averageTps))
+      .map((model) => model.averageTps),
+  );
+  const columns =
+    '<colgroup><col class="perf-model-col-model" /><col class="perf-model-col-source" /><col class="perf-model-col-speed" /></colgroup>';
+  const header = `<thead><tr><th scope="col">${copy("模型", locale)}</th><th scope="col">${copy("来源", locale)}</th><th scope="col">${copy("平均速度 (tok/s)", locale)}</th></tr></thead>`;
+  const rows = models.map((model, index) => renderPerfModelRow(model, index, maxAverage, selectedKey, locale)).join("");
+  return `<section class="panel perf-model-table-panel" aria-label="${copy("模型速度", locale)}"><div class="comparison-table-frame"><div class="comparison-table-scroll perf-model-table-scroll" tabindex="0" role="region" aria-label="${copy("模型速度", locale)}"><table class="comparison-table perf-model-table perf-model-data-table" aria-label="${copy("模型速度", locale)}">${columns}${header}<tbody>${rows}</tbody></table></div></div></section>`;
+}
+
+export function renderPerfModelDetailHtml(model, { locale = "zh-CN", calendarZone = "local" } = {}) {
+  if (!model) return `<p class="empty">${copy("选择一行模型查看速度详情。", locale)}</p>`;
+  const source = sourceLabel(model.sourceKind, locale);
+  const modelLabel = model.model || localizeText("模型未知", locale);
+  const providerText = model.modelProvider || "";
+  const provider = escapeHtml(providerText);
+  const effort = model.reasoningEffort
+    ? `<span class="perf-model-title-effort">${escapeHtml(model.reasoningEffort)}</span>`
+    : "";
+  const titleLabel = [source, providerText, modelLabel, model.reasoningEffort].filter(Boolean).join(" · ");
+  const title = `<div class="perf-model-detail-title" title="${escapeHtml(titleLabel)}" aria-label="${escapeHtml(titleLabel)}"><div class="perf-model-identity-context"><span class="perf-model-source-name">${escapeHtml(source)}</span>${providerText ? `<span class="perf-model-provider-name" title="${provider}">${provider}</span>` : ""}</div><div class="perf-model-identity-model"><span class="perf-model-title-name">${escapeHtml(modelLabel)}</span>${effort}</div></div>`;
+  if (model.state === "overflow") {
+    return `<div class="perf-model-detail-head">${title}</div><p class="perf-model-overflow">${copy("聚合溢出", locale)} · ${escapeHtml(sampleMetaText(model, locale, calendarZone))}</p>`;
+  }
+  if (model.state === "missing_duration") {
+    const first = sampleDateKey(model.firstCandidateAtMs, calendarZone);
+    const last = sampleDateKey(model.lastCandidateAtMs, calendarZone);
+    const dates = first && last ? (first === last ? first : `${first}–${last}`) : "";
+    const records = `${copy("用量记录", locale)} ${formatPerfNumber(model.candidateCount, locale)}`;
+    return `<div class="perf-model-detail-head">${title}</div><div class="perf-model-hero"><strong>${dash}</strong><span class="perf-model-unit">tok/s</span><span class="perf-model-sample-count">${records}${dates ? `<br>${dates}` : ""}</span></div><p class="perf-model-timing-missing">${copy("日志未记录请求耗时", locale)}</p>`;
+  }
+  const sampleMeta = [sampleCountText(model, locale), sampleDateText(model, locale, calendarZone)]
+    .filter(Boolean)
+    .join("<br>");
+  const hero = `<div class="perf-model-hero"><strong>${escapeHtml(formatPerfTps(model.averageTps, locale))}</strong><span class="perf-model-unit">tok/s</span>${sampleMeta ? `<span class="perf-model-sample-count">${sampleMeta}</span>` : ""}</div>`;
+  return `<div class="perf-model-detail-head">${title}</div>${hero}${renderModelBand(model, locale)}`;
+}
+
+export function renderPerfModelsHtml(perf, { locale = "zh-CN", selectedKey = null, calendarZone = "local" } = {}) {
+  const models = perfModels(perf);
+  const selected = selectedPerfModel(models, selectedKey);
+  return `<div class="main-grid perf-models-grid">${renderPerfModelTableHtml(perf, { locale, selectedKey: selected?.key ?? selectedKey })}<section class="panel detail-panel perf-model-detail-panel" aria-label="${copy("模型速度", locale)}">${models.length ? renderPerfModelDetailHtml(selected, { locale, calendarZone }) : `<p class="empty perf-model-empty">${modelEmptyMessage(perf, locale)}</p>`}</section></div>`;
+}
+
+let observedBandPlots = new WeakSet();
+let bandResizeObserver = null;
+
+function placeBandLabel(plot, tick) {
+  const label = tick?.querySelector("[data-perf-tick-label]");
+  if (!label) return;
+  tick.classList.remove("edge-left", "edge-right");
+  const plotRect = plot.getBoundingClientRect();
+  const labelRect = label.getBoundingClientRect();
+  if (labelRect.left < plotRect.left + 1) tick.classList.add("edge-left");
+  else if (labelRect.right > plotRect.right - 1) tick.classList.add("edge-right");
+}
+
+function layoutBandPlot(plot) {
+  const fallback = plot.querySelector(".perf-model-close-endpoints");
+  plot.classList.remove("is-crowded");
+  if (fallback) fallback.hidden = true;
+  const ticks = [...plot.querySelectorAll(".perf-model-tick")];
+  for (const tick of ticks) placeBandLabel(plot, tick);
+
+  const endpoints = [...plot.querySelectorAll(".perf-model-tick.is-down")];
+  if (!fallback || endpoints.length !== 2) {
+    return;
+  }
+
+  const plotRect = plot.getBoundingClientRect();
+  const [slow, fast] = endpoints.map((tick) => tick.querySelector(".perf-model-tick-label")?.getBoundingClientRect());
+  const crowded =
+    !slow || !fast || slow.right + 6 > fast.left || slow.left < plotRect.left - 1 || fast.right > plotRect.right + 1;
+  plot.classList.toggle("is-crowded", crowded);
+  fallback.hidden = !crowded;
+}
+
+function observeBandPlot(plot) {
+  if (observedBandPlots.has(plot) || typeof ResizeObserver === "undefined") return;
+  if (!bandResizeObserver) {
+    bandResizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) layoutBandPlot(entry.target);
+    });
+  }
+  observedBandPlots.add(plot);
+  bandResizeObserver.observe(plot);
+}
+
+export function layoutPerfModelBands(root = globalThis.document) {
+  if (!root?.querySelectorAll) return;
+  bandResizeObserver?.disconnect();
+  observedBandPlots = new WeakSet();
+  for (const plot of root.querySelectorAll(".perf-model-plot")) {
+    layoutBandPlot(plot);
+    observeBandPlot(plot);
+  }
 }
