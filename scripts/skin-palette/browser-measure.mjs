@@ -1084,6 +1084,7 @@ const IDENTITY_SOURCE = `
         kind: "calendar-zone-arrow",
         target: element,
         arrow,
+        originalStyleAttributePresent: arrow.hasAttribute("style"),
         originalVisibility: arrow.style.getPropertyValue("visibility"),
         originalVisibilityPriority: arrow.style.getPropertyPriority("visibility"),
         before,
@@ -1198,7 +1199,8 @@ const IDENTITY_SOURCE = `
           "visibility",
           decoration.originalVisibility,
           decoration.originalVisibilityPriority,
-        )
+        ) &&
+        __styleAttributeRestored(decoration.arrow, decoration.originalStyleAttributePresent)
       );
     }
     const markerRestored = decoration.markerPresent
@@ -1223,6 +1225,7 @@ const IDENTITY_SOURCE = `
           decoration.originalVisibility,
           decoration.originalVisibilityPriority,
         );
+        __restoreStyleAttribute(decoration.arrow, decoration.originalStyleAttributePresent);
       } catch (error) {
         errors.push(String(error?.message ?? error));
       }

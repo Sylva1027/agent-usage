@@ -3143,6 +3143,52 @@ test("D8f2-core：截图异常也经 finally 恢复圆点背景、光晕和滚�
   assertD8f2Restored(sample);
 });
 
+test("D2b3：箭头恢复和异常收尾保留 style 属性存在性及无关声明", () => {
+  for (const scenario of ["missing", "empty", "unrelated"]) {
+    for (const cleanup of ["restore", "release-attempt"]) {
+      const dom = createElementStubDom();
+      const zone = dom.build({
+        selector: "#calendarZoneSelect",
+        tag: "BUTTON",
+        id: "calendarZoneSelect",
+        text: "本地时间",
+        rect: { x: 10, y: 20, width: 112, height: 30 },
+        descendants: [
+          {
+            tag: "SPAN",
+            className: "calendar-zone-arrow",
+            rect: { x: 100, y: 30, width: 8, height: 8 },
+            attributes: scenario === "empty" ? { style: "" } : {},
+          },
+        ],
+      });
+      const arrow = zone.querySelector(".calendar-zone-arrow");
+      const probe = runInNewContext(
+        buildProbeSource("node-probe", "#calendarZoneSelect", null, null, true),
+        dom.sandbox,
+      );
+      const hide = runInNewContext(
+        buildProbeSource("hide", "#calendarZoneSelect", 0, "text", probe.attemptToken),
+        dom.sandbox,
+      );
+      if (scenario === "unrelated") arrow.style.setProperty("color", "rgb(1, 2, 3)", "important");
+      const result = runInNewContext(
+        buildProbeSource(cleanup, cleanup === "restore" ? hide.token : probe.attemptToken),
+        dom.sandbox,
+      );
+      assert.equal(cleanup === "restore" ? result.decorationRestored : result.ok, true);
+      assert.equal(arrow.hasAttribute("style"), scenario !== "missing", `${scenario}/${cleanup}: presence`);
+      assert.equal(arrow.style.getPropertyValue("visibility"), "");
+      if (scenario === "unrelated") {
+        assert.equal(arrow.style.getPropertyValue("color"), "rgb(1, 2, 3)");
+        assert.equal(arrow.style.getPropertyPriority("color"), "important");
+      } else {
+        assert.equal(arrow.getAttribute("style"), scenario === "missing" ? null : "");
+      }
+    }
+  }
+});
+
 test("M5.2.C-D2b3：只隔离指定箭头和 search 清除叉，并逐项恢复 priority、marker、值与焦点", () => {
   const dom = createElementStubDom();
   const zone = dom.build({
@@ -8946,6 +8992,8 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
           markerValue: element.getAttribute("data-skin-palette-measurement-decoration"),
           arrow: arrow
             ? {
+                styleAttributePresent: arrow.hasAttribute("style"),
+                styleAttributeValue: arrow.getAttribute("style"),
                 rect: (() => {
                   const box = arrow.getBoundingClientRect();
                   return { x: box.x, y: box.y, width: box.width, height: box.height };
@@ -9399,6 +9447,13 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       await page.mouse.move(0, 0);
       const zoneStability = await page.evaluate(buildProbeSource("spotlight-stability"));
       assert.equal(zoneStability.stable, true, `${mode} 箭头基准前聚光必须稳定：${zoneStability.reason}`);
+      // Pixel equality needs a device-pixel-aligned fixture; fractional borders round differently after repaint in Edge 155.
+      await page.locator("#calendarZoneSelect").evaluate((element) => {
+        element.style.removeProperty("translate");
+        const rect = element.getBoundingClientRect();
+        const dpr = devicePixelRatio;
+        element.style.translate = `${Math.round(rect.x * dpr) / dpr - rect.x}px ${Math.round(rect.y * dpr) / dpr - rect.y}px`;
+      });
       const zoneBefore = await snapshot("#calendarZoneSelect");
       const zoneClip = await clipFor("#calendarZoneSelect");
       const zoneCaptureAttempts = [];
@@ -9429,19 +9484,27 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       savePng(`${mode}-calendar-before.png`, zonePng);
       savePng(`${mode}-calendar-hidden.png`, zoneHidden.png);
       savePng(`${mode}-calendar-restored.png`, zoneAfterPng);
-      const zoneFinalDiff = pixelDiff(await decodePng(zonePng), await decodePng(zoneAfterPng));
-      assert.deepEqual(
-        zoneFinalDiff,
-        { sameSize: true, changedPixels: 0, changedInRegion: 0 },
-        `${mode} 箭头恢复后截图逐像素一致`,
-      );
       const arrowRegion = {
         x: Math.max(0, Math.floor(zoneBefore.arrow.rect.x - zoneBefore.rect.x)),
         y: Math.max(0, Math.floor(zoneBefore.arrow.rect.y - zoneBefore.rect.y)),
         width: Math.ceil(zoneBefore.arrow.rect.width),
         height: Math.ceil(zoneBefore.arrow.rect.height),
       };
-      const arrowDiff = pixelDiff(await decodePng(zonePng), await decodePng(zoneHidden.png), arrowRegion);
+      const zoneDecoded = await decodePng(zonePng);
+      const zoneAfterDecoded = await decodePng(zoneAfterPng);
+      const zoneFinalDiff = pixelDiff(zoneDecoded, zoneAfterDecoded);
+      const zonePixelDiagnostic = {
+        browser: evidence.browser,
+        clip: zoneClip,
+        settledCaptureAttempts: zoneCaptureAttempts,
+        ...pixelDifferenceDetails(zoneDecoded, zoneAfterDecoded),
+      };
+      assert.deepEqual(
+        zoneFinalDiff,
+        { sameSize: true, changedPixels: 0, changedInRegion: 0 },
+        `${mode} 箭头恢复后截图逐像素一致：${JSON.stringify(zonePixelDiagnostic)}`,
+      );
+      const arrowDiff = pixelDiff(zoneDecoded, await decodePng(zoneHidden.png), arrowRegion);
       assert.ok(arrowDiff.changedInRegion > 0, `${mode} 隐藏期间箭头区域必须有像素变化`);
       evidence.samples.push({
         id: `calendar-${mode}`,
@@ -9546,7 +9609,16 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
     };
 
     // 真实遮挡拒绝仍经正常 restore/verify；扫描异常则由 finally + release 清理。
-    const occlusionBefore = await screenshotWithStyleAttributeGuard(page, { fullPage: true });
+    // Keep the whole page in the viewport so full-page capture does not resize/repaint fixed dialog edges.
+    const recoveryViewport = page.viewportSize();
+    await page.setViewportSize({
+      width: recoveryViewport.width,
+      height: await page.evaluate(() => document.documentElement.scrollHeight),
+    });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    assert.equal(await page.evaluate(() => innerHeight >= document.documentElement.scrollHeight), true);
+    const occlusionCaptureAttempts = [];
+    const occlusionBefore = await captureSettledPage(() => captureStableViewport(page), occlusionCaptureAttempts);
     const occlusionBeforeState = await snapshot("#pricingSearch");
     let blockerInstalled = false;
     const occlusionPage = {
@@ -9579,7 +9651,7 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
     assert.match(occlusionResult.records[0].reason, /(遮挡|宿主及其后代之外的命中)/);
     assert.deepEqual(await noMarkerOrRule(), { markerPresent: false, temporaryRules: 0 });
     await page.locator("#m52-d2b3-occlusion").evaluate((element) => element.remove());
-    const occlusionAfter = await screenshotWithStyleAttributeGuard(page, { fullPage: true });
+    const occlusionAfter = await captureSettledPage(() => captureStableViewport(page), occlusionCaptureAttempts);
     const occlusionAfterState = await snapshot("#pricingSearch");
     const occlusionFinalDiff = await page.evaluate(
       buildProbeSource("compare-images", occlusionBefore.toString("base64"), occlusionAfter.toString("base64")),
@@ -9597,9 +9669,11 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       reason: occlusionResult.records[0].reason,
       cleanup: await noMarkerOrRule(),
       pageAfterBlockerRemovalPixelDiff: occlusionFinalDiff,
+      settledCaptureAttempts: occlusionCaptureAttempts,
       duringMeasurementStatePixelDiffIncludesInjectedBlocker: occlusionResult.diagnostics.restoration.statePixelDiff,
       restoration: occlusionResult.diagnostics.restoration,
     };
+    await page.setViewportSize(recoveryViewport);
 
     const throwingPage = {
       evaluate(source, argument) {

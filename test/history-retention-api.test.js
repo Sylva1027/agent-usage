@@ -136,6 +136,7 @@ test("full and summary independently preserve missing sources while historical s
 
     server = createUsageServer({
       ...fixture.serverOptions,
+      pricingRefreshSchedulerEnabled: false,
       heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
     });
     const baseUrl = await listen(server);
@@ -226,6 +227,7 @@ test("full and summary preserve usage after a project-log source disappears", as
 
     server = createUsageServer({
       ...options,
+      pricingRefreshSchedulerEnabled: false,
       heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
     });
     const baseUrl = await listen(server);
@@ -334,6 +336,7 @@ test("full preserves published rate-limit observations after a rollout disappear
 
     server = createUsageServer({
       ...fixture.serverOptions,
+      pricingRefreshSchedulerEnabled: false,
       heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
     });
     const baseUrl = await listen(server);
@@ -367,6 +370,7 @@ test("HTTP snapshot keeps priority tier evidence after the live tier log changes
     importStoreFile: path.join(root, "imports.json"),
     importDirs: [],
     automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
   };
   let server;
   try {
@@ -413,6 +417,7 @@ test("HTTP snapshot keeps catalog A pricing after live pricing changes to B", as
     importStoreFile: path.join(root, "imports.json"),
     importDirs: [],
     automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
   };
   const originalCatalog = getPricingCatalog();
   const originalSummarize = UsageStore.prototype.summarize;
@@ -542,6 +547,7 @@ test("snapshot pricing coverage stays on catalog A after live catalog drops its 
     importStoreFile: path.join(root, "imports.json"),
     importDirs: [],
     automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
   };
   const originalCatalog = getPricingCatalog();
   let server;

@@ -36,14 +36,11 @@ import {
 
 const execFile = promisify(execFileCallback);
 const FIXTURE_PREFIX = "m4-4-7-e1-i1-";
-// 本用例要跑两次进程内完整校验（buildRun、verifyReviewEvidence）和四次子进程完整验证
-// （沙箱验证、首次 CLI、索引装配、装配后 CLI），空载实测各阶段 13–40s、整例约 3 分钟。
-// 子进程原先没有 timeout：任何一个卡住时 node:test 的 --test-timeout 只把用例标成 cancelled，
-// 不会杀掉子进程（实测 5s 预算下进程仍活了 49s），于是整个套件被 87 MB 的沙箱拖住。
-// 现在每个子进程拿 min(单进程上限, 整例剩余预算)，在用例级上限之前触发，卡住会变成一次
-// 带 finally 清理的失败，而不是无限占用套件。
+// 两次进程内证据检查和四个串行校验子进程（沙箱、首次 CLI、索引装配、装配后 CLI）共用预算。
+// 子进程须先于用例超时结束，为 finally 清理留出时间；用例取消也要终止子进程。
 const SANDBOX_TIMEOUT_MS = 8 * 60 * 1000;
 const SANDBOX_CHILD_TIMEOUT_MS = 4 * 60 * 1000;
+const SANDBOX_CLEANUP_RESERVE_MS = 30_000;
 const ORIGINAL_PUBLIC_THREE = ["public/skin-palettes.js", "public/skin-picker.js", "public/skin-bootstrap.js"];
 
 function execFileWithExitCode(file, args, options) {
@@ -60,7 +57,7 @@ function execFileWithExitCode(file, args, options) {
 
 function remainingSandboxBudget(deadline, label) {
   const remaining = deadline - Date.now();
-  assert.ok(remaining > 0, `${label} exceeded the sandbox's ${SANDBOX_TIMEOUT_MS / 1000}s budget`);
+  assert.ok(remaining > 0, `${label} exhausted the sandbox work budget before cleanup`);
   return Math.min(SANDBOX_CHILD_TIMEOUT_MS, remaining);
 }
 
@@ -173,7 +170,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     return;
   }
   const startedAt = Date.now();
-  const deadline = startedAt + SANDBOX_TIMEOUT_MS;
+  const deadline = startedAt + SANDBOX_TIMEOUT_MS - SANDBOX_CLEANUP_RESERVE_MS;
   const repoReal = await realpath(REPO_ROOT);
   const validationRoot = await realpath(path.join(repoReal, "docs", "validation"));
   const frozenPaths = [
@@ -197,7 +194,12 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
   let fixtureRootReal = null;
   let summary = { phase: "sandbox preparation" };
   let assembledIndexConsumer = null;
+  const markPhase = (phase) => {
+    summary.phase = phase;
+    t.diagnostic(JSON.stringify({ phase, elapsedMs: Date.now() - startedAt }));
+  };
   try {
+    markPhase("sandbox copy");
     fixtureRootPath = await mkdtemp(path.join(validationRoot, FIXTURE_PREFIX));
     fixtureRootReal = await realpath(fixtureRootPath);
     assertStrictChild(validationRoot, fixtureRootReal, "fixtureRoot");
@@ -264,8 +266,9 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         return realpath(runDir);
       },
     };
-    const candidates = SKIN_IDS.flatMap((skinId) =>
-      ["a", "b", "c"].map((variant) => makeCandidate({ skinId, variant })),
+    // E1 needs ten selected a candidates and one unselected b gap; D9f-2 covers all 30 variants.
+    const candidates = SKIN_IDS.flatMap((skinId, index) =>
+      (index === 0 ? ["a", "b"] : ["a"]).map((variant) => makeCandidate({ skinId, variant })),
     );
     const unselectedGapCandidate = candidates.find(
       (candidate) => candidate.skinId === SKIN_IDS[0] && candidate.variant === "b",
@@ -275,6 +278,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     );
     assert.ok(unselectedGapCandidate);
     assert.ok(missingCaptureUnit);
+    markPhase("build historical run");
     const built = await buildRun(box, "origin-run", candidates, {
       origins: { currentProfiles: true },
       assessments: candidates.map((candidate) =>
@@ -287,6 +291,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         ...(candidate.id === unselectedGapCandidate.id ? { skipUnits: [`light/${missingCaptureUnit.id}`] } : {}),
       }),
     });
+    markPhase("verify historical run");
     const initialReview = await verifyReviewEvidence({
       evidence: built.evidence,
       sourceSnapshot: Object.fromEntries(HISTORICAL_SOURCE_FILES.map((file) => [file, preSources.sourceBytes[file]])),
@@ -325,6 +330,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     assert.equal(evidence.selections.present, true);
     assert.deepEqual(evidence.selections.record, exportedSelection.record);
 
+    markPhase("prepare production manifest");
     const manifestRunDir = await box.makeRun("manifest-run");
     const sourcePreimages = Object.fromEntries(
       HISTORICAL_SOURCE_FILES.map((file) => [
@@ -677,6 +683,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         formalCapture,
       }));
     `;
+    markPhase("sandbox verification child");
     const child = await execFile(
       process.execPath,
       [
@@ -693,10 +700,12 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         cwd: sandboxRoot,
         maxBuffer: 32 * 1024 * 1024,
         timeout: remainingSandboxBudget(deadline, "sandbox verification child"),
+        signal: t.signal,
       },
     );
     const result = JSON.parse(child.stdout.trim());
     const assembleFormalIndex = async () => {
+      markPhase("index assembly child");
       assert.deepEqual(await readFile(formalIndexPath), formalIndexPlaceholderBytes);
       await unlink(formalIndexPath);
       const formalShardPath = path.join(originRunDir, "formal-single", "production-index-shard.json");
@@ -767,6 +776,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
           cwd: sandboxRoot,
           maxBuffer: 1024 * 1024,
           timeout: remainingSandboxBudget(deadline, "index assembly child"),
+          signal: t.signal,
         },
       );
       assert.equal(assemblyChild.stderr, "");
@@ -929,6 +939,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
     assertStrictChild(fixtureRootReal, foreignCwd, "foreign cwd");
     await mkdir(foreignCwd);
     const cliPath = path.join(sandboxRoot, "scripts", "skin-palette", "review-cli.mjs");
+    markPhase("first real CLI");
     const cliStartedAt = Date.now();
     const cli = await execFileWithExitCode(
       process.execPath,
@@ -945,6 +956,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         cwd: foreignCwd,
         maxBuffer: 32 * 1024 * 1024,
         timeout: remainingSandboxBudget(deadline, "first real CLI"),
+        signal: t.signal,
       },
     );
     const cliElapsedMs = Date.now() - cliStartedAt;
@@ -972,6 +984,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
       formalIndexPath,
     ];
     const consumerEvidenceBefore = await Promise.all(consumerEvidencePaths.map((filePath) => readFile(filePath)));
+    markPhase("post-assembly real CLI");
     const consumerStartedAt = Date.now();
     const assembledIndexCli = await execFileWithExitCode(
       process.execPath,
@@ -988,6 +1001,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
         cwd: foreignCwd,
         maxBuffer: 32 * 1024 * 1024,
         timeout: remainingSandboxBudget(deadline, "post-assembly real CLI"),
+        signal: t.signal,
       },
     );
     const consumerElapsedMs = Date.now() - consumerStartedAt;
@@ -1098,6 +1112,7 @@ test("E1 clean-source branch runs C5c and both post checks in a copied validatio
       frozenProjectHashes: projectBeforeHashes,
     };
   } finally {
+    t.diagnostic(JSON.stringify({ phase: "sandbox cleanup", elapsedMs: Date.now() - startedAt }));
     try {
       assert.deepEqual(
         await hashFiles(repoReal, frozenPaths),
