@@ -1,0 +1,485 @@
+{
+  "coverage": {
+    "realExecutor": true,
+    "nativeCandidate": true,
+    "ledgerOnly": true,
+    "sameWriter": true,
+    "concurrentPublishedReader": true
+  },
+  "inputsUnchanged": true,
+  "failure": null,
+  "validationFailure": null,
+  "sampledOutputDelta": 113,
+  "writerRevisions": [
+    7,
+    9
+  ],
+  "dashboards": [
+    {
+      "label": "ledger-before-first",
+      "workerMs": 2293.251000000004,
+      "reader": "1:1",
+      "role": "writer",
+      "hit": false,
+      "sameReaderKeyChanges": [
+        "store-revision",
+        "derived-revision",
+        "total-changes",
+        "data-version",
+        "pricing-model-keys",
+        "service-tier-evidence",
+        "resolved-range",
+        "bucket",
+        "excluded-homes",
+        "include-details",
+        "pricing-catalog",
+        "usd-to-cny-rate"
+      ],
+      "changesFromPreviousRequest": null,
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.014900000009220093
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.04830000000947621
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 893.2045000000071
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 894.1760000000068
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 396.45969999999215
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 367.64400000000023
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 764.1218999999983
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1864.126900000003
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1864.1468000000023
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1864.2345999999961
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.2712000000028638
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 423.8741000000009
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 2288.507599999997
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 0,
+        "lastClearReason": "",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    },
+    {
+      "label": "ledger-before-warm",
+      "workerMs": 105.6021999999939,
+      "reader": "1:1",
+      "role": "writer",
+      "hit": true,
+      "sameReaderKeyChanges": [],
+      "changesFromPreviousRequest": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.02920000000449363
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.07280000002356246
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 97.8929000000062
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 97.90050000000338
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 97.99580000000424
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.3117000000056578
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.6429000000061933
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 99.04080000000249
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 0,
+        "lastClearReason": "",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    },
+    {
+      "label": "ledger-during-sync",
+      "workerMs": 2295.9372000000003,
+      "reader": "1:4",
+      "role": "published",
+      "hit": false,
+      "sameReaderKeyChanges": [
+        "store-revision",
+        "derived-revision",
+        "total-changes",
+        "data-version",
+        "pricing-model-keys",
+        "service-tier-evidence",
+        "resolved-range",
+        "bucket",
+        "excluded-homes",
+        "include-details",
+        "pricing-catalog",
+        "usd-to-cny-rate"
+      ],
+      "changesFromPreviousRequest": [
+        "store-revision",
+        "derived-revision",
+        "total-changes",
+        "service-tier-evidence"
+      ],
+      "methods": {
+        "1:4/open": {
+          "calls": 4,
+          "ms": 0.02830000000540167
+        },
+        "1:4/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.08969999999681022
+        },
+        "1:4/costEventsForRange": {
+          "calls": 1,
+          "ms": 835.5375000000058
+        },
+        "1:4/timelineRange": {
+          "calls": 1,
+          "ms": 835.7701000000088
+        },
+        "1:4/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 324.5691999999981
+        },
+        "1:4/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 296.30860000000393
+        },
+        "1:4/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 620.8954999999987
+        },
+        "1:4/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1665.6661999999924
+        },
+        "1:4/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1665.6762000000017
+        },
+        "1:4/summarizeHistory": {
+          "calls": 1,
+          "ms": 1665.7696999999898
+        },
+        "1:4/metadataHistory": {
+          "calls": 1,
+          "ms": 195.03590000000258
+        },
+        "1:4/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 414.5616999999911
+        },
+        "1:4/dashboardHistory": {
+          "calls": 1,
+          "ms": 2280.3948999999993
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 0,
+        "lastClearReason": "",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    },
+    {
+      "label": "ledger-after-first",
+      "workerMs": 2097.9870999999985,
+      "reader": "1:1",
+      "role": "writer",
+      "hit": false,
+      "sameReaderKeyChanges": [
+        "store-revision",
+        "derived-revision",
+        "total-changes"
+      ],
+      "changesFromPreviousRequest": [
+        "store-revision",
+        "derived-revision",
+        "total-changes",
+        "service-tier-evidence"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.033499999990453944
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.04870000001392327
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 870.4903999999951
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 871.0331000000006
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 345.83349999999336
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 265.2216999999946
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 611.075399999987
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1673.8304999999964
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1673.8695000000007
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1673.9244999999937
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.21180000000458676
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 419.8494999999966
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 2094.0582999999897
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 1,
+        "lastClearReason": "store-revision",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    },
+    {
+      "label": "ledger-after-warm",
+      "workerMs": 67.25140000000829,
+      "reader": "1:1",
+      "role": "writer",
+      "hit": true,
+      "sameReaderKeyChanges": [],
+      "changesFromPreviousRequest": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.010800000003655441
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.03029999998398125
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 63.0118000000075
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 63.01600000000326
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 63.05539999999746
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.15269999999145512
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.4030999999959022
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 63.650500000003376
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 1,
+        "lastClearReason": "store-revision",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    },
+    {
+      "label": "ledger-after-no-op",
+      "workerMs": 1549.0246000000043,
+      "reader": "1:1",
+      "role": "writer",
+      "hit": false,
+      "sameReaderKeyChanges": [
+        "total-changes"
+      ],
+      "changesFromPreviousRequest": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.016099999978905544
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.05640000000130385
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 855.909599999999
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 856.0997999999963
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 335.63090000000375
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 277.1762000000017
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 612.8181999999942
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1544.5654000000068
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1544.5735999999888
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1544.6333999999915
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.3170000000100117
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.41169999999692664
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1545.4119999999966
+        }
+      },
+      "eventCostMemo": {
+        "methodVersion": "w4-bounded-key-memo-v1",
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "clears": 1,
+        "lastClearReason": "store-revision",
+        "peakBytes": 0,
+        "peakSize": 0,
+        "entries": 0,
+        "bytes": 0,
+        "maxBytes": 67108864,
+        "hardMaxBytes": 201326592
+      }
+    }
+  ]
+}

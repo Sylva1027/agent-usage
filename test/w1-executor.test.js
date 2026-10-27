@@ -9,7 +9,7 @@
 //   6. `/api/status` 在主线程就地应答（只扫 fs，状态集 = ∅），执行器在忙也不转发。
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -19,6 +19,7 @@ import { Worker } from "node:worker_threads";
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
+import { buildMagpieTimingFingerprint } from "../src/usage-core.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -49,6 +50,9 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
   const fixture = createPerfCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   await seedRequestTiming(fixture, options);
+  const ledgerFile = path.join(root, ".config", "magpie", "usage.jsonl");
+  await mkdir(path.dirname(ledgerFile), { recursive: true });
+  await writeFile(ledgerFile, "invalid\n");
   const originalPostMessage = Worker.prototype.postMessage;
   let activeWorker;
   Worker.prototype.postMessage = function (message, ...args) {
@@ -67,6 +71,7 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
     const after = await fetch(`${url}&skipCheck=1`);
     const actual = await after.json();
     assert.equal(after.status, 200, JSON.stringify(actual));
+    assert.equal(actual.fingerprint, expected.fingerprint);
     assert.deepEqual(actual.summary.totals, expected.summary.totals);
     assert.equal(actual.summary.perf.models.length, 1);
     assert.deepEqual(actual.summary.perf.models, expected.summary.perf.models);
@@ -96,6 +101,39 @@ async function withExecutor(body) {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 }
+
+test("Magpie executor carries acknowledged state through sync, dashboard, snapshot and imported open", async () => {
+  await withExecutor(async ({ executor, root, options }) => {
+    assert.equal(executor.magpieTimingFingerprint, "");
+    const ledgerFile = path.join(root, ".config", "magpie", "usage.jsonl");
+    await mkdir(path.dirname(ledgerFile), { recursive: true });
+    await writeFile(ledgerFile, "invalid\n");
+    const status = await executor.sync({ options });
+    const acknowledged = await buildMagpieTimingFingerprint(options);
+    assert.equal(status.magpieTimingFingerprint, acknowledged);
+    assert.equal(executor.status.magpieTimingFingerprint, acknowledged);
+    assert.equal(executor.magpieTimingFingerprint, acknowledged);
+    assert.equal((await executor.perfPublicationState()).magpieTimingFingerprint, acknowledged);
+    await appendFile(ledgerFile, "unacknowledged\n");
+    assert.notEqual(await buildMagpieTimingFingerprint(options), acknowledged);
+    const dashboard = await executor.dashboard({ preset: "all" });
+    assert.equal(dashboard.status.magpieTimingFingerprint, acknowledged);
+    const frozen = await executor.snapshot({ databaseFile: path.join(root, "magpie-frozen.sqlite") });
+    assert.equal(frozen.status.magpieTimingFingerprint, acknowledged);
+    const imported = createUsageExecutor(options);
+    try {
+      const opened = await imported.open({ imported: true, serviceTierEvidence: null });
+      assert.equal(opened.magpieTimingFingerprint, acknowledged);
+      assert.equal(imported.magpieTimingFingerprint, acknowledged);
+    } finally {
+      await imported.close();
+    }
+    const published = await executor.sync({ options });
+    assert.equal(published.magpieTimingFingerprint, await buildMagpieTimingFingerprint(options));
+    assert.notEqual(published.magpieTimingFingerprint, acknowledged);
+    assert.equal(frozen.status.magpieTimingFingerprint, acknowledged);
+  });
+});
 
 test("W1 · 执行器独占数据库连接：主线程客户端没有 database，只有读侧快照", async () => {
   await withExecutor(async ({ executor, databaseFile, options }) => {

@@ -1,0 +1,16 @@
+ M docs/00-index.md
+ M docs/02-tasks.md
+?? .playwright-cli/
+?? .workbuddy-ai/
+?? clear/
+?? docs/plans/2026-10-21-tps-measurement-correction-plan.md
+?? docs/plans/2026-10-21-tps-measurement-parallel-execution.md
+?? docs/plans/2026-10-22-pricing-coverage-and-route-pricing-plan.md
+?? docs/plans/2026-10-23-tps-audit-remediation-implementation-plan.md
+?? docs/plans/2026-10-24-pricing-implementation-A.md
+?? docs/plans/2026-10-24-pricing-implementation-B.md
+?? docs/plans/2026-10-25-model-merge-and-official-pricing.md
+?? docs/plans/2026-10-26-pricing-two-worker-implementation-plan.md
+?? docs/plans/2026-10-26-refresh-sync-latency-plan.md
+?? numeric-worker-A.md
+?? output/

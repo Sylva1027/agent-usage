@@ -1,0 +1,11 @@
+✔ Q1: timeline grouping preserves complete summaries across scope, dates, details and pricing (93.2108ms)
+✔ Q1: tied dimensions retain SQLite ordering and per-dimension SQL fallback (33.5162ms)
+✔ Q1: an actual cold archive keeps the unverified SQL gate and complete carrier summaries (77.6809ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 280.6622

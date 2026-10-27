@@ -1,0 +1,54 @@
+diff --git a/output/codex-refresh-followup-20261027/preimage/test/perf-store.test.js b/test/perf-store.test.js
+index de1e644..8ad89db 100644
+--- a/output/codex-refresh-followup-20261027/preimage/test/perf-store.test.js
++++ b/test/perf-store.test.js
+@@ -3407,15 +3407,18 @@ test("S1 · 无提交轮次：两份 published map 每轮各**至多解码 1 次
+         `无提交轮次 perf_file_warnings 解码 ${roundDecodes.warnings} 次（要求 ≤1）`,
+       );
+       // 判别力：轮内视图必须真的被**逐文件**访问过；否则"≤1"可能只是"根本没查"。
+-      // 无提交轮的访问点：轮首 1 + 预扫逐文件 2 + 循环逐文件 2 + 真实删除扫描 1 + 发布前 1 = 7（指纹）。
++      // 独立预扫已移除；访问下界相应减少两次，仍须覆盖循环内的实时校验与轮末消费。
+       assert.ok(
+-        access.fingerprints >= 6,
+-        `轮内指纹视图访问 ${access.fingerprints} 次，必须 ≥6（逐文件校验点确实走了视图）`,
++        access.fingerprints >= 4,
++        `轮内指纹视图访问 ${access.fingerprints} 次，必须 ≥4（逐文件校验点确实走了视图）`,
+       );
+-      assert.ok(access.warnings >= 5, `轮内告警视图访问 ${access.warnings} 次，必须 ≥5`);
++      assert.ok(access.warnings >= 3, `轮内告警视图访问 ${access.warnings} 次，必须 ≥3`);
+       // 修复前的同轮解码数 = 轮内访问次数（每次访问都重新解码）；给出 before 下界以便主审手算。
+       assert.ok(
+-        access.fingerprints >= 6 && access.warnings >= 5 && access.fingerprints > roundDecodes.fingerprints,
++        access.fingerprints >= 4 &&
++          access.warnings >= 3 &&
++          access.fingerprints > roundDecodes.fingerprints &&
++          access.warnings > roundDecodes.warnings,
+         `复用必须真实发生：访问 ${access.fingerprints}/${access.warnings} 次 vs 解码 ${roundDecodes.fingerprints}/${roundDecodes.warnings} 次`,
+       );
+     } finally {
+@@ -4055,14 +4058,14 @@ test("S2 · 接线与身份守卫：codex 命中窗口、非 codex 与窗口外
+ });
+ 
+ // ---------------------------------------------------------------------------
+-// C2（失败复用的全部触发/告警/恢复）：复用判定贯通「逐文件 refresh」与 `pendingChange` 收尾
++// C2（失败复用的全部触发/告警/恢复）：稳定签名供给逐文件判据，结构变更仍提前标记
+ // ---------------------------------------------------------------------------
+ //
+ // 与 S2 段同一纪律：这里在 **store 级**只观察"必须真的接线才成立"的两件事 ——
+ //   ① 复用轮的**逐文件判据**确实从 C1 的稳定签名取值（`codexReusedProbeValue` 被调用且返回非空）；
+ //      没有接线时该数组为空（复用轮里该 home 不进 `codexPlans` ⇒ 窗口复用不适用）⇒ 断言失败。
+ //   ② 复用轮**仍然**先写 `rebuilding`：`shouldPlan` 为真 ⇒ `codexPendingChange = true` ⇒
+-//      `pendingChange` 的预扫标记没有被"跳过规划"顺带跳过（这是"贯通 pendingChange"的可观测面）。
++//      结构标记没有被"跳过规划"顺带跳过；独立文件预扫已移除。
+ 
+ test("C2 · 复用轮：逐文件判据走稳定签名、仍然先写 rebuilding、记录不被重建", async () => {
+   const root = await makeTempDir();
+@@ -4104,7 +4107,7 @@ test("C2 · 复用轮：逐文件判据走稳定签名、仍然先写 rebuilding
+       seenReuse.length = 0;
+       const second = await store.sync({ options });
+       assert.equal(second.perfState, "degraded");
+-      assert.deepEqual(states, ["rebuilding", "degraded"], "复用轮仍必须先标 rebuilding（pendingChange 未被跳过）");
++      assert.deepEqual(states, ["rebuilding", "degraded"], "复用轮仍必须先标 rebuilding（结构变更未被跳过）");
+       assert.equal(store.codexStableAttempts.get(homeId), record, "复用轮不得重建记录（重建 = 真的重跑过规划）");
+       assert.equal(
+         seenReuse.some((entry) => entry.reused),

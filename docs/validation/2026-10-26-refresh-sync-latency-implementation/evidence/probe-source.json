@@ -1,0 +1,53 @@
+{
+  "files": [
+    {
+      "sha256": "929ee7f0507b91cba274f07ccb1ad9f3962764e9730203d0dadc5cfb9645b2c5",
+      "file": "ab.mjs"
+    },
+    {
+      "sha256": "763db7124b924e46dea35066a59ed7f73e068f02602b431c0aee6bc54722973e",
+      "file": "changed.mjs"
+    },
+    {
+      "sha256": "fe764ac3bb6aea3682fb79e7a4fe2ce6db9add484ab069d6f6fb568cfdf68ded",
+      "file": "check-inputs.mjs"
+    },
+    {
+      "sha256": "7db474444983c2e926a57647679df59ac108a3172495ce45509586306ce554f1",
+      "file": "compare.mjs"
+    },
+    {
+      "sha256": "5b7efad46705a937cc5faad553c5249e377ae9643200c7942b879129e96755db",
+      "file": "hook.mjs"
+    },
+    {
+      "sha256": "66684c95b4ce5ea6c2bb947e9eb007aa0da3d9fe84f337afe77641bb709282a8",
+      "file": "http-browser.mjs"
+    },
+    {
+      "sha256": "6e5822b57f66a2fb85dd3b1d8211a7604721598fa657c6c5691ec19408e4943f",
+      "file": "preimage-test-hook.mjs"
+    },
+    {
+      "sha256": "523008698524f29755e2e3615ecde7d8c9614b0666ee8aac3f8c1f06d91565ae",
+      "file": "quota-branch.mjs"
+    },
+    {
+      "sha256": "59d8b6599798f0b27b9614085ad02ab7e41529e339f96ee1d5b7730033a36bbe",
+      "file": "README.md"
+    },
+    {
+      "sha256": "21fde265f55590b4974248940d342b35734be5b023d01b760e1b6d1020cd1475",
+      "file": "restore-inputs.ps1"
+    },
+    {
+      "sha256": "7a426b1c1d008df583964fb61cbd9cb87ae397b1a0ecc8dd742e50720e4c8f04",
+      "file": "retained.mjs"
+    },
+    {
+      "sha256": "159266ad5823e897ff08add04f80bf392e44d301791c728e7c8f0348f6d444fb",
+      "file": "summarize.mjs"
+    }
+  ],
+  "capturedAt": "2026-10-27T00:34:59.0332520+08:00"
+}

@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+const root=process.cwd();
+const output=path.join(root,'output/refresh-sync-latency-reeval-20261026');
+const destination=path.join(root,'docs/validation/2026-10-26-refresh-sync-latency-reeval');
+const read=name=>JSON.parse(fs.readFileSync(path.join(output,name),'utf8'));
+const baseline=read('baseline.json');
+const frozen=JSON.parse(fs.readFileSync(path.join(root,'.codex-usage/refresh-latency-20261026/freeze.json'),'utf8'));
+const sessions=['browser-session1-results.json','browser-session2-results.json'].map(read);
+assert.deepEqual(sessions.map(row=>row.cycles.length),[10,10]);
+assert.ok(sessions.every(row=>row.errors.length===0));
+const active=sessions.flatMap(row=>row.cycles).filter(row=>row.expectedDelta>0);
+assert.equal(active.length,12);assert.ok(active.every(row=>row.delta===1000107));
+for(const row of active){const values=row.frames.map(frame=>Number(frame.output.replaceAll(',',''))).filter(Number.isFinite);assert.equal(Math.max(...values)-Math.min(...values),1000007,'Visible output metric must correspond to controlled increment');}
+const intervals=sessions.flatMap(session=>session.cycles.slice(1).map((row,index)=>row.requestAt-session.cycles[index].requestAt));
+assert.equal(intervals.length,18);assert.ok(intervals.every(ms=>ms>59000&&ms<61000));
+assert.ok(read('control-parity.json').comparisons.every(row=>row.equal));
+const sha=async file=>{const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk);return hash.digest('hex');};
+const changed=[];
+for(const [file,expected]of Object.entries(baseline.sourceHashes))if(await sha(path.join(root,file))!==expected)changed.push(file);
+assert.deepEqual(changed,[],'Product source changed during measurement');
+const current=[];
+for(const directory of ['src','public'])for(const entry of fs.readdirSync(path.join(root,directory),{recursive:true,withFileTypes:true}))if(entry.isFile()&&/\.(js|json|css|html)$/.test(entry.name))current.push(path.relative(root,path.join(entry.parentPath,entry.name)).replaceAll('\\','/'));
+assert.deepEqual(current.sort(),Object.keys(baseline.sourceHashes).sort());
+const integrity={checkedAt:new Date().toISOString(),head:'f7643b26e7c08f8d298b58d678a6201648e910ba',productFiles:Object.keys(baseline.sourceHashes).length,changedProductFiles:changed,seedSha256:await sha(frozen.database),seedBytes:fs.statSync(frozen.database).size,browserChecks:{sessions:2,cycles:20,controlledTokenIncrements:12,exactOutputDelta:1000007,intervalMinMs:Math.min(...intervals),intervalMaxMs:Math.max(...intervals),browserErrors:0},memory:{jobLimitMiB:7168,nodeHeapMiB:1536,controllerReserveMiB:1024},probeHashes:{}};
+await fsp.mkdir(path.join(destination,'evidence'),{recursive:true});await fsp.mkdir(path.join(destination,'probes'),{recursive:true});
+const artifacts=['baseline.json','valid-baseline-results.json','valid-baseline-stages.jsonl','retained-path-inspection.json','baseline-summary.json','summary.json','browser-session1-results.json','browser-session2-results.json','browser-stages.jsonl','browser-session2-stages.jsonl','quota-branch-results.json','quota-branch-stages.jsonl','control-on-results.json','control-off-results.json','control-on-stages.jsonl','control-parity.json'];
+for(const file of artifacts)await fsp.copyFile(path.join(output,file),path.join(destination,'evidence',file));
+const http=read('http-results.json');await fsp.writeFile(path.join(destination,'evidence','http-results.json'),JSON.stringify({startedAt:http.startedAt,finishedAt:http.finishedAt,http:http.http,excluded:'Browser launch failed after HTTP samples completed; no browser samples from this attempt'},null,2));
+const scripts=['prepare.mjs','repair-snapshot.mjs','preserve-file-times.ps1','restore-inputs.ps1','hook.mjs','direct.mjs','http-browser.mjs','quota-branch.mjs','inspect-baseline.mjs','summarize.mjs','check-controls.mjs','finalize-evidence.mjs'];
+for(const file of scripts){await fsp.copyFile(path.join(output,file),path.join(destination,'probes',file));integrity.probeHashes[file]=await sha(path.join(output,file));}
+await fsp.writeFile(path.join(destination,'evidence','integrity.json'),JSON.stringify(integrity,null,2));
+console.log(JSON.stringify({productFiles:integrity.productFiles,changed,cycles:20,increments:12,intervalMinMs:integrity.browserChecks.intervalMinMs,intervalMaxMs:integrity.browserChecks.intervalMaxMs,seedSha256:integrity.seedSha256}));

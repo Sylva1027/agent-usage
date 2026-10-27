@@ -1,0 +1,88 @@
+{
+  "comparedAt": "2026-10-26T15:54:15.323Z",
+  "equivalent": true,
+  "ignoredFields": [
+    "summary.generatedAt",
+    "summary.perf.indexedAt",
+    "summary.perf.meta.indexedAt"
+  ],
+  "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+  "tables": {
+    "events": 135873,
+    "source_files": 1597,
+    "perf_samples": 53161,
+    "perf_codex_projections": 1388,
+    "perf_rollout_threads": 1394,
+    "archive_segments": 0
+  },
+  "comparisons": {
+    "unchanged": {
+      "before": {
+        "n": 20,
+        "p50": 7828.627700000005,
+        "p95": 8133.446000000011,
+        "max": 8206.464000000007
+      },
+      "after": {
+        "n": 20,
+        "p50": 2629.7656999999963,
+        "p95": 2809.8677000000025,
+        "max": 3105.675900000002
+      },
+      "p95ReductionPercent": 65.45292487341776
+    },
+    "today": {
+      "before": {
+        "n": 20,
+        "p50": 456.5634999999893,
+        "p95": 480.7357999999949,
+        "max": 483.6980999999796
+      },
+      "after": {
+        "n": 20,
+        "p50": 467.8359999999957,
+        "p95": 504.4631999999983,
+        "max": 513.3744000000006
+      },
+      "p95ReductionPercent": -4.93564240483102
+    },
+    "month": {
+      "before": {
+        "n": 20,
+        "p50": 1516.8782999999821,
+        "p95": 1544.9634999999835,
+        "max": 1570.6610999999975
+      },
+      "after": {
+        "n": 20,
+        "p50": 1577.0527000000002,
+        "p95": 1679.4040999999997,
+        "max": 1726.7872999999963
+      },
+      "p95ReductionPercent": -8.701862535912186
+    },
+    "all": {
+      "before": {
+        "n": 20,
+        "p50": 663.1521000000066,
+        "p95": 684.7866999999969,
+        "max": 698.2331999999878
+      },
+      "after": {
+        "n": 20,
+        "p50": 52.3521000000037,
+        "p95": 70.45960000000196,
+        "max": 71.07069999999658
+      },
+      "p95ReductionPercent": 89.71072306164791
+    }
+  },
+  "maxNodeRSSMiB": {
+    "before": 999.48046875,
+    "after": 975.55859375
+  },
+  "minimumAvailableGiB": {
+    "before": 13.596664428710938,
+    "after": 13.302547454833984
+  }
+}

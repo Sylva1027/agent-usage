@@ -1,0 +1,50 @@
+✔ auto refresh preference gates polling, preserves manual refresh, and preserves frozen server snapshots (3.7256ms)
+✔ U4 harness loads the delivered app.js module with only import/export lines rewritten (27.9519ms)
+✔ U4 deterministic 60s cycles: source check, skipCheck policy, quota clock recompute (124.318ms)
+✔ U4 failed boot self-heals on the next 60s cycles (no manual refresh needed) (29.6883ms)
+✔ a failed range reload retries on the next cycle even with unchanged sources (23.0918ms)
+✔ TPS-only refresh: slow response updates the model while tokens stay equal (24.6713ms)
+✔ TPS-only refresh: reload updates the model while tokens stay equal (25.0904ms)
+✔ TPS-only refresh: pause updates the model while tokens stay equal (23.4564ms)
+✔ quota preset correction: current, success (26.2699ms)
+✔ quota preset correction: current, failure (27.5657ms)
+✔ quota preset correction: reload, success (23.6067ms)
+✔ quota preset correction: reload, failure (25.1129ms)
+✔ quota preset correction: pause, success (21.997ms)
+✔ quota preset correction: pause, failure (29.3476ms)
+✔ T1 Codex native-only, ledger-only and same-cycle arrivals match the complete summary and facts (541.0369ms)
+✔ T1 a timing publication rollback preserves the complete old result and retries without new bytes (288.9648ms)
+✔ prefix worker hashes raw bytes, reports unreadable inputs and exits before returning (93.558ms)
+✖ large parallel planning preserves live isolation, quiet recovery and raw rewrite rejection (104.5635ms)
+✔ live append is isolated through planning and pre-publication, then publishes on a quiet round (126.5176ms)
+✔ first post-planning append isolates the late thread without promoting its cache (95.0255ms)
+✔ late owner rewrite still rejects the whole home (71.7588ms)
+✔ append proof rejects a growing same-owner rewrite whose old prefix changed (10.4543ms)
+✔ projection cache commit excludes live paths from memory and persistence (30.9524ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 22
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2113.031
+
+✖ failing tests:
+
+test at test\codex-prefix-window.test.js:47:1
+✖ large parallel planning preserves live isolation, quiet recovery and raw rewrite rejection (104.5635ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/codex-prefix-window.test.js:64:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,137 @@
+diff --git a/output/codex-refresh-followup-20261027/preimage/src/usage-store.js b/src/usage-store.js
+index 4610e81..a3c6dfd 100644
+--- a/output/codex-refresh-followup-20261027/preimage/src/usage-store.js
++++ b/src/usage-store.js
+@@ -6483,7 +6483,7 @@ export class UsageStore {
+    *      **没有对该文件的任何读取**（复用轮不调用 `planStableCodexHome`；整文件用量读取
+    *      `usageFiles()` 发生在**签名之前**）⇒ 消费点拿到的是本文件最近一次真实观测。
+    *   2. **不喂发布前复核**（`store.windowPrePublish`）：复用轮该 home 不在 `codexPlans`
+-   *      ⇒ 复核本轮**根本不执行**；本方法的消费点只有"`pendingChange` 预扫"与"逐文件判据"。
++   *      ⇒ 复核本轮**根本不执行**；本方法只供给逐文件判据。
+    *      一旦有人把它接到复核上，`LIVE_SOURCE_CHANGED` 就会静默失效（`mut-publish-reuses-after`）。
+    *   3. **不喂 `window.after` / 不把 `window.before` 当 `window.after`**：本方法不引入任何窗口绑定，
+    *      它的来源是独立探针，不是任何窗口的 before/after 分量。
+@@ -8331,7 +8331,7 @@ export class UsageStore {
+         //     也不累加，`perf_degraded_home_ids` / `perf_codex_publication_policy` 与原路径一致。
+         const reusedAttempt = this.codexStableAttemptMatch(homeId, home, expectedPaths);
+         if (reusedAttempt !== null) {
+-          // C2 卡：把命中判定**刚刚取到**的逐文件签名留给本轮逐文件判据（`pendingChange` 预扫同）。
++          // C2 卡：把命中判定**刚刚取到**的逐文件签名留给本轮逐文件判据。
+           // 位置就在命中判定内部 —— 签名与消费点之间**没有**对该文件的任何读取（红线 ①，见
+           // `codexReusedProbeValue` 的注释与报告「实现行为」的逐条论证）。
+           // `paths` 取**副本**、`fileFingerprints` 只读共享：路径索引会挂到这里的包装对象上，
+@@ -8552,80 +8552,12 @@ export class UsageStore {
+       if (policyNeedsUpgrade) policyUpgradeComplete = false;
+     }
+ 
+-    /**
+-     * M3.4 **D1**：`"有变更的 sync"` 的判据 = **本轮将实际重解析的文件数 > 0**。
+-     *
+-     * 这里做一次**预扫**（与循环内同一判据的**只读**版本），只用来决定"要不要在开始前标
+-     * `rebuilding`"。**不预扫就无法在"开始前"判断**，而卡片明确要求"**开始有变更的
+-     * sync 前**标 `rebuilding`" —— 即无变更的轮次**不得**翻转状态（否则每次 `--check`
+-     * 式的空轮都会把库短暂标成 rebuilding，下游会拒绝一次本来就完整的排名）。
+-     *
+-     * 判据的**权威**仍是循环内的实时判断（它还要看 `earlierFileChanged` 的会话级联）；
+-     * 预扫只是它的**保守超集**，因此可能出现"预扫说有变更、实际全被跳过"的轮次 ——
+-     * 那时会在结尾把状态写回 `ready`，**不会**留下错误的 `rebuilding`（见结尾的兜底）。
+-     */
+-    const pendingChange =
+-      codexPendingChange ||
+-      [...workbuddyTraceTargets.values()].some((targets) => targets.size > 0) ||
+-      files.some((file) => {
+-        const existing = this.database
+-          .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
+-          .get(file.filePath);
+-        if (!existing) return true;
+-        if (
+-          Number(existing.size) === file.info.size &&
+-          Number(existing.mtime_ms) === file.info.mtimeMs &&
+-          existing.kind === (file.source.kind || "codex") &&
+-          existing.home_id === file.source.id &&
+-          existing.home_label === file.source.label &&
+-          existing.home_path === file.source.path
+-        ) {
+-          // ── B7（返工2 新发现）：`size + mtimeMs` **不足以**判定"未变" ──
+-          // 我实测：**同尺寸原地改写并把 mtime 钉成同一整毫秒** ⇒ 两个分量**完全相同**，
+-          // 但文件内容已变 ⇒ 若只看 size/mtime 会**整轮跳过**该文件（`replaceFile` 调用次数 = 0），
+-          // 版本与候选都不更新。⇒ 再把**内容指纹**（`enabledPerfSourceStat`，含首尾 64KiB 摘要）
+-          // 与**已发布指纹**比对，**不同则视为有变更**。
+-          //
+-          // M4.5 distinguishes disabled sources (current=null, retain size/mtime
+-          // behavior) from newly enabled sources (no published extraction, backfill).
+-          const kind = String(file.source?.kind ?? "");
+-          // M4.5: a newly enabled source may already have unchanged usage rows but
+-          // no published perf extraction. Also backfill legacy rows that predate
+-          // the per-file warning sidecar. An explicit [] means extraction completed.
+-          // C2：同一份内容签名也喂给预扫（口径与逐文件判据一致，卡面"贯通 `pendingChange`"）。
+-          // ⚠️ **结构性不可达**：`pendingChange = codexPendingChange || files.some(...)`，而"命中复用"
+-          // 要求 `shouldPlan === true`，该分支同时把 `codexPendingChange` 置 `true` ⇒ `files.some`
+-          // 被 `||` 短路。因此这一行**不改变任何计数**（`store.decision.prescan` 仍恒为 0，报告
+-          // 「未测/边界」有断言与 `proof-prescan-dead.mjs` 的仪器化证明）；保留它是为了让"签名同时
+-          // 供给两个判据"这条不变量在源码上显式，将来若有人去掉短路，它仍然是正确的一侧。
+-          const prescanReusedCurrent = this.codexReusedProbeValue(
+-            codexReusedSignatures.get(String(file.source?.id ?? "")),
+-            kind,
+-            file.filePath,
+-          );
+-          if (
+-            perfFileNeedsRefresh(
+-              kind,
+-              file.filePath,
+-              this.publishedFileFingerprintsForRead(),
+-              this.publishedFileWarningsForRead(),
+-              prescanReusedCurrent,
+-            )
+-          ) {
+-            return true;
+-          }
+-          return false;
+-        }
+-        return true;
+-      });
+-
+-    // ★ 卡片明文：**开始有变更的 sync 前**标 `rebuilding`。
+-    // 此刻写入是**事务外**（autocommit）⇒ 立即可被随后的 `summarize` 读到，
+-    // 这正是"同步期间调用 summarize 得到 rebuilding"能够成立的原因。
+-    if (pendingChange) {
++    // Structural changes can require publication without replacing a usage file.
++    let rebuildingMarked =
++      codexPendingChange || [...workbuddyTraceTargets.values()].some((targets) => targets.size > 0);
++    if (rebuildingMarked) {
+       this.writePerfState(PERF_STATE_REBUILDING, { degradedHomeIds: [], sourceWarnings: [] });
+     }
+-
+     for (const file of files) {
+       const existing = this.database
+         .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
+@@ -8637,8 +8569,6 @@ export class UsageStore {
+             .map((row) => row.session_id)
+         : [];
+       const earlierFileChanged = previousSessions.some((sessionId) => changedSessions.has(sessionId));
+-      // S4：控制流最小重构 —— 把"跳过"从 `continue` 改成标志，`perfFileNeedsRefresh` 的
+-      // 调用位置、次数、参数**完全不变**（行为等价是硬要求）。
+       let needsRefresh = true;
+       if (
+         !earlierFileChanged &&
+@@ -8650,7 +8580,7 @@ export class UsageStore {
+         existing.home_label === file.source.label &&
+         existing.home_path === file.source.path
+       ) {
+-        // ── B7（返工2 新发现，与上方预扫**同一判据**）──
++        // ── B7（返工2 新发现，逐文件实时内容判据）──
+         // `size + mtimeMs` 全同**不蕴含**内容未变（实测：同尺寸 + 同整毫秒 mtime 的原地改写）。
+         // M4.5: also extract an enabled source with no published fingerprint
+         // or no committed per-file warning entry. Disabled sources still have
+@@ -8691,6 +8621,11 @@ export class UsageStore {
+         needsRefresh = true;
+       }
+       if (!needsRefresh) continue;
++      if (!rebuildingMarked) {
++        // Keep the last complete ranking until replacement; marker failures abort the sync.
++        this.writePerfState(PERF_STATE_REBUILDING, { degradedHomeIds: [], sourceWarnings: [] });
++        rebuildingMarked = true;
++      }
+       try {
+         const replaceOutcome = await this.replaceFile(file, {
+           onWarning: (warning) => warnings.push(warning),

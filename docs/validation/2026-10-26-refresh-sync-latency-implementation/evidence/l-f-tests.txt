@@ -1,0 +1,148 @@
+✔ auto refresh preference gates polling, preserves manual refresh, and preserves frozen server snapshots (29.8322ms)
+✔ U4 harness loads the delivered app.js module with only import/export lines rewritten (112.2927ms)
+✔ U4 deterministic 60s cycles: source check, skipCheck policy, quota clock recompute (127.8678ms)
+✔ U4 failed boot self-heals on the next 60s cycles (no manual refresh needed) (30.5055ms)
+✔ a failed range reload retries on the next cycle even with unchanged sources (24.0901ms)
+✔ quota preset correction: current, success (24.8411ms)
+✔ quota preset correction: current, failure (25.745ms)
+✔ quota preset correction: reload, success (23.5987ms)
+✔ quota preset correction: reload, failure (26.3775ms)
+✔ quota preset correction: pause, success (29.6001ms)
+✔ quota preset correction: pause, failure (24.222ms)
+✔ server serves the dashboard and usage API (310.1539ms)
+✔ usage responses carry one exact pricing catalog and frozen snapshots stay pinned (261.7111ms)
+✔ snapshot captures pricing before backup and discovery leaves the request scope (168.4568ms)
+✔ server accepts named recent reset windows and calendar ranges (185.2559ms)
+✔ server reports unsupported stored imports instead of hiding them (56.4322ms)
+✔ server keeps full detail reports behind the documented 512MB heap budget (0.1234ms)
+✔ server reports status changes and refreshes cached usage reports (168.1636ms)
+✔ Magpie ledger-only status retries failures and preserves skipped/frozen usage (566.1825ms)
+✔ Magpie publication across workers keeps skipped usage and frozen confirmation consistent (281.7344ms)
+✔ Magpie imported runtime uses its published confirmation and ignores the local ledger (167.5321ms)
+✔ paused usage keeps the same indexed data across range changes (218.6284ms)
+✔ quota API forces its server bucket, returns capability state, and keeps snapshots frozen (233.5431ms)
+✔ server imports project usage log directories and refreshes usage data (260.272ms)
+✔ server imports a DSH home and labels it as DSH (198.2294ms)
+✔ server imports an OpenCode data dir and labels it as OpenCode (204.7527ms)
+✔ server imports a Claude Code home and labels it as Claude Code (201.4718ms)
+✔ server returns a picked directory from the local directory picker (56.0275ms)
+✔ JSON request parsing preserves UTF-8 split across chunks and returns client errors (0.5111ms)
+✔ server starts directly when its script path contains spaces (100.935ms)
+✖ pricing refresh endpoint updates cached values and rejects an outdated editor (57.8713ms)
+✖ pricing refresh API targets one model and keeps concurrent targets independent (57.0172ms)
+✖ pricing mutations keep a manual FX lock across save and refresh races (59.5ms)
+✔ imported pricing runtime rejects saves and refreshes (55.3514ms)
+✔ failed pricing writes keep the prior effective catalog (72.4005ms)
+✔ pricing model activity keeps historical rates and honors a frozen usage snapshot (187.0813ms)
+✔ pricing coverage waits for the usage index and lists missing models (157.0419ms)
+✖ usage completion debounces missing-model discovery and keeps model IDs local (60.866ms)
+✖ pricing API validates, persists, and reprices indexed history (190.5715ms)
+✔ usage API 按 exclude 参数过滤数据来源 (163.4489ms)
+✔ D3 · quota API 的时刻语义：过期/新鲜随 asOf 现算，freeze 快照不被 live 新观测改写 (203.7281ms)
+✔ D4 · 周期 API 的 asOf 仍新鲜 + 改数据立即失效（server，先申请文件锁） (309.0071ms)
+✔ dashboard skipCheck reinitializes the executor after a crash (334.985ms)
+✔ Magpie executor carries acknowledged state through sync, dashboard, snapshot and imported open (266.601ms)
+✔ W1 · 执行器独占数据库连接：主线程客户端没有 database，只有读侧快照 (171.8145ms)
+✔ W1 · metadataFor(asOf) 在执行器内按该时刻现算（RC2：metadata() 忽略 asOf） (168.2907ms)
+✔ W1 · summarize / periodComparison 是 Promise，且形状与同步版一致（RC1） (180.5154ms)
+✔ R09 · 并发请求各自绑定自己的价格目录 (189.2355ms)
+✔ W1 · snapshot 由执行器 backup，并返回绑定该 asOf 的读侧状态（RC3 执行器半） (183.9649ms)
+✔ W1 · close() 释放连接：库文件与目录可立即删除（Windows EBUSY/EPERM 教训） (168.5739ms)
+✔ W1 · /api/status 在主线程就地应答：执行器在飞时仍快速返回 (190.285ms)
+✔ W1-b · 家族①：请求超时必须以可重试错误结算，绝不挂死 (19.3559ms)
+✔ W1-b · 家族①：执行器内失败必须以可重试错误返回（不挂死、不 500） (175.456ms)
+✔ W1-b · 家族①：close() 必须在执行器退出后迅速落定（显式 flush 语义） (172.0812ms)
+✔ W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不发布半成品 (231.0296ms)
+✔ W1-b · 家族②：/api/status 只读已发布快照，不与执行器的重活竞争 (240.1169ms)
+✔ W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 去重） (198.9786ms)
+✔ W1-b · 收口：server.close() 无回调时返回 Promise，且只有执行器释放后才 settle (180.7243ms)
+ℹ tests 58
+ℹ suites 0
+ℹ pass 53
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23099.6898
+
+✖ failing tests:
+
+test at test\server.test.js:1339:1
+✖ pricing refresh endpoint updates cached values and rejects an outdated editor (57.8713ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  400 !== 200
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/server.test.js:1382:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\server.test.js:1423:1
+✖ pricing refresh API targets one model and keeps concurrent targets independent (57.0172ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  500 !== 200
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/server.test.js:1493:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\server.test.js:1506:1
+✖ pricing mutations keep a manual FX lock across save and refresh races (59.5ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  400 !== 200
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/server.test.js:1526:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\server.test.js:1751:1
+✖ usage completion debounces missing-model discovery and keeps model IDs local (60.866ms)
+  TypeError: Cannot read properties of undefined (reading 'results')
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/server.test.js:1860:51)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\server.test.js:2005:1
+✖ pricing API validates, persists, and reprices indexed history (190.5715ms)
+  AssertionError [ERR_ASSERTION]: {"code":"EPERM","error":"EPERM: operation not permitted, rename 'C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{8f81f23d-6fbd-4e32-b341-491b421d0d8c}\\AC\\Temp\\codex-server-tH7J7B\\.codex-usage\\pricing.json.19168.a44687ea-633d-4fa3-8c7f-4886aa537b74.tmp' -> 'C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{8f81f23d-6fbd-4e32-b341-491b421d0d8c}\\AC\\Temp\\codex-server-tH7J7B\\.codex-usage\\pricing.json'"}
+  
+  400 !== 200
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/server.test.js:2071:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

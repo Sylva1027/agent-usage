@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -285,6 +286,251 @@ test("Magpie does not read a missing ledger from the real home", async () => {
     assert.equal(store.magpieRequestTimings.requests.size, 0);
   } finally {
     store.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie delta associates only changed requests and publishes without a second native round", async () => {
+  const f = await fixture();
+  const store = f.store;
+  try {
+    const other = path.join(path.dirname(f.filePath), "rollout-thread-b.jsonl");
+    await writeFile(other, `${rollout("thread-b", "response-b").map(JSON.stringify).join("\n")}\n`);
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a"), ledgerRow("response-b")]);
+    await store.sync();
+    const homeId = String(store.homes.find((entry) => entry.kind === "extra").id);
+    const unchangedThread = store.nativeTimingThreads.get(homeId).get("thread-b");
+    let rounds = 0;
+    const round = store.syncRound.bind(store);
+    store.syncRound = (...args) => {
+      rounds += 1;
+      return round(...args);
+    };
+    const seen = [];
+    const records = store.magpieRequestTimings.recordsForRequest.bind(store.magpieRequestTimings);
+    store.magpieRequestTimings.recordsForRequest = (...args) => {
+      seen.push(args[0]);
+      return records(...args);
+    };
+    await appendFile(f.ledgerPath, `${JSON.stringify(ledgerRow("response-a", { ms: 3000 }))}\n`);
+    await store.sync();
+    assert.equal(rounds, 1);
+    assert.deepEqual(seen, ["response-a"]);
+    assert.equal(store.nativeTimingThreads.get(homeId).get("thread-b"), unchangedThread);
+    assert.equal(sampleDuration(store, homeId, "thread-a"), null);
+    assert.equal(sampleDuration(store, homeId, "thread-b"), 2000);
+    assert.equal(store.requestTimingDirtyThreadCount(), 0);
+    assert.deepEqual(store.magpieRequestTimings.pendingChanges().responseIds, new Set());
+  } finally {
+    store.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie directed timing publication matches the complete native-round reference", async () => {
+  const f = await fixture();
+  const reference = new UsageStore({ ...f.options, databaseFile: path.join(f.root, "reference.sqlite") });
+  reference.publishMagpieRequestTimings = () => false;
+  try {
+    await writeLedger(f.ledgerPath, []);
+    await f.store.sync();
+    await reference.sync();
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a")]);
+    await f.store.sync();
+    await reference.sync();
+    await appendFile(f.ledgerPath, `${JSON.stringify(ledgerRow("response-a", { ms: 3000 }))}\n`);
+    await f.store.sync();
+    await reference.sync();
+    for (const table of [
+      "events",
+      "perf_samples",
+      "perf_sample_sources",
+      "perf_rollout_threads",
+      "history_replaced_facts",
+    ]) {
+      const rows = (store) =>
+        store.database
+          .prepare(`SELECT * FROM ${table}`)
+          .all()
+          .map((row) => {
+            const copy = { ...row };
+            delete copy.recorded_at;
+            return copy;
+          });
+      assert.deepEqual(rows(f.store), rows(reference), table);
+    }
+    const normalize = (summary) => {
+      const result = structuredClone(summary);
+      delete result.generatedAt;
+      delete result.perf.indexedAt;
+      delete result.perf.meta.indexedAt;
+      return result;
+    };
+    const filters = { preset: "all", now: new Date("2026-10-26T12:00:00Z") };
+    assert.deepEqual(normalize(await f.store.summarize(filters)), normalize(await reference.summarize(filters)));
+  } finally {
+    f.store.close();
+    reference.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie directed rollback preserves pending evidence and retries without new ledger bytes", async () => {
+  const f = await fixture();
+  const store = f.store;
+  try {
+    await writeLedger(f.ledgerPath, []);
+    const initial = await store.sync();
+    const homeId = String(store.homes.find((entry) => entry.kind === "extra").id);
+    const before = sampleDuration(store, homeId, "thread-a");
+    const publish = store.publishMagpieRequestTimings.bind(store);
+    const writeMeta = store.writeMeta.bind(store);
+    store.publishMagpieRequestTimings = () => {
+      store.writeMeta = (key, value) => {
+        if (key === "perf_index_version") throw new Error("injected directed publication failure");
+        return writeMeta(key, value);
+      };
+      try {
+        return publish();
+      } finally {
+        store.writeMeta = writeMeta;
+      }
+    };
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a")]);
+    const failed = await store.sync();
+    assert.equal(failed.magpieTimingFingerprint, initial.magpieTimingFingerprint);
+    assert.equal(sampleDuration(store, homeId, "thread-a"), before);
+    assert.equal(store.requestTimingDirtyThreadCount(), 1);
+    assert.ok(store.magpieRequestTimings.pendingChanges().responseIds.has("response-a"));
+    store.publishMagpieRequestTimings = publish;
+    const retried = await store.sync();
+    assert.notEqual(retried.magpieTimingFingerprint, initial.magpieTimingFingerprint);
+    assert.equal(store.requestTimingDirtyThreadCount(), 0);
+    assert.equal(sampleDuration(store, homeId, "thread-a"), 2000);
+  } finally {
+    store.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie publishes same-cycle native plus ledger and late native-only mappings", async () => {
+  const f = await fixture();
+  try {
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a"), ledgerRow("response-b")]);
+    let rounds = 0;
+    const round = f.store.syncRound.bind(f.store);
+    f.store.syncRound = (...args) => {
+      rounds += 1;
+      return round(...args);
+    };
+    const initial = await f.store.sync();
+    const homeId = String(f.store.homes.find((entry) => entry.kind === "extra").id);
+    assert.equal(initial.updatedFileCount, 1);
+    assert.equal(sampleDuration(f.store, homeId, "thread-a"), 2000);
+    assert.equal(rounds, 1, "a new native request and its ledger evidence publish in one discovery round");
+    const other = path.join(path.dirname(f.filePath), "rollout-thread-b.jsonl");
+    await writeFile(
+      other,
+      `${rollout("thread-b", "response-b")
+        .map((row) => JSON.stringify(row))
+        .join("\n")}\n`,
+    );
+    const next = await f.store.sync();
+    assert.equal(next.updatedFileCount, 1);
+    assert.equal(sampleDuration(f.store, homeId, "thread-b"), 2000);
+    assert.equal(rounds, 2, "native-only arrival reuses the ledger in the same cycle");
+    assert.equal(f.store.requestTimingDirtyThreadCount(), 0);
+  } finally {
+    f.store.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie rejects a publication context superseded by another connection", async () => {
+  const f = await fixture();
+  const other = new UsageStore(f.options);
+  other.importMagpieRequestTimings = async () => false;
+  try {
+    await writeLedger(f.ledgerPath, []);
+    await f.store.sync();
+    const homeId = String(f.store.homes.find((entry) => entry.kind === "extra").id);
+    const added = path.join(path.dirname(f.filePath), "rollout-thread-b.jsonl");
+    const read = f.store.magpieRequestTimings.read.bind(f.store.magpieRequestTimings);
+    let interleave = true;
+    f.store.magpieRequestTimings.read = async (...args) => {
+      if (interleave) {
+        interleave = false;
+        await writeFile(
+          added,
+          `${rollout("thread-b", "response-b")
+            .map((row) => JSON.stringify(row))
+            .join("\n")}\n`,
+        );
+        await other.sync();
+        const warnings = other.readPublishedFileWarnings();
+        warnings[added] = [{ sourceKind: "codex", homeId, code: "UNKEYABLE_RECORD", count: 1 }];
+        other.writeMeta("perf_file_warnings", JSON.stringify(warnings));
+      }
+      return read(...args);
+    };
+    let rounds = 0;
+    const round = f.store.syncRound.bind(f.store);
+    f.store.syncRound = (...args) => {
+      rounds += 1;
+      return round(...args);
+    };
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a")]);
+    await f.store.sync();
+    assert.equal(rounds, 2, "a stale context must fall back to the complete native round");
+    assert.equal(f.store.readPublishedFileWarnings()[added][0].code, "UNKEYABLE_RECORD");
+    assert.ok(f.store.readPublishedFileFingerprints()[added]);
+    assert.equal(sampleDuration(f.store, homeId, "thread-a"), 2000);
+    assert.equal(f.store.requestTimingDirtyThreadCount(), 0);
+  } finally {
+    other.close();
+    f.store.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("Magpie revalidates dependencies after building directed timing samples", async () => {
+  const f = await fixture();
+  try {
+    await writeLedger(f.ledgerPath, []);
+    await f.store.sync();
+    const homeId = String(f.store.homes.find((entry) => entry.kind === "extra").id);
+    const lookup = f.store.lookupRequestTiming.bind(f.store);
+    let changed = false;
+    f.store.lookupRequestTiming = (query) => {
+      if (!changed) {
+        changed = true;
+        writeFileSync(
+          f.filePath,
+          `${rollout("thread-a", "response-a", 999)
+            .map((row) => JSON.stringify(row))
+            .join("\n")}\n`,
+        );
+      }
+      return lookup(query);
+    };
+    let rounds = 0;
+    const round = f.store.syncRound.bind(f.store);
+    f.store.syncRound = (...args) => {
+      rounds += 1;
+      return round(...args);
+    };
+    await writeLedger(f.ledgerPath, [ledgerRow("response-a")]);
+    await f.store.sync();
+    assert.equal(changed, true);
+    assert.equal(rounds, 2, "a dependency changed during building must enter native recovery");
+    assert.equal(
+      sampleDuration(f.store, homeId, "thread-a"),
+      null,
+      "the stale output=100 denominator must not publish",
+    );
+    assert.equal(f.store.requestTimingDirtyThreadCount(), 0);
+  } finally {
+    f.store.close();
     await rm(f.root, { recursive: true, force: true });
   }
 });

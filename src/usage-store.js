@@ -9,6 +9,7 @@ import { plainRolloutPath } from "./codex-rollout.js";
 import {
   COMPARISON_PERIOD_KEYS,
   buildPerfStatsBlock,
+  buildMagpieTimingFingerprint,
   buildUsageFingerprint,
   discoverSessionFiles,
   discoverUsageSources,
@@ -4228,15 +4229,20 @@ function createPublishedFileMapsView(store) {
     fingerprints: null,
     /** @type {Record<string, {sourceKind: string, homeId: string, code: string, count: number, lineNumbers?: number[]}[]> | null} */
     warnings: null,
-    /** 本轮已提交的 `path → 指纹` 映射（首次访问解码一次）；返回新对象。 */
-    fingerprintsForRound() {
+    /** Internal readers must not mutate these committed maps. */
+    readFingerprints() {
       if (this.fingerprints === null) this.fingerprints = store.readPublishedFileFingerprints();
-      return { ...this.fingerprints };
+      return this.fingerprints;
     },
-    /** 本轮已提交的 `path → 告警` 映射（首次访问解码一次）；返回新对象。 */
-    warningsForRound() {
+    readWarnings() {
       if (this.warnings === null) this.warnings = store.readPublishedFileWarnings();
-      return { ...this.warnings };
+      return this.warnings;
+    },
+    fingerprintsForRound() {
+      return { ...this.readFingerprints() };
+    },
+    warningsForRound() {
+      return { ...this.readWarnings() };
     },
     /**
      * 成功 `COMMIT` 之后写回视图。`null` = 本次提交**没有改**这份 map
@@ -4258,6 +4264,10 @@ export class UsageStore {
     this.magpieTimingLoaded = false;
     this.magpieTimingPublication = "";
     this.magpieTimingFile = "";
+    this.nativeTimingThreads = new Map();
+    this.magpieNativeSignatures = new Map();
+    /** Last successfully published live and retained path sets, by Codex home. */
+    this.codexPublishedPaths = new Map();
     this.metadataCache = null;
     /**
      * D4：`metadata()` 观测聚合的**静态输入**（`events` 未过滤分组行 + 全表最大 timestamp）。
@@ -4399,7 +4409,7 @@ export class UsageStore {
     this.recordChampionCache = null;
     /**
      * C19 static summary projection: one instance-private all-hot entry for
-     * timeline/cost and grouped detail rows. Dynamic range/quota/clock/status
+     * timeline/cost, perf and grouped detail rows. Dynamic range/quota/clock/status
      * remain outside this slot.
      * @type {{ key: string, factsKey: string, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
      */
@@ -4852,6 +4862,14 @@ export class UsageStore {
     if (observed === this.observedDataVersion) return false;
     this.observedDataVersion = observed;
     this.externalCommitCount += 1;
+    this.codexPublishedPaths.clear();
+    this.nativeTimingThreads.clear();
+    this.magpieNativeSignatures.clear();
+    this.magpieTimingPublication = "";
+    if (this.publishedFileMapsView) {
+      this.publishedFileMapsView.fingerprints = null;
+      this.publishedFileMapsView.warnings = null;
+    }
     this.commitStoreRevision("external");
     try {
       this.generatedAt = this.readMeta("generated_at");
@@ -4966,6 +4984,7 @@ export class UsageStore {
     return {
       indexVersion: this.readMeta("perf_index_version"),
       timingRevision: timingPending ? String(timingRevision) : "",
+      magpieTimingFingerprint: this.readMeta("perf_magpie_ledger_fingerprint"),
     };
   }
 
@@ -4975,6 +4994,95 @@ export class UsageStore {
         "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(key, String(value));
+  }
+
+  /** Reuse folds only while ownership, projection bytes, method and publication agree. */
+  requestTimingNativeThreads(homeId, rolloutThreadIds = new Set()) {
+    const published = new Map(
+      Object.entries(this.publishedFileFingerprintsForRead()).map(([file, fingerprint]) => [
+        canonicalProjectionStorePath(file),
+        fingerprint,
+      ]),
+    );
+    const projections = new Map(
+      this.database
+        .prepare("SELECT path, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id = ?")
+        .all(homeId)
+        .map((row) => [canonicalProjectionStorePath(String(row.path)), row]),
+    );
+    const owners = new Map();
+    for (const row of this.database
+      .prepare(
+        "SELECT thread_id, source_path FROM perf_rollout_threads WHERE home_id = ? ORDER BY thread_id, source_path",
+      )
+      .all(homeId)) {
+      const threadId = String(row.thread_id);
+      const paths = owners.get(threadId) || [];
+      paths.push(String(row.source_path));
+      owners.set(threadId, paths);
+    }
+    const previous = this.nativeTimingThreads.get(homeId) || new Map();
+    const threads = new Map();
+    const next = new Map();
+    const method = this.codexProjections.methodVersion();
+    for (const [threadId, paths] of owners) {
+      const hash = createHash("sha256").update(method);
+      let trusted = true;
+      const rows = paths.map((filePath) => {
+        const canonical = canonicalProjectionStorePath(filePath);
+        const row = projections.get(canonical);
+        const fingerprint = published.get(canonical);
+        hash.update(JSON.stringify([filePath, fingerprint, row?.method_version, row?.fingerprint]));
+        hash
+          .update("\0")
+          .update(String(row?.projection ?? ""))
+          .update("\0");
+        if (!row || String(row.method_version) !== method || String(row.fingerprint) !== fingerprint) trusted = false;
+        return row;
+      });
+      const signature = hash.digest("hex");
+      const cached = previous.get(threadId);
+      if (cached?.signature === signature && !rolloutThreadIds.has(threadId)) {
+        threads.set(threadId, cached);
+        next.set(threadId, cached);
+        continue;
+      }
+      const rollouts = [];
+      for (const [index, row] of rows.entries()) {
+        try {
+          const projection = row && JSON.parse(String(row.projection));
+          if (!projection || !Array.isArray(projection.records)) {
+            trusted = false;
+            continue;
+          }
+          rollouts.push({ filePath: paths[index], threadId, projection });
+        } catch {
+          trusted = false;
+        }
+      }
+      const entry =
+        cached?.signature === signature
+          ? cached
+          : {
+              signature,
+              trusted,
+              paths,
+              turns: foldCodexRolloutMetadata(
+                homeId,
+                rollouts.map((rollout) => rollout.projection),
+              ).turns.map((turn) => ({
+                model: turn.model,
+                requests: /** @type {Array<Record<string, unknown>>} */ (turn.requests).map((request) => ({
+                  responseId: request.responseId,
+                  outputTokens: request.outputTokens,
+                })),
+              })),
+            };
+      next.set(threadId, entry);
+      threads.set(threadId, rolloutThreadIds.has(threadId) ? { ...entry, rollouts } : entry);
+    }
+    this.nativeTimingThreads.set(homeId, next);
+    return threads;
   }
 
   /**
@@ -5015,91 +5123,18 @@ export class UsageStore {
       }
     }
 
-    const ownershipRows = this.database
-      .prepare(
-        "SELECT source_path, thread_id FROM perf_rollout_threads WHERE home_id = ? ORDER BY thread_id, source_path",
-      )
-      .all(homeId);
-    if (ownershipRows.length === 0) {
-      if (storedByResponse.size === responseIds.size) {
-        return [...responseIds].map((responseId) => ({
-          responseId,
-          threadId: storedByResponse.get(responseId)[0],
-        }));
-      }
-      throw requestTimingImportError(
-        "REQUEST_TIMING_LINK_MISSING",
-        "No published Codex rollout ownership exists for this home",
-      );
-    }
-
-    const publishedByPath = new Map(
-      Object.entries(this.readPublishedFileFingerprints()).map(([filePath, fingerprint]) => [
-        canonicalProjectionStorePath(filePath),
-        fingerprint,
-      ]),
-    );
-    const projectionsByPath = new Map();
-    for (const row of this.database
-      .prepare(
-        "SELECT path, home_id, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id = ?",
-      )
-      .all(homeId)) {
-      projectionsByPath.set(canonicalProjectionStorePath(String(row.path)), row);
-    }
-
-    const ownerRowsByThread = new Map();
-    for (const row of ownershipRows) {
-      const threadId = String(row.thread_id);
-      const rows = ownerRowsByThread.get(threadId) || [];
-      rows.push(String(row.source_path));
-      ownerRowsByThread.set(threadId, rows);
-    }
-
-    const currentMethodVersion = this.codexProjections.methodVersion();
     const threadsByResponse = new Map();
-    for (const [threadId, paths] of ownerRowsByThread) {
-      const projections = [];
-      let trusted = true;
-      for (const sourcePath of [...paths].sort()) {
-        const canonicalPath = canonicalProjectionStorePath(sourcePath);
-        const row = projectionsByPath.get(canonicalPath);
-        if (!row) {
-          trusted = false;
-          continue;
-        }
-        if (
-          String(row.home_id) !== homeId ||
-          String(row.method_version) !== currentMethodVersion ||
-          String(row.fingerprint) !== String(publishedByPath.get(canonicalPath) ?? "")
-        ) {
-          trusted = false;
-        }
-        try {
-          const projection = JSON.parse(String(row.projection));
-          if (!projection || typeof projection !== "object" || !Array.isArray(projection.records)) {
-            trusted = false;
-            continue;
-          }
-          projections.push(projection);
-        } catch {
-          trusted = false;
-        }
-      }
-
-      const folded = foldCodexRolloutMetadata(homeId, projections);
-      for (const turn of folded.turns) {
-        const requests = /** @type {Array<Record<string, unknown>>} */ (turn.requests);
-        for (const request of requests) {
+    for (const [threadId, thread] of this.requestTimingNativeThreads(homeId)) {
+      for (const turn of thread.turns) {
+        for (const request of turn.requests) {
           const responseId = request.responseId;
           if (typeof responseId !== "string" || !responseIds.has(responseId)) continue;
           const entries = threadsByResponse.get(responseId) || new Map();
-          entries.set(threadId, trusted);
+          entries.set(threadId, thread.trusted);
           threadsByResponse.set(responseId, entries);
         }
       }
     }
-
     const requestLinks = [];
     for (const responseId of responseIds) {
       const threads = threadsByResponse.get(responseId);
@@ -6381,6 +6416,14 @@ export class UsageStore {
     return view === null ? this.readPublishedFileWarnings() : view.warningsForRound();
   }
 
+  publishedFileFingerprintsForRead() {
+    return this.publishedFileMapsView?.readFingerprints() ?? this.readPublishedFileFingerprints();
+  }
+
+  publishedFileWarningsForRead() {
+    return this.publishedFileMapsView?.readWarnings() ?? this.readPublishedFileWarnings();
+  }
+
   /**
    * S2 卡：从**已经完成的稳定窗口**里取出该物理文件的等价内容摘要；取不到就返回 `undefined`
    * （调用方必须重新探针）。
@@ -6440,7 +6483,7 @@ export class UsageStore {
    *      **没有对该文件的任何读取**（复用轮不调用 `planStableCodexHome`；整文件用量读取
    *      `usageFiles()` 发生在**签名之前**）⇒ 消费点拿到的是本文件最近一次真实观测。
    *   2. **不喂发布前复核**（`store.windowPrePublish`）：复用轮该 home 不在 `codexPlans`
-   *      ⇒ 复核本轮**根本不执行**；本方法的消费点只有"`pendingChange` 预扫"与"逐文件判据"。
+   *      ⇒ 复核本轮**根本不执行**；本方法只供给逐文件判据。
    *      一旦有人把它接到复核上，`LIVE_SOURCE_CHANGED` 就会静默失效（`mut-publish-reuses-after`）。
    *   3. **不喂 `window.after` / 不把 `window.before` 当 `window.after`**：本方法不引入任何窗口绑定，
    *      它的来源是独立探针，不是任何窗口的 before/after 分量。
@@ -7302,7 +7345,7 @@ export class UsageStore {
         // `statAfter` 为 `null`（读后不可读）时**移除**该文件分量：它已无可用"已发布"状态，
         // 留着会让版本表征一个不再成立的事实。
         // S1：轮内复用已解码视图（整轮至多解码一次）；**成功 `COMMIT` 后**才写回视图。
-        const nextFingerprints = { ...(this.publishedFileFingerprintsForRound() || {}) };
+        const nextFingerprints = this.publishedFileFingerprintsForRound();
         if (statAfter !== null) {
           nextFingerprints[filePath] = statAfter;
         } else {
@@ -7417,9 +7460,21 @@ export class UsageStore {
       let status = await this.syncRound(args);
       const timingWarnings = [];
       try {
-        if (await this.importMagpieRequestTimings(timingWarnings)) status = await this.syncRound(args);
-        if (timingWarnings.length === 0) {
+        const observedLedger = await buildMagpieTimingFingerprint(this.options);
+        if (await this.importMagpieRequestTimings(timingWarnings)) {
+          if (!this.publishMagpieRequestTimings()) {
+            const timingStatus = await this.syncRound(args);
+            status = { ...timingStatus, updatedFileCount: status.updatedFileCount + timingStatus.updatedFileCount };
+          }
+        }
+        if (timingWarnings.length === 0 && this.requestTimingDirtyThreadCount() === 0) {
           this.magpieTimingPublication = `${this.fingerprint}\u0000${this.readMeta("perf_index_version")}`;
+          const pending = this.magpieRequestTimings.pendingChanges();
+          this.magpieRequestTimings.acknowledge(pending.revision);
+          if (this.readMeta("perf_magpie_ledger_fingerprint") !== observedLedger)
+            this.writeMeta("perf_magpie_ledger_fingerprint", observedLedger);
+        } else {
+          this.magpieTimingPublication = "";
         }
       } catch {
         // Timing enrichment must not discard a successful native-source publication.
@@ -7430,9 +7485,13 @@ export class UsageStore {
         this.warnings.push(...timingWarnings);
         this.metadataCache = null;
       }
-      return status;
+      return { ...status, magpieTimingFingerprint: this.readMeta("perf_magpie_ledger_fingerprint") };
+    } catch (error) {
+      this.codexPublishedPaths.clear();
+      throw error;
     } finally {
       if (this.publishedFileMapsView === view) this.publishedFileMapsView = null;
+      this.magpieTimingPublicationContext = null;
     }
   }
 
@@ -7445,25 +7504,15 @@ export class UsageStore {
     if (!ledgerChanged && filePath === this.magpieTimingFile && publication === this.magpieTimingPublication)
       return false;
     this.magpieTimingFile = filePath;
-    const published = new Map(
-      Object.entries(this.readPublishedFileFingerprints()).map(([file, fingerprint]) => [
-        canonicalProjectionStorePath(file),
-        fingerprint,
-      ]),
-    );
-    const methodVersion = this.codexProjections.methodVersion();
-    const projectionsByPath = new Map();
-    for (const row of this.database
-      .prepare(
-        "SELECT path, home_id, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id IN (SELECT DISTINCT home_id FROM perf_rollout_threads)",
-      )
-      .all()) {
-      projectionsByPath.set(`${String(row.home_id)}\u0000${canonicalProjectionStorePath(String(row.path))}`, row);
-    }
+    const pending = this.magpieRequestTimings.pendingChanges();
     let changed = false;
+    const activeHomes = new Set();
     for (const home of this.homes.filter((entry) => canonicalPerfSourceKind(entry.kind) === "codex")) {
       const homeId = String(home.id);
+      activeHomes.add(homeId);
       try {
+        const threads = this.requestTimingNativeThreads(homeId);
+        const previous = this.magpieNativeSignatures.get(homeId) || new Map();
         const foreignResponses = new Set(
           this.database
             .prepare(
@@ -7472,34 +7521,15 @@ export class UsageStore {
             .all(homeId, MAGPIE_TIMING_ORIGIN)
             .map((row) => String(row.response_id)),
         );
-        const threads = new Map();
-        for (const owner of this.database
-          .prepare(
-            "SELECT thread_id, source_path FROM perf_rollout_threads WHERE home_id = ? ORDER BY thread_id, source_path",
-          )
-          .all(homeId)) {
-          const thread = threads.get(String(owner.thread_id)) || { trusted: true, projections: [] };
-          threads.set(String(owner.thread_id), thread);
-          const row = projectionsByPath.get(
-            `${homeId}\u0000${canonicalProjectionStorePath(String(owner.source_path))}`,
-          );
-          if (
-            !row ||
-            String(row.method_version) !== methodVersion ||
-            String(row.fingerprint) !== published.get(canonicalProjectionStorePath(String(owner.source_path)))
-          ) {
-            thread.trusted = false;
-            continue;
-          }
-          thread.projections.push(JSON.parse(String(row.projection)));
-        }
         const records = new Map();
-        for (const thread of threads.values()) {
+        for (const [threadId, thread] of threads) {
           if (!thread.trusted) continue;
-          for (const turn of foldCodexRolloutMetadata(homeId, thread.projections).turns) {
+          const nativeChanged = previous.get(threadId) !== thread.signature;
+          for (const turn of thread.turns) {
             const requests = /** @type {Array<Record<string, unknown>>} */ (turn.requests);
             for (const request of requests) {
               if (typeof request.responseId !== "string" || typeof request.outputTokens !== "number") continue;
+              if (!pending.reset && !nativeChanged && !pending.responseIds.has(request.responseId)) continue;
               if (foreignResponses.has(request.responseId)) continue;
               for (const record of this.magpieRequestTimings.recordsForRequest(
                 request.responseId,
@@ -7518,12 +7548,174 @@ export class UsageStore {
           });
           changed ||= result.changed;
         }
+        this.magpieNativeSignatures.set(homeId, new Map([...threads].map(([id, thread]) => [id, thread.signature])));
       } catch {
         warnings.push("MAGPIE_TIMING_IMPORT_FAILED: 本地请求计时未通过原生映射验证，下次同步重试");
       }
     }
+    for (const homeId of this.nativeTimingThreads.keys()) {
+      if (!activeHomes.has(homeId)) {
+        this.nativeTimingThreads.delete(homeId);
+        this.magpieNativeSignatures.delete(homeId);
+      }
+    }
     if (warnings.length > 0) this.magpieTimingPublication = "";
     return changed;
+  }
+
+  /** Publish timing-only changes against the native dependencies verified in this sync. */
+  publishMagpieRequestTimings() {
+    const context = this.magpieTimingPublicationContext;
+    if (
+      !context ||
+      context.dataVersion !== this.readDataVersion() ||
+      this.perfState().state !== PERF_STATE_READY ||
+      Number(this.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count) > 0
+    )
+      return false;
+    const fingerprints = this.publishedFileFingerprintsForRead();
+    const nextWarnings = this.publishedFileWarningsForRound();
+    const staged = [];
+    const homes = new Set();
+    const nativeByHome = new Map();
+    const oldKeysByHome = new Map();
+    const dirty = this.database.prepare("SELECT home_id, thread_id FROM perf_request_timing_dirty_threads").all();
+    for (const row of dirty) {
+      const homeId = String(row.home_id);
+      const threadId = String(row.thread_id);
+      if (!nativeByHome.has(homeId))
+        nativeByHome.set(
+          homeId,
+          this.requestTimingNativeThreads(
+            homeId,
+            new Set(dirty.filter((entry) => String(entry.home_id) === homeId).map((entry) => String(entry.thread_id))),
+          ),
+        );
+      const thread = nativeByHome.get(homeId).get(threadId);
+      if (!thread?.trusted || thread.rollouts.length === 0) return false;
+      for (const rollout of thread.rollouts) {
+        if (enabledPerfSourceStat("codex", rollout.filePath) !== fingerprints[rollout.filePath]) return false;
+      }
+      const built = buildCodexThreadPerfSamples(homeId, threadId, thread.rollouts, {
+        lookupRequestTiming: (query) => this.lookupRequestTiming(query),
+      });
+      if (!oldKeysByHome.has(homeId)) {
+        const byThread = new Map();
+        for (const sample of this.database
+          .prepare("SELECT sample_key FROM perf_samples WHERE source_kind = 'codex' AND home_id = ?")
+          .all(homeId)) {
+          const sampleKey = String(sample.sample_key);
+          const id = codexSampleThreadId({ sourceKind: "codex", homeId, sampleKey });
+          const keys = byThread.get(id) || [];
+          keys.push(sampleKey);
+          byThread.set(id, keys);
+        }
+        oldKeysByHome.set(homeId, byThread);
+      }
+      const oldKeys = oldKeysByHome.get(homeId).get(threadId) || [];
+      staged.push({ homeId, threadId, built, oldKeys });
+      homes.add(homeId);
+    }
+    if (staged.length === 0) return true;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      if (
+        context.dataVersion !== this.readDataVersion() ||
+        staged.some(({ homeId, threadId }) =>
+          nativeByHome
+            .get(homeId)
+            .get(threadId)
+            .rollouts.some(
+              (rollout) => enabledPerfSourceStat("codex", rollout.filePath) !== fingerprints[rollout.filePath],
+            ),
+        )
+      ) {
+        this.database.exec("ROLLBACK");
+        return false;
+      }
+      const previousSamples = new Map();
+      const previousSources = new Map();
+      for (const { oldKeys } of staged) {
+        for (const sampleKey of oldKeys) {
+          const sample = this.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey);
+          if (sample) {
+            const rows = previousSamples.get(String(sample.source_path)) || [];
+            rows.push(sample);
+            previousSamples.set(String(sample.source_path), rows);
+          }
+          for (const source of this.database
+            .prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ?")
+            .all(sampleKey)) {
+            const rows = previousSources.get(String(source.source_path)) || [];
+            rows.push(source);
+            previousSources.set(String(source.source_path), rows);
+          }
+          this.database.prepare("DELETE FROM perf_samples WHERE sample_key = ?").run(sampleKey);
+        }
+      }
+      for (const { homeId, threadId, built } of staged) {
+        for (const sample of built.samples) {
+          this.insertPerfSample(sample);
+          for (const sourcePath of built.rolloutFiles) {
+            this.database
+              .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)")
+              .run(sample.sampleKey, sourcePath, sourcePath === sample.sourcePath ? "primary" : "dependency");
+          }
+        }
+        nextWarnings[built.rolloutFiles[0]] = normalizeSourceWarnings(built.warnings);
+        this.database
+          .prepare("DELETE FROM perf_request_timing_dirty_threads WHERE home_id = ? AND thread_id = ?")
+          .run(homeId, threadId);
+      }
+      const insertReplacedFact = this.database.prepare(HISTORY_REPLACED_FACT_INSERT_SQL);
+      for (const [factTable, previousByPath] of [
+        ["perf_samples", previousSamples],
+        ["perf_sample_sources", previousSources],
+      ]) {
+        for (const [sourcePath, previousRows] of previousByPath) {
+          const source = this.database
+            .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
+            .get(sourcePath);
+          saveMissingHistoryFacts(insertReplacedFact, {
+            factTable,
+            source,
+            previousRows,
+            currentRows: this.database.prepare(`SELECT * FROM ${factTable} WHERE source_path = ?`).all(sourcePath),
+            methodVersion: PERF_METHOD_VERSION,
+          });
+        }
+      }
+      const seq = Number(this.readMeta(REQUEST_TIMING_PUBLICATION_SEQ_META)) || 0;
+      const publicationSeq = seq + homes.size;
+      const indexVersion = buildPublishedSourcesFingerprint(
+        context.fingerprintHomes,
+        fingerprints,
+        context.publishedFiles,
+        publicationSeq,
+        context.workbuddyTraceDependencies,
+        context.legacyWorkbuddyFallbackAllowed,
+        context.missingSources,
+      );
+      this.writeMeta("perf_file_warnings", JSON.stringify(nextWarnings));
+      this.writeMeta(REQUEST_TIMING_PUBLICATION_SEQ_META, String(publicationSeq));
+      this.writeMeta(REQUEST_TIMING_PUBLISHED_REVISION_META, String(readRequestTimingRevision(this.database)));
+      this.writeMeta("perf_index_version", indexVersion);
+      this.writePerfState(PERF_STATE_READY, {
+        sourceWarnings: projectSourceWarnings(
+          context.publishedFiles
+            .filter((row) => isPerfSourceEnabled(String(row.kind ?? "")))
+            .flatMap((row) => nextWarnings[String(row.path)] || []),
+        ),
+      });
+      this.database.exec("COMMIT");
+      this.publishedFileMapsView?.commit(null, nextWarnings);
+      this.commitStoreRevision("perf");
+      this.syncDerivedRevision();
+      return true;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   /**
@@ -7537,6 +7729,7 @@ export class UsageStore {
     // 这样本轮的"要不要保留缓存"判定（轮末守卫）以及随后的读路径都建立在正确的修订上。
     this.syncDerivedRevision();
     // install invalidation triggers before this round writes event facts
+    const externalCommitCount = this.externalCommitCount;
     createUsageRollups(this.database);
     const syncOptions = options || this.options;
     this.options = syncOptions;
@@ -7893,8 +8086,8 @@ export class UsageStore {
     };
     const codexFiles = files.filter((file) => canonicalizeKind(file.source?.kind) === "codex");
     const currentCodexPaths = new Set(codexFiles.map((file) => file.filePath));
-    const publishedCodexFingerprints = this.publishedFileFingerprintsForRound();
-    const publishedCodexWarnings = this.publishedFileWarningsForRound();
+    const publishedCodexFingerprints = this.publishedFileFingerprintsForRead();
+    const publishedCodexWarnings = this.publishedFileWarningsForRead();
     const oldCodexRows = this.database
       .prepare("SELECT path, kind, home_id, home_label, home_path, size, mtime_ms FROM source_files")
       .all()
@@ -8034,6 +8227,7 @@ export class UsageStore {
           : null);
       if (!home) continue;
       if (!currentHome) {
+        this.codexPublishedPaths.delete(homeId);
         // A whole Codex home disappearing is retention, not a parse failure.
         // Failed discovery for a home still known this round must stay degraded.
         if (crossHomeBlockedIds.has(homeId)) {
@@ -8054,8 +8248,15 @@ export class UsageStore {
       const expectedPaths = homeFiles.map((file) => file.filePath).sort();
       const oldPaths = oldRows.map((row) => String(row.path));
       const dirtyTimingThreadIds = codexDirtyTimingThreadsByHome.get(homeId) || new Set();
+      const previousPaths = this.codexPublishedPaths.get(homeId);
+      const retainedUnchanged =
+        previousPaths &&
+        oldPaths.length === previousPaths.retained.size &&
+        oldPaths.every((filePath) => previousPaths.retained.has(filePath));
+      const comparisonPaths = retainedUnchanged ? previousPaths.live : new Set(oldPaths);
       const pathSetChanged =
-        oldPaths.length !== expectedPaths.length || oldPaths.some((filePath) => !expectedPaths.includes(filePath));
+        comparisonPaths.size !== expectedPaths.length ||
+        expectedPaths.some((filePath) => !comparisonPaths.has(filePath));
       const metadataChanged = homeFiles.some((file) => {
         const existing = oldCodexRowsByPath.get(file.filePath);
         const sameMetadata = Boolean(
@@ -8130,7 +8331,7 @@ export class UsageStore {
         //     也不累加，`perf_degraded_home_ids` / `perf_codex_publication_policy` 与原路径一致。
         const reusedAttempt = this.codexStableAttemptMatch(homeId, home, expectedPaths);
         if (reusedAttempt !== null) {
-          // C2 卡：把命中判定**刚刚取到**的逐文件签名留给本轮逐文件判据（`pendingChange` 预扫同）。
+          // C2 卡：把命中判定**刚刚取到**的逐文件签名留给本轮逐文件判据。
           // 位置就在命中判定内部 —— 签名与消费点之间**没有**对该文件的任何读取（红线 ①，见
           // `codexReusedProbeValue` 的注释与报告「实现行为」的逐条论证）。
           // `paths` 取**副本**、`fileFingerprints` 只读共享：路径索引会挂到这里的包装对象上，
@@ -8192,7 +8393,10 @@ export class UsageStore {
         //   * `prune`：只保留本轮发现到的当前路径（替换/删除/重命名淘汰）。
         let window = null;
         try {
-          window = await planStableCodexHome({ ...home, projectionCache: this.codexProjections }, expectedPaths);
+          window = await planStableCodexHome(
+            { ...home, projectionCache: this.codexProjections, parallelPrefix: true },
+            expectedPaths,
+          );
         } finally {
           if (window !== null && window.stable === true) this.codexProjections.commit(homeId);
           else if (window !== null && window.partial === true) {
@@ -8348,80 +8552,12 @@ export class UsageStore {
       if (policyNeedsUpgrade) policyUpgradeComplete = false;
     }
 
-    /**
-     * M3.4 **D1**：`"有变更的 sync"` 的判据 = **本轮将实际重解析的文件数 > 0**。
-     *
-     * 这里做一次**预扫**（与循环内同一判据的**只读**版本），只用来决定"要不要在开始前标
-     * `rebuilding`"。**不预扫就无法在"开始前"判断**，而卡片明确要求"**开始有变更的
-     * sync 前**标 `rebuilding`" —— 即无变更的轮次**不得**翻转状态（否则每次 `--check`
-     * 式的空轮都会把库短暂标成 rebuilding，下游会拒绝一次本来就完整的排名）。
-     *
-     * 判据的**权威**仍是循环内的实时判断（它还要看 `earlierFileChanged` 的会话级联）；
-     * 预扫只是它的**保守超集**，因此可能出现"预扫说有变更、实际全被跳过"的轮次 ——
-     * 那时会在结尾把状态写回 `ready`，**不会**留下错误的 `rebuilding`（见结尾的兜底）。
-     */
-    const pendingChange =
-      codexPendingChange ||
-      [...workbuddyTraceTargets.values()].some((targets) => targets.size > 0) ||
-      files.some((file) => {
-        const existing = this.database
-          .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-          .get(file.filePath);
-        if (!existing) return true;
-        if (
-          Number(existing.size) === file.info.size &&
-          Number(existing.mtime_ms) === file.info.mtimeMs &&
-          existing.kind === (file.source.kind || "codex") &&
-          existing.home_id === file.source.id &&
-          existing.home_label === file.source.label &&
-          existing.home_path === file.source.path
-        ) {
-          // ── B7（返工2 新发现）：`size + mtimeMs` **不足以**判定"未变" ──
-          // 我实测：**同尺寸原地改写并把 mtime 钉成同一整毫秒** ⇒ 两个分量**完全相同**，
-          // 但文件内容已变 ⇒ 若只看 size/mtime 会**整轮跳过**该文件（`replaceFile` 调用次数 = 0），
-          // 版本与候选都不更新。⇒ 再把**内容指纹**（`enabledPerfSourceStat`，含首尾 64KiB 摘要）
-          // 与**已发布指纹**比对，**不同则视为有变更**。
-          //
-          // M4.5 distinguishes disabled sources (current=null, retain size/mtime
-          // behavior) from newly enabled sources (no published extraction, backfill).
-          const kind = String(file.source?.kind ?? "");
-          // M4.5: a newly enabled source may already have unchanged usage rows but
-          // no published perf extraction. Also backfill legacy rows that predate
-          // the per-file warning sidecar. An explicit [] means extraction completed.
-          // C2：同一份内容签名也喂给预扫（口径与逐文件判据一致，卡面"贯通 `pendingChange`"）。
-          // ⚠️ **结构性不可达**：`pendingChange = codexPendingChange || files.some(...)`，而"命中复用"
-          // 要求 `shouldPlan === true`，该分支同时把 `codexPendingChange` 置 `true` ⇒ `files.some`
-          // 被 `||` 短路。因此这一行**不改变任何计数**（`store.decision.prescan` 仍恒为 0，报告
-          // 「未测/边界」有断言与 `proof-prescan-dead.mjs` 的仪器化证明）；保留它是为了让"签名同时
-          // 供给两个判据"这条不变量在源码上显式，将来若有人去掉短路，它仍然是正确的一侧。
-          const prescanReusedCurrent = this.codexReusedProbeValue(
-            codexReusedSignatures.get(String(file.source?.id ?? "")),
-            kind,
-            file.filePath,
-          );
-          if (
-            perfFileNeedsRefresh(
-              kind,
-              file.filePath,
-              this.publishedFileFingerprintsForRound(),
-              this.publishedFileWarningsForRound(),
-              prescanReusedCurrent,
-            )
-          ) {
-            return true;
-          }
-          return false;
-        }
-        return true;
-      });
-
-    // ★ 卡片明文：**开始有变更的 sync 前**标 `rebuilding`。
-    // 此刻写入是**事务外**（autocommit）⇒ 立即可被随后的 `summarize` 读到，
-    // 这正是"同步期间调用 summarize 得到 rebuilding"能够成立的原因。
-    if (pendingChange) {
+    // Structural changes can require publication without replacing a usage file.
+    let rebuildingMarked =
+      codexPendingChange || [...workbuddyTraceTargets.values()].some((targets) => targets.size > 0);
+    if (rebuildingMarked) {
       this.writePerfState(PERF_STATE_REBUILDING, { degradedHomeIds: [], sourceWarnings: [] });
     }
-
     for (const file of files) {
       const existing = this.database
         .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
@@ -8433,8 +8569,6 @@ export class UsageStore {
             .map((row) => row.session_id)
         : [];
       const earlierFileChanged = previousSessions.some((sessionId) => changedSessions.has(sessionId));
-      // S4：控制流最小重构 —— 把"跳过"从 `continue` 改成标志，`perfFileNeedsRefresh` 的
-      // 调用位置、次数、参数**完全不变**（行为等价是硬要求）。
       let needsRefresh = true;
       if (
         !earlierFileChanged &&
@@ -8446,7 +8580,7 @@ export class UsageStore {
         existing.home_label === file.source.label &&
         existing.home_path === file.source.path
       ) {
-        // ── B7（返工2 新发现，与上方预扫**同一判据**）──
+        // ── B7（返工2 新发现，逐文件实时内容判据）──
         // `size + mtimeMs` 全同**不蕴含**内容未变（实测：同尺寸 + 同整毫秒 mtime 的原地改写）。
         // M4.5: also extract an enabled source with no published fingerprint
         // or no committed per-file warning entry. Disabled sources still have
@@ -8475,8 +8609,8 @@ export class UsageStore {
         needsRefresh = perfFileNeedsRefresh(
           changedKind,
           file.filePath,
-          this.publishedFileFingerprintsForRound(),
-          this.publishedFileWarningsForRound(),
+          this.publishedFileFingerprintsForRead(),
+          this.publishedFileWarningsForRead(),
           reusedCurrent,
         );
       }
@@ -8487,6 +8621,11 @@ export class UsageStore {
         needsRefresh = true;
       }
       if (!needsRefresh) continue;
+      if (!rebuildingMarked) {
+        // Keep the last complete ranking until replacement; marker failures abort the sync.
+        this.writePerfState(PERF_STATE_REBUILDING, { degradedHomeIds: [], sourceWarnings: [] });
+        rebuildingMarked = true;
+      }
       try {
         const replaceOutcome = await this.replaceFile(file, {
           onWarning: (warning) => warnings.push(warning),
@@ -8728,7 +8867,7 @@ export class UsageStore {
       );
       const stagedThreadsToReplace = stagedThreads.filter((staged) => !retainedMissingThreadIds.has(staged.threadId));
       const stagedThreadsToMerge = stagedThreads.filter((staged) => retainedMissingThreadIds.has(staged.threadId));
-      const nextFingerprints = { ...this.publishedFileFingerprintsForRound() };
+      const nextFingerprints = this.publishedFileFingerprintsForRound();
       const nextWarnings = this.publishedFileWarningsForRound();
       const oldPathsToClear = new Set();
       for (const threadId of replaceOldThreadIds) {
@@ -9244,6 +9383,14 @@ export class UsageStore {
           legacyWorkbuddyFallbackAllowed,
           missingSources,
         );
+    this.magpieTimingPublicationContext = {
+      dataVersion: this.readDataVersion(),
+      fingerprintHomes,
+      publishedFiles,
+      workbuddyTraceDependencies,
+      legacyWorkbuddyFallbackAllowed,
+      missingSources,
+    };
     // 源告警只投影 {sourceKind, homeId, code, count}（**不含路径**）。
     // Preserve successful per-file reader diagnostics (for example UNKEYABLE_RECORD)
     // alongside current file failures. Sidecar entries describe committed rows;
@@ -9401,6 +9548,24 @@ export class UsageStore {
           this.database.exec("RELEASE usage_rollup_sync");
           throw error;
         }
+      }
+    }
+    if (this.externalCommitCount === externalCommitCount) {
+      const retainedByHome = new Map();
+      for (const row of sourceFileRows) {
+        if (canonicalizeKind(String(row.kind ?? "")) !== "codex") continue;
+        const homeId = String(row.home_id);
+        const retained = retainedByHome.get(homeId) || new Set();
+        retained.add(String(row.path));
+        retainedByHome.set(homeId, retained);
+      }
+      this.codexPublishedPaths.clear();
+      for (const homeId of codexHomeById.keys()) {
+        if (degradedHomeSet.has(homeId)) continue;
+        this.codexPublishedPaths.set(homeId, {
+          live: new Set((codexFilesByHome.get(homeId) || []).map((file) => file.filePath)),
+          retained: retainedByHome.get(homeId) || new Set(),
+        });
       }
     }
     return {
@@ -11000,14 +11165,14 @@ export class UsageStore {
       range.bucket ||
         (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
     );
-    const projectionCacheable =
-      range.preset === "all" &&
+    const groupingEligible =
       !quotaPreset &&
       this.writeTransactionDepth === 0 &&
       (this.verifiedHistorySqlRead ||
         !this.database
           .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
           .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META));
+    const projectionCacheable = range.preset === "all" && groupingEligible;
     const projectionKeys = projectionCacheable
       ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
       : null;
@@ -11045,7 +11210,7 @@ export class UsageStore {
       const pricing = createEventPricing(pricingModels);
       const costAccumulator = createCostEstimateAccumulator({ modelName: pricing.costModelName });
       const sourceKindsByPath =
-        projectionCacheable && !factProjection
+        groupingEligible && !factProjection
           ? new Map(
               this.database
                 .prepare("SELECT path, kind FROM source_files")
@@ -11058,7 +11223,7 @@ export class UsageStore {
         : null;
       // shortcut: hot-only repository session order stays on SQL; this collector serves the verified cold reader.
       const repositoryAccumulator =
-        this.verifiedHistorySqlRead && includeDetails && sourceKindsByPath
+        projectionCacheable && this.verifiedHistorySqlRead && includeDetails && sourceKindsByPath
           ? createFusedSummaryRepositories(
               Object.fromEntries(
                 COMPARISON_PERIOD_KEYS.map((key) => [
@@ -11069,6 +11234,7 @@ export class UsageStore {
             )
           : null;
       const observationAccumulator =
+        projectionCacheable &&
         this.verifiedHistorySqlRead &&
         scopeExclusions.length === 0 &&
         sourceKindsByPath &&
@@ -11176,7 +11342,7 @@ export class UsageStore {
         projection?.models ?? fusedGroups?.models ?? this.groupedRange("model", range, "total DESC", scopeExclusions),
     };
 
-    summary.perf = this.perfSummaryForRange(range, scopeExclusions, quotaPreset);
+    summary.perf = projection?.perf ?? this.perfSummaryForRange(range, scopeExclusions, quotaPreset);
 
     if (includeDetails) {
       summary.homes =
@@ -11203,6 +11369,7 @@ export class UsageStore {
         timeline,
         timelineError,
         costEstimate,
+        perf: summary.perf,
         channels: summary.channels,
         models: summary.models,
       };
@@ -11237,6 +11404,10 @@ export class UsageStore {
     this.magpieTimingLoaded = false;
     this.magpieTimingPublication = "";
     this.magpieTimingFile = "";
+    this.codexPublishedPaths.clear();
+    this.nativeTimingThreads.clear();
+    this.magpieNativeSignatures.clear();
+    this.magpieTimingPublicationContext = null;
     // C1 卡：**实例私有**记录在 `close()` 时清空 —— 卡面/规格明文"close/open、实例销毁和方法变更
     // 使记录失效"。记录不跨实例、不跨 close 存活（重开后重新预热一次规划）。
     this.codexStableAttempts.clear();

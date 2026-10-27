@@ -1,0 +1,111 @@
+{
+  "capturedAt": "2026-10-26T13:20:28.810Z",
+  "sourceBytes": 3486748958,
+  "databaseBytes": 742313984,
+  "tables": {
+    "events": 135880,
+    "source_files": 1597,
+    "perf_samples": 53164,
+    "perf_codex_projections": 1387,
+    "perf_rollout_threads": 1394,
+    "archive_segments": 0
+  },
+  "schema": {
+    "user_version": 21
+  },
+  "kinds": {
+    "main": {
+      "files": 1388,
+      "bytes": 2803566929
+    },
+    "zcode": {
+      "files": 1,
+      "bytes": 282198016
+    },
+    "dsh": {
+      "files": 160,
+      "bytes": 158939249
+    },
+    "opencode": {
+      "files": 1,
+      "bytes": 20013056
+    },
+    "claude": {
+      "files": 34,
+      "bytes": 146460076
+    },
+    "workbuddy": {
+      "files": 7,
+      "bytes": 9010114
+    }
+  },
+  "sourceHashes": {
+    "src/claude-code-usage.js": "6d898ef1df518400720f551b06bb7371c031d4e9bfbde77afbe9f254373aa5b1",
+    "src/cli.js": "8a624fcad93cd0edaa78cd409b0756f772fec67f2e822a529ce5b10d1ec8eac2",
+    "src/codex-rollout.js": "986891a4e5cd4631cb514e1fa49ec4e61d36a946f4835fff4da95266b3533b20",
+    "src/dsh-usage.js": "6448e75531ea2ed817b075a3664e9ee499e4d8b57ea00477f736c71ada4f342f",
+    "src/history-archive.js": "70380d533e4464f99bc810d38e30f4857922455d552f2f228cc88badcd01aa29",
+    "src/history-backup.js": "bb20002e3fc2025d7db64f5536177df0771c24152b6d0183ab4fd247f06fa52d",
+    "src/history-quote-inputs.js": "df962a6c3ec2e3ab7322444b595b13e3d1a6bfa7a49ee2aff75f1e3eed14aa9a",
+    "src/opencode-usage.js": "8c9e62cceeaa5be1e956fd8dabdb36d16d05cd3266ca6d9bb6cd180e971df2b7",
+    "src/perf-magpie-timing.js": "dadd7f19f9ba93877f94caacfdb9b5718b2bc0d3e1c2a382651cf062ea6015ed",
+    "src/perf-request-timing-store.js": "91cb01ce1bb79418789288499c4b5935b025ac48661281e665dc529badad6084",
+    "src/perf-request-timing.js": "8b96ce7f6e86d7476b949635f3848464a2af8149acdfb7b08276d51fbe2d2414",
+    "src/perf-stats.js": "1f4c9c454e797be0b4d0664d818529b28c31ec7b7496de61cc46a2bd6adc6c21",
+    "src/pricing-auto.js": "2651f48c1af92132117a266af6977bf0d99bc3c7046c51f1c32d48a10e20d583",
+    "src/pricing-store.js": "ed52f397b1dcec15c74f6176b542b01be0daf50d0bb032e3f948c35e827134e2",
+    "src/pricing.js": "648f562e5cc7af87ae153634ec0ca8d5d6146cd5e7d2a9ef0f4758c1812aa771",
+    "src/repository-identity.js": "8ffaef90b7be403eee3adb1e3a60a242d813899f5f5fc9c803fee9f8ae3ec6a1",
+    "src/server.js": "4395fee6415ed223a7ce5280b7e616c93132e598e6837b86f473d9d4abd011d7",
+    "src/service-tier-evidence.js": "eab76722ecf42b3803ee70488a3bbf7e11003811d26630ac12dfc217134f230c",
+    "src/usage-core.js": "fa3733197e2f86addae9a6bde0f62b9163491915b9e3f042473ebfc1a87457b6",
+    "src/usage-executor.js": "f70c9cf8db992723da486d5106e308d30eac544d5471e3938f1cea0f7b81b783",
+    "src/usage-rollups.js": "30db3e95ada72742abcacb5effa9c507d72bbf8e9452262a4d029c7a593e3bff",
+    "src/usage-store.js": "3e66f0c9e6fe222b91635abfa677819f971cc821635499a5802e2fb8380f5170",
+    "src/usage-types.js": "f4244bb07b6d7922608d3bc150c5bc6ad0e926784e7a547d2bda69ffb73d2306",
+    "src/workbuddy-usage.js": "d1518cc988e666e9e32a88bb5e664fbec4be78afc23d880f371e6c1d72e5492c",
+    "src/zcode-usage.js": "647a03c7664dbb172b6c9f1dfab33d1d417673be17203e7a657f4dab497da35f",
+    "src/perf-sources/claude.js": "38590779ab0f805def322fdb375990957b75227f2441011dda523cc3f1a2df08",
+    "src/perf-sources/codex-candidates.js": "eb2aad793983654e2f851ae5a1a7da725cce41f6a9b3dff41452459be4cfaa07",
+    "src/perf-sources/codex-fold.js": "19a44070ce2242e56aff169eebd4bc690a7ede03bf46b8d6ba5a5a74d0ec02bc",
+    "src/perf-sources/codex-jsonl.js": "d3a655151ff4576f9c617aa3d34dcd6e52b01894c1eec215dadafe9d9d6a8c7c",
+    "src/perf-sources/codex-request-timing.js": "5221136782061b4a30587280241811320b40a74038f224ee5c81aad092bc0135",
+    "src/perf-sources/codex-thread.js": "fbac89c9132c314d144cfc2a55e89e6dd0821b7e74a635a0537eb51eac506a92",
+    "src/perf-sources/dsh.js": "d2ffb3c1c4b9ca7311971bf8051fd03ec3ca8aba028935b1756ba5889fe1388f",
+    "src/perf-sources/index.js": "e3fa74c120041d38c8a268825d298e3978a285ff0349f46606396a09d152aa78",
+    "src/perf-sources/opencode.js": "1d04c1ea1549477913d32628b5c9ba35ea56055300a88cbb7df54cf9c4b10066",
+    "src/perf-sources/workbuddy.js": "4d648960b1dc9a890796e5ebe9174a8d6f3e7d700809d4c905f9a368c2c9d4a0",
+    "src/perf-sources/zcode.js": "e63279252a77e27ef46b21f3178b359b1ae6c7e12e8d4eea1c4473d006a356f5",
+    "public/app-state.js": "bc9c51ba3a0a66f2f3625fa39b9caef8b29ad04199f0d5d9acb50761fbc98f9a",
+    "public/app.js": "968a18f9675578eb91eb70bb7e488bf19ec27598a1ee48713a81910f40b912fb",
+    "public/calendar.js": "7868b363e41c0811d7f5095182415308ad788b219bcd5b0b370661749866fc3a",
+    "public/history-archives-ui.js": "ee265d12e80e3e186f920c892f40234cf0182d2be8a0454c5bb64d61962791a2",
+    "public/html-utils.js": "59c0eb5d78020150f33b6a7c26532c38d90a0c54c4c74138de2fc3924b1c2975",
+    "public/i18n.js": "961b21f924675f0743c80792ddc770e7ff66db274cc66eb4ab534ac1227844c4",
+    "public/index.html": "564bba29ff03df5ab75a510098f138eb3b1b3657161d08b19ed52a9b1fd2e0b4",
+    "public/perf-ui.js": "14128fcd188c1a32b57efac904a34d51d73f796ae2d9de3cd17e902b1e4a1ea0",
+    "public/period-comparison.js": "35ed55de86d5586e69e9d24e197a2ff4b64711606f94d732844a1401e901ba3b",
+    "public/pricing-models.js": "d579c6c5109115c325659a6f99bdaa4caf180a23dc2e4f691733c7e23b20d1f4",
+    "public/skin-assets.json": "15ad8ed08c35c85fe541c08e7b2b87d7e42593738cd776e3d8eae76006581e4c",
+    "public/skin-bootstrap.js": "ee1e54e68aee38a8def618de9c65ce2df510fbcfe7a2e30b1a4ac12d5b7adbc3",
+    "public/skin-palette-studio.html": "21ce8e448467c66d1163965f6fef07601e088a0a8df60cf701def2d081e8679f",
+    "public/skin-palette-studio.js": "aa6d2e4cb7f03f9e3638bff30a5562dd4a2a465cfd855d7dd2d5eab5c3229d55",
+    "public/skin-palettes.js": "ae327399c57eb665c57aa1de38770f24a939e45666d513af0ee758cec4e47d69",
+    "public/skin-picker.js": "51e1f3c24ca394ddddacf1219c0cb1abb7394502ed66522639b409b643567012",
+    "public/skin-ui.js": "57f56acff97eebf5a8c9c95bb2625c5ba8732491899fa9beb7fc9b6b44a63c7d",
+    "public/skins.css": "100ea0297a475c461ea852c94be2aff8aeaf01b23e5c17fd1e2a1585ec02518f",
+    "public/skins.js": "f00f5d7d8710aab42e55b565e385871e144a01c8e76b34a3d949272b84da2b37",
+    "public/styles.css": "eb7ab123b4b2226c513f86b3b887d48779902181bd75d9387d22072fd018b5ca",
+    "public/timeline-utils.js": "e19d8364cfd0f2a980da61ae0f71f47ce7cb82b7efb1637db6c1ff77002d5e67",
+    "public/usage-fields.js": "8e5684ef4c2aae9332ea268420dc29208b0f02d630cc11654398c6f9b991b467"
+  },
+  "freezeMs": 2075.8936,
+  "rss": 83648512,
+  "freeGiB": 13.75613784790039,
+  "snapshotRepair": {
+    "kind": "zcode",
+    "bytes": 282198016,
+    "validatedTables": 24,
+    "details": "Replaced invalid empty copy before valid-baseline; schema and counts verified using read-only online backup"
+  }
+}

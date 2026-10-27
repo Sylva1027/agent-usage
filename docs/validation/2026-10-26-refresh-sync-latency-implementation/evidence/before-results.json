@@ -1,0 +1,674 @@
+{
+  "mode": "before",
+  "rounds": 20,
+  "now": "2026-10-26T15:00:00Z",
+  "samples": [
+    {
+      "label": "open",
+      "ms": 167.63780000000008,
+      "rss": 81293312
+    },
+    {
+      "label": "catchup-sync",
+      "ms": 15910.570200000002,
+      "rss": 873046016,
+      "updatedFileCount": 5,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-0",
+      "ms": 8272.2555,
+      "rss": 672010240,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-1",
+      "ms": 8187.084200000001,
+      "rss": 684703744,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-0",
+      "ms": 7893.5317,
+      "rss": 686886912,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-1",
+      "ms": 7828.627700000005,
+      "rss": 696475648,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-2",
+      "ms": 7773.143599999996,
+      "rss": 701042688,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-3",
+      "ms": 7696.117099999996,
+      "rss": 700018688,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-4",
+      "ms": 7556.248,
+      "rss": 699293696,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-5",
+      "ms": 7590.253500000006,
+      "rss": 703721472,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-6",
+      "ms": 7539.8658,
+      "rss": 700129280,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-7",
+      "ms": 7623.648300000001,
+      "rss": 697212928,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-8",
+      "ms": 7821.594599999997,
+      "rss": 705359872,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-9",
+      "ms": 7659.984700000001,
+      "rss": 694288384,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-10",
+      "ms": 7840.4793999999965,
+      "rss": 710107136,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-11",
+      "ms": 8133.446000000011,
+      "rss": 714207232,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-12",
+      "ms": 8070.177700000015,
+      "rss": 712019968,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-13",
+      "ms": 7940.897100000002,
+      "rss": 710242304,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-14",
+      "ms": 8206.464000000007,
+      "rss": 705982464,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-15",
+      "ms": 8117.501199999999,
+      "rss": 708091904,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-16",
+      "ms": 8035.483899999992,
+      "rss": 714035200,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-17",
+      "ms": 7926.222399999999,
+      "rss": 708161536,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-18",
+      "ms": 7951.869899999991,
+      "rss": 712159232,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-19",
+      "ms": 7523.472100000014,
+      "rss": 705122304,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "dashboard-today-first",
+      "ms": 2374.085699999996,
+      "rss": 710656000,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-0",
+      "ms": 473.18330000000424,
+      "rss": 724176896,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-1",
+      "ms": 464.5799999999872,
+      "rss": 733036544,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-2",
+      "ms": 478.05809999999474,
+      "rss": 732172288,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-3",
+      "ms": 455.809099999984,
+      "rss": 740700160,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-4",
+      "ms": 463.6956000000064,
+      "rss": 748380160,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-5",
+      "ms": 463.93720000001485,
+      "rss": 758071296,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-6",
+      "ms": 458.3514000000141,
+      "rss": 804331520,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-7",
+      "ms": 483.6980999999796,
+      "rss": 794619904,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-8",
+      "ms": 457.3101000000024,
+      "rss": 804786176,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-9",
+      "ms": 450.75930000000517,
+      "rss": 811589632,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-10",
+      "ms": 449.29329999999027,
+      "rss": 818622464,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-11",
+      "ms": 453.13809999998193,
+      "rss": 825319424,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-12",
+      "ms": 479.8399999999965,
+      "rss": 794095616,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-13",
+      "ms": 453.74559999999474,
+      "rss": 800899072,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-14",
+      "ms": 451.43370000002324,
+      "rss": 807649280,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-15",
+      "ms": 456.5634999999893,
+      "rss": 814354432,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-16",
+      "ms": 451.8929000000062,
+      "rss": 820981760,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-17",
+      "ms": 480.7357999999949,
+      "rss": 794050560,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-18",
+      "ms": 452.06990000000224,
+      "rss": 801034240,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-19",
+      "ms": 445.008600000001,
+      "rss": 807829504,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-month-first",
+      "ms": 1529.2825000000012,
+      "rss": 811704320,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-0",
+      "ms": 1518.2553999999946,
+      "rss": 823599104,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-1",
+      "ms": 1506.262699999992,
+      "rss": 977477632,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-2",
+      "ms": 1523.2557000000088,
+      "rss": 978309120,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-3",
+      "ms": 1496.8152999999875,
+      "rss": 956379136,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-4",
+      "ms": 1534.1448000000091,
+      "rss": 967041024,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-5",
+      "ms": 1505.37049999999,
+      "rss": 977928192,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-6",
+      "ms": 1517.8342999999877,
+      "rss": 978321408,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-7",
+      "ms": 1518.073700000008,
+      "rss": 956960768,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-8",
+      "ms": 1518.2669999999925,
+      "rss": 968667136,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-9",
+      "ms": 1482.239499999996,
+      "rss": 978173952,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-10",
+      "ms": 1532.2584999999963,
+      "rss": 978849792,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-11",
+      "ms": 1512.244000000006,
+      "rss": 956907520,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-12",
+      "ms": 1510.357400000008,
+      "rss": 968323072,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-13",
+      "ms": 1477.9814999999944,
+      "rss": 980660224,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-14",
+      "ms": 1544.9634999999835,
+      "rss": 978628608,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-15",
+      "ms": 1516.8782999999821,
+      "rss": 956907520,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-16",
+      "ms": 1521.1704000000027,
+      "rss": 898596864,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-17",
+      "ms": 1492.1884000000136,
+      "rss": 912216064,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-18",
+      "ms": 1570.6610999999975,
+      "rss": 913051648,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-19",
+      "ms": 1500.4784999999974,
+      "rss": 894435328,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-all-first",
+      "ms": 1379.5775999999896,
+      "rss": 918089728,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-0",
+      "ms": 675.5571000000054,
+      "rss": 940552192,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-1",
+      "ms": 678.5662999999768,
+      "rss": 952651776,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-2",
+      "ms": 651.0463000000163,
+      "rss": 980668416,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-3",
+      "ms": 684.7866999999969,
+      "rss": 1010962432,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-4",
+      "ms": 658.7558000000136,
+      "rss": 988581888,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-5",
+      "ms": 658.0353000000177,
+      "rss": 1000038400,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-6",
+      "ms": 644.5390999999945,
+      "rss": 987996160,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-7",
+      "ms": 652.679999999993,
+      "rss": 999936000,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-8",
+      "ms": 650.2112999999954,
+      "rss": 993959936,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-9",
+      "ms": 669.2997000000032,
+      "rss": 1005563904,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-10",
+      "ms": 645.0597999999882,
+      "rss": 1017282560,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-11",
+      "ms": 698.2331999999878,
+      "rss": 1017716736,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-12",
+      "ms": 668.5481000000145,
+      "rss": 993259520,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-13",
+      "ms": 661.8536000000022,
+      "rss": 1004785664,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-14",
+      "ms": 670.927400000015,
+      "rss": 993271808,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-15",
+      "ms": 663.1521000000066,
+      "rss": 1004859392,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-16",
+      "ms": 669.7767999999924,
+      "rss": 993009664,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-17",
+      "ms": 674.3421999999846,
+      "rss": 1004535808,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-18",
+      "ms": 655.9875999999931,
+      "rss": 1015808000,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-19",
+      "ms": 669.7957999999926,
+      "rss": 1017745408,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    }
+  ],
+  "freeGiB": [
+    15.324031829833984,
+    14.534187316894531,
+    14.448841094970703,
+    14.453258514404297,
+    14.824970245361328,
+    14.784019470214844,
+    14.775867462158203,
+    14.754859924316406,
+    14.820297241210938,
+    14.768596649169922,
+    14.74627685546875,
+    14.563274383544922,
+    14.509986877441406,
+    14.5634765625,
+    14.610370635986328,
+    14.513202667236328,
+    14.39529800415039,
+    14.387805938720703,
+    13.596664428710938,
+    14.482112884521484,
+    14.504035949707031,
+    14.536266326904297,
+    14.567401885986328,
+    14.553070068359375,
+    14.715328216552734,
+    14.708805084228516,
+    14.726757049560547,
+    14.729724884033203,
+    14.716659545898438,
+    14.715442657470703,
+    14.697086334228516,
+    14.657562255859375,
+    14.666767120361328,
+    14.636009216308594,
+    14.631481170654297,
+    14.620532989501953,
+    14.59872055053711,
+    14.624340057373047,
+    14.629364013671875,
+    14.610950469970703,
+    14.606781005859375,
+    14.6009521484375,
+    14.603378295898438,
+    14.597179412841797,
+    14.586589813232422,
+    14.55788803100586,
+    14.51766586303711,
+    14.347957611083984,
+    14.416515350341797,
+    14.42221450805664,
+    14.404518127441406,
+    14.393192291259766,
+    14.373336791992188,
+    14.392681121826172,
+    14.390106201171875,
+    14.401924133300781,
+    14.374286651611328,
+    14.478370666503906,
+    14.471580505371094,
+    14.382888793945312,
+    14.410633087158203,
+    14.377277374267578,
+    14.445343017578125,
+    14.432388305664062,
+    14.302253723144531,
+    14.416736602783203,
+    14.373432159423828,
+    14.364551544189453,
+    14.357444763183594,
+    14.330619812011719,
+    14.422164916992188,
+    14.475173950195312,
+    14.472049713134766,
+    14.484851837158203,
+    14.470226287841797,
+    14.485664367675781,
+    14.485210418701172,
+    14.479621887207031,
+    14.48282241821289,
+    14.505474090576172,
+    14.492530822753906,
+    14.50020980834961,
+    14.493366241455078,
+    14.500450134277344,
+    14.494998931884766,
+    14.487747192382812,
+    14.445274353027344
+  ],
+  "maxRSSKiB": 1023468,
+  "tables": {
+    "events": 135873,
+    "source_files": 1597,
+    "perf_samples": 53161,
+    "perf_codex_projections": 1388,
+    "perf_rollout_threads": 1394,
+    "archive_segments": 0
+  },
+  "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+  "finishedAt": "2026-10-26T15:04:09.128Z"
+}

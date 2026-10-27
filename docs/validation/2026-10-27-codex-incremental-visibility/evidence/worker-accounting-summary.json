@@ -1,0 +1,51 @@
+{
+  "ms": 8114.477299999999,
+  "workersExpected": 2,
+  "label": "catchup-excluded",
+  "workers": [
+    {
+      "threadId": 2,
+      "pid": 5776,
+      "hookHash": "6d35a08b996ab8824c0eaba40f76a6ba3ef97b52e59eb7884cd21dd1b4ea34b4",
+      "identityHash": "a2dcfca0bc53c18b27d0c20e64ee7fbb789945b6382eed7da8ca71e0df160d92",
+      "files": 694,
+      "bytes": 1475706461,
+      "readCalls": 22951,
+      "phases": {
+        "window.before": {
+          "calls": 1,
+          "ms": 1069.4595
+        }
+      },
+      "ms": 1070.4974000000002,
+      "heapUsed": 12932120,
+      "heapTotal": 30056448
+    },
+    {
+      "threadId": 1,
+      "pid": 5776,
+      "hookHash": "6d35a08b996ab8824c0eaba40f76a6ba3ef97b52e59eb7884cd21dd1b4ea34b4",
+      "identityHash": "a2dcfca0bc53c18b27d0c20e64ee7fbb789945b6382eed7da8ca71e0df160d92",
+      "files": 694,
+      "bytes": 1475707491,
+      "readCalls": 22954,
+      "phases": {
+        "window.before": {
+          "calls": 1,
+          "ms": 1072.6117999999997
+        }
+      },
+      "ms": 1073.6181000000006,
+      "heapUsed": 16027752,
+      "heapTotal": 29794304
+    }
+  ],
+  "prefixBytes": 2803376137,
+  "bytes": 3564678449,
+  "instrumentation": {
+    "hookHash": "6d35a08b996ab8824c0eaba40f76a6ba3ef97b52e59eb7884cd21dd1b4ea34b4",
+    "sqliteConstructorMapped": true,
+    "valid": true
+  },
+  "prefixCalls": 1388
+}

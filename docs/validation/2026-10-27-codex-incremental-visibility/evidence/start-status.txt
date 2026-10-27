@@ -1,0 +1,32 @@
+ M docs/00-index.md
+ M docs/02-tasks.md
+ M public/app.js
+ M src/perf-magpie-timing.js
+ M src/server.js
+ M src/usage-core.js
+ M src/usage-executor.js
+ M src/usage-store.js
+ M test/app-autorefresh.test.js
+ M test/perf-magpie-timing-store.test.js
+ M test/perf-magpie-timing.test.js
+ M test/perf-store.test.js
+ M test/perf-summary-parity.test.js
+ M test/server.test.js
+ M test/usage-core.test.js
+ M test/w1-executor.test.js
+?? .playwright-cli/
+?? .workbuddy-ai/
+?? clear/
+?? docs/plans/2026-10-21-tps-measurement-correction-plan.md
+?? docs/plans/2026-10-21-tps-measurement-parallel-execution.md
+?? docs/plans/2026-10-22-pricing-coverage-and-route-pricing-plan.md
+?? docs/plans/2026-10-23-tps-audit-remediation-implementation-plan.md
+?? docs/plans/2026-10-24-pricing-implementation-A.md
+?? docs/plans/2026-10-24-pricing-implementation-B.md
+?? docs/plans/2026-10-25-model-merge-and-official-pricing.md
+?? docs/plans/2026-10-26-pricing-two-worker-implementation-plan.md
+?? docs/plans/2026-10-26-refresh-sync-latency-plan.md
+?? docs/plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md
+?? numeric-worker-A.md
+?? output/
+?? test/refresh-sync-regressions.test.js

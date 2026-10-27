@@ -1,0 +1,1173 @@
+{
+  "startedAt": "2026-10-26T13:56:28.330Z",
+  "http": [],
+  "browser": [
+    {
+      "type": "request",
+      "at": 1793022988674,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 0
+    },
+    {
+      "type": "response",
+      "at": 1793023009636,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2273154577,
+      "output": 12515482,
+      "checkedAt": "2026-10-26T13:56:28.898Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023009841,
+      "path": "/api/usage",
+      "preset": "month",
+      "skipCheck": "1",
+      "statusSerial": 0
+    },
+    {
+      "type": "response",
+      "at": 1793023012162,
+      "path": "/api/usage",
+      "preset": "month",
+      "status": 200,
+      "total": 17549766014,
+      "output": 107686456,
+      "checkedAt": "2026-10-26T13:56:28.898Z"
+    },
+    {
+      "type": "filter-complete",
+      "preset": "month",
+      "ms": 2525
+    },
+    {
+      "type": "request",
+      "at": 1793023012184,
+      "path": "/api/usage",
+      "preset": "all",
+      "skipCheck": "1",
+      "statusSerial": 0
+    },
+    {
+      "type": "response",
+      "at": 1793023014275,
+      "path": "/api/usage",
+      "preset": "all",
+      "status": 200,
+      "total": 19637022559,
+      "output": 117653383,
+      "checkedAt": "2026-10-26T13:56:28.898Z"
+    },
+    {
+      "type": "filter-complete",
+      "preset": "all",
+      "ms": 2121
+    },
+    {
+      "type": "request",
+      "at": 1793023014302,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": "1",
+      "statusSerial": 0
+    },
+    {
+      "type": "response",
+      "at": 1793023015032,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2273154577,
+      "output": 12515482,
+      "checkedAt": "2026-10-26T13:56:28.898Z"
+    },
+    {
+      "type": "filter-complete",
+      "preset": "today",
+      "ms": 749
+    },
+    {
+      "type": "request",
+      "at": 1793023069633,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 1
+    },
+    {
+      "type": "response",
+      "at": 1793023069718,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": false,
+      "checkedAt": "2026-10-26T13:57:49.714Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023129629,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 2
+    },
+    {
+      "type": "request",
+      "at": 1793023129739,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 2
+    },
+    {
+      "type": "response",
+      "at": 1793023129740,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T13:58:49.737Z"
+    },
+    {
+      "type": "response",
+      "at": 1793023141654,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2274154684,
+      "output": 13515489,
+      "checkedAt": "2026-10-26T13:58:49.832Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023189633,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 3
+    },
+    {
+      "type": "response",
+      "at": 1793023189761,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T13:59:49.758Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023189761,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 3
+    },
+    {
+      "type": "response",
+      "at": 1793023202818,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2275154791,
+      "output": 14515496,
+      "checkedAt": "2026-10-26T13:59:49.886Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023249637,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 4
+    },
+    {
+      "type": "request",
+      "at": 1793023249778,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 4
+    },
+    {
+      "type": "response",
+      "at": 1793023249778,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T14:00:49.775Z"
+    },
+    {
+      "type": "response",
+      "at": 1793023263263,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2276154898,
+      "output": 15515503,
+      "checkedAt": "2026-10-26T14:00:49.938Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023309630,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 5
+    },
+    {
+      "type": "response",
+      "at": 1793023309776,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": false,
+      "checkedAt": "2026-10-26T14:01:49.772Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023369640,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 6
+    },
+    {
+      "type": "response",
+      "at": 1793023369766,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": false,
+      "checkedAt": "2026-10-26T14:02:49.763Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023429637,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 7
+    },
+    {
+      "type": "response",
+      "at": 1793023429735,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T14:03:49.733Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023429735,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 7
+    },
+    {
+      "type": "response",
+      "at": 1793023450778,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2277155005,
+      "output": 16515510,
+      "checkedAt": "2026-10-26T14:03:59.956Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023489631,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 8
+    },
+    {
+      "type": "request",
+      "at": 1793023489737,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 8
+    },
+    {
+      "type": "response",
+      "at": 1793023489737,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T14:04:49.735Z"
+    },
+    {
+      "type": "response",
+      "at": 1793023502614,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2278155112,
+      "output": 17515517,
+      "checkedAt": "2026-10-26T14:04:49.841Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023549635,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 9
+    },
+    {
+      "type": "response",
+      "at": 1793023549734,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": false,
+      "checkedAt": "2026-10-26T14:05:49.732Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023609628,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null,
+      "statusSerial": 10
+    },
+    {
+      "type": "response",
+      "at": 1793023609745,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200,
+      "changed": true,
+      "checkedAt": "2026-10-26T14:06:49.742Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023609745,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null,
+      "statusSerial": 10
+    },
+    {
+      "type": "response",
+      "at": 1793023630142,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200,
+      "total": 2279155219,
+      "output": 18515524,
+      "checkedAt": "2026-10-26T14:06:59.793Z"
+    },
+    {
+      "type": "request",
+      "at": 1793023630331,
+      "path": "/api/usage",
+      "preset": "month",
+      "skipCheck": "1",
+      "statusSerial": 10
+    },
+    {
+      "type": "response",
+      "at": 1793023633190,
+      "path": "/api/usage",
+      "preset": "month",
+      "status": 200,
+      "total": 17555766656,
+      "output": 113686498,
+      "checkedAt": "2026-10-26T14:06:59.793Z"
+    }
+  ],
+  "cycles": [
+    {
+      "kind": "unchanged",
+      "index": 0,
+      "writtenAt": 1793023015035,
+      "expectedDelta": 0,
+      "statusChanged": false,
+      "requestAt": 1793023069634,
+      "completedAt": 1793023069729,
+      "delta": 0,
+      "fromWriteMs": 54601,
+      "fromCheckMs": 2,
+      "frames": [
+        {
+          "total": "",
+          "output": "",
+          "text": "-",
+          "busy": false,
+          "domAt": 1793022988672,
+          "frameAt": 1793022988716
+        },
+        {
+          "total": "2,273,154,577",
+          "output": "12,515,482",
+          "text": "2.27B",
+          "busy": false,
+          "domAt": 1793023009624,
+          "frameAt": 1793023009635
+        },
+        {
+          "total": "17,549,766,014",
+          "output": "107,686,456",
+          "text": "17.55B",
+          "busy": false,
+          "domAt": 1793023012143,
+          "frameAt": 1793023012155
+        },
+        {
+          "total": "19,637,022,559",
+          "output": "117,653,383",
+          "text": "19.64B",
+          "busy": false,
+          "domAt": 1793023014250,
+          "frameAt": 1793023014267
+        },
+        {
+          "total": "2,273,154,577",
+          "output": "12,515,482",
+          "text": "2.27B",
+          "busy": false,
+          "domAt": 1793023015018,
+          "frameAt": 1793023015029
+        },
+        {
+          "total": "2,273,154,577",
+          "output": "12,515,482",
+          "text": "2.27B",
+          "busy": true,
+          "domAt": 1793023069633,
+          "frameAt": 1793023069636
+        },
+        {
+          "total": "2,273,154,577",
+          "output": "12,515,482",
+          "text": "2.27B",
+          "busy": false,
+          "domAt": 1793023069716,
+          "frameAt": 1793023069719
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023069633,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 1
+        },
+        {
+          "type": "response",
+          "at": 1793023069718,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": false,
+          "checkedAt": "2026-10-26T13:57:49.714Z"
+        }
+      ]
+    },
+    {
+      "kind": "claude",
+      "index": 1,
+      "writtenAt": 1793023069731,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023129629,
+      "completedAt": 1793023141683,
+      "delta": 1000107,
+      "fromWriteMs": 71917,
+      "fromCheckMs": 12019,
+      "frames": [
+        {
+          "total": "2,273,154,577",
+          "output": "12,515,482",
+          "text": "2.27B",
+          "busy": true,
+          "domAt": 1793023129628,
+          "frameAt": 1793023129633
+        },
+        {
+          "total": "2,274,154,684",
+          "output": "13,515,489",
+          "text": "2.27B",
+          "busy": false,
+          "domAt": 1793023141631,
+          "frameAt": 1793023141648
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023129629,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 2
+        },
+        {
+          "type": "request",
+          "at": 1793023129739,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 2
+        },
+        {
+          "type": "response",
+          "at": 1793023129740,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T13:58:49.737Z"
+        },
+        {
+          "type": "response",
+          "at": 1793023141654,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2274154684,
+          "output": 13515489,
+          "checkedAt": "2026-10-26T13:58:49.832Z"
+        }
+      ]
+    },
+    {
+      "kind": "codex-new",
+      "index": 2,
+      "writtenAt": 1793023141686,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023189633,
+      "completedAt": 1793023202851,
+      "delta": 1000107,
+      "fromWriteMs": 61129,
+      "fromCheckMs": 13182,
+      "frames": [
+        {
+          "total": "2,274,154,684",
+          "output": "13,515,489",
+          "text": "2.27B",
+          "busy": true,
+          "domAt": 1793023189632,
+          "frameAt": 1793023189636
+        },
+        {
+          "total": "2,275,154,791",
+          "output": "14,515,496",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023202803,
+          "frameAt": 1793023202815
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023189633,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 3
+        },
+        {
+          "type": "response",
+          "at": 1793023189761,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T13:59:49.758Z"
+        },
+        {
+          "type": "request",
+          "at": 1793023189761,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 3
+        },
+        {
+          "type": "response",
+          "at": 1793023202818,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2275154791,
+          "output": 14515496,
+          "checkedAt": "2026-10-26T13:59:49.886Z"
+        }
+      ]
+    },
+    {
+      "kind": "codex-append",
+      "index": 3,
+      "writtenAt": 1793023202853,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023249637,
+      "completedAt": 1793023263293,
+      "delta": 1000107,
+      "fromWriteMs": 60408,
+      "fromCheckMs": 13624,
+      "frames": [
+        {
+          "total": "2,275,154,791",
+          "output": "14,515,496",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023249636,
+          "frameAt": 1793023249641
+        },
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023263244,
+          "frameAt": 1793023263261
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023249637,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 4
+        },
+        {
+          "type": "request",
+          "at": 1793023249778,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 4
+        },
+        {
+          "type": "response",
+          "at": 1793023249778,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T14:00:49.775Z"
+        },
+        {
+          "type": "response",
+          "at": 1793023263263,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2276154898,
+          "output": 15515503,
+          "checkedAt": "2026-10-26T14:00:49.938Z"
+        }
+      ]
+    },
+    {
+      "kind": "ledger",
+      "index": 4,
+      "writtenAt": 1793023263296,
+      "expectedDelta": 0,
+      "statusChanged": false,
+      "requestAt": 1793023309630,
+      "completedAt": 1793023309787,
+      "delta": 0,
+      "fromWriteMs": 46339,
+      "fromCheckMs": 5,
+      "frames": [
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023309631,
+          "frameAt": 1793023309635
+        },
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023309775,
+          "frameAt": 1793023309781
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023309630,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 5
+        },
+        {
+          "type": "response",
+          "at": 1793023309776,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": false,
+          "checkedAt": "2026-10-26T14:01:49.772Z"
+        }
+      ]
+    },
+    {
+      "kind": "unchanged",
+      "index": 5,
+      "writtenAt": 1793023309789,
+      "expectedDelta": 0,
+      "statusChanged": false,
+      "requestAt": 1793023369640,
+      "completedAt": 1793023369787,
+      "delta": 0,
+      "fromWriteMs": 59853,
+      "fromCheckMs": 2,
+      "frames": [
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023369640,
+          "frameAt": 1793023369642
+        },
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023369765,
+          "frameAt": 1793023369769
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023369640,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 6
+        },
+        {
+          "type": "response",
+          "at": 1793023369766,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": false,
+          "checkedAt": "2026-10-26T14:02:49.763Z"
+        }
+      ]
+    },
+    {
+      "kind": "claude",
+      "index": 6,
+      "writtenAt": 1793023369789,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023429637,
+      "completedAt": 1793023450808,
+      "delta": 1000107,
+      "fromWriteMs": 80984,
+      "fromCheckMs": 21136,
+      "frames": [
+        {
+          "total": "2,276,154,898",
+          "output": "15,515,503",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023429636,
+          "frameAt": 1793023429639
+        },
+        {
+          "total": "2,277,155,005",
+          "output": "16,515,510",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023450756,
+          "frameAt": 1793023450773
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023429637,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 7
+        },
+        {
+          "type": "response",
+          "at": 1793023429735,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T14:03:49.733Z"
+        },
+        {
+          "type": "request",
+          "at": 1793023429735,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 7
+        },
+        {
+          "type": "response",
+          "at": 1793023450778,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2277155005,
+          "output": 16515510,
+          "checkedAt": "2026-10-26T14:03:59.956Z"
+        }
+      ]
+    },
+    {
+      "kind": "codex-append",
+      "index": 7,
+      "writtenAt": 1793023450811,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023489631,
+      "completedAt": 1793023502645,
+      "delta": 1000107,
+      "fromWriteMs": 51798,
+      "fromCheckMs": 12978,
+      "frames": [
+        {
+          "total": "2,277,155,005",
+          "output": "16,515,510",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023489631,
+          "frameAt": 1793023489634
+        },
+        {
+          "total": "2,278,155,112",
+          "output": "17,515,517",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023502592,
+          "frameAt": 1793023502609
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023489631,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 8
+        },
+        {
+          "type": "request",
+          "at": 1793023489737,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 8
+        },
+        {
+          "type": "response",
+          "at": 1793023489737,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T14:04:49.735Z"
+        },
+        {
+          "type": "response",
+          "at": 1793023502614,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2278155112,
+          "output": 17515517,
+          "checkedAt": "2026-10-26T14:04:49.841Z"
+        }
+      ]
+    },
+    {
+      "kind": "ledger",
+      "index": 8,
+      "writtenAt": 1793023502648,
+      "expectedDelta": 0,
+      "statusChanged": false,
+      "requestAt": 1793023549635,
+      "completedAt": 1793023549744,
+      "delta": 0,
+      "fromWriteMs": 46991,
+      "fromCheckMs": 4,
+      "frames": [
+        {
+          "total": "2,278,155,112",
+          "output": "17,515,517",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023549634,
+          "frameAt": 1793023549639
+        },
+        {
+          "total": "2,278,155,112",
+          "output": "17,515,517",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023549734,
+          "frameAt": 1793023549742
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023549635,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 9
+        },
+        {
+          "type": "response",
+          "at": 1793023549734,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": false,
+          "checkedAt": "2026-10-26T14:05:49.732Z"
+        }
+      ]
+    },
+    {
+      "kind": "claude",
+      "index": 9,
+      "writtenAt": 1793023549745,
+      "expectedDelta": 1000107,
+      "statusChanged": true,
+      "requestAt": 1793023609628,
+      "completedAt": 1793023630170,
+      "delta": 1000107,
+      "fromWriteMs": 80393,
+      "fromCheckMs": 20510,
+      "frames": [
+        {
+          "total": "2,278,155,112",
+          "output": "17,515,517",
+          "text": "2.28B",
+          "busy": true,
+          "domAt": 1793023609627,
+          "frameAt": 1793023609632
+        },
+        {
+          "total": "2,279,155,219",
+          "output": "18,515,524",
+          "text": "2.28B",
+          "busy": false,
+          "domAt": 1793023630122,
+          "frameAt": 1793023630138
+        }
+      ],
+      "requests": [
+        {
+          "type": "request",
+          "at": 1793023609628,
+          "path": "/api/status",
+          "preset": null,
+          "skipCheck": null,
+          "statusSerial": 10
+        },
+        {
+          "type": "response",
+          "at": 1793023609745,
+          "path": "/api/status",
+          "preset": null,
+          "status": 200,
+          "changed": true,
+          "checkedAt": "2026-10-26T14:06:49.742Z"
+        },
+        {
+          "type": "request",
+          "at": 1793023609745,
+          "path": "/api/usage",
+          "preset": "today",
+          "skipCheck": null,
+          "statusSerial": 10
+        },
+        {
+          "type": "response",
+          "at": 1793023630142,
+          "path": "/api/usage",
+          "preset": "today",
+          "status": 200,
+          "total": 2279155219,
+          "output": 18515524,
+          "checkedAt": "2026-10-26T14:06:59.793Z"
+        }
+      ]
+    }
+  ],
+  "memory": [
+    {
+      "at": 1793023045039,
+      "rss": 382410752,
+      "maxRSSKiB": 1161284,
+      "freeGiB": 14.751567840576172
+    },
+    {
+      "at": 1793023075042,
+      "rss": 381136896,
+      "maxRSSKiB": 1161284,
+      "freeGiB": 14.838096618652344
+    },
+    {
+      "at": 1793023105049,
+      "rss": 381136896,
+      "maxRSSKiB": 1161284,
+      "freeGiB": 15.046710968017578
+    },
+    {
+      "at": 1793023135056,
+      "rss": 698474496,
+      "maxRSSKiB": 1161284,
+      "freeGiB": 14.501605987548828
+    },
+    {
+      "at": 1793023165069,
+      "rss": 990281728,
+      "maxRSSKiB": 1224396,
+      "freeGiB": 14.309555053710938
+    },
+    {
+      "at": 1793023195083,
+      "rss": 1073750016,
+      "maxRSSKiB": 1224396,
+      "freeGiB": 14.227733612060547
+    },
+    {
+      "at": 1793023225094,
+      "rss": 1298796544,
+      "maxRSSKiB": 1268356,
+      "freeGiB": 13.947441101074219
+    },
+    {
+      "at": 1793023255098,
+      "rss": 1112973312,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.05875015258789
+    },
+    {
+      "at": 1793023285107,
+      "rss": 1028345856,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.414302825927734
+    },
+    {
+      "at": 1793023315120,
+      "rss": 1028861952,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.583274841308594
+    },
+    {
+      "at": 1793023345121,
+      "rss": 1028861952,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 13.96356201171875
+    },
+    {
+      "at": 1793023375133,
+      "rss": 451289088,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 15.235225677490234
+    },
+    {
+      "at": 1793023405144,
+      "rss": 451248128,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 15.256282806396484
+    },
+    {
+      "at": 1793023435145,
+      "rss": 751235072,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.98089599609375
+    },
+    {
+      "at": 1793023465161,
+      "rss": 902840320,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.595146179199219
+    },
+    {
+      "at": 1793023495163,
+      "rss": 1004544000,
+      "maxRSSKiB": 1268360,
+      "freeGiB": 14.633037567138672
+    },
+    {
+      "at": 1793023525179,
+      "rss": 1045450752,
+      "maxRSSKiB": 1269932,
+      "freeGiB": 14.67926025390625
+    },
+    {
+      "at": 1793023555179,
+      "rss": 1045577728,
+      "maxRSSKiB": 1269932,
+      "freeGiB": 14.446517944335938
+    },
+    {
+      "at": 1793023585182,
+      "rss": 1045577728,
+      "maxRSSKiB": 1269932,
+      "freeGiB": 14.399375915527344
+    },
+    {
+      "at": 1793023615182,
+      "rss": 759762944,
+      "maxRSSKiB": 1269932,
+      "freeGiB": 14.88399887084961
+    }
+  ],
+  "errors": [],
+  "browserVersion": "156.0.8078.4",
+  "firstBrowserMs": 21076,
+  "ticks": [
+    1793023069632,
+    1793023129628,
+    1793023189632,
+    1793023249636,
+    1793023309630,
+    1793023369639,
+    1793023429636,
+    1793023489631,
+    1793023549634,
+    1793023609627
+  ],
+  "twoTabs": {
+    "secondLoadMs": 12787,
+    "firstFilterAndJoinMs": 12787
+  },
+  "finishedAt": "2026-10-26T14:07:23.251Z",
+  "finalRss": 866992128,
+  "maxRSSKiB": 1269932
+}

@@ -1,0 +1,96 @@
+diff --git a/output/codex-incremental-visibility-20261027/preimage/src/usage-core.js b/src/usage-core.js
+index 1e4b088..f48c606 100644
+--- a/output/codex-incremental-visibility-20261027/preimage/src/usage-core.js
++++ b/src/usage-core.js
+@@ -3,6 +3,7 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
+ import { readdir, stat } from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
++import { Worker, parentPort, workerData } from "node:worker_threads";
+ 
+ import { createRepositoryResolver } from "./repository-identity.js";
+ import { readRolloutLines, plainRolloutPath } from "./codex-rollout.js";
+@@ -2431,6 +2432,74 @@ function perfFilePrefixEvidence(filePath) {
+   }
+ }
+ 
++/** @param {any} home @param {string[]} files */
++async function codexPlanningFingerprint(home, files) {
++  // Only the serialized store sync opts in; concurrent full reports stay synchronous.
++  if (!home.parallelPrefix) return perfHomeContentFingerprint(home, files, null, true);
++  // Small homes keep the synchronous path; worker startup costs more than their hash work.
++  let entries;
++  try {
++    entries = files.map((file) => ({ file, size: statSync(file).size }));
++  } catch {
++    return perfHomeContentFingerprint(home, files, null, true);
++  }
++  if (files.length < 2 || entries.reduce((sum, entry) => sum + entry.size, 0) < 256 * 1024 * 1024) {
++    return perfHomeContentFingerprint(home, files, null, true);
++  }
++  const shards = [
++    { bytes: 0, files: [] },
++    { bytes: 0, files: [] },
++  ];
++  for (const entry of entries.sort((left, right) => right.size - left.size)) {
++    const shard = shards[0].bytes <= shards[1].bytes ? shards[0] : shards[1];
++    shard.files.push(entry.file);
++    shard.bytes += entry.size;
++  }
++  const windows = await Promise.allSettled(
++    shards.map(
++      ({ files: shard }) =>
++        new Promise((resolve, reject) => {
++          const worker = new Worker(new URL(import.meta.url), {
++            workerData: { task: "codex-prefix-window", files: shard, kind: home.kind },
++            resourceLimits: { maxOldGenerationSizeMb: 128 },
++          });
++          let result;
++          let failure;
++          worker.once("message", (value) => {
++            result = value;
++          });
++          worker.once("error", (error) => {
++            failure = error;
++          });
++          worker.once("exit", (code) => {
++            if (failure || code !== 0 || !result) reject(failure ?? new Error("Codex prefix worker failed"));
++            else resolve(result);
++          });
++        }),
++    ),
++  );
++  const failure = windows.find((window) => window.status === "rejected");
++  if (failure?.status === "rejected") throw failure.reason;
++  const hash = createHash("sha256");
++  /** @type {Record<string, string>} */
++  const fileFingerprints = {};
++  /** @type {Record<string, { size: number, digest: string }>} */
++  const filePrefixEvidence = {};
++  let complete = true;
++  for (const window of windows) {
++    if (window.status !== "fulfilled") continue;
++    complete &&= window.value.complete;
++    Object.assign(fileFingerprints, window.value.fileFingerprints);
++    Object.assign(filePrefixEvidence, window.value.filePrefixEvidence);
++  }
++  for (const file of files) hash.update(`${file}\t${fileFingerprints[file] ?? "!"}\n`);
++  return { fingerprint: hash.digest("hex"), complete, fileFingerprints, filePrefixEvidence };
++}
++
++if (workerData?.task === "codex-prefix-window" && parentPort) {
++  parentPort.postMessage(perfHomeContentFingerprint({ kind: workerData.kind }, workerData.files, null, true));
++}
++
+ /**
+  * M4.1 返工1（复核 P1）：**已启用性能来源**的内容指纹聚合 —— 内存 `indexVersion` 的唯一来源。
+  *
+@@ -2597,7 +2666,7 @@ export async function planStableCodexHome(home, expectedFilePaths) {
+ 
+   try {
+     files = (await perfPhysicalFilesForHome(home)).slice().sort();
+-    before = perfHomeContentFingerprint(home, files, null, true);
++    before = await codexPlanningFingerprint(home, files);
+   } catch (error) {
+     scanError = error;
+   }

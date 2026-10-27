@@ -1,0 +1,13 @@
+✔ M7 Codex request timing reaches dashboard, summary, full detail, UI labels, and immutable snapshots (345.5965ms)
+✔ Codex API drops a turn with missing request timing without falling back to item spans (148.5353ms)
+✔ Codex API explains current-method candidates when no request timing is available (126.2168ms)
+✔ C2 · 端到端 API：坏 rollout 的告警跨多轮不累加、读数 = 库内已提交值、修好后恢复 ready (30043.3139ms)
+✔ L1 published perf revision changes the shared status/usage fingerprint and preserves frozen reads (546.0435ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 36304.238

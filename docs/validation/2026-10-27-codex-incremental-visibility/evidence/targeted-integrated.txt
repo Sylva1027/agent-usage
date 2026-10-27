@@ -1,0 +1,50 @@
+✔ auto refresh preference gates polling, preserves manual refresh, and preserves frozen server snapshots (3.9159ms)
+✔ U4 harness loads the delivered app.js module with only import/export lines rewritten (27.8011ms)
+✔ U4 deterministic 60s cycles: source check, skipCheck policy, quota clock recompute (128.5615ms)
+✔ U4 failed boot self-heals on the next 60s cycles (no manual refresh needed) (33.3489ms)
+✔ a failed range reload retries on the next cycle even with unchanged sources (24.1015ms)
+✔ TPS-only refresh: slow response updates the model while tokens stay equal (26.3841ms)
+✔ TPS-only refresh: reload updates the model while tokens stay equal (27.5049ms)
+✔ TPS-only refresh: pause updates the model while tokens stay equal (25.3903ms)
+✔ quota preset correction: current, success (28.4072ms)
+✔ quota preset correction: current, failure (33.0207ms)
+✔ quota preset correction: reload, success (24.1058ms)
+✔ quota preset correction: reload, failure (26.7771ms)
+✔ quota preset correction: pause, success (24.5858ms)
+✔ quota preset correction: pause, failure (29.467ms)
+✔ Q1: timeline grouping preserves complete summaries across scope, dates, details and pricing (111.6736ms)
+✔ Q1: tied dimensions retain SQLite ordering and per-dimension SQL fallback (34.3706ms)
+✖ Q1: an actual cold archive keeps the unverified SQL gate and complete carrier summaries (66.6881ms)
+✔ T1 Codex native-only, ledger-only and same-cycle arrivals match the complete summary and facts (553.0533ms)
+✔ T1 a timing publication rollback preserves the complete old result and retries without new bytes (305.3009ms)
+✔ prefix worker hashes raw bytes, reports unreadable inputs and exits before returning (93.4818ms)
+✔ large parallel planning preserves live isolation, quiet recovery, raw rewrite rejection and nested executor sync (2099.4455ms)
+✔ fused groups match SQL for source kind, exclusion, and sessions; ties and unavailable fusion fall back (56.3151ms)
+ℹ {"sourceKindSemantics":["OpenCode","Claude","ZCode","Codex"],"tiedChannels":["OpenCode","ZCode","Claude","Codex"],"tiedModels":["gpt-6-sol","gpt-6-terra","gpt-6-luna","gpt-6-nova"],"tiedProjects":["Excluded","项目乙","项目甲","Alpha","Beta"],"codexSessions":2,"fallbackCalls":["channel","model","project"]}
+✔ all-hot summary projection is reusable, isolated, and input-complete (67.6543ms)
+ℹ {"cachedKey":true,"mutationIsolated":true,"eventInvalidation":true,"pricingVersions":{"initialVersion":"2026-10-12","changedVersionA":"2026-10-01-e7cbea9a5c2b","changedVersionB":"2026-10-01-3754b4170053"},"tierInvalidation":true,"tierRevisionUnchanged":true,"nonAllAlwaysRebuilds":true,"timelineCalls":11}
+✔ exhausted quote capture keeps complete SQL repricing instead of publishing a prefix (35.1312ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 23
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9380.2994
+
+✖ failing tests:
+
+test at test\codex-incremental-query-projection.test.js:176:1
+✖ Q1: an actual cold archive keeps the unverified SQL gate and complete carrier summaries (66.6881ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{557cb2b8-06f5-416a-898b-53c9aeb1e2a3}\AC\Temp\incremental-query-projection-zSKe60\.cold.sqlite.history-backup-tmp-46872-1793035920309-b1c1b4641114d' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{557cb2b8-06f5-416a-898b-53c9aeb1e2a3}\AC\Temp\incremental-query-projection-zSKe60\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async file:///E:/12%20AI/ccusage/codex-usage/test/codex-incremental-query-projection.test.js:182:5
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/codex-incremental-query-projection.test.js:92:5)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/codex-incremental-query-projection.test.js:177:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }

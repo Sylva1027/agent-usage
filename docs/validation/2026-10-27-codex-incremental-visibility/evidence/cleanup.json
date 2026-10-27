@@ -1,0 +1,43 @@
+{
+  "completedAt": "2026-10-26T18:43:08.0754034+00:00",
+  "removed": [
+    {
+      "bytes": 744239104,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-controls-32728.sqlite"
+    },
+    {
+      "bytes": 743661568,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-2684.sqlite"
+    },
+    {
+      "bytes": 743444480,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-28400.sqlite"
+    },
+    {
+      "bytes": 742313984,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-query-baseline\\usage-index.sqlite"
+    },
+    {
+      "bytes": 743305216,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-query-fixed\\usage-index.sqlite"
+    },
+    {
+      "bytes": 742313984,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-sync-baseline\\usage-index.sqlite"
+    },
+    {
+      "bytes": 743305216,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-sync-fixed\\usage-index.sqlite"
+    },
+    {
+      "bytes": 743305216,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-workers-after-query\\usage-index.sqlite"
+    },
+    {
+      "bytes": 743305216,
+      "path": "E:\\12 AI\\ccusage\\codex-usage\\output\\codex-incremental-visibility-20261027\\probes\\runs\\i1-workers-after-sync\\usage-index.sqlite"
+    }
+  ],
+  "totalBytes": 6689193984.0,
+  "seedPreserved": true
+}

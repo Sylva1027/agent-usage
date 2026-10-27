@@ -1,13 +1,24 @@
 # 任务清单
 
-更新：2026-10-26（修订自动刷新同步延迟计划）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-27（预扫移除与真实读侧复测结果）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
 
 ## 当前：自动刷新同步延迟
 
-状态：**v2 静态复核已修订；当前仅文档变更，待历史保留计划完成后复测并决定实施范围**。唯一规格入口为[自动刷新同步延迟治理方案](plans/2026-10-26-refresh-sync-latency-plan.md)，待执行的复核入口见其 §15；包括 M0 前端小修在内，全部产品任务均未开工。
+本轮后续见[预扫移除、状态切换与真实读侧投影复测](validation/2026-10-27-codex-refresh-followup/README.md)：**预扫移除已实施，状态专项 6/6 与既有回归 38/38 通过**。独立双 Store 按 AB/BA 交替，静止与 ledger-only 各 20 对，sync p95 分别为 3,660→2,904 ms、4,905→3,905 ms；绝对值不可与上轮单 Store 直接比较。同步 readSync 读量减少 170,361,023 bytes。
 
-原报告的 13.6/16.3 s 转圈、26 s 首屏与 14.8 s 单次同步作为历史测量保留，本轮未独立复测。代码确认刷新等待同步、Magpie 条件性第二轮及热路径整映射复制；全文前缀存证有 Codex 重规划触发条件，转圈后数秒空窗尚未完整复现，未发现无限重试链不等于排除全部悬挂场景。撤回“14.8 s 降到 6 s”和优先加响应缓存的承诺，修正 size/mtime 复用、Merkle/整文件 SHA-256、指纹与发布一致性验收；不以旧值缓存命中或 spinner 提前关闭认定修复。后续优先去除映射复制和重复同步，再缩小 Magpie 关联/折叠范围，其余改动按复测残余决定。**现在不改产品代码、不跑性能探针、不重启服务；历史保留完成后，使用真实工作树的新隔离实例复测，形成实施范围裁定后再安排任务。**
+真实 executor 已确认同步期间新建临时 reader 的投影槽为空，回到长期 writer 后因 `total_changes` 变化而 miss；投影缓存未放宽。usage/perf 依赖与写入边界、读快照投影转交仍待研究，剩余优先级见本轮记录。
 
+本轮浏览器 Claude / Codex 新文件 / Codex 普通追加 / ledger 四项控制正确；Codex 新文件 8,722 ms、普通追加 8,486 ms 均为当前 >8 s 反例，ledger-only 为 5,932 ms。这些控制样本不是新 p95；本轮未重跑 40 个真实周期。
+
+217 个测试文件由首轮已完成部分与补跑分段覆盖；首轮 S1 旧断言失败，随后触及 900 s 超时，修正后尾段与整份 perf-store 共 316 pass / 0 fail，不能写成一次全绿。资源仍为 8 GiB 合计预算和单测试槽，未切生产、未提交或推送。
+
+上一阶段已完成入选范围与复测，规格及剩余卡片见[Codex 增量可见等待与 TPS 计划 §12](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md#12-冻结版本的结果与后续研究边界)，证据见[实施与验收](validation/2026-10-27-codex-incremental-visibility/README.md)。后台 Codex p95 4.92→3.96 s，today/month 暖查询改善；40 个真实周期数值正确且新鲜度通过，但浏览器 Codex/TPS p95 6.01 s、ledger-only TPS 3.87 s，3 s 目标仍未达。这些结果归属上一阶段，不作为本版本的新分布。
+
+状态（上一轮 v6）：**D/P、C/B/L、F、最小 E-1 及效果评估完成；当轮 G1/G2 和部分 G3 未达**。结果与下一优先级见[治理方案 §16](plans/2026-10-26-refresh-sync-latency-plan.md#16-本轮实施结果与后续优先级2026-10-27)，前像、原始样本、门禁和差距见[实施验收](validation/2026-10-26-refresh-sync-latency-implementation/README.md)，[原复测](validation/2026-10-26-refresh-sync-latency-reeval/README.md)只读。
+
+上一轮 Main 与四个原生 subagent 的整文件单写协作已完成。静止 sync p95 8.13→2.81 s、同上下文 all 暖查询 685→70 ms；today/month 未改善。21 个真实周期的 15 次 token 增量和 5 次 ledger-only TPS 更新全部正确，但 Codex 新值仍需约 8.1–8.5 s。后台各 20 次 Claude/ledger/Codex p95 为 2.91/3.35/6.89 s。当轮下一优先级为缩小 Codex 规划范围、归因同轮重复探测，再处理 month/刷新后 miss；当前进展见上述本轮记录，不自动扩写产品。
+
+所有本地验证共用一个串行执行窗口，任务总预算 8 GiB；真实树硬限 7 GiB、heap≤1.5 GiB，小夹具用 1 GiB。未重启正式服务或切换生产；当前真实副本 0 冷段，冷热语义由既有夹具回归，不能外推实际封存后的性能。分块存证、通用响应缓存、读侧架构及计价/归档扩展不纳入本轮默认范围。
 ## 当前：UI 几何稳定性
 
 状态：**UI 施工与专项验收完成，报告字段契约失败已修复并通过定向回归**。设计要求见[主方案](plans/2026-10-25-ui-geometry-stability-plan.md)，施工交付唯一入口为[Implementation Plan](plans/2026-10-26-ui-geometry-stability-implementation-plan.md)；worker 均显式使用 `group/deepseek`，已关闭。实际检查见[验收](validation/2026-10-26-ui-geometry-stability.md)。

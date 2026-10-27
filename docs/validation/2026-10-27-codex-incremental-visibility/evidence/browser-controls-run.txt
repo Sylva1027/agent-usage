@@ -1,0 +1,5 @@
+{"label":"browser-first","ms":9785}
+{"label":"browser-cycle","index":0,"kind":"claude","delta":1000107,"fromWriteMs":4099,"fromCheckMs":3846}
+{"label":"browser-cycle","index":1,"kind":"codex-new","delta":1000107,"fromWriteMs":5879,"fromCheckMs":5617}
+{"label":"browser-cycle","index":2,"kind":"codex-append","delta":1000107,"fromWriteMs":5816,"fromCheckMs":5564}
+{"label":"browser-cycle","index":3,"kind":"ledger","delta":0,"fromWriteMs":4101,"fromCheckMs":3846}

@@ -1,0 +1,14 @@
+{
+  "typecheckExitCode": 0,
+  "summaryExitCode": 0,
+  "sourceDrift": 0,
+  "retainedExitCode": 0,
+  "lintExitCode": 0,
+  "changedExitCode": 0,
+  "scope": "Selected implementation complete; latency partly unmet; no production switch",
+  "capturedAt": "2026-10-27T00:34:59.0489874+08:00",
+  "formatExitCode": 0,
+  "browserExitCode": 0,
+  "missingLinks": 0,
+  "checkedLinks": 15
+}

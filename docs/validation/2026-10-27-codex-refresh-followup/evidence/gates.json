@@ -1,0 +1,48 @@
+[
+  {
+    "name": "typecheck",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "tsconfig.checkjs.json"
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 1883.8376
+  },
+  {
+    "name": "lint",
+    "args": [
+      "node_modules/@biomejs/biome/bin/biome",
+      "check",
+      "--formatter-enabled=false",
+      "."
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 560.4094
+  },
+  {
+    "name": "format-check",
+    "args": [
+      "node_modules/@biomejs/biome/bin/biome",
+      "format",
+      "."
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 292.11889999999994
+  },
+  {
+    "name": "full-test",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "test/**/*.test.js"
+    ],
+    "status": null,
+    "signal": "SIGTERM",
+    "error": "spawnSync C:\\Program Files\\nodejs\\node.exe ETIMEDOUT",
+    "ms": 900014.3154000001
+  }
+]

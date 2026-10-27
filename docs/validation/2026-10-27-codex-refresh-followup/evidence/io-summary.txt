@@ -1,0 +1,2 @@
+{"mode":"before","label":"unchanged-sync","bytes":665157164,"readCalls":10870,"valid":true,"phases":{"rename":{"calls":1591,"ms":937.6137000000381},"decision.metadata":{"calls":1388,"ms":822.3358000000226},"decision.prescan":{"calls":1591,"ms":909.4294000000882},"decision.file":{"calls":1591,"ms":927.3173000000752}}}
+{"mode":"after","label":"unchanged-sync","bytes":494796141,"readCalls":8089,"valid":true,"phases":{"rename":{"calls":1591,"ms":851.8457999999991},"decision.metadata":{"calls":1388,"ms":953.5970000000016},"decision.file":{"calls":1591,"ms":1257.6506000000663}}}

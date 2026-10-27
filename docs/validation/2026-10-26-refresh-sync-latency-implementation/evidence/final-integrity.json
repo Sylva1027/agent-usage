@@ -1,0 +1,40 @@
+{
+  "remainingTemporaryDatabases": [],
+  "deletedOnlyOwnedTemporaryDatabases": [
+    {
+      "bytes": 744239104,
+      "file": "implementation-http-browser-25312.sqlite"
+    },
+    {
+      "bytes": 744300544,
+      "file": "implementation-http-browser-9588.sqlite"
+    },
+    {
+      "bytes": 743198720,
+      "file": "implementation-quota-branch-14844.sqlite"
+    },
+    {
+      "bytes": 743198720,
+      "file": "implementation-quota-branch-17440.sqlite"
+    },
+    {
+      "bytes": 743518208,
+      "file": "implementation-quota-branch-17820.sqlite"
+    },
+    {
+      "bytes": 743518208,
+      "file": "implementation-quota-branch-24644.sqlite"
+    },
+    {
+      "bytes": 743198720,
+      "file": "implementation-quota-branch-46084.sqlite"
+    },
+    {
+      "bytes": 742313984,
+      "file": "implementation-smoke-14820.sqlite"
+    }
+  ],
+  "sourceDriftCount": 0,
+  "frozenSeedSHA256": "cfc35c20b32efd09328fde9ba477d25be3ebac5da33e55a26d9555090a085bd5",
+  "capturedAt": "2026-10-27T00:34:22.2437574+08:00"
+}

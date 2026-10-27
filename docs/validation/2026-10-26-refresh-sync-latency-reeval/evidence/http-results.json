@@ -1,0 +1,295 @@
+{
+  "startedAt": "2026-10-26T13:41:56.720Z",
+  "finishedAt": "2026-10-26T13:43:13.606Z",
+  "http": [
+    {
+      "label": "http-first-default",
+      "ms": 16715.7955,
+      "startedAt": 1793022116741,
+      "total": 2273154577,
+      "rss": 989798400,
+      "maxRSSKiB": 969004
+    },
+    {
+      "label": "http-default-0",
+      "ms": 10500.0451,
+      "startedAt": 1793022133458,
+      "total": 2273154577,
+      "rss": 819277824,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-default-1",
+      "ms": 9272.090900000003,
+      "startedAt": 1793022143959,
+      "total": 2273154577,
+      "rss": 823488512,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-default-2",
+      "ms": 9913.092100000002,
+      "startedAt": 1793022153232,
+      "total": 2273154577,
+      "rss": 769523712,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-today-0",
+      "ms": 587.2620999999999,
+      "startedAt": 1793022163146,
+      "total": 2273154577,
+      "rss": 767361024,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-today-1",
+      "ms": 564.1405000000013,
+      "startedAt": 1793022163733,
+      "total": 2273154577,
+      "rss": 776560640,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-today-2",
+      "ms": 671.2376000000004,
+      "startedAt": 1793022164298,
+      "total": 2273154577,
+      "rss": 782610432,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-month-0",
+      "ms": 2188.761999999995,
+      "startedAt": 1793022164970,
+      "total": 17549766014,
+      "rss": 760180736,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-month-1",
+      "ms": 2096.0832999999984,
+      "startedAt": 1793022167159,
+      "total": 17549766014,
+      "rss": 831954944,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-month-2",
+      "ms": 2088.9342000000033,
+      "startedAt": 1793022169256,
+      "total": 17549766014,
+      "rss": 953532416,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-all-0",
+      "ms": 1842.0852000000014,
+      "startedAt": 1793022171345,
+      "total": 19637022559,
+      "rss": 978636800,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-all-1",
+      "ms": 857.281799999997,
+      "startedAt": 1793022173188,
+      "total": 19637022559,
+      "rss": 1015767040,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "http-skip-all-2",
+      "ms": 856.7811000000002,
+      "startedAt": 1793022174046,
+      "total": 19637022559,
+      "rss": 1027870720,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-0",
+      "ms": 263.405700000003,
+      "startedAt": 1793022174903,
+      "changed": true,
+      "rss": 1026191360,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-1",
+      "ms": 200.71459999999934,
+      "startedAt": 1793022175167,
+      "changed": true,
+      "rss": 1026195456,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-2",
+      "ms": 176.22230000000127,
+      "startedAt": 1793022175368,
+      "changed": true,
+      "rss": 1026220032,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-3",
+      "ms": 209.93709999999555,
+      "startedAt": 1793022175545,
+      "changed": true,
+      "rss": 1026240512,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-4",
+      "ms": 227.88270000000193,
+      "startedAt": 1793022175755,
+      "changed": true,
+      "rss": 1026240512,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-5",
+      "ms": 277.1854999999996,
+      "startedAt": 1793022175984,
+      "changed": true,
+      "rss": 1026252800,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-6",
+      "ms": 216.87099999999919,
+      "startedAt": 1793022176261,
+      "changed": true,
+      "rss": 1026314240,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-7",
+      "ms": 219.43940000000293,
+      "startedAt": 1793022176478,
+      "changed": true,
+      "rss": 1026322432,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-8",
+      "ms": 187.20760000000155,
+      "startedAt": 1793022176698,
+      "changed": true,
+      "rss": 1026400256,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-9",
+      "ms": 178.85970000000088,
+      "startedAt": 1793022176885,
+      "changed": true,
+      "rss": 1026400256,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-10",
+      "ms": 190.64429999999993,
+      "startedAt": 1793022177064,
+      "changed": true,
+      "rss": 1026469888,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-11",
+      "ms": 180.49199999999837,
+      "startedAt": 1793022177256,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-12",
+      "ms": 265.86449999999604,
+      "startedAt": 1793022177437,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-13",
+      "ms": 221.84350000000268,
+      "startedAt": 1793022177703,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-14",
+      "ms": 217.83280000000377,
+      "startedAt": 1793022177925,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-15",
+      "ms": 234.99649999999383,
+      "startedAt": 1793022178144,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-16",
+      "ms": 186.96659999999974,
+      "startedAt": 1793022178379,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-17",
+      "ms": 169.86620000000403,
+      "startedAt": 1793022178566,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-18",
+      "ms": 236.7433000000019,
+      "startedAt": 1793022178737,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "status-idle-19",
+      "ms": 177.95170000000508,
+      "startedAt": 1793022178974,
+      "changed": true,
+      "rss": 1026473984,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "overlap-status",
+      "ms": 195.17369999999937,
+      "startedAt": 1793022179265,
+      "changed": true,
+      "rss": 1035296768,
+      "maxRSSKiB": 1027620
+    },
+    {
+      "label": "overlap-skip",
+      "ms": 4397.100599999991,
+      "startedAt": 1793022179265,
+      "total": 17549766014,
+      "rss": 1098743808,
+      "maxRSSKiB": 1089088
+    },
+    {
+      "label": "overlap-default",
+      "ms": 14424.839100000005,
+      "startedAt": 1793022179152,
+      "total": 2273154577,
+      "rss": 1184804864,
+      "maxRSSKiB": 1197332
+    }
+  ],
+  "excluded": "Browser launch failed after HTTP samples completed; no browser samples from this attempt"
+}

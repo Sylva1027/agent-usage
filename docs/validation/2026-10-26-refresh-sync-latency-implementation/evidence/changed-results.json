@@ -1,0 +1,528 @@
+{
+  "samples": [
+    {
+      "label": "catchup-sync",
+      "ms": 10212.5005,
+      "updatedFileCount": 5,
+      "sourceWarnings": [],
+      "rss": 731373568
+    },
+    {
+      "label": "settle-sync-0",
+      "ms": 2815.142099999999,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 563081216
+    },
+    {
+      "label": "settle-sync-1",
+      "ms": 2687.9660999999996,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 561901568
+    },
+    {
+      "label": "native-prime-sync",
+      "ms": 6547.083600000002,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 695681024
+    },
+    {
+      "label": "native-append-sync-0",
+      "ms": 6621.743200000001,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 706306048
+    },
+    {
+      "label": "native-append-sync-1",
+      "ms": 6165.073400000001,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 705556480
+    },
+    {
+      "label": "native-append-sync-2",
+      "ms": 6077.395800000006,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 705609728
+    },
+    {
+      "label": "native-append-sync-3",
+      "ms": 6572.503600000004,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 705998848
+    },
+    {
+      "label": "native-append-sync-4",
+      "ms": 6887.169699999999,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 714383360
+    },
+    {
+      "label": "native-append-sync-5",
+      "ms": 7546.819800000005,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 710348800
+    },
+    {
+      "label": "native-append-sync-6",
+      "ms": 6352.080499999996,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 682364928
+    },
+    {
+      "label": "native-append-sync-7",
+      "ms": 6171.510699999999,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 708001792
+    },
+    {
+      "label": "native-append-sync-8",
+      "ms": 6299.654699999999,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713981952
+    },
+    {
+      "label": "native-append-sync-9",
+      "ms": 6226.234899999996,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 655949824
+    },
+    {
+      "label": "native-append-sync-10",
+      "ms": 6441.340899999996,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712392704
+    },
+    {
+      "label": "native-append-sync-11",
+      "ms": 6550.978799999997,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 711909376
+    },
+    {
+      "label": "native-append-sync-12",
+      "ms": 6512.7081000000035,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712433664
+    },
+    {
+      "label": "native-append-sync-13",
+      "ms": 6561.969800000006,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 709586944
+    },
+    {
+      "label": "native-append-sync-14",
+      "ms": 6195.232099999994,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 711999488
+    },
+    {
+      "label": "native-append-sync-15",
+      "ms": 6070.32269999999,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 706428928
+    },
+    {
+      "label": "native-append-sync-16",
+      "ms": 6401.828700000013,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 717287424
+    },
+    {
+      "label": "native-append-sync-17",
+      "ms": 6112.559900000022,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712089600
+    },
+    {
+      "label": "native-append-sync-18",
+      "ms": 6041.284500000009,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713453568
+    },
+    {
+      "label": "native-append-sync-19",
+      "ms": 6119.887700000021,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 716369920
+    },
+    {
+      "label": "ledger-only-sync-0",
+      "ms": 3204.426199999987,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 782745600
+    },
+    {
+      "label": "ledger-only-sync-1",
+      "ms": 3243.881800000003,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 828194816
+    },
+    {
+      "label": "ledger-only-sync-2",
+      "ms": 3305.8055000000168,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 779005952
+    },
+    {
+      "label": "ledger-only-sync-3",
+      "ms": 3191.153900000005,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 901509120
+    },
+    {
+      "label": "ledger-only-sync-4",
+      "ms": 3279.3893999999855,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 826224640
+    },
+    {
+      "label": "ledger-only-sync-5",
+      "ms": 3173.777000000002,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 902127616
+    },
+    {
+      "label": "ledger-only-sync-6",
+      "ms": 3260.9733000000124,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 826929152
+    },
+    {
+      "label": "ledger-only-sync-7",
+      "ms": 3294.8384999999835,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 739332096
+    },
+    {
+      "label": "ledger-only-sync-8",
+      "ms": 3271.395999999979,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 826671104
+    },
+    {
+      "label": "ledger-only-sync-9",
+      "ms": 3346.5283000000054,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 858705920
+    },
+    {
+      "label": "ledger-only-sync-10",
+      "ms": 3230.7811999999976,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 825454592
+    },
+    {
+      "label": "ledger-only-sync-11",
+      "ms": 3364.56210000001,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 787800064
+    },
+    {
+      "label": "ledger-only-sync-12",
+      "ms": 3284.1296000000148,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 779575296
+    },
+    {
+      "label": "ledger-only-sync-13",
+      "ms": 3227.0372999999963,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 900694016
+    },
+    {
+      "label": "ledger-only-sync-14",
+      "ms": 3352.2179999999935,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 780734464
+    },
+    {
+      "label": "ledger-only-sync-15",
+      "ms": 3274.3104999999923,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 900681728
+    },
+    {
+      "label": "ledger-only-sync-16",
+      "ms": 3192.5227000000014,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 770154496
+    },
+    {
+      "label": "ledger-only-sync-17",
+      "ms": 3071.4366000000155,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 786472960
+    },
+    {
+      "label": "ledger-only-sync-18",
+      "ms": 3141.159800000023,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 780177408
+    },
+    {
+      "label": "ledger-only-sync-19",
+      "ms": 3073.831999999995,
+      "updatedFileCount": 0,
+      "sourceWarnings": [],
+      "rss": 784666624
+    },
+    {
+      "label": "claude-append-sync-0",
+      "ms": 2734.1129000000074,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 708554752
+    },
+    {
+      "label": "claude-append-sync-1",
+      "ms": 2773.6206999999995,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 707186688
+    },
+    {
+      "label": "claude-append-sync-2",
+      "ms": 2756.191599999991,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 707727360
+    },
+    {
+      "label": "claude-append-sync-3",
+      "ms": 2710.9333000000042,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 708128768
+    },
+    {
+      "label": "claude-append-sync-4",
+      "ms": 2804.0810000000056,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 647675904
+    },
+    {
+      "label": "claude-append-sync-5",
+      "ms": 2729.957300000009,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 714203136
+    },
+    {
+      "label": "claude-append-sync-6",
+      "ms": 2798.327499999985,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713904128
+    },
+    {
+      "label": "claude-append-sync-7",
+      "ms": 2791.2103999999817,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713330688
+    },
+    {
+      "label": "claude-append-sync-8",
+      "ms": 2821.003700000001,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 671739904
+    },
+    {
+      "label": "claude-append-sync-9",
+      "ms": 2913.0174000000115,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712691712
+    },
+    {
+      "label": "claude-append-sync-10",
+      "ms": 2769.475000000006,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 709214208
+    },
+    {
+      "label": "claude-append-sync-11",
+      "ms": 2909.724599999987,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 709091328
+    },
+    {
+      "label": "claude-append-sync-12",
+      "ms": 2776.6876000000047,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 714280960
+    },
+    {
+      "label": "claude-append-sync-13",
+      "ms": 2810.408599999995,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 709038080
+    },
+    {
+      "label": "claude-append-sync-14",
+      "ms": 2727.8608999999997,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 714870784
+    },
+    {
+      "label": "claude-append-sync-15",
+      "ms": 2731.898199999967,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713768960
+    },
+    {
+      "label": "claude-append-sync-16",
+      "ms": 2720.563699999999,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712323072
+    },
+    {
+      "label": "claude-append-sync-17",
+      "ms": 2879.4605999999912,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712024064
+    },
+    {
+      "label": "claude-append-sync-18",
+      "ms": 2792.411699999997,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 712044544
+    },
+    {
+      "label": "claude-append-sync-19",
+      "ms": 2904.114100000006,
+      "updatedFileCount": 1,
+      "sourceWarnings": [],
+      "rss": 713781248
+    }
+  ],
+  "maxRSSKiB": 888976,
+  "freeGiB": [
+    14.16265869140625,
+    14.27248764038086,
+    14.325031280517578,
+    13.976863861083984,
+    13.624824523925781,
+    13.385395050048828,
+    14.149650573730469,
+    14.027843475341797,
+    13.849407196044922,
+    13.30533218383789,
+    13.308727264404297,
+    14.03365707397461,
+    13.843490600585938,
+    14.029781341552734,
+    14.143684387207031,
+    14.130790710449219,
+    13.991943359375,
+    13.8983154296875,
+    13.613994598388672,
+    13.794219970703125,
+    13.80849838256836,
+    13.731861114501953,
+    13.715328216552734,
+    13.773788452148438,
+    13.6248779296875,
+    13.58755111694336,
+    13.60007095336914,
+    13.385242462158203,
+    13.55596923828125,
+    13.377235412597656,
+    13.501461029052734,
+    13.605621337890625,
+    13.460956573486328,
+    13.739482879638672,
+    13.620452880859375,
+    13.57944107055664,
+    13.597637176513672,
+    13.417217254638672,
+    13.6441650390625,
+    13.38018798828125,
+    13.588836669921875,
+    13.603111267089844,
+    13.717887878417969,
+    13.741432189941406,
+    13.733566284179688,
+    13.721992492675781,
+    13.668781280517578,
+    13.637908935546875,
+    13.716644287109375,
+    13.787174224853516,
+    13.692203521728516,
+    13.802135467529297,
+    13.664825439453125,
+    13.374725341796875,
+    13.686782836914062,
+    13.647018432617188,
+    13.590370178222656,
+    13.628074645996094,
+    13.581138610839844,
+    13.67593002319336,
+    13.657012939453125,
+    13.603225708007812,
+    13.576522827148438,
+    13.633285522460938
+  ],
+  "delta": {
+    "input": 100,
+    "output": 1000007,
+    "total": 1000107
+  },
+  "checkedNativeIncrements": 20,
+  "checkedLedgerTimings": 20,
+  "checkedClaudeIncrements": 20,
+  "finishedAt": "2026-10-26T16:00:37.680Z"
+}

@@ -6,16 +6,39 @@ export const MAGPIE_TIMING_ORIGIN = "magpie-local-request-e2e-v1";
 /** Read only request identity, model, output and elapsed time from the local gateway ledger. */
 export class MagpieRequestTimings {
   constructor() {
+    this.revision = 0;
+    /** @type {Set<string>} */
+    this.pendingResponseIds = new Set();
     this.clear();
   }
 
   clear() {
+    // Reset invalidates associations without acknowledging unpublished changes.
+    this.revision += 1;
+    this.pendingReset = true;
     this.filePath = "";
     this.identity = "";
     this.offset = 0;
     this.mtimeMs = 0;
     /** @type {Map<string, Map<string, {requestedModel: string, reportedModel: string, provider: string, outputTokens: number, durationMs: number}>>} */
     this.requests = new Map();
+  }
+
+  /** @returns {{revision: number, responseIds: Set<string>, reset: boolean}} */
+  pendingChanges() {
+    return {
+      revision: this.revision,
+      responseIds: new Set(this.pendingResponseIds),
+      reset: this.pendingReset,
+    };
+  }
+
+  /** @param {number} revision */
+  acknowledge(revision) {
+    if (revision !== this.revision) return false;
+    this.pendingResponseIds.clear();
+    this.pendingReset = false;
+    return true;
   }
 
   /** @param {string} filePath */
@@ -25,7 +48,7 @@ export class MagpieRequestTimings {
       file = await open(filePath, "r");
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
-      this.clear();
+      if (this.filePath) this.clear();
       return false;
     }
     try {
@@ -41,7 +64,10 @@ export class MagpieRequestTimings {
         this.filePath = filePath;
         this.identity = identity;
       }
-      if (stat.size === this.offset) return false;
+      if (stat.size === this.offset) {
+        this.mtimeMs = stat.mtimeMs;
+        return false;
+      }
       const buffer = Buffer.alloc(64 * 1024);
       let position = this.offset;
       let pending = Buffer.alloc(0);
@@ -105,8 +131,12 @@ export class MagpieRequestTimings {
       durationMs: row.ms,
     };
     const variants = this.requests.get(row.response_id) ?? new Map();
-    variants.set(JSON.stringify(record), record);
+    const key = JSON.stringify(record);
+    if (variants.has(key)) return;
+    variants.set(key, record);
     this.requests.set(row.response_id, variants);
+    this.pendingResponseIds.add(row.response_id);
+    this.revision += 1;
   }
 
   /**

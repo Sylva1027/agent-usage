@@ -1,0 +1,189 @@
+{
+  "changed": {
+    "native-append": {
+      "n": 20,
+      "p50": 6299.654699999999,
+      "p95": 6887.169699999999,
+      "max": 7546.819800000005
+    },
+    "ledger-only": {
+      "n": 20,
+      "p50": 3243.881800000003,
+      "p95": 3352.2179999999935,
+      "max": 3364.56210000001
+    },
+    "claude-append": {
+      "n": 20,
+      "p50": 2776.6876000000047,
+      "p95": 2909.724599999987,
+      "max": 2913.0174000000115
+    }
+  },
+  "browser": {
+    "cyclePreset": "all",
+    "cycles": 21,
+    "realTicks": 21,
+    "interval": {
+      "n": 20,
+      "p50": 60000,
+      "p95": 60013,
+      "max": 60013
+    },
+    "groups": {
+      "unchanged": {
+        "n": 1,
+        "checkToFrame": {
+          "n": 1,
+          "p50": 7,
+          "p95": 7,
+          "max": 7
+        },
+        "writeToFrame": {
+          "n": 1,
+          "p50": 56254,
+          "p95": 56254,
+          "max": 56254
+        },
+        "writeToCheck": {
+          "n": 1,
+          "p50": 56250,
+          "p95": 56250,
+          "max": 56250
+        }
+      },
+      "claude": {
+        "n": 7,
+        "checkToFrame": {
+          "n": 7,
+          "p50": 5014,
+          "p95": 5155,
+          "max": 5155
+        },
+        "writeToFrame": {
+          "n": 7,
+          "p50": 59734,
+          "p95": 65033,
+          "max": 65033
+        },
+        "writeToCheck": {
+          "n": 7,
+          "p50": 54735,
+          "p95": 59891,
+          "max": 59891
+        }
+      },
+      "codex-new": {
+        "n": 1,
+        "checkToFrame": {
+          "n": 1,
+          "p50": 8506,
+          "p95": 8506,
+          "max": 8506
+        },
+        "writeToFrame": {
+          "n": 1,
+          "p50": 63324,
+          "p95": 63324,
+          "max": 63324
+        },
+        "writeToCheck": {
+          "n": 1,
+          "p50": 54819,
+          "p95": 54819,
+          "max": 54819
+        }
+      },
+      "codex-append": {
+        "n": 7,
+        "checkToFrame": {
+          "n": 7,
+          "p50": 8346,
+          "p95": 8528,
+          "max": 8528
+        },
+        "writeToFrame": {
+          "n": 7,
+          "p50": 63330,
+          "p95": 63482,
+          "max": 63482
+        },
+        "writeToCheck": {
+          "n": 7,
+          "p50": 54956,
+          "p95": 55030,
+          "max": 55030
+        }
+      },
+      "ledger": {
+        "n": 5,
+        "checkToFrame": {
+          "n": 5,
+          "p50": 5226,
+          "p95": 5389,
+          "max": 5389
+        },
+        "writeToFrame": {
+          "n": 5,
+          "p50": 56811,
+          "p95": 57086,
+          "max": 57086
+        },
+        "writeToCheck": {
+          "n": 5,
+          "p50": 51605,
+          "p95": 51863,
+          "max": 51863
+        }
+      }
+    },
+    "firstBrowserMs": 3126,
+    "twoTabs": {
+      "secondLoadMs": 5583,
+      "firstFilterAndJoinMs": 5583
+    },
+    "walBeforeClose": 0,
+    "walAfterClose": 0,
+    "maxNodeRSSMiB": 1247.78125,
+    "minimumAvailableGiB": 13.6661376953125,
+    "errorCount": 0,
+    "warning": "Browser subgroups have fewer than 20 observations; their p95 is descriptive, not a per-scenario acceptance claim.",
+    "g1": {
+      "candidateP95Ms": 3000,
+      "candidateMaxMs": 8000,
+      "observedOrdinaryMaxMs": 8528,
+      "allOrdinaryWithinMax": false
+    },
+    "g2": {
+      "candidateAdditionalMs": 5000,
+      "maxObservedIntervalMs": 60013,
+      "maxWriteToFrameMs": 65033,
+      "violations": [
+        {
+          "index": 1,
+          "kind": "claude",
+          "writeToFrameMs": 65033,
+          "actualIntervalMs": 59992,
+          "overBudgetMs": 41
+        }
+      ]
+    }
+  },
+  "quota": {
+    "before": {
+      "n": 1,
+      "fromTriggerToFrameMs": 11290,
+      "earlyBusyOffToTargetDomMs": 383,
+      "earlyBusyOffToTargetFrameMs": 386,
+      "beforeOutputText": "0.00M",
+      "finalOutputText": "1.00M"
+    },
+    "after": {
+      "n": 1,
+      "fromTriggerToFrameMs": 5530,
+      "earlyBusyOffToTargetDomMs": 0,
+      "earlyBusyOffToTargetFrameMs": 0,
+      "beforeOutputText": "0.00M",
+      "finalOutputText": "1.00M"
+    }
+  }
+}

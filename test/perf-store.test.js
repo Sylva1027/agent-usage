@@ -355,6 +355,81 @@ async function makeWritableStore(rawOverrides = {}) {
 // 夹具自证（gate A 的前提）
 // ---------------------------------------------------------------------------
 
+test("E-1 all perf projection follows local/external revisions and bypasses uncommitted writes", async () => {
+  const { dir, databaseFile, store, sample } = await makeWritableStore();
+  try {
+    store.insertPerfSample(sample);
+    store.writePerfState("ready");
+    const now = new Date(sample.tsMs + 60_000).toISOString();
+    store.writeMeta("perf_indexed_at", now);
+    const filters = { preset: "all", calendarZone: "utc", now };
+    const lean = { includeDetails: false };
+    let builds = 0;
+    const perfSummaryForRange = store.perfSummaryForRange;
+    store.perfSummaryForRange = function (...args) {
+      builds += 1;
+      return perfSummaryForRange.apply(this, args);
+    };
+    const first = store.summarize(filters, lean).perf;
+    assert.equal(first.coverage.eligible, 1);
+    assert.deepEqual(store.summarize(filters, lean).perf, first);
+    assert.equal(builds, 1);
+
+    const revision = store.storeRevision;
+    store.database.prepare("UPDATE perf_samples SET output_tokens = 200").run();
+    const local = store.summarize(filters, lean).perf;
+    assert.equal(store.storeRevision, revision, "raw local writes exercise total_changes without a store revision");
+    assert.equal(local.groups[0].sums.outputTokens, 200);
+    assert.equal(builds, 2);
+    const warning = { sourceKind: "zcode", homeId: sample.homeId, code: "LIVE_SOURCE_CHANGED", count: 1 };
+    store.writePerfState("degraded", { sourceWarnings: [warning] });
+    store.writeMeta("perf_indexed_at", new Date(sample.tsMs + 120_000).toISOString());
+    store.writeMeta("perf_missing_sources", JSON.stringify([{ path: sample.sourcePath, homeId: sample.homeId }]));
+    const changed = store.summarize(filters, lean).perf;
+    assert.equal(changed.state, "degraded");
+    assert.equal(changed.ready, false);
+    assert.deepEqual(changed.sourceWarnings, [warning]);
+    assert.equal(changed.missingSources[0].path, sample.sourcePath);
+    assert.notEqual(changed.indexedAt, first.indexedAt);
+    assert.deepEqual(store.summarize(filters, lean).perf, changed, "all metadata survives a warm hit");
+    assert.equal(builds, 3);
+
+    const external = new DatabaseSync(databaseFile);
+    try {
+      external.prepare("UPDATE perf_samples SET output_tokens = 300").run();
+    } finally {
+      external.close();
+    }
+    const committed = store.summarize(filters, lean).perf;
+    assert.equal(committed.groups[0].sums.outputTokens, 300);
+    assert.ok(store.storeRevision > revision, "external data_version advances the read revision");
+    assert.equal(builds, 4);
+    store.commitStoreRevision("e1-fixture");
+    assert.deepEqual(store.summarize(filters, lean).perf, committed);
+    assert.equal(builds, 5, "explicit committed revisions invalidate the projection");
+
+    const cached = store.summaryProjectionCache;
+    store.database.exec("BEGIN IMMEDIATE");
+    store.writeTransactionDepth += 1;
+    try {
+      store.database.prepare("UPDATE perf_samples SET output_tokens = 999").run();
+      const uncommitted = store.summarizeInReadTransaction(filters, lean).perf;
+      assert.equal(uncommitted.groups[0].sums.outputTokens, 999);
+      assert.strictEqual(store.summaryProjectionCache, cached, "write transaction must not publish its projection");
+    } finally {
+      store.database.exec("ROLLBACK");
+      store.writeTransactionDepth -= 1;
+    }
+    assert.deepEqual(store.summarize(filters, lean).perf, committed, "rolled-back perf never escapes into a warm read");
+    const afterRollback = builds;
+    assert.deepEqual(store.summarize(filters, lean).perf, committed);
+    assert.equal(builds, afterRollback, "committed snapshot is reusable after rollback");
+  } finally {
+    store.close();
+    await cleanupDir(dir);
+  }
+});
+
 test("v11 夹具自证：user_version=11、无 perf_samples、四张旧表列集与全新库路径逐列相同", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
@@ -3218,6 +3293,16 @@ function countRoundMapAccess(store) {
     access.warnings += 1;
     return roundWarnings();
   };
+  const readFingerprints = store.publishedFileFingerprintsForRead.bind(store);
+  const readWarnings = store.publishedFileWarningsForRead.bind(store);
+  store.publishedFileFingerprintsForRead = () => {
+    access.fingerprints += 1;
+    return readFingerprints();
+  };
+  store.publishedFileWarningsForRead = () => {
+    access.warnings += 1;
+    return readWarnings();
+  };
   return access;
 }
 
@@ -3260,6 +3345,34 @@ function appendZcodeRow(dbFile, id) {
   }
 }
 
+test("D · internal map reads share committed maps while mutable getters retain independent copies", async () => {
+  const workspace = await makeTwoZcodeHomeWorkspace();
+  const store = await openStore(workspace.root, workspace.storeFile);
+  try {
+    await store.sync({ options: workspace.options });
+    const round = store.syncRound.bind(store);
+    store.syncRound = async (...args) => {
+      const fingerprints = store.publishedFileFingerprintsForRead();
+      const warnings = store.publishedFileWarningsForRead();
+      assert.equal(store.publishedFileFingerprintsForRead(), fingerprints);
+      assert.equal(store.publishedFileWarningsForRead(), warnings);
+      const copies = [store.publishedFileFingerprintsForRound(), store.publishedFileWarningsForRound()];
+      assert.notEqual(copies[0], fingerprints);
+      assert.notEqual(copies[1], warnings);
+      delete copies[0][workspace.dbFiles[0]];
+      copies[1]["uncommitted"] = [];
+      assert.ok(fingerprints[workspace.dbFiles[0]]);
+      assert.equal(Object.hasOwn(warnings, "uncommitted"), false);
+      return round(...args);
+    };
+    assert.equal((await store.sync({ options: workspace.options })).updatedFileCount, 0);
+    assert.equal(store.publishedFileMapsView, null);
+  } finally {
+    store.close();
+    await rm(workspace.root, { recursive: true, force: true });
+  }
+});
+
 test("S1 · 无提交轮次：两份 published map 每轮各**至多解码 1 次**（B2 计数口径）", async () => {
   const workspace = await makeTwoZcodeHomeWorkspace();
   try {
@@ -3294,15 +3407,18 @@ test("S1 · 无提交轮次：两份 published map 每轮各**至多解码 1 次
         `无提交轮次 perf_file_warnings 解码 ${roundDecodes.warnings} 次（要求 ≤1）`,
       );
       // 判别力：轮内视图必须真的被**逐文件**访问过；否则"≤1"可能只是"根本没查"。
-      // 无提交轮的访问点：轮首 1 + 预扫逐文件 2 + 循环逐文件 2 + 真实删除扫描 1 + 发布前 1 = 7（指纹）。
+      // 独立预扫已移除；访问下界相应减少两次，仍须覆盖循环内的实时校验与轮末消费。
       assert.ok(
-        access.fingerprints >= 6,
-        `轮内指纹视图访问 ${access.fingerprints} 次，必须 ≥6（逐文件校验点确实走了视图）`,
+        access.fingerprints >= 4,
+        `轮内指纹视图访问 ${access.fingerprints} 次，必须 ≥4（逐文件校验点确实走了视图）`,
       );
-      assert.ok(access.warnings >= 5, `轮内告警视图访问 ${access.warnings} 次，必须 ≥5`);
+      assert.ok(access.warnings >= 3, `轮内告警视图访问 ${access.warnings} 次，必须 ≥3`);
       // 修复前的同轮解码数 = 轮内访问次数（每次访问都重新解码）；给出 before 下界以便主审手算。
       assert.ok(
-        access.fingerprints >= 6 && access.warnings >= 5 && access.fingerprints > roundDecodes.fingerprints,
+        access.fingerprints >= 4 &&
+          access.warnings >= 3 &&
+          access.fingerprints > roundDecodes.fingerprints &&
+          access.warnings > roundDecodes.warnings,
         `复用必须真实发生：访问 ${access.fingerprints}/${access.warnings} 次 vs 解码 ${roundDecodes.fingerprints}/${roundDecodes.warnings} 次`,
       );
     } finally {
@@ -3942,14 +4058,14 @@ test("S2 · 接线与身份守卫：codex 命中窗口、非 codex 与窗口外�
 });
 
 // ---------------------------------------------------------------------------
-// C2（失败复用的全部触发/告警/恢复）：复用判定贯通「逐文件 refresh」与 `pendingChange` 收尾
+// C2（失败复用的全部触发/告警/恢复）：稳定签名供给逐文件判据，结构变更仍提前标记
 // ---------------------------------------------------------------------------
 //
 // 与 S2 段同一纪律：这里在 **store 级**只观察"必须真的接线才成立"的两件事 ——
 //   ① 复用轮的**逐文件判据**确实从 C1 的稳定签名取值（`codexReusedProbeValue` 被调用且返回非空）；
 //      没有接线时该数组为空（复用轮里该 home 不进 `codexPlans` ⇒ 窗口复用不适用）⇒ 断言失败。
 //   ② 复用轮**仍然**先写 `rebuilding`：`shouldPlan` 为真 ⇒ `codexPendingChange = true` ⇒
-//      `pendingChange` 的预扫标记没有被"跳过规划"顺带跳过（这是"贯通 pendingChange"的可观测面）。
+//      结构标记没有被"跳过规划"顺带跳过；独立文件预扫已移除。
 
 test("C2 · 复用轮：逐文件判据走稳定签名、仍然先写 rebuilding、记录不被重建", async () => {
   const root = await makeTempDir();
@@ -3991,7 +4107,7 @@ test("C2 · 复用轮：逐文件判据走稳定签名、仍然先写 rebuilding
       seenReuse.length = 0;
       const second = await store.sync({ options });
       assert.equal(second.perfState, "degraded");
-      assert.deepEqual(states, ["rebuilding", "degraded"], "复用轮仍必须先标 rebuilding（pendingChange 未被跳过）");
+      assert.deepEqual(states, ["rebuilding", "degraded"], "复用轮仍必须先标 rebuilding（结构变更未被跳过）");
       assert.equal(store.codexStableAttempts.get(homeId), record, "复用轮不得重建记录（重建 = 真的重跑过规划）");
       assert.equal(
         seenReuse.some((entry) => entry.reused),

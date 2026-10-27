@@ -1013,6 +1013,73 @@ test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐
   }
 });
 
+test("E-1 all perf projection reuses complete isolated results without widening exact ranges", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "e1-perf-projection-"));
+  let store;
+  try {
+    const { homes, options } = await parityHomes(root, [{ name: "z-e1", rows: 3 }]);
+    const report = await buildUsageReport({ homes });
+    store = await openParityStore(root);
+    await store.sync({ options });
+    const filters = { preset: "all", calendarZone: "utc", now: FIXED_NOW };
+    const lean = { includeDetails: false };
+    let builds = 0;
+    const perfSummaryForRange = store.perfSummaryForRange;
+    store.perfSummaryForRange = function (...args) {
+      builds += 1;
+      return perfSummaryForRange.apply(this, args);
+    };
+    const first = store.summarize(filters, lean);
+    assert.equal(first.then, undefined, "summary remains synchronous");
+    assert.equal(first.perf.coverage.eligible, 3);
+    assertStatsParity(summarizeUsage(report, filters).perf, first.perf, "E-1 initial all");
+    const second = store.summarize(filters, lean);
+    assert.equal(builds, 1, "unchanged all skips perf decoding and statistics");
+    assert.deepEqual(second.perf, first.perf, "cache retains the entire perf block");
+    assert.notStrictEqual(second.perf, first.perf);
+    assert.notStrictEqual(second.perf.groups[0].sums, first.perf.groups[0].sums);
+    second.perf.coverage.eligible = -1;
+    second.perf.groups[0].sums.outputTokens = -1;
+    second.perf.models.length = 0;
+    second.perf.missingSources.push({ path: "caller-only" });
+    second.perf.sourceWarnings.push({ code: "caller-only" });
+    second.perf.meta.indexedAt = "caller-only";
+    second.perf.indexedAt = "caller-only";
+    assert.deepEqual(store.summarize(filters, lean).perf, first.perf);
+    assert.equal(builds, 1, "caller mutation neither poisons nor invalidates the projection");
+
+    for (const [offset, eligible] of [
+      [1499, 1],
+      [1500, 2],
+    ]) {
+      const exact = {
+        ...filters,
+        preset: "recent",
+        recentValue: "1天",
+        now: new Date(BASE + offset).toISOString(),
+      };
+      const before = builds;
+      const indexed = store.summarize(exact, lean).perf;
+      assert.equal(indexed.coverage.eligible, eligible, "one millisecond changes the selected completed sample");
+      assertStatsParity(summarizeUsage(report, exact).perf, indexed, `E-1 exact ${offset}`);
+      assert.deepEqual(store.summarize(exact, lean).perf, indexed);
+      assert.equal(builds, before + 2, "non-all ranges continue to build independently");
+    }
+    const beforeAll = builds;
+    assert.deepEqual(store.summarize(filters, lean).perf, first.perf);
+    assert.equal(builds, beforeAll, "narrow range reads do not replace the all projection");
+    const excluded = { ...filters, excludeHomes: [homes[0].id] };
+    const excludedPerf = store.summarize(excluded, lean).perf;
+    assert.equal(excludedPerf.coverage.eligible, 0);
+    assert.equal(builds, beforeAll + 1, "home exclusions invalidate the all slot");
+    assert.deepEqual(store.summarize(excluded, lean).perf, excludedPerf);
+    assert.equal(builds, beforeAll + 1);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("★M4.2-b 自定义范围：只有范围内样本进入两端，且两端逐字相同", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "m42-b-"));
   try {

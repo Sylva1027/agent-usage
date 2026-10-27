@@ -1,0 +1,103 @@
+{
+  "scenario": "Synthetic metadata transition removes all selectable Codex sources during a quota auto-check; second request uses real server",
+  "requests": [
+    {
+      "type": "request",
+      "at": 1793023672887,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": null
+    },
+    {
+      "type": "response-headers",
+      "at": 1793023692601,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200
+    },
+    {
+      "type": "request",
+      "at": 1793023692711,
+      "path": "/api/status",
+      "preset": null,
+      "skipCheck": null
+    },
+    {
+      "type": "response-headers",
+      "at": 1793023692872,
+      "path": "/api/status",
+      "preset": null,
+      "status": 200
+    },
+    {
+      "type": "request",
+      "at": 1793023692873,
+      "path": "/api/usage",
+      "preset": "quota_5h",
+      "skipCheck": null
+    },
+    {
+      "type": "response-headers",
+      "at": 1793023706891,
+      "path": "/api/usage",
+      "preset": "quota_5h",
+      "status": 200
+    },
+    {
+      "type": "request",
+      "at": 1793023706893,
+      "path": "/api/usage",
+      "preset": "today",
+      "skipCheck": "1"
+    },
+    {
+      "type": "response-headers",
+      "at": 1793023707656,
+      "path": "/api/usage",
+      "preset": "today",
+      "status": 200
+    }
+  ],
+  "frames": [
+    {
+      "at": 1793023692677,
+      "busy": false,
+      "total": "2,273,154,577",
+      "output": "12,515,482",
+      "outputText": "12.52M",
+      "frameAt": 1793023692693
+    },
+    {
+      "at": 1793023692710,
+      "busy": true,
+      "total": "2,273,154,577",
+      "output": "12,515,482",
+      "outputText": "12.52M",
+      "frameAt": 1793023692933
+    },
+    {
+      "at": 1793023706893,
+      "busy": false,
+      "total": "2,273,154,577",
+      "output": "12,515,482",
+      "outputText": "12.52M",
+      "frameAt": 1793023706898
+    },
+    {
+      "at": 1793023707690,
+      "busy": false,
+      "total": "2,274,154,684",
+      "output": "13,515,489",
+      "outputText": "13.52M",
+      "frameAt": 1793023707701
+    }
+  ],
+  "errors": [],
+  "beforeOutputText": "12.52M",
+  "triggerAt": 1793023692708,
+  "firstPayloadAt": 1793023706887,
+  "finalPreset": "today",
+  "finalTotal": 2274154684,
+  "finalOutputText": "13.52M",
+  "nodeMaxRSSKiB": 1138700
+}

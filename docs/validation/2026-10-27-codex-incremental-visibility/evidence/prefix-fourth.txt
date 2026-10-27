@@ -1,0 +1,10 @@
+✔ prefix worker hashes raw bytes, reports unreadable inputs and exits before returning (95.2008ms)
+✔ large parallel planning preserves live isolation, quiet recovery and raw rewrite rejection (1452.2178ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1627.6975

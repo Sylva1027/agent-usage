@@ -1,0 +1,59 @@
+diff --git a/output/codex-incremental-visibility-20261027/preimage/src/usage-store.js b/src/usage-store.js
+index 277f29a..4610e81 100644
+--- a/output/codex-incremental-visibility-20261027/preimage/src/usage-store.js
++++ b/src/usage-store.js
+@@ -8393,7 +8393,10 @@ export class UsageStore {
+         //   * `prune`：只保留本轮发现到的当前路径（替换/删除/重命名淘汰）。
+         let window = null;
+         try {
+-          window = await planStableCodexHome({ ...home, projectionCache: this.codexProjections }, expectedPaths);
++          window = await planStableCodexHome(
++            { ...home, projectionCache: this.codexProjections, parallelPrefix: true },
++            expectedPaths,
++          );
+         } finally {
+           if (window !== null && window.stable === true) this.codexProjections.commit(homeId);
+           else if (window !== null && window.partial === true) {
+@@ -11227,14 +11230,14 @@ export class UsageStore {
+       range.bucket ||
+         (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
+     );
+-    const projectionCacheable =
+-      range.preset === "all" &&
++    const groupingEligible =
+       !quotaPreset &&
+       this.writeTransactionDepth === 0 &&
+       (this.verifiedHistorySqlRead ||
+         !this.database
+           .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+           .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META));
++    const projectionCacheable = range.preset === "all" && groupingEligible;
+     const projectionKeys = projectionCacheable
+       ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
+       : null;
+@@ -11272,7 +11275,7 @@ export class UsageStore {
+       const pricing = createEventPricing(pricingModels);
+       const costAccumulator = createCostEstimateAccumulator({ modelName: pricing.costModelName });
+       const sourceKindsByPath =
+-        projectionCacheable && !factProjection
++        groupingEligible && !factProjection
+           ? new Map(
+               this.database
+                 .prepare("SELECT path, kind FROM source_files")
+@@ -11285,7 +11288,7 @@ export class UsageStore {
+         : null;
+       // shortcut: hot-only repository session order stays on SQL; this collector serves the verified cold reader.
+       const repositoryAccumulator =
+-        this.verifiedHistorySqlRead && includeDetails && sourceKindsByPath
++        projectionCacheable && this.verifiedHistorySqlRead && includeDetails && sourceKindsByPath
+           ? createFusedSummaryRepositories(
+               Object.fromEntries(
+                 COMPARISON_PERIOD_KEYS.map((key) => [
+@@ -11296,6 +11299,7 @@ export class UsageStore {
+             )
+           : null;
+       const observationAccumulator =
++        projectionCacheable &&
+         this.verifiedHistorySqlRead &&
+         scopeExclusions.length === 0 &&
+         sourceKindsByPath &&

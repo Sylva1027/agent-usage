@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-10-26T14:19:50.128Z",
+  "head": "f7643b26e7c08f8d298b58d678a6201648e910ba",
+  "productFiles": 58,
+  "changedProductFiles": [],
+  "seedSha256": "cfc35c20b32efd09328fde9ba477d25be3ebac5da33e55a26d9555090a085bd5",
+  "seedBytes": 742313984,
+  "browserChecks": {
+    "sessions": 2,
+    "cycles": 20,
+    "controlledTokenIncrements": 12,
+    "exactOutputDelta": 1000007,
+    "intervalMinMs": 59990,
+    "intervalMaxMs": 60010,
+    "browserErrors": 0
+  },
+  "memory": {
+    "jobLimitMiB": 7168,
+    "nodeHeapMiB": 1536,
+    "controllerReserveMiB": 1024
+  },
+  "probeHashes": {
+    "prepare.mjs": "a32a456c968c22f9cef1383a2076df717760707b9cb1e3be66f42104df493e95",
+    "repair-snapshot.mjs": "1c9a8d1c11bc232817bdaa15bdf8e1ffc5da0834af5adcba34ba043bc645671c",
+    "preserve-file-times.ps1": "1b9a30a4675ce2bf1cfdbf72398a9d692ecc189eb1ec83de7b87133898c2b5c4",
+    "restore-inputs.ps1": "971c4cc9dd99b0e313d05d68eddfef95a4cfd405aece96d1c46ccdf4f9051b63",
+    "hook.mjs": "134716294b16482a8f6c1eca93bfeec83c37a0b161a377f1f2af5eb0ca7505b1",
+    "direct.mjs": "901a265aac54b157a19c15d4b7bc113f59903fbe6f211555cf8a2c46bd566f4f",
+    "http-browser.mjs": "440dc90807f0b42c115993b97d98da19c1f642af482e00dcd5df8f90c9570e73",
+    "quota-branch.mjs": "92824a29ba87fe093a9cd5b9367ae55c1917102e55759b60402fbb2e4874d3a0",
+    "inspect-baseline.mjs": "d2a46b8557d1d59f8eab6ffd2bc22b277564f63927a8e2d92bd83c6a9cd9f1fd",
+    "summarize.mjs": "a70af0c6d5c17f40042951149869b12a4f9f933179bda97c202e6a298302ee7e",
+    "check-controls.mjs": "25f3cb3fd2b521c3236c7d8adcae86bec57cc4451e7e8276c2b25201960996f7",
+    "finalize-evidence.mjs": "07a27c6d430a15de5de8f18f5cab1bbba2a72db6d8d73ca0c7f098409d43a6fc"
+  }
+}

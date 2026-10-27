@@ -1,0 +1,604 @@
+{
+  "quantile": "nearest-rank: sorted[ceil(p*n)-1]",
+  "baseline": {
+    "unchanged-sync": {
+      "all": {
+        "n": 20,
+        "p50": 7341.967499999999,
+        "p95": 8488.39499999999,
+        "max": 8925.134599999998
+      },
+      "firstMs": 7248.5917000000045,
+      "distinctFingerprints": 1,
+      "warnings": 0
+    },
+    "dashboard-today": {
+      "all": {
+        "n": 20,
+        "p50": 712.2876000000106,
+        "p95": 808.9514999999956,
+        "max": 3531.7782000000007
+      },
+      "firstMs": 3531.7782000000007,
+      "warm": {
+        "n": 19,
+        "p50": 712.2876000000106,
+        "p95": 808.9514999999956,
+        "max": 808.9514999999956
+      },
+      "distinctSummaryHashes": 1
+    },
+    "dashboard-month": {
+      "all": {
+        "n": 20,
+        "p50": 2366.678899999999,
+        "p95": 2647.559099999984,
+        "max": 2678.5448000000033
+      },
+      "firstMs": 2248.7192000000214,
+      "warm": {
+        "n": 19,
+        "p50": 2369.1315000000177,
+        "p95": 2678.5448000000033,
+        "max": 2678.5448000000033
+      },
+      "distinctSummaryHashes": 1
+    },
+    "dashboard-all": {
+      "all": {
+        "n": 20,
+        "p50": 1037.381699999998,
+        "p95": 1113.8484000000171,
+        "max": 2103.0962
+      },
+      "firstMs": 2103.0962,
+      "warm": {
+        "n": 19,
+        "p50": 1037.381699999998,
+        "p95": 1113.8484000000171,
+        "max": 1113.8484000000171
+      },
+      "distinctSummaryHashes": 1
+    }
+  },
+  "http": {
+    "http-first-default": {
+      "n": 1,
+      "p50": 16715.7955,
+      "p95": 16715.7955,
+      "max": 16715.7955
+    },
+    "http-default": {
+      "n": 3,
+      "p50": 9913.092100000002,
+      "p95": 10500.0451,
+      "max": 10500.0451
+    },
+    "http-skip-today": {
+      "n": 3,
+      "p50": 587.2620999999999,
+      "p95": 671.2376000000004,
+      "max": 671.2376000000004
+    },
+    "http-skip-month": {
+      "n": 3,
+      "p50": 2096.0832999999984,
+      "p95": 2188.761999999995,
+      "max": 2188.761999999995
+    },
+    "http-skip-all": {
+      "n": 3,
+      "p50": 857.281799999997,
+      "p95": 1842.0852000000014,
+      "max": 1842.0852000000014
+    },
+    "status-idle": {
+      "n": 20,
+      "p50": 209.93709999999555,
+      "p95": 265.86449999999604,
+      "max": 277.1854999999996
+    },
+    "overlap-default": {
+      "n": 1,
+      "p50": 14424.839100000005,
+      "p95": 14424.839100000005,
+      "max": 14424.839100000005
+    },
+    "overlap-status": {
+      "n": 1,
+      "p50": 195.17369999999937,
+      "p95": 195.17369999999937,
+      "max": 195.17369999999937
+    },
+    "overlap-skip": {
+      "n": 1,
+      "p50": 4397.100599999991,
+      "p95": 4397.100599999991,
+      "max": 4397.100599999991
+    }
+  },
+  "syncStages": {
+    "copyFingerprints": {
+      "ms": {
+        "n": 20,
+        "p50": 642.5291000004217,
+        "p95": 739.4259000002203,
+        "max": 794.3936000000394
+      },
+      "calls": {
+        "n": 20,
+        "p50": 1595,
+        "p95": 1595,
+        "max": 1595
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 2853455,
+        "p95": 2853455,
+        "max": 2853455
+      }
+    },
+    "copyWarnings": {
+      "ms": {
+        "n": 20,
+        "p50": 644.5601999999199,
+        "p95": 745.5892000006279,
+        "max": 782.0698000000266
+      },
+      "calls": {
+        "n": 20,
+        "p50": 1594,
+        "p95": 1594,
+        "max": 1594
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 2842102,
+        "p95": 2842102,
+        "max": 2842102
+      }
+    },
+    "prefix": {
+      "ms": {
+        "n": 20,
+        "p50": 2046.356099999699,
+        "p95": 2154.70950000007,
+        "max": 2176.8492000002007
+      },
+      "calls": {
+        "n": 20,
+        "p50": 1388,
+        "p95": 1388,
+        "max": 1388
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      }
+    },
+    "prefixRead": {
+      "ms": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "calls": {
+        "n": 20,
+        "p50": 43489,
+        "p95": 43489,
+        "max": 43489
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 2803376137,
+        "p95": 2803376137,
+        "max": 2803376137
+      }
+    },
+    "otherReadSync": {
+      "ms": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "calls": {
+        "n": 20,
+        "p50": 12921,
+        "p95": 12921,
+        "max": 12921
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 790871771,
+        "p95": 790871771,
+        "max": 790871771
+      }
+    },
+    "fold": {
+      "ms": {
+        "n": 20,
+        "p50": 92.36419999998179,
+        "p95": 124.29890000002342,
+        "max": 126.5544000000009
+      },
+      "calls": {
+        "n": 20,
+        "p50": 6,
+        "p95": 6,
+        "max": 6
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      }
+    },
+    "importMagpieRequestTimings": {
+      "ms": {
+        "n": 20,
+        "p50": 0.44230000002426095,
+        "p95": 0.6076000000030035,
+        "max": 0.7032000000035623
+      },
+      "calls": {
+        "n": 20,
+        "p50": 1,
+        "p95": 1,
+        "max": 1
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      }
+    },
+    "syncRound": {
+      "ms": {
+        "n": 20,
+        "p50": 7340.798700000014,
+        "p95": 8487.140199999994,
+        "max": 8924.136699999995
+      },
+      "calls": {
+        "n": 20,
+        "p50": 1,
+        "p95": 1,
+        "max": 1
+      },
+      "itemsOrBytes": {
+        "n": 20,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      }
+    }
+  },
+  "browser": {
+    "startedAt": "2026-10-26T13:44:47.210Z",
+    "finishedAt": "2026-10-26T14:07:23.251Z",
+    "version": "156.0.8078.4",
+    "firstMs": [
+      20643,
+      21076
+    ],
+    "n": 20,
+    "sessions": [
+      {
+        "startedAt": "2026-10-26T13:44:47.210Z",
+        "n": 10
+      },
+      {
+        "startedAt": "2026-10-26T13:56:28.330Z",
+        "finishedAt": "2026-10-26T14:07:23.251Z",
+        "n": 10
+      }
+    ],
+    "groups": {
+      "unchanged": {
+        "n": 4,
+        "fromCheckMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "fromWriteMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "statusChanged": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "deltas": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "claude": {
+        "n": 6,
+        "fromCheckMs": {
+          "n": 6,
+          "p50": 12019,
+          "p95": 21136,
+          "max": 21136
+        },
+        "fromWriteMs": {
+          "n": 6,
+          "p50": 71917,
+          "p95": 80984,
+          "max": 80984
+        },
+        "statusChanged": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "deltas": [
+          1000107,
+          1000107,
+          1000107,
+          1000107,
+          1000107,
+          1000107
+        ]
+      },
+      "codex-new": {
+        "n": 2,
+        "fromCheckMs": {
+          "n": 2,
+          "p50": 8900,
+          "p95": 13182,
+          "max": 13182
+        },
+        "fromWriteMs": {
+          "n": 2,
+          "p50": 59482,
+          "p95": 61129,
+          "max": 61129
+        },
+        "statusChanged": [
+          true,
+          true
+        ],
+        "deltas": [
+          1000107,
+          1000107
+        ]
+      },
+      "codex-append": {
+        "n": 4,
+        "fromCheckMs": {
+          "n": 4,
+          "p50": 11208,
+          "p95": 13624,
+          "max": 13624
+        },
+        "fromWriteMs": {
+          "n": 4,
+          "p50": 56388,
+          "p95": 60408,
+          "max": 60408
+        },
+        "statusChanged": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "deltas": [
+          1000107,
+          1000107,
+          1000107,
+          1000107
+        ]
+      },
+      "ledger": {
+        "n": 4,
+        "fromCheckMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "fromWriteMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "statusChanged": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "deltas": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "active": {
+      "fromCheckMs": {
+        "n": 12,
+        "p50": 12019,
+        "p95": 21136,
+        "max": 21136
+      },
+      "fromWriteMs": {
+        "n": 12,
+        "p50": 60408,
+        "p95": 80984,
+        "max": 80984
+      }
+    },
+    "requestIntervalsMs": {
+      "n": 18,
+      "p50": 59998,
+      "p95": 60010,
+      "max": 60010
+    },
+    "spinnerToTarget": [
+      {
+        "index": 1,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 2,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 3,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 4,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 7,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 8,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 1,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 2,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 3,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 6,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 7,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      },
+      {
+        "index": 9,
+        "offToTargetDomMs": 0,
+        "offToTargetFrameMs": 0
+      }
+    ],
+    "filters": [
+      {
+        "type": "filter-complete",
+        "preset": "month",
+        "ms": 2338
+      },
+      {
+        "type": "filter-complete",
+        "preset": "all",
+        "ms": 1885
+      },
+      {
+        "type": "filter-complete",
+        "preset": "today",
+        "ms": 693
+      },
+      {
+        "type": "filter-complete",
+        "preset": "month",
+        "ms": 2525
+      },
+      {
+        "type": "filter-complete",
+        "preset": "all",
+        "ms": 2121
+      },
+      {
+        "type": "filter-complete",
+        "preset": "today",
+        "ms": 749
+      }
+    ],
+    "twoTabs": {
+      "secondLoadMs": 12787,
+      "firstFilterAndJoinMs": 12787
+    },
+    "errors": [],
+    "memory": {
+      "nodePeakRSSKiB": 1331036,
+      "minSystemFreeGiB": 13.947441101074219,
+      "rssSamples": [
+        392933376,
+        380059648,
+        380059648,
+        722747392,
+        1034690560,
+        1119502336,
+        1292517376,
+        1103249408,
+        1298739200,
+        1118081024,
+        1318203392,
+        1317203968,
+        1317163008,
+        551202816,
+        551202816,
+        696287232,
+        991387648,
+        1004232704,
+        1077776384,
+        382410752,
+        381136896,
+        381136896,
+        698474496,
+        990281728,
+        1073750016,
+        1298796544,
+        1112973312,
+        1028345856,
+        1028861952,
+        1028861952,
+        451289088,
+        451248128,
+        751235072,
+        902840320,
+        1004544000,
+        1045450752,
+        1045577728,
+        1045577728,
+        759762944
+      ]
+    }
+  }
+}

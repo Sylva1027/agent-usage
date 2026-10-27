@@ -1,0 +1,208 @@
+{
+  "mode": "control-on",
+  "startedAt": "2026-10-26T14:09:21.730Z",
+  "samples": [
+    {
+      "label": "open",
+      "ms": 169.1162,
+      "rss": 81317888,
+      "maxRSSKiB": 79476
+    },
+    {
+      "label": "catchup-sync",
+      "ms": 11966.5271,
+      "rss": 960933888,
+      "maxRSSKiB": 938412,
+      "updatedFileCount": 5,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [
+        "zcode",
+        "opencode",
+        "main",
+        "main",
+        "main"
+      ],
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-0",
+      "ms": 7676.3103999999985,
+      "rss": 769024000,
+      "maxRSSKiB": 938816,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [],
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-1",
+      "ms": 7725.505400000002,
+      "rss": 718905344,
+      "maxRSSKiB": 938816,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [],
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-0",
+      "ms": 7594.9182999999975,
+      "rss": 778768384,
+      "maxRSSKiB": 938816,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [],
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-1",
+      "ms": 7872.792499999996,
+      "rss": 775970816,
+      "maxRSSKiB": 938816,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [],
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-2",
+      "ms": 7858.915500000003,
+      "rss": 783224832,
+      "maxRSSKiB": 938816,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "changedKinds": [],
+      "warnings": []
+    },
+    {
+      "label": "dashboard-today-0",
+      "ms": 3761.326000000001,
+      "rss": 770473984,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 2273154577,
+        "input": 2260639095,
+        "cached": 2199112448,
+        "output": 12515482,
+        "reasoning": 4663784
+      },
+      "hash": "ab52b3ad21d6630c511cdd1f96f0560b4508cafc4aa87f95a7448015b88152c5"
+    },
+    {
+      "label": "dashboard-today-1",
+      "ms": 778.819399999993,
+      "rss": 783716352,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 2273154577,
+        "input": 2260639095,
+        "cached": 2199112448,
+        "output": 12515482,
+        "reasoning": 4663784
+      },
+      "hash": "ab52b3ad21d6630c511cdd1f96f0560b4508cafc4aa87f95a7448015b88152c5"
+    },
+    {
+      "label": "dashboard-today-2",
+      "ms": 789.8276000000042,
+      "rss": 792653824,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 2273154577,
+        "input": 2260639095,
+        "cached": 2199112448,
+        "output": 12515482,
+        "reasoning": 4663784
+      },
+      "hash": "ab52b3ad21d6630c511cdd1f96f0560b4508cafc4aa87f95a7448015b88152c5"
+    },
+    {
+      "label": "dashboard-month-0",
+      "ms": 2751.2252000000008,
+      "rss": 790622208,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 17549766014,
+        "input": 17442079558,
+        "cached": 16962014430,
+        "output": 107686456,
+        "reasoning": 33327441
+      },
+      "hash": "136633bd15722514c1e9b758bbd6dc92a2e9f30114cc0a5a00a153d761bfdd63"
+    },
+    {
+      "label": "dashboard-month-1",
+      "ms": 2582.5316999999995,
+      "rss": 775278592,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 17549766014,
+        "input": 17442079558,
+        "cached": 16962014430,
+        "output": 107686456,
+        "reasoning": 33327441
+      },
+      "hash": "136633bd15722514c1e9b758bbd6dc92a2e9f30114cc0a5a00a153d761bfdd63"
+    },
+    {
+      "label": "dashboard-month-2",
+      "ms": 2502.0460999999996,
+      "rss": 806137856,
+      "maxRSSKiB": 938816,
+      "totals": {
+        "total": 17549766014,
+        "input": 17442079558,
+        "cached": 16962014430,
+        "output": 107686456,
+        "reasoning": 33327441
+      },
+      "hash": "136633bd15722514c1e9b758bbd6dc92a2e9f30114cc0a5a00a153d761bfdd63"
+    },
+    {
+      "label": "dashboard-all-0",
+      "ms": 2190.968799999995,
+      "rss": 946581504,
+      "maxRSSKiB": 940928,
+      "totals": {
+        "total": 19637022559,
+        "input": 19518007594,
+        "cached": 18964292479,
+        "output": 117653383,
+        "reasoning": 36378409
+      },
+      "hash": "923b2576b09196225789452575f22f51625e60e9599ead72118ec6fe3a9ed618"
+    },
+    {
+      "label": "dashboard-all-1",
+      "ms": 874.8271999999997,
+      "rss": 958574592,
+      "maxRSSKiB": 941672,
+      "totals": {
+        "total": 19637022559,
+        "input": 19518007594,
+        "cached": 18964292479,
+        "output": 117653383,
+        "reasoning": 36378409
+      },
+      "hash": "923b2576b09196225789452575f22f51625e60e9599ead72118ec6fe3a9ed618"
+    },
+    {
+      "label": "dashboard-all-2",
+      "ms": 1050.6140000000014,
+      "rss": 1002930176,
+      "maxRSSKiB": 1002228,
+      "totals": {
+        "total": 19637022559,
+        "input": 19518007594,
+        "cached": 18964292479,
+        "output": 117653383,
+        "reasoning": 36378409
+      },
+      "hash": "923b2576b09196225789452575f22f51625e60e9599ead72118ec6fe3a9ed618"
+    }
+  ],
+  "memory": [],
+  "freeGiB": 15.251571655273438,
+  "finishedAt": "2026-10-26T14:10:30.132Z",
+  "finalRss": 1003569152
+}

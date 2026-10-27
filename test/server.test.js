@@ -8,6 +8,8 @@ import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 
 import { createUsageServer as createUsageServerBase, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
+import { UsageStore } from "../src/usage-store.js";
+import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 import {
   getDefaultPricingCatalog,
   getPricingCatalog,
@@ -142,6 +144,22 @@ function r07PricingFetcher({ calls, models = [], rate = 6.8 }) {
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+}
+
+function magpieLedger(fixture) {
+  return jsonl(
+    fixture.timingRecords.map((record) => ({
+      agent: "codex",
+      provider: "codex",
+      req: `codex/${record.requestedModel}`,
+      model: record.requestedModel,
+      response_id: record.responseId,
+      status: 200,
+      ms: record.durationMs,
+      out: record.reportedOutputTokens,
+      ep: "/backend-api/codex/responses",
+    })),
+  );
 }
 
 function localHourKey(value) {
@@ -549,6 +567,170 @@ test("server reports status changes and refreshes cached usage reports", async (
     assert.equal(refreshed.summary.totals.total, 200);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Magpie ledger-only status retries failures and preserves skipped/frozen usage", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const options = fixture.serverOptions;
+  const ledgerFile = path.join(options.homeDir, ".config", "magpie", "usage.jsonl");
+  const server = createUsageServer(options);
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const get = async (query) => {
+      const response = await fetch(`${baseUrl}/api/${query}`);
+      const body = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(body));
+      return body;
+    };
+    const before = await get("usage?preset=all&view=dashboard");
+    const fullBefore = await get("usage?preset=all&detail=full&skipCheck=1");
+    assert.equal(before.summary.perf.models[0].n, 0);
+    assert.equal((await get(`status?since=${before.fingerprint}`)).changed, false);
+    const frozen = await get("usage?preset=all&freeze=1&skipCheck=1");
+    assert.equal(frozen.fingerprint, before.fingerprint);
+
+    await mkdir(path.dirname(ledgerFile), { recursive: true });
+    await writeFile(ledgerFile, magpieLedger(fixture));
+    const observed = await get(`status?since=${before.fingerprint}`);
+    assert.equal(observed.changed, true);
+    assert.equal((await get(`status?since=${before.fingerprint}`)).fingerprint, observed.fingerprint);
+    const skipped = await get("usage?preset=all&view=dashboard&skipCheck=1");
+    assert.equal(skipped.fingerprint, before.fingerprint);
+    assert.equal(skipped.summary.perf.models[0].n, 0);
+    assert.equal((await get("usage?preset=all&detail=full&skipCheck=1")).fingerprint, fullBefore.fingerprint);
+    const skippedFreeze = await get("usage?preset=all&freeze=1&skipCheck=1");
+    assert.equal(skippedFreeze.fingerprint, before.fingerprint);
+
+    const connection = new DatabaseSync(options.databaseFile);
+    try {
+      connection.exec(`CREATE TRIGGER reject_magpie BEFORE INSERT ON perf_request_timing_evidence
+        BEGIN SELECT RAISE(FAIL, 'injected Magpie import failure'); END`);
+    } finally {
+      connection.close();
+    }
+    const failed = await get("usage?preset=all&view=dashboard");
+    assert.equal(failed.fingerprint, before.fingerprint);
+    assert.equal(failed.summary.perf.models[0].n, 0);
+    assert.equal((await get(`status?since=${failed.fingerprint}`)).changed, true);
+    const recovery = new DatabaseSync(options.databaseFile);
+    try {
+      recovery.exec("DROP TRIGGER reject_magpie");
+    } finally {
+      recovery.close();
+    }
+
+    const published = await get("usage?preset=all&view=dashboard");
+    assert.deepEqual(published.summary.totals, before.summary.totals);
+    assert.equal(published.summary.perf.models[0].n, fixture.expected.n);
+    assert.equal(published.summary.perf.models[0].averageTps, fixture.expected.tps.pooled);
+    assert.equal((await get(`status?since=${published.fingerprint}`)).changed, false);
+    assert.notEqual((await get("usage?preset=all&detail=full&skipCheck=1")).fingerprint, fullBefore.fingerprint);
+    const frozenAfter = await get(`usage?preset=all&snapshot=${frozen.snapshotId}`);
+    assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
+    assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
+
+    let current = published;
+    const unmatched = {
+      agent: "codex",
+      req: "codex/missing-model",
+      response_id: "unmatched-response",
+      status: 200,
+      ms: 1000,
+      out: 100,
+      ep: "/backend-api/codex/responses",
+    };
+    for (const extra of ["invalid\n", jsonl([unmatched])]) {
+      await appendFile(ledgerFile, extra);
+      assert.equal((await get(`status?since=${current.fingerprint}`)).changed, true);
+      const ignored = await get("usage?preset=all&view=dashboard");
+      assert.deepEqual(ignored.summary.totals, published.summary.totals);
+      assert.deepEqual(ignored.summary.perf.models, published.summary.perf.models);
+      assert.equal((await get(`status?since=${ignored.fingerprint}`)).changed, false);
+      current = ignored;
+    }
+  } finally {
+    await server.close();
+    fixture.close();
+  }
+});
+
+test("Magpie publication across workers keeps skipped usage and frozen confirmation consistent", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const first = createUsageServer(fixture.serverOptions);
+  const second = createUsageServer(fixture.serverOptions);
+  try {
+    await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
+    const firstBase = `http://127.0.0.1:${first.address().port}`;
+    const before = await fetch(`${firstBase}/api/usage?preset=all`).then((response) => response.json());
+    const ledgerFile = path.join(fixture.serverOptions.homeDir, ".config", "magpie", "usage.jsonl");
+    await mkdir(path.dirname(ledgerFile), { recursive: true });
+    await writeFile(ledgerFile, magpieLedger(fixture));
+    await new Promise((resolve) => second.listen(0, "127.0.0.1", resolve));
+    const secondBase = `http://127.0.0.1:${second.address().port}`;
+    const published = await fetch(`${secondBase}/api/usage?preset=all`).then((response) => response.json());
+    assert.equal(published.summary.perf.models[0].n, fixture.expected.n);
+    const status = await fetch(`${firstBase}/api/status?since=${before.fingerprint}`).then((response) =>
+      response.json(),
+    );
+    assert.equal(status.changed, true);
+    assert.equal(status.fingerprint, published.fingerprint);
+    const skipped = await fetch(`${firstBase}/api/usage?preset=all&skipCheck=1`).then((response) => response.json());
+    assert.equal(skipped.fingerprint, published.fingerprint);
+    assert.deepEqual(skipped.summary.perf.models, published.summary.perf.models);
+    const frozen = await fetch(`${firstBase}/api/usage?preset=all&freeze=1&skipCheck=1`).then((response) =>
+      response.json(),
+    );
+    assert.equal(frozen.fingerprint, published.fingerprint);
+    await appendFile(ledgerFile, "invalid\n");
+    await fetch(`${secondBase}/api/usage?preset=all`).then((response) => response.json());
+    const frozenAfter = await fetch(`${firstBase}/api/usage?preset=all&snapshot=${frozen.snapshotId}`).then(
+      (response) => response.json(),
+    );
+    assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
+    assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
+  } finally {
+    await first.close();
+    await second.close();
+    fixture.close();
+  }
+});
+
+test("Magpie imported runtime uses its published confirmation and ignores the local ledger", async () => {
+  const fixture = await makeFixtureHome();
+  const options = { ...fixture, env: {}, automaticDiscoveryEnabled: false };
+  const ledgerFile = path.join(fixture.homeDir, ".config", "magpie", "usage.jsonl");
+  const store = new UsageStore(options);
+  let server;
+  try {
+    await mkdir(path.dirname(ledgerFile), { recursive: true });
+    await writeFile(ledgerFile, "invalid\n");
+    const seeded = await store.sync({ options });
+    assert.match(seeded.magpieTimingFingerprint, /^[a-f0-9]{64}$/);
+    store.close();
+    server = createUsageServer({
+      ...options,
+      importContext: { pricingCatalog: structuredClone(getPricingCatalog()), serviceTierEvidenceSnapshot: null },
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const before = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    assert.equal(before.summary.totals.total, 123);
+    const unchanged = await fetch(`${baseUrl}/api/status?since=${before.fingerprint}`).then((response) =>
+      response.json(),
+    );
+    assert.equal(unchanged.changed, false);
+    await appendFile(ledgerFile, "changed local ledger\n");
+    const status = await fetch(`${baseUrl}/api/status?since=${before.fingerprint}`).then((response) => response.json());
+    assert.equal(status.changed, false);
+    assert.equal(status.fingerprint, before.fingerprint);
+    const frozen = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
+    assert.equal(frozen.fingerprint, before.fingerprint);
+  } finally {
+    store.close();
+    await server?.close();
+    await rm(fixture.homeDir, { recursive: true, force: true });
   }
 });
 

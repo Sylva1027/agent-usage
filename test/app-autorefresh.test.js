@@ -1943,6 +1943,260 @@ if (!HARNESS_ONLY) {
     }
   });
 
+  for (const supersede of [null, "reload", "pause"]) {
+    test(`TPS-only refresh: ${supersede || "slow response"} updates the model while tokens stay equal`, async () => {
+      const payloads = await loadRecordedPayloads();
+      const withTps = (averageTps, n) => {
+        const payload = clone(payloads.today);
+        payload.fingerprint = `t1-tps-${averageTps}-${n}`;
+        payload.summary.perf = {
+          models: [
+            {
+              key: '["codex","t1-model","high",""]',
+              sourceKind: "codex",
+              model: "t1-model",
+              reasoningEffort: "high",
+              modelProvider: "",
+              window: "turn",
+              firstSampleAtMs: Date.parse("2026-10-09T00:00:00.000Z"),
+              lastSampleAtMs: Date.parse("2026-10-09T00:00:00.000Z"),
+              averageTps,
+              p10: averageTps / 2,
+              p90: averageTps * 2,
+              n,
+              state: "ok",
+              rankState: "eligible",
+              rank: 1,
+            },
+          ],
+        };
+        return payload;
+      };
+      const before = withTps(40, 20);
+      const live = withTps(80, 21);
+      const replacement = withTps(120, 22);
+      replacement.summary.range.preset = supersede === "reload" ? "month" : "today";
+      replacement.snapshotId = supersede === "pause" ? "t1-frozen-tps" : null;
+      let releaseLive;
+      const liveGate = new Promise((resolve) => {
+        releaseLive = resolve;
+      });
+      let refreshing = false;
+      const router = createRouter({
+        payloads,
+        status: () => ({ payload: { changed: true, fingerprint: live.fingerprint } }),
+        usage: ({ request }) => {
+          if (!refreshing) return { payload: before };
+          if (request.params.preset === "month" || request.params.freeze === "1" || request.params.snapshot) {
+            return { payload: replacement };
+          }
+          return liveGate;
+        },
+      });
+      const harness = await createCycleHarness({
+        response: router,
+        initial: { preset: "today" },
+        storage: { codexUsageAutoRefresh: "on" },
+      });
+      let checking;
+      try {
+        await harness.settle();
+        const models = harness.dom.byId.get("perfModels");
+        const total = harness.dom.byId.get("totalTokens");
+        const output = harness.dom.byId.get("outputTokens");
+        const spinner = harness.dom.byId.get("autoRefreshSpinner");
+        const oldHtml = models.innerHTML;
+        const oldTokens = [total.textContent, output.textContent];
+        assert.match(oldHtml, /<strong>40(?:\.0)?<\/strong>/);
+        assert.match(oldHtml, /20 个回合/);
+        harness.resetCounts();
+        refreshing = true;
+        let completed = false;
+        checking = harness.api.checkForUpdates().then(() => {
+          completed = true;
+        });
+        await harness.flush();
+        assert.equal(harness.pendingFetches, 1);
+        assert.equal(completed, false);
+        assert.equal(harness.state.autoRefreshCheckInFlight, true);
+        assert.equal(spinner.classList.contains("is-loading"), true);
+        assert.equal(harness.counts.renders, 0);
+        assert.equal(models.innerHTML, oldHtml, "a status change alone must not display the new TPS");
+        assert.equal(harness.state.fingerprint, before.fingerprint);
+        await harness.tickWhilePending();
+        assert.equal(harness.counts.statusChecks, 1, "the next tick must not overlap a slow TPS request");
+        assert.equal(harness.counts.usageSyncs, 1);
+
+        if (supersede === "reload") {
+          harness.state.preset = "month";
+          await harness.api.loadUsage({ skipCheck: true });
+        } else if (supersede === "pause") {
+          harness.api.setAutoRefreshEnabled(false);
+          await harness.flush();
+          assert.equal(harness.fetchLog.at(-1).params.freeze, "1");
+          assert.equal(harness.state.snapshotId, replacement.snapshotId);
+        }
+        const currentHtml = models.innerHTML;
+        releaseLive({ payload: live });
+        await checking;
+        await harness.settle();
+        const expected = supersede ? replacement : live;
+        assert.deepEqual(clone(harness.state.summary.perf), expected.summary.perf);
+        assert.deepEqual(clone(harness.state.summary.totals), before.summary.totals);
+        assert.deepEqual([total.textContent, output.textContent], oldTokens);
+        assert.equal(harness.state.fingerprint, expected.fingerprint);
+        assert.equal(harness.state.selectedPerfModelKey, expected.summary.perf.models[0].key);
+        assert.match(models.innerHTML, supersede ? /<strong>120(?:\.0)?<\/strong>/ : /<strong>80(?:\.0)?<\/strong>/);
+        assert.match(models.innerHTML, supersede ? /22 个回合/ : /21 个回合/);
+        assert.notEqual(models.innerHTML, oldHtml, "TPS and n must change even while both token labels stay equal");
+        assert.equal(harness.counts.renders, 1);
+        assert.equal(spinner.classList.contains("is-loading"), false);
+        assert.equal(harness.state.autoRefreshCheckInFlight, false);
+        if (supersede) {
+          assert.equal(models.innerHTML, currentHtml, "a stale live response must not overwrite the new result");
+        }
+        if (supersede === "pause") {
+          await harness.api.loadUsage({ skipCheck: true });
+          assert.equal(harness.fetchLog.at(-1).params.snapshot, replacement.snapshotId);
+          assert.equal(models.innerHTML, currentHtml, "subsequent paused reads keep the frozen TPS and n");
+          assert.equal(harness.state.autoRefreshEnabled, false);
+        }
+      } finally {
+        releaseLive({ payload: live });
+        try {
+          await checking;
+          await harness.settle();
+        } finally {
+          harness.dispose();
+        }
+      }
+    });
+  }
+
+  for (const supersede of [null, "reload", "pause"]) {
+    for (const fail of [false, true]) {
+      test(`quota preset correction: ${supersede || "current"}, ${fail ? "failure" : "success"}`, async () => {
+        const payloads = await loadRecordedPayloads();
+        const invalidQuota = clone(payloads.quota_5h);
+        invalidQuota.metadata.homes = [];
+        invalidQuota.summary.totals.total = 9_000_000_000;
+        const today = clone(payloads.today);
+        today.metadata.homes = [];
+        today.summary.totals.total = 2_000_000_000;
+        const replacement = clone(today);
+        replacement.summary.range.preset = supersede === "reload" ? "month" : "today";
+        replacement.snapshotId = supersede === "pause" ? "paused-snapshot" : null;
+        let releaseCorrection;
+        const correctionGate = new Promise((resolve) => {
+          releaseCorrection = resolve;
+        });
+        let releaseReplacement;
+        const replacementGate = new Promise((resolve) => {
+          releaseReplacement = resolve;
+        });
+        let correcting = false;
+        let followupRequests = 0;
+        const router = createRouter({
+          payloads,
+          status: () => ({ payload: { changed: true, fingerprint: today.fingerprint } }),
+          usage: ({ request }) => {
+            if (!correcting) return { payload: payloads.quota_5h };
+            if (request.params.preset === "quota_5h") return { payload: invalidQuota };
+            followupRequests += 1;
+            return followupRequests === 1 ? correctionGate : replacementGate;
+          },
+        });
+        const harness = await createCycleHarness({
+          response: router,
+          initial: { preset: "quota_5h" },
+          storage: { codexUsageAutoRefresh: "on" },
+        });
+        let checking;
+        try {
+          await harness.settle();
+          const spinner = harness.dom.byId.get("autoRefreshSpinner");
+          const total = harness.dom.byId.get("totalTokens");
+          const before = total.textContent;
+          const rendered = [];
+          const render = harness.context.render;
+          harness.context.render = (...args) => {
+            const result = render(...args);
+            rendered.push({
+              preset: harness.state.summary.range.preset,
+              busy: spinner.classList.contains("is-loading"),
+              tokens: total.textContent,
+            });
+            return result;
+          };
+          harness.resetCounts();
+          correcting = true;
+          let completed = false;
+          checking = harness.api.checkForUpdates().then(() => {
+            completed = true;
+          });
+          await harness.flush();
+          assert.equal(harness.state.preset, "today");
+          assert.equal(harness.counts.usageSyncs, 2);
+          assert.equal(harness.counts.skipCheckSyncs, 1);
+          assert.equal(harness.pendingFetches, 1);
+          assert.equal(completed, false, "the check must await the corrected request");
+          assert.equal(spinner.classList.contains("is-loading"), true);
+          assert.equal(harness.counts.renders, 0, "the mismatched quota payload must not render");
+          assert.equal(total.textContent, before);
+
+          if (supersede === "reload") {
+            harness.state.preset = "month";
+            void harness.api.loadUsage({ skipCheck: true });
+          } else if (supersede === "pause") {
+            harness.api.setAutoRefreshEnabled(false);
+            assert.equal(spinner.classList.contains("is-loading"), false);
+            assert.equal(harness.fetchLog.at(-1).params.freeze, "1");
+          }
+          releaseCorrection(
+            fail ? { status: 500, payload: { error: "corrected request failed" } } : { payload: today },
+          );
+          await checking;
+
+          if (supersede) {
+            assert.equal(harness.pendingFetches, 1);
+            assert.equal(harness.counts.renders, 0, "stale success must not render");
+            assert.equal(harness.counts.statusErrors, 0, "stale failure must not replace the current status");
+            assert.equal(spinner.classList.contains("is-loading"), supersede === "reload");
+            assert.equal(total.textContent, before);
+            releaseReplacement({ payload: replacement });
+            await harness.settle();
+          } else if (fail) {
+            assert.equal(harness.state.fingerprint, "", "the next cycle must retry the failed range");
+            assert.equal(harness.counts.statusErrors, 1);
+            assert.match(harness.dom.byId.get("autoRefreshErrorText").value, /corrected request failed/);
+            assert.equal(harness.counts.renders, 0);
+            assert.equal(total.textContent, before);
+          }
+          assert.equal(spinner.classList.contains("is-loading"), false);
+          if (supersede || !fail) {
+            assert.deepEqual(rendered, [
+              {
+                preset: supersede === "reload" ? "month" : "today",
+                busy: supersede !== "pause",
+                tokens: total.textContent,
+              },
+            ]);
+            assert.notEqual(total.textContent, before, "the corrected tokens must be visible");
+            assert.equal(harness.state.summary.totals.total, today.summary.totals.total);
+            assert.equal(harness.counts.statusErrors, 0);
+          }
+          assert.equal(harness.state.autoRefreshCheckInFlight, false);
+        } finally {
+          releaseCorrection({ payload: today });
+          releaseReplacement({ payload: replacement });
+          await checking;
+          await harness.settle();
+          harness.dispose();
+        }
+      });
+    }
+  }
+
   if (REAL_CYCLE) {
     test("U4 real 60s cycle: the product's own interval actually probes once per period", async () => {
       const payloads = await loadRecordedPayloads();

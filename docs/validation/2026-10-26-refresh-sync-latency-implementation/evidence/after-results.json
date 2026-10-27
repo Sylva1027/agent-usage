@@ -1,0 +1,674 @@
+{
+  "mode": "after",
+  "rounds": 20,
+  "now": "2026-10-26T15:00:00.000Z",
+  "samples": [
+    {
+      "label": "open",
+      "ms": 166.78,
+      "rss": 81698816
+    },
+    {
+      "label": "catchup-sync",
+      "ms": 10288.844500000001,
+      "rss": 726638592,
+      "updatedFileCount": 5,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-0",
+      "ms": 2752.5939,
+      "rss": 554934272,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "settle-sync-1",
+      "ms": 2703.6489999999994,
+      "rss": 568492032,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-0",
+      "ms": 2555.4331999999995,
+      "rss": 514998272,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-1",
+      "ms": 2651.9127000000008,
+      "rss": 574885888,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-2",
+      "ms": 2614.7369,
+      "rss": 549560320,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-3",
+      "ms": 2610.3162999999986,
+      "rss": 575713280,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-4",
+      "ms": 2635.4716000000008,
+      "rss": 580067328,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-5",
+      "ms": 2714.902399999999,
+      "rss": 572133376,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-6",
+      "ms": 2608.037900000003,
+      "rss": 575070208,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-7",
+      "ms": 2613.587099999997,
+      "rss": 552206336,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-8",
+      "ms": 3105.675900000002,
+      "rss": 574160896,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-9",
+      "ms": 2721.3566999999966,
+      "rss": 572596224,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-10",
+      "ms": 2629.7656999999963,
+      "rss": 575328256,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-11",
+      "ms": 2631.223699999995,
+      "rss": 578170880,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-12",
+      "ms": 2548.5031000000017,
+      "rss": 517877760,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-13",
+      "ms": 2581.876599999996,
+      "rss": 578691072,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-14",
+      "ms": 2630.108,
+      "rss": 576528384,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-15",
+      "ms": 2642.5903000000035,
+      "rss": 577392640,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-16",
+      "ms": 2809.8677000000025,
+      "rss": 575414272,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-17",
+      "ms": 2496.4907999999996,
+      "rss": 576901120,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-18",
+      "ms": 2564.7819999999992,
+      "rss": 583921664,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "unchanged-sync-19",
+      "ms": 2676.6171999999933,
+      "rss": 580272128,
+      "updatedFileCount": 0,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "warnings": []
+    },
+    {
+      "label": "dashboard-today-first",
+      "ms": 2270.3467999999993,
+      "rss": 534626304,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-0",
+      "ms": 475.25909999999567,
+      "rss": 567230464,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-1",
+      "ms": 468.70109999999113,
+      "rss": 605335552,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-2",
+      "ms": 513.3744000000006,
+      "rss": 638320640,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-3",
+      "ms": 476.3133000000089,
+      "rss": 646180864,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-4",
+      "ms": 455.91130000000703,
+      "rss": 652824576,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-5",
+      "ms": 468.51660000000265,
+      "rss": 660549632,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-6",
+      "ms": 504.4631999999983,
+      "rss": 705019904,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-7",
+      "ms": 491.08890000000247,
+      "rss": 704954368,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-8",
+      "ms": 468.4956999999995,
+      "rss": 715423744,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-9",
+      "ms": 458.31170000000566,
+      "rss": 723312640,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-10",
+      "ms": 459.8229999999894,
+      "rss": 732008448,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-11",
+      "ms": 454.2868000000017,
+      "rss": 738779136,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-12",
+      "ms": 489.9007999999885,
+      "rss": 715165696,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-13",
+      "ms": 467.8359999999957,
+      "rss": 721854464,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-14",
+      "ms": 452.9469000000099,
+      "rss": 728604672,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-15",
+      "ms": 452.4508999999962,
+      "rss": 735440896,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-16",
+      "ms": 466.429999999993,
+      "rss": 742191104,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-17",
+      "ms": 488.2639999999956,
+      "rss": 715235328,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-18",
+      "ms": 458.7647999999899,
+      "rss": 724770816,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-today-warm-19",
+      "ms": 467.0636999999988,
+      "rss": 731557888,
+      "hash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc"
+    },
+    {
+      "label": "dashboard-month-first",
+      "ms": 1528.2992999999988,
+      "rss": 752078848,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-0",
+      "ms": 1564.4464000000007,
+      "rss": 757915648,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-1",
+      "ms": 1541.6815999999963,
+      "rss": 908251136,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-2",
+      "ms": 1580.1800999999978,
+      "rss": 909602816,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-3",
+      "ms": 1519.2609999999986,
+      "rss": 890875904,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-4",
+      "ms": 1556.9326999999903,
+      "rss": 902176768,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-5",
+      "ms": 1726.7872999999963,
+      "rss": 913379328,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-6",
+      "ms": 1648.1261999999988,
+      "rss": 928514048,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-7",
+      "ms": 1570.752999999997,
+      "rss": 910594048,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-8",
+      "ms": 1577.6693999999989,
+      "rss": 921337856,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-9",
+      "ms": 1621.086599999995,
+      "rss": 932360192,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-10",
+      "ms": 1679.4040999999997,
+      "rss": 931938304,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-11",
+      "ms": 1577.0527000000002,
+      "rss": 911196160,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-12",
+      "ms": 1628.298299999995,
+      "rss": 923795456,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-13",
+      "ms": 1547.0208999999886,
+      "rss": 934858752,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-14",
+      "ms": 1598.7307,
+      "rss": 928411648,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-15",
+      "ms": 1615.6324999999924,
+      "rss": 910999552,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-16",
+      "ms": 1600.085899999991,
+      "rss": 921808896,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-17",
+      "ms": 1557.5322999999917,
+      "rss": 932720640,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-18",
+      "ms": 1572.6193000000058,
+      "rss": 929202176,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-month-warm-19",
+      "ms": 1554.0053000000044,
+      "rss": 911269888,
+      "hash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d"
+    },
+    {
+      "label": "dashboard-all-first",
+      "ms": 1374.982799999998,
+      "rss": 934727680,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-0",
+      "ms": 54.86779999999271,
+      "rss": 937750528,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-1",
+      "ms": 50.76630000000296,
+      "rss": 945549312,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-2",
+      "ms": 59.19999999999709,
+      "rss": 953745408,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-3",
+      "ms": 51.26239999999234,
+      "rss": 960958464,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-4",
+      "ms": 58.233299999992596,
+      "rss": 969150464,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-5",
+      "ms": 71.07069999999658,
+      "rss": 936509440,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-6",
+      "ms": 51.218800000002375,
+      "rss": 947253248,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-7",
+      "ms": 50.617900000012014,
+      "rss": 949874688,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-8",
+      "ms": 52.50869999999122,
+      "rss": 959836160,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-9",
+      "ms": 51.11819999999716,
+      "rss": 962457600,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-10",
+      "ms": 53.26469999999972,
+      "rss": 972357632,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-11",
+      "ms": 49.533500000005006,
+      "rss": 974979072,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-12",
+      "ms": 52.1869999999908,
+      "rss": 984940544,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-13",
+      "ms": 50.72479999999632,
+      "rss": 987561984,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-14",
+      "ms": 54.45369999999821,
+      "rss": 997462016,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-15",
+      "ms": 50.18309999999474,
+      "rss": 1000022016,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-16",
+      "ms": 70.45960000000196,
+      "rss": 937238528,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-17",
+      "ms": 52.3521000000037,
+      "rss": 947200000,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-18",
+      "ms": 52.51050000000396,
+      "rss": 949821440,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    },
+    {
+      "label": "dashboard-all-warm-19",
+      "ms": 52.9997000000003,
+      "rss": 959782912,
+      "hash": "6ef59cc9701f8e56961bc857284a7bf5899245ba724f986df9236a3faa62efae"
+    }
+  ],
+  "freeGiB": [
+    14.70334243774414,
+    13.995704650878906,
+    14.027584075927734,
+    13.966411590576172,
+    13.987873077392578,
+    13.892036437988281,
+    13.943988800048828,
+    13.926753997802734,
+    13.916389465332031,
+    13.929290771484375,
+    13.819580078125,
+    13.52120590209961,
+    13.582283020019531,
+    13.565948486328125,
+    13.849231719970703,
+    13.99551773071289,
+    13.89577865600586,
+    14.042102813720703,
+    14.023666381835938,
+    13.9993896484375,
+    13.901802062988281,
+    13.890602111816406,
+    13.936725616455078,
+    13.90804672241211,
+    14.088134765625,
+    14.022930145263672,
+    13.967159271240234,
+    13.942314147949219,
+    13.950687408447266,
+    13.945323944091797,
+    13.93408203125,
+    13.906078338623047,
+    13.893997192382812,
+    13.931873321533203,
+    13.917526245117188,
+    13.906414031982422,
+    13.885326385498047,
+    13.909603118896484,
+    13.871906280517578,
+    13.866943359375,
+    13.859230041503906,
+    13.835029602050781,
+    13.85202407836914,
+    13.846332550048828,
+    13.895381927490234,
+    13.892425537109375,
+    13.861515045166016,
+    13.742481231689453,
+    13.719402313232422,
+    13.730987548828125,
+    13.707557678222656,
+    13.447662353515625,
+    13.509082794189453,
+    13.615264892578125,
+    13.51986312866211,
+    13.315132141113281,
+    13.302547454833984,
+    13.626590728759766,
+    13.442264556884766,
+    13.530006408691406,
+    13.49981689453125,
+    13.51937484741211,
+    13.71114730834961,
+    13.691513061523438,
+    13.687137603759766,
+    13.751079559326172,
+    13.715076446533203,
+    13.702144622802734,
+    13.694404602050781,
+    13.693641662597656,
+    13.687599182128906,
+    13.679084777832031,
+    13.709159851074219,
+    13.698074340820312,
+    13.696296691894531,
+    13.687126159667969,
+    13.693538665771484,
+    13.684864044189453,
+    13.678306579589844,
+    13.670570373535156,
+    13.670661926269531,
+    13.665668487548828,
+    13.6630859375,
+    13.71917724609375,
+    13.702049255371094,
+    13.697673797607422,
+    13.683528900146484
+  ],
+  "maxRSSKiB": 998972,
+  "tables": {
+    "events": 135873,
+    "source_files": 1597,
+    "perf_samples": 53161,
+    "perf_codex_projections": 1388,
+    "perf_rollout_threads": 1394,
+    "archive_segments": 0
+  },
+  "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+  "finishedAt": "2026-10-26T15:53:16.330Z"
+}

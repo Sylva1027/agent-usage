@@ -1,0 +1,14 @@
+[
+  {
+    "finishedAt": "2026-10-27T00:26:22.4249022+08:00",
+    "exitCode": 0,
+    "scenario": "quota-before",
+    "restoreCheckExitCode": 0
+  },
+  {
+    "finishedAt": "2026-10-27T00:26:47.3822495+08:00",
+    "exitCode": 0,
+    "scenario": "quota-after",
+    "restoreCheckExitCode": 0
+  }
+]

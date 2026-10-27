@@ -1,0 +1,251 @@
+{
+  "capturedAt": "2026-10-26T22:42:18.2440731+08:00",
+  "files": [
+    {
+      "sha256": "6d898ef1df518400720f551b06bb7371c031d4e9bfbde77afbe9f254373aa5b1",
+      "path": "src\\claude-code-usage.js"
+    },
+    {
+      "sha256": "8a624fcad93cd0edaa78cd409b0756f772fec67f2e822a529ce5b10d1ec8eac2",
+      "path": "src\\cli.js"
+    },
+    {
+      "sha256": "986891a4e5cd4631cb514e1fa49ec4e61d36a946f4835fff4da95266b3533b20",
+      "path": "src\\codex-rollout.js"
+    },
+    {
+      "sha256": "6448e75531ea2ed817b075a3664e9ee499e4d8b57ea00477f736c71ada4f342f",
+      "path": "src\\dsh-usage.js"
+    },
+    {
+      "sha256": "70380d533e4464f99bc810d38e30f4857922455d552f2f228cc88badcd01aa29",
+      "path": "src\\history-archive.js"
+    },
+    {
+      "sha256": "bb20002e3fc2025d7db64f5536177df0771c24152b6d0183ab4fd247f06fa52d",
+      "path": "src\\history-backup.js"
+    },
+    {
+      "sha256": "df962a6c3ec2e3ab7322444b595b13e3d1a6bfa7a49ee2aff75f1e3eed14aa9a",
+      "path": "src\\history-quote-inputs.js"
+    },
+    {
+      "sha256": "8c9e62cceeaa5be1e956fd8dabdb36d16d05cd3266ca6d9bb6cd180e971df2b7",
+      "path": "src\\opencode-usage.js"
+    },
+    {
+      "sha256": "dadd7f19f9ba93877f94caacfdb9b5718b2bc0d3e1c2a382651cf062ea6015ed",
+      "path": "src\\perf-magpie-timing.js"
+    },
+    {
+      "sha256": "91cb01ce1bb79418789288499c4b5935b025ac48661281e665dc529badad6084",
+      "path": "src\\perf-request-timing-store.js"
+    },
+    {
+      "sha256": "8b96ce7f6e86d7476b949635f3848464a2af8149acdfb7b08276d51fbe2d2414",
+      "path": "src\\perf-request-timing.js"
+    },
+    {
+      "sha256": "1f4c9c454e797be0b4d0664d818529b28c31ec7b7496de61cc46a2bd6adc6c21",
+      "path": "src\\perf-stats.js"
+    },
+    {
+      "sha256": "2651f48c1af92132117a266af6977bf0d99bc3c7046c51f1c32d48a10e20d583",
+      "path": "src\\pricing-auto.js"
+    },
+    {
+      "sha256": "ed52f397b1dcec15c74f6176b542b01be0daf50d0bb032e3f948c35e827134e2",
+      "path": "src\\pricing-store.js"
+    },
+    {
+      "sha256": "648f562e5cc7af87ae153634ec0ca8d5d6146cd5e7d2a9ef0f4758c1812aa771",
+      "path": "src\\pricing.js"
+    },
+    {
+      "sha256": "8ffaef90b7be403eee3adb1e3a60a242d813899f5f5fc9c803fee9f8ae3ec6a1",
+      "path": "src\\repository-identity.js"
+    },
+    {
+      "sha256": "4395fee6415ed223a7ce5280b7e616c93132e598e6837b86f473d9d4abd011d7",
+      "path": "src\\server.js"
+    },
+    {
+      "sha256": "eab76722ecf42b3803ee70488a3bbf7e11003811d26630ac12dfc217134f230c",
+      "path": "src\\service-tier-evidence.js"
+    },
+    {
+      "sha256": "fa3733197e2f86addae9a6bde0f62b9163491915b9e3f042473ebfc1a87457b6",
+      "path": "src\\usage-core.js"
+    },
+    {
+      "sha256": "f70c9cf8db992723da486d5106e308d30eac544d5471e3938f1cea0f7b81b783",
+      "path": "src\\usage-executor.js"
+    },
+    {
+      "sha256": "30db3e95ada72742abcacb5effa9c507d72bbf8e9452262a4d029c7a593e3bff",
+      "path": "src\\usage-rollups.js"
+    },
+    {
+      "sha256": "3e66f0c9e6fe222b91635abfa677819f971cc821635499a5802e2fb8380f5170",
+      "path": "src\\usage-store.js"
+    },
+    {
+      "sha256": "f4244bb07b6d7922608d3bc150c5bc6ad0e926784e7a547d2bda69ffb73d2306",
+      "path": "src\\usage-types.js"
+    },
+    {
+      "sha256": "d1518cc988e666e9e32a88bb5e664fbec4be78afc23d880f371e6c1d72e5492c",
+      "path": "src\\workbuddy-usage.js"
+    },
+    {
+      "sha256": "647a03c7664dbb172b6c9f1dfab33d1d417673be17203e7a657f4dab497da35f",
+      "path": "src\\zcode-usage.js"
+    },
+    {
+      "sha256": "38590779ab0f805def322fdb375990957b75227f2441011dda523cc3f1a2df08",
+      "path": "src\\perf-sources\\claude.js"
+    },
+    {
+      "sha256": "eb2aad793983654e2f851ae5a1a7da725cce41f6a9b3dff41452459be4cfaa07",
+      "path": "src\\perf-sources\\codex-candidates.js"
+    },
+    {
+      "sha256": "19a44070ce2242e56aff169eebd4bc690a7ede03bf46b8d6ba5a5a74d0ec02bc",
+      "path": "src\\perf-sources\\codex-fold.js"
+    },
+    {
+      "sha256": "d3a655151ff4576f9c617aa3d34dcd6e52b01894c1eec215dadafe9d9d6a8c7c",
+      "path": "src\\perf-sources\\codex-jsonl.js"
+    },
+    {
+      "sha256": "5221136782061b4a30587280241811320b40a74038f224ee5c81aad092bc0135",
+      "path": "src\\perf-sources\\codex-request-timing.js"
+    },
+    {
+      "sha256": "fbac89c9132c314d144cfc2a55e89e6dd0821b7e74a635a0537eb51eac506a92",
+      "path": "src\\perf-sources\\codex-thread.js"
+    },
+    {
+      "sha256": "d2ffb3c1c4b9ca7311971bf8051fd03ec3ca8aba028935b1756ba5889fe1388f",
+      "path": "src\\perf-sources\\dsh.js"
+    },
+    {
+      "sha256": "e3fa74c120041d38c8a268825d298e3978a285ff0349f46606396a09d152aa78",
+      "path": "src\\perf-sources\\index.js"
+    },
+    {
+      "sha256": "1d04c1ea1549477913d32628b5c9ba35ea56055300a88cbb7df54cf9c4b10066",
+      "path": "src\\perf-sources\\opencode.js"
+    },
+    {
+      "sha256": "4d648960b1dc9a890796e5ebe9174a8d6f3e7d700809d4c905f9a368c2c9d4a0",
+      "path": "src\\perf-sources\\workbuddy.js"
+    },
+    {
+      "sha256": "e63279252a77e27ef46b21f3178b359b1ae6c7e12e8d4eea1c4473d006a356f5",
+      "path": "src\\perf-sources\\zcode.js"
+    },
+    {
+      "sha256": "bc9c51ba3a0a66f2f3625fa39b9caef8b29ad04199f0d5d9acb50761fbc98f9a",
+      "path": "public\\app-state.js"
+    },
+    {
+      "sha256": "968a18f9675578eb91eb70bb7e488bf19ec27598a1ee48713a81910f40b912fb",
+      "path": "public\\app.js"
+    },
+    {
+      "sha256": "7868b363e41c0811d7f5095182415308ad788b219bcd5b0b370661749866fc3a",
+      "path": "public\\calendar.js"
+    },
+    {
+      "sha256": "ee265d12e80e3e186f920c892f40234cf0182d2be8a0454c5bb64d61962791a2",
+      "path": "public\\history-archives-ui.js"
+    },
+    {
+      "sha256": "59c0eb5d78020150f33b6a7c26532c38d90a0c54c4c74138de2fc3924b1c2975",
+      "path": "public\\html-utils.js"
+    },
+    {
+      "sha256": "961b21f924675f0743c80792ddc770e7ff66db274cc66eb4ab534ac1227844c4",
+      "path": "public\\i18n.js"
+    },
+    {
+      "sha256": "564bba29ff03df5ab75a510098f138eb3b1b3657161d08b19ed52a9b1fd2e0b4",
+      "path": "public\\index.html"
+    },
+    {
+      "sha256": "14128fcd188c1a32b57efac904a34d51d73f796ae2d9de3cd17e902b1e4a1ea0",
+      "path": "public\\perf-ui.js"
+    },
+    {
+      "sha256": "35ed55de86d5586e69e9d24e197a2ff4b64711606f94d732844a1401e901ba3b",
+      "path": "public\\period-comparison.js"
+    },
+    {
+      "sha256": "d579c6c5109115c325659a6f99bdaa4caf180a23dc2e4f691733c7e23b20d1f4",
+      "path": "public\\pricing-models.js"
+    },
+    {
+      "sha256": "ee1e54e68aee38a8def618de9c65ce2df510fbcfe7a2e30b1a4ac12d5b7adbc3",
+      "path": "public\\skin-bootstrap.js"
+    },
+    {
+      "sha256": "21ce8e448467c66d1163965f6fef07601e088a0a8df60cf701def2d081e8679f",
+      "path": "public\\skin-palette-studio.html"
+    },
+    {
+      "sha256": "aa6d2e4cb7f03f9e3638bff30a5562dd4a2a465cfd855d7dd2d5eab5c3229d55",
+      "path": "public\\skin-palette-studio.js"
+    },
+    {
+      "sha256": "ae327399c57eb665c57aa1de38770f24a939e45666d513af0ee758cec4e47d69",
+      "path": "public\\skin-palettes.js"
+    },
+    {
+      "sha256": "51e1f3c24ca394ddddacf1219c0cb1abb7394502ed66522639b409b643567012",
+      "path": "public\\skin-picker.js"
+    },
+    {
+      "sha256": "57f56acff97eebf5a8c9c95bb2625c5ba8732491899fa9beb7fc9b6b44a63c7d",
+      "path": "public\\skin-ui.js"
+    },
+    {
+      "sha256": "100ea0297a475c461ea852c94be2aff8aeaf01b23e5c17fd1e2a1585ec02518f",
+      "path": "public\\skins.css"
+    },
+    {
+      "sha256": "f00f5d7d8710aab42e55b565e385871e144a01c8e76b34a3d949272b84da2b37",
+      "path": "public\\skins.js"
+    },
+    {
+      "sha256": "eb7ab123b4b2226c513f86b3b887d48779902181bd75d9387d22072fd018b5ca",
+      "path": "public\\styles.css"
+    },
+    {
+      "sha256": "e19d8364cfd0f2a980da61ae0f71f47ce7cb82b7efb1637db6c1ff77002d5e67",
+      "path": "public\\timeline-utils.js"
+    },
+    {
+      "sha256": "8e5684ef4c2aae9332ea268420dc29208b0f02d630cc11654398c6f9b991b467",
+      "path": "public\\usage-fields.js"
+    }
+  ],
+  "head": "f7643b26e7c08f8d298b58d678a6201648e910ba",
+  "preimageFiles": [
+    "src/usage-store.js",
+    "src/perf-magpie-timing.js",
+    "src/usage-core.js",
+    "src/server.js",
+    "src/usage-executor.js",
+    "public/app.js",
+    "test/usage-store.test.js",
+    "test/perf-store.test.js",
+    "test/perf-projection-store.test.js",
+    "test/perf-magpie-timing-store.test.js",
+    "test/perf-magpie-timing.test.js",
+    "test/usage-core.test.js",
+    "test/server.test.js",
+    "test/w1-executor.test.js",
+    "test/app-autorefresh.test.js"
+  ]
+}

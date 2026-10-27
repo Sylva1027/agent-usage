@@ -1,0 +1,153 @@
+✔ ★0 新库：perf_* 元数据键必须存在，且『未同步』与『空列表』可区分 (36.2583ms)
+  [实测] perf_state = "ready"
+  [实测] perf_index_version = "b6439a780e58908d0416caeeeac55be0c9eb28ba19662a283fafc30709fcd2ec"
+✔ ★1 首次成功 sync ⇒ perf_state = ready，且指纹/方法版本/时间戳齐备 (69.2446ms)
+  [实测] 第一次 updatedFileCount = 1  第二次 = 0
+  [实测] 指纹 1 = 4ebce4a793579bc2e342175805d53fe2d532cdf6483690b15bcefea58d426e74  指纹 2 = 4ebce4a793579bc2e342175805d53fe2d532cdf6483690b15bcefea58d426e74
+✔ ★1b 同一 fixture 双次 sync ⇒ 第二次无变更，状态仍 ready 且指纹不变 (51.1112ms)
+  [实测] sync 中途 perf_state = "rebuilding"
+  [实测] sync 中途 summarize 的 perf 段 = {"state":"rebuilding","ready":false,"methodVersion":"tps-v2","indexVersion":"f75635cb2b6835cbb6febf271daf05ab0ccfabfa264605c26bd85889b2743bd7","indexedAt":"2026-10-27T01:03:04.842Z","degradedHomeIds":[],"missingSources":[],"sourceWarnings":[],"unsupportedSources":[],"rankedHomeIds":["zcode-0045ed7e4769d189","zcode-c9a42416101238a1"],"groups":[],"models":[],"coverage":{"eligible":11,"positiveOutput":11,"timedPositiveOutput":11,"completeTimedPositiveOutput":11,"sampled":11,"dropped":0,"pending":0,"unplaced":0,"byFlag":{"OUTPUT_ZERO":0,"DURATION_NONPOSITIVE":0,"LONG_WINDOW":0,"MULTI_REQUEST_TURN":0,"PARTIAL_ITEM_SPAN":0,"MISSING_DURATION":0,"MISSING_OUTPUT":0,"MODEL_AMBIGUOUS":0,"TERMINAL_UNVERIFIED":0,"SOURCE_FILTERED":0,"RECORD_CONFLICT":0,"OVERLAPPING_ITEM_SPAN":0,"TIME_INVALID":0,"TIME_UNPLACED":0,"METHOD_ESTIMATE":0,"TOKEN_INVALID":0},"droppedByReason":{"record_conflict":0,"model_ambiguous":0,"terminal_unverified":0,"source_filtered":0,"output_missing_zero_invalid":0,"duration_missing_nonpositive_invalid":0,"partial_item_span":0,"overlapping_item_span":0},"timingRate":1,"completeTimingRate":1,"sampleRate":1,"byEra":null,"bySource":{"zcode":{"eligible":11,"positiveOutput":11,"timedPositiveOutput":11,"completeTimedPositiveOutput":11,"sampled":11,"dropped":0,"pending":0,"unplaced":0,"byFlag":{"OUTPUT_ZERO":0,"DURATION_NONPOSITIVE":0,"LONG_WINDOW":0,"MULTI_REQUEST_TURN":0,"PARTIAL_ITEM_SPAN":0,"MISSING_DURATION":0,"MISSING_OUTPUT":0,"MODEL_AMBIGUOUS":0,"TERMINAL_UNVERIFIED":0,"SOURCE_FILTERED":0,"RECORD_CONFLICT":0,"OVERLAPPING_ITEM_SPAN":0,"TIME_INVALID":0,"TIME_UNPLACED":0,"METHOD_ESTIMATE":0,"TOKEN_INVALID":0},"droppedByReason":{"record_conflict":0,"model_ambiguous":0,"terminal_unverified":0,"source_filtered":0,"output_missing_zero_invalid":0,"duration_missing_nonpositive_invalid":0,"partial_item_span":0,"overlapping_item_span":0},"timingRate":1,"completeTimingRate":1,"sampleRate":1,"byEra":null}},"byGroup":{"[\"zcode\",\"zcode-0045ed7e4769d189\",\"zcode\",\"unknown\",\"\",\"fixture-model\",\"fixture-provider\",\"\",\"request_e2e\",\"reported_output_unspecified\"]":{"eligible":6,"positiveOutput":6,"timedPositiveOutput":6,"completeTimedPositiveOutput":6,"sampled":6,"dropped":0,"pending":0,"unplaced":0,"byFlag":{"OUTPUT_ZERO":0,"DURATION_NONPOSITIVE":0,"LONG_WINDOW":0,"MULTI_REQUEST_TURN":0,"PARTIAL_ITEM_SPAN":0,"MISSING_DURATION":0,"MISSING_OUTPUT":0,"MODEL_AMBIGUOUS":0,"TERMINAL_UNVERIFIED":0,"SOURCE_FILTERED":0,"RECORD_CONFLICT":0,"OVERLAPPING_ITEM_SPAN":0,"TIME_INVALID":0,"TIME_UNPLACED":0,"METHOD_ESTIMATE":0,"TOKEN_INVALID":0},"droppedByReason":{"record_conflict":0,"model_ambiguous":0,"terminal_unverified":0,"source_filtered":0,"output_missing_zero_invalid":0,"duration_missing_nonpositive_invalid":0,"partial_item_span":0,"overlapping_item_span":0},"timingRate":1,"completeTimingRate":1,"sampleRate":1,"byEra":null},"[\"zcode\",\"zcode-c9a42416101238a1\",\"zcode\",\"unknown\",\"\",\"fixture-model\",\"fixture-provider\",\"\",\"request_e2e\",\"reported_output_unspecified\"]":{"eligible":5,"positiveOutput":5,"timedPositiveOutput":5,"completeTimedPositiveOutput":5,"sampled":5,"dropped":0,"pending":0,"unplaced":0,"byFlag":{"OUTPUT_ZERO":0,"DURATION_NONPOSITIVE":0,"LONG_WINDOW":0,"MULTI_REQUEST_TURN":0,"PARTIAL_ITEM_SPAN":0,"MISSING_DURATION":0,"MISSING_OUTPUT":0,"MODEL_AMBIGUOUS":0,"TERMINAL_UNVERIFIED":0,"SOURCE_FILTERED":0,"RECORD_CONFLICT":0,"OVERLAPPING_ITEM_SPAN":0,"TIME_INVALID":0,"TIME_UNPLACED":0,"METHOD_ESTIMATE":0,"TOKEN_INVALID":0},"droppedByReason":{"record_conflict":0,"model_ambiguous":0,"terminal_unverified":0,"source_filtered":0,"output_missing_zero_invalid":0,"duration_missing_nonpositive_invalid":0,"partial_item_span":0,"overlapping_item_span":0},"timingRate":1,"completeTimingRate":1,"sampleRate":1,"byEra":null}}},"codexTimingCoverage":null,"meta":{"methodVersion":"tps-v2","state":"rebuilding","indexVersion":"f75635cb2b6835cbb6febf271daf05ab0ccfabfa264605c26bd85889b2743bd7","indexedAt":"2026-10-27T01:03:04.842Z","minSamples":20,"longWindowMs":300000,"eraCutoffMs":1790557257000,"sourceWarnings":[]}}
+✔ ★1c ★卡片核心：一次同步【期间】调用 summarize 必须得到 rebuilding，不得读到部分排名 (99.3683ms)
+  [实测] 第二轮 updatedFileCount = 0  replaceFile 调用次数 = 0
+✔ ★1d 无变更的 sync 不得翻转状态（不得无谓进入 rebuilding） (56.5876ms)
+  [实测] perf_state = "degraded"
+  [实测] degradedHomeIds = ["zcode-fdafb3cf1c434237"]
+  [实测] sync 返回 perfState = "degraded"
+  [实测] sync 返回 degradedHomeIds = ["zcode-fdafb3cf1c434237"]
+  [实测] sourceWarnings = [{"sourceKind":"zcode","homeId":"zcode-fdafb3cf1c434237","code":"READ_ONLY_OPEN_FAILED","count":1}]
+  [实测] 四字段投影 = [{"sourceKind":"zcode","homeId":"zcode-fdafb3cf1c434237","code":"READ_ONLY_OPEN_FAILED","count":1}]
+  [实测] 未受阻 home 仍有候选 = ["zcode-b80f6acd86d176d3"]
+✔ ★2 主源文件不可读被删 ⇒ degraded，且受阻 homeId 可归因、候选人仍可回滚 (79.2245ms)
+  [实测] 恢复后 perf_state = "ready"
+  [实测] 恢复后 degradedHomeIds = []
+✔ ★2b 恢复：下一次完整同步成功必须清除退化标记 (92.1194ms)
+  [实测] ready 时 rankedHomeIds = ["zcode-b2b3e1426811561b","zcode-bdf46119a6587841"]
+  [实测] degraded 时 state = degraded
+  [实测] degraded 时 rankedHomeIds = ["zcode-b2b3e1426811561b"]
+  [实测] degraded 时 degradedHomeIds = ["zcode-bdf46119a6587841"]
+  [实测] 库中候选总数 = 6
+✔ ★3 D4 排序过滤：degraded 时受阻 home 的陈旧候选必须被排除在 rankedHomeIds 之外 (79.9385ms)
+  [实测] 删除前候选 = 6  删除后 = 6
+  [实测] perf_state = "ready"
+  [实测] degradedHomeIds = []
+✔ ★4 删除来源：home 目录消失 ⇒ 保留历史并登记 missing，且**不**计入退化 (70.0527ms)
+  [实测] perf_state = "ready"
+  [实测] unsupportedSources = []
+  [实测] perf_unsupported_sources = []
+✔ ★4b 未启用来源：单列 unsupportedSources，**不令其他来源退化** (51.1791ms)
+  [实测] 重开后 perf_state = "ready"
+  [实测] 重开后 indexVersion 相同 = true
+✔ ★4c 迁移与重复打开：已存在的库重开不得丢状态，也不得重复迁移 (51.9932ms)
+  [实测] 置脏后 updatedFileCount = 1
+  [实测] 候选 before = 3  after = 3
+✔ ★4d 指纹 -1 重索引：迁移把 source_files 置脏后，下一次 sync 必须重新索引 (59.6927ms)
+  [实测] 未同步 state = uninitialized  ready = false
+  [实测] 成功后 state = ready  ready = true
+  [实测] 中途 state = rebuilding  ready = false
+✔ ★5 M5 判别式：summarize 的 perf.ready 必须与 state 一致（不得恒报 ready） (69.3194ms)
+  [实测] 第二轮 updatedFileCount = 0
+  [实测] 第二轮写过的 perf_state 值 = ["ready"]
+✔ ★5b M2 判别式：无变更 sync **轮中**也不得出现 rebuilding 瞬态 (53.717ms)
+  [实测] 单 home 指纹 = 49168d9f30282eee
+  [实测] 另一单 home 指纹 = 6fac64c415a1de20
+✔ ★5c M10 判别式：已发布来源指纹必须**随启用集合**变化 (171.4395ms)
+  [实测] 投影后 = [{"sourceKind":"zcode","homeId":"zcode-x","code":"MALFORMED_JSON","count":2}]
+✔ ★5d M9 判别式：源告警投影**结构上**不可能泄漏路径（含 path 也被丢弃） (30.8811ms)
+  [实测] 加入前指纹 = 68c63ff0b875a72b  unsupported = []
+  [实测] 加入后指纹 = 68c63ff0b875a72b  unsupported = [{"kind":"unsupported","homeId":"project-log-6df35bead6019951"}]
+  [实测] perf_state = "ready"
+✔ ★5e M10 真判别式：加入结构上不支持的来源，不改变已发布性能指纹 (62.3982ms)
+  [实测] 读取期间已注入上游写入 = true  目标库 close 次数 = 3  perf 插入 = 4  updatedFileCount = 1
+  [实测] perf_state = "degraded"
+  [实测] degradedHomeIds = ["zcode-d629034e521720cd"]
+  [实测] sourceWarnings = [{"sourceKind":"zcode","homeId":"zcode-d629034e521720cd","code":"LIVE_SOURCE_CHANGED","count":1}]
+  [实测] 告警码集合 = ["LIVE_SOURCE_CHANGED"]
+  [实测] 下一轮 updatedFileCount = 1  state = ready
+  [实测] 恢复后候选数 = 5
+✔ ★BB-1 读取期间来源变化：主库追加行 ⇒ 必须 degraded + LIVE_SOURCE_CHANGED，且下一轮恢复 (81.3107ms)
+  [实测] 同步前 -wal 存在 = true  大小 = 20632
+  [实测] main size 4096 ⇒ 4096  主库未变 = true
+  [实测] -wal size 20632 ⇒ 24752  变大 = true
+  [实测] updatedFileCount = 1  state = ready
+  [实测] 候选数 = 4
+✔ ★BB-1b 仅 -wal 变化也必须被检出（主库＋WAL 指纹） (62.3047ms)
+  [实测] perf_state = "ready"
+  [实测] degradedHomeIds = []
+  [实测] unsupportedSources = []
+  [实测] warnings 条数 = 1
+  [实测] warnings 样本 = ["无法读取 C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{b8559e50-bfb8-4c16-b6f1-45492311ebd7}\\AC\\Temp\\bb2-RSGxqk\\codex-home: ENOTDIR: not a directory, scandir 'C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{b8559e50-bfb8-4c16-b6f1-45492311ebd7}\\AC\\Temp\\bb2-RSGxqk\\codex-home\\sessions'"]
+✔ ★BB-2 无法分类的 Codex import 失败不归因给性能来源，且保留用量告警 (53.7871ms)
+  [实测] perf_state = "ready"
+  [实测] degradedHomeIds = []
+✔ ★BB-2b 发现阶段失败（failedHomes）：未启用来源也不得进 degraded (49.8939ms)
+  [实测] 初始版本 = 9514de3255fadc83
+  [实测] 内容变化后 = 71facbaad8ba0e21
+  [实测] WAL 变化后 = 92a924cb6ad11bbf
+  [实测] 加入 home-B 后 = 6c6ca1602cc96da1
+  [实测] 删除 home-B 后 = d37937e1ff758a5f
+  [实测] 发布 empty Codex rollout 后 = c7780e4ffc49f02d
+✔ ★BB-3 perf_index_version 随已发布文件指纹及已启用 Codex home 集合变化 (109.6859ms)
+  [实测] sourceWarnings = [{"sourceKind":"zcode","homeId":"zcode-29624905b71bf76b","code":"READ_ONLY_OPEN_FAILED","count":1}]
+  [实测] summarizePerf 未抛错；回传 = [{"sourceKind":"zcode","homeId":"zcode-29624905b71bf76b","code":"READ_ONLY_OPEN_FAILED","count":1}]
+✔ ★BB-4 失败告警码必须落在 M1 冻结码域，且 summarizePerf 不抛错并原样保留 (61.511ms)
+  [实测] perf_state = degraded
+  [实测] degradedHomeIds = ["zcode-8ff3ae18831b516e"]
+  [实测] sourceWarnings = [{"sourceKind":"zcode","homeId":"zcode-8ff3ae18831b516e","code":"READ_ONLY_OPEN_FAILED","count":1}]
+  [实测] unsupportedSources = []
+✔ ★BB-2c 【闭合 B3】文件失败路径（replaceFile 抛错）仅归因已启用来源 (63.8613ms)
+  [实测] 置脏后的 source_files = {"size":-1,"mtime_ms":-1}
+  [实测] 下一轮 updatedFileCount = 1  state = ready
+✔ ★BB-1c 【闭合 B6】变过的文件必须被置脏 ⇒ 下一轮**必然**重提取（不依赖文件再变） (78.4893ms)
+  [实测] size 同 = true   mtime 同 = false
+  [实测] mtime 差 = 0.0078 ms
+  [实测] 版本: 819a939c981407ca -> 24a3d91eca2e8bd0  变化 = true
+✔ ★BB-3b 【闭合 B7】指纹必须含内容摘要（size+mtime 之外的分量） (63.563ms)
+  [实测] 读取期间已删除 = true  perf 插入 = 4
+  [实测] 读后文件存在 = false
+  [实测] perf_state = "degraded"
+  [实测] sourceWarnings = [{"sourceKind":"zcode","homeId":"zcode-c5348a870ca4af9f","code":"LIVE_SOURCE_CHANGED","count":1}]
+  [实测] degradedHomeIds = ["zcode-c5348a870ca4af9f"]
+✔ ★BC-1 reader 完成后删除上游文件：必须 degraded + LIVE_SOURCE_CHANGED + 受阻 home + 下轮处置 (59.9537ms)
+  [实测] 回归后 state = ready  候选 = 3  updated = 1
+  [实测] 真实删除后 state = ready  候选 = 3  degraded = []
+  [实测] 真实删除后 指纹映射键数 = 1  残留 home-A 键 = ["C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{b8559e50-bfb8-4c16-b6f1-45492311ebd7}\\AC\\Temp\\bc1b-DD1Xnk\\home-A\\cli\\db\\db.sqlite"]
+✔ ★BC-1b 读后文件消失后：回归恢复 ready；整个 home 消失时保留历史并登记 missing (88.9945ms)
+  [实测] 首轮 候选 = 3  版本 = 86e9f7588436af6ce031c6dc35850e80e37b760a847c2deb33342f6066ba8e5a
+  [实测] 变化轮 候选 = 3  版本 = 86e9f7588436af6ce031c6dc35850e80e37b760a847c2deb33342f6066ba8e5a  state = degraded  warnings = [{"sourceKind":"zcode","homeId":"zcode-e5fd8de36ee44608","code":"LIVE_SOURCE_CHANGED","count":1}]
+  [实测] 恢复轮 候选 = 5  版本 = f8b80d30823e3777eb9c30ababdcf3b74ad93e3291977a91795cb47e7241c880  updated = 1
+✔ ★BD-1 读取期间追加：整笔回滚（保留旧候选与旧指纹）⇒ 恢复后候选变化必须带动版本 (74.6837ms)
+  [实测] 首轮版本 = 6f834d6ce67ccf04  候选 = 1
+  [实测] 失败轮 state = degraded  版本 = 6f834d6ce67ccf04  候选 = 1
+✔ ★BC-2 单 home 失败：版本必须保持旧成功值（不得表征未发布的上游） (62.1191ms)
+  [实测] 恢复后 state = ready  版本 = da649485 -> f912f11a  候选 = 2
+✔ ★BC-2b 恢复成功后版本必须变化（且与已提交候选同源） (72.0149ms)
+  [实测] 仅 A 的版本 = 246a504bae318baf
+  [实测] state = degraded  degraded = ["zcode-49094d991b5d4051"]
+  [实测] 版本 = 246a504bae318baf -> 926985877ec35ac8
+  [实测] 已发布指纹映射键数 = 1
+✔ ★BC-2c 多 home 部分失败：版本只反映**成功提交**的部分 (61.2797ms)
+  [实测] 首轮：codex 入库行 = [{"kind":"extra","path":"C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{b8559e50-bfb8-4c16-b6f1-45492311ebd7}\\AC\\Temp\\bc3-N6u01b\\codex-home\\sessions\\2026\\01\\rollout.jsonl","home_id":"extra-0fbbc1bd1ba37fcf"}]
+  [实测] 独占锁已生效 = true
+  [实测] codex 文件在 replaceFile 内抛错 = EBUSY
+  [实测] perf_state = degraded
+  [实测] degradedHomeIds = ["extra-0fbbc1bd1ba37fcf"]
+  [实测] sourceWarnings = [{"sourceKind":"codex","homeId":"extra-0fbbc1bd1ba37fcf","code":"READ_ONLY_OPEN_FAILED","count":1}]
+  [实测] unsupportedSources = []
+✔ ★M7 Codex rollout 读取失败会阻断所属 home (288.7971ms)
+  [实测] 前置: size 同 = true  mtimeMs 同 = true
+  [实测] 前置: size = 8192 vs 8192  mtimeMs = 1793062987146 vs 1793062987146
+  [实测] replaceFile 调用 = 1  updatedFileCount = 1
+  [实测] 版本: 86f15288d7696159 -> 99a3a686b03df742  变化 = true
+✔ ★BC-3b 【B7 判别式】size 与 mtime **全同**的原地改写也必须被检出 (73.7708ms)
+✔ ★Q2-c 读事务内不得 await：BEGIN…COMMIT 之间不得出现事件环回合 (146.6669ms)
+✔ refresh sync: retained missing paths stop planning; return and rename still plan (168.9086ms)
+✔ refresh sync: failed final metadata and degraded publication cannot acknowledge missing paths (134.8842ms)
+✔ refresh sync: retained membership, external commits and close invalidate the live-path snapshot (211.3365ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3424.5431

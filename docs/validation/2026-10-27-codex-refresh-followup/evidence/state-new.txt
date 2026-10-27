@@ -1,0 +1,14 @@
+✔ §12 · later files change: retain ready until the first replacement, then mark rebuilding once (220.0468ms)
+✔ §12 · same size/mtime rewrite after the old prescan still marks rebuilding before replacement (77.1433ms)
+✔ §12 · first replacement rolls back: mark once, preserve facts, recover next round (173.7056ms)
+✔ §12 · rebuilding marker failure rejects sync before replaceFile and the per-file parse catch (139.3609ms)
+✔ §12 · Codex policy upgrade marks rebuilding before file decisions even with zero replacements (72.1879ms)
+✔ §12 · WorkBuddy trace targets mark rebuilding even when the target is absent (158.553ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 936.0473

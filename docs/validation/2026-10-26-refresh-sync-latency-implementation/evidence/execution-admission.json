@@ -1,0 +1,28 @@
+{
+  "browser": {
+    "timeoutSeconds": 2100,
+    "state": "completed",
+    "jobMiB": 7168,
+    "heapMiB": 1536,
+    "maximumTabs": 2
+  },
+  "changed": {
+    "checkedClaudeIncrements": 20,
+    "heapMiB": 1536,
+    "checkedNativeIncrements": 20,
+    "exitCode": 0,
+    "restoration": "raw-decimal restore completed in tool output; check-inputs differences=0 before quota",
+    "jobMiB": 7168,
+    "checkedLedgerTimings": 20,
+    "executionSlot": "single"
+  },
+  "quota": {
+    "afterFailure": null,
+    "beforeExpectedEarlyFrames": 1,
+    "afterExpectedEarlyFrames": 0,
+    "beforeFailure": null,
+    "shellExitReason": "Final clean-wrapper runs both exit 0; prior cleanup-only exit 1 retained separately.",
+    "shellExitCode": 0
+  },
+  "recordedAt": "2026-10-27T00:15:03.6058439+08:00"
+}

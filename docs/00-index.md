@@ -1,6 +1,6 @@
 # Agent Usage 文档入口
 
-更新：2026-10-26（修订自动刷新同步延迟计划的证据与优先级）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-10-27（预扫移除、状态切换与真实读侧复测）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
 ## 使用与接手
 
@@ -11,7 +11,13 @@
 
 ## 当前计划
 
-[自动刷新同步延迟治理方案](plans/2026-10-26-refresh-sync-latency-plan.md)于 2026-10-26 完成 v2 静态复核修订：区分原报告历史测量、代码已确认路径与待复测归因，撤回前端数秒空窗已定位、无条件每轮全文哈希、缓存即可证明刷新达标等结论，修正摘要复用与分块哈希验收条件。优先级为新实例基线 → 映射复制/重复同步去重 → 增量 Magpie 与折叠复用 → 按残余证据选择前端、哈希、查询及读写解耦/缓存。真实新数据可见时间、用户等待和后台成本分别验收。**本轮仅修文档，未改产品代码、未运行性能探针、未重启服务；等历史保留计划完成后按 §15 复测并决定实施范围，前端小修也不提前开工。**
+[预扫移除、状态切换与真实读侧投影复测](validation/2026-10-27-codex-refresh-followup/README.md)是本轮后续入口：预扫移除已实施，状态专项 6/6 与既有回归 38/38 通过。独立双 Store 按 AB/BA 交替，静止与 ledger-only 各 20 对，sync p95 分别为 3,660→2,904 ms、4,905→3,905 ms；绝对值不可与上轮单 Store 直接比较。同步 readSync 读量减少 170,361,023 bytes。真实 executor 已确认临时 reader 投影空槽与 writer 的 `total_changes` miss，投影缓存未放宽。
+
+本轮浏览器四项控制正确，Codex 新文件 8,722 ms、普通追加 8,486 ms 均为当前 >8 s 反例，ledger-only 为 5,932 ms；这是控制样本，不是新 p95，未重跑 40 周期。217 个测试文件为分段覆盖：首轮 S1 旧断言失败并触及 900 s 超时，修正后尾段与整份 perf-store 共 316 pass / 0 fail，不能写成一次全绿。未切生产、未提交或推送。
+
+上一阶段的[Codex 增量可见等待与 TPS 后续优化](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)入选范围已实施并复测：大 home 有界前缀 worker 与 timeline 分组融合，后台 Codex p95 4.92→3.96 s，today/month 暖查询改善。40 个真实周期数值/目标帧全部正确，新鲜度通过；可见 p95 仍为 Codex 6.01 s、ledger-only TPS 3.87 s，3 s 目标未达。完整门禁、8 GiB 资源、输入 SHA、保留事实与清理见[实施与验收](validation/2026-10-27-codex-incremental-visibility/README.md)。后续实施与读侧裁定见上述本轮复测；该阶段的 40 周期结果保持版本归属。
+
+[自动刷新同步延迟治理方案](plans/2026-10-26-refresh-sync-latency-plan.md)已收口为 **v6：入选范围实施完成，延迟部分未达**。D/P、增量 Magpie、定向发布、ledger-only、quota busy 与最小 all perf 投影已完成；同源静止 sync p95 8.13→2.81 s，同上下文 all 暖查询 685→70 ms。21 个真实周期新值均正确，Codex 可见等待仍约 8.1–8.5 s；G1/G2 及部分 G3 未达。下一优先级见方案 §16，最终数据与工程门禁见[实施验收](validation/2026-10-26-refresh-sync-latency-implementation/README.md)。原生多 agent 编写、整文件单写和唯一测试槽均已执行，合计 8 GiB；[旧复测](validation/2026-10-26-refresh-sync-latency-reeval/README.md)只读。未切换生产，继续暂缓分块存证、通用缓存及读侧架构。
 
 [价目覆盖与汇率：双 worker Implementation Plan](plans/2026-10-26-pricing-two-worker-implementation-plan.md)是 2026-10-26 新施工入口：用户确认同时纳入模型合并与官方价、覆盖、刷新状态和 FX 改进。23 张约 15–20 分钟小卡按价目/服务与聚合/界面分给两位现有 worker；其中 2 张官方来源扩展卡等完整证据，前三批独立交付。本批 21/23 卡已验收：后端已合根，界面通过真实根副本与浏览器验收、等待共享 UI 窗口；来源扩展两卡待材料，见[验收](validation/2026-10-26-pricing/FINAL-REPORT.md)。旧 A/B 整包作废的决定保持。
 
@@ -41,7 +47,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 
 ## 当前：历史保留实施
 
-[历史保留与转移操作](history-retention.md)提供备份、候选、正式提交、完整包导入/独立实例、HTTP和恢复用法。[Implementation Plan](plans/2026-10-22-history-retention-implementation-plan.md)定义施工契约；当前18/20，剩余容量及最终门禁，主审状态见[执行账本](validation/2026-10-22-history-retention/README.md)。旧第二稿保留研究过程，不作为已验收实现。
+[历史保留与转移操作](history-retention.md)提供备份、候选、正式提交、完整包导入/独立实例、HTTP和恢复用法。[Implementation Plan](plans/2026-10-22-history-retention-implementation-plan.md)定义施工契约；当前 **20/20 已完成**，容量差距、最终门禁及未证边界见[执行账本](validation/2026-10-22-history-retention/README.md)和[操作交付](validation/2026-10-22-history-retention/usage-and-restore.md)。交付不等于生产封存/迁移或原性能目标全部达标。旧第二稿保留研究过程，不作为已验收实现。
 
 ## 现行专题
 

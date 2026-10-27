@@ -4329,13 +4329,13 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
     state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
     if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
-    setAutoRefreshStatus("");
     const previousPreset = state.preset;
     reconcileQuotaSourceSelection();
     if (previousPreset !== state.preset) return loadUsage({ skipCheck: true });
     renderAutoRefreshControls();
     updateQuotaPresetButton();
     render();
+    setAutoRefreshStatus("");
     if (!$("#pricingDialog").hidden && state.pricingCatalog) {
       try {
         const response = await fetch(pricingActivityUrl());

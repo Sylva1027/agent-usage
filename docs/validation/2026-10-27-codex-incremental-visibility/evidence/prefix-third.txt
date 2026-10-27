@@ -1,0 +1,44 @@
+✖ prefix worker hashes raw bytes, reports unreadable inputs and exits before returning (2.8687ms)
+✖ large parallel planning preserves live isolation, quiet recovery and raw rewrite rejection (107.3199ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 191.5441
+
+✖ failing tests:
+
+test at test\codex-prefix-window.test.js:26:1
+✖ prefix worker hashes raw bytes, reports unreadable inputs and exits before returning (2.8687ms)
+  Error [ERR_WORKER_INVALID_EXEC_ARGV]: Initiated Worker with invalid execArgv flags: --use-largepages=off, --trace-event-file-pattern=node_trace.${rotation}.log, --v8-pool-size=4, --node-snapshot, --tls-cipher-list=TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA, --secure-heap=0, --secure-heap-min=2, --stack-trace-limit=10
+      at new Worker (node:internal/worker:288:13)
+      at file:///E:/12%20AI/ccusage/codex-usage/test/codex-prefix-window.test.js:14:20
+      at new Promise (<anonymous>)
+      at capture (file:///E:/12%20AI/ccusage/codex-usage/test/codex-prefix-window.test.js:13:10)
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/codex-prefix-window.test.js:32:26)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    code: 'ERR_WORKER_INVALID_EXEC_ARGV'
+  }
+
+test at test\codex-prefix-window.test.js:47:1
+✖ large parallel planning preserves live isolation, quiet recovery and raw rewrite rejection (107.3199ms)
+  AssertionError [ERR_ASSERTION]: {"ok":false,"stable":false,"code":"READ_ONLY_OPEN_FAILED","files":["C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{c453a1e1-612b-4da0-9f54-455fbf09fc6d}\\AC\\Temp\\codex-prefix-large-A5DBgM\\sessions\\rollout-active.jsonl","C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{c453a1e1-612b-4da0-9f54-455fbf09fc6d}\\AC\\Temp\\codex-prefix-large-A5DBgM\\sessions\\rollout-sibling.jsonl"],"plan":null,"before":null,"after":null}
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/codex-prefix-window.test.js:64:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

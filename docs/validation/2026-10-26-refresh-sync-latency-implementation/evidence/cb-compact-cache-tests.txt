@@ -1,0 +1,21 @@
+✔ Magpie auto-import handles no-op, late ledger/native arrival, aliases, and conflicts (105.9706ms)
+✔ Magpie retries a failed home after the native projection becomes trusted (52.9641ms)
+✔ Magpie skips a home until its published projection arrives, then imports without ledger changes (54.1433ms)
+✔ Magpie imports canonical projection paths with original-case ownership (47.8015ms)
+✔ Magpie imports a ledger that arrives after the published native projection (51.0539ms)
+✔ Magpie ignores non-Codex models and requires an exact native model alias (48.39ms)
+✔ Magpie does not read a missing ledger from the real home (44.7616ms)
+✔ Magpie delta associates only changed requests and publishes without a second native round (66.4854ms)
+✔ Magpie directed timing publication matches the complete native-round reference (137.1921ms)
+✔ Magpie directed rollback preserves pending evidence and retries without new ledger bytes (62.3495ms)
+✔ Magpie publishes same-cycle native plus ledger and late native-only mappings (64.5159ms)
+✔ Magpie rejects a publication context superseded by another connection (80.1489ms)
+✔ Magpie revalidates dependencies after building directed timing samples (64.1785ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 961.8815

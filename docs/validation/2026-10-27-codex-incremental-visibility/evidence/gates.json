@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-10-26T18:16:51.2614571+00:00",
+  "sourceManifest": "final-product.json",
+  "typecheck": {
+    "exitCode": 0,
+    "log": "type-final.txt",
+    "note": "tsc success has empty stdout; exit code recorded from completed tool call"
+  },
+  "lint": {
+    "exitCode": 0,
+    "infos": 5,
+    "log": "lint-final.txt",
+    "warnings": 63
+  },
+  "format": {
+    "log": "format-check-final.txt",
+    "exitCode": 0
+  },
+  "fullTest": {
+    "skip": 25,
+    "fail": 1,
+    "tests": 3311,
+    "log": "full-suite.txt",
+    "pass": 3285,
+    "exitCode": 1,
+    "reason": "fetch bad port"
+  },
+  "apiRecheck": {
+    "exitCode": 0,
+    "fail": 0,
+    "log": "api-recheck.txt",
+    "pass": 5
+  },
+  "q1Initial": {
+    "fail": 1,
+    "reason": "sandbox EPERM hard link",
+    "log": "targeted-integrated.txt",
+    "pass": 23
+  },
+  "q1Recheck": {
+    "exitCode": 0,
+    "fail": 0,
+    "memoryLimitMiB": 1024,
+    "pass": 3,
+    "log": "q1-permission-recheck.txt"
+  }
+}

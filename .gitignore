@@ -5,6 +5,7 @@ node_modules/
 dist/
 coverage/
 .nyc_output/
+/output/
 
 # Local runtime state
 .codex-usage/

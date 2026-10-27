@@ -347,6 +347,7 @@ if (!isMainThread && parentPort) {
         checkedAt: store.checkedAt ?? storeStatus?.checkedAt ?? null,
         perfIndexVersion: perf.indexVersion,
         perfTimingRevision: perf.timingRevision,
+        magpieTimingFingerprint: perf.magpieTimingFingerprint,
         lastCheckpoint,
         ...(includeHomes
           ? {
@@ -412,6 +413,7 @@ if (!isMainThread && parentPort) {
             generatedAt: store.generatedAt,
             checkedAt: store.checkedAt,
             missingSources: store.perfState().missingSources,
+            magpieTimingFingerprint: store.perfPublicationState().magpieTimingFingerprint,
           };
         }
         postState({ includeHomes: true });
@@ -471,13 +473,18 @@ if (!isMainThread && parentPort) {
         applyPricingCatalog(message.pricing);
         await publishedReady;
         const reader = publishedStore || store;
+        const published = publishedStore ? publishedStatus : storeStatus;
+        const status = published && {
+          ...published,
+          magpieTimingFingerprint: reader.perfPublicationState().magpieTimingFingerprint,
+        };
         const filters = { ...(message.filters ?? {}) };
         const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
         filters.pricingModels = pricingModels;
         if (filters.now !== undefined) filters.now = new Date(filters.now);
         const dashboard = await reader.dashboardHistory(filters, message.options ?? {});
         return {
-          status: publishedStore ? publishedStatus : storeStatus,
+          status,
           ...dashboard,
           pricingCatalog: getPricingCatalog(),
         };
@@ -543,7 +550,10 @@ if (!isMainThread && parentPort) {
           const metadata = await snapshotStore.metadataHistory(asOf);
           postState({ includeHomes: true });
           return {
-            status: storeStatus,
+            status: storeStatus && {
+              ...storeStatus,
+              magpieTimingFingerprint: snapshotStore.perfPublicationState().magpieTimingFingerprint,
+            },
             asOf: asOf.getTime(),
             metadata,
             homes: store.homes,
@@ -689,6 +699,7 @@ export function createUsageExecutor(
     checkedAt: null,
     perfIndexVersion: "",
     perfTimingRevision: "",
+    magpieTimingFingerprint: "",
     lastCheckpoint: null,
   });
   let worker = null;
@@ -877,6 +888,9 @@ export function createUsageExecutor(
     },
     get perfTimingRevision() {
       return state.perfTimingRevision;
+    },
+    get magpieTimingFingerprint() {
+      return state.magpieTimingFingerprint;
     },
     get lastCheckpoint() {
       return state.lastCheckpoint;

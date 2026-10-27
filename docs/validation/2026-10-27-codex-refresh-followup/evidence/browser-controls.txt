@@ -1,0 +1,6 @@
+{"label":"browser-first","ms":14062}
+{"label":"browser-cycle","index":0,"kind":"claude","delta":1000107,"fromWriteMs":5953,"fromCheckMs":5699}
+{"label":"browser-cycle","index":1,"kind":"codex-new","delta":1000107,"fromWriteMs":8992,"fromCheckMs":8722}
+{"label":"browser-cycle","index":2,"kind":"codex-append","delta":1000107,"fromWriteMs":8754,"fromCheckMs":8486}
+{"label":"resource","at":1793066224699,"rss":935112704,"maxRSSKiB":1149784,"freeGiB":13.469959259033203,"walBytes":0,"cpu":{"user":41421000,"system":11921000}}
+{"label":"browser-cycle","index":3,"kind":"ledger","delta":0,"fromWriteMs":6189,"fromCheckMs":5932}

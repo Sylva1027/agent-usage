@@ -1,0 +1,54 @@
+{
+  "checkedCycles": 4,
+  "checks": [
+    {
+      "kind": "codex-append",
+      "stats": {
+        "n": 3,
+        "averageTps": 375002.625,
+        "p10": 333335.6666666667,
+        "p90": 500003.5
+      },
+      "index": 0
+    },
+    {
+      "kind": "ledger",
+      "stats": {
+        "n": 4,
+        "averageTps": 307694.46153846156,
+        "p10": 200001.4,
+        "p90": 500003.5
+      },
+      "index": 1
+    },
+    {
+      "kind": "codex-append",
+      "stats": {
+        "n": 5,
+        "averageTps": 294119.70588235295,
+        "p10": 200001.4,
+        "p90": 500003.5
+      },
+      "index": 2
+    },
+    {
+      "kind": "ledger",
+      "stats": {
+        "n": 6,
+        "averageTps": 250001.75,
+        "p10": 142858.14285714287,
+        "p90": 500003.5
+      },
+      "index": 3
+    }
+  ],
+  "independentDurations": [
+    2000.0,
+    3000.0,
+    3000.0,
+    5000.0,
+    4000.0,
+    7000.0
+  ],
+  "passed": true
+}

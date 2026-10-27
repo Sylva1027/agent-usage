@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { appendFile, link, mkdir, mkdtemp, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildUsageIndex,
   buildUsageReport,
+  buildMagpieTimingFingerprint,
   buildUsageFingerprint,
   classifyImportDirectory,
   discoverClaudeHomes,
@@ -631,6 +632,95 @@ test("buildUsageReport and summarizeUsage include imported project usage logs", 
     [[projectRoot, 200]],
   );
   assert.equal(fingerprint.fileCount, 1);
+});
+
+test("buildMagpieTimingFingerprint keeps the optional ledger separate from usage sources", async (t) => {
+  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-optional-"));
+  t.after(() => rm(fakeHome, { recursive: true, force: true }));
+  const options = { homeDir: fakeHome, env: {} };
+  const sessionDir = path.join(fakeHome, ".codex", "sessions");
+  await mkdir(sessionDir, { recursive: true });
+  await writeFile(path.join(sessionDir, "rollout.jsonl"), "{}\n");
+  const before = await buildUsageFingerprint(options);
+  assert.equal(await buildMagpieTimingFingerprint(options), "");
+  const ledgerDir = path.join(fakeHome, ".config", "magpie");
+  await mkdir(ledgerDir, { recursive: true });
+  assert.equal(await buildMagpieTimingFingerprint(options), "");
+  await writeFile(path.join(ledgerDir, "usage.jsonl"), "");
+  const fingerprint = await buildMagpieTimingFingerprint(options);
+  assert.match(fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(await buildMagpieTimingFingerprint(options), fingerprint);
+  const after = await buildUsageFingerprint(options);
+  assert.equal(after.fingerprint, before.fingerprint);
+  assert.equal(after.fileCount, 1);
+  assert.equal(after.homeCount, before.homeCount);
+  await assert.rejects(buildMagpieTimingFingerprint({ homeDir: `${fakeHome}\0` }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+});
+
+test("buildMagpieTimingFingerprint tracks append, mtime, truncation and disappearance", async (t) => {
+  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-changes-"));
+  t.after(() => rm(fakeHome, { recursive: true, force: true }));
+  const options = { homeDir: fakeHome };
+  const ledgerDir = path.join(fakeHome, ".config", "magpie");
+  const ledgerFile = path.join(ledgerDir, "usage.jsonl");
+  await mkdir(ledgerDir, { recursive: true });
+  await writeFile(ledgerFile, "{}\n");
+  const first = await buildMagpieTimingFingerprint(options);
+  await appendFile(ledgerFile, 'invalid\n{"unfinished":');
+  const appended = await buildMagpieTimingFingerprint(options);
+  assert.notEqual(appended, first);
+  assert.equal(await buildMagpieTimingFingerprint(options), appended);
+  await utimes(ledgerFile, 946684800, 946684800);
+  const touched = await buildMagpieTimingFingerprint(options);
+  assert.notEqual(touched, appended);
+  await writeFile(ledgerFile, "");
+  const truncated = await buildMagpieTimingFingerprint(options);
+  assert.notEqual(truncated, touched);
+  await rm(ledgerFile);
+  assert.equal(await buildMagpieTimingFingerprint(options), "");
+  await writeFile(ledgerFile, "{}\n");
+  assert.match(await buildMagpieTimingFingerprint(options), /^[a-f0-9]{64}$/);
+});
+
+test("buildMagpieTimingFingerprint detects replacement with unchanged size and mtime", async (t) => {
+  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-replace-"));
+  t.after(() => rm(fakeHome, { recursive: true, force: true }));
+  const options = { homeDir: fakeHome };
+  const ledgerDir = path.join(fakeHome, ".config", "magpie");
+  const ledgerFile = path.join(ledgerDir, "usage.jsonl");
+  const replacement = path.join(ledgerDir, "replacement.jsonl");
+  await mkdir(ledgerDir, { recursive: true });
+  for (const file of [ledgerFile, replacement]) {
+    await writeFile(file, "{}\n");
+    await utimes(file, 946684800, 946684800);
+  }
+  const before = await buildMagpieTimingFingerprint(options);
+  const originalStat = await stat(ledgerFile);
+  await rename(ledgerFile, path.join(ledgerDir, "previous.jsonl"));
+  await rename(replacement, ledgerFile);
+  const replacementStat = await stat(ledgerFile);
+  assert.equal(replacementStat.size, originalStat.size);
+  assert.equal(replacementStat.mtimeMs, originalStat.mtimeMs);
+  assert.notEqual(await buildMagpieTimingFingerprint(options), before);
+});
+
+test("buildMagpieTimingFingerprint includes the ledger path in its signature", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-path-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const firstHome = path.join(root, "first");
+  const secondHome = path.join(root, "second");
+  const firstLedger = path.join(firstHome, ".config", "magpie", "usage.jsonl");
+  const secondLedger = path.join(secondHome, ".config", "magpie", "usage.jsonl");
+  await mkdir(path.dirname(firstLedger), { recursive: true });
+  await mkdir(path.dirname(secondLedger), { recursive: true });
+  await writeFile(firstLedger, "{}\n");
+  await link(firstLedger, secondLedger);
+  assert.notEqual(
+    await buildMagpieTimingFingerprint({ homeDir: firstHome }),
+    await buildMagpieTimingFingerprint({ homeDir: secondHome }),
+  );
 });
 
 test("buildUsageFingerprint changes when session files change", async () => {

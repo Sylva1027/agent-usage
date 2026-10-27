@@ -1,0 +1,217 @@
+{
+  "whitelist": [
+    "summary.generatedAt",
+    "summary.perf.indexedAt",
+    "summary.perf.meta.indexedAt"
+  ],
+  "comparisons": [
+    {
+      "preset": "today",
+      "equal": true,
+      "sha256": "333d1d183b5acf6fcaaafc48ecd0f8980c67d42deb1144bd36e806ad46adf62c"
+    },
+    {
+      "preset": "month",
+      "equal": true,
+      "sha256": "adb878faaf2845f925d7ee1aead74e995e3560e795a8db412012e8bd8974fa51"
+    },
+    {
+      "preset": "all",
+      "equal": true,
+      "sha256": "b877c7de7bbfa5921a30263570f45bbc452212d772fbe905f0a1ef15c957eab4"
+    }
+  ],
+  "timing": {
+    "control-on": [
+      7594.9182999999975,
+      7872.792499999996,
+      7858.915500000003
+    ],
+    "control-off": [
+      7828.548399999996,
+      8134.804300000003,
+      7567.3773
+    ]
+  },
+  "queryStages": {
+    "today": [
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 212.29329999999754,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 171.42639999999665,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 76.7948000000033,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 279.0627000000022,
+          "extra": 0
+        }
+      },
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 179.5576000000001,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 176.20899999999529,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 47.15099999999802,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 240.8217999999979,
+          "extra": 0
+        }
+      },
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 177.3599000000031,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 182.84420000000682,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 43.22249999999622,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 268.1447000000044,
+          "extra": 0
+        }
+      }
+    ],
+    "month": [
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 1036.0232000000033,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 582.454899999997,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 430.29639999999927,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 952.8036000000066,
+          "extra": 0
+        }
+      },
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 941.7560999999987,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 551.3437000000049,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 426.73970000000554,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 940.5348000000013,
+          "extra": 0
+        }
+      },
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 899.5999999999985,
+          "extra": 0
+        },
+        "groupedRange": {
+          "calls": 2,
+          "ms": 584.4039000000048,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 396.8781000000017,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 867.4521000000022,
+          "extra": 0
+        }
+      }
+    ],
+    "all": [
+      {
+        "timelineRange": {
+          "calls": 1,
+          "ms": 1198.512999999999,
+          "extra": 0
+        },
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 375.41900000000896,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 912.5055999999895,
+          "extra": 0
+        }
+      },
+      {
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 350.1964000000007,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 812.0907000000007,
+          "extra": 0
+        }
+      },
+      {
+        "buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 513.8891999999905,
+          "extra": 0
+        },
+        "perfSummaryForRange": {
+          "calls": 1,
+          "ms": 977.876099999994,
+          "extra": 0
+        }
+      }
+    ]
+  }
+}

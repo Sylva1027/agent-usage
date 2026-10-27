@@ -1,0 +1,323 @@
+{
+  "completedAt": "2026-10-26T18:38:50.529Z",
+  "comparison": {
+    "comparedAt": "2026-10-26T17:36:01.149Z",
+    "equivalent": true,
+    "ignoredFields": [
+      "summary.generatedAt",
+      "summary.perf.indexedAt",
+      "summary.perf.meta.indexedAt"
+    ],
+    "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+    "tables": {
+      "events": 135873,
+      "source_files": 1597,
+      "perf_samples": 53161,
+      "perf_codex_projections": 1388,
+      "perf_rollout_threads": 1394,
+      "archive_segments": 0
+    },
+    "comparisons": {
+      "unchanged": {
+        "before": {
+          "n": 20,
+          "p50": 1631.9539000000004,
+          "p95": 1717.7111000000004,
+          "max": 1731.547599999998
+        },
+        "after": {
+          "n": 20,
+          "p50": 1656.1940000000031,
+          "p95": 1700.1610999999975,
+          "max": 1702.1414999999997
+        },
+        "p95ReductionPercent": 1.0217084817116695
+      },
+      "today": {
+        "before": {
+          "n": 20,
+          "p50": 483.88700000000244,
+          "p95": 613.6606000000029,
+          "max": 665.5342000000019
+        },
+        "after": {
+          "n": 20,
+          "p50": 358.6927999999971,
+          "p95": 399.46399999999994,
+          "max": 411.0074999999997
+        },
+        "p95ReductionPercent": 34.9047339848773
+      },
+      "month": {
+        "before": {
+          "n": 20,
+          "p50": 1526.7497999999905,
+          "p95": 1866.447199999995,
+          "max": 2047.3428000000058
+        },
+        "after": {
+          "n": 20,
+          "p50": 1251.7263999999996,
+          "p95": 1274.934699999998,
+          "max": 1332.3138000000035
+        },
+        "p95ReductionPercent": 31.691895704309157
+      },
+      "all": {
+        "before": {
+          "n": 20,
+          "p50": 52.85330000000249,
+          "p95": 68.91649999999208,
+          "max": 71.76389999999083
+        },
+        "after": {
+          "n": 20,
+          "p50": 54.05559999999241,
+          "p95": 71.03180000001157,
+          "max": 71.09299999999348
+        },
+        "p95ReductionPercent": -3.0693665523056524
+      }
+    },
+    "maxNodeRSSMiB": {
+      "before": 974.58984375,
+      "after": 980.75390625
+    },
+    "minimumAvailableGiB": {
+      "before": 12.496177673339844,
+      "after": 13.296649932861328
+    }
+  },
+  "changed": {
+    "comparisons": {
+      "native-append": {
+        "before": {
+          "n": 20,
+          "p50": 4809.864999999991,
+          "p95": 4923.617400000003,
+          "max": 4956.028699999995
+        },
+        "after": {
+          "n": 20,
+          "p50": 3899.8981999999996,
+          "p95": 3956.484700000001,
+          "max": 3999.8452000000034
+        },
+        "p95ReductionPercent": 19.642726504297457
+      },
+      "ledger-only": {
+        "before": {
+          "n": 20,
+          "p50": 2330.0383999999904,
+          "p95": 2374.4960999999894,
+          "max": 2380.229800000001
+        },
+        "after": {
+          "n": 20,
+          "p50": 2289.3599000000104,
+          "p95": 2355.3236000000034,
+          "max": 2363.052100000001
+        },
+        "p95ReductionPercent": 0.8074344699907532
+      },
+      "claude-append": {
+        "before": {
+          "n": 20,
+          "p50": 1956.5750999999873,
+          "p95": 2006.4268000000156,
+          "max": 2009.6804999999877
+        },
+        "after": {
+          "n": 20,
+          "p50": 1939.3522999999986,
+          "p95": 1980.8004000000074,
+          "max": 1984.3355000000156
+        },
+        "p95ReductionPercent": 1.2772157947655072
+      }
+    },
+    "beforeChecks": [
+      20,
+      20,
+      20
+    ],
+    "afterChecks": [
+      20,
+      20,
+      20
+    ],
+    "nodePeakRSSMiB": [
+      887.78125,
+      871.97265625
+    ]
+  },
+  "browser": {
+    "groups": {
+      "codex-append": {
+        "token": {
+          "n": 20,
+          "p50": 5785,
+          "p95": 6008,
+          "max": 6034
+        },
+        "tps": {
+          "n": 20,
+          "p50": 5785,
+          "p95": 6008,
+          "max": 6034
+        },
+        "fromWrite": {
+          "n": 20,
+          "p50": 61780,
+          "p95": 61983,
+          "max": 62564
+        },
+        "g1Tps": {
+          "pass": false,
+          "p95OverMs": 3008,
+          "maxOverMs": 0
+        },
+        "g1Token": {
+          "pass": false
+        },
+        "freshnessFailures": [],
+        "configured65sFailures": []
+      },
+      "ledger": {
+        "token": null,
+        "tps": {
+          "n": 20,
+          "p50": 3815,
+          "p95": 3865,
+          "max": 3922
+        },
+        "fromWrite": {
+          "n": 20,
+          "p50": 57788,
+          "p95": 57919,
+          "max": 57967
+        },
+        "g1Tps": {
+          "pass": false,
+          "p95OverMs": 865,
+          "maxOverMs": 0
+        },
+        "g1Token": null,
+        "freshnessFailures": [],
+        "configured65sFailures": []
+      }
+    },
+    "errors": [],
+    "actualInterval": {
+      "n": 40,
+      "p50": 60001,
+      "p95": 60004,
+      "max": 60010
+    },
+    "nodePeakRSSMiB": 1319.421875,
+    "maximumSampledWALBytes": 947632,
+    "minimumSystemAvailableGiB": 13.05267333984375,
+    "twoTabs": {
+      "secondLoadMs": 3804,
+      "firstFilterAndJoinMs": 3804
+    },
+    "walAfterClose": 0
+  },
+  "retained": {
+    "missingSources": 6,
+    "before": {
+      "events": {
+        "count": 14416,
+        "hash": "d158a9c263a5596f3bec6d79ba544361ffca557f353b56d0f2d86081c5d229bd"
+      },
+      "samples": {
+        "count": 359,
+        "hash": "936bb70149a1014c156184bccdd03d594a321dee6f4ea444eddeaafafda61cda"
+      },
+      "owners": {
+        "count": 6,
+        "hash": "5ee0c5c307935ccb6abf28ea0cf4c015d460b6a8f2671ae29f056161cb794aa6"
+      },
+      "dependencies": {
+        "count": 359,
+        "hash": "7b5cf33ea738d5836f1c3beacbc90b6baffff09dbc3abe6b995acfc391c2e8ad"
+      }
+    },
+    "after": {
+      "events": {
+        "count": 14416,
+        "hash": "d158a9c263a5596f3bec6d79ba544361ffca557f353b56d0f2d86081c5d229bd"
+      },
+      "samples": {
+        "count": 359,
+        "hash": "936bb70149a1014c156184bccdd03d594a321dee6f4ea444eddeaafafda61cda"
+      },
+      "owners": {
+        "count": 6,
+        "hash": "5ee0c5c307935ccb6abf28ea0cf4c015d460b6a8f2671ae29f056161cb794aa6"
+      },
+      "dependencies": {
+        "count": 359,
+        "hash": "7b5cf33ea738d5836f1c3beacbc90b6baffff09dbc3abe6b995acfc391c2e8ad"
+      }
+    }
+  },
+  "controls": {
+    "cycles": [
+      {
+        "kind": "claude",
+        "delta": 1000107,
+        "fromCheckMs": 3846
+      },
+      {
+        "kind": "codex-new",
+        "delta": 1000107,
+        "fromCheckMs": 5617
+      },
+      {
+        "kind": "codex-append",
+        "delta": 1000107,
+        "fromCheckMs": 5564
+      },
+      {
+        "kind": "ledger",
+        "delta": 0,
+        "fromCheckMs": 3846
+      }
+    ],
+    "errors": [],
+    "twoTabs": {
+      "secondLoadMs": 3732,
+      "firstFilterAndJoinMs": 3732
+    },
+    "walAfterClose": 0
+  },
+  "jobMemoryLimitMiB": 7168,
+  "totalBudgetGiB": 8,
+  "measuredJobPeak": null,
+  "restoration": {
+    "checkedAt": "2026-10-26T18:38:56.834Z",
+    "files": 1630,
+    "differences": 0
+  },
+  "controlsRestoration": {
+    "checkedAt": "2026-10-26T18:41:24.130Z",
+    "files": 1630,
+    "differences": 0
+  },
+  "inputs": {
+    "checkedAt": "2026-10-26T18:41:27.112Z",
+    "identityHash": "a2dcfca0bc53c18b27d0c20e64ee7fbb789945b6382eed7da8ca71e0df160d92",
+    "verifiedInputs": 1633,
+    "verifiedBytes": 4229909674,
+    "verifiedModules": 57,
+    "allEquivalent": true,
+    "seedHash": "cfc35c20b32efd09328fde9ba477d25be3ebac5da33e55a26d9555090a085bd5",
+    "nodePeakRSSMiB": 69.13671875
+  },
+  "limits": [
+    "1x frozen warm inputs; no real cold-disk or long-running production benchmark",
+    "Node RSS is not the whole Job peak",
+    "Backend one-turn append and browser two-turn append are different workloads"
+  ]
+}

@@ -1,0 +1,869 @@
+{
+  "validated": true,
+  "inputsUnchanged": true,
+  "concurrent": {
+    "requested": 3,
+    "publishedReader": 3,
+    "selectedReaders": [
+      {
+        "label": "round-0-during-sync",
+        "role": "published",
+        "reader": "1:4"
+      },
+      {
+        "label": "round-1-during-sync",
+        "role": "published",
+        "reader": "1:6"
+      },
+      {
+        "label": "round-2-during-sync",
+        "role": "published",
+        "reader": "1:8"
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "label": "round-0-first",
+      "ms": 2033.952700000009,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": null,
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.015400000003864989
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.0507999999972526
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 753.8632999999973
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 754.8288999999932
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 359.52419999999984
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 315.5268999999971
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 675.0721000000049
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1623.2629000000015
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1623.2822999999917
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1623.3666999999987
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.2863999999972293
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 405.9401999999973
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 2029.7235999999975
+        }
+      }
+    },
+    {
+      "label": "round-0-same-context",
+      "ms": 68.7789000000048,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": true,
+      "changed": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.011100000003352761
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.035699999978533015
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 64.78190000000177
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 64.78619999998773
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 64.82570000000123
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.14209999999729916
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.37939999999071006
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 65.38090000000375
+        }
+      }
+    },
+    {
+      "label": "round-0-during-sync",
+      "ms": 2065.8497999999963,
+      "role": "published",
+      "reader": "1:4",
+      "hit": false,
+      "changed": null,
+      "methods": {
+        "1:4/open": {
+          "calls": 4,
+          "ms": 0.01699999999254942
+        },
+        "1:4/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.07110000000102445
+        },
+        "1:4/costEventsForRange": {
+          "calls": 1,
+          "ms": 716.0632000000041
+        },
+        "1:4/timelineRange": {
+          "calls": 1,
+          "ms": 716.2755000000034
+        },
+        "1:4/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 350.97879999999714
+        },
+        "1:4/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 295.0631999999896
+        },
+        "1:4/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 646.0507999999973
+        },
+        "1:4/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1535.6967000000004
+        },
+        "1:4/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1535.7010999999911
+        },
+        "1:4/summarizeHistory": {
+          "calls": 1,
+          "ms": 1535.7495999999956
+        },
+        "1:4/metadataHistory": {
+          "calls": 1,
+          "ms": 164.02470000000903
+        },
+        "1:4/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 352.1195000000007
+        },
+        "1:4/dashboardHistory": {
+          "calls": 1,
+          "ms": 2053.909799999994
+        }
+      }
+    },
+    {
+      "label": "round-0-after-sync",
+      "ms": 1399.7771999999968,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.014100000000325963
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.042700000005424954
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 709.7281000000075
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 710.1279000000068
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 326.3607999999949
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 301.1380999999965
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 627.5202000000136
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1395.2084999999934
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1395.2451
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1395.296199999997
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.229300000006333
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.5421000000060303
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1396.1129000000074
+        }
+      }
+    },
+    {
+      "label": "round-0-after-no-op",
+      "ms": 1391.2926999999909,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.022000000011757948
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.05589999999210704
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 715.1579000000056
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 715.56700000001
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 331.9956999999995
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 279.10349999999744
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 611.1205000000045
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1386.5899999999965
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1386.62950000001
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1386.678899999999
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.20849999999336433
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.6275999999925261
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1387.5604000000021
+        }
+      }
+    },
+    {
+      "label": "round-1-first",
+      "ms": 59.46229999999923,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": true,
+      "changed": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.01039999998465646
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.029799999989336357
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 55.53149999999732
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 55.53720000000612
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 55.60440000001108
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.13410000001022127
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.3730000000068685
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 56.14360000001034
+        }
+      }
+    },
+    {
+      "label": "round-1-same-context",
+      "ms": 63.6594000000041,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": true,
+      "changed": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.010000000009313226
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.03250000000116415
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 59.65220000001136
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 59.65589999999793
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 59.691600000005565
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.15590000001247972
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.39050000000861473
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 60.27140000001236
+        }
+      }
+    },
+    {
+      "label": "round-1-during-sync",
+      "ms": 2006.1140999999916,
+      "role": "published",
+      "reader": "1:6",
+      "hit": false,
+      "changed": null,
+      "methods": {
+        "1:6/open": {
+          "calls": 4,
+          "ms": 0.014600000009522773
+        },
+        "1:6/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.050600000031408854
+        },
+        "1:6/costEventsForRange": {
+          "calls": 1,
+          "ms": 719.2404000000097
+        },
+        "1:6/timelineRange": {
+          "calls": 1,
+          "ms": 719.3503999999957
+        },
+        "1:6/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 328.82489999999234
+        },
+        "1:6/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 295.69719999999506
+        },
+        "1:6/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 624.5321000000113
+        },
+        "1:6/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1496.2690000000002
+        },
+        "1:6/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1496.2760999999882
+        },
+        "1:6/summarizeHistory": {
+          "calls": 1,
+          "ms": 1496.3264000000054
+        },
+        "1:6/metadataHistory": {
+          "calls": 1,
+          "ms": 158.99749999999767
+        },
+        "1:6/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 338.84219999999914
+        },
+        "1:6/dashboardHistory": {
+          "calls": 1,
+          "ms": 1996.2241000000067
+        }
+      }
+    },
+    {
+      "label": "round-1-after-sync",
+      "ms": 1394.5664000000106,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.012400000006891787
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.04000000000814907
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 724.720799999981
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 725.0674999999756
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 332.99640000000363
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 275.9082000000053
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 608.9249999999884
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1389.947199999995
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1389.9809999999998
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1390.0301999999792
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.2114000000001397
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.5210999999835622
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1390.8040999999794
+        }
+      }
+    },
+    {
+      "label": "round-1-after-no-op",
+      "ms": 1388.8256999999867,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.014399999985471368
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.0408000000170432
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 711.909100000019
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 712.2687000000151
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 333.06439999997383
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 284.12979999999516
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 617.2139000000025
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1383.9964000000036
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1384.0341999999946
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1384.0896000000066
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.21100000001024455
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.5461000000068452
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1384.8918000000122
+        }
+      }
+    },
+    {
+      "label": "round-2-first",
+      "ms": 55.64999999999418,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": true,
+      "changed": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.00910000002477318
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.028400000010151416
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 51.718599999992875
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 51.72239999999874
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 51.7607999999891
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.13619999997899868
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.36360000001150183
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 52.29200000001583
+        }
+      }
+    },
+    {
+      "label": "round-2-same-context",
+      "ms": 59.21960000001127,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": true,
+      "changed": [],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.010200000018812716
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.036699999996926636
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 55.13200000001234
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 55.13570000001346
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 55.179400000022724
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.24770000000717118
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.4081000000005588
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 55.86750000002212
+        }
+      }
+    },
+    {
+      "label": "round-2-during-sync",
+      "ms": 1982.8078999999852,
+      "role": "published",
+      "reader": "1:8",
+      "hit": false,
+      "changed": null,
+      "methods": {
+        "1:8/open": {
+          "calls": 4,
+          "ms": 0.016100000037113205
+        },
+        "1:8/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.052699999941978604
+        },
+        "1:8/costEventsForRange": {
+          "calls": 1,
+          "ms": 712.6155999999901
+        },
+        "1:8/timelineRange": {
+          "calls": 1,
+          "ms": 712.7287999999826
+        },
+        "1:8/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 326.9488999999885
+        },
+        "1:8/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 273.3306000000157
+        },
+        "1:8/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 600.2929000000004
+        },
+        "1:8/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1469.0286000000197
+        },
+        "1:8/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1469.0331000000006
+        },
+        "1:8/summarizeHistory": {
+          "calls": 1,
+          "ms": 1469.0901000000013
+        },
+        "1:8/metadataHistory": {
+          "calls": 1,
+          "ms": 157.82690000001458
+        },
+        "1:8/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 343.3423999999941
+        },
+        "1:8/dashboardHistory": {
+          "calls": 1,
+          "ms": 1972.7370999999985
+        }
+      }
+    },
+    {
+      "label": "round-2-after-sync",
+      "ms": 1383.9122000000207,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.013999999995576218
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.035299999988637865
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 702.2624000000069
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 702.6282000000065
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 336.93959999998333
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 281.85289999999804
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 618.8119000000006
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1379.5993999999773
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1379.6339000000153
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1379.6775999999954
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.18739999999525025
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.5297000000136904
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1380.4384000000136
+        }
+      }
+    },
+    {
+      "label": "round-2-after-no-op",
+      "ms": 1413.4964000000036,
+      "role": "writer",
+      "reader": "1:1",
+      "hit": false,
+      "changed": [
+        "total-changes"
+      ],
+      "methods": {
+        "1:1/open": {
+          "calls": 4,
+          "ms": 0.013300000020535663
+        },
+        "1:1/syncDerivedRevision": {
+          "calls": 5,
+          "ms": 0.04229999994277023
+        },
+        "1:1/costEventsForRange": {
+          "calls": 1,
+          "ms": 721.7505999999994
+        },
+        "1:1/timelineRange": {
+          "calls": 1,
+          "ms": 722.1347999999998
+        },
+        "1:1/capturePerfCarrier": {
+          "calls": 1,
+          "ms": 331.32010000001173
+        },
+        "1:1/buildPerfSummaryForRange": {
+          "calls": 1,
+          "ms": 297.7927999999956
+        },
+        "1:1/perfSummaryForRange": {
+          "calls": 1,
+          "ms": 629.133600000001
+        },
+        "1:1/summarizeInReadTransactionCore": {
+          "calls": 1,
+          "ms": 1409.1688999999897
+        },
+        "1:1/summarizeInReadTransaction": {
+          "calls": 1,
+          "ms": 1409.203199999989
+        },
+        "1:1/summarizeHistory": {
+          "calls": 1,
+          "ms": 1409.2535000000207
+        },
+        "1:1/metadataHistory": {
+          "calls": 1,
+          "ms": 0.19939999998314306
+        },
+        "1:1/periodComparisonHistory": {
+          "calls": 1,
+          "ms": 0.5350000000034925
+        },
+        "1:1/dashboardHistory": {
+          "calls": 1,
+          "ms": 1410.0309000000125
+        }
+      }
+    }
+  ]
+}

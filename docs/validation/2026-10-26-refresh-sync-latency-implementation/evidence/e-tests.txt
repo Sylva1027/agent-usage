@@ -1,0 +1,300 @@
+✖ explicit cold perf authority keeps an evicted ZCode sample in summarizeHistory (242.1375ms)
+✖ summarizeHistory pins the captured perf carrier record across cold event reads (224.3545ms)
+✖ SQL history preserves complete scopes, isolates hot caches, and falls back for revisions (64.8268ms)
+✖ verified metadata shares unexcluded timeline facts while keeping future observations and full inventory (53.9699ms)
+✖ verified repository periods share the fact scan and fall back across a calendar and price change (53.898ms)
+✖ SQL history reprices unchanged facts and still rejects missing or damaged cached segments (50.5412ms)
+✖ verified SQL uses indexed physical bounds and complete rollups, falling back when markers are missing (84.4972ms)
+✖ hot writes during verification and pinned publications retain coherent reads and release WAL (52.5086ms)
+✖ event-only SQL history keeps live ZCode perf and its full coverage (184.6621ms)
+✔ all-hot summary projection is reusable, isolated, and input-complete (64.6986ms)
+ℹ {"cachedKey":true,"mutationIsolated":true,"eventInvalidation":true,"pricingVersions":{"initialVersion":"2026-10-12","changedVersionA":"2026-10-01-e7cbea9a5c2b","changedVersionB":"2026-10-01-3754b4170053"},"tierInvalidation":true,"tierRevisionUnchanged":true,"nonAllAlwaysRebuilds":true,"timelineCalls":11}
+✔ exhausted quote capture keeps complete SQL repricing instead of publishing a prefix (32.5829ms)
+✔ E-1 all perf projection follows local/external revisions and bypasses uncommitted writes (56.6952ms)
+✔ v11 夹具自证：user_version=11、无 perf_samples、四张旧表列集与全新库路径逐列相同 (46.4575ms)
+✔ 列清单与 AO-1/AO-2 对照：映射表 = 计划 30 列 + diagnostic_reason_chain = 31 列（逐列确认） (0.2557ms)
+✔ ★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 21 (27.0495ms)
+✔ ★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定义与全新库路径【逐字相同】 (56.3178ms)
+✔ ★A 迁移在同一事务内做【无 WHERE 标脏】：既有全部来源行都变 -1（两条来源行都测） (31.79ms)
+✔ ★B 往返恒等：真实 normalizePerfSample 样本 decode(encode(s)) 与 s 逐字段深等 (43.604ms)
+✔ ★B null 与 0 在库里就是两种值：未知写 NULL、真实 0 写 0（SQL 层实测 + 往返） (27.5805ms)
+✔ ★B 空数组与 NULL 在库里是两种状态：链为空存 '[]'，没有链存 NULL（AO-1/AO-3） (29.9947ms)
+✔ ★B 度量列在 schema 层就是可空的，且没有 DEFAULT（AO-3 的结构性保障） (27.7628ms)
+✔ ★C 连接上 PRAGMA foreign_keys 实测为 ON（全新库路径与迁移路径都测） (53.4709ms)
+✔ ★C 机制：事务内设置 PRAGMA foreign_keys 是 no-op —— 这就是「必须事务外设」的原因 (25.3478ms)
+✔ ★C 外键真的生效：插入未注册的 source_path 失败，注册后同一行成功（两侧对照） (27.4203ms)
+✔ ★D 级联删除实测：删 source_files 父行 ⇒ perf_samples 子行消失（含删除前计数对照） (27.8287ms)
+✔ ★D 机制对照：把 foreign_keys 关掉就【不会】级联 —— 证明 D 的证据依赖 pragma 而不是 DDL 文本 (29.1472ms)
+✔ ★E 枚举约束：status / timing_kind / agent_kind 非法值必须失败，合法值成功（逐列两侧） (34.614ms)
+✔ ★E STRICT 类型：REAL / 非数字 TEXT 写 INTEGER 列必须失败；数字串会被无损换算（实测记录） (31.0395ms)
+✔ ★E 名字类：空 model / 空 agent 允许；空 source_kind / 空 home_id 必须失败 (27.3862ms)
+✔ ★E 主键：STRICT 表的主键列隐含 NOT NULL，且重复主键失败（🟦 实测） (26.8222ms)
+✔ ★F v11 夹具里的 events / rate_limit_observations / store_meta / source_files 逐行不变（行数 + 内容哈希；store_meta 既有键不变、只允许新增读取器标记） (37.0922ms)
+✔ ★G 重复打开无害：版本仍为当前 v21、表与行数不变、且迁移的标脏 UPDATE 不重跑（哨兵值实测） (36.3405ms)
+✔ ★G 四类夹具都实测可达：空库 / 当前版本（v21） / v11 夹具迁移 / 重开库 (63.0915ms)
+✔ ★H 迁移中途失败（触发器 ABORT 在标脏那一步）⇒ 回滚：版本仍 11、perf_samples 不存在、旧数据不变；去掉注入后重试成功 (35.8825ms)
+✔ ★H 陈旧错形状的 perf_samples ⇒ 迁移整体失败并回滚（版本仍 11，旧表原样保留，不当作已升级） (21.0188ms)
+✔ ★H 自检能抓住 SQLite DDL 自己抓不到的漂移：列集不对但索引列齐备 ⇒ PERF_SAMPLES_SCHEMA_MISMATCH (21.2151ms)
+✔ ★H 同名 VIEW 伪装 perf_samples ⇒ 迁移失败并整体回滚（实测：视图上的 CREATE INDEX 报错） (20.6915ms)
+✔ 编解码防线：encode 拒绝非归一化输入并指出字段名；decode 拒绝坏链与坏类型 (0.509ms)
+✔ ★AO-4 提示与 M1 实测不符：`chain 非空 ⇔ flags≠0` 双向都不成立 ⇒ 不得写成 CHECK 约束 (0.1181ms)
+✔ perfSampleByKey 未命中返回 null（判别式可达：库为空时也必须给出 null 而不是抛错） (25.6935ms)
+✔ ★E 注册表：M7 启用六类候选来源，project-log 为 unsupported (0.2769ms)
+✔ ★E classifyPerfSources 把来源分成三组（enabled / notEnabled / unsupported），不合并成「失败源」 (0.1275ms)
+✔ ★E Codex 禁止逐文件调度；project-log 仍是 unsupported (9.6225ms)
+✔ ★B 一次 replaceFile 写入全部候选；重复同步为【替换】而非追加（行数与内容都不变） (50.6475ms)
+✔ ★B 上游行数变化 ⇒ 候选数随之收缩（证明 DELETE 显式生效，而不是只增不减） (48.2123ms)
+✔ ★A 注入 1：ZCode reader 在读上游时失败（上游被换成非 SQLite）⇒ 四类全部回滚 (44.3747ms)
+✔ ★A 注入 2：候选插入失败（违反 status 枚举）⇒ 四类全部回滚，且第一行也不留 (55.8572ms)
+✔ ★A 注入 3：ZCode reader 能力守护失败（缺必需列）⇒ 四类全部回滚 (49.3305ms)
+✔ ★C 上游只读打开失败（路径不存在）⇒ 抛错且四类回滚，不留「已索引」假象 (40.7852ms)
+✔ ★D WAL-only 改动（主库字节不变）⇒ 指纹变化 ⇒ 必须重新提取到新候选 (50.7917ms)
+✔ ★D 反向对照：WAL 未被改动时指纹稳定（否则上一条的「变化」可能只是时间噪音） (37.555ms)
+✔ 上游库以**只读**打开：索引期间上游字节与 mtime 都不变（不是「打开了就算只读」） (41.988ms)
+✔ ★E unsupported 来源不产生 perf 候选；Codex 只能通过线程同步入口 (45.088ms)
+✔ 调度器在写库前做归一化：reader 出口是 36 键 raw，写库的是 31 字段样本 (9.0839ms)
+✔ 归属用 filePath：多文件来源（source.path 是目录）也不会触外键失败 (37.6944ms)
+✔ ★A 边界五连：ts===startMs 入选、ts===endMs 入选、ts===windowEndExclusiveMs 落选、无界、endMs 被忽略 —— 双路径逐项比对 (50.7143ms)
+✔ ★A Date 形状的边界（配额 range 用 Date，不是数字）也必须同形 (40.0553ms)
+✔ ★A 配额场景：口径由单一范围表达决定；usage-core 原始形状必须【响亮失败】而非静默无界 (45.8411ms)
+✔ ★B unplaced（ts_ms IS NULL）不进当前范围，但诊断接口能单独取到 —— 两侧都断言 (41.287ms)
+✔ ★C SQL 路径的候选必须经 decodePerfSample 全列解码，与内存 PerfSample 逐字段深等 (38.6855ms)
+✔ ★D 来源消失且 home 未失败 ⇒ 保留 source_files、候选与 missing 状态 (59.1977ms)
+✔ ★D 失败 home ⇒ 三段合取生效：source_files 与候选【都不删】（临时的不可读不得当删除） (27.1681ms)
+✔ ★D 整个 ZCode home 消失 ⇒ 历史保留并登记 missing（不是 degraded） (43.3107ms)
+✔ ★D 替换（文件仍在）⇒ 走 M3.2 的显式 DELETE，不是级联（source_files 行保留、候选被换掉） (45.8731ms)
+✔ ★E excludedHomeIds 按 home_id 过滤：被排除 home 一条不出现，且不靠 channel (56.5336ms)
+✔ 候选按稳定 sample_key 排序（两次查询顺序完全一致，且确实是升序） (39.6879ms)
+✔ SQL 只做范围/来源限制：不在 SQL 里算 TPS、百分位或覆盖率（出口无派生字段） (35.9135ms)
+✔ 非法范围必须与 M1 同样抛错（不静默禁用边界：NaN / Invalid Date / 坏类型） (35.876ms)
+✔ D · internal map reads share committed maps while mutable getters retain independent copies (59.2507ms)
+✔ S1 · 无提交轮次：两份 published map 每轮各**至多解码 1 次**（B2 计数口径） (59.3745ms)
+✔ S1 · 多文件成功提交：轮级版本与消费者读数都用**最新**指纹（不是轮初视图） (72.0806ms)
+✔ S1 · 事务失败反例：失败文件保留旧指纹/告警，成功文件照常发布；下一轮仍能解码与更新 (87.261ms)
+✔ S1 · 事务失败反例（更深一层）：指纹已写、COMMIT 前失败 ⇒ 库与视图都保留旧值，轮末视图被丢弃 (80.0397ms)
+✔ S1 · 回滚污染反例：来源缺失与同轮内 `perf_file_warnings` 写失败 ⇒ 失败文件的新指纹不得泄漏进库 (88.4641ms)
+✔ S2 · 窗口取值守卫：来源身份 / 规范物理路径 / 窗口有效性逐条判定（失效 ⇒ undefined） (27.1189ms)
+  [实测] S2 复用轮：updated = 1  state = degraded  warnings = [{"sourceKind":"codex","homeId":"extra-fdf7f4f038870508","code":"LIVE_SOURCE_CHANGED","count":1}]
+  [实测] S2 恢复轮：updated = 2  state = ready
+✔ S2 · 读取后窗口复用：同窗口内不再重复摘要；发布前窗口仍**新鲜**（同元数据改写仍被检出） (95.388ms)
+  [实测] S2 同元数据改写轮：updated = 1  state = ready
+  [实测] S2 同元数据改写轮（第 3 轮）：updated = 1  state = ready
+✔ S2 · 同尺寸同 mtime 改写仍检出：稳定窗口在**读取后**重新取快照（前后窗口分别新鲜） (84.274ms)
+✔ S2 · 接线与身份守卫：codex 命中窗口、非 codex 与窗口外文件一律走真实探针 (86.8949ms)
+✔ C2 · 复用轮：逐文件判据走稳定签名、仍然先写 rebuilding、记录不被重建 (61.232ms)
+✔ ★D5 perfSampleIdentities：只取 3 个身份列、覆盖全表（含 unplaced）、不做行级解码 (30.3151ms)
+  [实测] 样本数 = 3  state = ready  indexVersion = e609766880b1598802926afcf8ca2675be5825d1c197ada99721cd5032bdf6e5  unsupported = [{"kind":"unsupported","homeId":"proj-C"}]
+✔ ★M4.1-a 内存载体：无候选的 Codex home 不伪造样本，且 unsupported 来源单列 (28.3592ms)
+  [实测] 样本数 = 3  state = degraded  degraded = ["zcode-broken"]  warnings = [{"sourceKind":"zcode","homeId":"zcode-broken","code":"READ_ONLY_OPEN_FAILED","count":1}]  ranked = ["zcode-good"]
+✔ ★M4.1-b 一个 home 读失败：只标该 home degraded，其他来源继续出候选 (30.3331ms)
+  [实测] 注入 = true  样本数 = 4  state = degraded  indexVersion = null  warnings = [{"sourceKind":"zcode","homeId":"zcode-A","code":"LIVE_SOURCE_CHANGED","count":1}]
+✔ ★M4.1-c 读取期间追加：degraded + LIVE_SOURCE_CHANGED 且 indexVersion 必须为 null (19.3481ms)
+✔ ★M4.1-d 载体不得改动旧字段；同夹具两次构建的指纹与候选完全一致 (24.9275ms)
+  [实测] M3 已发布逐文件指纹 = 8192:1700000000000:831331b1ac45023bbd3576b62e8e6796
+  [实测] 内存 indexVersion = 9e21404dfb55db4e4660ef75fde9eecb45892292c9e17e4b038451bbfbbf34b8
+✔ ★M4.1-e 内存版本必须由与 M3 同源的内容指纹构造（与 store 已发布映射对拍） (68.1496ms)
+  [实测] 注入 = true  样本数 = 1  state = degraded  degraded = ["c"]  ranked = ["z"]  usageStable = false  perfStable = false
+✔ ★M7 Codex rollout 变成多 session_meta 时只阻断 Codex，稳定 ZCode 仍排名 (18.7388ms)
+  [实测] sameSize = true  sameMtime = true  state = degraded  indexVersion = null
+  [实测] recoveredOutput = 200  v1 = 9f8adb898c16  v3 = b311dab95aed
+✔ ★M4.1-g 同尺寸同 mtime 原地改写：必须检出、不得 ready、不得复用版本 (26.0103ms)
+  [实测] state = degraded  degraded = ["c","z"]  usageStable = false  perfStable = false
+✔ ★M7 Codex 与 ZCode 同时变化时分别归因，各自影响排名 (19.8633ms)
+  [实测] 样本 = 3  degraded = ["z-broken","z-changed"]  ranked = ["z-stable"]  warnings = [{"sourceKind":"zcode","homeId":"z-broken","code":"READ_ONLY_OPEN_FAILED","count":1},{"sourceKind":"zcode","homeId":"z-changed","code":"LIVE_SOURCE_CHANGED","count":1}]
+✔ ★M4.1-i 多 ZCode home：稳定者照常排名，变化者与读失败者各自归因 (36.1167ms)
+  [实测·稳定] state = ready  ranked = ["z-a","z-b"]  usageStable = true
+  [实测·注入] 读取顺序 = ["A","B"]  注入于 = B 读完后  state = degraded  degraded = ["z-a"]  ranked = ["z-b"]  version = null
+  [实测·恢复] A 输出 = 200  state = ready  version ≠ 旧 = true
+✔ ★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮结束核对必须检出 A (39.2332ms)
+  [实测] memory groups = 1 n = 25 rank = null coverage.eligible = 25
+✔ ★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐字相同（诊断统计保留、未获统一排名） (110.5241ms)
+✔ E-1 all perf projection reuses complete isolated results without widening exact ranges (65.6578ms)
+  [实测] 范围内 eligible = 3  groups = 1
+✔ ★M4.2-b 自定义范围：只有范围内样本进入两端，且两端逐字相同 (106.4613ms)
+  [实测] UTC 单日范围内 eligible = 1  insufficient = true
+✔ ★M4.2-c UTC 时区范围：两端使用同一日历换算 (102.5344ms)
+  [实测] 全部 eligible = 50  排除 z-d2 后 = 25
+✔ ★M4.2-d 排除 home：两端排除同一 home，且排除真的生效 (198.2835ms)
+  [实测] n=0 时 groups = []  eligible = 0
+✔ ★M4.2-e n=0：无候选时两端都只给 coverage/诊断，不给任何组 (47.4308ms)
+  [实测] unplaced = 1  eligible = 2  indexed.unplaced = 1
+✔ ★M4.2-f unplaced：无时间位置的候选在两端都进 coverage.unplaced（索引侧必须并入） (56.4623ms)
+✔ ★M4.2-g includeDetails=false：只门控原有重详情，不删 perf 组或覆盖率 (132.9951ms)
+  [实测] 未 sync：state = uninitialized  groups = 0  meta.state = rebuilding
+  [实测] 有候选但仍未就绪：state = uninitialized  eligible = 5  groups = 0
+  [实测] sync 后：state = ready  groups = 1
+✔ ★M4.2-h rebuilding/uninitialized：不返回部分排名，也不因状态取值抛错 (56.5202ms)
+✔ ★M4.2-i 范围转换：`perfStatsRangeBounds` 的键名/取值语义（两路径共用同一个转换） (0.3862ms)
+  [实测] memory.state = ready  ranked = ["zcode-b5b159bcb9f20304"]
+✔ ★M4.2-j 状态投影字段与冻结三件套共存：既有键一个不改，两端键集相同 (51.7431ms)
+  [实测] degraded：eligible = 25  ranked = ["zcode-5abdb200809443ed"]  groups.homeId = ["zcode-5abdb200809443ed"]
+✔ ★M4.2-k 受阻 home：degraded 时两端都排除该 home 的候选（不得让陈旧候选进统计） (219.5154ms)
+  [实测] 配额窗口：memory.eligible = 0  indexed.eligible = 0  memory.state = ready  codex 观测数 = 1
+  [实测] 对照 all：eligible = 25
+✔ ★M4.2-l 配额范围：同一 quota_5h 窗口下两端排除同一批非 Codex home，且与全量形成对照 (156.883ms)
+  [实测] 主库 size/mtime 不变 = true  state = degraded  indexVersion = null
+✔ ★M4.1-j 仅 -wal 变化：主库 size/mtime 不变也必须检出并令版本不可证 (15.7229ms)
+M4.4 fixtureHash=9e85ce9baa45117f0b1c5c897fd23e4a2db17d0eaea384f63b0e726286b20814; candidates=35; all=34/30/3/1+unplaced1
+✔ M4.4 shared ZCode fixture: literal hand oracle across memory/index and filters (143.5062ms)
+✔ M4.4 fixture is deterministic, isolated and close is idempotent (166.4866ms)
+✖ M4.4 close refuses a fixture root replaced with a junction (168.9501ms)
+M4.5 fixtureHash=b5bf994f1fc42230db5e99a0c6fdcdb329d2b1d477789a4eb2dc59da75b7df00; DSH TPS=10/20/40, pooled=30; identity count=4
+✔ M4.5 DSH multiframe identity and literal oracle: memory/index/all/date/exclude (266.5036ms)
+✔ M4.5 DSH integrity failures isolate home, rollback all file data and recover (310.9632ms)
+✔ M4.5 published indexVersion tracks committed DSH files, including partial success and deletion (235.0822ms)
+✔ M4.5 nonfatal DSH warnings persist per file, clear on repair, and survive source deletion (310.1392ms)
+M4.5 legacy warning backfill=global; updated=4; stable fingerprints/candidates and diagnostics
+M4.5 legacy warning backfill=partial; updated=1; stable fingerprints/candidates and diagnostics
+✔ M4.5 upgrades legacy indexes by backfilling missing per-file warning entries (410.4964ms)
+✔ M4.5 enabling DSH backfills unchanged files already indexed for usage exactly once (190.9983ms)
+✔ M4.5 successful zero-sample DSH backfill is not repeated; ordinary identity warning is nonfatal (200.7059ms)
+M4.6 fixtureHash=206b10137019da0721f5885d9ba83d89e76f039cd31dacfa6410068b7e3d8a54; OpenCode DBs=2, physicalRows=5, candidates=4, duplicate message IDs stay distinct
+✔ M4.6 OpenCode multi-database fixture has independent literal parity and collision-free identity (371.6313ms)
+✔ M4.6 OpenCode WAL-only changes publish once; read failure degrades only its home and rolls back (341.9201ms)
+✔ ★D5-a 全局有可信样本、今日无样本：该 home 仍在默认排名里，两路径逐字一致 (109.8381ms)
+✔ ★D5-b 失败 home 的陈旧候选：既不排名也不进可信统计（对照：只封别的线程 ⇒ 仍排名） (95.1029ms)
+✔ ★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解码），统计块照旧解码 (90.3899ms)
+✔ C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一致 (60.4971ms)
+✔ C2 WorkBuddy：trace-only duration change moves memory candidates and indexVersion (29.1682ms)
+ℹ tests 121
+ℹ suites 0
+ℹ pass 111
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9613.7759
+
+✖ failing tests:
+
+test at test\history-cold-perf-authority.test.js:39:1
+✖ explicit cold perf authority keeps an evicted ZCode sample in summarizeHistory (242.1375ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-TShQUr\.cold-perf-authority-candidate.sqlite.history-backup-tmp-10976-1793028220806-26b6bf3dfa8ef8' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-TShQUr\cold-perf-authority-candidate.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-cold-perf-authority.test.js:58:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-cold-perf-carrier-snapshot.test.js:68:1
+✖ summarizeHistory pins the captured perf carrier record across cold event reads (224.3545ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-zpHiDv\.cold-perf-carrier-candidate.sqlite.history-backup-tmp-13288-1793028221121-989e3bdb8d1f58' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-zpHiDv\cold-perf-carrier-candidate.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-cold-perf-carrier-snapshot.test.js:88:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:120:1
+✖ SQL history preserves complete scopes, isolates hot caches, and falls back for revisions (64.8268ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-MLrXp6\.cold.sqlite.history-backup-tmp-7004-1793028221289-c104dfe85915a' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-MLrXp6\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:123:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:174:1
+✖ verified metadata shares unexcluded timeline facts while keeping future observations and full inventory (53.9699ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-LMDrGh\.cold.sqlite.history-backup-tmp-7004-1793028221351-8e399a61cd5498' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-LMDrGh\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:177:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:228:1
+✖ verified repository periods share the fact scan and fall back across a calendar and price change (53.898ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-zMrNsB\.cold.sqlite.history-backup-tmp-7004-1793028221404-601ecd6543d228' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-zMrNsB\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:231:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:294:1
+✖ SQL history reprices unchanged facts and still rejects missing or damaged cached segments (50.5412ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-4CgTrs\.cold.sqlite.history-backup-tmp-7004-1793028221457-15550bffbb312' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-4CgTrs\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:297:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:363:1
+✖ verified SQL uses indexed physical bounds and complete rollups, falling back when markers are missing (84.4972ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-EkWhgC\.cold.sqlite.history-backup-tmp-7004-1793028221540-6064df9ba94db8' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-EkWhgC\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:366:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:409:1
+✖ hot writes during verification and pinned publications retain coherent reads and release WAL (52.5086ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-F36RgA\.cold.sqlite.history-backup-tmp-7004-1793028221592-d9b776147e056' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\ret-dashboard-sql-F36RgA\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async fixture (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:104:3)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:412:13)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\history-dashboard-sql.test.js:468:1
+✖ event-only SQL history keeps live ZCode perf and its full coverage (184.6621ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-dbYxuh\.sql-cold.sqlite.history-backup-tmp-7004-1793028221770-9cfe92ede4be8' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-dbYxuh\sql-cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/history-dashboard-sql.test.js:477:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }
+
+test at test\perf-summary-parity.test.js:1692:1
+✖ M4.4 close refuses a fixture root replaced with a junction (168.9501ms)
+  Error: EPERM: operation not permitted, rename 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-iYeasg' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\AC\Temp\perf-integration-iYeasg-saved'
+      at renameSync (node:fs:1074:11)
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/perf-summary-parity.test.js:1704:5)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    errno: -4048,
+    code: 'EPERM',
+    syscall: 'rename',
+    path: 'C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\\AC\\Temp\\perf-integration-iYeasg',
+    dest: 'C:\\Users\\Silver\\AppData\\Local\\Packages\\sandbox.{c0764b15-1399-4fd2-8b72-3c3deaba069b}\\AC\\Temp\\perf-integration-iYeasg-saved'
+  }

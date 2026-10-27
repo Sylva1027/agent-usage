@@ -1,0 +1,28 @@
+✖ refresh sync: retained missing paths stop planning; return and rename still plan (127.8633ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 199.7443
+
+✖ failing tests:
+
+test at test\refresh-sync-regressions.test.js:38:1
+✖ refresh sync: retained missing paths stop planning; return and rename still plan (127.8633ms)
+  AssertionError [ERR_ASSERTION]: stable missing paths must not re-enter Codex planning
+  
+  2 !== 0
+  
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/refresh-sync-regressions.test.js:77:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
