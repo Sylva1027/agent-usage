@@ -1,0 +1,56 @@
+{
+  "observedAt": "2026-10-27T05:38:13.6721669Z",
+  "intervalSeconds": 1.1113206,
+  "processors": [
+    {
+      "Name": "Intel(R) Core(TM) i7-14700KF",
+      "NumberOfLogicalProcessors": 28,
+      "CurrentClockSpeed": 3400,
+      "MaxClockSpeed": 3400,
+      "LoadPercentage": 2
+    }
+  ],
+  "topProcesses": [
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.078125,
+      "workingSetBytes": 185573376
+    },
+    {
+      "name": "pwsh",
+      "cpuSecondsDelta": 0.046875,
+      "workingSetBytes": 95571968
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.03125,
+      "workingSetBytes": 1223241728
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.015625,
+      "workingSetBytes": 138280960
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.015625,
+      "workingSetBytes": 337809408
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.015625,
+      "workingSetBytes": 122900480
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.015625,
+      "workingSetBytes": 251449344
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0,
+      "workingSetBytes": 14336000
+    }
+  ],
+  "rawArtifact": "output\\q2-q3-projection-20261027\\evidence\\device-load-browser-start-v4.json"
+}

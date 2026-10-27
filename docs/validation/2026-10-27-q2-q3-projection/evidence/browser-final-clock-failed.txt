@@ -1,0 +1,31 @@
+{"label":"browser-first","ms":11978}
+{"label":"resource","at":1793079456704,"rss":396832768,"maxRSSKiB":928932,"freeGiB":15.108100891113281,"walBytes":0,"cpu":{"user":13359000,"system":4453000}}
+{"label":"resource","at":1793079486705,"rss":645791744,"maxRSSKiB":928932,"freeGiB":14.769783020019531,"walBytes":61832,"cpu":{"user":16484000,"system":5609000}}
+{"label":"browser-cycle","index":0,"kind":"codex-append","delta":2000214,"fromWriteMs":64021,"fromCheckMs":7637}
+{"label":"resource","at":1793079516716,"rss":360505344,"maxRSSKiB":1054632,"freeGiB":15.119625091552734,"walBytes":0,"cpu":{"user":20328000,"system":6765000}}
+{"label":"resource","at":1793079546716,"rss":663085056,"maxRSSKiB":1054632,"freeGiB":14.92739486694336,"walBytes":0,"cpu":{"user":22531000,"system":7750000}}
+{"label":"browser-cycle","index":1,"kind":"ledger","delta":0,"fromWriteMs":56099,"fromCheckMs":3914}
+{"label":"resource","at":1793079576717,"rss":719798272,"maxRSSKiB":1054632,"freeGiB":14.841453552246094,"walBytes":0,"cpu":{"user":22921000,"system":7812000}}
+{"label":"resource","at":1793079606711,"rss":759586816,"maxRSSKiB":1054632,"freeGiB":14.547897338867188,"walBytes":65952,"cpu":{"user":25750000,"system":9093000}}
+{"label":"browser-cycle","index":2,"kind":"codex-append","delta":2000214,"fromWriteMs":63526,"fromCheckMs":7616}
+{"label":"resource","at":1793079636712,"rss":795226112,"maxRSSKiB":1054632,"freeGiB":14.567596435546875,"walBytes":0,"cpu":{"user":29218000,"system":10187000}}
+AssertionError [ERR_ASSERTION]: Each real check must have its actual interval tick
+    at file:///E:/12%20AI/ccusage/codex-usage/output/q2-q3-projection-20261027/runtime-http-browser.mjs:187:57 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+page.waitForResponse: Target page, context or browser has been closed
+    at E:\12 AI\ccusage\codex-usage\output\q2-q3-projection-20261027\runtime-http-browser.mjs:182:33 {
+  log: []
+}
+
+Node.js v24.19.0
+Q23_JOB_PEAK bytes=1746702336 processBytes=1106804736

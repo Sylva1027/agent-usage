@@ -1,0 +1,20 @@
+{"label":"browser-first","ms":18043}
+{"label":"resource","at":1793080166878,"rss":441171968,"maxRSSKiB":932980,"freeGiB":13.721820831298828,"walBytes":0,"cpu":{"user":16734000,"system":5734000}}
+{"label":"resource","at":1793080196887,"rss":694710272,"maxRSSKiB":932980,"freeGiB":13.520084381103516,"walBytes":61832,"cpu":{"user":20328000,"system":7234000}}
+{"label":"browser-cycle","index":0,"kind":"codex-append","delta":2000214,"fromWriteMs":64276,"fromCheckMs":8654}
+{"label":"resource","at":1793080226898,"rss":361103360,"maxRSSKiB":1064480,"freeGiB":14.07375717163086,"walBytes":0,"cpu":{"user":24625000,"system":8203000}}
+{"label":"resource","at":1793080256911,"rss":664133632,"maxRSSKiB":1064480,"freeGiB":13.875133514404297,"walBytes":0,"cpu":{"user":27421000,"system":9390000}}
+{"label":"browser-cycle","index":1,"kind":"ledger","delta":0,"fromWriteMs":55642,"fromCheckMs":4502}
+{"label":"resource","at":1793080286913,"rss":710983680,"maxRSSKiB":1064480,"freeGiB":13.761421203613281,"walBytes":0,"cpu":{"user":27750000,"system":9437000}}
+{"label":"resource","at":1793080316924,"rss":776396800,"maxRSSKiB":1064480,"freeGiB":13.646858215332031,"walBytes":65952,"cpu":{"user":31218000,"system":10562000}}
+{"label":"browser-cycle","index":2,"kind":"codex-append","delta":2000214,"fromWriteMs":63993,"fromCheckMs":8685}
+{"label":"resource","at":1793080346938,"rss":728449024,"maxRSSKiB":1064480,"freeGiB":13.709388732910156,"walBytes":0,"cpu":{"user":35062000,"system":11640000}}
+{"label":"resource","at":1793080376952,"rss":780214272,"maxRSSKiB":1064480,"freeGiB":13.651599884033203,"walBytes":0,"cpu":{"user":38500000,"system":12656000}}
+{"label":"browser-cycle","index":3,"kind":"ledger","delta":0,"fromWriteMs":55581,"fromCheckMs":4501}
+{"label":"resource","at":1793080406968,"rss":783863808,"maxRSSKiB":1064480,"freeGiB":13.23016357421875,"walBytes":0,"cpu":{"user":38765000,"system":12656000}}
+{"label":"resource","at":1793080436978,"rss":786427904,"maxRSSKiB":1064480,"freeGiB":13.403861999511719,"walBytes":70072,"cpu":{"user":42187000,"system":14312000}}
+{"label":"browser-cycle","index":4,"kind":"codex-append","delta":2000214,"fromWriteMs":64227,"fromCheckMs":8935}
+{"label":"resource","at":1793080466981,"rss":996388864,"maxRSSKiB":1064480,"freeGiB":13.27139663696289,"walBytes":0,"cpu":{"user":46062000,"system":15406000}}
+{"label":"resource","at":1793080496984,"rss":993816576,"maxRSSKiB":1093392,"freeGiB":13.482852935791016,"walBytes":0,"cpu":{"user":49312000,"system":16390000}}
+{"label":"browser-cycle","index":5,"kind":"ledger","delta":0,"fromWriteMs":55390,"fromCheckMs":4546}
+Q23_JOB_PEAK bytes=1831354368 processBytes=1154740224

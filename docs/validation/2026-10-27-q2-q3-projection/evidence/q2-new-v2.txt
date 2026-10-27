@@ -1,0 +1,64 @@
+✔ Q2 no-op metadata and perf commits retain all timeline while refreshing state, TPS and time (125.2784ms)
+✔ Q2 raw events, quota and source writes refresh all independent components and cascades (178.2076ms)
+✔ Q2 ignored metadata trigger side effects remain visible after success (64.547ms)
+✔ Q2 ignored metadata trigger side effects remain visible after FAIL (68.1238ms)
+✔ Q2 ignored metadata trigger side effects remain visible after ABORT (70.0183ms)
+✔ Q2 external commits without publication markers invalidate twice (85.3361ms)
+✔ Q2 controlled writeDepth rollback cannot publish uncommitted usage, quota or perf (75.6863ms)
+✔ Q2 warm recursive ON REPLACE collision always uses the complete-count fallback (71.2814ms)
+✔ Q2 OFF warm then ON REPLACE and usage write then OFF cannot bypass the fallback (70.7353ms)
+✔ Q2 recursive OFF rowid REPLACE of ordinary metadata with a white key must invalidate (70.5788ms)
+✔ Q2 metadata key renames via UPDATE check both OLD and NEW (87.7805ms)
+✔ Q2 metadata key renames via UPSERT check both OLD and NEW (84.839ms)
+✔ Q2 main schema change falls back without relying on tracker names (99.2668ms)
+✔ Q2 TEMP reset change falls back without relying on tracker names (110.3476ms)
+✖ Q2 real ledger-only import then perf publication retains the usage timeline (165.9015ms)
+✖ Q2 raw usage and quota between request-timing and perf commits cannot be retained as ledger-only (164.2863ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 14
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1679.4376
+
+✖ failing tests:
+
+test at test\q2-usage-projection.test.js:607:1
+✖ Q2 real ledger-only import then perf publication retains the usage timeline (165.9015ms)
+  AssertionError [ERR_ASSERTION]: the same writer must not rebuild all timeline after timing/perf commits
+  
+  2 !== 1
+  
+      at file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:619:12
+      at async withNativeStore (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:583:5)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:608:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\q2-usage-projection.test.js:633:1
+✖ Q2 raw usage and quota between request-timing and perf commits cannot be retained as ledger-only (164.2863ms)
+  AssertionError [ERR_ASSERTION]: perf publication may only reuse the new usage projection
+  
+  3 !== 2
+  
+      at file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:663:12
+      at async withNativeStore (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:583:5)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:634:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

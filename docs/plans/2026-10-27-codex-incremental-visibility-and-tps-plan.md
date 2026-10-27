@@ -1,6 +1,6 @@
 # Codex 增量可见等待与 TPS 后续优化计划
 
-日期：2026-10-27。状态：**N1/Q1 及 §12 后续已收口；接受预扫移除，投影缓存候选未入选，Codex 可见等待仍有超过 8 s 的反例。** 用户授权整理后直接开工，保持 8 GiB 合计预算，暂不切生产。本文承接[上一轮验收](../validation/2026-10-26-refresh-sync-latency-implementation/README.md)与[旧方案 §16](2026-10-26-refresh-sync-latency-plan.md#16-本轮实施结果与后续优先级2026-10-27)，旧证据不改写。N1/Q1 结果在[首阶段验收](../validation/2026-10-27-codex-incremental-visibility/README.md)，本次结果与剩余优先级见 [§13 后续验收](../validation/2026-10-27-codex-refresh-followup/README.md)。
+日期：2026-10-27。状态：**N1/Q1、预扫移除与 Q2/Q3 已验收收口；Q2/Q3 局部收益接收、v4 完整门禁通过，正常 6 个浏览器周期完成；整体 max 与新鲜度目标未达，浏览器 p95 未验。** 用户授权整理后直接开工，保持 8 GiB 合计预算，暂不切生产。本文承接[上一轮验收](../validation/2026-10-26-refresh-sync-latency-implementation/README.md)与[旧方案 §16](2026-10-26-refresh-sync-latency-plan.md#16-本轮实施结果与后续优先级2026-10-27)，旧证据不改写。N1/Q1 结果在[首阶段验收](../validation/2026-10-27-codex-incremental-visibility/README.md)，预扫移除阶段见[后续验收](../validation/2026-10-27-codex-refresh-followup/README.md)，本轮最终结果与剩余优先级见 §13 和 [Q2/Q3 验收](../validation/2026-10-27-q2-q3-projection/README.md)。
 
 ## 1. 要解决的问题和已知边界
 
@@ -161,11 +161,19 @@ N1/Q1 与 H1 已完成。后台各 20 样本，Codex 追加 p95 4,924→3,956 ms
 
 状态写失败的验收应精确到 `syncRound` 和逐文件 catch：该错误不能被误报为源文件解析失败。既有计时补充的第二轮 `syncRound` 位于 timing-enrichment catch 中，失败会保留首轮结果并给出 `MAGPIE_TIMING_SYNC_FAILED`；本轮不据首轮测试宣称所有端到端错误都会直接 reject。
 
-后续按以下顺序保留独立卡；本轮没有足以接受的第二个产品补丁，不把研究卡数当作实施目标：
+以下独立卡承接上述预扫移除阶段；Q2/Q3 已按[投影复用施工计划](2026-10-27-q2-q3-projection-implementation-plan.md)实现并接收，正式配对、v4 完整工程门禁及正常 6 个浏览器周期均完成。整体 max 与新鲜度目标未达，浏览器 p95 未验；最终证据与未证项见[本轮验收](../validation/2026-10-27-q2-q3-projection/README.md)，上述旧阶段结果不替代本轮结果。
 
-1. **Q2：事实依赖与投影失效。** Main 继续整文件独占 store；W1 只写独立反例，W2 只写真实 reader 探针。先列 usage 静态投影、perf、metadata、periodComparison、quota 的实际读表、状态和外部输入，再列 request-timing/perf、删源、metadata、原始 SQL/触发器、外提交及回滚的实际写入边界。只有证明 ledger-only 可保留 usage/timeline 且仍能发现其它事实变更，才实施最小复用。收益门槛是同轮 all 请求实测少做 timeline，完整摘要、period/quota 和 TPS 均正确；不能仅用 cache hit 计数通过。完整依赖证明超出小补丁范围时保留 miss，另立范围。
-2. **Q3：已发布临时 reader 的投影归属。** 在 Q2 依赖清单之后研究，不能直接复制 writer 的 key。需证明读取快照对应同一发布、跨连接修订如何比较，以及 quoteInputs 在 reader 关闭、discard 和外提交后各自有效；先量真实 executor 的节省，再决定是否实施。冷 authority 单列反例，本轮未覆盖的实际冷档不能由暖 reader 测量代替。
-3. **N2：持续 mutable rollout 的线性前缀证明。** 完整 raw SHA 与 before/after/发布复核继续保留；现有两个短生命周期 hash worker 只改善墙钟。只有前两卡后的真实普通 Codex 分解仍以此前缀读取为主要成本，才另研究可验证的文件代际或持久分块；新增格式、平台恢复、旧前缀改写及并发追加须另定范围，不自动纳入简单缓存优化。
+1. **Q2：事实依赖与投影失效。已实现并接收。** 静态用量与 perf 分键；已证明的 no-op / ledger-only 写入可保留 usage/timeline，其它事实变更仍使相应投影失效。静止/ledger-only 各 20 对全部更快，配对合计节省中位数分别为 **801/875 ms**；完整摘要与来源指纹相等，TPS/perf 独立更新。依赖与保护边界见本轮施工计划及验收。
+2. **Q3：已发布临时 reader 的投影归属。已实现并接收。** 捕获已有暖槽，在真实 reader 固定快照后核对来源守卫，仅转交静态用量投影，perf 由 reader 重读，不共享 quoteInputs。真实 executor **20/20 更快、20/20 接收**，配对合计节省中位数 **1,492 ms**；与 Q2 属于不同场景，收益不相加。实际冷档仍未证，保护窗口、生命周期和冷回退边界见本轮施工计划及验收。
+3. **N2：持续 mutable rollout 的线性前缀证明。先分解，再决定范围。** 普通追加 20 对近中性，10 对更快，配对节省中位数 **−9.82 ms**；after 同步/变更后查询中位数约 **8.56/4.31 s**，perf 中位数约 **1.15 s**。后续性能实验已按用户要求暂停；若重新启动，先分解 raw SHA/前缀证明、同步发布、变更后查询及 perf 的实际成本；只有证据仍表明前缀读取为主，才决定可验证文件代际或持久分块的 N2 范围。完整 raw SHA 与 before/after/发布复核继续保留；新增格式、平台恢复、旧前缀改写及并发追加须另定范围，不自动纳入简单缓存优化。
 
-每卡继续沿用 §7–9 的文件单写与唯一执行槽，先小反例、短配对，有净收益才实施；最终产品变化后再对普通追加与 ledger-only 各补至少 20 个真实 60 s 周期。现有四项浏览器控制、双 Store 配对和旧阶段分布不得互相替代。暂不切生产，不提交或推送，不更改轮询频率。
+本轮 v4 全仓串行完整运行 **3,397 tests / 3,372 pass / 0 fail / 25 skip**，typecheck/lint/format:check 均退出 0。默认 today/month 各 3 对，metadata 与 period 缓存对象身份全部保留；不以 skip-check 暖读代替默认刷新验证。
+
+最终正常浏览器采用 Codex 普通追加、ledger-only 各 **3 个真实 60 s 周期，共 6 次**，均已完成，数值/TPS 正确、`errors=[]`、关闭后 `WAL=0`。检查→目标帧只报范围与中位数：Codex **8,654–8,935 ms，中位数 8,685 ms**；ledger TPS **4,501–4,546 ms，中位数 4,502 ms**；浏览器 p95 未验。
+
+最不利相位各一次观测单列：Codex 写入→目标帧 **72,307 ms**，超出新鲜度预算 **7,308 ms**；ledger 写入→TPS 帧 **65,046 ms**，超出 **46 ms**。两次观测数值正确，整体 max 与新鲜度目标仍未达；单次观测不外推尾部分布，不混入正常周期，旧阶段分布不替代本轮结果。
+
+Q2/Q3 继续沿用 §7–9 的文件单写与唯一执行槽，资源预算为 **7 GiB 重 Job + 1 GiB 控制侧 ≤8 GiB**。已记录最高 Job 峰值为 v3 全仓 **2.31 GiB**；v4 全仓 **2.11 GiB**，最终浏览器 **1.71 GiB**。控制侧留 1 GiB，未连续采样全设备物理 RAM。
+
+**Main 已完成最终 SHA 核验与清理。** 最终 **1,633 输入（4,229,909,674 bytes）及 98 产品模块 SHA 全等**；7 个本轮测试 DB 及其 WAL/SHM 已精确清理，WAL 为 0 或不存在，无残留任务进程。按用户新指令提交并推送本轮代码、计划与必要验收成果，原始产物留本地，后续性能实验暂停；未切生产，不更改轮询频率。
 

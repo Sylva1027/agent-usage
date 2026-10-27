@@ -1,0 +1,74 @@
+✔ Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf (69.8004ms)
+✔ Q3 adopted payload and public replies have independent nested ownership (44.4441ms)
+✔ Q3 empty events still pin a real read snapshot and can adopt an empty projection (39.6916ms)
+▶ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt
+  ✔ before-capture (37.3574ms)
+  ✔ before-pin (42.3134ms)
+  ✔ after-pin (41.2983ms)
+✔ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt (121.4936ms)
+▶ Q3 external commits with unchanged publication markers reject every unproved window
+  ✔ before-capture (40.5494ms)
+  ✔ before-pin (45.7835ms)
+  ✔ after-pin (47.1342ms)
+✔ Q3 external commits with unchanged publication markers reject every unproved window (134.0013ms)
+✔ Q3 external perf-only commits still reject source certification (41.2454ms)
+✔ Q3 accepted reader keeps old usage and per-sample perf after source commits (42.4042ms)
+✔ Q3 rejects a different physical DB even when databaseFile and markers are made identical (61.7191ms)
+▶ Q3 source slot replacement, close and close/reopen invalidate captured references
+  ✔ slot (38.6796ms)
+  ✔ close (37.9779ms)
+  ✔ reopen (39.89ms)
+✔ Q3 source slot replacement, close and close/reopen invalidate captured references (117.0058ms)
+▶ Q3 source raw writes without store revisions cannot certify an old slot
+  ✔ UPDATE events SET total=total+7,input=input+7 WHERE total=100 (36.0565ms)
+  ✔ UPDATE source_files SET kind='claude' (35.1527ms)
+  ✔ INSERT INTO rate_limit_observations VALUES('/fixture/q3-usage.sqlite',1,'primary',1783857600000,'codex',NULL,NULL,300,1783857900000,25) (35.9304ms)
+✔ Q3 source raw writes without store revisions cannot certify an old slot (107.627ms)
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (41.9617ms)
+  ✔ managed transaction (43.6975ms)
+✔ Q3 open transactions bypass capture and rollback never certifies uncommitted payload (86.0214ms)
+✔ Q3 target requires a pinned read transaction and rejects managed writes or a closed DB (36.7319ms)
+▶ Q3 source context and recipient service-tier input must remain aligned
+  ✔ source-homes (35.9234ms)
+  ✔ source-tier (35.8179ms)
+  ✔ reader-tier (36.3112ms)
+  ✔ reader-homes (37.1778ms)
+✔ Q3 source context and recipient service-tier input must remain aligned (145.7574ms)
+▶ Q3 main and TEMP schema changes invalidate a captured guard without DML
+  ✔ main (36.8558ms)
+  ✔ TEMP  (35.6087ms)
+✔ Q3 main and TEMP schema changes invalidate a captured guard without DML (72.8834ms)
+▶ Q3 an unreadable source data_version cannot certify by returning an old observation
+  ✔ capture (34.8701ms)
+  ✔ adopt (36.0577ms)
+✔ Q3 an unreadable source data_version cannot certify by returning an old observation (71.2669ms)
+✔ Q3 clone failure leaves source ownership intact and falls back to a complete target query (40.2283ms)
+✔ Q3 target reprices by full SQL after source input discard and source close (48.5656ms)
+✔ Q3 target close cannot discard the source's independent complete quote input (40.8523ms)
+✔ Q3 a price change before adoption cannot label old cost as the new catalog (43.9563ms)
+▶ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads
+  ✔ details (44.2706ms)
+  ✔ exclude home (42.789ms)
+  ✔ hour bucket (49.9288ms)
+  ✔ local zone (44.6134ms)
+  ✔ today (42.9113ms)
+✔ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads (225.2235ms)
+✔ Q3 advancing now with the same resolved all scope retains static facts (42.7882ms)
+✔ Q3 actual event/perf authority rejects hot seeding and missing cold files remain errors (91.431ms)
+✔ Q3 malformed perf-only authority is never bypassed by an adopted hot slot (37.3917ms)
+✔ Q3 cold authority committed externally during open/pin rejects the old source guard (39.7764ms)
+✔ Q3 no warmed slot falls back and released readers leave a successful checkpoint (58.2648ms)
+▶ Q3 context changed after building cannot be certified with a freshly rebased key
+  ✔ home (37.2586ms)
+  ✔ service-tier (36.1346ms)
+  ✔ missing-context (36.304ms)
+✔ Q3 context changed after building cannot be certified with a freshly rebased key (110.1179ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2049.4106

@@ -1,0 +1,2 @@
+{"destination":"E:\\12 AI\\ccusage\\codex-usage\\docs\\validation\\2026-10-27-q2-q3-projection","files":228}
+Q23_JOB_PEAK bytes=174522368 processBytes=174522368

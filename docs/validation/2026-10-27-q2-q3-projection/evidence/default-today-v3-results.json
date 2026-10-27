@@ -1,0 +1,139 @@
+{
+  "preset": "today",
+  "rounds": 3,
+  "samples": [
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 0,
+      "syncMs": 2901.955600000001,
+      "queryMs": 545.0365999999995,
+      "combinedMs": 3446.9922000000006,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 843771904
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 0,
+      "syncMs": 3014.1515,
+      "queryMs": 2475.2774999999965,
+      "combinedMs": 5489.428999999996,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 828321792
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 1,
+      "syncMs": 2726.7985000000044,
+      "queryMs": 2357.6054000000004,
+      "combinedMs": 5084.403900000005,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 924987392
+    },
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 1,
+      "syncMs": 2896.3120999999956,
+      "queryMs": 560.5334000000003,
+      "combinedMs": 3456.845499999996,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 941002752
+    },
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 2,
+      "syncMs": 3037.0864,
+      "queryMs": 425.302300000003,
+      "combinedMs": 3462.388700000003,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 939368448
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 2,
+      "syncMs": 2929.1212000000014,
+      "queryMs": 2292.295999999995,
+      "combinedMs": 5221.417199999996,
+      "periodCacheSizeBeforeQuery": 1,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc",
+      "total": 2273154577,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 855437312
+    }
+  ],
+  "pairs": [
+    {
+      "phase": "static",
+      "index": 0,
+      "order": [
+        "before",
+        "after"
+      ],
+      "equal": true
+    },
+    {
+      "phase": "static",
+      "index": 1,
+      "order": [
+        "after",
+        "before"
+      ],
+      "equal": true
+    },
+    {
+      "phase": "static",
+      "index": 2,
+      "order": [
+        "before",
+        "after"
+      ],
+      "equal": true
+    }
+  ],
+  "maxRSSKiB": 1000180,
+  "minFreeGiB": 13.257877349853516,
+  "databases": [
+    "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\followup-paired-before-40248.sqlite",
+    "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\followup-paired-after-40248.sqlite"
+  ],
+  "completed": true,
+  "finishedAt": "2026-10-27T04:29:39.068Z"
+}

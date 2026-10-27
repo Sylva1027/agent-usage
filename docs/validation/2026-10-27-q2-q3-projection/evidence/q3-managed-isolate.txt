@@ -1,0 +1,38 @@
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (64.7585ms)
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+----- Native stack trace -----
+
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+----- Native stack trace -----
+
+ 1: 00007FF7085CE51D 
+ 2: 00007FF707A2F966 
+ 3: 00007FF706771C4E 
+ 4: 00007FF707097381 
+ 5: 00007FF707102619 
+ 6: 00007FF707112FAC 
+ 7: 00007FF707A9F2CF 
+ 8: 00007FF7085C954B 
+ 9: 00007FF707303136 
+10: 00007FF7089C35B3 
+11: 00007FFD3277DDA7 
+12: 00007FFD34ABEE4C 
+✖ test\q3-published-projection.test.js (383.5982ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 388.0595
+run-with-memory-limit: job memory limit exceeded; terminating job

@@ -1,0 +1,71 @@
+[
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-27572.sqlite",
+    "interruptedRun": true,
+    "closeRecordAvailable": false,
+    "processEvidence": "processes-final.json"
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-36720.sqlite",
+    "initialLaunchCreationUtc": "2026-10-27T03:32:48.4191098Z",
+    "seedEquivalentSha256": "cfc35c20b32efd09328fde9ba477d25be3ebac5da33e55a26d9555090a085bd5"
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-35144.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-35144.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-27572.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-27572.sqlite",
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-27572.sqlite-wal",
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-27572.sqlite-shm"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-controls-43252.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-controls-43252.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-controls-9044.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-controls-9044.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-19680.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-19680.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-17532.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-17532.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  },
+  {
+    "database": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-36720.sqlite",
+    "removedFiles": [
+      "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-36720.sqlite"
+    ],
+    "walBeforeRemovalBytes": 0,
+    "allRemoved": true
+  }
+]

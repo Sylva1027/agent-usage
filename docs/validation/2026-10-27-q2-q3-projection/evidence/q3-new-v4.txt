@@ -1,0 +1,108 @@
+✔ Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf (69.5074ms)
+✔ Q3 adopted payload and public replies have independent nested ownership (46.6108ms)
+✔ Q3 empty events still pin a real read snapshot and can adopt an empty projection (41.6947ms)
+▶ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt
+  ✔ before-capture (38.819ms)
+  ✔ before-pin (41.3035ms)
+  ✔ after-pin (42.5479ms)
+✔ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt (123.2241ms)
+▶ Q3 external commits with unchanged publication markers reject every unproved window
+  ✔ before-capture (41.7407ms)
+  ✔ before-pin (46.3438ms)
+  ✔ after-pin (45.6538ms)
+✔ Q3 external commits with unchanged publication markers reject every unproved window (134.2484ms)
+✔ Q3 external perf-only commits still reject source certification (41.7209ms)
+✔ Q3 accepted reader keeps old usage and per-sample perf after source commits (40.7285ms)
+✔ Q3 rejects a different physical DB even when databaseFile and markers are made identical (63.8075ms)
+▶ Q3 source slot replacement, close and close/reopen invalidate captured references
+  ✔ slot (42.9217ms)
+  ✔ close (41.0211ms)
+  ✔ reopen (43.385ms)
+✔ Q3 source slot replacement, close and close/reopen invalidate captured references (127.8285ms)
+▶ Q3 source raw writes without store revisions cannot certify an old slot
+  ✔ UPDATE events SET total=total+7,input=input+7 WHERE total=100 (40.0606ms)
+  ✔ UPDATE source_files SET kind='claude' (40.1426ms)
+  ✔ INSERT INTO rate_limit_observations VALUES('/fixture/q3-usage.sqlite',1,'primary',1783857600000,'codex',NULL,NULL,300,1783857900000,25) (38.2856ms)
+✔ Q3 source raw writes without store revisions cannot certify an old slot (118.9754ms)
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (45.0753ms)
+  ✔ managed transaction (48.6364ms)
+✔ Q3 open transactions bypass capture and rollback never certifies uncommitted payload (94.0728ms)
+✔ Q3 target requires a pinned read transaction and rejects managed writes or a closed DB (39.6747ms)
+▶ Q3 source context and recipient service-tier input must remain aligned
+  ✔ source-homes (38.7447ms)
+  ✔ source-tier (38.0753ms)
+  ✔ reader-tier (39.748ms)
+  ✔ reader-homes (45.8925ms)
+✔ Q3 source context and recipient service-tier input must remain aligned (163.0653ms)
+▶ Q3 main and TEMP schema changes invalidate a captured guard without DML
+  ✔ main (41.3592ms)
+  ✔ TEMP  (39.2612ms)
+✔ Q3 main and TEMP schema changes invalidate a captured guard without DML (80.9998ms)
+▶ Q3 an unreadable source data_version cannot certify by returning an old observation
+  ✔ capture (38.0704ms)
+  ✔ adopt (39.003ms)
+✔ Q3 an unreadable source data_version cannot certify by returning an old observation (77.4593ms)
+✔ Q3 clone failure leaves source ownership intact and falls back to a complete target query (43.2902ms)
+✖ Q3 target reprices by full SQL after source input discard and source close (49.2639ms)
+✔ Q3 target close cannot discard the source's independent complete quote input (46.1084ms)
+✖ Q3 a price change before adoption cannot label old cost as the new catalog (46.1214ms)
+▶ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads
+  ✔ details (47.1792ms)
+  ✔ exclude home (44.0516ms)
+  ✔ hour bucket (51.8507ms)
+  ✔ local zone (47.1831ms)
+  ✔ today (44.8233ms)
+✔ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads (235.8113ms)
+✔ Q3 advancing now with the same resolved all scope retains static facts (43.6849ms)
+✔ Q3 actual event/perf authority rejects hot seeding and missing cold files remain errors (92.3831ms)
+✔ Q3 malformed perf-only authority is never bypassed by an adopted hot slot (39.137ms)
+✔ Q3 cold authority committed externally during open/pin rejects the old source guard (40.4081ms)
+✔ Q3 no warmed slot falls back and released readers leave a successful checkpoint (61.3024ms)
+▶ Q3 context changed after building cannot be certified with a freshly rebased key
+  ✔ home (37.8646ms)
+  ✔ service-tier (42.6566ms)
+  ✔ missing-context (37.5153ms)
+✔ Q3 context changed after building cannot be certified with a freshly rebased key (118.4581ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 54
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2160.1478
+
+✖ failing tests:
+
+test at test\q3-published-projection.test.js:568:1
+✖ Q3 target reprices by full SQL after source input discard and source close (49.2639ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+  
+  0.00006000000000000001
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:586:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0.00006000000000000001,
+    expected: 0.00006000000000000001,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\q3-published-projection.test.js:627:1
+✖ Q3 a price change before adoption cannot label old cost as the new catalog (46.1214ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+  
+  0.00006000000000000001
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:639:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0.00006000000000000001,
+    expected: 0.00006000000000000001,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

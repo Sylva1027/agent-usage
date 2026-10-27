@@ -1,0 +1,1 @@
+{"syntheticFilesRemoved":0,"restored":36,"precision":"raw JSON decimal to 100ns","scope":"private snapshot only"}

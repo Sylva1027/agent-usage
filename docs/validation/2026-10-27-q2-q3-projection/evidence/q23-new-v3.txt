@@ -1,0 +1,139 @@
+✔ Q2 no-op metadata and perf commits retain all timeline while refreshing state, TPS and time (135.0534ms)
+✔ Q2 raw events, quota and source writes refresh all independent components and cascades (243.8691ms)
+✔ Q2 a warm all timeline does not freeze quota reset or period asOf (72.9915ms)
+✔ Q2 ignored metadata trigger side effects remain visible after success (79.4843ms)
+✔ Q2 ignored metadata trigger side effects remain visible after FAIL (88.1221ms)
+✔ Q2 ignored metadata trigger side effects remain visible after ABORT (85.3682ms)
+✔ Q2 external commits without publication markers invalidate twice (106.3905ms)
+✔ Q2 controlled writeDepth rollback cannot publish uncommitted usage, quota or perf (92.424ms)
+✔ Q2 warm recursive ON REPLACE collision always uses the complete-count fallback (81.3067ms)
+✔ Q2 OFF warm then ON metadata REPLACE plus usage then OFF cannot bypass the fallback (85.0804ms)
+✔ Q2 OFF warm then ON perf samples REPLACE plus usage then OFF cannot bypass the fallback (85.2268ms)
+✔ Q2 recursive OFF INSERT OR REPLACE rowid conflict cannot hide unknown metadata deletion (86.0038ms)
+✔ Q2 recursive OFF UPDATE OR REPLACE rowid conflict cannot hide unknown metadata deletion (82.489ms)
+✔ Q2 metadata key renames via UPDATE check both OLD and NEW (97.4441ms)
+✔ Q2 metadata key renames via UPSERT check both OLD and NEW (98.0902ms)
+✔ Q2 main schema change falls back without relying on tracker names (117.8273ms)
+✔ Q2 TEMP reset change falls back without relying on tracker names (116.9148ms)
+✔ Q2 real ledger-only import then perf publication retains the usage timeline (170.1161ms)
+✔ Q2 raw usage and quota between request-timing and perf commits cannot be retained as ledger-only (202.6337ms)
+✔ Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf (107.2778ms)
+✔ Q3 adopted payload and public replies have independent nested ownership (54.4332ms)
+✔ Q3 empty events still pin a real read snapshot and can adopt an empty projection (49.984ms)
+▶ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt
+  ✔ before-capture (46.5622ms)
+  ✔ before-pin (52.6373ms)
+  ✔ after-pin (53.6655ms)
+✔ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt (153.497ms)
+▶ Q3 external commits with unchanged publication markers reject every unproved window
+  ✔ before-capture (52.3023ms)
+  ✔ before-pin (52.4619ms)
+  ✔ after-pin (53.4166ms)
+✔ Q3 external commits with unchanged publication markers reject every unproved window (158.6743ms)
+✔ Q3 external perf-only commits still reject source certification (50.1432ms)
+✔ Q3 accepted reader keeps old usage and per-sample perf after source commits (51.7303ms)
+✔ Q3 rejects a different physical DB even when databaseFile and markers are made identical (73.2058ms)
+▶ Q3 source slot replacement, close and close/reopen invalidate captured references
+  ✔ slot (48.9424ms)
+  ✔ close (45.0215ms)
+  ✔ reopen (45.6ms)
+✔ Q3 source slot replacement, close and close/reopen invalidate captured references (140.0289ms)
+▶ Q3 source raw writes without store revisions cannot certify an old slot
+  ✔ UPDATE events SET total=total+7,input=input+7 WHERE total=100 (40.2205ms)
+  ✔ UPDATE source_files SET kind='claude' (39.8654ms)
+  ✔ INSERT INTO rate_limit_observations VALUES('/fixture/q3-usage.sqlite',1,'primary',1783857600000,'codex',NULL,NULL,300,1783857900000,25) (39.4181ms)
+✔ Q3 source raw writes without store revisions cannot certify an old slot (119.9533ms)
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (48.0114ms)
+  ✔ managed transaction (53.9826ms)
+✔ Q3 open transactions bypass capture and rollback never certifies uncommitted payload (102.4013ms)
+✔ Q3 target requires a pinned read transaction and rejects managed writes or a closed DB (41.3842ms)
+▶ Q3 source context and recipient service-tier input must remain aligned
+  ✔ source-homes (43.2094ms)
+  ✔ source-tier (41.3574ms)
+  ✔ reader-tier (41.4062ms)
+  ✔ reader-homes (42.1064ms)
+✔ Q3 source context and recipient service-tier input must remain aligned (168.6081ms)
+▶ Q3 main and TEMP schema changes invalidate a captured guard without DML
+  ✔ main (40.2823ms)
+  ✔ TEMP  (38.8922ms)
+✔ Q3 main and TEMP schema changes invalidate a captured guard without DML (79.5464ms)
+▶ Q3 an unreadable source data_version cannot certify by returning an old observation
+  ✔ capture (44.0406ms)
+  ✔ adopt (42.2267ms)
+✔ Q3 an unreadable source data_version cannot certify by returning an old observation (86.6019ms)
+✔ Q3 clone failure leaves source ownership intact and falls back to a complete target query (47.1716ms)
+✖ Q3 target reprices by full SQL after source input discard and source close (52.7028ms)
+✔ Q3 target close cannot discard the source's independent complete quote input (48.4494ms)
+✖ Q3 a price change before adoption cannot label old cost as the new catalog (47.7268ms)
+▶ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads
+  ✔ details (49.8505ms)
+  ✔ exclude home (49.4111ms)
+  ✔ hour bucket (57.3962ms)
+  ✔ local zone (52.5029ms)
+  ✔ today (48.8535ms)
+✔ Q3 recipient request context still governs details, home exclusions, bucket and non-all reads (258.657ms)
+✔ Q3 advancing now with the same resolved all scope retains static facts (48.8976ms)
+✖ Q3 actual event/perf authority rejects hot seeding and missing cold files remain errors (85.0239ms)
+✔ Q3 malformed perf-only authority is never bypassed by an adopted hot slot (43.0712ms)
+✔ Q3 cold authority committed externally during open/pin rejects the old source guard (44.2357ms)
+✔ Q3 no warmed slot falls back and released readers leave a successful checkpoint (70.2619ms)
+▶ Q3 context changed after building cannot be certified with a freshly rebased key
+  ✔ home (40.2462ms)
+  ✔ service-tier (41.3606ms)
+  ✔ missing-context (40.6618ms)
+✔ Q3 context changed after building cannot be certified with a freshly rebased key (122.6787ms)
+ℹ tests 75
+ℹ suites 0
+ℹ pass 72
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4610.7123
+
+✖ failing tests:
+
+test at test\q3-published-projection.test.js:567:1
+✖ Q3 target reprices by full SQL after source input discard and source close (52.7028ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+  
+  0.00006000000000000001
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:585:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0.00006000000000000001,
+    expected: 0.00006000000000000001,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\q3-published-projection.test.js:626:1
+✖ Q3 a price change before adoption cannot label old cost as the new catalog (47.7268ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+  
+  0.00006000000000000001
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:638:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0.00006000000000000001,
+    expected: 0.00006000000000000001,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\q3-published-projection.test.js:685:1
+✖ Q3 actual event/perf authority rejects hot seeding and missing cold files remain errors (85.0239ms)
+  Error: EPERM: operation not permitted, link 'C:\Users\Silver\AppData\Local\Packages\sandbox.{f2697f99-6e0e-4eaa-8da6-9a3082fb78be}\AC\Temp\q3-published-projection-sOSkcl\.cold.sqlite.history-backup-tmp-39332-1793070294944-823f6867f1b988' -> 'C:\Users\Silver\AppData\Local\Packages\sandbox.{f2697f99-6e0e-4eaa-8da6-9a3082fb78be}\AC\Temp\q3-published-projection-sOSkcl\cold.sqlite'
+      at backupError (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:46:24)
+      at createHistoryBackup (file:///E:/12%20AI/ccusage/codex-usage/src/history-backup.js:328:11)
+      at async createHistoryArchiveCandidate (file:///E:/12%20AI/ccusage/codex-usage/src/history-archive.js:1792:12)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:691:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'HISTORY_BACKUP_FAILED'
+  }

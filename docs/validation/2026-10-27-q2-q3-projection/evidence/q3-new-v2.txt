@@ -1,0 +1,114 @@
+✔ Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf (71.4879ms)
+✔ Q3 adopted payload and public replies have independent nested ownership (54.942ms)
+✔ Q3 empty events still pin a real read snapshot and can adopt an empty projection (48.8241ms)
+▶ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt
+  ✔ before-capture (45.4169ms)
+  ✔ before-pin (47.3432ms)
+  ✔ after-pin (48.3235ms)
+✔ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt (143.3787ms)
+▶ Q3 external commits with unchanged publication markers reject every unproved window
+  ✔ before-capture (49.304ms)
+  ✔ before-pin (53.8359ms)
+  ✔ after-pin (53.4998ms)
+✔ Q3 external commits with unchanged publication markers reject every unproved window (158.6674ms)
+✔ Q3 external perf-only commits still reject source certification (49.3108ms)
+✔ Q3 accepted reader keeps old usage and per-sample perf after source commits (50.8787ms)
+✔ Q3 rejects a different physical DB even when databaseFile and markers are made identical (73.7427ms)
+▶ Q3 source slot replacement, close and close/reopen invalidate captured references
+  ✔ slot (46.5174ms)
+  ✔ close (46.7819ms)
+  ✔ reopen (47.4015ms)
+✔ Q3 source slot replacement, close and close/reopen invalidate captured references (142.7991ms)
+▶ Q3 source raw writes without store revisions cannot certify an old slot
+  ✔ UPDATE events SET total=total+7,input=input+7 WHERE total=100 (44.2195ms)
+  ✔ UPDATE source_files SET kind='claude' (43.584ms)
+  ✔ INSERT INTO rate_limit_observations VALUES('/fixture/q3-usage.sqlite',1,'primary',1783857600000,'codex',NULL,NULL,300,1783857900000,25) (43.2945ms)
+✔ Q3 source raw writes without store revisions cannot certify an old slot (133.1182ms)
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (53.531ms)
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+----- Native stack trace -----
+
+----- Native stack trace -----
+
+----- Native stack trace -----
+
+----- Native stack trace -----
+
+----- Native stack trace -----
+
+ 1: 00007FF7085CE51D 
+ 2: 00007FF707A2F966 
+ 3: 00007FF706771C4E 
+ 4: 00007FF707097381 
+ 5: 00007FF707078520 
+ 6: 00007FF70707404C 
+ 7: 00007FF7070739CB 
+ 8: 00007FF7070681A0 
+ 9: 00007FF707067378 
+10: 00007FF7070B096A 
+11: 00007FF7070AFF96 
+
+
+#
+# Fatal process out of memory: Worklist::Segment::Create
+#
+----- Native stack trace -----
+
+ 1: 00007FF7085CE51D 
+ 2: 00007FF707A2F966 
+ 3: 00007FF706771C4E 
+ 4: 00007FF7070891C8 
+ 5: 00007FF7070B686E 
+ 6: 00007FF7070B65C1 
+ 7: 00007FF70706F429 
+ 8: 00007FF7070679C6 
+ 9: 00007FF707067378 
+10: 00007FF7070B096A 
+11: 00007FF7070AFF96 
+12: 00007FF7070C0EF2 
+13: 00007FF7070C0A1B 
+14: 00007FF7089A7DED 
+15: 00007FF7070AC030 
+16: 00007FF7070B3F50 
+17: 00007FF706F28D34 
+18: 00007FF7072D551E 
+19: 00007FF708744570 
+20: 00007FF7084B1B9A 
+21: 00007FF7084AB4EC 
+22: 00007FF707307551 
+23: 00007FF7073071B1 
+24: 00007FF707314470 
+25: 00007FF707313E1F 
+26: 00007FF70879E37F 
+27: 00007FF708613AA6 
+28: 00007FF7086E7939 
+29: 00007FF7087A1552 
+30: 00007FF7089B14F4 
+31: 00007FFD3277DDA7 
+32: 00007FFD34ABEE4C 
+run-with-memory-limit: job memory limit exceeded; terminating job

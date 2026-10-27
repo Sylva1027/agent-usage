@@ -1,0 +1,5 @@
+Exception: E:\12 AI\ccusage\codex-usage\output\q2-q3-projection-20261027\cleanup-databases.ps1:14
+Line |
+  14 |  … .walAfterClose -ne 0) { throw "Nonzero final WAL recorded by $name" }
+     |                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Nonzero final WAL recorded by browser-partial-v2-results.json

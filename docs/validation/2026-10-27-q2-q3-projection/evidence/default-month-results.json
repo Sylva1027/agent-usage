@@ -1,0 +1,151 @@
+{
+  "preset": "month",
+  "rounds": 3,
+  "samples": [
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 0,
+      "syncMs": 3533.9951,
+      "queryMs": 2616.6097999999984,
+      "combinedMs": 6150.604899999998,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 972128256
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 0,
+      "syncMs": 3640.2205999999933,
+      "queryMs": 2678.5855999999912,
+      "combinedMs": 6318.8061999999845,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 896913408
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 1,
+      "syncMs": 3570.4844999999914,
+      "queryMs": 2675.7690000000002,
+      "combinedMs": 6246.253499999992,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 959832064
+    },
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 1,
+      "syncMs": 3655.756699999998,
+      "queryMs": 2646.171300000002,
+      "combinedMs": 6301.928,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 892932096
+    },
+    {
+      "mode": "before",
+      "phase": "static",
+      "index": 2,
+      "syncMs": 3534.0761000000057,
+      "queryMs": 2553.9741000000067,
+      "combinedMs": 6088.050200000012,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 963088384
+    },
+    {
+      "mode": "after",
+      "phase": "static",
+      "index": 2,
+      "syncMs": 3544.679799999998,
+      "queryMs": 2613.7404000000097,
+      "combinedMs": 6158.420200000008,
+      "periodCacheSizeBeforeQuery": 1,
+      "metadataSlotRetained": true,
+      "periodSlotsRetained": true,
+      "timelineCalls": 1,
+      "perfCalls": 1,
+      "summaryHash": "824bd107469f9b390b404308368760f6a5f884d7c9897d54edecf841ad46bb9d",
+      "total": 17549766014,
+      "fingerprint": "fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31",
+      "perfIndexVersion": "c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f",
+      "rss": 912179200
+    }
+  ],
+  "pairs": [
+    {
+      "phase": "static",
+      "index": 0,
+      "order": [
+        "before",
+        "after"
+      ],
+      "equal": true
+    },
+    {
+      "phase": "static",
+      "index": 1,
+      "order": [
+        "after",
+        "before"
+      ],
+      "equal": true
+    },
+    {
+      "phase": "static",
+      "index": 2,
+      "order": [
+        "before",
+        "after"
+      ],
+      "equal": true
+    }
+  ],
+  "maxRSSKiB": 986120,
+  "minFreeGiB": 9.411399841308594,
+  "databases": [
+    "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\followup-paired-before-20652.sqlite",
+    "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\followup-paired-after-20652.sqlite"
+  ],
+  "completed": true,
+  "finishedAt": "2026-10-27T05:31:18.130Z"
+}

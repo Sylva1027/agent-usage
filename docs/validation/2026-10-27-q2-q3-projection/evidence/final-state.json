@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-27T06:03:11.5852310Z",
+  "sourceAndTestHashesEqual": true,
+  "files": 5,
+  "productFiles": [
+    "src/usage-store.js",
+    "src/usage-executor.js"
+  ],
+  "productionSwitched": false,
+  "newCommitCreated": false
+}

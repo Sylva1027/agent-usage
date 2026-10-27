@@ -1,0 +1,27 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "3B19EBB7A2D84690C169A65C946E806FB075E3D02213C7778D955401BECF3F1A",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\src\\usage-store.js"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "F39FA8C652E5CCF4FED83EDC555516F6BD88D123F9A22F46F4EF81F2ABC0738E",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\src\\usage-executor.js"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "A1DFEE1770E3226F4FFE2AAED96153247AC7EE35AEC9B64425AF9FF89129E726",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\test\\q2-usage-projection.test.js"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "E872EE7FEDD2284DC5BBBDFC48D14C963B8B917BDBB05ED948803D6C2DA4783D",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\test\\q3-published-projection.test.js"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "2D17A2425A98F2485B26BC7E505FDDBAC45150044633D80241A64DF09322393C",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\test\\usage-store.test.js"
+  }
+]

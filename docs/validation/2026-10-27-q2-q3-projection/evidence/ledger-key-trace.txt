@@ -1,0 +1,30 @@
+✖ Q2 real ledger-only import then perf publication retains the usage timeline (276.3558ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 362.1357
+
+✖ failing tests:
+
+test at test\q2-usage-projection.test.js:634:1
+✖ Q2 real ledger-only import then perf publication retains the usage timeline (276.3558ms)
+  AssertionError [ERR_ASSERTION]: the same writer must not rebuild all timeline after timing/perf commits
+  
+  2 !== 1
+  
+      at file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:646:12
+      at async withNativeStore (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:610:5)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q2-usage-projection.test.js:635:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

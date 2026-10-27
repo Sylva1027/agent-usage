@@ -42,7 +42,7 @@ import {
   estimateEventCost,
   getPricingCatalog,
 } from "./pricing.js";
-import { loadServiceTierEvidence } from "./service-tier-evidence.js";
+import { loadServiceTierEvidence, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 import { HistoryQuoteInputs } from "./history-quote-inputs.js";
 import {
   buildModelActivity,
@@ -96,6 +96,38 @@ export const STORE_SCHEMA_VERSION = 21;
 
 const REQUEST_TIMING_PUBLISHED_REVISION_META = "perf_request_timing_published_revision";
 const REQUEST_TIMING_PUBLICATION_SEQ_META = "perf_request_timing_publication_seq";
+const USAGE_PROJECTION_IGNORED_TABLES = [
+  "perf_samples",
+  "perf_sample_sources",
+  "perf_rollout_threads",
+  "perf_codex_projections",
+  "perf_request_timing_meta",
+  "perf_request_timing_evidence",
+  "perf_request_timing_threads",
+  "perf_request_timing_dirty_threads",
+  "workbuddy_generation_durations",
+  "workbuddy_generation_duration_observations",
+  "history_replaced_facts",
+];
+const USAGE_PROJECTION_IGNORED_META = [
+  "generated_at",
+  "fingerprint",
+  "perf_state",
+  "perf_degraded_home_ids",
+  "perf_source_warnings",
+  "perf_missing_sources",
+  "perf_file_fingerprints",
+  "perf_file_warnings",
+  "perf_magpie_ledger_fingerprint",
+  "perf_method_version",
+  "perf_index_version",
+  "perf_indexed_at",
+  "perf_workbuddy_legacy_fallback_allowed",
+  "perf_codex_publication_policy",
+  "perf_unsupported_sources",
+  REQUEST_TIMING_PUBLISHED_REVISION_META,
+  REQUEST_TIMING_PUBLICATION_SEQ_META,
+];
 const MISSING_SOURCES_META = "perf_missing_sources";
 const LOCAL_ROLLUP_ZONE_META = "usage_rollup_local_zone_identity";
 const HISTORY_ARCHIVE_EVENT_AUTHORITY_META = "history_archive_event_authority";
@@ -4411,9 +4443,15 @@ export class UsageStore {
      * C19 static summary projection: one instance-private all-hot entry for
      * timeline/cost, perf and grouped detail rows. Dynamic range/quota/clock/status
      * remain outside this slot.
-     * @type {{ key: string, factsKey: string, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
+     * @type {{ key: string, factsKey: string, perfKey?: string, contextKey?: string, context?: any, guard?: any, evidence?: any, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
      */
     this.summaryProjectionCache = null;
+    /** @type {{ database: DatabaseSync, mainSchema: number, tempSchema: number } | null} */
+    this.usageProjectionTracker = null;
+    this.observedUsageProjectionChanges = "";
+    this.summaryProjectionTransferableRead = false;
+    this.openedUsageProjectionIdentity = null;
+    this.openedUsageProjectionChanges = -1;
     /** SQL history projections stay separate from every hot-only public reader. */
     this.historySqlDashboardCache = null;
     this.verifiedHistorySqlRead = false;
@@ -4811,6 +4849,162 @@ export class UsageStore {
     this.observedDataVersion = this.readDataVersion();
     // 两个派生缓存刚在上面清空 ⇒ 它们与当前修订是**对齐**的（`open()` 不是一次提交）。
     this.derivedRevision = this.storeRevision;
+    this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
+    this.openedUsageProjectionIdentity = this.usageProjectionDatabaseIdentity();
+    this.openedUsageProjectionChanges = Number(this.database.prepare("SELECT total_changes() AS value").get().value);
+  }
+
+  usageProjectionDatabaseIdentity() {
+    try {
+      const file = this.database
+        .prepare("PRAGMA database_list")
+        .all()
+        .find((row) => row.name === "main")?.file;
+      if (!file) return null;
+      const physical = realpathSync(String(file));
+      if (physical !== realpathSync(this.databaseFile)) return null;
+      const info = statSync(physical, { bigint: true });
+      return `${physical}\u0000${info.dev}\u0000${info.ino}`;
+    } catch {
+      return null;
+    }
+  }
+
+  usageProjectionGuard() {
+    try {
+      if (this.verifiedHistorySqlRead || !this.usageProjectionChangeKey().startsWith("usage:")) return null;
+      const identity = this.usageProjectionDatabaseIdentity();
+      if (!identity || identity !== this.openedUsageProjectionIdentity) return null;
+      // A failed version read cannot certify a transferable snapshot.
+      const dataVersion = Number(this.database.prepare("PRAGMA data_version").get().data_version);
+      if (!Number.isSafeInteger(dataVersion)) return null;
+      return { database: this.database, identity, dataVersion, evidence: this.serviceTierEvidence };
+    } catch {
+      return null;
+    }
+  }
+
+  captureUsageProjection() {
+    try {
+      const slot = this.summaryProjectionCache;
+      if (!slot?.context || !slot.guard || !this.database || this.database.isTransaction || this.writeTransactionDepth)
+        return null;
+      const guard = this.usageProjectionGuard();
+      if (!guard || Object.keys(guard).some((key) => guard[key] !== slot.guard[key])) return null;
+      const { range, bucket, excludeHomes, includeDetails, pricingModels } = slot.context;
+      const keys = this.summaryProjectionKeys(range, bucket, excludeHomes, includeDetails, pricingModels);
+      if (keys.key !== slot.key) return null;
+      return { source: this, slot, guard };
+    } catch {
+      return null;
+    }
+  }
+
+  adoptUsageProjection(snapshot) {
+    try {
+      if (!snapshot || snapshot.source === this || !this.database?.isTransaction || this.writeTransactionDepth)
+        return false;
+      // Only a fresh reader may receive the writer's payload; local writes are not a published view.
+      const changes = Number(this.database.prepare("SELECT total_changes() AS value").get().value);
+      if (changes !== this.openedUsageProjectionChanges + (this.usageProjectionTracker ? 1 : 0)) return false;
+      this.database.prepare("SELECT id FROM events LIMIT 1").get();
+      const current = snapshot.source.captureUsageProjection();
+      if (
+        !current ||
+        current.slot !== snapshot.slot ||
+        Object.keys(current.guard).some((key) => current.guard[key] !== snapshot.guard[key])
+      )
+        return false;
+      if (
+        this.usageProjectionDatabaseIdentity() !== snapshot.guard.identity ||
+        this.serviceTierEvidence !== snapshot.guard.evidence
+      )
+        return false;
+      if (
+        this.database
+          .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+          .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META)
+      )
+        return false;
+      const context = structuredClone(snapshot.slot.context);
+      const { range, bucket, excludeHomes, includeDetails, pricingModels } = context;
+      const keys = this.summaryProjectionKeys(range, bucket, excludeHomes, includeDetails, pricingModels);
+      if (keys.contextKey !== snapshot.slot.contextKey) return false;
+      const projection = {};
+      for (const key of [
+        "timeline",
+        "timelineError",
+        "costEstimate",
+        "channels",
+        "models",
+        "homes",
+        "projects",
+        "repositories",
+      ]) {
+        if (Object.hasOwn(snapshot.slot.projection, key)) projection[key] = snapshot.slot.projection[key];
+      }
+      this.summaryProjectionCache = {
+        ...keys,
+        perfKey: "",
+        context,
+        evidence: this.serviceTierEvidence,
+        projection: structuredClone(projection),
+        quoteInputs: null,
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  installUsageProjectionTracker() {
+    this.usageProjectionTracker = null;
+    this.database.exec(`CREATE TEMP TABLE usage_projection_ignored_rows (value INTEGER NOT NULL) STRICT;
+      INSERT INTO usage_projection_ignored_rows VALUES (0);`);
+    const keys = USAGE_PROJECTION_IGNORED_META.map((key) => `'${key}'`).join(",");
+    for (const table of [...USAGE_PROJECTION_IGNORED_TABLES, "store_meta"]) {
+      for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+        // REPLACE can silently remove an unrelated metadata row through its hidden rowid.
+        if (table === "store_meta" && operation === "INSERT") continue;
+        const references = operation === "INSERT" ? ["NEW"] : operation === "DELETE" ? ["OLD"] : ["OLD", "NEW"];
+        const metadata =
+          table === "store_meta" ? references.map((row) => `${row}.key IN (${keys})`).join(" AND ") : "1";
+        const rowid = table === "store_meta" && operation === "UPDATE" ? " AND OLD.rowid = NEW.rowid" : "";
+        const when = `(SELECT recursive_triggers FROM pragma_recursive_triggers) = 0 AND ${metadata}${rowid}`;
+        this.database.exec(`CREATE TEMP TRIGGER usage_projection_${table}_${operation}
+          AFTER ${operation} ON main.${table} WHEN ${when}
+          BEGIN UPDATE usage_projection_ignored_rows SET value = value + 1; END;`);
+      }
+    }
+    this.usageProjectionTracker = {
+      database: this.database,
+      mainSchema: Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version),
+      tempSchema: Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version),
+    };
+  }
+
+  usageProjectionChangeKey(
+    totalChanges = Number(this.database.prepare("SELECT total_changes() AS value").get().value),
+  ) {
+    const tracker = this.usageProjectionTracker;
+    if (!tracker || tracker.database !== this.database) return `full:${totalChanges}`;
+    const mainSchema = Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version);
+    const tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
+    const recursive = Number(this.database.prepare("PRAGMA recursive_triggers").get().recursive_triggers);
+    const fallback = `full:${mainSchema}:${tempSchema}:${recursive}:${totalChanges}`;
+    // REPLACE's implicit delete is omitted from total_changes even when DELETE triggers fire.
+    if (mainSchema !== tracker.mainSchema || tempSchema !== tracker.tempSchema || recursive !== 0) return fallback;
+    if (
+      this.database
+        .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+        .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META)
+    )
+      return fallback;
+    const ignored = Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get()?.value);
+    const changes = totalChanges - 2 * ignored;
+    return Number.isSafeInteger(ignored) && ignored >= 0 && Number.isSafeInteger(changes) && changes >= 0
+      ? `usage:${changes}`
+      : fallback;
   }
 
   // ── D1 卡：实例修订 / 外部提交检测 / 写事务卫生 ────────────────────────────────────────────
@@ -4889,16 +5083,20 @@ export class UsageStore {
    * @returns {boolean} 本次是否发生了失效
    */
   syncDerivedRevision() {
-    if (this.summarySnapshotRead) return false;
+    if (this.summarySnapshotRead || this.writeTransactionDepth > 0) return false;
     this.detectExternalCommit();
-    if (this.derivedRevision === this.storeRevision) return false;
+    const usageChanges = this.usageProjectionChangeKey();
+    const localUsageChanged = this.observedUsageProjectionChanges !== usageChanges;
+    if (this.derivedRevision === this.storeRevision && !localUsageChanged) return false;
     this.metadataCache = null;
     this.periodComparisonCache.clear();
     // D4：观测聚合缓存同为"用量侧静态输入"派生物 ⇒ 与上面两个缓存同一失效入口。
     this.metadataObservationCache = null;
     // D3：quota 观测的**规范映射**同为"用量侧静态输入"派生物 ⇒ 与上面两个缓存同一失效入口。
     this.quotaObservationCache = null;
-    this.summaryProjectionCache = null;
+    if (localUsageChanged) this.summaryProjectionCache = null;
+    this.recordChampionCache = null;
+    this.observedUsageProjectionChanges = usageChanges;
     // W4-b1 / D1：事件计价 memo 的输入是"事件内容 + 生效价目"，**不含**修订；这里清空是**保守**的
     // 内存卫生（旧修订的事件可能已被删除/重写），不是正确性的必要条件 —— 键不同就绝不会命中。
     this.eventCostMemo.clear("store-revision");
@@ -9274,13 +9472,27 @@ export class UsageStore {
     const degradedHomeIds = [...degradedHomeSet].sort();
     const nextState = degradedHomeIds.length > 0 ? PERF_STATE_DEGRADED : PERF_STATE_READY;
 
-    this.serviceTierEvidence = loadServiceTierEvidence(homes);
+    const nextServiceTierEvidence = loadServiceTierEvidence(homes);
+    let sameServiceTierEvidence = false;
+    if (this.serviceTierEvidence) {
+      try {
+        sameServiceTierEvidence =
+          JSON.stringify(serviceTierEvidenceSnapshot(this.serviceTierEvidence)) ===
+          JSON.stringify(serviceTierEvidenceSnapshot(nextServiceTierEvidence));
+      } catch {
+        // Custom resolvers have no immutable snapshot; replacing them remains conservative.
+      }
+    }
+    if (!sameServiceTierEvidence) this.serviceTierEvidence = nextServiceTierEvidence;
     // D1：**service-tier evidence 的成功提交**。注意 `loadServiceTierEvidence` **每轮**都返回**新对象**
     // ⇒ 用对象身份当"变化"会让每个 no-op 轮都推进修订（违反卡面"无变化同步保留缓存"），
     // 所以用**输入签名**（各 home 的 `logs_2.sqlite` 主库 + `-wal`）判定，见
     // {@link UsageStore#serviceTierEvidenceSignature}。
     const serviceTierSignature = this.serviceTierEvidenceSignature(homes);
-    if (this.serviceTierEvidenceInput !== null && serviceTierSignature !== this.serviceTierEvidenceInput) {
+    if (
+      this.serviceTierEvidenceInput !== null &&
+      (serviceTierSignature !== this.serviceTierEvidenceInput || !sameServiceTierEvidence)
+    ) {
       this.commitStoreRevision("service-tier");
     }
     this.serviceTierEvidenceInput = serviceTierSignature;
@@ -9567,6 +9779,18 @@ export class UsageStore {
           retained: retainedByHome.get(homeId) || new Set(),
         });
       }
+    }
+    // Track no-op writes before any range is warmed, after sync has initialized its rollup schema.
+    if (
+      !this.usageProjectionTracker &&
+      !this.database.isTransaction &&
+      !this.database
+        .prepare("SELECT 1 FROM store_meta WHERE key IN (?, ?)")
+        .get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META, HISTORY_ARCHIVE_PERF_AUTHORITY_META)
+    ) {
+      this.syncDerivedRevision();
+      this.installUsageProjectionTracker();
+      this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
     }
     return {
       ...status,
@@ -10728,6 +10952,8 @@ export class UsageStore {
 
   summarize(filters = {}, options = {}) {
     this.database.exec("BEGIN");
+    const previousTransferable = this.summaryProjectionTransferableRead;
+    this.summaryProjectionTransferableRead = true;
     try {
       const summary = this.summarizeInReadTransaction(filters, options);
       this.database.exec("COMMIT");
@@ -10735,6 +10961,8 @@ export class UsageStore {
     } catch (error) {
       this.database.exec("ROLLBACK");
       throw error;
+    } finally {
+      this.summaryProjectionTransferableRead = previousTransferable;
     }
   }
 
@@ -10915,7 +11143,10 @@ export class UsageStore {
     await this.open();
     this.syncDerivedRevision();
     let hasAuthority = false;
+    const previousTransferable = this.summaryProjectionTransferableRead;
+    const ownTransaction = !this.database.isTransaction;
     this.database.exec("SAVEPOINT summary_history_read");
+    this.summaryProjectionTransferableRead = ownTransaction;
     try {
       hasAuthority = Boolean(
         this.database
@@ -10931,6 +11162,7 @@ export class UsageStore {
         }
       }
     } finally {
+      this.summaryProjectionTransferableRead = previousTransferable;
       this.database.exec("RELEASE summary_history_read");
     }
 
@@ -11107,6 +11339,10 @@ export class UsageStore {
   }
 
   summaryProjectionKeys(range, bucket, excludeHomes, includeDetails, pricingModels) {
+    if (!this.usageProjectionTracker && !this.verifiedHistorySqlRead) {
+      this.installUsageProjectionTracker();
+      this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
+    }
     const catalog = getPricingCatalog();
     const rate = Number(catalog.usdToCnyRate);
     const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
@@ -11116,21 +11352,32 @@ export class UsageStore {
       pricingModels && typeof pricingModels === "object" && !Array.isArray(pricingModels)
         ? JSON.stringify(Object.keys(pricingModels).sort())
         : "";
-    const factsKey = [
+    const revisionKey = [
       `store-revision\u0000${this.storeRevision}`,
       `derived-revision\u0000${this.derivedRevision}`,
       `total-changes\u0000${totalChanges}`,
       `data-version\u0000${this.readDataVersion()}`,
+    ].join("\u0001");
+    const contextKey = [
       `pricing-model-keys\u0000${pricingModelKeys}`,
       `service-tier-evidence\u0000${this.serviceTierEvidenceInput === null ? "<unsynced>" : this.serviceTierEvidenceInput}`,
+      `homes\u0000${JSON.stringify(this.homes)}`,
       `resolved-range\u0000${JSON.stringify(range)}`,
       `bucket\u0000${bucket}`,
       `excluded-homes\u0000${canonicalExcludedHomes.join("\u0000")}`,
       `include-details\u0000${includeDetails ? "1" : "0"}`,
     ].join("\u0001");
+    const factsKey = [
+      `usage-changes\u0000${this.usageProjectionChangeKey(totalChanges)}`,
+      `data-version\u0000${this.readDataVersion()}`,
+      contextKey,
+    ].join("\u0001");
+    const pricingKey = `pricing-catalog\u0000${String(catalog.version ?? "")}\u0001usd-to-cny-rate\u0000${usdToCnyRate}`;
     return {
       factsKey,
-      key: `${factsKey}\u0001pricing-catalog\u0000${String(catalog.version ?? "")}\u0001usd-to-cny-rate\u0000${usdToCnyRate}`,
+      key: `${factsKey}\u0001${pricingKey}`,
+      perfKey: `${revisionKey}\u0001${contextKey}\u0001${pricingKey}`,
+      contextKey: `${contextKey}\u0001${pricingKey}`,
     };
   }
 
@@ -11177,10 +11424,14 @@ export class UsageStore {
       ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
       : null;
     const factProjection =
-      projectionKeys && this.summaryProjectionCache?.factsKey === projectionKeys.factsKey
+      projectionKeys &&
+      this.summaryProjectionCache?.factsKey === projectionKeys.factsKey &&
+      this.summaryProjectionCache.evidence === this.serviceTierEvidence
         ? structuredClone(this.summaryProjectionCache.projection)
         : null;
     const projection = factProjection && this.summaryProjectionCache.key === projectionKeys.key ? factProjection : null;
+    const perfProjection =
+      projection && this.summaryProjectionCache.perfKey === projectionKeys.perfKey ? projection : null;
     let quoteInputs = factProjection ? this.summaryProjectionCache.quoteInputs : null;
     if (projectionCacheable && !factProjection && this.summaryProjectionCache?.quoteInputs) {
       this.summaryProjectionCache.quoteInputs.discard();
@@ -11342,7 +11593,7 @@ export class UsageStore {
         projection?.models ?? fusedGroups?.models ?? this.groupedRange("model", range, "total DESC", scopeExclusions),
     };
 
-    summary.perf = projection?.perf ?? this.perfSummaryForRange(range, scopeExclusions, quotaPreset);
+    summary.perf = perfProjection?.perf ?? this.perfSummaryForRange(range, scopeExclusions, quotaPreset);
 
     if (includeDetails) {
       summary.homes =
@@ -11364,7 +11615,7 @@ export class UsageStore {
         fusedRepositories?.rows.map((row) => ({ ...row, sessionIds: repositorySessions.get(row.key) })) ??
         this.repositoriesRange(range, scopeExclusions);
     }
-    if (projectionCacheable && !projection) {
+    if (projectionCacheable && (!projection || !perfProjection)) {
       const cachedProjection = {
         timeline,
         timelineError,
@@ -11392,7 +11643,19 @@ export class UsageStore {
             : null);
         if (repositoryPeriods) cachedProjection.repositoryPeriods = repositoryPeriods;
       }
-      this.summaryProjectionCache = { ...projectionKeys, projection: structuredClone(cachedProjection), quoteInputs };
+      this.summaryProjectionCache = {
+        ...projectionKeys,
+        context: { range, bucket, excludeHomes: scopeExclusions, includeDetails, pricingModels },
+        evidence: this.serviceTierEvidence,
+        // Reusing facts must retain their original certification, including a refused transaction build.
+        guard: factProjection
+          ? this.summaryProjectionCache.guard
+          : this.summaryProjectionTransferableRead
+            ? this.usageProjectionGuard()
+            : null,
+        projection: structuredClone(cachedProjection),
+        quoteInputs,
+      };
     }
     return summary;
   }
@@ -11429,6 +11692,11 @@ export class UsageStore {
     // D3：quota 观测映射同为连接级状态（`storeRevision` 跨 close/open **保留** ⇒ 必须显式复位）。
     this.quotaObservationCache = null;
     this.summaryProjectionCache = null;
+    this.usageProjectionTracker = null;
+    this.observedUsageProjectionChanges = "";
+    this.summaryProjectionTransferableRead = false;
+    this.openedUsageProjectionIdentity = null;
+    this.openedUsageProjectionChanges = -1;
     // W4-b1 / D1：事件计价 memo 是**实例私有** ⇒ `close()` 一并清空（重开后重新预热一次；
     // 不跨实例）。键里已含内容与价目版本，所以这里同样是内存卫生而非正确性要求。
     this.eventCostMemo.clear("close");

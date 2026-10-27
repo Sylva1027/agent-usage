@@ -1,0 +1,47 @@
+[
+  {
+    "name": "typecheck",
+    "args": [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "tsconfig.checkjs.json"
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 1677.8875999999998
+  },
+  {
+    "name": "lint",
+    "args": [
+      "node_modules/@biomejs/biome/bin/biome",
+      "check",
+      "--formatter-enabled=false",
+      "."
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 644.3852000000002
+  },
+  {
+    "name": "format-check",
+    "args": [
+      "node_modules/@biomejs/biome/bin/biome",
+      "format",
+      "."
+    ],
+    "status": 0,
+    "signal": null,
+    "ms": 273.27620000000024
+  },
+  {
+    "name": "full-test",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "test/**/*.test.js"
+    ],
+    "status": 1,
+    "signal": null,
+    "ms": 983026.5011
+  }
+]

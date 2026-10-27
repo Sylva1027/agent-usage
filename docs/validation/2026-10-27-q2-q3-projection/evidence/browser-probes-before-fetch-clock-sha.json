@@ -1,0 +1,17 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "7B4356D7333355096EE242085B669BA8200253DC0C29065496866BA2B719A0F7",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\runtime-http-browser.mjs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "AD3F1DB8F3D49EA9D0B107B9FF01C07124630C756076446609DC2CEE4AA82AF7",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\run-final-browser.ps1"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "A2F22DA956BAD81DCE32CF57095B4191F7D10B7B3DBFB6F50A4887B119CB335F",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\run-worst-phase.ps1"
+  }
+]

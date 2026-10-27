@@ -1,0 +1,22 @@
+{"index":0,"order":["before","after"],"before":3085.809000000001,"after":2213.8364999999976,"dashboardSavedMs":871.9725000000035,"combinedSavedMs":765.1315000000104,"metadataRawExact":false}
+{"index":1,"order":["after","before"],"before":3041.672999999995,"after":2229.0102999999945,"dashboardSavedMs":812.6627000000008,"combinedSavedMs":972.2212,"metadataRawExact":false}
+{"index":2,"order":["before","after"],"before":2501.099399999999,"after":2272.3048999999955,"dashboardSavedMs":228.7945000000036,"combinedSavedMs":982.8264999999956,"metadataRawExact":false}
+{"index":3,"order":["after","before"],"before":3047.3991000000096,"after":2612.5659000000014,"dashboardSavedMs":434.8332000000082,"combinedSavedMs":604.6287999999986,"metadataRawExact":false}
+{"index":4,"order":["before","after"],"before":3083.902999999991,"after":1627.096399999995,"dashboardSavedMs":1456.8065999999963,"combinedSavedMs":771.6575000000012,"metadataRawExact":false}
+{"index":5,"order":["after","before"],"before":3005.9003999999986,"after":2103.206999999995,"dashboardSavedMs":902.6934000000037,"combinedSavedMs":726.008600000001,"metadataRawExact":false}
+{"index":6,"order":["before","after"],"before":2787.3488999999972,"after":1985.3027999999904,"dashboardSavedMs":802.0461000000068,"combinedSavedMs":779.419000000009,"metadataRawExact":false}
+{"index":7,"order":["after","before"],"before":3476.8224999999948,"after":2490.6712000000116,"dashboardSavedMs":986.1512999999832,"combinedSavedMs":800.9042999999947,"metadataRawExact":false}
+{"index":8,"order":["before","after"],"before":3870.5714000000007,"after":2555.6235000000015,"dashboardSavedMs":1314.9478999999992,"combinedSavedMs":457.7462000000087,"metadataRawExact":false}
+{"index":9,"order":["after","before"],"before":4500.686399999991,"after":1747.6569000000018,"dashboardSavedMs":2753.0294999999896,"combinedSavedMs":2664.591100000005,"metadataRawExact":false}
+{"index":10,"order":["before","after"],"before":4031.9468999999954,"after":3228.8081999999995,"dashboardSavedMs":803.1386999999959,"combinedSavedMs":1545.3380999999936,"metadataRawExact":false}
+{"index":11,"order":["after","before"],"before":4908.218599999993,"after":3192.2611000000034,"dashboardSavedMs":1715.9574999999895,"combinedSavedMs":1729.7810999999929,"metadataRawExact":false}
+{"index":12,"order":["before","after"],"before":4945.786800000002,"after":2545.4410999999964,"dashboardSavedMs":2400.3457000000053,"combinedSavedMs":1491.658999999985,"metadataRawExact":false}
+{"index":13,"order":["after","before"],"before":3773.2148999999918,"after":2550.2251000000106,"dashboardSavedMs":1222.9897999999812,"combinedSavedMs":1536.8703999999852,"metadataRawExact":false}
+{"index":14,"order":["before","after"],"before":4333.558300000004,"after":2567.1619000000064,"dashboardSavedMs":1766.3963999999978,"combinedSavedMs":1681.972699999984,"metadataRawExact":false}
+{"index":15,"order":["after","before"],"before":4355.056299999997,"after":2572.7730999999912,"dashboardSavedMs":1782.2832000000053,"combinedSavedMs":1675.4592999999877,"metadataRawExact":false}
+{"index":16,"order":["before","after"],"before":4298.882400000002,"after":2564.7456999999995,"dashboardSavedMs":1734.1367000000027,"combinedSavedMs":1710.019100000005,"metadataRawExact":false}
+{"index":17,"order":["after","before"],"before":4191.829200000007,"after":2557.105100000015,"dashboardSavedMs":1634.7240999999922,"combinedSavedMs":1600.8905000000086,"metadataRawExact":false}
+{"index":18,"order":["before","after"],"before":4348.266399999993,"after":2568.864200000011,"dashboardSavedMs":1779.4021999999823,"combinedSavedMs":1758.5377000000153,"metadataRawExact":false}
+{"index":19,"order":["after","before"],"before":4292.724300000002,"after":2598.314799999993,"dashboardSavedMs":1694.4095000000088,"combinedSavedMs":1705.9195000000182,"metadataRawExact":false}
+{"resultFile":"E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\q3-formal-results.json","logFile":"E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\evidence\\q3-formal-execution.jsonl","completed":true,"pairs":20,"cleanupErrors":[]}
+Q23_JOB_PEAK bytes=1365782528 processBytes=1365782528

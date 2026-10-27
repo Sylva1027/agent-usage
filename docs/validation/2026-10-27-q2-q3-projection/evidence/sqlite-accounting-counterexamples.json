@@ -1,0 +1,95 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "off-on-off",
+      "fixed": false,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 8,
+        "ignored": 2,
+        "facts": "[[{\"value\":11}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "collision": true
+    },
+    {
+      "name": "rowid-insert",
+      "fixed": false,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 6,
+        "ignored": 1,
+        "facts": "[[{\"value\":10}],[]]"
+      },
+      "collision": true
+    },
+    {
+      "name": "rowid-update",
+      "fixed": false,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 6,
+        "ignored": 1,
+        "facts": "[[{\"value\":10}],[]]"
+      },
+      "collision": true
+    },
+    {
+      "name": "off-on-off",
+      "fixed": true,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 6,
+        "ignored": 0,
+        "facts": "[[{\"value\":11}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "collision": false
+    },
+    {
+      "name": "rowid-insert",
+      "fixed": true,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 5,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[]]"
+      },
+      "collision": false
+    },
+    {
+      "name": "rowid-update",
+      "fixed": true,
+      "before": {
+        "total": 4,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[{\"key\":\"ordinary\",\"value\":\"original\"}]]"
+      },
+      "after": {
+        "total": 5,
+        "ignored": 0,
+        "facts": "[[{\"value\":10}],[]]"
+      },
+      "collision": false
+    }
+  ]
+}

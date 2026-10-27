@@ -1,0 +1,244 @@
+{
+  "checkedAt": "2026-10-27T06:00:22.7256439Z",
+  "heavyJobCapMiB": 7168,
+  "heavyHeapCapMiB": 1536,
+  "controlReserveMiB": 1024,
+  "allRecordedJobPeakBytes": 2484113408.0,
+  "peaks": [
+    {
+      "file": "evidence\\append-control-v3.txt",
+      "jobPeakBytes": 1199251456,
+      "largestProcessBytes": 1199251456
+    },
+    {
+      "file": "evidence\\append-control.txt",
+      "jobPeakBytes": 1223827456,
+      "largestProcessBytes": 1223827456
+    },
+    {
+      "file": "evidence\\browser-controls-v3.txt",
+      "jobPeakBytes": 1929908224,
+      "largestProcessBytes": 1192783872
+    },
+    {
+      "file": "evidence\\browser-controls.txt",
+      "jobPeakBytes": 1970823168,
+      "largestProcessBytes": 1319604224
+    },
+    {
+      "file": "evidence\\browser-final-clock-failed.txt",
+      "jobPeakBytes": 1746702336,
+      "largestProcessBytes": 1106804736
+    },
+    {
+      "file": "evidence\\browser-final-v2.txt",
+      "jobPeakBytes": 1985245184,
+      "largestProcessBytes": 1308053504
+    },
+    {
+      "file": "evidence\\browser-final.txt",
+      "jobPeakBytes": 1831354368,
+      "largestProcessBytes": 1154740224
+    },
+    {
+      "file": "evidence\\browser-launch-failed.txt",
+      "jobPeakBytes": 213688320,
+      "largestProcessBytes": 208166912
+    },
+    {
+      "file": "evidence\\browser-partial-v2.txt",
+      "jobPeakBytes": 1985245184,
+      "largestProcessBytes": 1308053504
+    },
+    {
+      "file": "evidence\\browser-worst-phase.txt",
+      "jobPeakBytes": 1768910848,
+      "largestProcessBytes": 1105891328
+    },
+    {
+      "file": "evidence\\check-syntax-browser-fetch-clock.txt",
+      "jobPeakBytes": 17977344,
+      "largestProcessBytes": 17977344
+    },
+    {
+      "file": "evidence\\check-syntax-publish-evidence.mjs.txt",
+      "jobPeakBytes": 18841600,
+      "largestProcessBytes": 18841600
+    },
+    {
+      "file": "evidence\\check-syntax-runtime-http-browser.mjs.txt",
+      "jobPeakBytes": 18001920,
+      "largestProcessBytes": 18001920
+    },
+    {
+      "file": "evidence\\check-syntax-summarize-results.mjs.txt",
+      "jobPeakBytes": 18501632,
+      "largestProcessBytes": 18501632
+    },
+    {
+      "file": "evidence\\default-month-v3.txt",
+      "jobPeakBytes": 1016725504,
+      "largestProcessBytes": 1016725504
+    },
+    {
+      "file": "evidence\\default-month-v4-initial.txt",
+      "jobPeakBytes": 1038188544,
+      "largestProcessBytes": 1038188544
+    },
+    {
+      "file": "evidence\\default-month.txt",
+      "jobPeakBytes": 1031651328,
+      "largestProcessBytes": 1031651328
+    },
+    {
+      "file": "evidence\\default-today-probe-assertion-failed.txt",
+      "jobPeakBytes": 1012670464,
+      "largestProcessBytes": 1012670464
+    },
+    {
+      "file": "evidence\\default-today-v3.txt",
+      "jobPeakBytes": 1037205504,
+      "largestProcessBytes": 1037205504
+    },
+    {
+      "file": "evidence\\default-today-v4-initial.txt",
+      "jobPeakBytes": 1061482496,
+      "largestProcessBytes": 1061482496
+    },
+    {
+      "file": "evidence\\default-today.txt",
+      "jobPeakBytes": 964825088,
+      "largestProcessBytes": 964825088
+    },
+    {
+      "file": "evidence\\format-v4-write.txt",
+      "jobPeakBytes": 107061248,
+      "largestProcessBytes": 88551424
+    },
+    {
+      "file": "evidence\\gates-v3.txt",
+      "jobPeakBytes": 2484113408,
+      "largestProcessBytes": 1184587776
+    },
+    {
+      "file": "evidence\\gates.txt",
+      "jobPeakBytes": 2261340160,
+      "largestProcessBytes": 1400795136
+    },
+    {
+      "file": "evidence\\ledger-exact-v3.txt",
+      "jobPeakBytes": 826310656,
+      "largestProcessBytes": 826310656
+    },
+    {
+      "file": "evidence\\ledger-exact.txt",
+      "jobPeakBytes": 908234752,
+      "largestProcessBytes": 908234752
+    },
+    {
+      "file": "evidence\\no-all-regressions-v4.txt",
+      "jobPeakBytes": 124321792,
+      "largestProcessBytes": 102522880
+    },
+    {
+      "file": "evidence\\no-all-regressions-v4b.txt",
+      "jobPeakBytes": 124698624,
+      "largestProcessBytes": 102494208
+    },
+    {
+      "file": "evidence\\q2-formal-v3.txt",
+      "jobPeakBytes": 1464700928,
+      "largestProcessBytes": 1464700928
+    },
+    {
+      "file": "evidence\\q2-formal-v4.txt",
+      "jobPeakBytes": 1402961920,
+      "largestProcessBytes": 1402961920
+    },
+    {
+      "file": "evidence\\q2-formal.txt",
+      "jobPeakBytes": 1291747328,
+      "largestProcessBytes": 1291747328
+    },
+    {
+      "file": "evidence\\q23-regressions-v8.txt",
+      "jobPeakBytes": 129806336,
+      "largestProcessBytes": 104820736
+    },
+    {
+      "file": "evidence\\q3-formal-v3.txt",
+      "jobPeakBytes": 1384792064,
+      "largestProcessBytes": 1384792064
+    },
+    {
+      "file": "evidence\\q3-formal.txt",
+      "jobPeakBytes": 1365782528,
+      "largestProcessBytes": 1365782528
+    },
+    {
+      "file": "evidence\\q3-smoke-v2.txt",
+      "jobPeakBytes": 1307680768,
+      "largestProcessBytes": 1307680768
+    },
+    {
+      "file": "evidence\\q3-smoke-v3.txt",
+      "jobPeakBytes": 1011937280,
+      "largestProcessBytes": 1011937280
+    },
+    {
+      "file": "evidence\\q3-smoke-v4.txt",
+      "jobPeakBytes": 1395310592,
+      "largestProcessBytes": 1395310592
+    },
+    {
+      "file": "evidence\\q3-smoke-v5.txt",
+      "jobPeakBytes": 1418567680,
+      "largestProcessBytes": 1418567680
+    },
+    {
+      "file": "evidence\\q3-smoke.txt",
+      "jobPeakBytes": 817418240,
+      "largestProcessBytes": 817418240
+    },
+    {
+      "file": "evidence\\query-control-v3.txt",
+      "jobPeakBytes": 1573998592,
+      "largestProcessBytes": 1573998592
+    },
+    {
+      "file": "evidence\\query-control.txt",
+      "jobPeakBytes": 1575464960,
+      "largestProcessBytes": 1575464960
+    },
+    {
+      "file": "evidence\\retained-v3.txt",
+      "jobPeakBytes": 814174208,
+      "largestProcessBytes": 814174208
+    },
+    {
+      "file": "evidence\\retained.txt",
+      "jobPeakBytes": 812359680,
+      "largestProcessBytes": 812359680
+    },
+    {
+      "file": "evidence\\summarize.txt",
+      "jobPeakBytes": 152948736,
+      "largestProcessBytes": 152948736
+    },
+    {
+      "file": "evidence\\summary-final.txt",
+      "jobPeakBytes": 160870400,
+      "largestProcessBytes": 160870400
+    },
+    {
+      "file": "evidence\\verify-inputs-final.txt",
+      "jobPeakBytes": 27164672,
+      "largestProcessBytes": 27164672
+    },
+    {
+      "file": "evidence\\verify-inputs.txt",
+      "jobPeakBytes": 27213824,
+      "largestProcessBytes": 27213824
+    }
+  ]
+}

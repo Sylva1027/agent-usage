@@ -1,0 +1,12 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "1BD944FD31ECAADB09D8578774CB562F47DAFC03C5F805570E2DEE8ABD03E3A5",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\src\\usage-store.js"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "F39FA8C652E5CCF4FED83EDC555516F6BD88D123F9A22F46F4EF81F2ABC0738E",
+    "Path": "E:\\12 AI\\ccusage\\codex-usage\\src\\usage-executor.js"
+  }
+]

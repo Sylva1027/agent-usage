@@ -1,0 +1,24 @@
+{"mode":"before","phase":"static","index":0,"syncMs":3254.8440000000046,"queryMs":422.0946999999942,"combinedMs":3676.938699999999,"periodCacheSizeBeforeQuery":1,"timelineCalls":1,"perfCalls":1,"summaryHash":"5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc","total":2273154577,"fingerprint":"fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31","perfIndexVersion":"c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f","rss":908111872}
+{"mode":"after","phase":"static","index":0,"syncMs":3001.4391000000032,"queryMs":2515.8589999999967,"combinedMs":5517.2981,"periodCacheSizeBeforeQuery":1,"timelineCalls":1,"perfCalls":1,"summaryHash":"5505a1f4276bb8c5c9794079eb0bd938f1a6fd08a0f6561e29125a00a8926dfc","total":2273154577,"fingerprint":"fd1f6fd2b1a66ce457926495e3f81ae4f9ffa2d3dee630708c406ed0134bec31","perfIndexVersion":"c19eecc4c86eb246b1356ad4030905a02afcec1d8b763a3c12de17118b0cde2f","rss":900079616}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: no token changes in static or ledger-only rounds
++ actual - expected
+
++ 2273154577
+- 19637022559
+
+    at pair (file:///E:/12%20AI/ccusage/codex-usage/output/q2-q3-projection-20261027/default-refresh-paired.mjs:83:10)
+    at async file:///E:/12%20AI/ccusage/codex-usage/output/q2-q3-projection-20261027/default-refresh-paired.mjs:112:48 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2273154577,
+  expected: 19637022559,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.19.0
+Q23_JOB_PEAK bytes=1012670464 processBytes=1012670464

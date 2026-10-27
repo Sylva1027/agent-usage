@@ -1,0 +1,29 @@
+2026-10-27 — independent read-only review of v4 follow-up
+Agent: 01a17b9c-c8a6-7363-b09e-576fa9aa640e. No file mutations or runtime tests by reviewer.
+
+Reviewed the syncRound tail tracker installation, legacy usage-store test adjustments,
+and Q2 no-all regression. No reproducible necessary blocker found:
+
+- Installation first calls syncDerivedRevision with the pre-install complete count,
+  then installs the tracker and records its key. It does not change an existing
+  projection slot's keys or guard, so it cannot recertify an old fact payload.
+- There is no await between those three operations. Raw writes in earlier async
+  sync windows remain in the complete count; later raw writes remain tracked.
+- Either event or perf authority marker, including an empty value, skips this
+  installation. Recipient open baselines remain unchanged and admit only the one
+  initialization insert in addition to the original baseline.
+- Rollback tests preserve unchanged revision, restored committed contents, and
+  subsequent stable hits. periodAggregate counts distinguish real aggregation
+  from connection guard queries. The no-all fixture checks three syncs with
+  today/month, static object identity, and subsequent raw update visibility.
+
+Separate review of the six v3 gate failures advised:
+- Preserve C5/D1/D4-warning no-op object identity checks; fix the actual regression.
+- Raw ROLLBACK retains total_changes; permit one conservative miss, then require
+  stable cache reuse and no successful-commit revision increment.
+- Replace the obsolete one-total-SQL warm-hit assertion with actual aggregation
+  counts. Additional guards must not be removed to satisfy the old count.
+
+205/205 targeted tests were executed by Main under the measured 1 GiB Job; the
+reviewer explicitly did not independently rerun them. Formal measurements and
+the whole-suite gate are owned and checked by Main.

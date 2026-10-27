@@ -424,18 +424,23 @@ if (!isMainThread && parentPort) {
         publishedReady = (async () => {
           if (!storeStatus) return;
           const reader = new UsageStore({ databaseFile: store.databaseFile });
+          let snapshot = store.captureUsageProjection();
           try {
             await reader.open();
             reader.homes = structuredClone(store.homes);
             reader.warnings = [...store.warnings];
             reader.serviceTierEvidence = store.serviceTierEvidence;
+            reader.serviceTierEvidenceInput = store.serviceTierEvidenceInput;
             reader.database.exec("BEGIN");
             reader.database.prepare("SELECT id FROM events LIMIT 1").get();
+            if (snapshot) reader.adoptUsageProjection(snapshot);
             publishedStore = reader;
             publishedStatus = storeStatus;
           } catch (error) {
             reader.close();
             throw error;
+          } finally {
+            snapshot = null;
           }
         })();
         let nextStatus;

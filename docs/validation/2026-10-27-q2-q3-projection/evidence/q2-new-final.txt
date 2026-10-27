@@ -1,0 +1,27 @@
+✔ Q2 no-op metadata and perf commits retain all timeline while refreshing state, TPS and time (111.364ms)
+✔ Q2 raw events, quota and source writes refresh all independent components and cascades (188.9341ms)
+✔ Q2 a warm all timeline does not freeze quota reset or period asOf (62.5717ms)
+✔ Q2 ignored metadata trigger side effects remain visible after success (65.039ms)
+✔ Q2 ignored metadata trigger side effects remain visible after FAIL (65.0868ms)
+✔ Q2 ignored metadata trigger side effects remain visible after ABORT (63.1995ms)
+✔ Q2 external commits without publication markers invalidate twice (80.2125ms)
+✔ Q2 controlled writeDepth rollback cannot publish uncommitted usage, quota or perf (69.6709ms)
+✔ Q2 warm recursive ON REPLACE collision always uses the complete-count fallback (66.6521ms)
+✔ Q2 OFF warm then ON metadata REPLACE plus usage then OFF cannot bypass the fallback (66.2978ms)
+✔ Q2 OFF warm then ON perf samples REPLACE plus usage then OFF cannot bypass the fallback (69.579ms)
+✔ Q2 recursive OFF INSERT OR REPLACE rowid conflict cannot hide unknown metadata deletion (69.2057ms)
+✔ Q2 recursive OFF UPDATE OR REPLACE rowid conflict cannot hide unknown metadata deletion (64.0413ms)
+✔ Q2 metadata key renames via UPDATE check both OLD and NEW (79.4066ms)
+✔ Q2 metadata key renames via UPSERT check both OLD and NEW (82.8278ms)
+✔ Q2 main schema change falls back without relying on tracker names (90.5759ms)
+✔ Q2 TEMP reset change falls back without relying on tracker names (90.8353ms)
+✔ Q2 real ledger-only import then perf publication retains the usage timeline (147.3869ms)
+✔ Q2 raw usage and quota between request-timing and perf commits cannot be retained as ledger-only (154.2806ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1783.1515

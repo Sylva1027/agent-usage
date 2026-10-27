@@ -1,0 +1,30 @@
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (68.7687ms)
+  ✖ managed transaction (42.3011ms)
+✖ Q3 open transactions bypass capture and rollback never certifies uncommitted payload (112.1209ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 202.9685
+
+✖ failing tests:
+
+test at test\q3-published-projection.test.js:427:13
+✖ managed transaction (42.3011ms)
+  AssertionError [ERR_ASSERTION]: a managed write read must preserve the committed slot
+      at TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:439:16)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (file:///E:/12%20AI/ccusage/codex-usage/test/q3-published-projection.test.js:427:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

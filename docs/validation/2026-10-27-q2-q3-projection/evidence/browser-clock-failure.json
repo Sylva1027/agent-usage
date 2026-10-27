@@ -1,0 +1,12 @@
+{
+  "databaseFile": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-35144.sqlite",
+  "partialCycles": 3,
+  "failure": "Probe cross-process tick/request clock assertion; pending response rejected on teardown",
+  "files": [
+    {
+      "FullName": "E:\\12 AI\\ccusage\\codex-usage\\.codex-usage\\refresh-latency-20261026\\incremental-http-browser-35144.sqlite",
+      "Length": 743444480
+    }
+  ],
+  "inputDifferences": 0
+}

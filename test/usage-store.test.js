@@ -2724,6 +2724,7 @@ test("D3 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
     const committed = store.quotaObservations();
     assert.equal(committed.length, 2);
     assert.equal(reads.prepares, 1);
+    const committedRevision = store.storeRevision;
 
     store.database.exec("BEGIN IMMEDIATE");
     try {
@@ -2743,11 +2744,13 @@ test("D3 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
     }
 
     const afterRollback = store.quotaObservations();
+    assert.equal(store.storeRevision, committedRevision, "回滚不伪造成功提交修订");
     assert.equal(afterRollback.length, 2, "回滚后回到已提交状态");
-    assert.equal(reads.prepares, 3, "回滚没有推进修订 ⇒ 事务外仍复用那份**未被污染**的缓存（零重读）");
+    assert.deepEqual(afterRollback, committed, "保守重读仍返回已提交内容");
+    assert.equal(reads.prepares, 4, "回滚保留 total_changes 累计写计数 ⇒ 首次保守重读一次");
     assert.equal(store.quotaObservationCache?.rows, afterRollback, "缓存自始至终指向已提交状态");
     assert.equal(store.quotaObservations(), afterRollback, "之后继续复用");
-    assert.equal(reads.prepares, 3);
+    assert.equal(reads.prepares, 4);
   } finally {
     store.close();
     await rm(fixture.homeDir, { recursive: true, force: true });
@@ -3033,32 +3036,36 @@ test("D4 · 未来事件不被缓存吃掉：只推进 asOf ⇒ 同一份数据�
 test("D4 · periodComparison 命中仍新鲜：asOf 是本次请求时刻；跨日/跨周/跨月/排除键各自变化", async () => {
   const fixture = await d4Fixture("codex-d4-period-");
   const store = new UsageStore({ homeDir: fixture.homeDir, databaseFile: fixture.databaseFile });
-  const counts = d4CountQueries(store);
+  let aggregations = 0;
+  const periodAggregate = store.periodAggregate;
+  store.periodAggregate = function (...args) {
+    aggregations += 1;
+    return periodAggregate.apply(this, args);
+  };
   const t1 = "2026-07-12T00:00:00.000Z";
   const t2 = "2026-07-12T06:00:00.000Z"; // 同一 UTC 日、同一本地日（+08:00 08:00 → 14:00）
   try {
     await store.open();
     await store.sync();
-    counts.reset();
+    aggregations = 0;
     const miss = store.periodComparison({ now: t1 });
-    const missPreparations = counts.total;
     assert.equal(miss.asOf, new Date(t1).toISOString());
-    assert.ok(missPreparations >= 2, `冷命中：至少做一次范围聚合（实测 ${missPreparations} 条语句）`);
+    assert.ok(aggregations > 0, "冷调用必须执行范围聚合");
 
-    counts.reset();
+    aggregations = 0;
     const hit = store.periodComparison({ now: t2 });
     assert.equal(hit.asOf, new Date(t2).toISOString(), "命中路径的 asOf 必须是**本次请求**的时刻");
     assert.notEqual(hit.asOf, miss.asOf, "asOf 跟着本次请求前进（不是缓存时刻）");
     assert.deepEqual(hit.periods, miss.periods, "同一自然日 ⇒ 日历边界（静态部分）逐字一致");
     assert.deepEqual(hit.totals, miss.totals, "合计同样逐字复用（日历边界不含 now）");
     assert.deepEqual(hit.models, miss.models);
-    assert.equal(counts.total, 1, "命中 ⇒ 只剩 1 条连接级语句（PRAGMA data_version）");
+    assert.equal(aggregations, 0, "命中仍检查连接写入守卫，但不重做范围聚合");
 
     // 跨日 ⇒ 日历边界与命中键都变。
-    counts.reset();
+    aggregations = 0;
     const nextDay = store.periodComparison({ now: "2026-07-13T06:00:00.000Z" });
     assert.notDeepEqual(nextDay.periods, miss.periods, "跨日 ⇒ 日历日边界变化");
-    assert.ok(counts.total >= 2, `跨日 ⇒ 未命中（实测 ${counts.total} 条语句）`);
+    assert.ok(aggregations > 0, "跨日 ⇒ 重新聚合");
     const nextDayUtc = store.periodComparison({ now: "2026-07-13T06:00:00.000Z", calendarZone: "utc" });
     assert.equal(
       nextDayUtc.periods.find((period) => period.key === "today").start,
@@ -3078,9 +3085,9 @@ test("D4 · periodComparison 命中仍新鲜：asOf 是本次请求时刻；跨�
 
     // 排除键：不同 excludeHomes ⇒ 不同命中键 ⇒ 重新聚合且结果不同。
     const homeId = store.homes[0].id;
-    counts.reset();
+    aggregations = 0;
     const excluded = store.periodComparison({ now: t2, excludeHomes: [homeId] });
-    assert.ok(counts.total >= 2, "排除键变化 ⇒ 未命中（重新聚合）");
+    assert.ok(aggregations > 0, "排除键变化 ⇒ 重新聚合");
     assert.notDeepEqual(excluded.totals, miss.totals, "排除键必须生效");
     assert.equal(excluded.asOf, new Date(t2).toISOString(), "未命中路径的 asOf 同样是本次请求时刻");
   } finally {
@@ -3197,6 +3204,7 @@ test("D4 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
     assert.equal(committed.modelLastSeen.Codex["gpt-6-mini"], Date.parse("2026-07-12T07:00:00.000Z"));
     /** 缓存里的行数 = `(channel, model, home_id)` 分组数（**不是**事件数）。 */
     const cachedGroups = store.metadataObservationCache.rows.length;
+    const committedRevision = store.storeRevision;
 
     counts.reset();
     store.metadata(new Date(asOf));
@@ -3231,18 +3239,25 @@ test("D4 · 写事务门（D1 回滚语义）：写事务内不读也不写观�
 
     counts.reset();
     const afterRollback = store.metadata(new Date(asOf));
+    assert.equal(store.storeRevision, committedRevision, "回滚不伪造成功提交修订");
     assert.equal(afterRollback.eventCount, 3, "回滚后回到已提交状态");
     assert.equal(
       afterRollback.modelLastSeen.Codex["gpt-6-mini"],
       Date.parse("2026-07-12T07:00:00.000Z"),
       "回滚后观测恢复（缓存自始至终指向已提交状态）",
     );
+    assert.ok(
+      counts.unfiltered + counts.filtered + counts.rawCount + counts.rollupCount + counts.staticBlock > 0,
+      "回滚保留连接累计写入计数 ⇒ 首次重建已提交派生结果",
+    );
+    assert.equal(store.metadataObservationCache.rows.length, cachedGroups);
+    counts.reset();
+    assert.deepEqual(store.metadata(new Date(asOf)), afterRollback);
     assert.equal(
       counts.unfiltered + counts.filtered + counts.rawCount + counts.rollupCount + counts.staticBlock,
       0,
-      "回滚没有推进修订 ⇒ 事务外继续复用未被污染的缓存",
+      "观察连接计数后，后续稳态读取不重建派生结果",
     );
-    assert.equal(store.metadataObservationCache.rows.length, cachedGroups);
   } finally {
     store.close();
     await rm(fixture.homeDir, { recursive: true, force: true });

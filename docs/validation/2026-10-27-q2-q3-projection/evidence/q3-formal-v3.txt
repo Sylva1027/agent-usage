@@ -1,0 +1,22 @@
+{"index":0,"order":["before","after"],"before":2673.046000000002,"after":2039.332199999997,"dashboardSavedMs":633.713800000005,"combinedSavedMs":634.9676000000036,"metadataRawExact":false}
+{"index":1,"order":["after","before"],"before":2626.877999999997,"after":1968.3915000000052,"dashboardSavedMs":658.4864999999918,"combinedSavedMs":683.9041999999972,"metadataRawExact":false}
+{"index":2,"order":["before","after"],"before":2619.3036999999968,"after":1938.7753000000012,"dashboardSavedMs":680.5283999999956,"combinedSavedMs":673.5426999999909,"metadataRawExact":false}
+{"index":3,"order":["after","before"],"before":2648.422400000003,"after":1945.3222000000023,"dashboardSavedMs":703.1002000000008,"combinedSavedMs":774.5063000000009,"metadataRawExact":false}
+{"index":4,"order":["before","after"],"before":2715.184000000001,"after":1963.1428000000014,"dashboardSavedMs":752.0411999999997,"combinedSavedMs":816.5001999999877,"metadataRawExact":false}
+{"index":5,"order":["after","before"],"before":2649.3938000000053,"after":1980.4881999999925,"dashboardSavedMs":668.9056000000128,"combinedSavedMs":670.2341999999917,"metadataRawExact":false}
+{"index":6,"order":["before","after"],"before":2602.439200000008,"after":1924.152500000011,"dashboardSavedMs":678.2866999999969,"combinedSavedMs":660.3822000000073,"metadataRawExact":false}
+{"index":7,"order":["after","before"],"before":2613.4915000000037,"after":1922.246100000004,"dashboardSavedMs":691.2453999999998,"combinedSavedMs":756.9764000000141,"metadataRawExact":false}
+{"index":8,"order":["before","after"],"before":2597.791400000002,"after":1932.4568,"dashboardSavedMs":665.334600000002,"combinedSavedMs":644.9786000000022,"metadataRawExact":false}
+{"index":9,"order":["after","before"],"before":2679.1888999999937,"after":1943.694199999998,"dashboardSavedMs":735.4946999999956,"combinedSavedMs":679.0996000000014,"metadataRawExact":false}
+{"index":10,"order":["before","after"],"before":2600.952600000004,"after":1955.3870000000024,"dashboardSavedMs":645.5656000000017,"combinedSavedMs":632.956600000005,"metadataRawExact":false}
+{"index":11,"order":["after","before"],"before":2631.447800000009,"after":1913.2295999999915,"dashboardSavedMs":718.2182000000175,"combinedSavedMs":747.5678000000044,"metadataRawExact":false}
+{"index":12,"order":["before","after"],"before":2646.554799999998,"after":1940.4732000000076,"dashboardSavedMs":706.0815999999904,"combinedSavedMs":725.5334999999759,"metadataRawExact":false}
+{"index":13,"order":["after","before"],"before":2618.47040000002,"after":1918.291200000007,"dashboardSavedMs":700.1792000000132,"combinedSavedMs":673.6651999999885,"metadataRawExact":false}
+{"index":14,"order":["before","after"],"before":2578.8471999999892,"after":1868.497000000003,"dashboardSavedMs":710.3501999999862,"combinedSavedMs":747.1726999999955,"metadataRawExact":false}
+{"index":15,"order":["after","before"],"before":2549.421000000002,"after":1803.397500000021,"dashboardSavedMs":746.0234999999811,"combinedSavedMs":888.6579999999958,"metadataRawExact":false}
+{"index":16,"order":["before","after"],"before":2647.931899999996,"after":2103.1282000000065,"dashboardSavedMs":544.8036999999895,"combinedSavedMs":544.3447999999917,"metadataRawExact":false}
+{"index":17,"order":["after","before"],"before":2682.9138000000094,"after":1961.3813999999838,"dashboardSavedMs":721.5324000000255,"combinedSavedMs":702.7277999999933,"metadataRawExact":false}
+{"index":18,"order":["before","after"],"before":2703.2124000000185,"after":1931.3635000000068,"dashboardSavedMs":771.8489000000118,"combinedSavedMs":704.5095999999903,"metadataRawExact":false}
+{"index":19,"order":["after","before"],"before":2731.2074999999895,"after":2369.087599999999,"dashboardSavedMs":362.1198999999906,"combinedSavedMs":347.88280000002123,"metadataRawExact":false}
+{"resultFile":"E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\q3-formal-results.json","logFile":"E:\\12 AI\\ccusage\\codex-usage\\output\\q2-q3-projection-20261027\\evidence\\q3-formal-execution.jsonl","completed":true,"pairs":20,"cleanupErrors":[]}
+Q23_JOB_PEAK bytes=1384792064 processBytes=1384792064

@@ -1,0 +1,29 @@
+✔ Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf (71.2968ms)
+✔ Q3 adopted payload and public replies have independent nested ownership (56.3497ms)
+✔ Q3 empty events still pin a real read snapshot and can adopt an empty projection (47.0315ms)
+▶ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt
+  ✔ before-capture (41.7694ms)
+  ✔ before-pin (47.821ms)
+  ✔ after-pin (47.8465ms)
+✔ Q3 source transactions reject stale usage at build/capture, capture/pin and pin/adopt (137.9695ms)
+▶ Q3 external commits with unchanged publication markers reject every unproved window
+  ✔ before-capture (50.8992ms)
+  ✔ before-pin (55.1821ms)
+  ✔ after-pin (60.3026ms)
+✔ Q3 external commits with unchanged publication markers reject every unproved window (166.8961ms)
+✔ Q3 external perf-only commits still reject source certification (61.0218ms)
+✔ Q3 accepted reader keeps old usage and per-sample perf after source commits (47.4636ms)
+✔ Q3 rejects a different physical DB even when databaseFile and markers are made identical (73.886ms)
+▶ Q3 source slot replacement, close and close/reopen invalidate captured references
+  ✔ slot (45.5543ms)
+  ✔ close (44.0248ms)
+  ✔ reopen (51.1019ms)
+✔ Q3 source slot replacement, close and close/reopen invalidate captured references (141.2137ms)
+▶ Q3 source raw writes without store revisions cannot certify an old slot
+  ✔ UPDATE events SET total=total+7,input=input+7 WHERE total=100 (44.4283ms)
+  ✔ UPDATE source_files SET kind='claude' (41.5262ms)
+  ✔ INSERT INTO rate_limit_observations VALUES('/fixture/q3-usage.sqlite',1,'primary',1783857600000,'codex',NULL,NULL,300,1783857900000,25) (43.7246ms)
+✔ Q3 source raw writes without store revisions cannot certify an old slot (130.2498ms)
+▶ Q3 open transactions bypass capture and rollback never certifies uncommitted payload
+  ✔ raw transaction (52.227ms)
+run-with-memory-limit: job memory limit exceeded; terminating job

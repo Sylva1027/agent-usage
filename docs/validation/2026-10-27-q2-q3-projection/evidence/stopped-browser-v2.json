@@ -1,0 +1,5 @@
+{
+  "ProcessId": 27572,
+  "Name": "node.exe",
+  "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" --max-old-space-size=1536 --import ./output/q2-q3-projection-20261027/runtime-hook.mjs ./output/q2-q3-projection-20261027/runtime-http-browser.mjs --browser-only"
+}

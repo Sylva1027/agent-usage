@@ -1,0 +1,72 @@
+[
+  {
+    "name": "q2-formal-v4",
+    "startedAt": "2026-10-27T04:35:37.3625356Z",
+    "endedAt": "2026-10-27T04:42:01.8971460Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "q3-formal",
+    "startedAt": "2026-10-27T04:42:01.9102931Z",
+    "endedAt": "2026-10-27T04:46:37.5102175Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "append-control",
+    "startedAt": "2026-10-27T04:46:37.5121312Z",
+    "endedAt": "2026-10-27T04:56:17.4309024Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "query-control",
+    "startedAt": "2026-10-27T04:56:17.4325905Z",
+    "endedAt": "2026-10-27T04:59:48.5925726Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "ledger-exact",
+    "startedAt": "2026-10-27T04:59:48.5943623Z",
+    "endedAt": "2026-10-27T05:01:47.3173766Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "retained",
+    "startedAt": "2026-10-27T05:01:47.3188989Z",
+    "endedAt": "2026-10-27T05:02:12.0399681Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "browser-controls",
+    "startedAt": "2026-10-27T05:02:12.0415137Z",
+    "endedAt": "2026-10-27T05:04:20.9553482Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "gates",
+    "startedAt": "2026-10-27T05:04:20.9568891Z",
+    "endedAt": "2026-10-27T05:27:56.3830605Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "verify-inputs",
+    "startedAt": "2026-10-27T05:27:56.3845864Z",
+    "endedAt": "2026-10-27T05:28:02.5535366Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "name": "summarize",
+    "startedAt": "2026-10-27T05:28:02.5550701Z",
+    "endedAt": "2026-10-27T05:28:05.0741368Z",
+    "code": 0,
+    "inputCheckCode": 0
+  }
+]

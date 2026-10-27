@@ -1,16 +1,24 @@
 # 任务清单
 
-更新：2026-10-27（预扫移除与真实读侧复测结果）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-27（Q2/Q3 投影复用最终验收）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
 
 ## 当前：自动刷新同步延迟
 
-本轮后续见[预扫移除、状态切换与真实读侧投影复测](validation/2026-10-27-codex-refresh-followup/README.md)：**预扫移除已实施，状态专项 6/6 与既有回归 38/38 通过**。独立双 Store 按 AB/BA 交替，静止与 ledger-only 各 20 对，sync p95 分别为 3,660→2,904 ms、4,905→3,905 ms；绝对值不可与上轮单 Store 直接比较。同步 readSync 读量减少 170,361,023 bytes。
+本轮见[Q2/Q3 投影复用施工计划](plans/2026-10-27-q2-q3-projection-implementation-plan.md)、[主计划 §13](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)与[验收记录](validation/2026-10-27-q2-q3-projection/README.md)：**Q2/Q3 已实现并接收，局部净收益与 v4 完整工程门禁通过，正常 6 个浏览器周期完成；整体 max 与新鲜度目标未达，浏览器 p95 未验，未切生产。**
 
-真实 executor 已确认同步期间新建临时 reader 的投影槽为空，回到长期 writer 后因 `total_changes` 变化而 miss；投影缓存未放宽。usage/perf 依赖与写入边界、读快照投影转交仍待研究，剩余优先级见本轮记录。
+Q2 静止/ledger-only 各 20 对全部更快，配对合计节省中位数 **801/875 ms**；Q3 真实 executor **20/20 更快、20/20 接收**，配对合计节省中位数 **1,492 ms**，不同场景收益不相加。普通追加 20 对近中性：10 对更快，配对节省中位数 **−9.82 ms**。v4 全仓 **3,397 tests / 3,372 pass / 0 fail / 25 skip**，typecheck/lint/format:check 均退出 0；默认 today/month 各 3 对，metadata 与 period 缓存对象身份全部保留。
 
-本轮浏览器 Claude / Codex 新文件 / Codex 普通追加 / ledger 四项控制正确；Codex 新文件 8,722 ms、普通追加 8,486 ms 均为当前 >8 s 反例，ledger-only 为 5,932 ms。这些控制样本不是新 p95；本轮未重跑 40 个真实周期。
+正常真实 **60 s** 周期为 Codex 普通追加、ledger-only 各 3 次，共 6 次，数值/TPS 全部正确、`errors=[]`、关闭续 `WAL=0`。检查→目标帧：Codex **8,654–8,935 ms，中位数 8,685 ms**；ledger TPS **4,501–4,546 ms，中位数 4,502 ms**。另列最不利相位各一次观测：Codex 写入→帧 **72,307 ms**，超出新鲜度预算 **7,308 ms**；ledger **65,046 ms**，超出 **46 ms**。单次观测不外推尾部分布，也不混入正常周期。
 
-217 个测试文件由首轮已完成部分与补跑分段覆盖；首轮 S1 旧断言失败，随后触及 900 s 超时，修正后尾段与整份 perf-store 共 316 pass / 0 fail，不能写成一次全绿。资源仍为 8 GiB 合计预算和单测试槽，未切生产、未提交或推送。
+后续性能实验已按用户要求暂停；以下仅保留为候选：分解普通追加 after 的同步（中位数约 **8.56 s**）、变更后查询（约 **4.31 s**）及 perf（约 **1.15 s**），再凭证据决定 N2 范围。资源预算为 **7 GiB 重任务 + 1 GiB 控制侧 ≤8 GiB**。Main 已完成最终核验与清理：**1,633 输入（4,229,909,674 bytes）及 98 产品模块 SHA 全等**，7 个本轮测试 DB 及其 WAL/SHM 已精确清理，WAL 为 0 或不存在，无残留任务进程。
+
+Q2/Q3 施工前阶段见[预扫移除、状态切换与真实读侧投影复测](validation/2026-10-27-codex-refresh-followup/README.md)：**预扫移除已实施，状态专项 6/6 与既有回归 38/38 通过**。独立双 Store 按 AB/BA 交替，静止与 ledger-only 各 20 对，sync p95 分别为 3,660→2,904 ms、4,905→3,905 ms；绝对值不可与上轮单 Store 直接比较。同步 readSync 读量减少 170,361,023 bytes。
+
+该阶段真实 executor 已确认同步期间新建临时 reader 的投影槽为空，回到长期 writer 后因 `total_changes` 变化而 miss；当时投影缓存未放宽。该归因为后续 Q2/Q3 的施工依据，当前实现与验收状态见上方新入口。
+
+该阶段浏览器 Claude / Codex 新文件 / Codex 普通追加 / ledger 四项控制正确；Codex 新文件 8,722 ms、普通追加 8,486 ms 均为当轮 >8 s 反例，ledger-only 为 5,932 ms。这些控制样本不是新 p95；该阶段未重跑 40 个真实周期。
+
+该阶段 217 个测试文件由首轮已完成部分与补跑分段覆盖；首轮 S1 旧断言失败，随续触及 900 s 超时，修正后尾段与整份 perf-store 共 316 pass / 0 fail，不能写成一次全绿。资源仍为 8 GiB 合计预算和单测试槽，未切生产、未提交或推送。
 
 上一阶段已完成入选范围与复测，规格及剩余卡片见[Codex 增量可见等待与 TPS 计划 §12](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md#12-冻结版本的结果与后续研究边界)，证据见[实施与验收](validation/2026-10-27-codex-incremental-visibility/README.md)。后台 Codex p95 4.92→3.96 s，today/month 暖查询改善；40 个真实周期数值正确且新鲜度通过，但浏览器 Codex/TPS p95 6.01 s、ledger-only TPS 3.87 s，3 s 目标仍未达。这些结果归属上一阶段，不作为本版本的新分布。
 

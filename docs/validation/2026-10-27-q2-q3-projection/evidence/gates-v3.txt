@@ -1,0 +1,23 @@
+{"name":"typecheck","args":["node_modules/typescript/bin/tsc","-p","tsconfig.checkjs.json"],"status":0,"signal":null,"ms":1677.8875999999998}
+{"name":"lint","args":["node_modules/@biomejs/biome/bin/biome","check","--formatter-enabled=false","."],"status":0,"signal":null,"ms":644.3852000000002}
+{"name":"format-check","args":["node_modules/@biomejs/biome/bin/biome","format","."],"status":0,"signal":null,"ms":273.27620000000024}
+{"name":"full-test","args":["--test","--test-concurrency=1","test/**/*.test.js"],"status":1,"signal":null,"ms":983026.5011}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: retain first failing gate logs and diagnose before retrying
+    at file:///E:/12%20AI/ccusage/codex-usage/output/q2-q3-projection-20261027/gates.mjs:25:8
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.19.0
+Q23_JOB_PEAK bytes=2484113408 processBytes=1184587776

@@ -1,0 +1,452 @@
+public\styles.css:2751:22 lint/complexity/noImportantStyles  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Avoid the use of the !important style.
+  
+    2749 │   input,
+    2750 │   select {
+  > 2751 │     transition: none !important;
+         │                      ^^^^^^^^^^
+    2752 │   }
+    2753 │   /* biome-ignore lint/complexity/noImportantStyles: same reduced-motion override for the active press transform */
+  
+  i This style reverses the cascade logic, and precedence is reversed. This could lead to having styles with higher specificity being overridden by styles with lower specificity.
+  
+  i Unsafe fix: Remove the style.
+  
+    2751 │ ····transition:·none·!important;
+         │                     ----------- 
+
+public\styles.css:2755:21 lint/complexity/noImportantStyles  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Avoid the use of the !important style.
+  
+    2753 │   /* biome-ignore lint/complexity/noImportantStyles: same reduced-motion override for the active press transform */
+    2754 │   button:active {
+  > 2755 │     transform: none !important;
+         │                     ^^^^^^^^^^
+    2756 │   }
+    2757 │ }
+  
+  i This style reverses the cascade logic, and precedence is reversed. This could lead to having styles with higher specificity being overridden by styles with lower specificity.
+  
+  i Unsafe fix: Remove the style.
+  
+    2755 │ ····transform:·none·!important;
+         │                    ----------- 
+
+public\styles.css:824:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 0, 1)
+  
+    822 │ }
+    823 │ 
+  > 824 │ input,
+        │ ^^^^^
+    825 │ select {
+    826 │   height: 36px;
+  
+  i This selector specificity is (0, 1, 1)
+  
+    85 │ .comparison-total-button,
+    86 │ .comparison-table tfoot td,
+  > 87 │ .pricing-context input,
+       │ ^^^^^^^^^^^^^^^^^^^^^^
+    88 │ #lastSuccessfulCheck,
+    89 │ #autoRefreshInterval {
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:984:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 2, 1)
+  
+    983 │ .recent-range-menu button:hover,
+  > 984 │ .recent-range-menu button:focus-visible {
+        │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    985 │   background: var(--track);
+    986 │   border-color: transparent;
+  
+  i This selector specificity is (1, 1, 1)
+  
+    699 │ }
+    700 │ 
+  > 701 │ #presetButtons > button:focus-visible {
+        │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    702 │   outline: 2px solid var(--blue);
+    703 │   outline-offset: 2px;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1183:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1181 │ }
+    1182 │ 
+  > 1183 │ .metric strong {
+         │ ^^^^^^^^^^^^^^
+    1184 │   display: block;
+    1185 │   margin-top: 10px;
+  
+  i This selector specificity is (0, 2, 1)
+  
+    1149 │ }
+    1150 │ 
+  > 1151 │ .comparison-item.up strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1152 │   color: var(--green);
+    1153 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1264:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1263 │ .comparison-table th,
+  > 1264 │ .comparison-table td {
+         │ ^^^^^^^^^^^^^^^^^^^^
+    1265 │   padding: 8px 10px;
+    1266 │   border-bottom: 1px solid var(--line);
+  
+  i This selector specificity is (0, 1, 2)
+  
+    84 │ .metric strong,
+    85 │ .comparison-total-button,
+  > 86 │ .comparison-table tfoot td,
+       │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    87 │ .pricing-context input,
+    88 │ #lastSuccessfulCheck,
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1404:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1402 │ }
+    1403 │ 
+  > 1404 │ .comparison-detail-row td {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^
+    1405 │   padding: 12px;
+    1406 │   white-space: normal;
+  
+  i This selector specificity is (0, 1, 2)
+  
+    84 │ .metric strong,
+    85 │ .comparison-total-button,
+  > 86 │ .comparison-table tfoot td,
+       │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    87 │ .pricing-context input,
+    88 │ #lastSuccessfulCheck,
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1429:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1428 │ .comparison-detail-metric span,
+  > 1429 │ .comparison-detail-metric small {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1430 │   color: var(--muted);
+    1431 │   font-size: 11px;
+  
+  i This selector specificity is (0, 1, 3)
+  
+    1350 │ }
+    1351 │ 
+  > 1352 │ .comparison-table tbody th small {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1353 │   display: block;
+    1354 │   margin-top: 3px;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1435:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1433 │ }
+    1434 │ 
+  > 1435 │ .comparison-detail-metric strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1436 │   font-size: 14px;
+    1437 │   font-variant-numeric: tabular-nums;
+  
+  i This selector specificity is (0, 2, 1)
+  
+    1149 │ }
+    1150 │ 
+  > 1151 │ .comparison-item.up strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1152 │   color: var(--green);
+    1153 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1445:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    1443 │ }
+    1444 │ 
+  > 1445 │ .panel-heading {
+         │ ^^^^^^^^^^^^^^
+    1446 │   display: flex;
+    1447 │   align-items: center;
+  
+  i This selector specificity is (0, 3, 1)
+  
+    1017 │ }
+    1018 │ 
+  > 1019 │ details.panel:not([open]) > .panel-heading {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1020 │   margin-bottom: 0;
+    1021 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1466:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    1464 │ }
+    1465 │ 
+  > 1466 │ .chart-panel,
+         │ ^^^^^^^^^^^^
+    1467 │ .detail-panel {
+    1468 │   display: flex;
+  
+  i This selector specificity is (0, 2, 0)
+  
+    1199 │ }
+    1200 │ 
+  > 1201 │ .main-grid > .chart-panel {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^
+    1202 │   grid-column: span 2;
+    1203 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1475:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 2, 0)
+  
+    1473 │ }
+    1474 │ 
+  > 1475 │ .detail-panel > .panel-heading {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1476 │   min-height: 30px;
+    1477 │ }
+  
+  i This selector specificity is (0, 3, 1)
+  
+    1017 │ }
+    1018 │ 
+  > 1019 │ details.panel:not([open]) > .panel-heading {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1020 │   margin-bottom: 0;
+    1021 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1510:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    1508 │ }
+    1509 │ 
+  > 1510 │ .bar-list,
+         │ ^^^^^^^^^
+    1511 │ .home-list {
+    1512 │   display: grid;
+  
+  i This selector specificity is (0, 2, 0)
+  
+    1494 │ }
+    1495 │ 
+  > 1496 │ .detail-panel .bar-list {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^
+    1497 │   flex: 1;
+    1498 │   min-height: 0;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1720:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1718 │ }
+    1719 │ 
+  > 1720 │ .source-option-label strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1721 │   overflow: hidden;
+    1722 │   text-overflow: ellipsis;
+  
+  i This selector specificity is (0, 2, 1)
+  
+    1149 │ }
+    1150 │ 
+  > 1151 │ .comparison-item.up strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1152 │   color: var(--green);
+    1153 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1906:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    1904 │ }
+    1905 │ 
+  > 1906 │ .pricing-rematch-button {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^
+    1907 │   margin-left: auto;
+    1908 │   padding: 4px 8px;
+  
+  i This selector specificity is (1, 1, 0)
+  
+    426 │ #pickImportDirectoryButton,
+    427 │ .panel-action,
+  > 428 │ #pricingForm .pricing-rematch-button,
+        │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    429 │ .dialog-actions button,
+    430 │ .ceramic-toggle,
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1942:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1940 │ }
+    1941 │ 
+  > 1942 │ .pricing-full-form summary {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1943 │   cursor: pointer;
+    1944 │   color: var(--muted);
+  
+  i This selector specificity is (0, 2, 1)
+  
+    1028 │ }
+    1029 │ 
+  > 1030 │ .pricing-update-details[open] > summary,
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1031 │ .pricing-model-details[open] > summary {
+    1032 │   margin-bottom: 12px;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1958:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1956 │ }
+    1957 │ 
+  > 1958 │ .pricing-fast-block > strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1959 │   display: block;
+    1960 │   margin-bottom: 8px;
+  
+  i This selector specificity is (0, 3, 1)
+  
+    1742 │ }
+    1743 │ 
+  > 1744 │ .source-option.excluded .source-option-label strong,
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1745 │ .source-option.excluded .source-option-path {
+    1746 │   opacity: 0.75;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:1997:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 1)
+  
+    1995 │ }
+    1996 │ 
+  > 1997 │ .pricing-context strong {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^
+    1998 │   grid-column: 1 / -1;
+    1999 │ }
+  
+  i This selector specificity is (0, 3, 1)
+  
+    1742 │ }
+    1743 │ 
+  > 1744 │ .source-option.excluded .source-option-label strong,
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1745 │ .source-option.excluded .source-option-path {
+    1746 │   opacity: 0.75;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:2280:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    2278 │   padding: var(--space-4);
+    2279 │ }
+  > 2280 │ .chart-panel {
+         │ ^^^^^^^^^^^^
+    2281 │   border-radius: var(--radius-panel);
+    2282 │ }
+  
+  i This selector specificity is (0, 2, 0)
+  
+    1199 │ }
+    1200 │ 
+  > 1201 │ .main-grid > .chart-panel {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^
+    1202 │   grid-column: span 2;
+    1203 │ }
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+public\styles.css:2291:1 lint/style/noDescendingSpecificity ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Descending specificity selector found. This selector specificity is (0, 1, 0)
+  
+    2289 │ }
+    2290 │ #pickImportDirectoryButton,
+  > 2291 │ .panel-action,
+         │ ^^^^^^^^^^^^^
+    2292 │ #pricingForm .pricing-rematch-button,
+    2293 │ .dialog-actions button,
+  
+  i This selector specificity is (0, 2, 0)
+  
+    1038 │ }
+    1039 │ 
+  > 1040 │ .bottom-grid .panel-action {
+         │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1041 │   display: inline-flex;
+    1042 │   align-items: center;
+  
+  i Descending specificity selector may not be applied. Consider rearranging the order of the selectors. See MDN web docs for more details.
+  
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 48.
+Checked 325 files in 433ms. No fixes applied.
+Found 63 warnings.
+Found 5 infos.

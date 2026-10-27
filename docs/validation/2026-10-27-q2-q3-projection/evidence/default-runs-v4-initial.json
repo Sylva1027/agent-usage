@@ -1,0 +1,16 @@
+[
+  {
+    "preset": "today",
+    "startedAt": "2026-10-27T04:33:08.9895495Z",
+    "endedAt": "2026-10-27T04:34:10.0357376Z",
+    "code": 0,
+    "inputCheckCode": 0
+  },
+  {
+    "preset": "month",
+    "startedAt": "2026-10-27T04:34:10.0583170Z",
+    "endedAt": "2026-10-27T04:35:18.8348073Z",
+    "code": 0,
+    "inputCheckCode": 0
+  }
+]

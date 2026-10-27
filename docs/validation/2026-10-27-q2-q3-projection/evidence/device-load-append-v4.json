@@ -1,0 +1,56 @@
+{
+  "observedAt": "2026-10-27T04:49:04.4906582Z",
+  "intervalSeconds": 1.1426246,
+  "processors": [
+    {
+      "Name": "Intel(R) Core(TM) i7-14700KF",
+      "NumberOfLogicalProcessors": 28,
+      "CurrentClockSpeed": 3400,
+      "MaxClockSpeed": 3400,
+      "LoadPercentage": 66
+    }
+  ],
+  "topProcesses": [
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 3.625,
+      "workingSetBytes": 5566513152
+    },
+    {
+      "name": "node",
+      "cpuSecondsDelta": 1.078125,
+      "workingSetBytes": 944664576
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.25,
+      "workingSetBytes": 243281920
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.203125,
+      "workingSetBytes": 136163328
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.078125,
+      "workingSetBytes": 48062464
+    },
+    {
+      "name": "pwsh",
+      "cpuSecondsDelta": 0.078125,
+      "workingSetBytes": 95154176
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.0625,
+      "workingSetBytes": 126947328
+    },
+    {
+      "name": "other-app",
+      "cpuSecondsDelta": 0.046875,
+      "workingSetBytes": 573612032
+    }
+  ],
+  "rawArtifact": "output\\q2-q3-projection-20261027\\evidence\\device-load-append-v4.json"
+}
