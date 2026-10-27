@@ -7,6 +7,108 @@ import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+/*
+ * Offline Noto Sans SC subset pins the mixed-font probes independently of installed Noto fonts.
+ * shortcut: subset covers 总模型 only; expand it if the mixed-font samples change.
+ * Source: https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&text=%E6%80%BB%E6%A8%A1%E5%9E%8B
+ *
+ * Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+ *
+ * This Font Software is licensed under the SIL Open Font License, Version 1.1.
+ * This license is copied below, and is also available with a FAQ at:
+ * https://scripts.sil.org/OFL
+ *
+ *
+ * -----------------------------------------------------------
+ * SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+ * -----------------------------------------------------------
+ *
+ * PREAMBLE
+ * The goals of the Open Font License (OFL) are to stimulate worldwide
+ * development of collaborative font projects, to support the font creation
+ * efforts of academic and linguistic communities, and to provide a free and
+ * open framework in which fonts may be shared and improved in partnership
+ * with others.
+ *
+ * The OFL allows the licensed fonts to be used, studied, modified and
+ * redistributed freely as long as they are not sold by themselves. The
+ * fonts, including any derivative works, can be bundled, embedded,
+ * redistributed and/or sold with any software provided that any reserved
+ * names are not used by derivative works. The fonts and derivatives,
+ * however, cannot be released under any other type of license. The
+ * requirement for fonts to remain under this license does not apply
+ * to any document created using the fonts or their derivatives.
+ *
+ * DEFINITIONS
+ * "Font Software" refers to the set of files released by the Copyright
+ * Holder(s) under this license and clearly marked as such. This may
+ * include source files, build scripts and documentation.
+ *
+ * "Reserved Font Name" refers to any names specified as such after the
+ * copyright statement(s).
+ *
+ * "Original Version" refers to the collection of Font Software components as
+ * distributed by the Copyright Holder(s).
+ *
+ * "Modified Version" refers to any derivative made by adding to, deleting,
+ * or substituting -- in part or in whole -- any of the components of the
+ * Original Version, by changing formats or by porting the Font Software to a
+ * new environment.
+ *
+ * "Author" refers to any designer, engineer, programmer, technical
+ * writer or other person who contributed to the Font Software.
+ *
+ * PERMISSION & CONDITIONS
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of the Font Software, to use, study, copy, merge, embed, modify,
+ * redistribute, and sell modified and unmodified copies of the Font
+ * Software, subject to the following conditions:
+ *
+ * 1) Neither the Font Software nor any of its individual components,
+ * in Original or Modified Versions, may be sold by itself.
+ *
+ * 2) Original or Modified Versions of the Font Software may be bundled,
+ * redistributed and/or sold with any software, provided that each copy
+ * contains the above copyright notice and this license. These can be
+ * included either as stand-alone text files, human-readable headers or
+ * in the appropriate machine-readable metadata fields within text or
+ * binary files as long as those fields can be easily viewed by the user.
+ *
+ * 3) No Modified Version of the Font Software may use the Reserved Font
+ * Name(s) unless explicit written permission is granted by the corresponding
+ * Copyright Holder. This restriction only applies to the primary font name as
+ * presented to the users.
+ *
+ * 4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+ * Software shall not be used to promote, endorse or advertise any
+ * Modified Version, except to acknowledge the contribution(s) of the
+ * Copyright Holder(s) and the Author(s) or with their explicit written
+ * permission.
+ *
+ * 5) The Font Software, modified or unmodified, in part or in whole,
+ * must be distributed entirely under this license, and must not be
+ * distributed under any other license. The requirement for fonts to
+ * remain under this license does not apply to any document created
+ * using the Font Software.
+ *
+ * TERMINATION
+ * This license becomes null and void if any of the above conditions are
+ * not met.
+ *
+ * DISCLAIMER
+ * THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+ * OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+ * COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+ * DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+ * OTHER DEALINGS IN THE FONT SOFTWARE.
+ */
+const NOTO_SANS_SC_SUBSET =
+  "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";
+
 const NEAR = 0.5;
 const LONG_PRICING_MODEL = "geometry-long-model-name-".repeat(3);
 const FREE_PRICING_MODEL = "geometry-fixture-free";
@@ -628,15 +730,23 @@ test("UI geometry uses the production app and isolated source fixtures", async (
     const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", "light");
     try {
       const { page } = session;
-      await page.evaluate(() =>
-        document.documentElement.style.setProperty("--ui-font-sans", '"Segoe UI", "Noto Sans SC", sans-serif'),
-      );
+      await page.evaluate(async (font) => {
+        const cjk = new FontFace("Geometry Noto Sans SC", `url(data:font/ttf;base64,${font})`);
+        document.fonts.add(await cjk.load());
+        document.documentElement.style.setProperty("--ui-font-sans", '"Segoe UI", "Geometry Noto Sans SC", sans-serif');
+      }, NOTO_SANS_SC_SUBSET);
       await page.evaluate(() => document.fonts.ready);
       const chinese = await geometry(page);
       assertMainGeometry(chinese);
       const mixedFonts = await platformFonts(page, ".metric > span:not(.metric-new)");
-      const families = new Set(mixedFonts.filter((font) => font.glyphCount > 0).map((font) => font.familyName));
-      assert.ok(families.has("Segoe UI") && families.has("Noto Sans SC"), "Latin and CJK use distinct physical fonts");
+      assert.ok(
+        mixedFonts.some((font) => font.familyName === "Segoe UI" && !font.isCustomFont && font.glyphCount > 0),
+        "Latin text uses physical Segoe UI",
+      );
+      assert.ok(
+        mixedFonts.some((font) => font.familyName === "Noto Sans SC" && font.isCustomFont && font.glyphCount > 0),
+        "CJK text uses embedded Noto Sans SC",
+      );
       const input = page.locator("#modelComparisonSearch");
       const before = await input.boundingBox();
       await input.evaluate((node) => {

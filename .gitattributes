@@ -6,8 +6,12 @@
 # Validation screenshots and logs are dated evidence for this repository, not
 # part of running the dashboard (316 MB tree -> ~22 MB archive).
 /docs/validation/*/** export-ignore
-# The one validation file tests read at runtime must stay in the archive.
+# Validation fixtures read by tests must stay in the archive.
 /docs/validation/2026-10-02-model-character-skins/ink-bounds.json -export-ignore
+# Traverse the nested TPS fixture's parents while keeping other evidence excluded.
+/docs/validation/2026-10-21-tps-measurement-correction/A -export-ignore
+/docs/validation/2026-10-21-tps-measurement-correction/A/review -export-ignore
+/docs/validation/2026-10-21-tps-measurement-correction/A/review/six-turn-request-fixture.json -export-ignore
 # Authoring PNGs. The page loads only the committed WebP copies under
 # public/assets/skins/; `npm run skins:check:sources` verifies them in an
 # authoring checkout, where these files exist.

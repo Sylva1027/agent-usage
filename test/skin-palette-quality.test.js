@@ -9395,13 +9395,21 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       await page.waitForFunction(() => document.querySelector("#pricingDialog")?.hidden === true);
 
       await page.locator("#calendarZoneSelect").scrollIntoViewIfNeeded();
+      // 弹窗关闭后的 hover 淡出与绘制先稳定，基准与测量器使用相同的聚光等待前提。
+      await page.mouse.move(0, 0);
+      const zoneStability = await page.evaluate(buildProbeSource("spotlight-stability"));
+      assert.equal(zoneStability.stable, true, `${mode} 箭头基准前聚光必须稳定：${zoneStability.reason}`);
       const zoneBefore = await snapshot("#calendarZoneSelect");
-      const zonePng = await screenshotWithStyleAttributeGuard(page, {
-        clip: await clipFor("#calendarZoneSelect"),
-      });
+      const zoneClip = await clipFor("#calendarZoneSelect");
+      const zoneCaptureAttempts = [];
+      const zonePng = await captureSettledPage(
+        () => screenshotWithStyleAttributeGuard(page, { clip: zoneClip }),
+        zoneCaptureAttempts,
+      );
       const zoneResult = await measure(withInjection(page, captureDuringHide), mode, zoneRole);
       const zoneHidden = hiddenScreenshots.shift();
       assert.equal(zoneHidden?.kind, "calendar-zone-arrow", `${mode} calendar 隐藏期间留图`);
+      assert.deepEqual(zoneHidden.clip, zoneClip, `${mode} 箭头隐藏与基准使用同一 clip（含子像素坐标）`);
       const zoneRecord = zoneResult.records[0];
       assert.equal(zoneRecord.result, "pass", `${mode} 时区标签正常文字应通过：${zoneRecord.reason}`);
       const zoneEvidence = JSON.parse(zoneRecord.evidence);
@@ -9414,9 +9422,13 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       assert.deepEqual(zoneResult.diagnostics.restoration.inlineRestoreFailures, []);
       assert.deepEqual(zoneResult.diagnostics.restoration.styleDifferences, []);
       assert.deepEqual(zoneResult.diagnostics.restoration.rectDifferences, []);
-      const zoneAfterPng = await screenshotWithStyleAttributeGuard(page, {
-        clip: await clipFor("#calendarZoneSelect"),
-      });
+      const zoneAfterPng = await captureSettledPage(
+        () => screenshotWithStyleAttributeGuard(page, { clip: zoneClip }),
+        zoneCaptureAttempts,
+      );
+      savePng(`${mode}-calendar-before.png`, zonePng);
+      savePng(`${mode}-calendar-hidden.png`, zoneHidden.png);
+      savePng(`${mode}-calendar-restored.png`, zoneAfterPng);
       const zoneFinalDiff = pixelDiff(await decodePng(zonePng), await decodePng(zoneAfterPng));
       assert.deepEqual(
         zoneFinalDiff,
@@ -9431,11 +9443,10 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       };
       const arrowDiff = pixelDiff(await decodePng(zonePng), await decodePng(zoneHidden.png), arrowRegion);
       assert.ok(arrowDiff.changedInRegion > 0, `${mode} 隐藏期间箭头区域必须有像素变化`);
-      savePng(`${mode}-calendar-before.png`, zonePng);
-      savePng(`${mode}-calendar-hidden.png`, zoneHidden.png);
-      savePng(`${mode}-calendar-restored.png`, zoneAfterPng);
       evidence.samples.push({
         id: `calendar-${mode}`,
+        baselineStability: zoneStability,
+        settledCaptureAttempts: zoneCaptureAttempts,
         result: zoneRecord.result,
         ratio: zoneRecord.ratio,
         threshold: zoneRecord.threshold,
@@ -10206,7 +10217,7 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
   }
 });
 
-async function captureSettledE1dPage(screenshot, attempts) {
+async function captureSettledPage(screenshot, attempts) {
   let previous = await screenshot();
   for (let count = 2; count <= 3; count += 1) {
     const current = await screenshot();
@@ -10216,7 +10227,7 @@ async function captureSettledE1dPage(screenshot, attempts) {
     }
     previous = current;
   }
-  throw new Error("E1d fullPage paint did not converge within three captures");
+  throw new Error("Screenshot paint did not converge within three captures");
 }
 
 test("E1d：真实截图基准要求连续相同，短暂重绘有界收敛，持续变化拒绝", async () => {
@@ -10225,16 +10236,16 @@ test("E1d：真实截图基准要求连续相同，短暂重绘有界收敛，�
     c = Buffer.from("c");
   const attempts = [];
   const frames = [a, b, b];
-  assert.equal(await captureSettledE1dPage(async () => frames.shift(), attempts), b);
+  assert.equal(await captureSettledPage(async () => frames.shift(), attempts), b);
   assert.deepEqual(attempts, [3]);
   const unstable = [a, b, c];
   await assert.rejects(
-    captureSettledE1dPage(async () => unstable.shift(), []),
+    captureSettledPage(async () => unstable.shift(), []),
     /within three captures/,
   );
   assert.equal(unstable.length, 0);
   const changed = [b, b];
-  assert.notDeepEqual(await captureSettledE1dPage(async () => changed.shift(), []), a, "稳定的真实变化不能变回原基准");
+  assert.notDeepEqual(await captureSettledPage(async () => changed.shift(), []), a, "稳定的真实变化不能变回原基准");
 });
 
 test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基准", async () => {
@@ -10403,7 +10414,7 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
         // Verify painted pixels, rather than assuming an ended transition has already rasterized.
         const png =
           options?.fullPage === true
-            ? await captureSettledE1dPage(() => page.screenshot(options), fullPageCaptureAttempts)
+            ? await captureSettledPage(() => page.screenshot(options), fullPageCaptureAttempts)
             : await page.screenshot(options);
         if (options?.fullPage === true) fullPageScreenshots.push(png);
         return png;

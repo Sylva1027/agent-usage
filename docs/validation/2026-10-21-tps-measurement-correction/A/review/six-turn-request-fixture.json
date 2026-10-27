@@ -1,0 +1,2074 @@
+{
+  "schemaVersion": 1,
+  "kind": "tps-request-e2e-redacted-fixture",
+  "status": "ACCEPTED_WITH_SCOPE",
+  "evidenceOrigin": {
+    "producer": "magpie",
+    "binarySha256": "49C155BD7F9F6BAE35E7D063371E55F31EDCD05AB41A1AD092938813B7815890",
+    "version": "0.1.1294",
+    "sourceTag": "v0.1.1294",
+    "annotatedTagCommit": "706485c6a6143a3be12f857502b6fda6abd875ab",
+    "sourceCommit": "2c3c903974b65c145f9f009d83a2cf7e0fb3ee01",
+    "sourceCommitDate": "2026-10-19T22:52:18+08:00",
+    "goModSha256": "FA2A84EAA98E9D951C4CFD79AA571528FB81156371BA5D718168321E92201C1D"
+  },
+  "timingScope": {
+    "start": "gateway serve() entry",
+    "end": "stream completion of the final provider attempt",
+    "includes": [
+      "routing",
+      "queueing",
+      "pre-final retries and fallbacks",
+      "response streaming"
+    ],
+    "excludes": [
+      "tool execution after the response completes"
+    ],
+    "responseIdentity": "final successful attempt only",
+    "retryRule": "tries > 1, retried_ms > 0, or handed_on makes ms unsafe as a same-response denominator"
+  },
+  "requestedModel": "opendesign/deepseek-v4.1-flash",
+  "apiModel": "deepseek-v4.1-flash",
+  "reasoningEffort": "max",
+  "turns": [
+    {
+      "id": "turn-001",
+      "endedAt": "2026-10-20T21:26:57.178Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0001",
+          "outputTokens": 485,
+          "durationMs": 4242,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0002",
+          "outputTokens": 493,
+          "durationMs": 4136,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0003",
+          "outputTokens": 651,
+          "durationMs": 4549,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0004",
+          "outputTokens": 1930,
+          "durationMs": 11005,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0005",
+          "outputTokens": 403,
+          "durationMs": 3459,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0006",
+          "outputTokens": 2779,
+          "durationMs": 15269,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0007",
+          "outputTokens": 93,
+          "durationMs": 2680,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0008",
+          "outputTokens": 9691,
+          "durationMs": 40754,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0009",
+          "outputTokens": 3164,
+          "durationMs": 11524,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0010",
+          "outputTokens": 3427,
+          "durationMs": 13522,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0011",
+          "outputTokens": 118,
+          "durationMs": 2424,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0012",
+          "outputTokens": 527,
+          "durationMs": 4248,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0013",
+          "outputTokens": 116,
+          "durationMs": 3133,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0014",
+          "outputTokens": 136,
+          "durationMs": 2678,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0015",
+          "outputTokens": 159,
+          "durationMs": 3497,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0016",
+          "outputTokens": 197,
+          "durationMs": 2908,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0017",
+          "outputTokens": 355,
+          "durationMs": 3294,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0018",
+          "outputTokens": 566,
+          "durationMs": 5471,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0019",
+          "outputTokens": 262,
+          "durationMs": 3960,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0020",
+          "outputTokens": 2388,
+          "durationMs": 11225,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0021",
+          "outputTokens": 132,
+          "durationMs": 2790,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0022",
+          "outputTokens": 182,
+          "durationMs": 2925,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0023",
+          "outputTokens": 178,
+          "durationMs": 3178,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0024",
+          "outputTokens": 149,
+          "durationMs": 2797,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0025",
+          "outputTokens": 173,
+          "durationMs": 3669,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0026",
+          "outputTokens": 371,
+          "durationMs": 3714,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0027",
+          "outputTokens": 360,
+          "durationMs": 4212,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0028",
+          "outputTokens": 480,
+          "durationMs": 3641,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0029",
+          "outputTokens": 305,
+          "durationMs": 3687,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0030",
+          "outputTokens": 134,
+          "durationMs": 3154,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0031",
+          "outputTokens": 222,
+          "durationMs": 3258,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0032",
+          "outputTokens": 224,
+          "durationMs": 2881,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0033",
+          "outputTokens": 287,
+          "durationMs": 3158,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0034",
+          "outputTokens": 197,
+          "durationMs": 3653,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0035",
+          "outputTokens": 267,
+          "durationMs": 3679,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0036",
+          "outputTokens": 253,
+          "durationMs": 3865,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0037",
+          "outputTokens": 75,
+          "durationMs": 2744,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0038",
+          "outputTokens": 859,
+          "durationMs": 7942,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0039",
+          "outputTokens": 151,
+          "durationMs": 3824,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0040",
+          "outputTokens": 185,
+          "durationMs": 3375,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0041",
+          "outputTokens": 105,
+          "durationMs": 2790,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0042",
+          "outputTokens": 386,
+          "durationMs": 4431,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0043",
+          "outputTokens": 3050,
+          "durationMs": 17369,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0044",
+          "outputTokens": 594,
+          "durationMs": 4342,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0045",
+          "outputTokens": 3157,
+          "durationMs": 16840,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0046",
+          "outputTokens": 855,
+          "durationMs": 5959,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0047",
+          "outputTokens": 1332,
+          "durationMs": 7511,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0048",
+          "outputTokens": 333,
+          "durationMs": 4470,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0049",
+          "outputTokens": 2008,
+          "durationMs": 9393,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0050",
+          "outputTokens": 226,
+          "durationMs": 3911,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0051",
+          "outputTokens": 100,
+          "durationMs": 2808,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0052",
+          "outputTokens": 2486,
+          "durationMs": 11955,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0053",
+          "outputTokens": 138,
+          "durationMs": 2995,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0054",
+          "outputTokens": 750,
+          "durationMs": 4585,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0055",
+          "outputTokens": 1092,
+          "durationMs": 6901,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0056",
+          "outputTokens": 310,
+          "durationMs": 3890,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0057",
+          "outputTokens": 651,
+          "durationMs": 4745,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0058",
+          "outputTokens": 178,
+          "durationMs": 3189,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0059",
+          "outputTokens": 156,
+          "durationMs": 3528,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0060",
+          "outputTokens": 132,
+          "durationMs": 3536,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0061",
+          "outputTokens": 225,
+          "durationMs": 4118,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0062",
+          "outputTokens": 295,
+          "durationMs": 4289,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0063",
+          "outputTokens": 366,
+          "durationMs": 4730,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0064",
+          "outputTokens": 74,
+          "durationMs": 3365,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0065",
+          "outputTokens": 490,
+          "durationMs": 5302,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0066",
+          "outputTokens": 720,
+          "durationMs": 5581,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0067",
+          "outputTokens": 482,
+          "durationMs": 3700,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0068",
+          "outputTokens": 1682,
+          "durationMs": 12188,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0069",
+          "outputTokens": 499,
+          "durationMs": 4192,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0070",
+          "outputTokens": 97,
+          "durationMs": 2029,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 70,
+      "outputTokens": 56093,
+      "durationMs": 400766,
+      "speedTokPerSec": 139.96446804369631
+    },
+    {
+      "id": "turn-002",
+      "endedAt": "2026-10-20T21:38:04.765Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0071",
+          "outputTokens": 602,
+          "durationMs": 5164,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0072",
+          "outputTokens": 669,
+          "durationMs": 5823,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0073",
+          "outputTokens": 741,
+          "durationMs": 5862,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0074",
+          "outputTokens": 832,
+          "durationMs": 5056,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0075",
+          "outputTokens": 782,
+          "durationMs": 6093,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0076",
+          "outputTokens": 2081,
+          "durationMs": 12296,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0077",
+          "outputTokens": 580,
+          "durationMs": 4817,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0078",
+          "outputTokens": 688,
+          "durationMs": 5508,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0079",
+          "outputTokens": 299,
+          "durationMs": 3365,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0080",
+          "outputTokens": 1521,
+          "durationMs": 12350,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0081",
+          "outputTokens": 5603,
+          "durationMs": 24953,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0082",
+          "outputTokens": 122,
+          "durationMs": 3058,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0083",
+          "outputTokens": 385,
+          "durationMs": 3994,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0084",
+          "outputTokens": 123,
+          "durationMs": 3891,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0085",
+          "outputTokens": 1670,
+          "durationMs": 7416,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0086",
+          "outputTokens": 139,
+          "durationMs": 2876,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0087",
+          "outputTokens": 1053,
+          "durationMs": 6105,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0088",
+          "outputTokens": 413,
+          "durationMs": 4175,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0089",
+          "outputTokens": 134,
+          "durationMs": 2655,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0090",
+          "outputTokens": 799,
+          "durationMs": 5862,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0091",
+          "outputTokens": 228,
+          "durationMs": 3161,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0092",
+          "outputTokens": 133,
+          "durationMs": 3540,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0093",
+          "outputTokens": 179,
+          "durationMs": 3190,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0094",
+          "outputTokens": 132,
+          "durationMs": 3003,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0095",
+          "outputTokens": 206,
+          "durationMs": 3354,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0096",
+          "outputTokens": 765,
+          "durationMs": 5615,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0097",
+          "outputTokens": 3246,
+          "durationMs": 20945,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0098",
+          "outputTokens": 1504,
+          "durationMs": 6532,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0099",
+          "outputTokens": 1316,
+          "durationMs": 5148,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0100",
+          "outputTokens": 1438,
+          "durationMs": 6223,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0101",
+          "outputTokens": 1436,
+          "durationMs": 5618,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0102",
+          "outputTokens": 1607,
+          "durationMs": 7526,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0103",
+          "outputTokens": 1114,
+          "durationMs": 5429,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0104",
+          "outputTokens": 2125,
+          "durationMs": 9766,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0105",
+          "outputTokens": 956,
+          "durationMs": 4626,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0106",
+          "outputTokens": 1685,
+          "durationMs": 6774,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0107",
+          "outputTokens": 453,
+          "durationMs": 4187,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0108",
+          "outputTokens": 945,
+          "durationMs": 5329,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0109",
+          "outputTokens": 635,
+          "durationMs": 4590,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0110",
+          "outputTokens": 1494,
+          "durationMs": 6627,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0111",
+          "outputTokens": 1393,
+          "durationMs": 5628,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0112",
+          "outputTokens": 1256,
+          "durationMs": 6505,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0113",
+          "outputTokens": 936,
+          "durationMs": 4846,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0114",
+          "outputTokens": 1152,
+          "durationMs": 6080,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0115",
+          "outputTokens": 247,
+          "durationMs": 3439,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0116",
+          "outputTokens": 1402,
+          "durationMs": 8392,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0117",
+          "outputTokens": 710,
+          "durationMs": 4250,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0118",
+          "outputTokens": 3855,
+          "durationMs": 18395,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0119",
+          "outputTokens": 931,
+          "durationMs": 5861,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0120",
+          "outputTokens": 429,
+          "durationMs": 3565,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0121",
+          "outputTokens": 174,
+          "durationMs": 2978,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0122",
+          "outputTokens": 234,
+          "durationMs": 3195,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0123",
+          "outputTokens": 385,
+          "durationMs": 3550,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0124",
+          "outputTokens": 147,
+          "durationMs": 3621,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0125",
+          "outputTokens": 248,
+          "durationMs": 2974,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0126",
+          "outputTokens": 278,
+          "durationMs": 3458,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0127",
+          "outputTokens": 243,
+          "durationMs": 3417,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0128",
+          "outputTokens": 518,
+          "durationMs": 4649,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0129",
+          "outputTokens": 5210,
+          "durationMs": 29806,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0130",
+          "outputTokens": 1080,
+          "durationMs": 4969,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0131",
+          "outputTokens": 972,
+          "durationMs": 3816,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0132",
+          "outputTokens": 983,
+          "durationMs": 5128,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0133",
+          "outputTokens": 277,
+          "durationMs": 2903,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0134",
+          "outputTokens": 947,
+          "durationMs": 4415,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0135",
+          "outputTokens": 933,
+          "durationMs": 3986,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0136",
+          "outputTokens": 916,
+          "durationMs": 4489,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0137",
+          "outputTokens": 278,
+          "durationMs": 3084,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0138",
+          "outputTokens": 804,
+          "durationMs": 4271,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0139",
+          "outputTokens": 642,
+          "durationMs": 4710,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0140",
+          "outputTokens": 236,
+          "durationMs": 2917,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0141",
+          "outputTokens": 1738,
+          "durationMs": 10342,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0142",
+          "outputTokens": 3463,
+          "durationMs": 13350,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0143",
+          "outputTokens": 1123,
+          "durationMs": 5205,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0144",
+          "outputTokens": 580,
+          "durationMs": 4733,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0145",
+          "outputTokens": 344,
+          "durationMs": 3756,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0146",
+          "outputTokens": 244,
+          "durationMs": 2771,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0147",
+          "outputTokens": 562,
+          "durationMs": 3891,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0148",
+          "outputTokens": 484,
+          "durationMs": 3496,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0149",
+          "outputTokens": 467,
+          "durationMs": 3441,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0150",
+          "outputTokens": 426,
+          "durationMs": 3659,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0151",
+          "outputTokens": 768,
+          "durationMs": 5124,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0152",
+          "outputTokens": 389,
+          "durationMs": 3764,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0153",
+          "outputTokens": 105,
+          "durationMs": 2906,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0154",
+          "outputTokens": 109,
+          "durationMs": 3437,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0155",
+          "outputTokens": 98,
+          "durationMs": 2891,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0156",
+          "outputTokens": 106,
+          "durationMs": 2665,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0157",
+          "outputTokens": 99,
+          "durationMs": 2375,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0158",
+          "outputTokens": 104,
+          "durationMs": 2854,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0159",
+          "outputTokens": 98,
+          "durationMs": 3346,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0160",
+          "outputTokens": 280,
+          "durationMs": 4532,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0161",
+          "outputTokens": 104,
+          "durationMs": 2832,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0162",
+          "outputTokens": 120,
+          "durationMs": 3216,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0163",
+          "outputTokens": 328,
+          "durationMs": 3709,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0164",
+          "outputTokens": 254,
+          "durationMs": 3032,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0165",
+          "outputTokens": 519,
+          "durationMs": 4147,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0166",
+          "outputTokens": 133,
+          "durationMs": 3192,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0167",
+          "outputTokens": 315,
+          "durationMs": 3423,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0168",
+          "outputTokens": 235,
+          "durationMs": 3509,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0169",
+          "outputTokens": 706,
+          "durationMs": 5761,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0170",
+          "outputTokens": 718,
+          "durationMs": 5882,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0171",
+          "outputTokens": 428,
+          "durationMs": 4399,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0172",
+          "outputTokens": 377,
+          "durationMs": 3306,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0173",
+          "outputTokens": 276,
+          "durationMs": 3133,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0174",
+          "outputTokens": 220,
+          "durationMs": 3156,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0175",
+          "outputTokens": 1214,
+          "durationMs": 6929,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0176",
+          "outputTokens": 875,
+          "durationMs": 4747,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0177",
+          "outputTokens": 247,
+          "durationMs": 3114,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0178",
+          "outputTokens": 722,
+          "durationMs": 5489,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0179",
+          "outputTokens": 220,
+          "durationMs": 3311,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0180",
+          "outputTokens": 506,
+          "durationMs": 4333,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0181",
+          "outputTokens": 1058,
+          "durationMs": 7492,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0182",
+          "outputTokens": 306,
+          "durationMs": 3517,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0183",
+          "outputTokens": 789,
+          "durationMs": 4981,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0184",
+          "outputTokens": 731,
+          "durationMs": 5915,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0185",
+          "outputTokens": 242,
+          "durationMs": 2865,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0186",
+          "outputTokens": 111,
+          "durationMs": 2951,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0187",
+          "outputTokens": 1158,
+          "durationMs": 7199,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0188",
+          "outputTokens": 989,
+          "durationMs": 4979,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0189",
+          "outputTokens": 1346,
+          "durationMs": 8356,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0190",
+          "outputTokens": 760,
+          "durationMs": 5184,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0191",
+          "outputTokens": 1051,
+          "durationMs": 7232,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0192",
+          "outputTokens": 406,
+          "durationMs": 3538,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0193",
+          "outputTokens": 2523,
+          "durationMs": 13515,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0194",
+          "outputTokens": 1054,
+          "durationMs": 5211,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0195",
+          "outputTokens": 297,
+          "durationMs": 3152,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0196",
+          "outputTokens": 353,
+          "durationMs": 3857,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0197",
+          "outputTokens": 656,
+          "durationMs": 4635,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0198",
+          "outputTokens": 504,
+          "durationMs": 3881,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0199",
+          "outputTokens": 746,
+          "durationMs": 6727,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0200",
+          "outputTokens": 442,
+          "durationMs": 6176,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0201",
+          "outputTokens": 943,
+          "durationMs": 7851,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 131,
+      "outputTokens": 105218,
+      "durationMs": 710171,
+      "speedTokPerSec": 148.15868290876423
+    },
+    {
+      "id": "turn-003",
+      "endedAt": "2026-10-20T21:39:21.434Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0202",
+          "outputTokens": 459,
+          "durationMs": 3154,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0203",
+          "outputTokens": 373,
+          "durationMs": 3463,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0204",
+          "outputTokens": 806,
+          "durationMs": 5369,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0205",
+          "outputTokens": 280,
+          "durationMs": 3500,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0206",
+          "outputTokens": 502,
+          "durationMs": 3086,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0207",
+          "outputTokens": 144,
+          "durationMs": 2778,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0208",
+          "outputTokens": 124,
+          "durationMs": 2811,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0209",
+          "outputTokens": 771,
+          "durationMs": 4669,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0210",
+          "outputTokens": 530,
+          "durationMs": 3397,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0211",
+          "outputTokens": 2629,
+          "durationMs": 15620,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0212",
+          "outputTokens": 352,
+          "durationMs": 3474,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0213",
+          "outputTokens": 384,
+          "durationMs": 3854,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0214",
+          "outputTokens": 125,
+          "durationMs": 2656,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0215",
+          "outputTokens": 986,
+          "durationMs": 7431,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0216",
+          "outputTokens": 124,
+          "durationMs": 2624,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0217",
+          "outputTokens": 307,
+          "durationMs": 3737,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0218",
+          "outputTokens": 352,
+          "durationMs": 2931,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0219",
+          "outputTokens": 1010,
+          "durationMs": 7362,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0220",
+          "outputTokens": 6428,
+          "durationMs": 24328,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0221",
+          "outputTokens": 194,
+          "durationMs": 2884,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0222",
+          "outputTokens": 348,
+          "durationMs": 3863,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0223",
+          "outputTokens": 161,
+          "durationMs": 2865,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0224",
+          "outputTokens": 180,
+          "durationMs": 4967,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0225",
+          "outputTokens": 1634,
+          "durationMs": 10353,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0226",
+          "outputTokens": 2533,
+          "durationMs": 15242,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0227",
+          "outputTokens": 886,
+          "durationMs": 5495,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0228",
+          "outputTokens": 124,
+          "durationMs": 3047,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0229",
+          "outputTokens": 158,
+          "durationMs": 3766,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0230",
+          "outputTokens": 1172,
+          "durationMs": 8345,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0231",
+          "outputTokens": 509,
+          "durationMs": 6001,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0232",
+          "outputTokens": 130,
+          "durationMs": 2747,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0233",
+          "outputTokens": 677,
+          "durationMs": 5606,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0234",
+          "outputTokens": 127,
+          "durationMs": 3531,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0235",
+          "outputTokens": 480,
+          "durationMs": 5342,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0236",
+          "outputTokens": 356,
+          "durationMs": 4185,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0237",
+          "outputTokens": 443,
+          "durationMs": 4327,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0238",
+          "outputTokens": 313,
+          "durationMs": 4881,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0239",
+          "outputTokens": 127,
+          "durationMs": 4122,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0240",
+          "outputTokens": 162,
+          "durationMs": 4698,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0241",
+          "outputTokens": 131,
+          "durationMs": 3465,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0242",
+          "outputTokens": 200,
+          "durationMs": 3596,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0243",
+          "outputTokens": 132,
+          "durationMs": 2539,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0244",
+          "outputTokens": 152,
+          "durationMs": 2543,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0245",
+          "outputTokens": 405,
+          "durationMs": 4775,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0246",
+          "outputTokens": 185,
+          "durationMs": 2848,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0247",
+          "outputTokens": 116,
+          "durationMs": 3289,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0248",
+          "outputTokens": 137,
+          "durationMs": 2356,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0249",
+          "outputTokens": 127,
+          "durationMs": 3113,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0250",
+          "outputTokens": 204,
+          "durationMs": 2846,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0251",
+          "outputTokens": 570,
+          "durationMs": 5025,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0252",
+          "outputTokens": 178,
+          "durationMs": 2994,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0253",
+          "outputTokens": 130,
+          "durationMs": 3168,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0254",
+          "outputTokens": 224,
+          "durationMs": 3324,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0255",
+          "outputTokens": 124,
+          "durationMs": 3042,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0256",
+          "outputTokens": 363,
+          "durationMs": 3419,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0257",
+          "outputTokens": 235,
+          "durationMs": 3322,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0258",
+          "outputTokens": 568,
+          "durationMs": 4442,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0259",
+          "outputTokens": 484,
+          "durationMs": 5256,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0260",
+          "outputTokens": 317,
+          "durationMs": 3243,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0261",
+          "outputTokens": 177,
+          "durationMs": 3870,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0262",
+          "outputTokens": 415,
+          "durationMs": 3754,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0263",
+          "outputTokens": 232,
+          "durationMs": 4337,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0264",
+          "outputTokens": 773,
+          "durationMs": 5666,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0265",
+          "outputTokens": 287,
+          "durationMs": 3613,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0266",
+          "outputTokens": 419,
+          "durationMs": 4987,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0267",
+          "outputTokens": 631,
+          "durationMs": 4204,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0268",
+          "outputTokens": 753,
+          "durationMs": 5650,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0269",
+          "outputTokens": 162,
+          "durationMs": 3447,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0270",
+          "outputTokens": 1677,
+          "durationMs": 8786,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0271",
+          "outputTokens": 629,
+          "durationMs": 4530,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0272",
+          "outputTokens": 1509,
+          "durationMs": 7909,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0273",
+          "outputTokens": 1027,
+          "durationMs": 6372,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0274",
+          "outputTokens": 151,
+          "durationMs": 3878,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0275",
+          "outputTokens": 238,
+          "durationMs": 3387,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0276",
+          "outputTokens": 558,
+          "durationMs": 4114,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0277",
+          "outputTokens": 328,
+          "durationMs": 3461,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0278",
+          "outputTokens": 239,
+          "durationMs": 3875,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0279",
+          "outputTokens": 584,
+          "durationMs": 5197,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0280",
+          "outputTokens": 248,
+          "durationMs": 3429,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0281",
+          "outputTokens": 204,
+          "durationMs": 3426,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0282",
+          "outputTokens": 1299,
+          "durationMs": 10314,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0283",
+          "outputTokens": 818,
+          "durationMs": 6008,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0284",
+          "outputTokens": 149,
+          "durationMs": 3523,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0285",
+          "outputTokens": 480,
+          "durationMs": 4729,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0286",
+          "outputTokens": 79,
+          "durationMs": 3559,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0287",
+          "outputTokens": 668,
+          "durationMs": 5667,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0288",
+          "outputTokens": 821,
+          "durationMs": 7188,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0289",
+          "outputTokens": 171,
+          "durationMs": 3399,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0290",
+          "outputTokens": 352,
+          "durationMs": 6853,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0291",
+          "outputTokens": 1014,
+          "durationMs": 12367,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0292",
+          "outputTokens": 232,
+          "durationMs": 7115,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0293",
+          "outputTokens": 159,
+          "durationMs": 4842,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0294",
+          "outputTokens": 95,
+          "durationMs": 3812,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0295",
+          "outputTokens": 800,
+          "durationMs": 6134,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0296",
+          "outputTokens": 3274,
+          "durationMs": 16869,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0297",
+          "outputTokens": 950,
+          "durationMs": 7565,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0298",
+          "outputTokens": 512,
+          "durationMs": 6084,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 97,
+      "outputTokens": 55496,
+      "durationMs": 495036,
+      "speedTokPerSec": 112.10497822380594
+    },
+    {
+      "id": "turn-004",
+      "endedAt": "2026-10-20T21:41:26.488Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0299",
+          "outputTokens": 260,
+          "durationMs": 3419,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0300",
+          "outputTokens": 131,
+          "durationMs": 2859,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 2,
+      "outputTokens": 391,
+      "durationMs": 6278,
+      "speedTokPerSec": 62.28098120420516
+    },
+    {
+      "id": "turn-005",
+      "endedAt": "2026-10-20T21:47:47.327Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0301",
+          "outputTokens": 324,
+          "durationMs": 6342,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0302",
+          "outputTokens": 279,
+          "durationMs": 4615,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0303",
+          "outputTokens": 220,
+          "durationMs": 4490,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0304",
+          "outputTokens": 229,
+          "durationMs": 4418,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0305",
+          "outputTokens": 570,
+          "durationMs": 6133,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0306",
+          "outputTokens": 287,
+          "durationMs": 4747,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0307",
+          "outputTokens": 333,
+          "durationMs": 4494,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 7,
+      "outputTokens": 2242,
+      "durationMs": 35239,
+      "speedTokPerSec": 63.62269076875053
+    },
+    {
+      "id": "turn-006",
+      "endedAt": "2026-10-20T21:48:12.075Z",
+      "requests": [
+        {
+          "id": "resp-synthetic-0308",
+          "outputTokens": 973,
+          "durationMs": 5499,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0309",
+          "outputTokens": 526,
+          "durationMs": 4446,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0310",
+          "outputTokens": 895,
+          "durationMs": 6208,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0311",
+          "outputTokens": 821,
+          "durationMs": 5096,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0312",
+          "outputTokens": 405,
+          "durationMs": 4131,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0313",
+          "outputTokens": 1016,
+          "durationMs": 4797,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0314",
+          "outputTokens": 267,
+          "durationMs": 3990,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0315",
+          "outputTokens": 238,
+          "durationMs": 2714,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0316",
+          "outputTokens": 254,
+          "durationMs": 3266,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0317",
+          "outputTokens": 1008,
+          "durationMs": 6153,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0318",
+          "outputTokens": 223,
+          "durationMs": 2823,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0319",
+          "outputTokens": 234,
+          "durationMs": 2615,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0320",
+          "outputTokens": 1836,
+          "durationMs": 12483,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0321",
+          "outputTokens": 793,
+          "durationMs": 4787,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0322",
+          "outputTokens": 725,
+          "durationMs": 4015,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0323",
+          "outputTokens": 1073,
+          "durationMs": 5682,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0324",
+          "outputTokens": 1486,
+          "durationMs": 8449,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0325",
+          "outputTokens": 523,
+          "durationMs": 3076,
+          "status": "completed"
+        },
+        {
+          "id": "resp-synthetic-0326",
+          "outputTokens": 643,
+          "durationMs": 5069,
+          "status": "completed"
+        }
+      ],
+      "requestCount": 19,
+      "outputTokens": 13939,
+      "durationMs": 95299,
+      "speedTokPerSec": 146.26596291671476
+    }
+  ],
+  "totals": {
+    "turns": 6,
+    "requests": 326,
+    "outputTokens": 233379,
+    "durationMs": 1742789,
+    "pooledSpeedTokPerSec": 133.91121931570603,
+    "turnSpeedP10TokPerSec": 62.28098120420516,
+    "turnSpeedP90TokPerSec": 148.15868290876423,
+    "quantileMethod": "nearest-rank over six turn speeds"
+  },
+  "retryDiagnostics": {
+    "rows": 326,
+    "status200": 326,
+    "exactOutput": 326,
+    "positiveDuration": 326,
+    "triesGreaterThanOne": 0,
+    "retriedMsPositive": 0,
+    "handedOn": 0,
+    "queuedMsPositive": 0,
+    "sentMsPositive": 0,
+    "ownMsPositive": 0,
+    "retryAffectedRows": 0
+  }
+}
