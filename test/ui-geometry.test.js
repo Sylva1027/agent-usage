@@ -517,7 +517,7 @@ async function verifyImportAndSkin(page, fixture) {
   }));
   for (const height of skinParts.rows) near(height, 36, "skin control row");
   assert.equal(skinParts.outputLine, "19px");
-  assert.ok(skinParts.cards > 1);
+  assert.equal(skinParts.cards, 10, "all ten character skins are offered");
   assert.equal(await page.locator("#skinCharactersToggle").isDisabled(), true, "classic has no character controls");
   await page.locator('.skin-card[data-skin-id="deepseek"]').click();
   assert.equal(await page.locator('.skin-card[data-skin-id="deepseek"]').getAttribute("aria-checked"), "true");
@@ -532,6 +532,17 @@ async function verifyImportAndSkin(page, fixture) {
   assert.equal(await page.locator('.skin-card[data-skin-id="deepseek"]').getAttribute("aria-checked"), "false");
   const changedSkin = await dialogGeometry(page, "#skinDialog .dialog");
   near(changedSkin.shell.height, skin.shell.height, "skin controls preserve shell height");
+  for (const skinId of ["glm", "gemini", "qwen", "grok", "mimo"]) {
+    await page.locator(`.skin-card[data-skin-id="${skinId}"]`).click();
+    await page.waitForFunction(
+      (id) =>
+        document.documentElement.dataset.skin === id &&
+        document.querySelectorAll('#skinCharacters img[data-loaded="1"]').length === 2,
+      skinId,
+    );
+    assert.equal(await page.locator(`.skin-card[data-skin-id="${skinId}"]`).getAttribute("aria-checked"), "true");
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("codexUsageSkinV1")).skinId), skinId);
+  }
   await page.locator("#resetSkinClassicButton").click();
   await page.locator("#closeSkinDialogButton").click();
   assert.equal(await page.evaluate(() => document.activeElement?.id), "skinToggle");

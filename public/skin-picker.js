@@ -9,12 +9,11 @@
  *   - The close button, a click on the backdrop and Escape all run one close
  *     function that restores focus and the previous scroll position. Clicks
  *     inside the content never close it.
- *   - Only the currently offered character skins render in the comparison matrix. Classic
+ *   - All ten character skins render in the comparison matrix. Classic
  *     stays in the registry and remains reachable through its separate button.
  */
 
 import { derivePaletteDeclarationsFromTokens } from "./skins.js";
-const PICKER_SKIN_IDS = new Set(["chatgpt", "claude", "deepseek", "kimi", "muse"]);
 
 // Thumbnail framing only. anchorX is a SOURCE-canvas percentage at the
 // face, not the canvas centre; top is a percentage of the preview's height.
@@ -203,7 +202,7 @@ export function createSkinPicker({ runtime, translate, onOpen, onClose }) {
     grid.setAttribute("role", "radiogroup");
     // Filter presentation only: classic remains the default stored state and
     // the separate reset button still uses its original registry entry.
-    const skins = runtime.getSelectableSkins().filter((skin) => !skin.isClassic && PICKER_SKIN_IDS.has(skin.id));
+    const skins = runtime.getSelectableSkins().filter((skin) => !skin.isClassic);
     const tabStopId = skins.some((skin) => skin.id === preference.skinId) ? preference.skinId : skins[0]?.id;
     grid.innerHTML = skins.map((skin) => cardHtml(runtime, skin, preference.skinId, translate, tabStopId)).join("");
     if (!runtime.isCharacter(preference.skinId)) grid.scrollTop = 0;

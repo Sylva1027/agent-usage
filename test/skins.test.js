@@ -733,7 +733,7 @@ test("picker mini previews derive all nine colors from production tokens in both
     const cards = [...grid.innerHTML.matchAll(/data-skin-id="([a-z]+)"([\s\S]*?)(?=<button|$)/g)];
     assert.deepEqual(
       cards.map((card) => card[1]),
-      ["chatgpt", "claude", "deepseek", "kimi", "muse"],
+      ["chatgpt", "claude", "glm", "gemini", "deepseek", "kimi", "qwen", "grok", "muse", "mimo"],
     );
     for (const [, skinId, html] of cards) {
       const previews = [...html.matchAll(/class="skin-preview" style="([^"]+)"/g)];
