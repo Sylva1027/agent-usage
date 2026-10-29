@@ -80,7 +80,16 @@ function workbuddyDurationSnapshot(database) {
     .prepare("SELECT sample_key FROM perf_samples WHERE source_kind = 'workbuddy' ORDER BY sample_key")
     .all()
     .map((row) => String(row.sample_key));
-  return { observations, sourceFiles, perfSampleKeys };
+  const perfSamples = database
+    .prepare(
+      `SELECT sample_key, output_tokens, duration_ms, timing_kind, timing_source, request_count
+       FROM perf_samples
+       WHERE source_kind = 'workbuddy'
+       ORDER BY sample_key`,
+    )
+    .all()
+    .map((row) => ({ ...row }));
+  return { observations, sourceFiles, perfSampleKeys, perfSamples };
 }
 
 test("cold WorkBuddy duration observations survive in an archive candidate", async () => {
@@ -113,7 +122,14 @@ test("cold WorkBuddy duration observations survive in an archive candidate", asy
         `WorkBuddy observation home ${homeId} must retain a source identity`,
       );
     }
-    assert.deepEqual(sourceBefore.perfSampleKeys, [], "conflicting native durations must not force a perf sample");
+    assert.equal(sourceBefore.perfSamples.length, 1, "conflicting durations must retain one attributable model row");
+    assert.equal(sourceBefore.perfSamples[0].duration_ms, null);
+    assert.equal(sourceBefore.perfSamples[0].timing_kind, "generation");
+    assert.equal(sourceBefore.perfSamples[0].timing_source, "unknown");
+    assert.equal(Number(sourceBefore.perfSamples[0].request_count), 1);
+    const sourceSampleKey = JSON.parse(sourceBefore.perfSamples[0].sample_key);
+    assert.equal(sourceSampleKey[0], "workbuddy");
+    assert.equal(sourceSampleKey[2], MESSAGE_ID);
 
     const startMs = Number(store.database.prepare("SELECT MIN(timestamp_ms) AS value FROM events").get().value);
     await createHistoryArchiveCandidate(store.database, candidateFile, { startMs, endMs: startMs + 1 });
@@ -131,7 +147,7 @@ test("cold WorkBuddy duration observations survive in an archive candidate", asy
     assert.deepEqual(
       candidateSnapshot,
       sourceAfter,
-      "the candidate must preserve native WorkBuddy observations, source identity, and sample absence",
+      "the candidate must preserve native WorkBuddy observations and the missing-generation model row",
     );
     assert.equal(fileSha256(candidateFile), digestBefore, "reading the candidate must not modify it");
   } finally {

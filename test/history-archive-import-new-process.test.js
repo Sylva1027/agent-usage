@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,11 +18,11 @@ import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { savePricingFile } from "../src/pricing-store.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "../src/service-tier-evidence.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
-const HOT_START_MS = Date.parse("2026-10-04T12:00:00.000Z");
+const CODEX_BASE_MS = Date.parse("2026-10-04T12:00:00.000Z");
 
 const CHILD_SOURCE = `
 const { loadPricingFile } = await import(process.env.PRICING_STORE_MODULE_URL);
@@ -92,15 +92,39 @@ function addRates(catalog, model, increment, fast = false) {
 }
 
 function addFixtureModelPrices(catalog, standardIncrement, fastIncrement) {
-  for (const model of ["small-model", "ranked-model"]) {
+  for (const model of ["small-model", "ranked-model", "codex-fixture-model"]) {
     catalog.models[model] = structuredClone(catalog.models["gpt-6-sol"]);
     addRates(catalog, model, standardIncrement);
     addRates(catalog, model, fastIncrement, true);
   }
 }
 
+function codexTokenCountLine(timestamp) {
+  return JSON.stringify({
+    timestamp,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: {
+        last_token_usage: {
+          total_tokens: 100,
+          input_tokens: 80,
+          cached_input_tokens: 0,
+          output_tokens: 20,
+          reasoning_output_tokens: 0,
+        },
+      },
+    },
+  });
+}
+
+function seedCodexCostEvents(fixture) {
+  appendFileSync(fixture.rolloutFiles[0], `${codexTokenCountLine(new Date(CODEX_BASE_MS + 15_000).toISOString())}\n`);
+  appendFileSync(fixture.rolloutFiles[2], `${codexTokenCountLine(new Date(CODEX_BASE_MS + 235_000).toISOString())}\n`);
+}
+
 async function prepareArchivedFixture(root) {
-  const fixture = createPerfIntegrationFixture({ sources: ["zcode"] });
+  const fixture = createPerfCodexIntegrationFixture();
   const databaseFile = path.join(root, "archive.sqlite");
   const candidateFile = path.join(root, "candidate.sqlite");
   const bundleDirectory = path.join(root, "bundle");
@@ -111,7 +135,25 @@ async function prepareArchivedFixture(root) {
   };
   const store = new UsageStore(options);
   try {
+    seedCodexCostEvents(fixture);
     await store.sync({ options });
+    await fixture.seedRequestTiming(store);
+    const codexHomeId = String(
+      store.database.prepare("SELECT home_id FROM perf_samples WHERE source_kind = 'codex' LIMIT 1").get().home_id,
+    );
+    const unplacedSampleKey = JSON.stringify([
+      "codex",
+      codexHomeId,
+      "fixture-codex-thread",
+      "turn-25",
+      "response-25-1",
+    ]);
+    assert.equal(
+      store.database.prepare("UPDATE perf_samples SET ts_ms = NULL WHERE sample_key = ?").run(unplacedSampleKey)
+        .changes,
+      1,
+      "seed one real, attributable Codex candidate as unplaced",
+    );
     const threads = store.database
       .prepare(
         `SELECT session_id AS threadId, MIN(timestamp_ms) AS time
@@ -125,15 +167,23 @@ async function prepareArchivedFixture(root) {
       threads: threads.map(({ threadId, time }) => ({ threadId, turns: [{ time, tier: "priority" }] })),
     });
     const startMs = Number(store.database.prepare("SELECT MIN(timestamp_ms) AS value FROM events").get().value);
-    const endMs = HOT_START_MS;
+    const endMs = CODEX_BASE_MS + 120_000;
+    assert.ok(startMs < endMs, "fixture must leave hot events and perf outside the archive range");
     store.serviceTierEvidence = serviceTierEvidence;
     store.homes = store.publishedUsageHomes();
     const sourceSummary = await store.summarizeHistory({ preset: "all" });
     assert.ok(sourceSummary.perf.coverage.eligible > 0, "unarchived oracle must contain eligible perf records");
-    assert.ok(sourceSummary.perf.coverage.sampled > 0, "unarchived oracle must contain real perf samples");
+    assert.equal(sourceSummary.perf.coverage.sampled, fixture.expected.n - 1, "placed requests must remain measurable");
+    assert.equal(sourceSummary.perf.coverage.unplaced, 1);
+    assert.equal(
+      sourceSummary.perf.models.find((model) => model.sourceKind === "codex")?.n,
+      fixture.expected.n - 1,
+      "the Codex model row must retain every placed request",
+    );
     const unplacedBefore = store.unplacedPerfSamples();
     const hotBefore = store.perfCandidatesForRange({ startMs: endMs, endMs: Number.MAX_SAFE_INTEGER });
-    assert.ok(unplacedBefore.length > 0, "fixture must preserve unplaced perf rows outside the archive range");
+    assert.equal(unplacedBefore.length, 1, "fixture must preserve a real unplaced Codex candidate");
+    assert.equal(unplacedBefore[0].sampleKey, unplacedSampleKey);
     assert.ok(hotBefore.length > 0, "fixture must preserve positioned hot perf rows outside the archive range");
 
     await createHistoryArchiveCandidate(store.database, candidateFile, {
@@ -156,7 +206,7 @@ async function prepareArchivedFixture(root) {
         {
           segmentId: registered.segmentId,
           databaseSha256: registered.databaseSha256,
-          sourceKinds: ["zcode"],
+          sourceKinds: ["codex"],
           methodVersions: [PERF_METHOD_VERSION],
         },
       ],

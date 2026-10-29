@@ -263,7 +263,7 @@ test("export pages, collapses exact duplicates, preserves conflicts, and emits o
           "schemaVersion",
           "skipped",
         ]);
-        assert.equal(exported.schemaVersion, 1);
+        assert.equal(exported.schemaVersion, 2);
         assert.equal(exported.kind, "perf-request-timing-export");
         assert.equal(exported.evidenceOrigin, `${PRODUCER};route=${ROUTE}`);
         assert.match(exported.homeId, /^(?:main|jetbrains|extra)-[0-9a-f]{16}$/);
@@ -278,12 +278,15 @@ test("export pages, collapses exact duplicates, preserves conflicts, and emits o
             "completedAtMs",
             "durationMs",
             "evidenceOrigin",
+            "generation",
             "reportedOutputTokens",
             "requestedModel",
             "responseId",
             "schemaVersion",
             "status",
           ]);
+          assert.equal(record.schemaVersion, 2);
+          assert.equal(record.generation, null);
         }
         assert.deepEqual(
           exported.records.filter((record) => record.responseId === "response-b").map((record) => record.durationMs),
@@ -318,6 +321,58 @@ test("export pages, collapses exact duplicates, preserves conflicts, and emits o
           assert.equal(headers.authorization, undefined);
           assert.equal(headers.cookie, undefined);
         }
+      });
+    },
+  );
+});
+
+test("legacy gateway export preserves raw totals without supplying generation timing", async () => {
+  const source = ledgerRow("response-generation", {
+    out: 2,
+    reasoning: 0,
+    first_output_ms: 100,
+    last_output_ms: 120,
+    first_output_tokens: 1,
+  });
+  await withLocalServer(
+    (_url, response) => sendPage(response, [source], 1, 0, 500),
+    async (endpoint) => {
+      await withWorkspace(async ({ home, output }) => {
+        const result = await runExport(exportArgs({ endpoint, home, output }));
+        assert.equal(result.code, 0, result.stderr);
+        const exported = JSON.parse(await readFile(output, "utf8"));
+        assert.equal(exported.schemaVersion, 2);
+        assert.equal(exported.records.length, 1);
+        assert.equal(exported.records[0].reportedOutputTokens, 2);
+        assert.equal(exported.records[0].durationMs, 1_000);
+        assert.equal(exported.records[0].generation, null);
+      });
+    },
+  );
+});
+
+test("legacy gateway timing variants do not create generation samples", async () => {
+  const base = ledgerRow("response-progressive", {
+    out: 2,
+    reasoning: 0,
+  });
+  const generated = ledgerRow("response-progressive", {
+    out: 2,
+    reasoning: 0,
+    first_output_ms: 100,
+    last_output_ms: 120,
+    first_output_tokens: 1,
+  });
+  await withLocalServer(
+    (_url, response) => sendPage(response, [base, generated], 2, 0, 500),
+    async (endpoint) => {
+      await withWorkspace(async ({ home, output }) => {
+        const result = await runExport(exportArgs({ endpoint, home, output }));
+        assert.equal(result.code, 0, result.stderr);
+        const exported = JSON.parse(await readFile(output, "utf8"));
+        assert.equal(exported.records.length, 1);
+        assert.deepEqual(exported.conflicts, []);
+        assert.equal(exported.records[0].generation, null);
       });
     },
   );
@@ -395,10 +450,22 @@ test("rows outside the exact requested-model scope fail rather than being guesse
   );
 });
 
-test("real export-to-import CLI seam carries one timing through native projection and sync", async () => {
+test("legacy export-to-import CLI seam preserves E2E without publishing generation speed", async () => {
   await withLocalServer(
     (_url, response) => {
-      sendPage(response, [ledgerRow("response-a")], 1, 0, 500);
+      sendPage(
+        response,
+        [
+          ledgerRow("response-a", {
+            reasoning: 0,
+            first_output_ms: 100,
+            last_output_ms: 600,
+          }),
+        ],
+        1,
+        0,
+        500,
+      );
     },
     async (endpoint) => {
       await withWorkspace(async ({ root, home, database, output }) => {
@@ -477,8 +544,9 @@ test("real export-to-import CLI seam carries one timing through native projectio
             durationMs: 1_000,
             reportedOutputTokens: 100,
             requestedModel: REQUESTED_MODEL,
+            generation: null,
           });
-          assert.equal(sampleFor(reopened, homeId, "thread-a").durationMs, 1_000);
+          assert.equal(sampleFor(reopened, homeId, "thread-a").durationMs, null);
           assert.deepEqual(sampleFor(reopened, homeId, "thread-b"), beforeB);
           assert.equal(await readFile(rolloutA, "utf8"), rolloutABefore);
           assert.equal(await readFile(rolloutB, "utf8"), rolloutBBefore);

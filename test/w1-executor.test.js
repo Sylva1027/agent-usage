@@ -19,7 +19,6 @@ import { Worker } from "node:worker_threads";
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
-import { buildMagpieTimingFingerprint } from "../src/usage-core.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -76,7 +75,7 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
     assert.equal(actual.summary.perf.models.length, 1);
     assert.deepEqual(actual.summary.perf.models, expected.summary.perf.models);
     assert.deepEqual(actual.summary.perf.codexTimingCoverage, expected.summary.perf.codexTimingCoverage);
-    assert.equal(actual.summary.perf.codexTimingCoverage.counts.sampled, 25);
+    assert.equal(actual.summary.perf.codexTimingCoverage.counts.sampled, fixture.expected.n);
     assert.ok(actual.metadata.harnessModels);
   } finally {
     Worker.prototype.postMessage = originalPostMessage;
@@ -102,36 +101,31 @@ async function withExecutor(body) {
   }
 }
 
-test("Magpie executor carries acknowledged state through sync, dashboard, snapshot and imported open", async () => {
+test("executor publication and snapshots are independent of a local Magpie installation", async () => {
   await withExecutor(async ({ executor, root, options }) => {
-    assert.equal(executor.magpieTimingFingerprint, "");
+    await executor.sync({ options });
+    const before = await executor.perfPublicationState();
+    assert.ok(before.indexVersion);
     const ledgerFile = path.join(root, ".config", "magpie", "usage.jsonl");
     await mkdir(path.dirname(ledgerFile), { recursive: true });
     await writeFile(ledgerFile, "invalid\n");
-    const status = await executor.sync({ options });
-    const acknowledged = await buildMagpieTimingFingerprint(options);
-    assert.equal(status.magpieTimingFingerprint, acknowledged);
-    assert.equal(executor.status.magpieTimingFingerprint, acknowledged);
-    assert.equal(executor.magpieTimingFingerprint, acknowledged);
-    assert.equal((await executor.perfPublicationState()).magpieTimingFingerprint, acknowledged);
+    await executor.sync({ options });
+    assert.deepEqual(await executor.perfPublicationState(), before);
     await appendFile(ledgerFile, "unacknowledged\n");
-    assert.notEqual(await buildMagpieTimingFingerprint(options), acknowledged);
     const dashboard = await executor.dashboard({ preset: "all" });
-    assert.equal(dashboard.status.magpieTimingFingerprint, acknowledged);
-    const frozen = await executor.snapshot({ databaseFile: path.join(root, "magpie-frozen.sqlite") });
-    assert.equal(frozen.status.magpieTimingFingerprint, acknowledged);
+    assert.equal(dashboard.summary.perf.indexVersion, before.indexVersion);
+    const frozen = await executor.snapshot({ databaseFile: path.join(root, "native-frozen.sqlite") });
+    assert.equal(frozen.status.fingerprint, dashboard.status.fingerprint);
     const imported = createUsageExecutor(options);
     try {
-      const opened = await imported.open({ imported: true, serviceTierEvidence: null });
-      assert.equal(opened.magpieTimingFingerprint, acknowledged);
-      assert.equal(imported.magpieTimingFingerprint, acknowledged);
+      await imported.open({ imported: true, serviceTierEvidence: null });
+      assert.deepEqual(await imported.perfPublicationState(), before);
     } finally {
       await imported.close();
     }
-    const published = await executor.sync({ options });
-    assert.equal(published.magpieTimingFingerprint, await buildMagpieTimingFingerprint(options));
-    assert.notEqual(published.magpieTimingFingerprint, acknowledged);
-    assert.equal(frozen.status.magpieTimingFingerprint, acknowledged);
+    await executor.sync({ options });
+    assert.deepEqual(await executor.perfPublicationState(), before);
+    assert.equal(frozen.status.fingerprint, dashboard.status.fingerprint);
   });
 });
 

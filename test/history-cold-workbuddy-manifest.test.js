@@ -90,7 +90,16 @@ function workbuddyObservationSnapshot(database, homeId) {
       )
       .get(homeId).count,
   );
-  return { observations, sourceIdentities, perfSampleCount };
+  const perfSamples = database
+    .prepare(
+      `SELECT sample_key, output_tokens, duration_ms, timing_kind, timing_source, request_count
+       FROM perf_samples
+       WHERE source_kind = 'workbuddy' AND home_id = ?
+       ORDER BY sample_key`,
+    )
+    .all(homeId)
+    .map((row) => ({ ...row }));
+  return { observations, sourceIdentities, perfSampleCount, perfSamples };
 }
 
 function selectColdWorkbuddyBinding(database) {
@@ -152,7 +161,17 @@ test("cold WorkBuddy native duration observations are covered by archive verific
       sourceBefore.sourceIdentities.some((row) => path.resolve(String(row.path)) === path.resolve(sessionFile)),
       "the cold event source must retain its five-column WorkBuddy identity",
     );
-    assert.equal(sourceBefore.perfSampleCount, 0, "conflicting native durations must not force a perf sample");
+    assert.equal(sourceBefore.perfSampleCount, 1, "conflicting durations must retain one attributable model row");
+    assert.equal(sourceBefore.perfSamples.length, 1);
+    assert.deepEqual(JSON.parse(String(sourceBefore.perfSamples[0].sample_key)), [
+      "workbuddy",
+      binding.homeId,
+      MESSAGE_ID,
+    ]);
+    assert.equal(sourceBefore.perfSamples[0].duration_ms, null);
+    assert.equal(sourceBefore.perfSamples[0].timing_kind, "generation");
+    assert.equal(sourceBefore.perfSamples[0].timing_source, "unknown");
+    assert.equal(Number(sourceBefore.perfSamples[0].request_count), 1);
 
     await createHistoryArchiveCandidate(store.database, candidateFile, {
       startMs: Number(binding.event.timestamp_ms),
@@ -172,7 +191,11 @@ test("cold WorkBuddy native duration observations are covered by archive verific
     } finally {
       candidate.close();
     }
-    assert.deepEqual(candidateSnapshot, sourceBefore, "candidate must preserve referenced WorkBuddy observations");
+    assert.deepEqual(
+      candidateSnapshot,
+      sourceBefore,
+      "candidate must preserve WorkBuddy observations and the missing-generation model row",
+    );
 
     await copyDatabase(candidateFile, tamperedFile);
     const tampered = new DatabaseSync(tamperedFile);

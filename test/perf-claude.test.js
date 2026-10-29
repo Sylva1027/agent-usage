@@ -1,8 +1,7 @@
-// R1：Claude Code TPS reader 的合成夹具验收。
+// Claude Code generation TPS reader 的合成夹具验收。
 //
-// 本文件**只断言 raw 候选**，不 import `normalizePerfSample`、不依赖 K1 的内核改动：
-// claude 还没进 `PERF_SOURCE_KINDS`，规范化会以 UNSUPPORTED_SOURCE_KIND 拒绝它。
-// 夹具全部由 `test-support/claude-perf-fixture.mjs` 在 mkdtemp 临时目录里合成，不读真实转录。
+// 本文件只断言 raw 候选，不运行真实转录。旧 prompt 锚点只作为历史事实，
+// 不再参与候选准入或 TPS 分母。
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
@@ -20,12 +19,15 @@ import {
   STALE_ANCHOR,
   SUBAGENT,
   SUBAGENT_PATH_ONLY,
+  T0,
+  assistantRow,
+  promptRow,
   withClaudeFile,
   withClaudeFiles,
   ZERO_AND_SYNTHETIC,
 } from "../test-support/claude-perf-fixture.mjs";
 
-/** C-2 冻结的 raw 候选键名（多一个少一个都算契约漂移）。 */
+/** 本 reader 的 raw 候选键名。 */
 const RAW_KEYS = [
   "sourceKind",
   "homeId",
@@ -54,25 +56,31 @@ const RAW_KEYS = [
   "requestCount",
 ];
 
-async function collect(filePath, source) {
+async function collect(filePath, source, options = {}) {
   const samples = [];
   const warnings = [];
   const result = await streamClaudePerfSamples(filePath, source, (sample) => samples.push(sample), {
+    ...options,
     onWarning: (warning) => warnings.push(warning),
   });
   return { ...result, samples, warnings };
 }
 
-/** C-1 恒等式：candidates === emitted + skippedZeroUsage + skippedNoAnchor。 */
 function assertIdentity({ stats, samples }) {
   assert.equal(
     stats.candidates,
-    samples.length + stats.skippedZeroUsage + stats.skippedNoAnchor,
-    "candidates 必须等于 emitted + skippedZeroUsage + skippedNoAnchor",
+    samples.length + stats.skippedZeroUsage,
+    "candidates 必须等于 emitted + skippedZeroUsage",
   );
+  assert.equal(stats.skippedNoAnchor, 0, "prompt 锚点不再参与准入");
 }
 
-test("R1 去重：同一 message.id 三行（首行零用量占位）只产出 1 个样本", async () => {
+function withKnownThinking(row, tokens) {
+  row.message.usage.output_tokens_details = { thinking_tokens: tokens };
+  return row;
+}
+
+test("v3：同一 message.id 聚合为请求候选；旧 prompt E2E 不进入 duration", async () => {
   await withClaudeFile(DEDUPE.rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
 
@@ -96,160 +104,224 @@ test("R1 去重：同一 message.id 三行（首行零用量占位）只产出 1
     assert.equal(sample.sourcePath, source.path);
     assert.equal(sample.channel, "claude");
     assert.equal(sample.window, "request");
-    assert.equal(sample.timingKind, "request_e2e");
-    assert.equal(sample.timingSource, "timestamp_fallback");
-    assert.equal(sample.tokenScope, "reported_output_includes_reasoning");
+    assert.equal(sample.timingKind, "generation");
+    assert.equal(sample.timingSource, "unknown");
+    assert.equal(sample.tokenScope, "non_reasoning_output");
     assert.equal(sample.modelEvidence, "request_scope");
     assert.equal(sample.requestCount, 1);
     assert.equal(sample.modelProvider, "");
-
-    // output 取最大（250，不在末行）；input 取最佳行的输入超集（900+20+5）。
-    assert.equal(sample.outputTokens, DEDUPE.expected.sample.outputTokens);
+    assert.equal(sample.outputTokens, null, "thinking known 位缺失时不得把总 output 冒充非推理 output");
     assert.equal(sample.inputTokens, DEDUPE.expected.sample.inputTokens);
-    // duration 取末行 − 锚点，而不是首行或最佳行。
-    assert.equal(sample.windowStartMs, DEDUPE.expected.sample.windowStartMs);
-    assert.equal(sample.windowEndMs, DEDUPE.expected.sample.windowEndMs);
     assert.equal(sample.tsMs, DEDUPE.expected.sample.tsMs);
-    assert.equal(sample.durationMs, DEDUPE.expected.sample.durationMs);
+    assert.equal(sample.durationMs, null);
+    assert.equal(sample.windowStartMs, null);
+    assert.equal(sample.windowEndMs, null);
     assert.equal(sample.status, "completed");
     assert.equal(sample.agentKind, "main");
     assert.equal(sample.model, "deepseek-flash");
   });
 });
 
-test("R1 文件顺序：时间倒退的 attachment 行不能让锚点回退", async () => {
-  await withClaudeFile(BACKWARD_ATTACHMENT.rows, async ({ files, source }) => {
+test("v3：最终 output 与 thinking 必须取自同一行", async () => {
+  const rows = [
+    promptRow(T0),
+    withKnownThinking(assistantRow({ ts: T0 + 1000, messageId: "msg-paired", outputTokens: 100 }), 20),
+    withKnownThinking(
+      assistantRow({ ts: T0 + 2000, messageId: "msg-paired", outputTokens: 140, stopReason: "end_turn" }),
+      90,
+    ),
+  ];
+  await withClaudeFile(rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
-    assertIdentity(result);
-    assert.equal(result.samples.length, 1);
-
     const [sample] = result.samples;
-    // 运行最大值的 prompt 行是 T0+10000 的 user；后出现的 T0+5000 attachment 不得覆盖它。
-    assert.equal(sample.windowStartMs, BACKWARD_ATTACHMENT.expected.sample.windowStartMs);
-    assert.equal(sample.durationMs, BACKWARD_ATTACHMENT.expected.sample.durationMs);
-    assert.notEqual(sample.durationMs, BACKWARD_ATTACHMENT.expected.latestRowAnchorDurationMs);
+    assert.equal(sample.outputTokens, 50, "必须计算 140 - 90；不能拼成 140 - 20 或 max(output)-max(thinking)");
+    assert.equal(sample.durationMs, null);
   });
 });
 
-test("R1 文件顺序：不按时间排序（排序会把结果从 2 条改成 1 条）", async () => {
-  await withClaudeFile(FILE_ORDER.rows, async ({ files, source }) => {
-    const result = await collect(files[0], source);
-    assertIdentity(result);
-    assert.equal(result.samples.length, FILE_ORDER.expected.fileOrderSamples.length);
-    assert.notEqual(result.samples.length, FILE_ORDER.expected.sortedSamples);
+test("v3：精确 lookup 查询携带原始总 output 与 known reasoning，并只消费 generation", async () => {
+  const rows = [
+    promptRow(T0),
+    withKnownThinking(
+      assistantRow({ ts: T0 + 2000, messageId: "msg-lookup", outputTokens: 140, stopReason: "end_turn" }),
+      90,
+    ),
+  ];
+  await withClaudeFile(rows, async ({ files, source }) => {
+    const queries = [];
+    const result = await collect(files[0], source, {
+      lookupRequestTiming(query) {
+        queries.push(query);
+        return {
+          state: "available",
+          requestedModel: "deepseek-flash",
+          reportedOutputTokens: 140,
+          durationMs: 9999,
+          generation: {
+            outputTokens: 80,
+            durationMs: 400,
+            startOutputTokens: 1,
+            timingKind: "first_last_output",
+          },
+        };
+      },
+    });
 
-    const byId = new Map(result.samples.map((sample) => [sample.messageId, sample]));
-    for (const expected of FILE_ORDER.expected.fileOrderSamples) {
-      const sample = byId.get(expected.messageId);
-      assert.ok(sample, `missing sample ${expected.messageId}`);
-      assert.equal(sample.windowStartMs, expected.windowStartMs);
-      assert.equal(sample.durationMs, expected.durationMs);
-    }
+    assert.deepEqual(queries, [
+      {
+        homeId: HOME_ID,
+        responseId: "msg-lookup",
+        model: "deepseek-flash",
+        outputTokens: 140,
+        reasoningOutputTokens: 90,
+      },
+    ]);
+    const [sample] = result.samples;
+    assert.equal(sample.outputTokens, 79);
+    assert.equal(sample.durationMs, 400);
+    assert.equal(sample.timingSource, "explicit");
   });
 });
 
-test("R1 锚点陈旧：同轮续写 0 样本、skippedNoAnchor = 1，且既非 6,306 也非 9,693 ms", async () => {
+test("v3：reasoning known 位缺失时查询传 null；lookup 缺失/异常/不匹配仍保留候选", async () => {
+  await withClaudeFile(
+    [promptRow(T0), assistantRow({ ts: T0 + 1000, messageId: "msg-missing-timing", outputTokens: 40 })],
+    async ({ files, source }) => {
+      const queries = [];
+      const result = await collect(files[0], source, {
+        lookupRequestTiming(query) {
+          queries.push(query);
+          throw new Error("timing unavailable");
+        },
+      });
+      assert.equal(queries[0].outputTokens, 40);
+      assert.equal(queries[0].reasoningOutputTokens, null);
+      assert.equal(result.samples.length, 1);
+      assert.equal(result.samples[0].outputTokens, null);
+      assert.equal(result.samples[0].durationMs, null);
+      assert.equal(result.samples[0].timingSource, "unknown");
+    },
+  );
+});
+
+test("v3：lookup 返回格式错误的 generation 时安全退化为缺失，不丢候选", async () => {
+  await withClaudeFile(
+    [
+      promptRow(T0),
+      withKnownThinking(
+        assistantRow({ ts: T0 + 1000, messageId: "msg-bad-generation", outputTokens: 60, stopReason: "end_turn" }),
+        10,
+      ),
+    ],
+    async ({ files, source }) => {
+      const result = await collect(files[0], source, {
+        lookupRequestTiming() {
+          return {
+            state: "available",
+            requestedModel: "deepseek-flash",
+            reportedOutputTokens: 60,
+            generation: { outputTokens: 60, durationMs: 0, startOutputTokens: 0, timingKind: "explicit" },
+          };
+        },
+      });
+      assert.equal(result.samples.length, 1);
+      assert.equal(result.samples[0].outputTokens, 50);
+      assert.equal(result.samples[0].durationMs, null);
+      assert.equal(result.samples[0].timingSource, "unknown");
+    },
+  );
+});
+
+test("v3：陈旧 prompt/同轮续写不再丢消息", async () => {
   await withClaudeFile(STALE_ANCHOR.rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
     assertIdentity(result);
-
-    assert.equal(result.samples.length, STALE_ANCHOR.expected.emitted);
-    assert.equal(result.stats.candidates, STALE_ANCHOR.expected.candidates);
-    assert.equal(result.stats.skippedNoAnchor, STALE_ANCHOR.expected.skippedNoAnchor);
-    assert.equal(result.stats.skippedZeroUsage, STALE_ANCHOR.expected.skippedZeroUsage);
-
-    // 两个反事实时长都不得出现在输出里：不许拿旧 prompt 计时，也不许拿 assistant 占位行补锚点。
-    const durations = result.samples.map((sample) => sample.durationMs);
-    assert.ok(!durations.includes(STALE_ANCHOR.expected.assistantAnchorDurationMs));
-    assert.ok(!durations.includes(STALE_ANCHOR.expected.oldPromptDurationMs));
+    assert.equal(result.samples.length, 1);
+    assert.equal(result.samples[0].messageId, "msg-continuation");
+    assert.equal(result.samples[0].durationMs, null);
+    assert.notEqual(result.samples[0].durationMs, STALE_ANCHOR.expected.assistantAnchorDurationMs);
+    assert.notEqual(result.samples[0].durationMs, STALE_ANCHOR.expected.oldPromptDurationMs);
   });
 });
 
-test("R1 零用量与 <synthetic>：不产出样本，synthetic 不计候选", async () => {
+test("v3：没有 prompt 也产出候选；文件顺序不再影响准入", async () => {
+  await withClaudeFile(NO_PROMPT.rows, async ({ files, source }) => {
+    const result = await collect(files[0], source);
+    assert.equal(result.samples.length, 1);
+    assert.equal(result.samples[0].messageId, "msg-no-prompt");
+    assert.equal(result.samples[0].durationMs, null);
+  });
+
+  await withClaudeFile(FILE_ORDER.rows, async ({ files, source }) => {
+    const result = await collect(files[0], source);
+    assert.deepEqual(
+      result.samples.map((sample) => sample.messageId),
+      ["msg-previous", "msg-fileorder"],
+    );
+    assert.ok(result.samples.every((sample) => sample.durationMs === null));
+  });
+});
+
+test("零用量与 <synthetic>：不产出零占位或 synthetic 候选", async () => {
   await withClaudeFile(ZERO_AND_SYNTHETIC.rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
     assertIdentity(result);
-
-    assert.equal(result.samples.length, ZERO_AND_SYNTHETIC.expected.emitted);
-    assert.equal(result.stats.candidates, ZERO_AND_SYNTHETIC.expected.candidates);
-    assert.equal(result.stats.skippedZeroUsage, ZERO_AND_SYNTHETIC.expected.skippedZeroUsage);
-    assert.equal(result.stats.skippedNoAnchor, ZERO_AND_SYNTHETIC.expected.skippedNoAnchor);
-    assert.ok(!result.samples.some((sample) => sample.messageId === ZERO_AND_SYNTHETIC.expected.ignoredMessageId));
-    assert.deepEqual(result.warnings, []);
+    assert.equal(result.samples.length, 0);
+    assert.equal(result.stats.candidates, 1);
+    assert.equal(result.stats.skippedZeroUsage, 1);
+    assert.equal(result.stats.skippedNoAnchor, 0);
   });
 });
 
-test("R1 子代理：subagents 路径与 isSidechain 任一命中即 subagent", async () => {
+test("子代理路径与 isSidechain 保留", async () => {
   await withClaudeFiles([SUBAGENT, SUBAGENT_PATH_ONLY, SIDECHAIN_IN_MAIN], async ({ files, source }) => {
     const [subagent, pathOnly, sidechainMain] = await Promise.all(files.map((file) => collect(file, source)));
 
     assert.equal(subagent.samples.length, 1);
-    const [sample] = subagent.samples;
-    assert.equal(sample.messageId, SUBAGENT.expected.sample.messageId);
-    assert.equal(sample.sessionId, SUBAGENT.expected.sample.sessionId);
-    assert.equal(sample.agentKind, SUBAGENT.expected.sample.agentKind);
-    assert.equal(sample.agent, SUBAGENT.expected.sample.agent);
-    assert.equal(sample.reasoningEffort, SUBAGENT.expected.sample.reasoningEffort);
-    assert.equal(sample.durationMs, SUBAGENT.expected.sample.durationMs);
-
-    // 路径在 subagents/ 下即可判 subagent，即使行上没有 isSidechain。
-    assert.equal(pathOnly.samples[0].agentKind, SUBAGENT_PATH_ONLY.expected.agentKind);
-
-    // 行上 isSidechain === true 即可判 subagent，即使文件在主转录目录。
-    assert.equal(sidechainMain.samples[0].agentKind, SIDECHAIN_IN_MAIN.expected.agentKind);
+    assert.equal(subagent.samples[0].messageId, SUBAGENT.expected.sample.messageId);
+    assert.equal(subagent.samples[0].sessionId, SUBAGENT.expected.sample.sessionId);
+    assert.equal(subagent.samples[0].agentKind, "subagent");
+    assert.equal(subagent.samples[0].agent, SUBAGENT.expected.sample.agent);
+    assert.equal(subagent.samples[0].reasoningEffort, SUBAGENT.expected.sample.reasoningEffort);
+    assert.equal(subagent.samples[0].durationMs, null);
+    assert.equal(pathOnly.samples[0].agentKind, "subagent");
+    assert.equal(sidechainMain.samples[0].agentKind, "subagent");
   });
 });
 
-test("R1 告警：坏 JSON 与缺 message.id 只发 MALFORMED_JSON / UNKEYABLE_RECORD", async () => {
+test("坏 JSON 与缺 message.id 仍只发既定 warning，合法消息保留", async () => {
   await withClaudeFile(MALFORMED_UNKEYABLE.rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
     assertIdentity(result);
-
     assert.equal(result.stats.malformedLines, MALFORMED_UNKEYABLE.expected.malformedLines);
     assert.equal(result.stats.missingMessageId, MALFORMED_UNKEYABLE.expected.missingMessageId);
     assert.equal(result.samples.length, 1);
-
-    const [sample] = result.samples;
-    // 同 sessionId 但没有 message.id 的行不得被并入 msg-real（output / lastTs 保持不变）。
-    assert.equal(sample.messageId, "msg-real");
-    assert.equal(sample.outputTokens, MALFORMED_UNKEYABLE.expected.sample.outputTokens);
-    assert.equal(sample.tsMs, MALFORMED_UNKEYABLE.expected.sample.tsMs);
-    assert.equal(sample.durationMs, MALFORMED_UNKEYABLE.expected.sample.durationMs);
-
+    assert.equal(result.samples[0].messageId, "msg-real");
+    assert.equal(result.samples[0].tsMs, MALFORMED_UNKEYABLE.expected.sample.tsMs);
+    assert.equal(result.samples[0].durationMs, null);
     assert.deepEqual(
       result.warnings.map(({ sourceKind, code, count }) => ({ sourceKind, code, count })),
       MALFORMED_UNKEYABLE.expected.warnings,
     );
-    for (const warning of result.warnings) {
-      assert.equal(warning.homeId, HOME_ID);
-      assert.equal(typeof warning.code, "string");
-      assert.equal(typeof warning.count, "number");
-    }
   });
 });
 
-test("R1 锚点：没有 prompt 行 ⇒ skippedNoAnchor；attachment-only 锚点正常产出", async () => {
-  await withClaudeFile(NO_PROMPT.rows, async ({ files, source }) => {
-    const result = await collect(files[0], source);
-    assertIdentity(result);
-    assert.equal(result.samples.length, NO_PROMPT.expected.emitted);
-    assert.equal(result.stats.candidates, NO_PROMPT.expected.candidates);
-    assert.equal(result.stats.skippedNoAnchor, NO_PROMPT.expected.skippedNoAnchor);
-    assert.equal(result.stats.skippedZeroUsage, NO_PROMPT.expected.skippedZeroUsage);
-  });
-
+test("attachment 与倒退时间只保留为历史事实，不形成 E2E 速度", async () => {
   await withClaudeFile(ATTACHMENT_ANCHOR.rows, async ({ files, source }) => {
     const result = await collect(files[0], source);
-    assertIdentity(result);
     assert.equal(result.samples.length, 1);
-    const [sample] = result.samples;
-    assert.equal(sample.windowStartMs, ATTACHMENT_ANCHOR.expected.sample.windowStartMs);
-    assert.equal(sample.durationMs, ATTACHMENT_ANCHOR.expected.sample.durationMs);
-    assert.equal(sample.outputTokens, ATTACHMENT_ANCHOR.expected.sample.outputTokens);
+    assert.equal(result.samples[0].durationMs, null);
+  });
+
+  await withClaudeFile(BACKWARD_ATTACHMENT.rows, async ({ files, source }) => {
+    const result = await collect(files[0], source);
+    assert.equal(result.samples.length, 1);
+    assert.equal(result.samples[0].durationMs, null);
+    assert.notEqual(result.samples[0].durationMs, BACKWARD_ATTACHMENT.expected.latestRowAnchorDurationMs);
   });
 });
 
-test("R1 reader 边界：空文件零计数；读取失败向上抛而不是吞掉", async () => {
+test("reader 边界：空文件零计数；读取失败向上抛", async () => {
   await withClaudeFile([], async ({ files, root, source }) => {
     const result = await collect(files[0], source);
     assert.deepEqual(result.stats, {
@@ -261,7 +333,6 @@ test("R1 reader 边界：空文件零计数；读取失败向上抛而不是吞�
     });
     assert.deepEqual(result.samples, []);
     assert.deepEqual(result.warnings, []);
-
     await assert.rejects(() => streamClaudePerfSamples(path.join(root, "missing.jsonl"), source, () => {}), /ENOENT/);
   });
 });

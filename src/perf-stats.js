@@ -14,8 +14,13 @@
  * Persistent method version (plan §4). An unrecognized version is never silently
  * rewritten: normalization keeps the supplied value and reports a warning.
  */
-export const PERF_METHOD_VERSION = "tps-v2";
-const PERF_HISTORICAL_METHOD_VERSIONS = Object.freeze(new Set(["tps-v1"]));
+export const PERF_METHOD_VERSION = "tps-v4";
+export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze(["tps-v1", "tps-v2", "tps-v3", PERF_METHOD_VERSION]);
+
+/** v3 and v4 share response identities and the non-reasoning generation contract. */
+export function isGenerationPerfMethod(version) {
+  return version === "tps-v3" || version === PERF_METHOD_VERSION;
+}
 
 /** Groups with fewer samples are shown but not ranked (plan §17.6). */
 export const PERF_MIN_SAMPLES = 20;
@@ -97,7 +102,7 @@ export const PERF_FLAGS = Object.freeze(
  * turn-level sampling.
  * @type {Readonly<Record<string, { window: string, timingKind: string, tokenScope: string }>>}
  */
-export const PERF_SOURCE_SEMANTICS = Object.freeze({
+const PERF_LEGACY_SOURCE_SEMANTICS = Object.freeze({
   zcode: Object.freeze({ window: "request", timingKind: "request_e2e", tokenScope: "reported_output_unspecified" }),
   dsh: Object.freeze({ window: "step", timingKind: "request_e2e", tokenScope: "reported_output_unspecified" }),
   opencode: Object.freeze({ window: "message", timingKind: "request_e2e", tokenScope: "visible_plus_reasoning" }),
@@ -120,6 +125,41 @@ export const PERF_SOURCE_SEMANTICS = Object.freeze({
     tokenScope: "reported_output_includes_reasoning",
   }),
 });
+
+export const PERF_SOURCE_SEMANTICS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(PERF_LEGACY_SOURCE_SEMANTICS).map((kind) => [
+      kind,
+      Object.freeze({ window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" }),
+    ]),
+  ),
+);
+
+const DSH_ALL_GENERATION_PROVIDERS = new Set(["deepseek-account", "deepseek-official"]);
+const DSH_ALL_GENERATION_SEMANTICS = Object.freeze({
+  window: "request",
+  timingKind: "generation",
+  tokenScope: "all_generated_output",
+});
+
+function generationSourceSemantics(sourceKind, modelProvider, methodVersion = PERF_METHOD_VERSION) {
+  return methodVersion === PERF_METHOD_VERSION &&
+    sourceKind === "dsh" &&
+    DSH_ALL_GENERATION_PROVIDERS.has(modelProvider)
+    ? DSH_ALL_GENERATION_SEMANTICS
+    : PERF_SOURCE_SEMANTICS[sourceKind];
+}
+
+function hasGenerationPerfSemantics(sample) {
+  const semantics = generationSourceSemantics(sample.sourceKind, sample.modelProvider);
+  return (
+    isGenerationPerfMethod(sample.methodVersion) &&
+    semantics !== undefined &&
+    sample.window === semantics.window &&
+    sample.timingKind === semantics.timingKind &&
+    sample.tokenScope === semantics.tokenScope
+  );
+}
 
 /** Canonical perf source kinds. Anything else is `unsupported`. */
 export const PERF_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
@@ -663,6 +703,10 @@ export function normalizePerfSample(raw) {
   if (sampleKey === null) {
     return { sample: null, warningCode: "UNKEYABLE_RECORD", warnings: ["UNKEYABLE_RECORD"] };
   }
+  const providedMethodVersion = trimmedString(raw.methodVersion);
+  const methodVersion =
+    providedMethodVersion ||
+    (["request_e2e", "item_span_estimate"].includes(trimmedString(raw.timingKind)) ? "tps-v2" : PERF_METHOD_VERSION);
 
   /** @type {string[]} */
   const warnings = [];
@@ -844,15 +888,17 @@ export function normalizePerfSample(raw) {
   if (raw.recordConflict === true) flags = setPerfFlag(flags, "RECORD_CONFLICT");
 
   // --- per-source semantics are authoritative ---
-  const semantics = PERF_SOURCE_SEMANTICS[sourceKind];
-  const window = semantics.window;
-  const timingKind = semantics.timingKind;
-  const tokenScope = semantics.tokenScope;
+  const semantics = isGenerationPerfMethod(methodVersion)
+    ? generationSourceSemantics(sourceKind, trimmedString(raw.modelProvider), methodVersion)
+    : PERF_LEGACY_SOURCE_SEMANTICS[sourceKind];
+  const window = trimmedString(raw.window) || semantics.window;
+  const timingKind = trimmedString(raw.timingKind) || semantics.timingKind;
+  const tokenScope = trimmedString(raw.tokenScope) || semantics.tokenScope;
   let semanticsMismatch = false;
   for (const [provided, expected] of [
-    [raw.window, window],
-    [raw.timingKind, timingKind],
-    [raw.tokenScope, tokenScope],
+    [raw.window, semantics.window],
+    [raw.timingKind, semantics.timingKind],
+    [raw.tokenScope, semantics.tokenScope],
   ]) {
     if (trimmedString(provided) !== "" && trimmedString(provided) !== expected) semanticsMismatch = true;
   }
@@ -877,13 +923,7 @@ export function normalizePerfSample(raw) {
     warnings.push("UNRECOGNIZED_PROVENANCE");
     timingSource = "unknown";
   }
-  const providedMethodVersion = trimmedString(raw.methodVersion);
-  const methodVersion = providedMethodVersion === "" ? PERF_METHOD_VERSION : providedMethodVersion;
-  if (
-    providedMethodVersion !== "" &&
-    providedMethodVersion !== PERF_METHOD_VERSION &&
-    !PERF_HISTORICAL_METHOD_VERSIONS.has(providedMethodVersion)
-  ) {
+  if (providedMethodVersion !== "" && !PERF_SUPPORTED_METHOD_VERSIONS.includes(providedMethodVersion)) {
     warnings.push("UNRECOGNIZED_METHOD_VERSION");
   }
 
@@ -983,6 +1023,8 @@ export const PERF_DROPPED_BY_REASONS = Object.freeze([
   "duration_missing_nonpositive_invalid",
   "partial_item_span",
   "overlapping_item_span",
+  "historical_method",
+  "source_semantics_mismatch",
 ]);
 
 /**
@@ -1052,6 +1094,7 @@ function perfFlagSetOf(sample) {
  */
 function isPerfSampled(sample, flags) {
   if (sample.status !== "completed") return false;
+  if (!hasGenerationPerfSemantics(sample)) return false;
   if (flags.has("TIME_UNPLACED")) return false;
   for (const name of PERF_DEDUCTION_FLAG_NAMES) {
     if (flags.has(name)) return false;
@@ -1062,30 +1105,17 @@ function isPerfSampled(sample, flags) {
 }
 
 /**
- * Unified ranking uses reviewed evidence, not a source label or a `request_e2e`
- * string alone. Two tuples are admitted today: v2 Codex (complete turn request
- * timing with explicit provenance and known output scope) and v2 Claude
- * (request-level samples whose duration is the transcript timestamp fallback,
- * with the same known output scope). DSH/ZCode have unknown output scope;
- * OpenCode/WorkBuddy samples still lack per-sample reviewed origin and
- * installed-version provenance. Those stay sampled for diagnostics with no rank,
- * as do historical Codex v1 candidates.
+ * Numeric generation rows can cover all output; unified ranking compares the
+ * reviewed non-reasoning phase only. Compatible v3 samples retain their version.
  * @param {PerfSample} sample
  * @param {Set<string>} [flags]
  * @returns {boolean}
  */
 function isPerfRankAdmitted(sample, flags = perfFlagSetOf(sample)) {
-  if (sample.methodVersion !== PERF_METHOD_VERSION) return false;
-  if (sample.timingKind !== "request_e2e") return false;
-  if (sample.tokenScope !== "reported_output_includes_reasoning") return false;
+  if (!hasGenerationPerfSemantics(sample)) return false;
+  if (sample.tokenScope !== "non_reasoning_output") return false;
   if (flags.has("METHOD_ESTIMATE")) return false;
-  if (sample.sourceKind === "codex") {
-    return sample.window === "turn" && sample.timingSource === "explicit";
-  }
-  if (sample.sourceKind === "claude") {
-    return sample.window === "request" && sample.timingSource === "timestamp_fallback";
-  }
-  return false;
+  return sample.window === "request";
 }
 
 /**
@@ -1114,6 +1144,8 @@ export function perfDroppedByReason(sample) {
     }
   }
   if (isPerfSampled(sample, flags)) return null;
+  if (!isGenerationPerfMethod(sample.methodVersion)) return "historical_method";
+  if (!hasGenerationPerfSemantics(sample)) return "source_semantics_mismatch";
   throw new Error(`perf sample ${sample.sampleKey} is dropped but carries none of the §17.5:278 reason flags`);
 }
 
@@ -1532,7 +1564,12 @@ export function selectPerfSamples(samples, options = {}) {
   }
   /** @type {PerfSample[]} */
   const deduped = [...keyless];
-  for (const group of byKey.values()) {
+  for (const members of byKey.values()) {
+    // A v4 DSH remeasurement replaces the old phase for this response, not its history.
+    const currentDsh = members.filter(
+      (row) => row.sourceKind === "dsh" && row.methodVersion === PERF_METHOD_VERSION && hasGenerationPerfSemantics(row),
+    );
+    const group = currentDsh.length > 0 ? members.filter((row) => row.methodVersion !== "tps-v3") : members;
     if (group.length === 1) {
       deduped.push(group[0]);
       continue;
@@ -1938,7 +1975,7 @@ function computeCodexTimingCoverage(selection, knownSources, excludedHomeIds, er
   }
   if (!applicable) return null;
 
-  const currentCodex = (sample) => sample?.sourceKind === "codex" && sample.methodVersion === PERF_METHOD_VERSION;
+  const currentCodex = (sample) => sample?.sourceKind === "codex" && isGenerationPerfMethod(sample.methodVersion);
   const eligible = selection.eligible.filter(currentCodex);
   const unplaced = selection.unplaced.filter(currentCodex);
   let recordedOutputTokens = 0;
@@ -1996,7 +2033,8 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
     const sourceKind = canonicalPerfSourceKind(sample?.sourceKind);
     const model = trimmedString(sample?.model);
     if (sourceKind === "unsupported" || model === "") continue;
-    if (sourceKind === "codex" && !isPerfRankAdmitted(sample)) continue;
+    const flags = perfFlagSetOf(sample);
+    if (!isPerfSampled(sample, flags) || flags.has("METHOD_ESTIMATE")) continue;
     const reasoningEffort = trimmedString(sample.reasoningEffort);
     const modelProvider = trimmedString(sample.modelProvider);
     const key = JSON.stringify([sourceKind, model, reasoningEffort, modelProvider]);
@@ -2075,30 +2113,30 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
     });
   }
 
-  // Missing request timing must hide the speed, not the observed Codex model.
+  // Keep observed models visible when their requests lack generation timing.
   /** @type {Map<string, PerfModelRow>} */
   const missing = new Map();
   for (const sample of candidates) {
-    if (sample.sourceKind !== "codex" || sample.methodVersion !== PERF_METHOD_VERSION) continue;
+    if (!hasGenerationPerfSemantics(sample)) continue;
     if (typeof sample.tsMs !== "number") continue;
     if (sample.durationMs !== null && sample.durationMs > 0) continue;
     const model = trimmedString(sample.model);
     const flags = perfFlagSetOf(sample);
     if (model === "" || flags.has("MODEL_AMBIGUOUS") || flags.has("METHOD_ESTIMATE")) continue;
-    if (sample.timingKind !== "request_e2e") continue;
+    if (sample.timingKind !== "generation") continue;
     const reasoningEffort = trimmedString(sample.reasoningEffort);
     const modelProvider = trimmedString(sample.modelProvider);
-    const key = JSON.stringify(["codex", model, reasoningEffort, modelProvider]);
+    const key = JSON.stringify([sample.sourceKind, model, reasoningEffort, modelProvider]);
     if (buckets.has(key)) continue;
     let row = missing.get(key);
     if (!row) {
       row = {
         key,
-        sourceKind: "codex",
+        sourceKind: sample.sourceKind,
         model,
         reasoningEffort,
         modelProvider,
-        window: "turn",
+        window: "request",
         firstSampleAtMs: null,
         lastSampleAtMs: null,
         averageTps: null,

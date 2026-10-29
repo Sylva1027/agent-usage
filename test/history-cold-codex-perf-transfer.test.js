@@ -95,10 +95,9 @@ function nativeSampleEvidence(database, sampleKey) {
     .map((row) => ({ ...row }));
   assert.equal(owners.length, 1, "the cold sample must have one native owner");
 
-  const [, , threadId, turnId] = JSON.parse(String(sampleKey));
-  const turnMatch = /^turn-(\d+)$/.exec(String(turnId));
-  assert.ok(turnMatch, "the cold sample key must retain its native turn");
-  const responseId = `response-${Number(turnMatch[1])}-1`;
+  const [, , threadId, turnId, responseId] = JSON.parse(String(sampleKey));
+  assert.equal(typeof turnId, "string", "the cold sample key must retain its native turn");
+  assert.equal(typeof responseId, "string", "the v3 cold sample key must retain its native response");
   const timing = database
     .prepare(
       `SELECT links.home_id, links.thread_id, links.response_id,

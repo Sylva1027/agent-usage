@@ -63,8 +63,8 @@ test("M7 migration creates v13 rollout/dependency tables and rolls back atomical
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 21);
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(STORE_SCHEMA_VERSION, 23);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
     assert.deepEqual(
       store.database
         .prepare("PRAGMA table_info(perf_sample_sources)")
@@ -120,7 +120,7 @@ test("M7 migration creates v13 rollout/dependency tables and rolls back atomical
   const retry = new UsageStore(fixture.serverOptions);
   try {
     await retry.open();
-    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(retry.database.prepare("PRAGMA user_version").get().user_version, 23);
     assert.equal(
       retry.database.prepare("SELECT size FROM source_files WHERE path LIKE '%legacy.jsonl'").get().size,
       -1,
@@ -140,24 +140,30 @@ test("M7 indexes one candidate per cross-rollout turn, tracks empty rollouts, an
     assert.equal(first.perfState, "ready");
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
     assert.deepEqual(
       store.database
         .prepare("SELECT role, COUNT(*) AS count FROM perf_sample_sources GROUP BY role ORDER BY role")
         .all()
         .map((row) => ({ role: String(row.role), count: Number(row.count) })),
       [
-        { role: "dependency", count: 50 },
-        { role: "primary", count: 25 },
+        { role: "dependency", count: 52 },
+        { role: "primary", count: 26 },
       ],
     );
-    const longTurn = store.database
-      .prepare("SELECT output_tokens, duration_ms, request_count FROM perf_samples WHERE output_tokens = 124")
-      .get();
-    assert.deepEqual([longTurn.output_tokens, longTurn.duration_ms, longTurn.request_count], [124, 400000, 2]);
+    const longResponses = store.database
+      .prepare(
+        "SELECT output_tokens, duration_ms, request_count FROM perf_samples WHERE sample_key LIKE '%\"turn-25\"%' ORDER BY sample_key",
+      )
+      .all()
+      .map((row) => ({ ...row }));
+    assert.deepEqual(longResponses, [
+      { output_tokens: 60, duration_ms: 200000, request_count: 1 },
+      { output_tokens: 64, duration_ms: 200000, request_count: 1 },
+    ]);
 
     const report = await buildUsageReport(fixture.reportOptions);
     const memoryPerf = summarizeUsage(report, { preset: "all", now: FIXTURE_NOW }).perf;
@@ -165,7 +171,7 @@ test("M7 indexes one candidate per cross-rollout turn, tracks empty rollouts, an
     assertCodexSummary(indexPerf, fixture.expected);
     assert.deepEqual(indexPerf.groups, memoryPerf.groups);
     assert.deepEqual(indexPerf.coverage, memoryPerf.coverage);
-    assert.equal(report.perfSamples.length, 25);
+    assert.equal(report.perfSamples.length, 26);
 
     const publishedVersion = store.perfState().indexVersion;
     const emptyRollout = path.join(path.dirname(fixture.rolloutFiles[0]), "rollout-4.jsonl");
@@ -177,10 +183,10 @@ test("M7 indexes one candidate per cross-rollout turn, tracks empty rollouts, an
     assert.equal(added.perfState, "ready");
     assert.notEqual(store.perfState().indexVersion, publishedVersion);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 4);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 100);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 104);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
 
     const versionAfterAdd = store.perfState().indexVersion;
@@ -229,9 +235,9 @@ test("M7 archive moves, transactional rollback, retry, and dependency loss prese
     );
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
     store.database.exec("DROP TRIGGER fail_codex_archive_publish");
 
     await store.sync({ options: fixture.reportOptions });
@@ -250,7 +256,7 @@ test("M7 archive moves, transactional rollback, retry, and dependency loss prese
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources WHERE source_path=?").get(archivedPath)
         .count,
-      25,
+      26,
     );
 
     const beforeFailure = store.database
@@ -286,19 +292,20 @@ test("M7 archive moves, transactional rollback, retry, and dependency loss prese
     assert.equal(recovered.perfState, "ready");
     assert.notEqual(store.perfState().indexVersion, versionBeforeFailure);
     assert.equal(
-      store.database.prepare("SELECT output_tokens FROM perf_samples WHERE output_tokens=150").get().output_tokens,
-      150,
+      store.database.prepare("SELECT output_tokens FROM perf_samples WHERE sample_key LIKE '%\"response-1-1\"%'").get()
+        .output_tokens,
+      null,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
 
     rmSync(fixture.rolloutFiles[1]);
     const deleted = await store.sync({ options: fixture.reportOptions });
     assert.equal(deleted.perfState, "ready");
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
     assert.deepEqual(
       deleted.missingSources.map((source) => source.path),
@@ -310,10 +317,10 @@ test("M7 archive moves, transactional rollback, retry, and dependency loss prese
     const noRollouts = await store.sync({ options: fixture.reportOptions });
     assert.equal(noRollouts.perfState, "ready");
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
     assert.deepEqual(
       noRollouts.missingSources.map((source) => source.path).sort(),
@@ -350,9 +357,9 @@ test("M7 a changed thread ID rebuilds both the old and new thread identities", a
       );
       assert.equal(
         store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-        25,
+        26,
       );
-      assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+      assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
       const indexPerf = store.summarize({ preset: "all", now: FIXTURE_NOW }).perf;
       const memoryReport = await buildUsageReport(fixture.reportOptions);
       const memoryPerf = summarizeUsage(memoryReport, { preset: "all", now: FIXTURE_NOW }).perf;
@@ -398,9 +405,9 @@ test("M7 a new rollout whose thread publish fails leaves indexVersion on the old
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 3);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 75);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
 
     store.database.exec("DROP TRIGGER fail_codex_publish");
     const recovered = await store.sync({ options: fixture.reportOptions });
@@ -409,9 +416,9 @@ test("M7 a new rollout whose thread publish fails leaves indexVersion on the old
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 4);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      25,
+      26,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 100);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 104);
   } finally {
     store.close();
     fixture.close();
@@ -499,10 +506,10 @@ test("M7 a partial multi-home publish versions only the successfully committed C
     );
     assert.equal(
       partialStore.database
-        .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE home_id=? AND output_tokens=150")
+        .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE home_id=? AND output_tokens IS NULL")
         .get(secondHomeId).count,
-      1,
-      "the unblocked home publishes its changed candidate",
+      26,
+      "the unblocked home publishes its candidates without invented generation timing",
     );
 
     partialStore.database.exec("DROP TRIGGER fail_first_home_publish");
@@ -511,9 +518,9 @@ test("M7 a partial multi-home publish versions only the successfully committed C
     assert.equal(partialStore.database.prepare("SELECT COUNT(*) AS count FROM perf_rollout_threads").get().count, 7);
     assert.equal(
       partialStore.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      50,
+      52,
     );
-    assert.equal(partialStore.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 175);
+    assert.equal(partialStore.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 182);
   } finally {
     partialStore.close();
     controlStore.close();
@@ -537,9 +544,9 @@ test("M7 exchanging two thread IDs clears all old candidates before reassigning 
     await store.sync({ options: fixture.reportOptions });
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      50,
+      52,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 150);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 156);
 
     for (const file of fixture.rolloutFiles) {
       writeFileSync(file, readFileSync(file, "utf8").replaceAll("aaa-thread", "zzz-thread"));
@@ -562,9 +569,9 @@ test("M7 exchanging two thread IDs clears all old candidates before reassigning 
     );
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      50,
+      52,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 150);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 156);
 
     const indexPerf = store.summarize({ preset: "all", now: FIXTURE_NOW }).perf;
     const memoryReport = await buildUsageReport(fixture.reportOptions);
@@ -606,14 +613,14 @@ test("M7 uses home plus thread identity, so matching thread IDs in two homes do 
     );
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      50,
+      52,
     );
     for (const home of homes) {
       assert.equal(
         store.database
           .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex' AND home_id=?")
           .get(home.home_id).count,
-        25,
+        26,
       );
     }
 
@@ -633,7 +640,7 @@ test("M7 uses home plus thread identity, so matching thread IDs in two homes do 
     );
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind='codex'").get().count,
-      50,
+      52,
     );
   } finally {
     store.close();
@@ -828,12 +835,13 @@ test("M8.2 C: store publishes only the child ledger and revision 1 rebuilds unch
   try {
     await store.sync({ options: fixture.reportOptions });
     const childTiming = fixture.addRequestTiming("Child-store", {
-      schemaVersion: 1,
+      schemaVersion: 2,
       evidenceOrigin: "fixture@1",
       responseId: "Shared-response",
       requestedModel: "Child-model",
       reportedOutputTokens: 40,
       durationMs: 400,
+      generation: { outputTokens: 40, durationMs: 400, startOutputTokens: 0, timingKind: "explicit" },
       status: "completed",
       completedAtMs: null,
     });
@@ -849,7 +857,13 @@ test("M8.2 C: store publishes only the child ledger and revision 1 rebuilds unch
       1,
       "the copied parent header never becomes a second rollout owner",
     );
-    const childSampleKey = JSON.stringify(["codex", childOwner.home_id, "Child-store", "Shared-turn"]);
+    const childSampleKey = JSON.stringify([
+      "codex",
+      childOwner.home_id,
+      "Child-store",
+      "Shared-turn",
+      "Shared-response",
+    ]);
     const readChildSample = () => {
       const row = store.database
         .prepare("SELECT output_tokens, duration_ms FROM perf_samples WHERE sample_key=?")
@@ -1071,8 +1085,8 @@ test("M8.2 §4.1: a planned thread feeds the real candidate builder unchanged", 
   // no per-thread re-read.
   const built = buildCodexThreadPerfSamples("home-build", thread.threadId, thread.rollouts);
   assert.equal(built.samples.length, 1);
-  assert.equal(built.samples[0].outputTokens, 40);
-  assert.equal(built.samples[0].sampleKey, '["codex","home-build","Thread-Build","Turn-1"]');
+  assert.equal(built.samples[0].outputTokens, null);
+  assert.equal(built.samples[0].sampleKey, '["codex","home-build","Thread-Build","Turn-1","R1"]');
 });
 
 test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keeps healthy threads", async () => {
@@ -1111,7 +1125,7 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
     const otherHome = report.homes.find((home) => home.path === secondHome);
     assert.ok(sameHome);
     assert.ok(otherHome);
-    assert.equal(report.perfSamples.length, 50, "bad thread contributes no candidate; both healthy threads remain");
+    assert.equal(report.perfSamples.length, 52, "bad thread contributes no candidate; both healthy threads remain");
     assert.ok(
       report.perfSamples.every((sample) => JSON.parse(sample.sampleKey)[2] !== "fixture-codex-thread"),
       "all rollout files of the failed thread are excluded",
@@ -1123,7 +1137,7 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
     const partialSummary = summarizeUsage(report, { preset: "all", now: FIXTURE_NOW }).perf;
     assert.equal(partialSummary.state, "degraded");
     assert.equal(partialSummary.ready, false);
-    assert.equal(partialSummary.coverage.sampled, 50);
+    assert.equal(partialSummary.coverage.sampled, 52);
     assert.deepEqual(partialSummary.rankedHomeIds, [sameHome.id, otherHome.id].sort());
     assert.deepEqual(partialSummary.sourceWarnings, [
       { sourceKind: "codex", homeId: sameHome.id, code: "MALFORMED_JSON", count: 1 },
@@ -1136,7 +1150,7 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
       now: FIXTURE_NOW,
       excludeHomes: [sameHome.id],
     }).perf;
-    assert.equal(scopedSummary.coverage.sampled, 25, "partial permission cannot bypass explicit home exclusion");
+    assert.equal(scopedSummary.coverage.sampled, 26, "partial permission cannot bypass explicit home exclusion");
     assert.deepEqual(
       scopedSummary.rankedHomeIds,
       [sameHome.id, otherHome.id].sort(),
@@ -1148,10 +1162,10 @@ test("M8.2 B3: memory quarantines every rollout of an isolatable thread and keep
     writeFileSync(fixture.rolloutFiles[1], `${brokenLines.join("\n")}\n`);
     const blockedReport = await buildUsageReport(options);
     const blockedSummary = summarizeUsage(blockedReport, { preset: "all", now: FIXTURE_NOW }).perf;
-    assert.equal(blockedReport.perfSamples.length, 25, "unknown structure blocks the entire mixed home");
+    assert.equal(blockedReport.perfSamples.length, 26, "unknown structure blocks the entire mixed home");
     assert.deepEqual(decodeCodexPublicationPolicy(blockedReport.perfMeta.codexPublicationPolicy).partialHomes, []);
     assert.deepEqual(blockedSummary.rankedHomeIds, [otherHome.id]);
-    assert.equal(blockedSummary.coverage.sampled, 25);
+    assert.equal(blockedSummary.coverage.sampled, 26);
   } finally {
     fixture.close();
   }
@@ -1196,7 +1210,7 @@ test("M8.2 B4: store preserves a failed old thread graph while publishing health
       .all(homeId)
       .filter((row) => JSON.parse(row.sample_key)[2] === "fixture-codex-thread");
     const failedFingerprint = store.readPublishedFileFingerprints()[fixture.rolloutFiles[1]];
-    assert.equal(failedSamples.length, 25);
+    assert.equal(failedSamples.length, 26);
 
     writeFileSync(fixture.rolloutFiles[1], "{broken json\n", { flag: "a" });
     await store.sync({ options: fixture.reportOptions });
@@ -1232,7 +1246,7 @@ test("M8.2 B4: store preserves a failed old thread graph while publishing health
     assert.equal(store.readPublishedFileFingerprints()[fixture.rolloutFiles[1]], failedFingerprint);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE home_id=?").get(homeId).count,
-      50,
+      52,
       "healthy sibling candidates publish even though the old failed graph stays stored",
     );
 
@@ -1242,7 +1256,7 @@ test("M8.2 B4: store preserves a failed old thread graph while publishing health
     assert.deepEqual(indexPerf.groups, memoryPerf.groups);
     assert.deepEqual(indexPerf.coverage, memoryPerf.coverage);
     assert.deepEqual(indexPerf.sourceWarnings, memoryPerf.sourceWarnings);
-    assert.equal(indexPerf.coverage.sampled, 25);
+    assert.equal(indexPerf.coverage.sampled, 26);
     assert.deepEqual(indexPerf.rankedHomeIds, [homeId]);
     assert.deepEqual(indexPerf.sourceWarnings, [{ sourceKind: "codex", homeId, code: "MALFORMED_JSON", count: 1 }]);
     assert.equal(JSON.stringify(indexPerf).includes("fixture-codex-thread"), false);
@@ -1298,7 +1312,7 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
     const replacementFiles = fixture.rolloutFiles.map((sourcePath) =>
       readFileSync(sourcePath, "utf8").replaceAll(oldThreadId, newThreadId).replaceAll("response-", "new-response-"),
     );
-    assert.equal(oldSamples.length, 25);
+    assert.equal(oldSamples.length, 26);
     assert.equal(oldMappings.length, fixture.rolloutFiles.length);
     assert.equal(healthyFiles.length, fixture.rolloutFiles.length);
 
@@ -1316,7 +1330,7 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
     assert.deepEqual(indexedFailed.groups, memoryFailed.groups);
     assert.deepEqual(indexedFailed.coverage, memoryFailed.coverage);
     assert.deepEqual(indexedFailed.sourceWarnings, memoryFailed.sourceWarnings);
-    assert.equal(indexedFailed.coverage.sampled, 25);
+    assert.equal(indexedFailed.coverage.sampled, 26);
     assert.deepEqual(indexedFailed.sourceWarnings, [{ sourceKind: "codex", homeId, code: "MALFORMED_JSON", count: 1 }]);
     assert.equal(store.perfState().indexVersion, originalVersion);
     assert.deepEqual(
@@ -1360,7 +1374,7 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
     assert.deepEqual(repeatedIndex.groups, repeatedMemory.groups);
     assert.deepEqual(repeatedIndex.coverage, repeatedMemory.coverage);
     assert.deepEqual(repeatedIndex.sourceWarnings, repeatedMemory.sourceWarnings);
-    assert.equal(repeatedIndex.coverage.sampled, 25);
+    assert.equal(repeatedIndex.coverage.sampled, 26);
     assert.equal(store.perfState().indexVersion, originalVersion);
     assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
 
@@ -1378,11 +1392,11 @@ test("M8.2 B4: a failed replacement thread also blocks its retained old identity
     assert.deepEqual(recoveredIndex.sourceWarnings, recoveredMemory.sourceWarnings);
     assert.equal(recoveredIndex.state, "ready");
     assert.deepEqual(decodeCodexPublicationPolicy(store.perfState().codexPublicationPolicy).partialHomes, []);
-    assert.equal(recoveredIndex.coverage.sampled, 50);
+    assert.equal(recoveredIndex.coverage.sampled, 52);
     assert.notEqual(store.perfState().indexVersion, originalVersion);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE home_id=?").get(homeId).count,
-      50,
+      52,
     );
     assert.equal(
       store.database
@@ -1520,7 +1534,7 @@ test("M8.2 B5: indexed and memory summaries share partial policy across range, u
     }
     const allPerf = store.summarize({ preset: "all", now: FIXTURE_NOW }, {}).perf;
     assert.equal(allPerf.coverage.unplaced, 1);
-    assert.equal(allPerf.coverage.sampled, 25, "unplaced candidates are counted separately from positioned samples");
+    assert.equal(allPerf.coverage.sampled, 26, "unplaced candidates are counted separately from positioned samples");
     assert.deepEqual(allPerf.sourceWarnings, [{ sourceKind: "codex", homeId, code: "MALFORMED_JSON", count: 1 }]);
     assert.equal(JSON.stringify(allPerf).includes(healthyThreadId), false);
   } finally {
@@ -1968,7 +1982,8 @@ test("M8.2 §4.2: a sample key must be the complete frozen identity, matching it
   const cases = [
     { name: "correct", key: '["codex","H","Good","Turn"]', homeId: "H", expected: "Good" },
     { name: "missing turn", key: '["codex","H","Good"]', homeId: "H", expected: null },
-    { name: "extra element", key: '["codex","H","Good","Turn","Extra"]', homeId: "H", expected: null },
+    { name: "response identity", key: '["codex","H","Good","Turn","Response"]', homeId: "H", expected: "Good" },
+    { name: "extra element", key: '["codex","H","Good","Turn","Response","Extra"]', homeId: "H", expected: null },
     { name: "home mismatch", key: '["codex","OtherHome","Good","Turn"]', homeId: "H", expected: null },
     { name: "empty turn", key: '["codex","H","Good",""]', homeId: "H", expected: null },
     { name: "empty thread", key: '["codex","H","","Turn"]', homeId: "H", expected: null },
@@ -3436,7 +3451,18 @@ function c3Samples(store, threadId) {
 function c3OutputFor(store, threadId) {
   const rows = c3Samples(store, threadId);
   assert.equal(rows.length, 1, `前置：恰好一条 ${threadId} 的候选`);
-  return rows[0].output_tokens;
+  // Projection reuse is observable even when no generation timing was recorded.
+  const source = store.database
+    .prepare("SELECT source_path FROM perf_rollout_threads WHERE thread_id = ?")
+    .get(threadId);
+  const projection = JSON.parse(
+    String(
+      store.database
+        .prepare("SELECT projection FROM perf_codex_projections WHERE lower(path) = lower(?)")
+        .get(source.source_path).projection,
+    ),
+  );
+  return projection.records.find((record) => record.kind === "token_usage_record").outputTokens;
 }
 
 function c3Entry(store, filePath) {
@@ -3573,7 +3599,8 @@ test("C3 · 边界（如实声明）：首尾 64KiB 探针之外的等长改写�
     assert.equal(strict.threadId, "Thread-B");
     const strictBuilt = buildCodexThreadPerfSamples("home-c3", "Thread-B", [strict]);
     assert.equal(strictBuilt.samples.length, 1);
-    assert.equal(strictBuilt.samples[0].outputTokens, 121, "strict reader 读到的确实是磁盘上的新值 121");
+    assert.equal(strictBuilt.samples[0].outputTokens, null);
+    assert.equal(strict.projection.records.find((record) => record.kind === "token_usage_record").outputTokens, 121);
 
     // ③ 让 B 的变化变成**探针可见**（mtime 变）⇒ 下一轮必须重新读取并发布新值 ⇒ 有界后果。
     utimesSync(fileB, C3_PINNED_SECONDS + 1, C3_PINNED_SECONDS + 1);
@@ -3744,8 +3771,8 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
     );
     assert.equal(
       store.database.prepare("PRAGMA user_version").get().user_version,
-      21,
-      "History retention moves schema to 21",
+      23,
+      "Local quota source evidence moves schema to 23",
     );
     const tables = store.database
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
@@ -3765,6 +3792,7 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
         "perf_rollout_threads",
         "perf_sample_sources",
         "perf_samples",
+        "quota_usage_sources",
         "rate_limit_observations",
         "source_files",
         "store_meta",
@@ -4604,7 +4632,8 @@ test("C4 · 边界（如实声明）：探针窗口外的等长改写对既有�
     // 独立证据：strict reader 直接读文件 ⇒ 磁盘上确实已是 121。差别就是「复用 vs 顺带重读」。
     const strict = await readCodexRollout(fileB);
     const strictBuilt = buildCodexThreadPerfSamples("home-c4", "Thread-B", [strict]);
-    assert.equal(strictBuilt.samples[0].outputTokens, 121, "strict reader 读到的确实是磁盘上的新值 121");
+    assert.equal(strictBuilt.samples[0].outputTokens, null);
+    assert.equal(strict.projection.records.find((record) => record.kind === "token_usage_record").outputTokens, 121);
 
     // 一旦探针可见（mtime 变）⇒ 下一轮必然重新读取并发布新值 ⇒ 有界后果（≤1 轮，无静默丢失）。
     utimesSync(fileB, C3_PINNED_SECONDS + 1, C3_PINNED_SECONDS + 1);

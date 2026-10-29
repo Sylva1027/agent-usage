@@ -3688,11 +3688,12 @@ html[lang="en-US"] #presetButtons > .recent-segment {
 
 .perf-model-sample-count {
   margin-left: auto;
+  flex: none;
   min-width: 0;
   color: var(--muted);
   font-size: 12px;
   text-align: right;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .perf-model-band {

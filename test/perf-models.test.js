@@ -7,29 +7,30 @@ const T = 1_760_000_000_000;
 const RANGE = { startMs: T - 1_000, endMs: T + 10_000 };
 
 const SEMANTICS = {
+  zcode: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  dsh: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  opencode: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  codex: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  workbuddy: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  claude: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+};
+
+const LEGACY_SEMANTICS = {
   zcode: { window: "request", timingKind: "request_e2e", tokenScope: "reported_output_unspecified" },
   dsh: { window: "step", timingKind: "request_e2e", tokenScope: "reported_output_unspecified" },
   opencode: { window: "message", timingKind: "request_e2e", tokenScope: "visible_plus_reasoning" },
-  codex: {
-    window: "turn",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_includes_reasoning",
-  },
-  workbuddy: {
-    window: "request",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_includes_reasoning",
-  },
-  claude: {
-    window: "request",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_includes_reasoning",
-  },
+  codex: { window: "turn", timingKind: "request_e2e", tokenScope: "reported_output_includes_reasoning" },
+  workbuddy: { window: "request", timingKind: "request_e2e", tokenScope: "reported_output_includes_reasoning" },
+  claude: { window: "request", timingKind: "request_e2e", tokenScope: "reported_output_includes_reasoning" },
 };
 
 function rawSample(overrides = {}) {
   const sourceKind = overrides.sourceKind ?? "zcode";
   const { identity = "row", ...rest } = overrides;
+  const semantics =
+    overrides.methodVersion === undefined || overrides.methodVersion === PERF_METHOD_VERSION
+      ? SEMANTICS[sourceKind]
+      : LEGACY_SEMANTICS[sourceKind];
   return normalizePerfSample({
     sourceKind,
     homeId: "home-a",
@@ -44,7 +45,7 @@ function rawSample(overrides = {}) {
     durationMs: 1_000,
     outputTokens: 100,
     timingSource: "explicit",
-    ...SEMANTICS[sourceKind],
+    ...semantics,
     ...rest,
     identity: [identity],
   });
@@ -94,7 +95,7 @@ test("current-day Codex candidates without request duration retain model identit
     model: "current-codex",
     reasoningEffort: "high",
     modelProvider: "provider-a",
-    window: "turn",
+    window: "request",
     firstSampleAtMs: null,
     lastSampleAtMs: null,
     averageTps: null,
@@ -153,7 +154,7 @@ test("missing-duration Codex rows never duplicate or overwrite a timed model, an
   assert.ok(perf.models.filter((row) => row.state === "missing_duration").every((row) => row.candidateCount === 1));
 });
 
-test("Codex visibility leaves non-Codex missing durations and valid speeds unchanged", () => {
+test("missing-duration model rows are retained for every current source", () => {
   const valid = sample({ identity: "z-valid", sourceKind: "zcode" });
   const rows = ["claude", "zcode", "dsh", "opencode", "workbuddy"].map((sourceKind) =>
     sample({
@@ -163,13 +164,23 @@ test("Codex visibility leaves non-Codex missing durations and valid speeds uncha
       durationMs: null,
     }),
   );
+  const perf = summarizePerf([valid, ...rows], { range: RANGE });
+  assert.equal(perf.models.filter((row) => row.state === "ok").length, 1);
   assert.deepEqual(
-    summarizePerf([valid, ...rows], { range: RANGE }).models,
-    summarizePerf([valid], { range: RANGE }).models,
+    perf.models
+      .filter((row) => row.state === "missing_duration")
+      .map((row) => row.sourceKind)
+      .sort(),
+    ["claude", "dsh", "opencode", "workbuddy", "zcode"],
+  );
+  assert.ok(
+    perf.models
+      .filter((row) => row.state === "missing_duration")
+      .every((row) => row.window === "request" && row.rankState === "unverified"),
   );
 });
 
-test("Codex missing-duration visibility cannot leak excluded homes, dates, unplaced rows or historical estimates", () => {
+test("missing-duration visibility cannot leak excluded homes, dates, unplaced rows or historical estimates", () => {
   const missing = (identity, extra = {}) =>
     sample({ identity, sourceKind: "codex", model: identity, durationMs: null, ...extra });
   const included = missing("included", { tsMs: T + 1_000 });
@@ -196,8 +207,7 @@ test("Codex missing-duration visibility cannot leak excluded homes, dates, unpla
   assert.equal(perf.models[0].lastCandidateAtMs, T + 1_000);
 });
 
-test("Codex speed overview excludes historical item estimates before computing every statistic", () => {
-  // Persisted v1 rows keep their original semantics instead of passing through the v2 reader.
+test("historical item estimates stay readable but never enter current speed statistics", () => {
   const historical = repeated("historical", 102, 1_000, {
     model: "same-model",
     methodVersion: "tps-v1",
@@ -216,8 +226,11 @@ test("Codex speed overview excludes historical item estimates before computing e
   assert.equal(combined.models[0].p90, 100);
   assert.equal(combined.models[0].rankState, "insufficient_samples");
   assert.equal(combined.models[0].rank, null);
-  assert.equal(combined.groups.find((row) => row.timingKind === "item_span_estimate").n, 102);
-  assert.equal(combined.coverage.sampled, 108);
+  assert.equal(combined.coverage.sampled, 6);
+  assert.equal(combined.coverage.droppedByReason.historical_method, 102);
+  assert.equal(combined.groups.length, 1);
+  assert.equal(combined.groups[0].n, 6);
+  assert.deepEqual(summarizePerf(historical, { range: RANGE }).groups, []);
   assert.deepEqual(summarizePerf(historical, { range: RANGE }).models, []);
 });
 
@@ -380,7 +393,7 @@ test("D1 identity: source/model/effort/provider split rows while home/agent merg
         model: "Model-X",
         reasoningEffort: "high",
         modelProvider: "",
-        rankState: "unverified",
+        rankState: "insufficient_samples",
         averageTps: 500,
         p10: 500,
         p90: 500,
@@ -445,7 +458,7 @@ test("D2 dates: range and home filters use actual member timestamps", () => {
   assert.equal(full.n, 4);
   assert.equal(full.firstSampleAtMs, T + 1_000);
   assert.equal(full.lastSampleAtMs, T + 4_000);
-  assert.equal(full.window, "turn");
+  assert.equal(full.window, "request");
 
   const ranged = summarizePerf(rows, { range: { startMs: T + 1_500, endMs: T + 3_500 } }).models[0];
   assert.equal(ranged.n, 2);
@@ -458,7 +471,7 @@ test("D2 dates: range and home filters use actual member timestamps", () => {
   assert.equal(homeFiltered.lastSampleAtMs, T + 3_000);
 });
 
-test("D2 dates: v1 does not widen v2; Codex stays a turn and requestCount is not projected", () => {
+test("D2 dates: v1 does not widen v3; current Codex stays request-scoped and requestCount is not projected", () => {
   const rows = [
     sample({
       identity: "v1-early",
@@ -491,7 +504,7 @@ test("D2 dates: v1 does not widen v2; Codex stays a turn and requestCount is not
   assert.equal(row.n, 2);
   assert.equal(row.firstSampleAtMs, T + 1_000);
   assert.equal(row.lastSampleAtMs, T + 2_000);
-  assert.equal(row.window, "turn");
+  assert.equal(row.window, "request");
   assert.equal(Object.hasOwn(row, "requestCount"), false);
 });
 
@@ -561,11 +574,11 @@ test("D1 order: eligible rows use unrounded averages, then key order for exact t
   assert.ok(perf.models.every((row) => row.rankState === "eligible"));
 });
 
-test("D1 rankState: eligible rows precede unverified references, and overflow stays last", () => {
+test("D1 rankState: every current source can rank; overflow stays last", () => {
   const maxSafeMinusOne = Number.MAX_SAFE_INTEGER - 1;
   const rows = [
     ...repeated("eligible", 20, 10),
-    ...repeated("unverified-large", 20, 100, { sourceKind: "dsh" }),
+    ...repeated("dsh-large", 20, 100, { sourceKind: "dsh" }),
     sample({
       identity: "overflow-a",
       sourceKind: "codex",
@@ -586,8 +599,8 @@ test("D1 rankState: eligible rows precede unverified references, and overflow st
   assert.deepEqual(
     perf.models.map((row) => [row.model, row.state, row.rankState, row.rank]),
     [
-      ["eligible", "ok", "eligible", 1],
-      ["unverified-large", "ok", "unverified", null],
+      ["dsh-large", "ok", "eligible", 1],
+      ["eligible", "ok", "eligible", 2],
       ["overflow-model", "overflow", "overflow", null],
     ],
   );
@@ -633,7 +646,7 @@ test("D1 overflow: merged model sums fail without changing old groups/coverage/m
     model: "healthy",
     reasoningEffort: "",
     modelProvider: "",
-    window: "turn",
+    window: "request",
     firstSampleAtMs: T,
     lastSampleAtMs: T,
     averageTps: 100,
@@ -650,7 +663,7 @@ test("D1 overflow: merged model sums fail without changing old groups/coverage/m
     model: "overflow-model",
     reasoningEffort: "",
     modelProvider: "",
-    window: "turn",
+    window: "request",
     firstSampleAtMs: T - 500,
     lastSampleAtMs: T + 2_000,
     averageTps: null,
@@ -740,14 +753,14 @@ test("D1 shape and empty cases: exactly fifteen fields, no row for n=0 or an emp
   assert.equal(one.models[0].key, JSON.stringify(["opencode", "Case-Sensitive", "max", ""]));
   assert.equal(one.models[0].model, "Case-Sensitive");
   assert.equal(one.models[0].modelProvider, "");
-  assert.equal(one.models[0].window, "message");
+  assert.equal(one.models[0].window, "request");
   assert.equal(one.models[0].firstSampleAtMs, T);
   assert.equal(one.models[0].lastSampleAtMs, T);
 });
 
-test("B2 unified ranking admits only complete explicit v2 Codex; other scopes stay diagnostic", () => {
+test("B2 unified ranking is source-independent for current v3 generation samples", () => {
   const rows = [
-    sample({ identity: "codex-v2", sourceKind: "codex", model: "codex-v2" }),
+    sample({ identity: "codex-v3", sourceKind: "codex", model: "codex-v3" }),
     sample({
       identity: "codex-v1",
       sourceKind: "codex",
@@ -781,21 +794,22 @@ test("B2 unified ranking admits only complete explicit v2 Codex; other scopes st
   const modelOf = (name) => perf.models.find((row) => row.model === name);
   const groupOf = (name) => perf.groups.find((group) => group.model === name);
 
-  assert.equal(perf.coverage.sampled, rows.length);
-  assert.equal(modelOf("codex-v2").rankState, "eligible");
-  assert.equal(modelOf("codex-v2").rank, 1);
-  assert.equal(groupOf("codex-v2").rank, 1);
-  for (const name of ["codex-v1", "codex-future", "codex-unknown-source", "codex-estimate"]) {
-    assert.equal(modelOf(name), undefined, `${name} does not enter the speed overview`);
-    assert.equal(groupOf(name).rank, null, `${name} group rank`);
-    assert.equal(groupOf(name).n, 1, `${name} remains a diagnostic group`);
-  }
-  for (const name of ["dsh", "zcode", "opencode", "workbuddy"]) {
-    assert.equal(modelOf(name).rankState, "unverified", `${name} model rankState`);
-    assert.equal(modelOf(name).rank, null, `${name} model rank`);
-    assert.equal(groupOf(name).rank, null, `${name} group rank`);
-    assert.equal(modelOf(name).n, 1, `${name} keeps its statistics`);
+  assert.equal(perf.coverage.sampled, 7);
+  assert.equal(perf.coverage.droppedByReason.historical_method, 2);
+  for (const name of ["codex-v3", "codex-unknown-source", "dsh", "zcode", "opencode", "workbuddy"]) {
+    assert.equal(modelOf(name).rankState, "eligible", `${name} model rankState`);
+    assert.notEqual(modelOf(name).rank, null, `${name} model rank`);
+    assert.notEqual(groupOf(name).rank, null, `${name} group rank`);
+    assert.equal(modelOf(name).n, 1);
     assert.equal(modelOf(name).averageTps, 100);
+  }
+  assert.equal(modelOf("codex-estimate"), undefined, "estimate rows do not enter the ranked model projection");
+  assert.equal(groupOf("codex-estimate").n, 1, "estimate rows remain visible in sampled group diagnostics");
+  assert.equal(groupOf("codex-estimate").rank, null);
+  assert.equal(perf.coverage.byFlag.METHOD_ESTIMATE, 1);
+  for (const name of ["codex-v1", "codex-future"]) {
+    assert.equal(modelOf(name), undefined, `${name} does not enter the speed overview`);
+    assert.equal(groupOf(name), undefined, `${name} does not enter current statistics`);
   }
 
   const opencode = modelOf("opencode");
@@ -803,22 +817,19 @@ test("B2 unified ranking admits only complete explicit v2 Codex; other scopes st
   assert.equal(groupOf("opencode").n, 1);
 });
 
-test("B2 duplicate folding prefers the current v2 representative over stale v1", () => {
-  const v1 = sample({
-    identity: "same-turn",
-    sourceKind: "codex",
-    model: "same-turn",
-    methodVersion: "tps-v1",
-  });
-  const v2 = sample({
+test("B2 duplicate folding prefers the current v3 representative over stale v1", () => {
+  const current = sample({
     identity: "same-turn",
     sourceKind: "codex",
     model: "same-turn",
     methodVersion: PERF_METHOD_VERSION,
   });
+  // The same stored row may remain readable as v1 after the method label changes.
+  // Its already-recorded v3 semantics must stay byte-for-byte comparable for folding.
+  const v1 = { ...current, methodVersion: "tps-v1" };
 
-  const forward = summarizePerf([v1, v2], { range: RANGE, meta: { minSamples: 1 } });
-  const backward = summarizePerf([v2, v1], { range: RANGE, meta: { minSamples: 1 } });
+  const forward = summarizePerf([v1, current], { range: RANGE, meta: { minSamples: 1 } });
+  const backward = summarizePerf([current, v1], { range: RANGE, meta: { minSamples: 1 } });
   assert.equal(forward.coverage.sampled, 1);
   assert.equal(forward.models[0].rankState, "eligible");
   assert.equal(forward.models[0].rank, 1);
@@ -846,44 +857,54 @@ test("B2 Claude request-level timestamp fallback samples are rank-admitted", () 
   assert.equal(perf.groups[0].rank, 1);
 });
 
-test("B2 Claude admission rejects the four out-of-contract variants", () => {
-  // window/timingSource are fixed by normalization, so these variants mutate the
-  // normalized row. methodVersion and methodEstimate can flow through the raw path.
+test("B2 current provenance is source-independent while method and semantics remain gated", () => {
   const base = sample({
     identity: "claude-base",
     sourceKind: "claude",
     model: "claude-variant",
     timingSource: "timestamp_fallback",
   });
-  const variants = {
-    window: { ...base, window: "turn" },
-    timingSource: { ...base, timingSource: "explicit" },
-    methodVersion: sample({
-      identity: "claude-v1",
-      sourceKind: "claude",
-      model: "claude-variant",
-      timingSource: "timestamp_fallback",
-      methodVersion: "tps-v1",
-    }),
-    methodEstimate: sample({
-      identity: "claude-estimate",
-      sourceKind: "claude",
-      model: "claude-variant",
-      timingSource: "timestamp_fallback",
-      methodEstimate: true,
-    }),
-  };
+  const explicit = { ...base, timingSource: "explicit" };
+  const explicitPerf = summarizePerf([explicit], { range: RANGE, meta: { minSamples: 1 } });
+  assert.equal(explicitPerf.models[0].rankState, "eligible");
+  assert.equal(explicitPerf.models[0].rank, 1);
 
-  for (const [name, row] of Object.entries(variants)) {
-    const perf = summarizePerf([row], { range: RANGE, meta: { minSamples: 1 } });
-    assert.equal(perf.models[0].rankState, "unverified", `${name} model rankState`);
-    assert.equal(perf.models[0].rank, null, `${name} model rank`);
-    assert.equal(perf.groups[0].rank, null, `${name} group rank`);
-    assert.equal(perf.models[0].n, 1, `${name} stays a diagnostic row`);
-  }
+  const windowMismatch = { ...base, window: "turn" };
+  const mismatchPerf = summarizePerf([windowMismatch], { range: RANGE, meta: { minSamples: 1 } });
+  assert.deepEqual(mismatchPerf.models, []);
+  assert.deepEqual(mismatchPerf.groups, []);
+  assert.equal(mismatchPerf.coverage.sampled, 0);
+  assert.equal(mismatchPerf.coverage.droppedByReason.source_semantics_mismatch, 1);
+
+  const historical = sample({
+    identity: "claude-v1",
+    sourceKind: "claude",
+    model: "claude-variant",
+    timingSource: "timestamp_fallback",
+    methodVersion: "tps-v1",
+  });
+  const historicalPerf = summarizePerf([historical], { range: RANGE, meta: { minSamples: 1 } });
+  assert.deepEqual(historicalPerf.models, []);
+  assert.deepEqual(historicalPerf.groups, []);
+  assert.equal(historicalPerf.coverage.droppedByReason.historical_method, 1);
+
+  const estimate = sample({
+    identity: "claude-estimate",
+    sourceKind: "claude",
+    model: "claude-variant",
+    timingSource: "timestamp_fallback",
+    methodEstimate: true,
+  });
+  const estimatePerf = summarizePerf([estimate], { range: RANGE, meta: { minSamples: 1 } });
+  assert.deepEqual(estimatePerf.models, [], "estimate evidence cannot create a ranked model row");
+  assert.equal(estimatePerf.coverage.sampled, 1);
+  assert.equal(estimatePerf.coverage.byFlag.METHOD_ESTIMATE, 1);
+  assert.equal(estimatePerf.groups.length, 1);
+  assert.equal(estimatePerf.groups[0].n, 1);
+  assert.equal(estimatePerf.groups[0].rank, null);
 });
 
-test("B2 mixed Codex and Claude buckets rank continuously by unrounded averages", () => {
+test("B2 mixed Codex and Claude buckets rank continuously; estimate siblings stay coverage-only", () => {
   const rows = [
     // 1.04 vs 1.03 tok/s: the same display rounding, different raw means.
     sample({
@@ -933,27 +954,33 @@ test("B2 mixed Codex and Claude buckets rank continuously by unrounded averages"
     [1, 2, 3],
   );
 
-  // One pending member disqualifies its whole bucket, even with an admitted sibling.
+  // Estimate evidence stays in coverage and gates its sampled group, while the
+  // ranked model projection contains only the admitted sibling.
   const sibling = sample({
     identity: "claude-sibling",
     sourceKind: "claude",
     model: "claude-mixed",
     timingSource: "timestamp_fallback",
   });
-  const stale = sample({
+  const estimate = sample({
     identity: "claude-stale",
     sourceKind: "claude",
     model: "claude-mixed",
     timingSource: "timestamp_fallback",
+    methodEstimate: true,
   });
-  const mixed = summarizePerf([sibling, { ...stale, window: "turn" }], {
+  const mixed = summarizePerf([sibling, estimate], {
     range: RANGE,
     meta: { minSamples: 1 },
   });
+  assert.equal(mixed.coverage.sampled, 2);
+  assert.equal(mixed.coverage.byFlag.METHOD_ESTIMATE, 1);
   assert.equal(mixed.models.length, 1);
-  assert.equal(mixed.models[0].n, 2);
-  assert.equal(mixed.models[0].window, "mixed");
-  assert.equal(mixed.models[0].rankState, "unverified");
-  assert.equal(mixed.models[0].rank, null);
+  assert.equal(mixed.models[0].n, 1);
+  assert.equal(mixed.models[0].window, "request");
+  assert.equal(mixed.models[0].rankState, "eligible");
+  assert.equal(mixed.models[0].rank, 1);
+  assert.equal(mixed.groups.length, 1);
+  assert.equal(mixed.groups[0].n, 2);
   assert.equal(mixed.groups[0].rank, null);
 });

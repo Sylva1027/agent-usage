@@ -16,9 +16,8 @@
 //    `$.model.variant`、`$.content`、`item_json` 永不进入 SQL。
 // 3. 坏 JSON 行**不中断整库**：主扫描用 `json_valid(m.data) = 1` 过滤，坏行另用计数查询记 `MALFORMED_JSON`。
 //    每个 JSON 调用都包在 `CASE WHEN json_valid(m.data) = 1 ...` 里，因为 SQLite **不保证** WHERE 先于结果列求值。
-// 4. `durationMs = streamed - created`（两者均须存在）。`streamed` 是 provider 流结束时间；
-//    `completed` 在工具执行后才写入，不能作为本来源的响应时长终点。
-// 5. `outputTokens` 只在 output 与 reasoning **各自已知**时相加；缺任一项 → `null`（不是 0）。
+// 4. v2 原始 `tokens.output` 是非推理输出；生成 TPS 直接使用它，不再与 reasoning 相加。
+// 5. `streamed - created` 是完整请求时窗，只能作为诊断值，不能作为生成阶段时长。
 // 6. `data.agent` 只证明名称 → `agentKind='unknown'`；variant/effort/provider **缺证据不从当前配置回填**。
 // 7. **未验证路径不投影**（裁定 AL-4）：`inputTokens` 仅为诊断（§17.1:200 自己标注"（诊断）"）、M1 内核
 //    **不消费**它（不参与任何计数/比率，`perfGroupKey` 十个分量里没有它），而 `$.tokens.input` /
@@ -512,6 +511,8 @@ function countMalformedAssistantRows(database) {
  * @property {number | null} windowEndMs
  * @property {number | null} durationMs
  * @property {number | null} outputTokens
+ * @property {number | null} reportedDurationMs
+ * @property {unknown} reportedReasoningTokens
  * @property {number | null} inputTokens
  * @property {number | null} requestCount
  * @property {number | null} itemCount
@@ -619,11 +620,11 @@ export async function streamOpencodePerfSamples(dbFile, source, onSample, option
         identity: [databaseIdentity, /** @type {string | number} */ (row.message_id)],
         sampleKey,
         sessionId,
-        // §17.1:196/199/220：message 时窗 + 端到端计时 + 可见输出含 reasoning。
-        window: "message",
-        timingKind: "request_e2e",
-        timingSource: "explicit",
-        tokenScope: "visible_plus_reasoning",
+        // v3 请求级生成口径。现有数据没有首/末有效输出时间，候选保留但生成耗时置空。
+        window: "request",
+        timingKind: "generation",
+        timingSource: "unknown",
+        tokenScope: "non_reasoning_output",
         status: terminal.status,
         terminalVerified: terminal.terminalVerified,
         // 本来源没有取消/进行中的证据：绝不伪造（§2-F、§6.3）。
@@ -641,11 +642,13 @@ export async function streamOpencodePerfSamples(dbFile, source, onSample, option
         // 模型证据的名称类字面量无冻结值，交给 M0.6 裁定；此处不发明字面量。
         modelEvidence: "",
         tsMs: resolveOpencodeTsMs(createdMs, completedMs),
-        // 观测边界 = [created, streamed]；工具执行发生在 streamed 之后，不计入请求窗口。
-        windowStartMs: createdMs,
-        windowEndMs: streamedMs,
-        durationMs: resolveOpencodeDuration(createdMs, streamedMs),
-        outputTokens: combineOpencodeOutputTokens(row.output_tokens, row.reasoning_tokens),
+        // 完整请求时窗只作为诊断值保留；没有首/末有效输出证据时不能进入生成 TPS。
+        windowStartMs: null,
+        windowEndMs: null,
+        durationMs: null,
+        outputTokens: isFiniteNumber(row.output_tokens) ? /** @type {number} */ (row.output_tokens) : null,
+        reportedDurationMs: resolveOpencodeDuration(createdMs, streamedMs),
+        reportedReasoningTokens: row.reasoning_tokens,
         // 裁定 AL-4：`inputTokens` 恒 `null`。它只是诊断字段、M1 内核不消费，而输入侧三个 JSON 路径
         // （`$.tokens.input` / `cache.read` / `cache.write`）未经 M0 验证 ⇒ 不投影（§3 第 6 条同源原则）。
         // 产品适配器 `opencode-usage.js` 的 `input + cache.read + cache.write` 口径属看板展示层，不在此处复用。

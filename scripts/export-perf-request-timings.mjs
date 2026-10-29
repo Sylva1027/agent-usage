@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Export bounded Magpie request timings as unauthenticated candidate evidence.
+ * Export legacy Magpie E2E timings for historical investigation, without a
+ * generation window. The application's native-source readers do not use it.
  *
  * The caller supplies the endpoint and every part of the request scope. This
  * tool performs no discovery, reads no auth configuration, sends no
@@ -14,11 +15,14 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { normalizeRequestTimingEvidence } from "../src/perf-request-timing.js";
+import {
+  mergeRequestTimingEvidence,
+  normalizeRequestTimingEvidence,
+} from "../src/perf-request-timing.js";
 
 export const PAGE_SIZE = 500;
 export const PAGE_LIMIT = 100;
-export const EXPORT_SCHEMA_VERSION = 1;
+export const EXPORT_SCHEMA_VERSION = 2;
 export const EXPORT_KIND = "perf-request-timing-export";
 export const ADMISSION = "unauthenticated_candidate";
 
@@ -284,7 +288,7 @@ function normalizeRow(row, options, evidenceOrigin) {
   return {
     kind: "record",
     record: normalizeRequestTimingEvidence({
-      schemaVersion: 1,
+      schemaVersion: 2,
       evidenceOrigin,
       responseId: row.response_id,
       requestedModel: row.req,
@@ -292,6 +296,7 @@ function normalizeRow(row, options, evidenceOrigin) {
       durationMs: row.ms,
       status: "completed",
       completedAtMs: null,
+      generation: null,
     }),
   };
 }
@@ -348,8 +353,15 @@ async function collectExport(options) {
   }
 
   const conflicts = [...variantsByResponse]
-    .filter(([, variants]) => variants.size > 1)
-    .map(([responseId, variants]) => ({ responseId, variants: variants.size }))
+    .map(([responseId, variants]) => ({
+      responseId,
+      variants,
+      state: mergeRequestTimingEvidence(
+        [...variants].map((variantKey) => records.get(variantKey)),
+      ).state,
+    }))
+    .filter(({ variants, state }) => variants.size > 1 && state === "conflict")
+    .map(({ responseId, variants }) => ({ responseId, variants: variants.size }))
     .sort((left, right) => (left.responseId < right.responseId ? -1 : left.responseId > right.responseId ? 1 : 0));
   const sortedRecords = [...records]
     .sort(([leftKey, left], [rightKey, right]) => {

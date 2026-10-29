@@ -42,6 +42,17 @@ function codexHomeId(store, codexHome) {
   return String(home.id);
 }
 
+function recoveryRows(database) {
+  return database
+    .prepare(
+      `SELECT fact_table, source_path, payload_digest, occurrence_count, payload, recorded_at
+       FROM history_replaced_facts
+       WHERE fact_table IN ('perf_samples', 'perf_sample_sources')
+       ORDER BY fact_table, source_path, payload_digest`,
+    )
+    .all();
+}
+
 function hotAndRevisionState(database, sampleKey) {
   return {
     sample: database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey),
@@ -51,15 +62,14 @@ function hotAndRevisionState(database, sampleKey) {
     revisionMetadata: database
       .prepare("SELECT value FROM store_meta WHERE key = 'history_archive_perf_revisions'")
       .get()?.value,
-    recoveryRows: database
-      .prepare(
-        `SELECT fact_table, source_path, payload_digest, occurrence_count, payload, recorded_at
-         FROM history_replaced_facts
-         WHERE fact_table IN ('perf_samples', 'perf_sample_sources')
-         ORDER BY fact_table, source_path, payload_digest`,
-      )
-      .all(),
+    recoveryRows: recoveryRows(database),
   };
+}
+
+function stableRecoveryRows(database) {
+  return recoveryRows(database)
+    .map(({ recorded_at, ...row }) => row)
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
 
 function timingBoundaryState(database, homeId, responseId) {
@@ -107,10 +117,8 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: COLD_END_MS })
       .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
     assert.ok(coldSample, "fixture must expose a computable cold Codex perf sample");
-    const [, , threadId, turnId] = JSON.parse(coldSample.sampleKey);
-    const turnNumber = Number(/^turn-(\d+)$/.exec(String(turnId))?.[1]);
-    assert.ok(Number.isSafeInteger(turnNumber));
-    const responseId = `response-${turnNumber}-1`;
+    const [, , threadId, , responseId] = JSON.parse(coldSample.sampleKey);
+    assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
 
@@ -146,7 +154,12 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
 
     const archivedHomeId = codexHomeId(archived, fixture.codexHome);
     const oracleHomeId = codexHomeId(oracle, fixture.codexHome);
-    const firstTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 500 };
+    const firstTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@1",
+      durationMs: baseTiming.durationMs + 500,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
+    };
     archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [firstTiming],
@@ -170,7 +183,12 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
     const publishedState = hotAndRevisionState(archived.database, coldSample.sampleKey);
     assert.equal(typeof publishedState.revisionMetadata, "string");
 
-    const secondTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 750 };
+    const secondTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@0",
+      durationMs: baseTiming.durationMs + 750,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 750 },
+    };
     const secondTimingImport = archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [secondTiming],
@@ -271,20 +289,33 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
     await oracle.sync({ options: fixture.reportOptions });
     const expected = await oracle.summarizeHistory(FILTERS);
     const actual = await archived.summarizeHistory(FILTERS);
+    const actualRecoveryRows = stableRecoveryRows(archived.database);
+    const oracleRecoveryRows = stableRecoveryRows(oracle.database);
+    const recoveryKeys = actualRecoveryRows.map((row) =>
+      JSON.stringify([row.fact_table, row.source_path, row.payload_digest]),
+    );
+    assert.equal(new Set(recoveryKeys).size, recoveryKeys.length, "recovery facts must have unique durable keys");
+    assert.ok(
+      actualRecoveryRows.every((row) => Number(row.occurrence_count) === 1),
+      "retry must not duplicate an existing recovery fact",
+    );
+    assert.deepEqual(
+      actualRecoveryRows,
+      oracleRecoveryRows,
+      "the retried archive must retain the same complete recovery-fact set as the oracle",
+    );
     assert.deepEqual(
       {
         candidateUnchanged: fileSha256(candidateFile) === candidateDigest,
         importChanged: secondTimingImport.changed,
         perf: stablePerfEvidence(actual.perf),
-        recoveryRows: hotAndRevisionState(archived.database, coldSample.sampleKey).recoveryRows,
       },
       {
         candidateUnchanged: true,
         importChanged: true,
         perf: stablePerfEvidence(expected.perf),
-        recoveryRows: publishedState.recoveryRows,
       },
-      "retry without metadata repair must publish the full delta without duplicating recovery facts",
+      "retry without metadata repair must publish the full delta",
     );
   } finally {
     archived.close();

@@ -146,22 +146,6 @@ function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 }
 
-function magpieLedger(fixture) {
-  return jsonl(
-    fixture.timingRecords.map((record) => ({
-      agent: "codex",
-      provider: "codex",
-      req: `codex/${record.requestedModel}`,
-      model: record.requestedModel,
-      response_id: record.responseId,
-      status: 200,
-      ms: record.durationMs,
-      out: record.reportedOutputTokens,
-      ep: "/backend-api/codex/responses",
-    })),
-  );
-}
-
 function localHourKey(value) {
   // API tests derive the expected bucket with the same local-time semantics as the dashboard.
   const date = new Date(value);
@@ -479,7 +463,7 @@ test("server accepts named recent reset windows and calendar ranges", async () =
       assert.equal(response.status, 200, JSON.stringify(body));
       assert.equal(body.summary.range.bucket, bucket);
       if (["上周", "上一个5h"].includes(value)) {
-        assert.equal(body.summary.range.windowEndExclusive, new Date(end + 30_000).toISOString());
+        assert.equal(body.summary.range.windowEndExclusive, new Date(end).toISOString());
         assert.ok(body.summary.timeline.every((row) => row.total.total > 0));
       }
       if (slots) {
@@ -570,9 +554,18 @@ test("server reports status changes and refreshes cached usage reports", async (
   }
 });
 
-test("Magpie ledger-only status retries failures and preserves skipped/frozen usage", async () => {
+test("local Magpie ledgers never affect native HTTP publication or frozen snapshots", async () => {
   const fixture = createPerfCodexIntegrationFixture();
-  const options = fixture.serverOptions;
+  const options = {
+    ...fixture.serverOptions,
+    lookupRequestTiming: () => ({
+      state: "missing",
+      durationMs: null,
+      reportedOutputTokens: null,
+      requestedModel: "",
+      generation: null,
+    }),
+  };
   const ledgerFile = path.join(options.homeDir, ".config", "magpie", "usage.jsonl");
   const server = createUsageServer(options);
   try {
@@ -584,71 +577,68 @@ test("Magpie ledger-only status retries failures and preserves skipped/frozen us
       assert.equal(response.status, 200, JSON.stringify(body));
       return body;
     };
-    const before = await get("usage?preset=all&view=dashboard");
-    const fullBefore = await get("usage?preset=all&detail=full&skipCheck=1");
-    assert.equal(before.summary.perf.models[0].n, 0);
-    assert.equal((await get(`status?since=${before.fingerprint}`)).changed, false);
+    const dashboard = await get("usage?preset=all&view=dashboard");
+    const full = await get("usage?preset=all&detail=full&skipCheck=1");
     const frozen = await get("usage?preset=all&freeze=1&skipCheck=1");
-    assert.equal(frozen.fingerprint, before.fingerprint);
+    assert.equal(dashboard.summary.perf.models[0].n, 0);
+    assert.equal(full.summary.perf.models[0].n, 0);
+    assert.equal(frozen.fingerprint, dashboard.fingerprint);
+    assert.equal((await get(`status?since=${dashboard.fingerprint}`)).changed, false);
 
-    await mkdir(path.dirname(ledgerFile), { recursive: true });
-    await writeFile(ledgerFile, magpieLedger(fixture));
-    const observed = await get(`status?since=${before.fingerprint}`);
-    assert.equal(observed.changed, true);
-    assert.equal((await get(`status?since=${before.fingerprint}`)).fingerprint, observed.fingerprint);
-    const skipped = await get("usage?preset=all&view=dashboard&skipCheck=1");
-    assert.equal(skipped.fingerprint, before.fingerprint);
-    assert.equal(skipped.summary.perf.models[0].n, 0);
-    assert.equal((await get("usage?preset=all&detail=full&skipCheck=1")).fingerprint, fullBefore.fingerprint);
-    const skippedFreeze = await get("usage?preset=all&freeze=1&skipCheck=1");
-    assert.equal(skippedFreeze.fingerprint, before.fingerprint);
-
-    const connection = new DatabaseSync(options.databaseFile);
-    try {
-      connection.exec(`CREATE TRIGGER reject_magpie BEFORE INSERT ON perf_request_timing_evidence
-        BEGIN SELECT RAISE(FAIL, 'injected Magpie import failure'); END`);
-    } finally {
-      connection.close();
-    }
-    const failed = await get("usage?preset=all&view=dashboard");
-    assert.equal(failed.fingerprint, before.fingerprint);
-    assert.equal(failed.summary.perf.models[0].n, 0);
-    assert.equal((await get(`status?since=${failed.fingerprint}`)).changed, true);
-    const recovery = new DatabaseSync(options.databaseFile);
-    try {
-      recovery.exec("DROP TRIGGER reject_magpie");
-    } finally {
-      recovery.close();
-    }
-
-    const published = await get("usage?preset=all&view=dashboard");
-    assert.deepEqual(published.summary.totals, before.summary.totals);
-    assert.equal(published.summary.perf.models[0].n, fixture.expected.n);
-    assert.equal(published.summary.perf.models[0].averageTps, fixture.expected.tps.pooled);
-    assert.equal((await get(`status?since=${published.fingerprint}`)).changed, false);
-    assert.notEqual((await get("usage?preset=all&detail=full&skipCheck=1")).fingerprint, fullBefore.fingerprint);
-    const frozenAfter = await get(`usage?preset=all&snapshot=${frozen.snapshotId}`);
-    assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
-    assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
-
-    let current = published;
-    const unmatched = {
+    const timing = fixture.timingRecords[0];
+    const ledgerRecord = {
       agent: "codex",
-      req: "codex/missing-model",
-      response_id: "unmatched-response",
+      provider: "codex",
+      req: `codex/${timing.requestedModel}`,
+      model: timing.requestedModel,
+      response_id: timing.responseId,
       status: 200,
-      ms: 1000,
-      out: 100,
+      ms: timing.durationMs,
+      out: timing.reportedOutputTokens,
+      generation: timing.generation,
       ep: "/backend-api/codex/responses",
     };
-    for (const extra of ["invalid\n", jsonl([unmatched])]) {
-      await appendFile(ledgerFile, extra);
-      assert.equal((await get(`status?since=${current.fingerprint}`)).changed, true);
-      const ignored = await get("usage?preset=all&view=dashboard");
-      assert.deepEqual(ignored.summary.totals, published.summary.totals);
-      assert.deepEqual(ignored.summary.perf.models, published.summary.perf.models);
-      assert.equal((await get(`status?since=${ignored.fingerprint}`)).changed, false);
-      current = ignored;
+    const ledgerStates = [
+      async () => {
+        await mkdir(path.dirname(ledgerFile), { recursive: true });
+        await writeFile(ledgerFile, jsonl([ledgerRecord]));
+      },
+      async () => {
+        await appendFile(ledgerFile, jsonl([{ ...ledgerRecord, response_id: "appended-ledger-only-response" }]));
+      },
+      async () => {
+        await writeFile(ledgerFile, "invalid\n");
+      },
+    ];
+    for (const changeLedger of ledgerStates) {
+      await changeLedger();
+      const status = await get(`status?since=${dashboard.fingerprint}`);
+      assert.equal(status.changed, false);
+      assert.equal(status.fingerprint, dashboard.fingerprint);
+
+      const dashboardAfter = await get("usage?preset=all&view=dashboard");
+      assert.equal(dashboardAfter.fingerprint, dashboard.fingerprint);
+      assert.deepEqual(dashboardAfter.summary.totals, dashboard.summary.totals);
+      assert.deepEqual(dashboardAfter.summary.perf.models, dashboard.summary.perf.models);
+
+      const fullAfter = await get("usage?preset=all&detail=full&skipCheck=1");
+      assert.equal(fullAfter.fingerprint, full.fingerprint);
+      assert.deepEqual(fullAfter.summary.totals, full.summary.totals);
+      assert.deepEqual(fullAfter.summary.perf.models, full.summary.perf.models);
+
+      const frozenAfter = await get(`usage?preset=all&snapshot=${frozen.snapshotId}`);
+      assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
+      assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
+
+      const evidenceDatabase = new DatabaseSync(options.databaseFile, { readOnly: true });
+      try {
+        assert.equal(
+          Number(evidenceDatabase.prepare("SELECT COUNT(*) AS n FROM perf_request_timing_evidence").get().n),
+          0,
+        );
+      } finally {
+        evidenceDatabase.close();
+      }
     }
   } finally {
     await server.close();
@@ -656,59 +646,86 @@ test("Magpie ledger-only status retries failures and preserves skipped/frozen us
   }
 });
 
-test("Magpie publication across workers keeps skipped usage and frozen confirmation consistent", async () => {
+test("explicit fixture timing evidence stays pending until another worker publishes it", async () => {
   const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
   const first = createUsageServer(fixture.serverOptions);
   const second = createUsageServer(fixture.serverOptions);
   try {
+    await store.sync({ options: fixture.reportOptions });
+    // This fixture models an explicit upstream timing import; it does not assert that native stream capture exists.
+    await fixture.seedRequestTiming(store, fixture.timingRecords.slice(0, 1));
     await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
     const firstBase = `http://127.0.0.1:${first.address().port}`;
-    const before = await fetch(`${firstBase}/api/usage?preset=all`).then((response) => response.json());
-    const ledgerFile = path.join(fixture.serverOptions.homeDir, ".config", "magpie", "usage.jsonl");
-    await mkdir(path.dirname(ledgerFile), { recursive: true });
-    await writeFile(ledgerFile, magpieLedger(fixture));
     await new Promise((resolve) => second.listen(0, "127.0.0.1", resolve));
     const secondBase = `http://127.0.0.1:${second.address().port}`;
-    const published = await fetch(`${secondBase}/api/usage?preset=all`).then((response) => response.json());
-    assert.equal(published.summary.perf.models[0].n, fixture.expected.n);
-    const status = await fetch(`${firstBase}/api/status?since=${before.fingerprint}`).then((response) =>
-      response.json(),
-    );
-    assert.equal(status.changed, true);
-    assert.equal(status.fingerprint, published.fingerprint);
-    const skipped = await fetch(`${firstBase}/api/usage?preset=all&skipCheck=1`).then((response) => response.json());
-    assert.equal(skipped.fingerprint, published.fingerprint);
-    assert.deepEqual(skipped.summary.perf.models, published.summary.perf.models);
-    const frozen = await fetch(`${firstBase}/api/usage?preset=all&freeze=1&skipCheck=1`).then((response) =>
-      response.json(),
-    );
-    assert.equal(frozen.fingerprint, published.fingerprint);
-    await appendFile(ledgerFile, "invalid\n");
-    await fetch(`${secondBase}/api/usage?preset=all`).then((response) => response.json());
-    const frozenAfter = await fetch(`${firstBase}/api/usage?preset=all&snapshot=${frozen.snapshotId}`).then(
-      (response) => response.json(),
-    );
+    const get = async (baseUrl, query) => {
+      const response = await fetch(`${baseUrl}/api/${query}`);
+      const body = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(body));
+      return body;
+    };
+
+    const initial = await get(firstBase, "usage?preset=all&view=dashboard");
+    assert.equal(initial.summary.perf.models[0].n, 1);
+    const frozen = await get(firstBase, "usage?preset=all&freeze=1&skipCheck=1");
+    assert.equal(frozen.fingerprint, initial.fingerprint);
+
+    const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(fixture.codexHome));
+    assert.ok(home, "fixture must discover the Codex home before importing the remaining timing evidence");
+    const imported = store.importRequestTimingEvidence({
+      homeId: String(home.id),
+      records: fixture.timingRecords.slice(1),
+      reviewedOrigins: ["fixture@1"],
+    });
+    assert.equal(imported.changed, true);
+
+    const pendingStatus = await get(firstBase, `status?since=${initial.fingerprint}`);
+    assert.equal(pendingStatus.changed, true);
+    assert.notEqual(pendingStatus.fingerprint, initial.fingerprint);
+    const stillPublished = await get(firstBase, "usage?preset=all&view=dashboard&skipCheck=1");
+    assert.equal(stillPublished.fingerprint, initial.fingerprint);
+    assert.equal(stillPublished.summary.perf.models[0].n, 1);
+
+    const publishedBySecond = await get(secondBase, "usage?preset=all&view=dashboard");
+    assert.equal(publishedBySecond.summary.perf.models[0].n, fixture.expected.n);
+    assert.equal(publishedBySecond.summary.perf.models[0].averageTps, fixture.expected.tps.pooled);
+
+    const publishedStatus = await get(firstBase, `status?since=${pendingStatus.fingerprint}`);
+    assert.equal(publishedStatus.changed, true);
+    assert.equal(publishedStatus.fingerprint, publishedBySecond.fingerprint);
+    const publishedByFirst = await get(firstBase, "usage?preset=all&view=dashboard");
+    assert.equal(publishedByFirst.fingerprint, publishedBySecond.fingerprint);
+    assert.deepEqual(publishedByFirst.summary.perf.models, publishedBySecond.summary.perf.models);
+
+    const frozenAfter = await get(firstBase, `usage?preset=all&snapshot=${frozen.snapshotId}`);
     assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
+    assert.equal(frozenAfter.summary.perf.models[0].n, 1);
     assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
+
+    const publishedFreeze = await get(firstBase, "usage?preset=all&freeze=1&skipCheck=1");
+    assert.equal(publishedFreeze.fingerprint, publishedBySecond.fingerprint);
+    assert.equal(publishedFreeze.summary.perf.models[0].n, fixture.expected.n);
   } finally {
     await first.close();
     await second.close();
+    store.close();
     fixture.close();
   }
 });
 
-test("Magpie imported runtime uses its published confirmation and ignores the local ledger", async () => {
+test("imported runtime stays bound to its database and ignores local Magpie ledgers", async () => {
   const fixture = await makeFixtureHome();
   const options = { ...fixture, env: {}, automaticDiscoveryEnabled: false };
   const ledgerFile = path.join(fixture.homeDir, ".config", "magpie", "usage.jsonl");
-  const store = new UsageStore(options);
+  let store = new UsageStore(options);
   let server;
   try {
     await mkdir(path.dirname(ledgerFile), { recursive: true });
     await writeFile(ledgerFile, "invalid\n");
-    const seeded = await store.sync({ options });
-    assert.match(seeded.magpieTimingFingerprint, /^[a-f0-9]{64}$/);
+    await store.sync({ options });
     store.close();
+    store = null;
     server = createUsageServer({
       ...options,
       importContext: { pricingCatalog: structuredClone(getPricingCatalog()), serviceTierEvidenceSnapshot: null },
@@ -725,10 +742,13 @@ test("Magpie imported runtime uses its published confirmation and ignores the lo
     const status = await fetch(`${baseUrl}/api/status?since=${before.fingerprint}`).then((response) => response.json());
     assert.equal(status.changed, false);
     assert.equal(status.fingerprint, before.fingerprint);
+    const dashboard = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
+    assert.equal(dashboard.fingerprint, before.fingerprint);
+    assert.equal(dashboard.summary.totals.total, 123);
     const frozen = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
     assert.equal(frozen.fingerprint, before.fingerprint);
   } finally {
-    store.close();
+    store?.close();
     await server?.close();
     await rm(fixture.homeDir, { recursive: true, force: true });
   }
@@ -817,6 +837,7 @@ test("quota API forces its server bucket, returns capability state, and keeps sn
         timestamp: liveUsageAt,
         payload: { id: "quota-usage", source: "cli", originator: "codex-tui", cwd: "/work/quota" },
       },
+      { type: "turn_context", timestamp: liveUsageAt, payload: { model: "gpt-6-sol" } },
       {
         timestamp: liveUsageAt,
         type: "event_msg",
@@ -850,7 +871,8 @@ test("quota API forces its server bucket, returns capability state, and keeps sn
     assert.equal(live.quota.windows.quota_5h.state, "available");
     assert.equal(live.summary.timeline.length, 10);
     assert.equal(live.summary.totals.total, 50);
-    assert.equal(live.summary.comparison, null);
+    assert.equal(live.summary.comparison.previousRange, null);
+    assert.equal(live.summary.comparison.label, "较上一5h");
     assert.deepEqual(live.summary.records, {});
     assert.equal(live.report, undefined);
 

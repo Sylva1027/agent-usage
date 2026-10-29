@@ -1113,14 +1113,46 @@ test("renderComparisonHtml names the previous token period for day, week, and mo
   }
 });
 
-test("renderComparisonHtml explains unavailable comparisons and keeps the previous-period card compact", () => {
+test("renderComparisonHtml keeps three quota cards with dashes until a previous cycle is available", () => {
+  for (const [preset, label, previousLabel] of [
+    ["quota_5h", "较上一5h", "上一5h Tokens"],
+    ["quota_week", "较上一7d", "上一7d Tokens"],
+  ]) {
+    const html = renderComparisonHtml({ label, previousRange: null }, { preset });
+    assert.equal((html.match(/<article /g) || []).length, 3);
+    assert.equal((html.match(/<strong>—<\/strong>/g) || []).length, 3);
+    assert.match(html, new RegExp(`<span>${label}</span>`));
+    assert.match(html, new RegExp(`<span>${previousLabel}</span>`));
+    assert.doesNotMatch(html, /0\.00M/);
+  }
+});
+
+test("renderComparisonHtml keeps confirmed zero totals and treats a zero denominator as unavailable", () => {
+  const html = renderComparisonHtml({
+    label: "较上一7d",
+    previousRange: { start: "2026-09-18T00:00:00.000Z", end: "2026-09-24T23:59:59.999Z" },
+    previousTotals: { total: 0 },
+    totalDelta: 0,
+    percentChange: null,
+    averageDelta: 0,
+    averagePercentChange: null,
+  });
+
+  assert.equal((html.match(/<article /g) || []).length, 3);
+  assert.equal((html.match(/<strong title="0">0<\/strong>/g) || []).length, 3);
+  assert.equal((html.match(/<small>—<\/small>/g) || []).length, 2);
+  assert.match(html, /较上一7d/);
+  assert.match(html, /上一7d Tokens/);
+  assert.doesNotMatch(html, /0\.00M/);
+});
+
+test("renderComparisonHtml keeps unavailable comparisons to the existing three-card strip", () => {
   const allTimeHtml = renderComparisonHtml({ label: "暂无对比", previousRange: null });
-  assert.match(allTimeHtml, /暂无对比/);
-  assert.doesNotMatch(allTimeHtml, /<small>/);
-  assert.doesNotMatch(allTimeHtml, /上一周期 tokens/);
+  assert.equal((allTimeHtml.match(/<article /g) || []).length, 3);
+  assert.equal((allTimeHtml.match(/<strong>—<\/strong>/g) || []).length, 3);
   const incompleteCustomHtml = renderComparisonHtml({ label: "较上一等长周期", previousRange: null });
-  assert.match(incompleteCustomHtml, /暂无对比/);
-  assert.doesNotMatch(incompleteCustomHtml, /<small>/);
+  assert.match(incompleteCustomHtml, /较上一等长周期/);
+  assert.equal((incompleteCustomHtml.match(/<article /g) || []).length, 3);
 
   const customHtml = renderComparisonHtml({
     label: "较上一等长周期",

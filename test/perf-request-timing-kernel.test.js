@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { normalizePerfSample, summarizePerf } from "../src/perf-stats.js";
-import { resolveCodexTurnRequestTiming } from "../src/perf-sources/codex-request-timing.js";
+import { generationPerfValues } from "../src/perf-request-timing.js";
+import { resolveCodexRequestTiming, resolveCodexTurnRequestTiming } from "../src/perf-sources/codex-request-timing.js";
 
 const HOME = "home-synthetic";
 const THREAD = "thread-synthetic";
@@ -14,7 +15,7 @@ const SIX_TURN_FIXTURE_URL = new URL(
   import.meta.url,
 );
 
-function request(responseId, outputTokens) {
+function request(responseId, outputTokens, overrides = {}) {
   return {
     responseId,
     outputTokens,
@@ -22,6 +23,7 @@ function request(responseId, outputTokens) {
     timestampMs: 1_800_000_000_000,
     sourcePath: "synthetic.jsonl",
     lineNumber: 1,
+    ...overrides,
   };
 }
 
@@ -39,21 +41,34 @@ function turn(requests, overrides = {}) {
   };
 }
 
-function available(durationMs, outputTokens, requestedModel = MODEL) {
+function available(durationMs, outputTokens, requestedModel = MODEL, generation = null) {
   return {
     state: "available",
     durationMs,
     reportedOutputTokens: outputTokens,
     requestedModel,
+    generation,
   };
 }
 
 function missing() {
-  return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+  return {
+    state: "missing",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: "",
+    generation: null,
+  };
 }
 
 function conflict() {
-  return { state: "conflict", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+  return {
+    state: "conflict",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: "",
+    generation: null,
+  };
 }
 
 function lookupFor(entries) {
@@ -76,7 +91,7 @@ const completeLookup = () =>
     ]),
   );
 
-test("100 + 900 tokens over 1 + 9 seconds is one complete turn at 100 tok/s", () => {
+test("raw request E2E evidence remains complete without becoming a v3 speed sample", () => {
   const lookup = completeLookup();
   const timing = resolveCodexTurnRequestTiming(HOME, turn([requestA, requestB]), lookup);
 
@@ -86,7 +101,6 @@ test("100 + 900 tokens over 1 + 9 seconds is one complete turn at 100 tok/s", ()
     timedRequestCount: 2,
     requestCount: 2,
   });
-  assert.equal((1_000 / timing.durationMs) * 1_000, 100);
   assert.deepEqual(lookup.calls, [
     {
       homeId: HOME,
@@ -105,6 +119,65 @@ test("100 + 900 tokens over 1 + 9 seconds is one complete turn at 100 tok/s", ()
       outputTokens: 900,
     },
   ]);
+});
+
+test("one exact response preserves raw totals and exposes net generation values", () => {
+  const generation = {
+    outputTokens: 80,
+    durationMs: 400,
+    startOutputTokens: 10,
+    timingKind: "first_last_output",
+  };
+  const lookup = lookupFor(
+    new Map([[requestA.responseId, available(1_000, requestA.outputTokens, MODEL, generation)]]),
+  );
+  const nativeRequest = request(requestA.responseId, requestA.outputTokens, {
+    reasoningOutputTokensKnown: true,
+    reasoningOutputTokens: 20,
+  });
+  const timing = resolveCodexRequestTiming(HOME, turn([nativeRequest]), nativeRequest, lookup);
+
+  assert.deepEqual(timing, {
+    state: "available",
+    durationMs: 1_000,
+    reportedOutputTokens: 100,
+    requestedModel: MODEL,
+    generation,
+  });
+  assert.equal(lookup.calls[0].reasoningOutputTokens, 20, "native reasoning knownness must survive the lookup");
+  assert.deepEqual(generationPerfValues(timing.generation), {
+    outputTokens: 70,
+    durationMs: 400,
+  });
+  assert.equal(generationPerfValues(null), null);
+
+  const normalized = normalizePerfSample({
+    sourceKind: "codex",
+    identity: [THREAD, TURN, requestA.responseId],
+    homeId: HOME,
+    threadId: THREAD,
+    turnId: TURN,
+    model: MODEL,
+    reasoningEffort: "high",
+    status: "completed",
+    terminalVerified: true,
+    timingSource: "explicit",
+    tsMs: requestA.timestampMs,
+    outputTokens: 70,
+    durationMs: 400,
+    requestCount: 1,
+  });
+  assert.ok(normalized.sample, normalized.warningCode);
+  assert.equal(normalized.sample.window, "request");
+  assert.equal(normalized.sample.timingKind, "generation");
+  assert.equal(normalized.sample.tokenScope, "non_reasoning_output");
+
+  const summary = summarizePerf([normalized.sample], { meta: { minSamples: 1 } });
+  assert.equal(summary.coverage.sampled, 1);
+  assert.equal(summary.groups[0].n, 1);
+  assert.equal(summary.groups[0].sums.outputTokens, 70);
+  assert.equal(summary.groups[0].sums.durationMs, 400);
+  assert.equal(summary.groups[0].tps.pooled, 175);
 });
 
 test("a missing request timing leaves the whole turn without a denominator", () => {
@@ -320,7 +393,7 @@ test("a missing lookup callback or incomplete request set is missing", () => {
   );
 });
 
-test("the six-turn A fixture resolves to one complete sample per turn and the frozen statistics", async () => {
+test("the six-turn A fixture remains readable as explicit historical v2 E2E evidence", async () => {
   const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
   const requestsById = new Map(
     fixture.turns.flatMap((fixtureTurn) =>
@@ -371,6 +444,10 @@ test("the six-turn A fixture resolves to one complete sample per turn and the fr
       status: "completed",
       terminalVerified: true,
       timingSource: "explicit",
+      methodVersion: "tps-v2",
+      window: "turn",
+      timingKind: "request_e2e",
+      tokenScope: "reported_output_includes_reasoning",
       tsMs: Date.parse(fixtureTurn.endedAt),
       outputTokens: fixtureTurn.outputTokens,
       durationMs: timing.durationMs,
@@ -390,21 +467,92 @@ test("the six-turn A fixture resolves to one complete sample per turn and the fr
   assert.equal(durationMs, fixture.totals.durationMs);
 
   const summary = summarizePerf(samples, { meta: { minSamples: 1 } });
+  assert.equal(summary.coverage.eligible, 6);
+  assert.equal(summary.coverage.sampled, 0);
+  assert.equal(summary.coverage.droppedByReason.historical_method, 6);
+  assert.deepEqual(summary.groups, []);
+  assert.deepEqual(summary.models, [], "legacy E2E evidence must never become a current v3 speed");
+});
+
+test("genuine v3 request windows use N-B and D for current pooled and nearest-rank statistics", () => {
+  const specs = [
+    ["response-v3-1", 30, 20, 10, 1_000, 1_500, "first_last_output"],
+    ["response-v3-2", 50, 40, 10, 1_000, 1_700, "explicit"],
+    ["response-v3-3", 70, 60, 10, 1_000, 1_900, "first_output_response_end"],
+    ["response-v3-4", 90, 80, 10, 1_000, 2_100, "first_last_output"],
+    ["response-v3-5", 110, 100, 10, 1_000, 2_300, "explicit"],
+    ["response-v3-6", 130, 120, 10, 1_000, 2_500, "first_output_response_end"],
+  ];
+  const entries = new Map();
+  for (const [
+    responseId,
+    rawOutput,
+    generationOutput,
+    startOutput,
+    generationDuration,
+    rawDuration,
+    timingKind,
+  ] of specs) {
+    entries.set(
+      responseId,
+      available(rawDuration, rawOutput, MODEL, {
+        outputTokens: generationOutput,
+        durationMs: generationDuration,
+        startOutputTokens: startOutput,
+        timingKind,
+      }),
+    );
+  }
+  const lookup = lookupFor(entries);
+  const samples = [];
+  for (const [responseId, rawOutput, , , , ,] of specs) {
+    const ledgerRequest = request(responseId, rawOutput);
+    const ledgerTurn = turn([ledgerRequest], { turnId: `${TURN}-${responseId}` });
+    const timing = resolveCodexRequestTiming(HOME, ledgerTurn, ledgerRequest, lookup);
+    assert.equal(timing.state, "available");
+    assert.equal(timing.reportedOutputTokens, rawOutput);
+    const perfValues = generationPerfValues(timing.generation);
+    assert.ok(perfValues);
+
+    const normalized = normalizePerfSample({
+      sourceKind: "codex",
+      identity: [THREAD, ledgerTurn.turnId, responseId],
+      homeId: HOME,
+      threadId: THREAD,
+      turnId: ledgerTurn.turnId,
+      model: MODEL,
+      reasoningEffort: "high",
+      status: "completed",
+      terminalVerified: true,
+      timingSource: "explicit",
+      tsMs: ledgerRequest.timestampMs,
+      outputTokens: perfValues.outputTokens,
+      durationMs: perfValues.durationMs,
+      requestCount: 1,
+    });
+    assert.ok(normalized.sample, normalized.warningCode);
+    assert.equal(normalized.sample.window, "request");
+    assert.equal(normalized.sample.timingKind, "generation");
+    assert.equal(normalized.sample.tokenScope, "non_reasoning_output");
+    samples.push(normalized.sample);
+  }
+
+  const summary = summarizePerf(samples, { meta: { minSamples: 1 } });
   assert.equal(summary.coverage.sampled, 6);
   assert.equal(summary.groups.length, 1);
   assert.equal(summary.models.length, 1);
   const group = summary.groups[0];
   const model = summary.models[0];
   assert.equal(group.n, 6);
-  assert.equal(group.sums.outputTokens, 233_379);
-  assert.equal(group.sums.durationMs, 1_742_789);
-  assert.equal(group.tps.pooled, 133.91121931570603);
-  assert.equal(group.tps.p10, 62.28098120420516);
-  assert.equal(group.tps.p90, 148.15868290876423);
+  assert.equal(group.sums.outputTokens, 360, "(10 + 30 + 50 + 70 + 90 + 110)");
+  assert.equal(group.sums.durationMs, 6_000);
+  assert.equal(group.tps.pooled, 60);
+  assert.equal(group.tps.p10, 10);
+  assert.equal(group.tps.p90, 110);
   assert.equal(model.n, 6);
-  assert.equal(model.averageTps, 133.91121931570603);
-  assert.equal(model.p10, 62.28098120420516);
-  assert.equal(model.p90, 148.15868290876423);
+  assert.equal(model.averageTps, 60);
+  assert.equal(model.p10, 10);
+  assert.equal(model.p90, 110);
 });
 
 test("fixture request failures never publish a partial denominator or fall back to item spans", async () => {

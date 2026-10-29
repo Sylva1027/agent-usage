@@ -129,7 +129,7 @@ function generatingResponses(database, homeId, threadId, turnId) {
   return [...responses].sort();
 }
 
-test("candidate rejects a cold Codex sample when one linked native response has no raw evidence", async () => {
+test("v3 candidate selects the exact response and ignores a missing sibling evidence row", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-source.sqlite");
   const controlCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-control.sqlite");
@@ -142,14 +142,14 @@ test("candidate rejects a cold Codex sample when one linked native response has 
     await store.sync({ options: fixture.reportOptions });
     await fixture.seedRequestTiming(store);
     const coldStartMs = Number(store.database.prepare("SELECT MIN(timestamp_ms) AS value FROM events").get().value);
-    const selected = store.database
+    const turnSamples = store.database
       .prepare(
-        `SELECT sample_key, home_id
+        `SELECT sample_key, home_id, ts_ms
          FROM perf_samples AS samples
          WHERE ts_ms >= ? AND ts_ms < ?
            AND source_kind = 'codex'
            AND status = 'completed'
-           AND timing_kind = 'request_e2e'
+           AND timing_kind = 'generation'
            AND timing_source = 'explicit'
            AND EXISTS (
              SELECT 1
@@ -159,26 +159,33 @@ test("candidate rejects a cold Codex sample when one linked native response has 
                ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
              WHERE dependencies.sample_key = samples.sample_key
            )
-         ORDER BY ts_ms, sample_key
-         LIMIT 1`,
+         ORDER BY ts_ms, sample_key`,
       )
-      .get(coldStartMs, COLD_END_MS);
+      .all(coldStartMs, Date.parse("2026-10-04T12:05:00.000Z"));
+    const selected = turnSamples.find((row) => {
+      const key = JSON.parse(String(row.sample_key));
+      return key[3] === "turn-25" && key[4] === "response-25-1";
+    });
     assert.ok(selected, "fixture must expose a cold completed explicit Codex sample");
     const sampleKey = String(selected.sample_key);
     const homeId = String(selected.home_id);
-    const [, keyHomeId, threadId, turnId] = JSON.parse(sampleKey);
+    const endMs = Number(selected.ts_ms) + 1;
+    const [, keyHomeId, threadId, turnId, responseId] = JSON.parse(sampleKey);
     assert.equal(keyHomeId, homeId);
+    assert.equal(responseId, "response-25-1");
     const responses = generatingResponses(store.database, homeId, threadId, turnId);
-    assert.equal(responses.length, 1, "the selected cold turn must resolve to exactly one generating native response");
-    const responseId = responses[0];
+    assert.deepEqual(responses, ["response-25-1", "response-25-2"]);
+    const siblingResponseId = "response-25-2";
     const original = sourceGraph(store.database, sampleKey, homeId, responseId);
     assert.ok(original.selectedLinkCount > 0, "the generating response must retain its native link");
     assert.ok(original.selectedEvidenceCount > 0, "the generating response must initially retain raw evidence");
     assert.ok(original.otherEvidenceCount > 0, "the owner must retain valid sibling response evidence");
+    const sibling = sourceGraph(store.database, sampleKey, homeId, siblingResponseId);
+    assert.ok(sibling.selectedEvidenceCount > 0, "the sibling response must initially retain raw evidence");
 
     await createHistoryArchiveCandidate(store.database, controlCandidateFile, {
       startMs: coldStartMs,
-      endMs: COLD_END_MS,
+      endMs,
     });
     await verifyHistoryArchiveCandidate(controlCandidateFile);
     assert.deepEqual(
@@ -189,20 +196,24 @@ test("candidate rejects a cold Codex sample when one linked native response has 
 
     await backup(store.database, isolatedFile);
     const isolated = new DatabaseSync(isolatedFile);
-    let partial;
+    let siblingMissing;
     try {
       const deleted = isolated
         .prepare("DELETE FROM perf_request_timing_evidence WHERE home_id = ? AND response_id = ?")
-        .run(homeId, responseId);
-      assert.equal(Number(deleted.changes), original.selectedEvidenceCount);
-      partial = sourceGraph(isolated, sampleKey, homeId, responseId);
-      assert.equal(partial.selectedEvidenceCount, 0, "the generating response must retain no raw evidence");
-      assert.ok(partial.selectedLinkCount > 0, "the generating response link must remain");
-      assert.ok(partial.otherEvidenceCount > 0, "sibling response evidence must remain valid");
+        .run(homeId, siblingResponseId);
+      assert.equal(Number(deleted.changes), sibling.selectedEvidenceCount);
+      siblingMissing = sourceGraph(isolated, sampleKey, homeId, responseId);
+      assert.equal(siblingMissing.selectedEvidenceCount, original.selectedEvidenceCount);
+      assert.equal(siblingMissing.selectedLinkCount, original.selectedLinkCount);
+      assert.equal(
+        siblingMissing.otherEvidenceCount,
+        original.otherEvidenceCount - sibling.selectedEvidenceCount,
+        "removing the sibling evidence must reduce only the sibling contribution",
+      );
       assert.deepEqual(
-        { ...partial, selectedEvidenceCount: original.selectedEvidenceCount },
+        { ...siblingMissing, otherEvidenceCount: original.otherEvidenceCount },
         original,
-        "removing one response's evidence must leave the sample, links, owners, and identities unchanged",
+        "removing a sibling's evidence must leave the selected response's facts unchanged",
       );
     } finally {
       isolated.close();
@@ -210,33 +221,63 @@ test("candidate rejects a cold Codex sample when one linked native response has 
 
     const isolatedReadOnly = new DatabaseSync(isolatedFile, { readOnly: true });
     try {
-      await assert.rejects(
-        () =>
-          createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
-            startMs: coldStartMs,
-            endMs: COLD_END_MS,
-          }),
-        (error) => {
-          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
-          return true;
-        },
-      );
+      await createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
+        startMs: coldStartMs,
+        endMs,
+      });
+      await verifyHistoryArchiveCandidate(candidateFile);
       assert.deepEqual(
         sourceGraph(isolatedReadOnly, sampleKey, homeId, responseId),
-        partial,
-        "candidate rejection must not mutate the isolated source graph",
+        siblingMissing,
+        "candidate creation must not mutate the isolated source graph",
       );
     } finally {
       isolatedReadOnly.close();
     }
 
-    assert.equal(existsSync(candidateFile), false, "candidate creation must not publish a destination database");
-    assert.equal(existsSync(candidateManifest), false, "candidate creation must not publish a destination manifest");
+    assert.equal(
+      existsSync(candidateFile),
+      true,
+      "the selected response must remain archivable without its sibling evidence",
+    );
+    assert.equal(existsSync(candidateManifest), true, "the selected response candidate must publish its manifest");
     assert.deepEqual(
       sourceGraph(store.database, sampleKey, homeId, responseId),
       original,
       "isolated work must not mutate the source graph",
     );
+
+    const missingTargetFile = path.join(
+      fixture.serverOptions.homeDir,
+      "cold-codex-partial-response-target-missing.sqlite",
+    );
+    await backup(store.database, missingTargetFile);
+    const missingTarget = new DatabaseSync(missingTargetFile);
+    try {
+      const deleted = missingTarget
+        .prepare("DELETE FROM perf_request_timing_evidence WHERE home_id = ? AND response_id = ?")
+        .run(homeId, responseId);
+      assert.equal(Number(deleted.changes), original.selectedEvidenceCount);
+    } finally {
+      missingTarget.close();
+    }
+    const missingTargetReadOnly = new DatabaseSync(missingTargetFile, { readOnly: true });
+    try {
+      await assert.rejects(
+        () =>
+          createHistoryArchiveCandidate(
+            missingTargetReadOnly,
+            path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-target-candidate.sqlite"),
+            { startMs: coldStartMs, endMs },
+          ),
+        (error) => {
+          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
+          return true;
+        },
+      );
+    } finally {
+      missingTargetReadOnly.close();
+    }
 
     const controlSource = new DatabaseSync(controlCandidateFile, { readOnly: true });
     try {

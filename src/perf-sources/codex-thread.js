@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { PERF_METHOD_VERSION, canonicalPerfSourceKind, normalizePerfSample } from "../perf-stats.js";
-import { buildCodexTurnCandidates } from "./codex-candidates.js";
+import { buildCodexResponseCandidates } from "./codex-candidates.js";
 import { foldCodexRolloutMetadata } from "./codex-fold.js";
 import { readCodexRolloutMetadata } from "./codex-jsonl.js";
 
@@ -274,7 +274,7 @@ export async function readCodexRollout(filePath) {
  * ⚠️ 任何改变 `readCodexRolloutMetadata()` 返回形状或类型识别的改动（`codex-jsonl.js`）**必须**同时 bump
  * `CODEX_PROJECTION_METHOD_VERSION`，否则复用会把旧形状喂给新消费者。
  */
-export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v3";
+export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v5";
 
 /** C3：一个投影缓存实例的默认字节预算（计划 §5 P2b「初始每实例投影缓存预算 64 MiB」）。 */
 export const DEFAULT_CODEX_PROJECTION_CACHE_BYTES = 64 * 1024 * 1024;
@@ -693,7 +693,7 @@ export function buildCodexThreadPerfSamples(homeId, threadId, rollouts, options 
     homeId,
     ordered.map((rollout) => rollout.projection),
   );
-  const built = buildCodexTurnCandidates(homeId, folded, rolloutFiles, options);
+  const built = buildCodexResponseCandidates(homeId, folded, rolloutFiles, options);
   const sourcePath = rolloutFiles[0];
   const samples = built.candidates.map((candidate) => {
     const normalized = normalizePerfSample({ ...candidate, sourcePath });
@@ -706,7 +706,7 @@ export function buildCodexThreadPerfSamples(homeId, threadId, rollouts, options 
       count +
       rollout.projection.records.filter(
         (record) =>
-          ["token_usage_record", "item_completed", "task_complete"].includes(record.kind) &&
+          ["token_usage_record", "response_item", "item_completed", "task_complete"].includes(record.kind) &&
           (typeof record.turnId !== "string" || record.turnId === ""),
       ).length,
     0,
@@ -838,10 +838,11 @@ export function createCodexPublishFilter(degradedHomeIds, partialHomes) {
 }
 
 /**
- * The frozen M1 Codex sample identity is exactly
- * `["codex", homeId, threadId, turnId]` with every part a non-empty string, and
- * its home must match `sample.homeId` verbatim. `PerfSample.sessionId` and the
- * SQL `session_id` must never be used here.
+ * The v3 Codex sample identity is
+ * `["codex", homeId, threadId, turnId, responseId]`; the readable legacy v2
+ * identity ends at turnId. Every present part must be a non-empty string and
+ * the key home must match `sample.homeId` verbatim. `PerfSample.sessionId` and
+ * the SQL `session_id` must never be used here.
  */
 export function codexSampleThreadId(sample) {
   if (sample?.sourceKind !== "codex") return null;
@@ -855,11 +856,12 @@ export function codexSampleThreadId(sample) {
   } catch {
     return null;
   }
-  if (!Array.isArray(parsed) || parsed.length !== 4) return null;
-  const [sourceKind, keyHomeId, threadId, turnId] = parsed;
+  if (!Array.isArray(parsed) || (parsed.length !== 4 && parsed.length !== 5)) return null;
+  const [sourceKind, keyHomeId, threadId, turnId, responseId] = parsed;
   if (sourceKind !== "codex" || keyHomeId !== homeId) return null;
   if (typeof threadId !== "string" || threadId === "") return null;
   if (typeof turnId !== "string" || turnId === "") return null;
+  if (parsed.length === 5 && (typeof responseId !== "string" || responseId === "")) return null;
   return threadId;
 }
 

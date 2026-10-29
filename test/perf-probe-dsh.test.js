@@ -70,11 +70,22 @@ function stepEndRow({ seq = 4, time = T0 + 1500, turn = 1, step = 1 } = {}) {
   return { type: "step/end", seq, time, data: { turn, step, marker: STEP_END_SENTINEL } };
 }
 
-function messageRow({ seq = 5, time = T0 + 2000, turn = 1, step = 1, outputTokens = 100, includeUsage = true } = {}) {
+function messageRow({
+  seq = 5,
+  time = T0 + 2000,
+  turn = 1,
+  step = 1,
+  outputTokens = 100,
+  includeUsage = true,
+  source,
+} = {}) {
   const data = {
     turn,
     step,
-    message: { content: [{ type: "text", text: BODY_SENTINEL }] },
+    message: {
+      content: [{ type: "text", text: BODY_SENTINEL }],
+      ...(source === undefined ? {} : { source }),
+    },
     stream: [{ type: "delta", time, chunk: { text: STREAM_SENTINEL } }],
   };
   if (includeUsage) {
@@ -385,6 +396,142 @@ test("M0.3 主夹具：step 重置 + 模型变更 + 重复/缺失/坏帧/负时�
     assert.equal(envelope.fields.readOnly, true);
     assert.equal(envelope.decisions.readOnlyEnforced, true);
     assert.equal(envelope.decisions.optionalSourceUsed, false);
+  } finally {
+    run.cleanup();
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("official DSH inspects its own successful stream even when reasoning detail is absent", async () => {
+  const homeDir = makeFixtureHome();
+  const message = messageRow({
+    seq: 4,
+    time: T0 + 2_000,
+    turn: 1,
+    step: 1,
+    outputTokens: 12,
+  });
+  message.data.stream = [
+    {
+      type: "reasoning-chunks",
+      time0: T0 + 1_100,
+      index: 0,
+      dt: [],
+      texts: [STREAM_SENTINEL],
+    },
+    {
+      type: "text-chunks",
+      time0: T0 + 1_200,
+      index: 1,
+      dt: [100],
+      texts: ["a", "b"],
+    },
+    {
+      type: "chunk",
+      time: T0 + 1_400,
+      chunk: { type: "usage", usage: { outputTokens: 12 } },
+    },
+    {
+      type: "chunk",
+      time: T0 + 1_450,
+      chunk: { type: "finish", reason: { kind: "stop" } },
+    },
+  ];
+  writeSessionFile(homeDir, {
+    frames: [
+      [sessionRow()],
+      [
+        requestRow({
+          seq: 1,
+          time: T0 + 500,
+          model: "fixture-model-a",
+          provider: "deepseek-account",
+        }),
+        stepStartRow({ seq: 2, time: T0 + 1_000, turn: 1, step: 1 }),
+        message,
+        stepEndRow({ seq: 5, time: T0 + 2_100, turn: 1, step: 1 }),
+      ],
+    ],
+  });
+  const run = await runProbeWithFixtureHome({ homeDir });
+  try {
+    assert.equal(run.exitCode, PROBE_EXIT_CODES.ok, run.lines.join("\n"));
+    const { envelope, raw } = run;
+    assert.deepEqual(envelope.fieldRejections, []);
+    assert.equal(envelope.scanned.assistantMessageCount, 1);
+    assert.equal(envelope.scanned.reasoningItemCount, 0);
+    assert.equal(envelope.scanned.reasoningMissingCount, 1);
+    assert.equal(envelope.fields.streamAccessed, true);
+    assert.equal(envelope.fields.contentAccessed, false);
+    assert.equal(envelope.fields.timingSource, "explicit");
+    assert.equal(envelope.fields.durationBasis, "epoch_diff");
+    assert.equal(envelope.fields.explicitDurationUsed, true);
+    assert.equal(envelope.fields.timestampFallbackUsed, false);
+    assert.equal(raw.includes(STREAM_SENTINEL), false);
+  } finally {
+    run.cleanup();
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("official provider source metadata is sufficient when no header precedes the message", async () => {
+  const homeDir = makeFixtureHome();
+  const message = messageRow({
+    seq: 2,
+    time: T0 + 2_000,
+    turn: 1,
+    step: 1,
+    outputTokens: 8,
+    source: { provider: "deepseek-account", model: "fixture-model-source" },
+  });
+  message.data.stream = [
+    {
+      type: "reasoning-chunks",
+      time0: T0 + 1_100,
+      index: 0,
+      dt: [],
+      texts: ["reason"],
+    },
+    {
+      type: "text-chunks",
+      time0: T0 + 1_150,
+      index: 1,
+      dt: [50],
+      texts: ["a", "b"],
+    },
+    {
+      type: "chunk",
+      time: T0 + 1_250,
+      chunk: { type: "usage", usage: { outputTokens: 8 } },
+    },
+    {
+      type: "chunk",
+      time: T0 + 1_300,
+      chunk: { type: "finish", reason: { kind: "max-tokens" } },
+    },
+  ];
+  writeSessionFile(homeDir, {
+    frames: [
+      [sessionRow()],
+      [
+        stepStartRow({ seq: 1, time: T0 + 1_000, turn: 1, step: 1 }),
+        message,
+        stepEndRow({ seq: 3, time: T0 + 2_100, turn: 1, step: 1 }),
+      ],
+    ],
+  });
+  const run = await runProbeWithFixtureHome({ homeDir });
+  try {
+    assert.equal(run.exitCode, PROBE_EXIT_CODES.ok, run.lines.join("\n"));
+    const { envelope, raw } = run;
+    assert.equal(envelope.fields.streamAccessed, true);
+    assert.equal(envelope.fields.contentAccessed, false);
+    assert.equal(envelope.fields.timingSource, "explicit");
+    assert.equal(envelope.fields.durationBasis, "epoch_diff");
+    assert.equal(envelope.fields.explicitDurationUsed, true);
+    assert.equal(envelope.fields.timestampFallbackUsed, false);
+    assert.equal(raw.includes("fixture-model-source"), false);
+    assert.equal(raw.includes(BODY_SENTINEL), false);
   } finally {
     run.cleanup();
     rmSync(homeDir, { recursive: true, force: true });

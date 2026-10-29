@@ -65,6 +65,7 @@ function createTurn(homeId, threadId, turnId) {
     modelEvidence: null,
     agentKind: "unknown",
     requests: [],
+    responses: [],
     items: [],
     taskComplete: null,
     hasTaskComplete: false,
@@ -109,6 +110,20 @@ function sortRequests(requests) {
   };
 }
 
+function responseEventKind(record) {
+  if (record.kind === "response_item") {
+    if (record.responseItemType === "message" && record.role === "assistant") return "text";
+    if (record.responseItemType === "reasoning") return "reasoning";
+    if (record.responseItemType === "function_call" || record.responseItemType === "custom_tool_call") return "tool";
+    return null;
+  }
+  if (record.kind === "item_completed") {
+    if (record.itemType === "AgentMessage") return "text";
+    if (record.itemType === "Reasoning") return "reasoning";
+  }
+  return null;
+}
+
 /**
  * Fold the `{ records, stats }` values returned by M6.1. Identity strings are
  * case-sensitive; file and line order are the deterministic fallback when a
@@ -132,6 +147,7 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
     unassignedRequests: 0,
     conflictingRequests: 0,
     requestCount: 0,
+    responseCount: 0,
     itemCount: 0,
     turnCount: 0,
     requestSumMismatchCount: 0,
@@ -155,6 +171,9 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
   const threadIsSubagent = new Map();
   const requestGroups = new Map();
   const itemGroups = new Map();
+  const responseEventGroups = new Map();
+  const requestObservationsByStream = new Map();
+  const responseOwners = new Map();
   const orphanByKind = new Map();
   const getTurn = (threadId, turnId) => {
     const key = turnKey(homeId, threadId, turnId);
@@ -164,6 +183,35 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
   const orphan = (kind) => {
     stats.orphanRecords += 1;
     orphanByKind.set(kind, (orphanByKind.get(kind) ?? 0) + 1);
+  };
+
+  for (const record of records) {
+    if (
+      record.kind !== "token_usage_record" ||
+      typeof record.threadId !== "string" ||
+      record.threadId === "" ||
+      typeof record.turnId !== "string" ||
+      record.turnId === "" ||
+      typeof record.responseId !== "string" ||
+      record.responseId === ""
+    ) {
+      continue;
+    }
+    const key = tupleKey([record.sourcePath ?? "", record.threadId, record.turnId]);
+    if (!requestObservationsByStream.has(key)) requestObservationsByStream.set(key, []);
+    requestObservationsByStream.get(key).push({
+      sourceOrder: record.inputOrder,
+      responseId: record.responseId,
+    });
+  }
+  for (const observations of requestObservationsByStream.values()) {
+    observations.sort((left, right) => left.sourceOrder - right.sourceOrder);
+  }
+  const responseIdAfter = (record) => {
+    const observations = requestObservationsByStream.get(
+      tupleKey([record.sourcePath ?? "", record.threadId, record.turnId]),
+    );
+    return observations?.find((observation) => observation.sourceOrder > record.inputOrder)?.responseId ?? null;
   };
 
   for (const record of records) {
@@ -203,6 +251,36 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
       continue;
     }
 
+    const eventKind = responseEventKind(record);
+    if (eventKind) {
+      if (
+        typeof record.threadId === "string" &&
+        record.threadId !== "" &&
+        typeof record.turnId === "string" &&
+        record.turnId !== ""
+      ) {
+        const responseId = responseIdAfter(record);
+        if (responseId) {
+          const eventKey =
+            typeof record.itemId === "string" && record.itemId !== ""
+              ? `item:${record.itemId}`
+              : `anonymous:${record.sourcePath ?? ""}:${Number(record.lineNumber) || 0}`;
+          const key = tupleKey([homeId, record.threadId, record.turnId, responseId, eventKey]);
+          if (!responseEventGroups.has(key)) {
+            responseEventGroups.set(key, {
+              threadId: record.threadId,
+              turnId: record.turnId,
+              responseId,
+              itemId: typeof record.itemId === "string" && record.itemId !== "" ? record.itemId : null,
+              records: [],
+            });
+          }
+          responseEventGroups.get(key).records.push(record);
+        }
+      }
+      if (record.kind === "response_item") continue;
+    }
+
     if (typeof record.kind !== "string" || !["turn_context", "item_completed", "task_complete"].includes(record.kind))
       continue;
     if (
@@ -238,17 +316,34 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
       ...new Set(group.records.map((record) => record.turnId).filter((id) => typeof id === "string" && id !== "")),
     ];
     const output = resolveField(group.records, "outputTokens");
+    const reasoning = resolveField(group.records, "reasoningOutputTokens");
+    const nativeGeneration = resolveField(group.records, "nativeGeneration");
     const cumulative = resolveField(group.records, "turnOutputTokens");
     const timestamp = resolveTimestamp(group.records);
-    const conflict = output.conflict || cumulative.conflict || timestamp.conflict || turnIds.length > 1;
+    const responseConflict =
+      output.conflict || reasoning.conflict || nativeGeneration.conflict || timestamp.conflict || turnIds.length > 1;
     const request = {
       responseId: group.responseId,
       outputTokens: output.value,
+      reasoningOutputTokens: reasoning.value,
+      reasoningOutputTokensKnown: reasoning.value !== null,
       turnOutputTokens: cumulative.value,
       timestampMs: timestamp.value,
       sourcePath: source.sourcePath ?? "",
       lineNumber: Number(source.lineNumber) || 0,
     };
+    group.output = output;
+    group.reasoning = reasoning;
+    group.nativeGeneration = nativeGeneration;
+    group.cumulative = cumulative;
+    group.timestamp = timestamp;
+    group.conflict = responseConflict;
+    group.responseConflict = responseConflict;
+    group.turnIds = turnIds;
+    if (!responseOwners.has(group.responseId)) responseOwners.set(group.responseId, new Set());
+    for (const turnId of turnIds) {
+      responseOwners.get(group.responseId).add(tupleKey([group.threadId, turnId]));
+    }
     if (turnIds.length !== 1) {
       stats.unassignedRequests += 1;
       if (turnIds.length > 1) {
@@ -258,8 +353,70 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
       continue;
     }
     const turn = getTurn(group.threadId, turnIds[0]);
-    if (conflict) markConflict(turn, `request:${group.responseId}`);
+    if (responseConflict) markConflict(turn, `request:${group.responseId}`);
+    // A cumulative snapshot describes the whole turn, so it remains a turn
+    // diagnostic without invalidating this response's independent v3 facts.
+    if (cumulative.conflict) markConflict(turn, `request_cumulative:${group.responseId}`);
     turn.requests.push(request);
+  }
+
+  for (const [responseId, owners] of responseOwners) {
+    if (owners.size <= 1) continue;
+    for (const owner of owners) {
+      const [threadId, turnId] = JSON.parse(owner);
+      markConflict(getTurn(threadId, turnId), `response:${responseId}`);
+    }
+  }
+
+  const responseEvents = new Map();
+  for (const group of responseEventGroups.values()) {
+    const kinds = [...new Set(group.records.map(responseEventKind).filter(Boolean))].sort(compareText);
+    const responseItemRecords = group.records.filter((record) => record.kind === "response_item");
+    const completedItemRecords = group.records.filter((record) => record.kind === "item_completed");
+    const timestamp = resolveTimestamp(responseItemRecords);
+    const started = resolveField(completedItemRecords, "startedAtMs");
+    const completed = resolveField(completedItemRecords, "completedAtMs");
+    const conflict = kinds.length !== 1 || timestamp.conflict || started.conflict || completed.conflict;
+    if (conflict)
+      markConflict(getTurn(group.threadId, group.turnId), `response_item:${group.responseId}:${group.itemId ?? ""}`);
+    const key = tupleKey([homeId, group.threadId, group.turnId, group.responseId]);
+    if (!responseEvents.has(key)) responseEvents.set(key, []);
+    responseEvents.get(key).push({
+      itemId: group.itemId,
+      outputKind: kinds.length === 1 ? kinds[0] : null,
+      timestampMs: timestamp.value,
+      startedAtMs: started.value,
+      completedAtMs: completed.value,
+      conflict,
+      _order: Math.min(...group.records.map((record) => record.inputOrder)),
+    });
+  }
+  for (const events of responseEvents.values()) {
+    events.sort((left, right) => left._order - right._order);
+  }
+
+  for (const group of requestGroups.values()) {
+    if (group.turnIds.length === 0) continue;
+    const key = tupleKey([homeId, group.threadId, group.turnIds[0], group.responseId]);
+    const events = group.turnIds.length === 1 ? (responseEvents.get(key) ?? []) : [];
+    const owners = responseOwners.get(group.responseId);
+    const ownershipConflict = owners?.size > 1;
+    for (const turnId of group.turnIds) {
+      const turn = getTurn(group.threadId, turnId);
+      if (ownershipConflict) markConflict(turn, `response:${group.responseId}`);
+      turn.responses.push({
+        responseId: group.responseId,
+        outputTokens: group.output.value,
+        reasoningOutputTokens: group.reasoning.value,
+        reasoningOutputTokensKnown: group.reasoning.value !== null,
+        ...(group.nativeGeneration.value === null ? {} : { nativeGeneration: group.nativeGeneration.value }),
+        timestampMs: group.timestamp.value,
+        sourcePath: group.records[0].sourcePath ?? "",
+        lineNumber: Number(group.records[0].lineNumber) || 0,
+        events: events.map(({ _order, ...event }) => event),
+        conflict: Boolean(group.responseConflict || ownershipConflict || group.turnIds.length > 1),
+      });
+    }
   }
 
   for (const group of itemGroups.values()) {
@@ -302,8 +459,10 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
     turn.requests = sorted.ordered
       .filter((request) => request.evidenceKind === "keyed_request")
       .map(({ evidenceKind, ...request }) => request);
+    turn.responses = sortRequests(turn.responses).ordered;
     turn.requestOrderBasis = sorted.basis;
     turn.requestCount = turn.requests.length;
+    turn.responseCount = turn.responses.length;
     turn.itemCount = turn.items.length;
     if (
       turn.requestCount > 0 &&
@@ -330,6 +489,7 @@ export function foldCodexRolloutMetadata(homeId, rollouts) {
     turn.flags = [...turn.flags].sort(compareText);
     turn.recordConflictCount = turn.conflictKeys.size;
     stats.requestCount += turn.requestCount;
+    stats.responseCount += turn.responseCount;
     stats.itemCount += turn.itemCount;
     stats.recordConflictCount += turn.recordConflictCount;
     delete turn.conflictKeys;

@@ -130,3 +130,9 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 根据用户反馈，统一扫描目录、费用估算两处标题行的排版。此前编辑按钮仅设最小高度，计价标准按钮单独设固定高度；现两处按钮共用 30px 高度、标题行的 21px 行高及 inline-flex 文字居中，桌面标题行按文字基线对齐。规则仅作用于底部标题行，费用正文继续常显。
 
 [19 项真实 UI 回归](../../output/bottom-heading-alignment/geometry-tests.log)全部通过，0 失败、0 跳过；既有八组桌面视口、语言和主题组合及混合字体检查新增标题、按钮外框与四段实际文字矩形的对齐断言。相关文件 Biome 和差异空白检查通过。4415 样本预览已刷新，[实际读数](../../output/bottom-heading-alignment/after-readings.json)确认两按钮同为 30px 高，标题和按钮文字均位于相同纵坐标，见[修后截图](../../output/bottom-heading-alignment/after.png)。本次未重跑全仓测试。
+
+## 2026-10-28 速度详情数量与日期清理
+
+按用户批注永久移除速度详情中的样本日期及日期范围，包括正常、缺少耗时和溢出状态；删除相应日期格式化函数与无用翻译。Codex 的 turn 中文单位改为“轮次”，数量移到来源所在首行的右端，同高、右对齐；缺少耗时状态沿用既有用量记录数量。模型身份、速度数值、分位带、统计字段和后台数据不变。
+
+[110 项相关测试](../../output/perf-count-header/related-tests.log)和[19 项真实 UI 回归](../../output/perf-count-header/geometry-tests.log)通过，0 失败、0 跳过；新增各状态日期缺席断言，以及八组桌面/语言/主题组合中数量与来源同高、右边缘对齐及不碰撞 provider 的检查。相关文件 Biome 与差异空白检查通过。3765 实际服务已刷新，来源和“35 个轮次”的纵坐标均为 924px，数量右边缘与首行右边缘一致，详情无日期文字；见[实际页面](../../output/perf-count-header/live-page.png)和[读数](../../output/perf-count-header/live-readings.json)。本次未重启服务、未重跑全仓测试。

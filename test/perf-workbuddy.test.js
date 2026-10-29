@@ -1,4 +1,4 @@
-// P1-P3：WorkBuddy TPS 语义、reader 与注册的验收。
+// WorkBuddy generation TPS reader 的直接验收。
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,8 +25,11 @@ function usageRecord({
   messageId = "msg-1",
   inputTokens = 1000,
   outputTokens = 200,
+  reasoningTokens = 10,
+  includeReasoning = true,
   model = "deepseek-v4.1-flash",
 } = {}) {
+  const outputTokensDetails = includeReasoning ? [{ reasoning_tokens: reasoningTokens }] : [];
   return {
     timestamp: 1792537466382,
     type: "function_call",
@@ -38,7 +41,7 @@ function usageRecord({
         outputTokens,
         totalTokens: inputTokens + outputTokens,
         inputTokensDetails: [{ cached_tokens: 0 }],
-        outputTokensDetails: [{ reasoning_tokens: 10 }],
+        outputTokensDetails,
       },
     },
     sessionId: SESSION_ID,
@@ -57,7 +60,7 @@ async function withSessionFile(rows, fn) {
   }
 }
 
-test("P1：workbuddy 的规范 kind、语义与 sampleKey 三元组", () => {
+test("规范 kind 与 v3 来源语义", () => {
   assert.equal(canonicalPerfSourceKind("workbuddy"), "workbuddy");
   assert.deepEqual([...PERF_SOURCE_KINDS], ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
@@ -66,7 +69,7 @@ test("P1：workbuddy 的规范 kind、语义与 sampleKey 三元组", () => {
     homeId: "home-1",
     messageId: "msg-1",
     tsMs: 1792537466382,
-    outputTokens: 200,
+    outputTokens: 190,
     inputTokens: 1000,
     durationMs: 15455,
     status: "completed",
@@ -75,32 +78,31 @@ test("P1：workbuddy 的规范 kind、语义与 sampleKey 三元组", () => {
   });
   assert.ok(sample);
   assert.equal(sample.window, "request");
-  assert.equal(sample.timingKind, "request_e2e");
-  assert.equal(sample.tokenScope, "reported_output_includes_reasoning");
+  assert.equal(sample.timingKind, "generation");
+  assert.equal(sample.tokenScope, "non_reasoning_output");
   assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
   assert.equal(sample.sampleKey, JSON.stringify(["workbuddy", "home-1", "msg-1"]));
 });
 
-test("P1：自定义 timingSource / methodVersion 仍按既有规则告警，不被 WorkBuddy 特判绕过", () => {
+test("自定义 timingSource / methodVersion 仍按既有规则告警", () => {
   const result = normalizePerfSample({
     sourceKind: "workbuddy",
     homeId: "home-1",
     messageId: "msg-1",
     tsMs: 1792537466382,
-    outputTokens: 200,
+    outputTokens: 190,
     durationMs: 1000,
     status: "completed",
     timingSource: "workbuddy.trace.generation",
     methodVersion: "workbuddy.generation.v1",
   });
   assert.equal(result.sample.timingSource, "unknown");
-  // 既有规则：`methodVersion` 告警但**保留**调用方给的值（不静默改写），`timingSource` 才降级。
   assert.equal(result.sample.methodVersion, "workbuddy.generation.v1");
   assert.ok(result.warnings.includes("UNRECOGNIZED_PROVENANCE"));
   assert.ok(result.warnings.includes("UNRECOGNIZED_METHOD_VERSION"));
 });
 
-test("P2：有 duration ⇒ 产出候选，token 与时长与夹具一致", async () => {
+test("trace generation span duration 只保留为诊断，不进入生成 TPS", async () => {
   await withSessionFile([usageRecord()], async (file) => {
     const samples = [];
     const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
@@ -108,56 +110,58 @@ test("P2：有 duration ⇒ 产出候选，token 与时长与夹具一致", asyn
     });
     assert.equal(result.state, "enabled");
     assert.equal(samples.length, 1);
-    assert.equal(samples[0].sampleKey, undefined, "raw 候选不带 sampleKey（由 normalize 计算）");
-    assert.deepEqual(samples[0].messageId, "msg-1");
-    assert.equal(samples[0].outputTokens, 200);
+    assert.equal(samples[0].sampleKey, undefined);
+    assert.equal(samples[0].messageId, "msg-1");
+    assert.equal(samples[0].outputTokens, 190, "原始 output 200 含 reasoning 10");
+    assert.equal(samples[0].reportedOutputTokens, 200);
+    assert.equal(samples[0].reportedReasoningTokens, 10);
     assert.equal(samples[0].inputTokens, 1000);
-    assert.equal(samples[0].durationMs, 15455);
-    assert.equal(samples[0].timingSource, "explicit");
-    assert.equal(samples[0].agentKind, "main");
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(samples[0].reportedDurationMs, 15455);
+    assert.equal(samples[0].timingSource, "unknown");
+    assert.equal(samples[0].window, "request");
+    assert.equal(samples[0].timingKind, "generation");
+    assert.equal(samples[0].tokenScope, "non_reasoning_output");
     assert.equal(result.stats.candidates, 1);
     assert.equal(result.stats.skippedNoDuration, 0);
+    assert.equal(result.stats.missingGenerationDuration, 1);
   });
 });
 
-test("P2：无 duration ⇒ 不产样本并计数；lookup 未提供也不抛", async () => {
-  await withSessionFile([usageRecord()], async (file) => {
+test("无 lookup 也产出候选；reasoning known 位缺失时不猜非推理 output", async () => {
+  await withSessionFile([usageRecord({ includeReasoning: false })], async (file) => {
     const samples = [];
-    const missing = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
-      lookupGenerationDuration: () => null,
-    });
-    assert.equal(samples.length, 0);
-    assert.equal(missing.stats.skippedNoDuration, 1);
-
-    const absent = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {});
-    assert.equal(samples.length, 0);
-    assert.equal(absent.stats.skippedNoDuration, 1);
+    const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {});
+    assert.equal(samples.length, 1);
+    assert.equal(samples[0].outputTokens, null);
+    assert.equal(samples[0].reportedOutputTokens, 200);
+    assert.equal(samples[0].reportedReasoningTokens, null);
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(result.stats.candidates, 1);
+    assert.equal(result.stats.missingGenerationDuration, 1);
   });
 });
 
-test("P2：同一 messageId 出现两次只产 1 个样本", async () => {
+test("同一 messageId 只产一个候选", async () => {
   await withSessionFile([usageRecord(), usageRecord()], async (file) => {
     const samples = [];
-    const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
-      lookupGenerationDuration: () => ({ durationMs: 900 }),
-    });
+    const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample));
     assert.equal(samples.length, 1);
     assert.equal(result.stats.candidates, 1);
   });
 });
 
-test("P2：outputTokens === 0 仍产候选（交给 perf-stats 的 OUTPUT_ZERO 规则）", async () => {
-  await withSessionFile([usageRecord({ outputTokens: 0 })], async (file) => {
+test("outputTokens 真 0 仍产候选", async () => {
+  await withSessionFile([usageRecord({ outputTokens: 0, reasoningTokens: 0 })], async (file) => {
     const samples = [];
-    await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
-      lookupGenerationDuration: () => ({ durationMs: 500 }),
-    });
+    await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample));
     assert.equal(samples.length, 1);
     assert.equal(samples[0].outputTokens, 0);
+    assert.equal(samples[0].durationMs, null);
   });
 });
 
-test("P2：Auto 事件在 reader 之前已被排除", async () => {
+test("Auto 事件在 reader 之前已被排除", async () => {
   await withSessionFile(
     [
       usageRecord({ messageId: "auto-1", model: "default-model" }),
@@ -166,9 +170,7 @@ test("P2：Auto 事件在 reader 之前已被排除", async () => {
     ],
     async (file) => {
       const samples = [];
-      const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
-        lookupGenerationDuration: () => ({ durationMs: 1000 }),
-      });
+      const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample));
       assert.equal(result.stats.candidates, 2);
       assert.deepEqual(
         samples.map((sample) => sample.messageId),
@@ -178,7 +180,7 @@ test("P2：Auto 事件在 reader 之前已被排除", async () => {
   );
 });
 
-test("P3：注册与透传 —— workbuddy 已启用，lookupGenerationDuration 确实到达 reader", async () => {
+test("注册与透传：workbuddy 已启用，lookup 仍到达 reader 但旧 span duration 不采用", async () => {
   assert.equal(isPerfSourceEnabled("workbuddy"), true);
   assert.deepEqual(enabledPerfSourceKinds(), ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
   assert.equal(isPerfSourceEnabled("unknown-kind"), false);
@@ -200,14 +202,15 @@ test("P3：注册与透传 —— workbuddy 已启用，lookupGenerationDuration
     assert.equal(result.state, "enabled");
     assert.deepEqual(seen, ["msg-1"]);
     assert.equal(samples.length, 1);
-    // 归一化在集成层完成 ⇒ 出口样本已带 sampleKey 与方法版本。
     assert.equal(samples[0].sampleKey, JSON.stringify(["workbuddy", HOME.id, "msg-1"]));
     assert.equal(samples[0].methodVersion, PERF_METHOD_VERSION);
-    assert.equal(samples[0].durationMs, 1234);
+    assert.equal(samples[0].outputTokens, 190);
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(samples[0].reportedDurationMs, undefined, "normalize 出口不保留私有诊断字段");
   });
 });
 
-test("P3：未注册 kind 仍为 not_enabled", async () => {
+test("未注册 kind 仍为 not_enabled", async () => {
   const result = await streamPerfSamplesForFile("/tmp/none", { kind: "project-log", id: "x" }, () => {});
   assert.equal(result.state, "unsupported");
   const unknown = await streamPerfSamplesForFile("/tmp/none", { kind: "nope", id: "x" }, () => {});

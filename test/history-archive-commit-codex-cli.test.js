@@ -130,7 +130,8 @@ function insertUnplacedSample(store, templateSampleKey) {
   );
   assert.ok(template, "the fixture must provide a cold sample to model an unplaced sample");
   const keyParts = JSON.parse(String(template.sample_key));
-  assert.equal(keyParts.length, 4);
+  assert.equal(keyParts.length, 5);
+  assert.ok(keyParts[4], "the fifth sample-key part identifies the response");
   keyParts[3] = "turn-unplaced";
   const sampleKey = JSON.stringify(keyParts);
   const unplaced = {
@@ -162,8 +163,9 @@ function insertUnplacedSample(store, templateSampleKey) {
   return sampleKey;
 }
 
-test("formal Codex perf CLI commits native tps-v2 samples and replays both backups", async () => {
+test("formal Codex perf CLI commits native tps-v4 request samples and replays both backups", async () => {
   const fixture = createPerfCodexIntegrationFixture();
+  assert.equal(fixture.expected.n, 26, "the shared fixture contains 26 requests across 25 turns");
   const homeDir = fixture.serverOptions.homeDir;
   const archivedFile = path.join(homeDir, "archive-commit-codex-cli.sqlite");
   const oracleFile = path.join(homeDir, "archive-commit-codex-cli-oracle.sqlite");
@@ -200,14 +202,18 @@ test("formal Codex perf CLI commits native tps-v2 samples and replays both backu
     assert.ok(Number.isSafeInteger(coldStartMs) && coldStartMs < COLD_END_MS);
     const coldPerf = perfRows(archived.database, "ts_ms >= ? AND ts_ms < ?", coldStartMs, COLD_END_MS);
     assert.ok(coldPerf.length > 0, "fixture must contain cold Codex perf samples");
+    assert.ok(
+      coldPerf.every((sample) => JSON.parse(String(sample.sample_key)).length === 5),
+      "each cold sample key must be [source, home, thread, turn, response]",
+    );
     assert.deepEqual([...new Set(coldPerf.map((sample) => sample.source_kind))], ["codex"]);
     assert.deepEqual(
       [...new Set(coldPerf.map((sample) => sample.method_version))],
       [PERF_METHOD_VERSION],
-      "formal CLI coverage must start with supported tps-v2 samples",
+      "formal CLI coverage must use current tps-v4 request samples",
     );
     assert.ok(coldPerf.every((sample) => sample.status === "completed"));
-    assert.ok(coldPerf.every((sample) => sample.timing_kind === "request_e2e"));
+    assert.ok(coldPerf.every((sample) => sample.timing_kind === "generation"));
     assert.ok(coldPerf.every((sample) => sample.timing_source === "explicit"));
     const coldKeys = coldPerf.map((sample) => String(sample.sample_key));
     const coldDependencies = dependencyRows(archived.database, coldKeys);

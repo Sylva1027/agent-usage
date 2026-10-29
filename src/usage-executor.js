@@ -29,6 +29,7 @@ import { createHistoryBackup } from "./history-backup.js";
 import { publishHistoryArchiveImport, stageHistoryArchiveSegments } from "./history-archive.js";
 import { getPricingCatalog, runWithPricingCatalog, setPricingCatalog } from "./pricing.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
+import { quotaSourceEvidenceSnapshot } from "./quota-source-evidence.js";
 import { UsageStore } from "./usage-store.js";
 
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -347,13 +348,15 @@ if (!isMainThread && parentPort) {
         checkedAt: store.checkedAt ?? storeStatus?.checkedAt ?? null,
         perfIndexVersion: perf.indexVersion,
         perfTimingRevision: perf.timingRevision,
-        magpieTimingFingerprint: perf.magpieTimingFingerprint,
         lastCheckpoint,
         ...(includeHomes
           ? {
               homes: store.homes,
               warnings: [...store.warnings],
               serviceTierEvidence: serviceTierEvidenceForWire(store.serviceTierEvidence),
+              quotaSourceEvidenceSnapshot: store.quotaSourceEvidence
+                ? quotaSourceEvidenceSnapshot(store.quotaSourceEvidence)
+                : null,
             }
           : {}),
       }),
@@ -413,7 +416,6 @@ if (!isMainThread && parentPort) {
             generatedAt: store.generatedAt,
             checkedAt: store.checkedAt,
             missingSources: store.perfState().missingSources,
-            magpieTimingFingerprint: store.perfPublicationState().magpieTimingFingerprint,
           };
         }
         postState({ includeHomes: true });
@@ -481,7 +483,6 @@ if (!isMainThread && parentPort) {
         const published = publishedStore ? publishedStatus : storeStatus;
         const status = published && {
           ...published,
-          magpieTimingFingerprint: reader.perfPublicationState().magpieTimingFingerprint,
         };
         const filters = { ...(message.filters ?? {}) };
         const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
@@ -557,7 +558,6 @@ if (!isMainThread && parentPort) {
           return {
             status: storeStatus && {
               ...storeStatus,
-              magpieTimingFingerprint: snapshotStore.perfPublicationState().magpieTimingFingerprint,
             },
             asOf: asOf.getTime(),
             metadata,
@@ -701,10 +701,10 @@ export function createUsageExecutor(
     homes: null,
     warnings: [],
     serviceTierEvidence: null,
+    quotaSourceEvidenceSnapshot: null,
     checkedAt: null,
     perfIndexVersion: "",
     perfTimingRevision: "",
-    magpieTimingFingerprint: "",
     lastCheckpoint: null,
   });
   let worker = null;
@@ -894,9 +894,6 @@ export function createUsageExecutor(
     get perfTimingRevision() {
       return state.perfTimingRevision;
     },
-    get magpieTimingFingerprint() {
-      return state.magpieTimingFingerprint;
-    },
     get lastCheckpoint() {
       return state.lastCheckpoint;
     },
@@ -908,6 +905,9 @@ export function createUsageExecutor(
     },
     get serviceTierEvidence() {
       return state.serviceTierEvidence;
+    },
+    get quotaSourceEvidenceSnapshot() {
+      return state.quotaSourceEvidenceSnapshot;
     },
     get ready() {
       return ready;

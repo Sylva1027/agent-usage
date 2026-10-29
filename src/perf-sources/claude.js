@@ -1,24 +1,20 @@
-// Claude Code TPS 候选 reader（只读、单遍、**文件顺序**）。
+// Claude Code 生成 TPS 候选 reader（只读、单遍、**文件顺序**）。
 //
-// 口径依据：[Claude Code TPS 接入方案](../../docs/plans/2026-10-21-claude-code-tps-plan.md) §2.2 / §5，
-// 契约见[实施计划](../../docs/plans/2026-10-21-claude-code-tps-implementation-plan.md) C-1 / C-2。
+// 口径依据：[生成 TPS 方案](../../docs/plans/2026-10-27-generation-tps-plan.md) §1 / §2 / §3 / §9。
 //
-// 三条结构约束（都来自真实转录实测，不能"优化"掉）：
+// 两条结构约束（都来自真实转录实测，不能"优化"掉）：
 // 1. 同一 `message.id` 会写成 1–10 行。必须按 id 聚合；直接累加会把 token 放大 2.5–3 倍。
-// 2. 文件顺序 ≠ 时间顺序（实测有倒退的 user/attachment/assistant 行）。锚点取 prompt 行的
-//    **运行最大值**，且整条扫描不排序；先按时间排序再扫会改变 7 条真实样本的时长。
-// 3. 锚点只认 user/attachment 行。消息首行时若已经写过 assistant 行（含零用量占位），
-//    说明它是同一轮内的续写，锚点已陈旧 ⇒ 不采样（计入 `skippedNoAnchor`），绝不退回
-//    上一条 assistant 行或更旧的 prompt。
+// 2. 同一 id 的最终 output 与 thinking 必须取自同一条用量行；分别取最大值会把两个时刻拼在一起。
 //
 // 只读字段：`type`、`timestamp`、`sessionId`、`message.id`、`message.model`、`message.usage`、
 // `message.stop_reason`、`effort`、`isSidechain`、`attributionAgent`。正文与工具参数一律不读。
 // 复用 `readRolloutLines`（处理 U+2028/U+2029）与 `claudeUsageFromRaw`（输入超集 / reasoning 拆分），
-// 但**不复用** `streamClaudeSessionEvents`：后者只回吐每个消息的最佳行，丢掉了锚点所需的行时间戳。
+// 但**不复用** `streamClaudeSessionEvents`：本 reader 需要保留稳定 message.id 的多行合并规则。
 import { claudeUsageFromRaw } from "../claude-code-usage.js";
 import { readRolloutLines } from "../codex-rollout.js";
+import { generationPerfValues } from "../perf-request-timing.js";
+import { USAGE_DETAIL_MASK } from "../../public/usage-fields.js";
 
-const PROMPT_TYPES = new Set(["user", "attachment"]);
 const SUBAGENTS_SEGMENT = "/subagents/";
 
 /** 本 reader 可以发出的 warning 编码；两者都在冻结的 `PERF_SOURCE_WARNING_CODES` 里。 */
@@ -41,21 +37,74 @@ function isSubagentPath(filePath) {
   return String(filePath).split("\\").join("/").includes(SUBAGENTS_SEGMENT);
 }
 
-function laterTimestamp(current, candidate) {
-  return current === null ? candidate : Math.max(current, candidate);
+function nonReasoningOutput(entry) {
+  const known =
+    (entry.bestDetailMask & USAGE_DETAIL_MASK.output) !== 0 &&
+    (entry.bestDetailMask & USAGE_DETAIL_MASK.reasoning) !== 0;
+  if (!known) return null;
+  return entry.bestOutput - entry.bestReasoning;
+}
+
+function generationForEntry(entry, options) {
+  const lookup = typeof options.lookupRequestTiming === "function" ? options.lookupRequestTiming : null;
+  if (lookup === null) return null;
+
+  const query = {
+    homeId: entry.homeId,
+    responseId: entry.id,
+    model: entry.model,
+    outputTokens: entry.bestOutput,
+    reasoningOutputTokens: entry.bestReasoningKnown ? entry.bestReasoning : null,
+  };
+  let timing;
+  try {
+    timing = lookup(query);
+  } catch {
+    return null;
+  }
+  if (
+    timing?.state !== "available" ||
+    timing.requestedModel !== query.model ||
+    timing.reportedOutputTokens !== query.outputTokens
+  ) {
+    return null;
+  }
+  return timing.generation ?? null;
+}
+
+function generationPerformanceForEntry(entry, options) {
+  try {
+    return generationPerfValues(generationForEntry(entry, options));
+  } catch {
+    return null;
+  }
 }
 
 /**
  * 扫描一个 Claude Code 转录文件，产出 raw 性能候选（C-2，键名固定）。
  *
- * 结束条件与计数恒等式：
- * `candidates === emitted + skippedZeroUsage + skippedNoAnchor`，
+ * 计数恒等式：
+ * `candidates === emitted + skippedZeroUsage`；`skippedNoAnchor` 为兼容字段并恒为 0。
  * 其中 `candidates` 是去重后的 `message.id` 数（不含 `model` 以 `<` 开头的 synthetic 行）。
  *
  * @param {string} filePath 物理转录文件（主转录或 `<sessionId>/subagents/agent-*.jsonl`）
  * @param {{ id?: unknown, path?: unknown, kind?: unknown, label?: unknown }} source
  * @param {(sample: Record<string, unknown>) => void} onSample 每条可采样消息调用一次
- * @param {{ onWarning?: (warning: { sourceKind: string, homeId: string, code: string, count: number }) => void }} [options]
+ * @param {{
+ *   onWarning?: (warning: { sourceKind: string, homeId: string, code: string, count: number }) => void,
+ *   lookupRequestTiming?: (query: {
+ *     homeId: string,
+ *     responseId: string,
+ *     model: string,
+ *     outputTokens: number,
+ *     reasoningOutputTokens: number | null,
+ *   }) => {
+ *     state?: unknown,
+ *     requestedModel?: unknown,
+ *     reportedOutputTokens?: unknown,
+ *     generation?: unknown,
+ *   } | null,
+ * }} [options]
  * @returns {Promise<{ state: "enabled", stats: { candidates: number, skippedZeroUsage: number, skippedNoAnchor: number, missingMessageId: number, malformedLines: number } }>}
  */
 export async function streamClaudePerfSamples(filePath, source, onSample, options = {}) {
@@ -63,15 +112,6 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
   const homeId = trimmed(source?.id) || trimmed(source?.path);
   const sourcePath = trimmed(source?.path) || trimmed(filePath);
   const subagentFile = isSubagentPath(filePath);
-
-  // 锚点游标：只认 user/attachment 行的运行最大值。
-  /** @type {number | null} */
-  let promptTs = null;
-  /** @type {"prompt_text" | "attachment" | ""} */
-  let promptKind = "";
-  // `assistantTs` **只用于判陈旧**，永远不作为锚点；含零用量占位行与 `<synthetic>` 行。
-  /** @type {number | null} */
-  let assistantTs = null;
 
   /** @type {Map<string, any>} */
   const messages = new Map();
@@ -95,29 +135,18 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
     if (ts === null) continue;
 
     const type = String(record?.type || "");
-    if (type !== "assistant" || !record?.message?.usage) {
-      if (PROMPT_TYPES.has(type) && (promptTs === null || ts > promptTs)) {
-        promptTs = ts;
-        promptKind = type === "attachment" ? "attachment" : "prompt_text";
-      }
-      continue;
-    }
+    if (type !== "assistant" || !record?.message?.usage) continue;
 
     const model = trimmed(record.message.model);
     const messageId = trimmed(record.message.id);
 
     // `<synthetic>` 是 harness 本地生成的记录，不是模型响应：整条忽略，不进 candidates。
-    // 它仍推进 `assistantTs`（"这条消息首行之前写过 assistant 行" 的证据）。
-    if (model.startsWith("<")) {
-      assistantTs = laterTimestamp(assistantTs, ts);
-      continue;
-    }
+    if (model.startsWith("<")) continue;
 
     // 有 usage 但没有稳定身份：不能成为样本，只计 `UNKEYABLE_RECORD`。
     // 绝不退化成按 sessionId 或时间窗匹配（§5.8）。
     if (messageId === "") {
       missingMessageId += 1;
-      assistantTs = laterTimestamp(assistantTs, ts);
       continue;
     }
 
@@ -125,16 +154,15 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
 
     let entry = messages.get(messageId);
     if (!entry) {
-      // 首行时才判定锚点：`assistantTs` 此刻不含当前行。
-      // prompt 之后已经写过 assistant 行 ⇒ 同轮续写，锚点陈旧 ⇒ 不采样（anchor = null）。
-      const usable = promptTs !== null && (assistantTs === null || promptTs >= assistantTs);
       entry = {
         id: messageId,
-        anchorTs: usable ? promptTs : null,
-        anchorKind: usable ? promptKind : "none",
+        homeId,
         lastTs: ts,
         bestOutput: 0,
         bestInput: 0,
+        bestReasoning: 0,
+        bestReasoningKnown: false,
+        bestDetailMask: 0,
         model,
         effort: trimmed(record.effort),
         sessionId: trimmed(record.sessionId),
@@ -147,11 +175,17 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
     }
 
     if (ts > entry.lastTs) entry.lastTs = ts;
-    // 最佳行 = output 最大的行（与事件路径选中同一行）；input 与 model 随最佳行一起取。
-    if (mapped.usage.output > entry.bestOutput) {
+    // 最佳行 = output 最大的行；input、reasoning、known 位与模型随同一条行一起取。
+    // 相同 output 时取后出现的行，代表该 message.id 的最终完成记录。
+    if (mapped.usage.output >= entry.bestOutput) {
       entry.bestOutput = mapped.usage.output;
       entry.bestInput = mapped.usage.input;
+      entry.bestReasoning = mapped.usage.reasoning;
+      entry.bestReasoningKnown = (mapped.detailMask & USAGE_DETAIL_MASK.reasoning) !== 0;
+      entry.bestDetailMask = mapped.detailMask;
       entry.model = model;
+      entry.effort = trimmed(record.effort);
+      entry.sessionId = trimmed(record.sessionId);
     }
     if (record.message.stop_reason !== null && record.message.stop_reason !== undefined) {
       entry.hasStop = true;
@@ -160,23 +194,18 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
     if (!entry.sessionId) entry.sessionId = trimmed(record.sessionId);
     if (!entry.effort) entry.effort = trimmed(record.effort);
     if (!entry.agent) entry.agent = trimmed(record.attributionAgent);
-
-    assistantTs = laterTimestamp(assistantTs, ts);
   }
 
-  // 扫描结束后统一决定是否产出。两个跳过桶互斥（恒等式要求）：
-  // 锚点不可用优先于零用量 —— 前者是"不可计时"，后者是"没有输出"。
+  // 没有 prompt 锚点不再阻止候选；只有确定没有输出的占位消息不产出。
   let skippedZeroUsage = 0;
-  let skippedNoAnchor = 0;
+  const skippedNoAnchor = 0;
   for (const entry of order) {
-    if (entry.anchorTs === null) {
-      skippedNoAnchor += 1;
-      continue;
-    }
     if (entry.bestOutput <= 0) {
       skippedZeroUsage += 1;
       continue;
     }
+    const localOutput = nonReasoningOutput(entry);
+    const performance = generationPerformanceForEntry(entry, options);
     onSample({
       sourceKind: "claude",
       homeId,
@@ -192,15 +221,15 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
       reasoningEffort: entry.effort,
       modelEvidence: "request_scope",
       window: "request",
-      timingKind: "request_e2e",
-      timingSource: "timestamp_fallback",
-      tokenScope: "reported_output_includes_reasoning",
+      timingKind: "generation",
+      timingSource: performance === null ? "unknown" : "explicit",
+      tokenScope: "non_reasoning_output",
       status: entry.hasStop ? "completed" : "unverified",
       tsMs: entry.lastTs,
-      windowStartMs: entry.anchorTs,
-      windowEndMs: entry.lastTs,
-      durationMs: entry.lastTs - entry.anchorTs,
-      outputTokens: entry.bestOutput,
+      windowStartMs: null,
+      windowEndMs: null,
+      durationMs: performance === null ? null : performance.durationMs,
+      outputTokens: performance === null ? localOutput : performance.outputTokens,
       inputTokens: entry.bestInput,
       requestCount: 1,
     });

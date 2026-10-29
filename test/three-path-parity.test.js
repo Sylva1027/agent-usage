@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,8 +18,260 @@ import {
   summarizeUsageIndex,
 } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
+import { createUsageServer } from "../src/server.js";
 
 const AS_OF = "2026-07-12T12:00:00.000Z";
+
+test("local quota sources, finite cycles and trends agree across memory, SQLite and static snapshots", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "codex-local-quota-"));
+  const databaseFile = path.join(homeDir, "usage-index.sqlite");
+  let store = new UsageStore({ homeDir, databaseFile });
+  const asOf = "2026-10-08T04:00:00Z";
+  try {
+    const entries = [
+      ["plan", "gpt-6-sol", "2026-10-08T02:00:00Z", 100],
+      ["future", "codex/GPT-10-codex", "2026-10-08T02:05:00Z", 20],
+      ["deepseek", "deepseek-flash", "2026-10-08T02:10:00Z", 10000],
+      ["step", "step-5-preview", "2026-10-08T02:15:00Z", 20000],
+      ["oss", "gpt-oss-120b", "2026-10-08T02:20:00Z", 30000],
+      ["alias", "third-party/gpt-6-sol", "2026-10-08T02:25:00Z", 40000],
+      ["external-provider", "gpt-6-sol", "2026-10-08T02:30:00Z", 50000],
+      ["review", "codex-auto-review", "2026-10-08T02:35:00Z", 60000],
+      ["api", "gpt-6-sol", "2026-10-08T02:36:00Z", 70],
+      ["external-route", "gpt-6-sol", "2026-10-08T02:37:00Z", 110],
+      ["other-credits-thread", "gpt-6-sol", "2026-10-08T02:55:00Z", 90],
+      ["previous", "gpt-6-sol", "2026-10-07T22:00:00Z", 50],
+      ["previous-external", "deepseek-flash", "2026-10-07T22:10:00Z", 1000],
+      ["gap", "gpt-6-sol", "2026-10-07T23:30:00Z", 999],
+      ["old-week", "gpt-6-sol", "2026-10-02T12:00:00Z", 25],
+    ];
+    for (const [name, model, time, tokens] of entries) {
+      await writeSession(
+        homeDir,
+        name,
+        model,
+        "/work",
+        [tokenRow(time, tokens, tokens - 10, 0, 10, 0), ...quotaPerfRows(name, time)],
+        {
+          source: "cli",
+          originator: "codex-tui",
+          model_provider: name === "external-provider" ? "azure" : "openai",
+        },
+      );
+    }
+    const exhausted = quotaRow("2026-10-08T02:40:00Z", "2026-10-08T06:00:00Z");
+    exhausted.payload.rate_limits.primary.used_percent = 100;
+    exhausted.payload.rate_limits.credits = { has_credits: true };
+    const recovered = quotaRow("2026-10-08T03:00:00Z", "2026-10-08T06:00:00Z");
+    recovered.payload.rate_limits.credits = { has_credits: true };
+    delete recovered.payload.info;
+    await writeSession(homeDir, "credits-switch", "gpt-6-sol", "/work", [
+      exhausted,
+      tokenRow("2026-10-08T02:50:00Z", 80, 70, 0, 10, 0),
+      recovered,
+      tokenRow("2026-10-08T03:05:00Z", 120, 100, 0, 20, 0),
+    ]);
+    const old = quotaRow("2026-10-02T12:55:00Z", "2026-10-02T15:00:00Z");
+    old.payload.rate_limits.secondary = {
+      window_minutes: 10080,
+      resets_at: Date.parse("2026-10-05T00:00:00Z") / 1000,
+      used_percent: 80,
+    };
+    const current = quotaRow("2026-10-08T03:55:00Z", "2026-10-08T06:00:00Z");
+    current.payload.rate_limits.secondary = {
+      window_minutes: 10080,
+      resets_at: Date.parse("2026-10-12T00:00:00Z") / 1000,
+      used_percent: 50,
+    };
+    await writeSession(homeDir, "limits", "gpt-6-sol", "/work", [
+      old,
+      quotaRow("2026-10-07T22:55:00Z", "2026-10-07T23:00:00Z"),
+      current,
+    ]);
+    const logPath = path.join(homeDir, ".codex", "logs_2.sqlite");
+    const logs = new DatabaseSync(logPath);
+    logs.exec(
+      "CREATE TABLE logs (id INTEGER PRIMARY KEY, ts INTEGER, ts_nanos INTEGER, thread_id TEXT, target TEXT, feedback_log_body TEXT)",
+    );
+    const insertLog = logs.prepare(
+      "INSERT INTO logs (ts, ts_nanos, thread_id, target, feedback_log_body) VALUES (?, 0, ?, ?, ?)",
+    );
+    for (const [thread, time, target, message] of [
+      ["api", "2026-10-08T02:36:00Z", "feedback_tags", "auth_mode=Some(ApiKey)"],
+      [
+        "external-route",
+        "2026-10-08T02:37:00Z",
+        "codex_http_client::client",
+        'transport="responses_http" api.path="/responses" Request completed method=POST url=https://other.example/v1/responses status=200 OK',
+      ],
+      [
+        "future",
+        "2026-10-08T02:05:00Z",
+        "codex_http_client::client",
+        'transport="responses_http" api.path="/responses" Request completed method=POST url=http://127.0.0.1:8000/v1/responses status=200 OK',
+      ],
+    ])
+      insertLog.run(Date.parse(time) / 1000, thread, target, message);
+    logs.close();
+    await store.sync({ env: {} });
+    const report = await buildUsageReport({ homeDir, env: {} });
+    const index = await buildUsageIndex({ homes: report.homes });
+    const snapshot = pricedReport(report, asOf);
+    // Reopening proves source classification survives the SQLite connection.
+    store.close();
+    await rm(logPath);
+    store = new UsageStore({ homeDir, databaseFile });
+    await store.open();
+    store.homes = report.homes;
+    const restored = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+      import { buildUsageReport, summarizeUsage } from ${JSON.stringify(new URL("../src/usage-core.js", import.meta.url).href)};
+      const report = await buildUsageReport(${JSON.stringify({ homeDir, env: {}, quotaSourceEvidenceSnapshot: JSON.parse(store.readMetaRaw("quota_source_log_evidence")) })});
+      console.log(JSON.stringify(summarizeUsage(report, ${JSON.stringify({ preset: "quota_5h", now: asOf })}).totals));
+    `,
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+    assert.equal(restored.total, 160, "a fresh process restores source evidence after native log rotation");
+    for (const [preset, recentValue, expected] of [
+      ["quota_5h", "", 160],
+      ["recent", "上一个5h", 50],
+      ["quota_week", "", 1209],
+      ["recent", "上周", 25],
+      ["all", "", report.events.reduce((sum, event) => sum + event.total.total, 0)],
+    ]) {
+      const filters = { preset, recentValue, now: asOf, calendarZone: "utc", bucket: "day" };
+      const memory = summarizeUsage(report, filters);
+      const indexed = store.summarize(filters);
+      const compact = summarizeUsageIndex(index, filters);
+      assert.deepEqual(indexed.perf.coverage, memory.perf.coverage);
+      setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "" });
+      const browser = summarize(snapshot);
+      for (const summary of [memory, indexed, compact, browser])
+        assert.equal(summary.totals.total, expected, `${preset}/${recentValue}`);
+      for (const summary of [indexed, compact, browser])
+        assert.deepEqual(roundedSummaryFields(summary), roundedSummaryFields(memory));
+      if (preset === "quota_5h") {
+        assert.equal(memory.comparison.previousTotals.total, 50);
+        assert.equal(memory.comparison.previousRange.end, "2026-10-07T22:59:59.999Z");
+        assert.equal(memory.comparison.averagePercentChange, indexed.comparison.averagePercentChange);
+        assert.equal(memory.comparison.averagePercentChange, browser.comparison.averagePercentChange);
+      }
+    }
+    const last = store.summarize({ preset: "recent", recentValue: "上一个5h", now: asOf });
+    assert.equal(last.range.windowEndExclusive, "2026-10-07T23:00:00.000Z");
+    const server = createUsageServer({ homeDir, databaseFile, env: {}, pricingRefreshSchedulerEnabled: false });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const query = new URLSearchParams({ preset: "recent", recentValue: "上一个5h", calendarZone: "utc" });
+      const base = `http://127.0.0.1:${server.address().port}/api/usage?${query}`;
+      const live = await fetch(base).then((response) => response.json());
+      const full = await fetch(`${base}&detail=full`).then((response) => response.json());
+      const frozen = await fetch(`${base}&freeze=1`).then((response) => response.json());
+      const replay = await fetch(`${base}&snapshot=${frozen.snapshotId}`).then((response) => response.json());
+      for (const body of [live, full, frozen, replay]) {
+        assert.equal(body.summary.totals.total, 160, JSON.stringify(body));
+        assert.equal(body.summary.comparison.previousTotals.total, 50);
+        assert.equal(body.summary.range.windowEndExclusive, "2026-10-08T06:00:00.000Z");
+      }
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  } finally {
+    setSummaryFilters({
+      preset: "today",
+      now: null,
+      excludedHomes: [],
+      startDate: "",
+      endDate: "",
+      recentValue: "上个月",
+    });
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("replacing a rollout with its compressed sibling removes obsolete source states", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "quota-source-sibling-"));
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "index.sqlite") });
+  const filters = { preset: "quota_5h", now: "2026-10-08T04:00:00Z", calendarZone: "utc" };
+  try {
+    const exhausted = quotaRow("2026-10-08T02:40:00Z", "2026-10-08T06:00:00Z");
+    exhausted.payload.rate_limits.primary.used_percent = 100;
+    exhausted.payload.rate_limits.credits = { has_credits: true };
+    await writeSession(homeDir, "stable-limits", "gpt-6-sol", "/work", [
+      quotaRow("2026-10-08T02:00:00Z", "2026-10-08T06:00:00Z"),
+    ]);
+    await writeSession(homeDir, "switch-source", "gpt-6-sol", "/work", [
+      exhausted,
+      tokenRow("2026-10-08T03:05:00Z", 100, 90, 0, 10, 0),
+    ]);
+    await store.sync({ env: {} });
+    assert.equal(store.summarize(filters).totals.total, 0);
+    const plain = path.join(homeDir, ".codex", "sessions", "2026", "10", "08", "rollout-switch-source.jsonl");
+    const rows = [
+      { type: "session_meta", timestamp: "2026-10-08T02:40:00Z", payload: { id: "switch-source", source: "cli" } },
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
+      tokenRow("2026-10-08T03:05:00Z", 100, 90, 0, 10, 0),
+    ];
+    await writeFile(
+      `${plain}.zst`,
+      zstdCompressSync(Buffer.from(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`)),
+    );
+    await rm(plain);
+    await store.sync({ env: {} });
+    const report = await buildUsageReport({ homeDir, env: {} });
+    assert.equal(summarizeUsage(report, filters).totals.total, 100);
+    assert.equal(store.summarize(filters).totals.total, 100);
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+function quotaPerfRows(name, time) {
+  const identity = { thread_id: name, turn_id: `${name}-turn` };
+  const end = Date.parse(time);
+  return [
+    { type: "turn_context", timestamp: time, payload: identity },
+    {
+      type: "token_usage_record",
+      timestamp: time,
+      payload: {
+        ...identity,
+        response_id: `${name}-response`,
+        usage: { output_tokens: 10 },
+        turn_token_usage: { output_tokens: 10 },
+      },
+    },
+    {
+      type: "event_msg",
+      payload: {
+        type: "item_completed",
+        ...identity,
+        started_at_ms: end - 1000,
+        completed_at_ms: end,
+        item: { id: `${name}-item`, type: "AgentMessage" },
+      },
+    },
+    {
+      type: "event_msg",
+      payload: {
+        type: "task_complete",
+        ...identity,
+        started_at: (end - 1000) / 1000,
+        completed_at: end / 1000,
+        duration_ms: 1000,
+      },
+    },
+  ];
+}
 
 test("auto-review stays in activity but is excluded from current and previous quota statistics", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-auto-review-policy-"));
@@ -639,10 +892,9 @@ test("three paths agree on DSH usage, including the input/cache split and quota 
         }
         if (preset === "quota_5h") {
           assert.equal(memorySummary.totals.total, 45, `${calendarZone} quota window Codex-only total`);
-          // 同一窗口若不过滤来源，DSH 的 8525 + 160 会全部漏进来。
-          // 这条钉住「排除确实生效」，而不是碰巧窗口为空。
+          // 原始内存报告也必须自行过滤，不能依赖调用方预先删掉 DSH。
           const unfiltered = summarizeUsage(report, filters);
-          assert.equal(unfiltered.totals.total, 8730, `${calendarZone} unfiltered window would include DSH`);
+          assert.equal(unfiltered.totals.total, 45, `${calendarZone} raw memory quota also excludes DSH`);
           // store 与快照都必须自己完成这次排除。
           assert.equal(indexedSummary.totals.total, 45, `${calendarZone} store quota must exclude DSH itself`);
           assert.equal(snapshotSummary.totals.total, 45, `${calendarZone} snapshot quota must exclude DSH itself`);
@@ -807,7 +1059,7 @@ test("three paths agree on OpenCode usage, including all three parallel-counter 
         if (preset === "quota_5h") {
           assert.equal(memorySummary.totals.total, 45, `${calendarZone} quota window Codex-only total`);
           const unfiltered = summarizeUsage(report, filters);
-          assert.equal(unfiltered.totals.total, 8355, `${calendarZone} unfiltered window would include OpenCode`);
+          assert.equal(unfiltered.totals.total, 45, `${calendarZone} raw memory quota also excludes OpenCode`);
           assert.equal(indexedSummary.totals.total, 45, `${calendarZone} store quota must exclude OpenCode itself`);
           assert.equal(snapshotSummary.totals.total, 45, `${calendarZone} snapshot quota must exclude OpenCode itself`);
           assert.ok(
@@ -986,7 +1238,7 @@ test("three paths agree on Claude Code usage, including message.id dedup and sub
         if (preset === "quota_5h") {
           assert.equal(memorySummary.totals.total, 45, `${calendarZone} quota window Codex-only total`);
           const unfiltered = summarizeUsage(report, filters);
-          assert.equal(unfiltered.totals.total, 188, `${calendarZone} unfiltered window would include Claude`);
+          assert.equal(unfiltered.totals.total, 45, `${calendarZone} raw memory quota also excludes Claude`);
           assert.equal(indexedSummary.totals.total, 45, `${calendarZone} store quota must exclude Claude itself`);
           assert.equal(snapshotSummary.totals.total, 45, `${calendarZone} snapshot quota must exclude Claude itself`);
           assert.ok(
@@ -1279,3 +1531,9 @@ test("D2 · 非限额 New Record 只在 SQLite 路径产生（有意差异不得
     await rm(homeDir, { recursive: true, force: true });
   }
 });
+
+function roundedSummaryFields(summary) {
+  const fields = summaryFields(summary);
+  fields.costEstimate.totalUsd = Number(fields.costEstimate.totalUsd.toFixed(12));
+  return fields;
+}

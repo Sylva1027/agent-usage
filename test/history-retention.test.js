@@ -97,7 +97,7 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     const samplesBefore = samplePayload(store, "codex");
     const summaryBefore = summaryPayload(store);
     const initialVersion = store.perfState().indexVersion;
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
 
     const [movedFrom] = fixture.rolloutFiles;
     const movedTo = movedFrom.replace(`${path.sep}sessions${path.sep}`, `${path.sep}archived_sessions${path.sep}`);
@@ -108,8 +108,8 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     const movedVersion = store.perfState().indexVersion;
     assert.equal(moved.perfState, "ready");
     assert.deepEqual(moved.missingSources, []);
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads WHERE source_path = ?").get(movedFrom).n,
       0,
@@ -137,8 +137,8 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
       partial.missingSources.map((source) => [source.path, source.kind]),
       [[missingPath, "extra"]],
     );
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads").get().n, 3);
     assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
@@ -165,8 +165,8 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     assert.equal(recovered.perfState, "ready");
     assert.deepEqual(recovered.missingSources, []);
     assert.deepEqual(store.summarize({ preset: "all", now: NOW }).perf.missingSources, []);
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
     assert.notEqual(recoveredVersion, partialVersion);
@@ -186,8 +186,8 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
       homeGone.missingSources.map((source) => source.path),
       currentFiles,
     );
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads").get().n, 3);
     assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
@@ -197,8 +197,8 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     assert.equal(homeRestored.perfState, "ready");
     assert.deepEqual(homeRestored.missingSources, []);
     assert.equal(store.perfState().indexVersion, recoveredVersion);
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
   } finally {
@@ -326,8 +326,8 @@ test("Codex compression transition replaces paths without duplicating facts", as
     const restoredSecondary = restoredQuotaPayloads.find((payload) => payload.role === "secondary");
     assert.equal(restoredSecondary.source_path, plainPath);
     assert.equal(restoredSecondary.used_percent, null);
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
     assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
 
@@ -443,13 +443,18 @@ test("Codex partial rollout loss retains old turns while a surviving rollout ing
     );
     const newSample = samplesAfter.find((sample) => !initialKeys.has(sample.sample_key));
     assert.ok(newSample);
-    assert.equal(newSample.sample_key, JSON.stringify(["codex", initialSamples[0].home_id, threadId, turnId]));
+    assert.equal(
+      newSample.sample_key,
+      JSON.stringify(["codex", initialSamples[0].home_id, threadId, turnId, responseId]),
+    );
     assert.equal(newSample.model, "codex-fixture-model");
     assert.equal(newSample.model_evidence, "turn_context");
-    assert.equal(newSample.output_tokens, 77);
+    assert.equal(newSample.output_tokens, null, "the surviving rollout adds a candidate without generation evidence");
+    assert.equal(newSample.duration_ms, null);
+    assert.equal(newSample.timing_kind, "generation");
     assert.equal(newSample.status, "completed");
     assert.equal(newSample.request_count, 1);
-    assert.equal(newSample.item_count, 1);
+    assert.equal(newSample.item_count, 0, "a turn item without response ownership is not assigned to the new request");
     assert.equal(newSample.ts_ms, startedAtMs + 2500);
     assert.equal(
       store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE sample_key = ?").get(newSample.sample_key).n,
@@ -461,7 +466,7 @@ test("Codex partial rollout loss retains old turns while a surviving rollout ing
         .get(newSample.sample_key).n,
       2,
     );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 77);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 80);
   } finally {
     store.close();
     fixture.close();
@@ -481,6 +486,7 @@ test("Codex thread publication retains replaced samples and dependencies", async
       store.database.prepare("SELECT home_id FROM perf_samples LIMIT 1").get().home_id,
       threadId,
       "turn-24",
+      "response-24-1",
     ]);
     const oldSample = store.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey);
     assert.equal(oldSample.output_tokens, 123);
@@ -519,8 +525,8 @@ test("Codex thread publication retains replaced samples and dependencies", async
     assert.equal(liveSample.output_tokens, 123);
     assert.equal(liveSample.duration_ms, 1000);
     assert.equal(liveSample.ts_ms, oldSample.ts_ms + 2000);
-    assert.equal(countSamples(store, "codex"), 25);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 75);
+    assert.equal(countSamples(store, "codex"), 26);
+    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
 
     const replacedFacts = store.database
       .prepare(
@@ -633,9 +639,15 @@ test("Codex request timing evidence remains unchanged by a real reparse", async 
     assert.deepEqual(readLinks(), linksBefore);
     assert.deepEqual(store.lookupRequestTiming({ homeId, threadId, turnId: "turn-24", responseId }), {
       state: "available",
-      durationMs: 1000,
+      durationMs: 1500,
       reportedOutputTokens: 123,
       requestedModel: "codex-fixture-model",
+      generation: {
+        outputTokens: 123,
+        durationMs: 1000,
+        startOutputTokens: 0,
+        timingKind: "explicit",
+      },
     });
   } finally {
     store.close();
@@ -693,10 +705,12 @@ test("WorkBuddy duration observations survive a real source reparse", async () =
         .map((row) => row.duration_ms),
       [900],
     );
-    assert.equal(
-      store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get().duration_ms,
-      900,
-    );
+    const initialSample = store.database
+      .prepare("SELECT output_tokens, duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'")
+      .get();
+    assert.ok(initialSample);
+    assert.equal(initialSample.output_tokens, null);
+    assert.equal(initialSample.duration_ms, null);
 
     writeFileSync(workbuddyFile, toJsonl([usage(201)]));
     writeFileSync(traceFile, toJsonl([span(850)]));
@@ -723,7 +737,13 @@ test("WorkBuddy duration observations survive a real source reparse", async () =
         { home_id: source.home_id, message_id: "workbuddy-message", duration_ms: 900 },
       ],
     );
-    assert.equal(countSamples(store, "workbuddy"), 0);
+    const changedSample = store.database
+      .prepare("SELECT output_tokens, duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'")
+      .get();
+    assert.ok(changedSample);
+    assert.equal(changedSample.output_tokens, null);
+    assert.equal(changedSample.duration_ms, null);
+    assert.equal(countSamples(store, "workbuddy"), 1);
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true });
@@ -815,8 +835,8 @@ test("Claude and WorkBuddy file loss retain usage and samples independently", as
         const liveSample = store.database
           .prepare("SELECT * FROM perf_samples WHERE sample_key = ?")
           .get(oldSample.sample_key);
-        assert.equal(liveSample.duration_ms, 12000);
-        assert.equal(liveSample.output_tokens, 300);
+        assert.equal(liveSample.duration_ms, null);
+        assert.equal(liveSample.output_tokens, null);
         assert.equal(
           store.database
             .prepare("SELECT COUNT(*) AS n FROM perf_sample_sources WHERE sample_key = ?")
@@ -1294,7 +1314,7 @@ test("Reparse stores one recoverable old event fact for an old10-to-new20 replac
     const migrated = new UsageStore({ ...options, databaseFile });
     try {
       await migrated.open();
-      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 21);
+      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 23);
       assert.equal(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('history_replaced_facts')").get().n,
         12,

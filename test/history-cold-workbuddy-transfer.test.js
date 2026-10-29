@@ -168,12 +168,21 @@ test("conflicting WorkBuddy observations survive complete bundle import after so
     const homeId = String(event.home_id);
     const startMs = Number(event.timestamp_ms);
     const endMs = startMs + 1;
-    const perfSampleCount = Number(
-      store.database
-        .prepare("SELECT COUNT(*) AS count FROM perf_samples WHERE source_kind = 'workbuddy' AND home_id = ?")
-        .get(homeId).count,
-    );
-    assert.equal(perfSampleCount, 0, "the event-referenced home must not depend on a hot WorkBuddy perf sample");
+    const perfSamples = store.database
+      .prepare(
+        `SELECT sample_key, output_tokens, duration_ms, timing_kind, timing_source, request_count
+         FROM perf_samples
+         WHERE source_kind = 'workbuddy' AND home_id = ?
+         ORDER BY sample_key`,
+      )
+      .all(homeId)
+      .map((row) => ({ ...row }));
+    assert.equal(perfSamples.length, 1, "conflicting durations must retain one attributable model row");
+    assert.deepEqual(JSON.parse(String(perfSamples[0].sample_key)), ["workbuddy", homeId, MESSAGE_ID]);
+    assert.equal(perfSamples[0].duration_ms, null);
+    assert.equal(perfSamples[0].timing_kind, "generation");
+    assert.equal(perfSamples[0].timing_source, "unknown");
+    assert.equal(Number(perfSamples[0].request_count), 1);
     const oracle = sourceWorkbuddyOracle(store.database, homeId);
     assert.deepEqual(
       oracle.observations.map((row) => [row.home_id, row.message_id, row.duration_ms]),

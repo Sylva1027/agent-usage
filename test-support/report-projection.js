@@ -10,6 +10,7 @@ export function pricedReport(report, asOf = report.asOf || report.generatedAt) {
     ...report,
     generatedAt: asOf,
     asOf,
+    pricingCatalog: catalog,
     quota: selectQuotaWindows(report.rateLimitObservations || [], asOf),
     pricing: {
       checkedAt: catalog.checkedAt,

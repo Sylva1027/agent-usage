@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { appendFile, mkdtemp, rename, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { MAGPIE_TIMING_ORIGIN, MagpieRequestTimings } from "../src/perf-magpie-timing.js";
+import { MAGPIE_TIMING_ORIGIN, MagpieRequestTimings } from "../scripts/perf-reference-magpie.mjs";
 
 function row(overrides = {}) {
   return {
@@ -35,7 +35,7 @@ test("read append-only timing without retaining gateway credentials or bodies", 
   assert.equal(await reader.read(file), true);
   assert.deepEqual(reader.recordsForRequest("response-a", "model-a", 100), [
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       evidenceOrigin: MAGPIE_TIMING_ORIGIN,
       responseId: "response-a",
       requestedModel: "model-a",
@@ -43,6 +43,7 @@ test("read append-only timing without retaining gateway credentials or bodies", 
       durationMs: 2000,
       status: "completed",
       completedAtMs: null,
+      generation: null,
     },
   ]);
   assert.equal(JSON.stringify([...reader.requests]).includes("secret"), false);
@@ -81,6 +82,424 @@ test("canonicalize only explicit Codex provider aliases; preserve mismatches for
   await appendFile(file, `${JSON.stringify(row({ response_id: "response-b", provider: "other" }))}\n`);
   await reader.read(file);
   assert.equal(reader.recordsForRequest("response-b", "model-a", 100)[0].requestedModel, "codex/model-a");
+});
+
+test("in-memory lookup exactly matches original model and output before returning generation", async (t) => {
+  const { file, reader } = await fixture(t);
+  const rows = [
+    row({
+      reasoning: 0,
+      first_output_ms: 100,
+      last_output_ms: 600,
+    }),
+    row({
+      response_id: "response-ledger-reasoning",
+      reasoning: 20,
+      first_output_ms: 100,
+      last_output_ms: 600,
+    }),
+  ];
+  await writeFile(file, `${rows.map(JSON.stringify).join("\n")}\n`);
+  await reader.read(file);
+
+  assert.deepEqual(
+    reader.lookupRequestTiming({
+      responseId: "response-a",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: 0,
+    }),
+    {
+      state: "available",
+      durationMs: 2_000,
+      reportedOutputTokens: 100,
+      requestedModel: "model-a",
+      generation: {
+        outputTokens: 100,
+        durationMs: 500,
+        startOutputTokens: 1,
+        timingKind: "first_last_output",
+      },
+    },
+  );
+  assert.deepEqual(
+    reader.lookupRequestTiming({
+      responseId: "response-ledger-reasoning",
+      model: "model-a",
+      outputTokens: 100,
+    }).generation,
+    {
+      outputTokens: 80,
+      durationMs: 500,
+      startOutputTokens: 1,
+      timingKind: "first_last_output",
+    },
+  );
+  assert.deepEqual(reader.lookupRequestTiming({ responseId: "response-a", model: "other-model", outputTokens: 100 }), {
+    state: "conflict",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: "",
+    generation: null,
+  });
+  assert.equal(
+    reader.lookupRequestTiming({ responseId: "response-a", model: "model-a", outputTokens: 101 }).state,
+    "conflict",
+  );
+  assert.deepEqual(
+    reader.lookupRequestTiming({ responseId: "response-missing", model: "model-a", outputTokens: 100 }),
+    {
+      state: "missing",
+      durationMs: null,
+      reportedOutputTokens: null,
+      requestedModel: "",
+      generation: null,
+    },
+  );
+});
+
+test("explicit first/last or generation durations measure pure-tool responses without speed thresholds", async (t) => {
+  const { file, reader } = await fixture(t);
+  await writeFile(
+    file,
+    [
+      row({
+        response_id: "response-tool",
+        stop: "tool_use",
+        out: 2,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 120,
+      }),
+      row({
+        response_id: "response-fast",
+        out: 1_000,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 110,
+      }),
+      row({
+        response_id: "response-tool-approximate",
+        stop: "tool_calls",
+        out: 10,
+        reasoning: 0,
+        first_output_ms: 100,
+        generation_ms: 500,
+      }),
+      row({
+        response_id: "response-tool-text-boundary",
+        stop: "tool_use",
+        out: 10,
+        reasoning: 0,
+        first_text_ms: 100,
+        ttft_ms: 100,
+      }),
+    ]
+      .map(JSON.stringify)
+      .join("\n") + "\n",
+  );
+  await reader.read(file);
+
+  assert.deepEqual(reader.recordsForRequest("response-tool", "model-a", 2)[0].generation, {
+    outputTokens: 2,
+    durationMs: 20,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+  assert.deepEqual(reader.recordsForRequest("response-fast", "model-a", 1_000)[0].generation, {
+    outputTokens: 1_000,
+    durationMs: 10,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+  assert.deepEqual(reader.recordsForRequest("response-tool-approximate", "model-a", 10)[0].generation, {
+    outputTokens: 10,
+    durationMs: 500,
+    startOutputTokens: 0,
+    timingKind: "explicit",
+  });
+  assert.equal(reader.recordsForRequest("response-tool-text-boundary", "model-a", 10)[0].generation, null);
+});
+
+test("explicit generation duration outranks a response-end approximation", async (t) => {
+  const { file, reader } = await fixture(t);
+  await writeFile(
+    file,
+    `${JSON.stringify(
+      row({
+        response_id: "response-explicit",
+        reasoning: 0,
+        first_output_ms: 100,
+        generation_ms: 500,
+      }),
+    )}\n`,
+  );
+  await reader.read(file);
+
+  assert.deepEqual(reader.recordsForRequest("response-explicit", "model-a", 100)[0].generation, {
+    outputTokens: 100,
+    durationMs: 500,
+    startOutputTokens: 0,
+    timingKind: "explicit",
+  });
+});
+
+test("known reasoning reconciles explicit generation output in memory lookups", async (t) => {
+  const { file, reader } = await fixture(t);
+  const explicit = (outputTokens) => ({
+    outputTokens,
+    durationMs: 500,
+    startOutputTokens: 0,
+    timingKind: "explicit",
+  });
+  await writeFile(
+    file,
+    [
+      row({ response_id: "response-native-valid", generation: explicit(80) }),
+      row({ response_id: "response-native-conflict", generation: explicit(100) }),
+      row({ response_id: "response-ledger-valid", reasoning: 20, generation: explicit(80) }),
+      row({ response_id: "response-ledger-conflict", reasoning: 20, generation: explicit(100) }),
+      row({ response_id: "response-unknown", generation: explicit(100) }),
+    ]
+      .map(JSON.stringify)
+      .join("\n") + "\n",
+  );
+  await reader.read(file);
+
+  assert.deepEqual(
+    reader.lookupRequestTiming({
+      responseId: "response-native-valid",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: 20,
+    }).generation,
+    explicit(80),
+  );
+  assert.equal(
+    reader.lookupRequestTiming({
+      responseId: "response-native-conflict",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: 20,
+    }).state,
+    "conflict",
+  );
+  assert.equal(
+    reader.lookupRequestTiming({
+      responseId: "response-native-valid",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: 0,
+    }).state,
+    "conflict",
+  );
+  assert.equal(
+    reader.lookupRequestTiming({
+      responseId: "response-ledger-valid",
+      model: "model-a",
+      outputTokens: 100,
+    }).state,
+    "available",
+  );
+  assert.equal(
+    reader.lookupRequestTiming({
+      responseId: "response-ledger-conflict",
+      model: "model-a",
+      outputTokens: 100,
+    }).state,
+    "conflict",
+  );
+  assert.deepEqual(
+    reader.lookupRequestTiming({
+      responseId: "response-unknown",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: null,
+    }).generation,
+    explicit(100),
+  );
+
+  const [preserved] = reader.recordsForRequest("response-native-conflict", "model-a", 100, 20);
+  assert.equal(preserved.reportedOutputTokens, 100);
+  assert.deepEqual(preserved.generation, explicit(100));
+});
+
+test("text completion is only used when first-text and TTFT agree", async (t) => {
+  const { file, reader } = await fixture(t);
+  await writeFile(
+    file,
+    [
+      row({
+        response_id: "response-text",
+        out: 10,
+        reasoning: 0,
+        first_text_ms: 100,
+        ttft_ms: 100,
+      }),
+      row({
+        response_id: "response-tool-first",
+        out: 10,
+        reasoning: 0,
+        first_text_ms: 500,
+        ttft_ms: 100,
+      }),
+      row({
+        response_id: "response-ttft-only",
+        out: 10,
+        reasoning: 0,
+        ttft_ms: 100,
+      }),
+    ]
+      .map(JSON.stringify)
+      .join("\n") + "\n",
+  );
+  await reader.read(file);
+
+  assert.deepEqual(reader.recordsForRequest("response-text", "model-a", 10)[0].generation, {
+    outputTokens: 10,
+    durationMs: 1_900,
+    startOutputTokens: 1,
+    timingKind: "first_output_response_end",
+  });
+  assert.equal(reader.recordsForRequest("response-tool-first", "model-a", 10)[0].generation, null);
+  assert.equal(reader.recordsForRequest("response-ttft-only", "model-a", 10)[0].generation, null);
+});
+
+test("only explicit stream shape proves a one-shot response; flow_ms cannot override real boundaries", async (t) => {
+  const { file, reader } = await fixture(t);
+  await writeFile(
+    file,
+    [
+      row({
+        response_id: "response-flow",
+        out: 100,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 1_100,
+        first_text_ms: 300,
+        ttft_ms: 300,
+        flow_ms: 1,
+      }),
+      row({
+        response_id: "response-flow-zero",
+        out: 100,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 1_100,
+        flow_ms: 0,
+      }),
+      row({
+        response_id: "response-confirmed-single-chunk",
+        out: 100,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 1_100,
+        single_chunk: true,
+      }),
+      row({
+        response_id: "response-confirmed-one-shot",
+        out: 100,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 1_100,
+        one_shot: true,
+      }),
+      row({
+        response_id: "response-confirmed-non-streamed",
+        out: 100,
+        reasoning: 0,
+        first_output_ms: 100,
+        last_output_ms: 1_100,
+        streamed: false,
+      }),
+    ]
+      .map(JSON.stringify)
+      .join("\n") + "\n",
+  );
+  await reader.read(file);
+
+  assert.deepEqual(reader.recordsForRequest("response-flow", "model-a", 100)[0].generation, {
+    outputTokens: 100,
+    durationMs: 1_000,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+  assert.deepEqual(reader.recordsForRequest("response-flow-zero", "model-a", 100)[0].generation, {
+    outputTokens: 100,
+    durationMs: 1_000,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+  assert.equal(reader.recordsForRequest("response-confirmed-single-chunk", "model-a", 100)[0].generation, null);
+  assert.equal(reader.recordsForRequest("response-confirmed-one-shot", "model-a", 100)[0].generation, null);
+  assert.equal(reader.recordsForRequest("response-confirmed-non-streamed", "model-a", 100)[0].generation, null);
+});
+
+test("Claude ledger rows use their endpoint, agent, exact ID, and native reasoning count", async (t) => {
+  const { file, reader } = await fixture(t);
+  await writeFile(
+    file,
+    `${JSON.stringify(
+      row({
+        agent: "claude-desktop",
+        provider: "anthropic",
+        req: "anthropic/model-a",
+        ep: "/v1/messages → /v1/responses",
+        response_id: "message-a",
+        out: 100,
+        reasoning: 20,
+        reasoning_hidden: true,
+        first_output_ms: 100,
+        last_output_ms: 200,
+      }),
+    )}\n`,
+  );
+  await reader.read(file);
+
+  const [record] = reader.recordsForRequest("message-a", "model-a", 100, 20);
+  assert.equal(record.schemaVersion, 2);
+  assert.equal(record.requestedModel, "anthropic/model-a");
+  assert.deepEqual(record.generation, {
+    outputTokens: 80,
+    durationMs: 100,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+
+  const withoutReasoning = new MagpieRequestTimings();
+  withoutReasoning.addLine(
+    JSON.stringify(
+      row({
+        agent: "claude",
+        req: "",
+        ep: "/v1/messages",
+        response_id: "message-b",
+        first_output_ms: 100,
+        last_output_ms: 200,
+      }),
+    ),
+  );
+  assert.equal(withoutReasoning.recordsForRequest("message-b", "model-a", 100)[0].generation, null);
+  assert.deepEqual(withoutReasoning.recordsForRequest("message-b", "model-a", 100, 0)[0].generation, {
+    outputTokens: 100,
+    durationMs: 100,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+  });
+  assert.deepEqual(
+    withoutReasoning.lookupRequestTiming({
+      responseId: "message-b",
+      model: "model-a",
+      outputTokens: 100,
+      reasoningOutputTokens: 0,
+    }).generation,
+    {
+      outputTokens: 100,
+      durationMs: 100,
+      startOutputTokens: 1,
+      timingKind: "first_last_output",
+    },
+  );
 });
 
 test("failed, interrupted and invalid requests cannot supply a denominator", async (t) => {

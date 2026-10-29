@@ -85,17 +85,17 @@ test("explicit Codex perf authority restores a timing-derived cold sample", asyn
     assert.ok(coldSample, "fixture must expose a computable cold Codex perf sample");
     assert.equal(coldSample.sourceKind, "codex");
     assert.equal(coldSample.methodVersion, PERF_METHOD_VERSION);
-    assert.equal(coldSample.timingKind, "request_e2e");
+    assert.equal(coldSample.timingKind, "generation");
     assert.equal(coldSample.timingSource, "explicit");
 
-    const [, keyHomeId, threadId, turnId] = JSON.parse(coldSample.sampleKey);
-    const turnMatch = /^turn-(\d+)$/.exec(String(turnId));
+    const [, keyHomeId, threadId, turnId, responseId] = JSON.parse(coldSample.sampleKey);
     assert.equal(keyHomeId, coldSample.homeId);
-    assert.ok(turnMatch, "the cold Codex sample key must retain its turn identity");
-    const responseId = `response-${Number(turnMatch[1])}-1`;
+    assert.equal(typeof responseId, "string", "the v3 cold Codex sample key must retain its response identity");
+    const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
+    assert.ok(baseTiming, "the selected cold sample must have fixture timing evidence");
     const nativeTiming = store.database
       .prepare(
-        `SELECT evidence.reported_output_tokens, evidence.duration_ms
+        `SELECT evidence.reported_output_tokens, evidence.generation_json
          FROM perf_request_timing_evidence AS evidence
          JOIN perf_request_timing_threads AS links
            ON links.home_id = evidence.home_id AND links.response_id = evidence.response_id
@@ -103,14 +103,20 @@ test("explicit Codex perf authority restores a timing-derived cold sample", asyn
       )
       .all(coldSample.homeId, responseId, threadId)
       .map((row) => ({
-        outputTokens: Number(row.reported_output_tokens),
-        durationMs: Number(row.duration_ms),
+        reportedOutputTokens: Number(row.reported_output_tokens),
+        generation: JSON.parse(String(row.generation_json)),
       }));
     assert.deepEqual(
       nativeTiming,
-      [{ outputTokens: coldSample.outputTokens, durationMs: coldSample.durationMs }],
-      "the selected cold sample must be backed by its native Codex request timing",
+      [{ reportedOutputTokens: baseTiming.reportedOutputTokens, generation: baseTiming.generation }],
+      "the selected cold sample must be backed by its exact native Codex response evidence",
     );
+    assert.equal(
+      coldSample.outputTokens,
+      baseTiming.generation.outputTokens - baseTiming.generation.startOutputTokens,
+      "the v3 sample output must be the net non-reasoning generation count",
+    );
+    assert.equal(coldSample.durationMs, baseTiming.generation.durationMs);
 
     const hotRowsBefore = rawPerfRows(store.database, "ts_ms >= ?", COLD_END_MS);
     const unplacedRowsBefore = rawPerfRows(store.database, "ts_ms IS NULL");

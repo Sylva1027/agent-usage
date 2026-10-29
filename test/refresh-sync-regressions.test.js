@@ -58,9 +58,9 @@ test("refresh sync: retained missing paths stop planning; return and rename stil
     const before = publishedFacts(store);
     assert.equal(before.events.length, 1, "the retention oracle must include a real usage event");
     assert.equal(before.events[0].total, 123);
-    assert.equal(before.samples.length, 25);
+    assert.equal(before.samples.length, 26);
     assert.equal(before.owners.length, 3);
-    assert.equal(before.dependencies.length, 75);
+    assert.equal(before.dependencies.length, 78);
 
     unlinkSync(missingPath);
     const missing = await syncWithPlanningCount(store, fixture.reportOptions);

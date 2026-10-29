@@ -13,7 +13,58 @@ import {
   timelineChannelSegments,
 } from "../public/app.js";
 import { API_PRICING_CHECKED_AT, API_PRICING_MODE, estimateEventCost } from "../src/pricing.js";
-import { selectQuotaWindows } from "../src/usage-core.js";
+
+function quota5hObservation(start, observedAt) {
+  const startMs = Date.parse(start);
+  return {
+    sourcePath: "limits",
+    lineNumber: Date.parse(observedAt),
+    role: "primary",
+    limitId: "codex",
+    windowMinutes: 300,
+    observedAtMs: Date.parse(observedAt),
+    resetsAtMs: startMs + 300 * 60_000,
+    usedPercent: 10,
+  };
+}
+
+const unavailableQuotaWindow = Object.freeze({
+  state: "missing",
+  reason: "未发现限额窗口。",
+  windowStart: null,
+  windowEndExclusive: null,
+  observedAt: null,
+  usedPercent: null,
+  percentStale: null,
+});
+
+function availableQuotaWindow(start, endExclusive, observedAt) {
+  return {
+    state: "available",
+    reason: null,
+    windowStart: start,
+    windowEndExclusive: endExclusive,
+    observedAt,
+    usedPercent: 10,
+    percentStale: false,
+  };
+}
+
+function quotaSnapshot(asOf, current5h, previous5h = unavailableQuotaWindow) {
+  return {
+    asOf,
+    limitId: "codex",
+    ignoredBucketCount: 0,
+    windows: {
+      quota_5h: current5h,
+      quota_week: unavailableQuotaWindow,
+    },
+    previousWindows: {
+      quota_5h: previous5h,
+      quota_week: unavailableQuotaWindow,
+    },
+  };
+}
 
 test("static UTC date selection agrees with live day boundaries", () => {
   setSummaryFilters({
@@ -151,28 +202,24 @@ test("static quota summary stays at export asOf and applies source exclusions to
   const asOf = "2026-09-25T12:00:00.000Z";
   const start = "2026-09-25T09:37:00.000Z";
   const end = "2026-09-25T14:37:00.000Z";
-  const quota = selectQuotaWindows(
-    [
-      {
-        sourcePath: "codex.jsonl",
-        lineNumber: 4,
-        role: "primary",
-        observedAtMs: Date.parse("2026-09-25T11:59:00.000Z"),
-        limitId: "codex",
-        windowMinutes: 300,
-        resetsAtMs: Date.parse(end),
-        usedPercent: null,
-      },
-    ],
-    asOf,
-  );
+  const quota = quotaSnapshot(asOf, availableQuotaWindow(start, end, "2026-09-25T11:59:00.000Z"));
   const events = [
-    { timestamp: start, sessionId: "included", homeId: "keep", channel: "CLI", total: { total: 5 } },
+    {
+      timestamp: start,
+      sessionId: "included",
+      homeId: "keep",
+      channel: "CLI",
+      model: "gpt-6-sol",
+      quotaSource: "unknown",
+      total: { total: 5 },
+    },
     {
       timestamp: "2026-09-25T10:07:00.000Z",
       sessionId: "excluded",
       homeId: "drop",
       channel: "ZCode",
+      model: "gpt-6-sol",
+      quotaSource: "unknown",
       total: { total: 7 },
     },
     {
@@ -181,9 +228,19 @@ test("static quota summary stays at export asOf and applies source exclusions to
       sessionId: "zcode-in-window",
       homeId: "zopen",
       channel: "ZCode",
+      model: "gpt-6-sol",
+      quotaSource: "unknown",
       total: { total: 9 },
     },
-    { timestamp: asOf, sessionId: "at-as-of", homeId: "keep", channel: "CLI", total: { total: 11 } },
+    {
+      timestamp: asOf,
+      sessionId: "at-as-of",
+      homeId: "keep",
+      channel: "CLI",
+      model: "gpt-6-sol",
+      quotaSource: "unknown",
+      total: { total: 11 },
+    },
   ];
 
   setSummaryFilters({ preset: "quota_5h", bucket: "month", now: asOf, excludedHomes: ["drop"] });
@@ -192,9 +249,9 @@ test("static quota summary stays at export asOf and applies source exclusions to
       asOf,
       generatedAt: asOf,
       quota,
-      // 限额窗口只统计 Codex 来源：keep 是 main home，drop/zopen 是 ZCode home。
+      // 限额窗口只统计 Codex 来源：历史 home 缺失 kind 时与服务端一致，drop/zopen 是 ZCode home。
       homes: [
-        { id: "keep", label: "Main Codex", kind: "main" },
+        { id: "keep", label: "Main Codex" },
         { id: "drop", label: "ZCode", kind: "zcode" },
         { id: "zopen", label: "ZCode 2", kind: "zcode" },
       ],
@@ -204,12 +261,203 @@ test("static quota summary stays at export asOf and applies source exclusions to
     assert.equal(summary.range.windowStart.toISOString(), start);
     assert.equal(summary.range.windowEndExclusive.toISOString(), end);
     assert.equal(summary.totals.total, 5);
-    assert.equal(summary.comparison, null);
+    assert.equal(summary.comparison.label, "较上一5h");
+    assert.equal(summary.comparison.previousRange, null);
     assert.equal(summary.timeline.length, 10);
     assert.equal(summary.timeline[0].total.total, 5);
     assert.ok(summary.timeline.slice(5).every((row) => row.future));
   } finally {
     setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [], startDate: "", endDate: "" });
+  }
+});
+
+test("static quota comparison uses the previous real cycle and the quota-usage filter", () => {
+  const asOf = "2026-09-25T12:00:00.000Z";
+  const observations = [
+    quota5hObservation("2026-09-25T04:00:00.000Z", "2026-09-25T08:00:00.000Z"),
+    quota5hObservation("2026-09-25T09:00:00.000Z", "2026-09-25T11:00:00.000Z"),
+  ];
+  const quota = quotaSnapshot(
+    asOf,
+    availableQuotaWindow("2026-09-25T09:00:00.000Z", "2026-09-25T14:00:00.000Z", "2026-09-25T11:00:00.000Z"),
+    availableQuotaWindow("2026-09-25T04:00:00.000Z", "2026-09-25T09:00:00.000Z", "2026-09-25T08:00:00.000Z"),
+  );
+  const homes = [
+    { id: "codex", label: "Codex", kind: "main" },
+    { id: "zcode", label: "ZCode", kind: "zcode" },
+  ];
+
+  setSummaryFilters({ preset: "quota_5h", bucket: "quota_30m", now: asOf, excludedHomes: [] });
+  try {
+    const summary = summarize({
+      quota,
+      quotaObservations: observations,
+      homes,
+      events: [
+        {
+          timestamp: "2026-09-25T05:00:00.000Z",
+          sessionId: "previous",
+          homeId: "codex",
+          channel: "CLI",
+          model: "gpt-6-sol",
+          quotaSource: "unknown",
+          total: { total: 100 },
+        },
+        {
+          timestamp: "2026-09-25T10:00:00.000Z",
+          sessionId: "current",
+          homeId: "codex",
+          channel: "CLI",
+          model: "gpt-6-sol",
+          quotaSource: "unknown",
+          total: { total: 300 },
+        },
+        {
+          timestamp: "2026-09-25T11:00:00.000Z",
+          sessionId: "plan",
+          homeId: "codex",
+          channel: "CLI",
+          model: "o3",
+          quotaSource: "plan",
+          total: { total: 50 },
+        },
+        {
+          timestamp: "2026-09-25T11:05:00.000Z",
+          sessionId: "external",
+          homeId: "codex",
+          channel: "CLI",
+          model: "gpt-6-sol",
+          quotaSource: "external",
+          total: { total: 1_000 },
+        },
+        {
+          timestamp: "2026-09-25T11:10:00.000Z",
+          sessionId: "review",
+          homeId: "codex",
+          channel: "CLI",
+          model: "codex-auto-review",
+          quotaSource: "unknown",
+          total: { total: 1_000 },
+        },
+        {
+          timestamp: "2026-09-25T11:15:00.000Z",
+          sessionId: "other-home",
+          homeId: "zcode",
+          channel: "ZCode",
+          model: "gpt-6-sol",
+          quotaSource: "unknown",
+          total: { total: 1_000 },
+        },
+      ],
+    });
+
+    assert.equal(summary.totals.total, 350);
+    assert.equal(summary.records.totalTokens.value, 350);
+    assert.equal(summary.comparison.label, "较上一5h");
+    assert.equal(summary.comparison.previousRange.start, "2026-09-25T04:00:00.000Z");
+    assert.equal(summary.comparison.previousTotals.total, 100);
+    assert.equal(summary.comparison.totalDelta, 250);
+    assert.equal(summary.comparison.percentChange, 250);
+    assert.equal(summary.comparison.averageBaselineTotal, 60);
+    assert.equal(summary.comparison.averageDelta, 290);
+    assert.equal(summary.comparison.averagePercentChange, 483.33);
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [] });
+  }
+});
+
+test("recent previous quota compares with its preceding full cycle and preserves a confirmed zero", () => {
+  const asOf = "2026-09-25T12:00:00.000Z";
+  const observations = [
+    quota5hObservation("2026-09-25T00:00:00.000Z", "2026-09-25T03:00:00.000Z"),
+    quota5hObservation("2026-09-25T04:00:00.000Z", "2026-09-25T08:00:00.000Z"),
+    quota5hObservation("2026-09-25T09:00:00.000Z", "2026-09-25T11:00:00.000Z"),
+  ];
+  const quota = quotaSnapshot(
+    asOf,
+    availableQuotaWindow("2026-09-25T09:00:00.000Z", "2026-09-25T14:00:00.000Z", "2026-09-25T11:00:00.000Z"),
+    availableQuotaWindow("2026-09-25T04:00:00.000Z", "2026-09-25T09:00:00.000Z", "2026-09-25T08:00:00.000Z"),
+  );
+
+  setSummaryFilters({
+    preset: "recent",
+    recentValue: "上一个5h",
+    bucket: "quota_30m",
+    now: asOf,
+    excludedHomes: [],
+  });
+  try {
+    const summary = summarize({
+      quota,
+      quotaObservations: observations,
+      homes: [{ id: "codex", label: "Codex", kind: "main" }],
+      events: [
+        {
+          timestamp: "2026-09-25T05:00:00.000Z",
+          sessionId: "selected-cycle",
+          homeId: "codex",
+          channel: "CLI",
+          model: "gpt-6-sol",
+          quotaSource: "unknown",
+          total: { total: 100 },
+        },
+      ],
+    });
+
+    assert.equal(summary.range.windowStart.toISOString(), "2026-09-25T04:00:00.000Z");
+    assert.equal(summary.comparison.label, "较上一5h");
+    assert.equal(summary.comparison.previousRange.start, "2026-09-25T00:00:00.000Z");
+    assert.equal(summary.comparison.previousTotals.total, 0);
+    assert.equal(summary.comparison.totalDelta, 100);
+    assert.equal(summary.comparison.percentChange, null);
+    assert.equal(summary.comparison.averageBaselineTotal, 0);
+    assert.equal(summary.comparison.averageDelta, 100);
+    assert.equal(summary.comparison.averagePercentChange, null);
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [], recentValue: "" });
+  }
+});
+
+test("a missing previous quota cycle stays unavailable instead of becoming a zero baseline", () => {
+  const asOf = "2026-09-25T12:00:00.000Z";
+  const observations = [quota5hObservation("2026-09-25T09:00:00.000Z", "2026-09-25T11:00:00.000Z")];
+  const quota = quotaSnapshot(
+    asOf,
+    availableQuotaWindow("2026-09-25T09:00:00.000Z", "2026-09-25T14:00:00.000Z", "2026-09-25T11:00:00.000Z"),
+  );
+
+  setSummaryFilters({ preset: "quota_5h", bucket: "quota_30m", now: asOf, excludedHomes: [] });
+  try {
+    const summary = summarize({
+      quota,
+      quotaObservations: observations,
+      homes: [{ id: "codex", label: "Codex", kind: "main" }],
+      events: [],
+    });
+    assert.equal(summary.comparison.label, "较上一5h");
+    assert.equal(summary.comparison.previousRange, null);
+    assert.equal(summary.comparison.previousTotals.total, 0);
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [] });
+  }
+});
+
+test("static summarize preserves a comparison already calculated by the server", () => {
+  const comparison = {
+    label: "较上一7d",
+    previousRange: { start: "2026-09-11T00:00:00.000Z", end: "2026-09-17T23:59:59.999Z" },
+    previousTotals: { total: 0 },
+    totalDelta: 25,
+    percentChange: null,
+    averageBaselineTotal: 0,
+    averageDelta: 25,
+    averagePercentChange: null,
+  };
+  setSummaryFilters({ preset: "all", bucket: "day", now: null, excludedHomes: [] });
+  try {
+    assert.equal(summarize({ comparison, events: [], homes: [] }).comparison, comparison);
+  } finally {
+    setSummaryFilters({ preset: "today", bucket: "hour", now: null, excludedHomes: [] });
   }
 });
 

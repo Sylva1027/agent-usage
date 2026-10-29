@@ -101,20 +101,24 @@ export function completedQuotaWindows(observations, limitId, asOfMs, minutes) {
     const point = cluster.toSorted((a, b) => b.count - a.count || b.end - a.end)[0];
     return { start: point.end - duration, plannedReset: point.end, first: Math.min(...cluster.map((x) => x.first)) };
   });
-  const completed = [];
   for (let i = 1; i < cycles.length; i += 1) {
-    const previous = cycles[i - 1];
-    const next = cycles[i];
-    if (next.start > asOfMs || previous.first >= next.start) return null;
     // A later write of an old snapshot must not turn the cycle clock backwards.
+    if (cycles[i - 1].first >= cycles[i].start) return null;
+  }
+  const completed = [];
+  for (let i = 0; i < cycles.length; i += 1) {
+    const cycle = cycles[i];
+    const next = cycles[i + 1];
+    const windowEndExclusive = Math.min(cycle.plannedReset, next?.start ?? cycle.plannedReset);
+    if (asOfMs < windowEndExclusive) continue;
     completed.push({
       state: "available",
       reason: null,
-      windowStart: new Date(previous.start).toISOString(),
-      windowEndExclusive: new Date(next.start).toISOString(),
-      plannedResetAt: new Date(previous.plannedReset).toISOString(),
-      observedAt: new Date(previous.first).toISOString(),
-      durationMinutes: (next.start - previous.start) / 60000,
+      windowStart: new Date(cycle.start).toISOString(),
+      windowEndExclusive: new Date(windowEndExclusive).toISOString(),
+      plannedResetAt: new Date(cycle.plannedReset).toISOString(),
+      observedAt: new Date(cycle.first).toISOString(),
+      durationMinutes: (windowEndExclusive - cycle.start) / 60000,
     });
   }
   return completed;
@@ -128,6 +132,40 @@ export function isPreviousQuotaRange(range) {
   return range?.preset === "recent" && range?.quotaWindow && ["quota_5h", "quota_week"].includes(range?.quotaPreset);
 }
 
+export function previousQuotaRange(range, quota, observations) {
+  const mode = range?.quotaPreset || range?.preset;
+  if (
+    (!range?.quotaWindow && !["quota_5h", "quota_week"].includes(range?.preset)) ||
+    range?.quotaState !== "available" ||
+    !quota?.limitId ||
+    !["quota_5h", "quota_week"].includes(mode)
+  )
+    return null;
+  const minutes = mode === "quota_5h" ? 300 : 10080;
+  const start = new Date(range.start).getTime();
+  const asOf = new Date(range.asOf || quota.asOf).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(asOf)) return null;
+  const completed = completedQuotaWindows(observations, quota.limitId, asOf, minutes);
+  if (completed === null) return null;
+  const window = completed.filter((item) => Date.parse(item.windowEndExclusive) <= start).at(-1);
+  if (!window) return null;
+  const windowStart = new Date(window.windowStart);
+  const windowEndExclusive = new Date(window.windowEndExclusive);
+  return {
+    ...range,
+    preset: "recent",
+    quotaWindow: true,
+    quotaPreset: mode,
+    quotaState: "available",
+    start: windowStart,
+    end: new Date(windowEndExclusive.getTime() - 1),
+    windowStart,
+    windowEndExclusive,
+    asOf: new Date(asOf),
+    durationMinutes: window.durationMinutes,
+  };
+}
+
 // Compare earlier observed reset windows of the same quota bucket. One real
 // window can have several reset timestamps a few seconds apart; use its most
 // frequently observed endpoint instead of discarding the entire cluster.
@@ -136,63 +174,18 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
   const mode = range.quotaPreset || range.preset;
   const minutes = mode === "quota_5h" ? 300 : mode === "quota_week" ? 10080 : 0;
   if (!minutes) return {};
-  const duration = minutes * 60000;
   const start = new Date(range.start).getTime();
   const asOf = new Date(range.asOf || quota.asOf).getTime();
-  const byObservation = new Map();
-  for (const row of observations || []) {
-    const observed = Number(row.observedAtMs);
-    const end = Number(row.resetsAtMs);
-    if (
-      row.limitId !== quota.limitId ||
-      Number(row.windowMinutes) !== minutes ||
-      !Number.isFinite(observed) ||
-      !Number.isFinite(end) ||
-      observed > asOf ||
-      observed < end - duration ||
-      observed >= end ||
-      end > start
-    )
-      continue;
-    const ends = byObservation.get(observed) || new Set();
-    ends.add(end);
-    byObservation.set(observed, ends);
-  }
-  const support = new Map();
-  for (const ends of byObservation.values()) {
-    if (ends.size !== 1) continue; // Conflicting endpoints at the same observation time.
-    const end = ends.values().next().value;
-    support.set(end, (support.get(end) || 0) + 1);
-  }
-  const tolerance = 2 * 60000;
-  const clusters = [];
-  for (const end of [...support.keys()].sort((a, b) => a - b)) {
-    if (!clusters.length || end - clusters.at(-1).at(-1) > tolerance) clusters.push([]);
-    clusters.at(-1).push(end);
-  }
-  const candidates = clusters
-    .map((cluster) => cluster.sort((a, b) => support.get(b) - support.get(a) || b - a)[0])
-    .sort((a, b) => a - b);
-  // Inconsistent snapshots can also claim overlapping windows many minutes
-  // apart. Keep the non-overlapping set backed by the most observations.
-  const best = [{ score: 0, ends: [] }];
-  for (let i = 0; i < candidates.length; i += 1) {
-    let previousIndex = i - 1;
-    while (previousIndex >= 0 && candidates[i] - candidates[previousIndex] < duration - tolerance) previousIndex -= 1;
-    const without = best[i];
-    const before = best[previousIndex + 1];
-    const withCurrent = { score: before.score + support.get(candidates[i]), ends: [...before.ends, candidates[i]] };
-    best.push(withCurrent.score > without.score ? withCurrent : without);
-  }
-  const previousWindows = isPreviousQuotaRange(range)
-    ? (completedQuotaWindows(observations, quota.limitId, asOf, minutes) || [])
-        .filter((window) => Date.parse(window.windowEndExclusive) <= start)
-        .map((window) => ({
-          start: new Date(window.windowStart),
-          end: new Date(Date.parse(window.windowEndExclusive) - 1),
-          quotaWindow: true,
-        }))
-    : best.at(-1).ends.map((end) => ({ start: new Date(end - duration), end: new Date(end - 1), quotaWindow: true }));
+  if (!Number.isFinite(start) || !Number.isFinite(asOf)) return {};
+  const completed = completedQuotaWindows(observations, quota.limitId, asOf, minutes);
+  if (completed === null) return {};
+  const previousWindows = completed
+    .filter((window) => Date.parse(window.windowEndExclusive) <= start)
+    .map((window) => ({
+      start: new Date(window.windowStart),
+      end: new Date(Date.parse(window.windowEndExclusive) - 1),
+      quotaWindow: true,
+    }));
   const previous = previousWindows.map(summarizeWindow).filter((value) => value.eventCount > 0);
   if (!previous.length) return {};
   const current = summarizeWindow(range);

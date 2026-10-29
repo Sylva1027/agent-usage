@@ -76,7 +76,7 @@ const okSample = (raw) => {
 };
 
 test("M1.1 constants match the frozen §17.4 table: 18 bit slots, 2/3 reserved, 16 settable names", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v2");
+  assert.equal(PERF_METHOD_VERSION, "tps-v4");
   assert.equal(PERF_MIN_SAMPLES, 20);
   assert.equal(PERF_LONG_WINDOW_MS, 300000);
   assert.equal(PERF_EPOCH_MS_MIN, 1e12);
@@ -303,7 +303,7 @@ test("M1.1-A a precomputed sample key is accepted only in canonical form", () =>
   }
 });
 
-test("M1.1-D Codex and the request-level sources can never share a group key", () => {
+test("M1.1-D source kind separates Codex from request-level groups; identical Codex semantics stay together", () => {
   const base = {
     homeId: HOME,
     channel: "ch",
@@ -316,20 +316,20 @@ test("M1.1-D Codex and the request-level sources can never share a group key", (
   const codex = {
     ...base,
     sourceKind: "codex",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_includes_reasoning",
+    timingKind: "generation",
+    tokenScope: "non_reasoning_output",
   };
   const zcode = {
     ...base,
     sourceKind: "zcode",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_unspecified",
+    timingKind: "generation",
+    tokenScope: "non_reasoning_output",
   };
   const opencode = {
     ...base,
     sourceKind: "opencode",
-    timingKind: "request_e2e",
-    tokenScope: "visible_plus_reasoning",
+    timingKind: "generation",
+    tokenScope: "non_reasoning_output",
   };
   const keys = [codex, zcode, opencode].map((sample) => perfGroupKey(sample));
   assert.equal(new Set(keys).size, 3);
@@ -342,13 +342,14 @@ test("M1.1-D Codex and the request-level sources can never share a group key", (
     "m",
     "p",
     "high",
-    "request_e2e",
-    "reported_output_includes_reasoning",
+    "generation",
+    "non_reasoning_output",
   ]);
-  // even with identical timing/token semantics the source kind still separates groups
-  const lookalike = { ...codex, timingKind: "request_e2e", tokenScope: "visible_plus_reasoning" };
+  // The source kind still separates Codex from request-level sources. Two Codex
+  // samples with identical current v3 semantics intentionally share one group.
+  const lookalike = { ...codex, timingKind: "generation", tokenScope: "non_reasoning_output" };
   assert.notEqual(perfGroupKey(lookalike), perfGroupKey(zcode));
-  assert.notEqual(perfGroupKey(lookalike), perfGroupKey(codex));
+  assert.equal(perfGroupKey(lookalike), perfGroupKey(codex));
   // home participates; unsupported kinds have no group at all
   assert.notEqual(perfGroupKey(zcode), perfGroupKey({ ...zcode, homeId: "home-b" }));
   assert.equal(perfGroupKey({ ...zcode, sourceKind: "project-log" }), null);
@@ -361,13 +362,13 @@ test("M1.1-D Codex and the request-level sources can never share a group key", (
   );
 });
 
-test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope", () => {
+test("M1.1-D normalization supplies v3 defaults while preserving mismatched reader semantics", () => {
   const expected = [
-    ["zcode", "request", "request_e2e", "reported_output_unspecified", false],
-    ["dsh", "step", "request_e2e", "reported_output_unspecified", false],
-    ["opencode", "message", "request_e2e", "visible_plus_reasoning", false],
-    ["codex", "turn", "request_e2e", "reported_output_includes_reasoning", false],
-    ["claude", "request", "request_e2e", "reported_output_includes_reasoning", false],
+    ["zcode", "request", "generation", "non_reasoning_output", false],
+    ["dsh", "request", "generation", "non_reasoning_output", false],
+    ["opencode", "request", "generation", "non_reasoning_output", false],
+    ["codex", "request", "generation", "non_reasoning_output", false],
+    ["claude", "request", "generation", "non_reasoning_output", false],
   ];
   for (const [kind, window, timingKind, tokenScope, estimated] of expected) {
     const sample = okSample({
@@ -386,20 +387,24 @@ test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope"
     assert.equal(flagSet(sample).has("METHOD_ESTIMATE"), estimated);
   }
 
-  // a reader cannot override the source semantics; the canonical values win and warn
+  // Mismatched reader semantics remain visible, but the mismatch reason keeps the
+  // row out of current samples instead of silently rewriting it into v3 evidence.
   const forced = normalizePerfSample(
     zcodeRaw({
       sourceKind: "codex",
+      methodVersion: PERF_METHOD_VERSION,
       window: "request",
       timingKind: "request_e2e",
       tokenScope: "visible_plus_reasoning",
     }),
   );
   assert.equal(forced.sample.sourceKind, "codex");
-  assert.equal(forced.sample.window, "turn");
+  assert.equal(forced.sample.window, "request");
   assert.equal(forced.sample.timingKind, "request_e2e");
-  assert.equal(forced.sample.tokenScope, "reported_output_includes_reasoning");
+  assert.equal(forced.sample.tokenScope, "visible_plus_reasoning");
   assert.ok(forced.warnings.includes("SOURCE_SEMANTICS_MISMATCH"));
+  assert.equal(forced.sample.diagnosticReason, "source_semantics_mismatch");
+  assert.equal(perfDroppedByReason(forced.sample), "source_semantics_mismatch");
   assert.equal(flagSet(forced.sample).has("METHOD_ESTIMATE"), false);
 
   const endToEnd = {
@@ -428,8 +433,8 @@ test("M1.1-D normalized samples carry source-fixed window/timingKind/tokenScope"
     "p",
     "high",
   ]);
-  assert.equal(JSON.parse(perfGroupKey(codexSample))[8], "request_e2e");
-  assert.equal(JSON.parse(perfGroupKey(zcodeSample))[8], "request_e2e");
+  assert.equal(JSON.parse(perfGroupKey(codexSample))[8], "generation");
+  assert.equal(JSON.parse(perfGroupKey(zcodeSample))[8], "generation");
 });
 
 test("M1.1-B missing output and true zero output are different flags (never folded)", () => {
@@ -913,7 +918,7 @@ test("M1.1-Q contract ruling Q: normalization warning codes never enter a source
 });
 
 test("M1.1-R/S contract rulings R and S: reason vocabularies stay separate and a synthesized status is visible", () => {
-  // R: the eight §17.5:278 droppedByReason main reasons, hand-copied. The wording is
+  // R: the ten droppedByReason main reasons, hand-copied. The wording is
   // the frozen contract spelling (source-contract §2-E, fixture-cases N-02/N-03);
   // AD-1 corrected an earlier hand-copy that read `_or_invalid`, which never matched
   // the implementation. Each name below is intentionally spelled out so this test
@@ -927,6 +932,8 @@ test("M1.1-R/S contract rulings R and S: reason vocabularies stay separate and a
     "duration_missing_nonpositive_invalid",
     "partial_item_span",
     "overlapping_item_span",
+    "historical_method",
+    "source_semantics_mismatch",
   ]);
   for (const raw of [
     zcodeRaw(),
@@ -1299,14 +1306,42 @@ test("M1.2 the era cut point defaults to §17.5:280 and the reason/flag vocabula
       "duration_missing_nonpositive_invalid",
       "partial_item_span",
       "overlapping_item_span",
+      "historical_method",
+      "source_semantics_mismatch",
     ],
   );
-  assert.equal(PERF_DROPPED_BY_REASONS.length, 8);
+  assert.equal(PERF_DROPPED_BY_REASONS.length, 10);
   // the 12-flag deduction set: hints and placement are structurally absent
   assert.equal(PERF_DEDUCTION_FLAG_NAMES.length, 12);
   for (const hint of ["LONG_WINDOW", "MULTI_REQUEST_TURN", "METHOD_ESTIMATE", "TIME_UNPLACED"]) {
     assert.equal(PERF_DEDUCTION_FLAG_NAMES.includes(hint), false, hint);
   }
+});
+
+test("M1.2 historical methods and current semantic mismatches stay out of current samples", () => {
+  const v1 = okSample(zcodeRaw({ identity: ["v1"], methodVersion: "tps-v1" }));
+  const v2 = okSample(zcodeRaw({ identity: ["v2"], methodVersion: "tps-v2" }));
+  const mismatch = okSample(
+    zcodeRaw({
+      identity: ["mismatch"],
+      methodVersion: PERF_METHOD_VERSION,
+      window: "step",
+      timingKind: "request_e2e",
+      tokenScope: "visible_plus_reasoning",
+    }),
+  );
+
+  assert.equal(perfDroppedByReason(v1), "historical_method");
+  assert.equal(perfDroppedByReason(v2), "historical_method");
+  assert.equal(mismatch.window, "step");
+  assert.equal(mismatch.timingKind, "request_e2e");
+  assert.equal(mismatch.tokenScope, "visible_plus_reasoning");
+  assert.equal(mismatch.diagnosticReason, "source_semantics_mismatch");
+
+  const coverage = computePerfCoverage(selectPerfSamples([v1, v2, mismatch], {}), {});
+  assert.equal(coverage.sampled, 0);
+  assert.equal(coverage.droppedByReason.historical_method, 2);
+  assert.equal(coverage.droppedByReason.source_semantics_mismatch, 1);
 });
 
 test("M1.2 select: source exclusion runs before the range filter", () => {

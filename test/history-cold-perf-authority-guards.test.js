@@ -155,7 +155,7 @@ test("perf authority rejects unknown source kinds and method versions as invalid
 
     const variants = [
       { label: "unknown source kind", segment: { sourceKinds: ["dsh"] } },
-      { label: "unknown method version", segment: { methodVersions: ["tps-v1"] } },
+      { label: "unknown method version", segment: { methodVersions: ["tps-v0"] } },
     ];
     for (const variant of variants) {
       writeMeta(store.database, PERF_AUTHORITY_KEY, perfAuthority(registered, variant.segment));

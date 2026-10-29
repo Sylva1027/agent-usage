@@ -1,10 +1,14 @@
 # 任务清单
 
-更新：2026-10-27（Q2/Q3 投影复用最终验收）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-29（生成 TPS v4）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
 
 ## 当前：自动刷新同步延迟
 
-本轮见[Q2/Q3 投影复用施工计划](plans/2026-10-27-q2-q3-projection-implementation-plan.md)、[主计划 §13](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)与[验收记录](validation/2026-10-27-q2-q3-projection/README.md)：**Q2/Q3 已实现并接收，局部净收益与 v4 完整工程门禁通过，正常 6 个浏览器周期完成；整体 max 与新鲜度目标未达，浏览器 p95 未验，未切生产。**
+2026-10-29 已完成[后续 TPS v4 看板切换](validation/2026-10-29-tps-cutover/README.md)，当前为冻结快照 `abc831c025c1`、PID 28920，保留 RANGE。schema23 完整恢复点和固定历史一致性验证通过；Codex release 已安装，获准的 Desktop 重启实际采用结果见[独立记录](validation/2026-10-29-tps-cutover/desktop-result.md)。下方 2026-10-27 服务版本及“未部署”结论只描述对应历史阶段。
+
+[生产切换已完成](validation/2026-10-27-performance-production-cutover/README.md)：按[方案](plans/2026-10-27-performance-production-cutover-plan.md)完成完整离线备份、schema21 回退包兼容核对及有限功能冒烟，当前服务为 `852034b`、PID 42844。固定历史数值一致，原自动刷新已恢复；恢复点和回退包保留。合计预算 8 GiB，未追加性能实验，未恢复或覆盖活动数据库。
+
+本轮见[Q2/Q3 投影复用施工计划](plans/2026-10-27-q2-q3-projection-implementation-plan.md)、[主计划 §13](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)与[验收记录](validation/2026-10-27-q2-q3-projection/README.md)：**Q2/Q3 已实现并接收，局部净收益与 v4 完整工程门禁通过，正常 6 个浏览器周期完成；整体 max 与新鲜度目标未达，浏览器 p95 未验；生产切换状态见上方记录。**
 
 Q2 静止/ledger-only 各 20 对全部更快，配对合计节省中位数 **801/875 ms**；Q3 真实 executor **20/20 更快、20/20 接收**，配对合计节省中位数 **1,492 ms**，不同场景收益不相加。普通追加 20 对近中性：10 对更快，配对节省中位数 **−9.82 ms**。v4 全仓 **3,397 tests / 3,372 pass / 0 fail / 25 skip**，typecheck/lint/format:check 均退出 0；默认 today/month 各 3 对，metadata 与 period 缓存对象身份全部保留。
 
@@ -73,6 +77,18 @@ Q2/Q3 施工前阶段见[预扫移除、状态切换与真实读侧投影复测]
 完整验收覆盖真实检查路径、单文件变更、失败隔离与恢复、冻结/计价/时钟、历史增长和内存；不以 TTL 命中、缩减归档数据或取消告警代替修复。本文仅登记计划状态，不将旧诊断的建议自动标为已实施，逐卡进度和审查证据只在 Implementation Plan 中维护。
 
 ## 当前：模型输出吞吐（TPS）
+
+**2026-10-29 Release 续验已完成：** [release 并排包及证据](validation/2026-10-29-codex-release/README.md)已交付，固定源码/补丁、Cargo.lock 和构建前后 8,979 个源码文件核对通过；真实 JavaScript、runner 正向协议/写隔离、setup ACL refresh、四条采集闭环、unelevated command/exec 及启动器 11/11 通过。RANGE、产品/UI 和原 debug 包保留。Desktop 实际采用留待用户退出后的独立步骤，完整账号 provisioning/service SCM 未验；未部署、未重启。下列条目保留各自阶段归属。
+
+**2026-10-29 当前实施已收口：** [本地接入方案](plans/2026-10-29-local-generation-adoption-plan.md)的 Codex 完整并排包、启动器、DSH 全生成 reader、v4 共享统计及 v3 Codex/WorkBuddy 正式归档恢复已通过本轮[隔离验收](validation/2026-10-29-local-generation-implementation/README.md)。DSH 内存/SQLite/API/冻结/旧文件失败重试、Codex 四条本地流闭环及 unelevated sandbox command/exec 通过；最终启动器 11/11，工程静态检查通过。全仓 3,460 通过、25 跳过、1 个开工基线同样复现的皮肤稠密表格检查失败。Desktop 实际采用与 elevated runner/service 未验；当前 Desktop 不重启，RANGE 保留，未部署。以下研究和首批实施条目保持各自历史版本归属。
+
+**2026-10-29 本地接入研究：** [后续方案](plans/2026-10-29-local-generation-adoption-plan.md)将 Codex 落点明确为完整并排包、CLI/Desktop 专用启动器及实际引擎身份验收；Desktop 内部 `CODEX_CLI_PATH` 的 10 项实函数检查通过，实际采用仍待独立启动窗口。DSH 160 份丰富原生日志支持 873 条全部生成窗口，881 条 final/stream output 全部相等；推荐新方法允许全部生成范围，并在后台区别数值显示与非推理全局排名，避免缺 reasoning 明细阻断全部工作。详见[核验](validation/2026-10-29-local-generation-adoption/README.md)。本轮仅研究与文档，383 个产品/测试/脚本文件未变，RANGE 保留，无新增模型请求、无 UI 说明、未部署。
+
+**2026-10-29 采集续验：** [普通安装与官方字段结果](validation/2026-10-29-installed-generation-validation/README.md)确认普通 Codex CLI/Desktop 引擎均缺生成摘要，完整补丁版通过 22 个本地验收路径；唯一一次获准的 DSH 官方请求成功，但未返回 reasoning 明细。后继重点为 Codex 可交付 producer/安装接入、DSH 权威计数契约；不以可选 adapter 映射冒称已恢复覆盖。保留 RANGE 改动，不依赖 Magpie，不增加 UI 说明，未部署。
+
+**2026-10-27 新目标：模型生成速度。** [调整方案](plans/2026-10-27-generation-tps-plan.md)已按纯本地原生来源修订：通用 v3 内核已实现，原生计时采集未完成，未部署。移除 Magpie 自动读取、导入、状态指纹和发布链路；不能以要求用户安装中继换取 TPS 覆盖。Codex/Claude 缺首末输出时间，DSH 有流时间但计数语义未闭合，其余来源缺口见[原生核验](validation/2026-10-28-native-generation-timing/README.md)。前轮“已完成”结论及全仓数字只作[历史记录](validation/2026-10-28-generation-tps/README.md)，不代替本轮验证。缺计时沿用 `—`；不新增解释性 UI。
+
+**2026-10-29 首批实施：** [原生采集实施卡](plans/2026-10-28-native-generation-timing-plan.md)的 Codex SSE/WS 独立 producer 原型及本仓 reader、WorkBuddy 纯正文恢复、DSH 条件计数映射与成功流 reader 已整合，见[实施验收](validation/2026-10-29-native-generation-implementation/README.md)。最终 WorkBuddy reader 从真实原生日志恢复 17 条有效样本；Codex 隔离构建和协议测试通过，普通安装引擎未替换；DSH 可选 reasoning 字段尚未证实实际返回。ZCode/OpenCode 后继 producer 与 Claude 受限候选未实施，六来源普通安装覆盖未完成，未部署。[前期探索及模型核验](validation/2026-10-28-native-generation-timing/discovery/README.md)保持历史归属。
 
 **2026-10-20 入口已删除：** 用户确认“按性能”不是 TPS 项目的实现路径，只是早期遗留入口；`#perfModeButton`、`#perfPanel`、`#perfDetailList`、对应渲染分支/样式/状态与浏览器性能视图测试已移除，时间图只剩渠道/模型/花销。当时保留数据侧；2026-10-21 新增 models 投影与独立区域接线，旧 groups/coverage/meta 行为保留。
 

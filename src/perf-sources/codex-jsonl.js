@@ -2,19 +2,22 @@
  * Stream a single Codex rollout into a small, private metadata projection.
  *
  * This is the M6.1 boundary: it preserves only stable identity, model/agent
- * evidence, token counts, item spans, terminal fields, and source ordering.
+ * evidence, token counts, response/item identity and lifecycle metadata,
+ * terminal fields, and source ordering.
  * It deliberately does not fold duplicate records or construct TPS samples;
  * M6.2/M6.3 own those decisions.
  */
 import { readRolloutLines } from "../codex-rollout.js";
 import path from "node:path";
+import { normalizeGenerationTiming } from "../perf-request-timing.js";
 
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
 
 // These types were observed and registered by M0.5/M0.6 but are not inputs to
 // the M6 candidate projection. Unknown labels are counted without retaining
 // their value or inspecting the rest of their payload.
-const IGNORED_TOP_LEVEL_TYPES = new Set(["response_item", "world_state", "rollout"]);
+const IGNORED_TOP_LEVEL_TYPES = new Set(["world_state", "rollout"]);
+const PROJECTED_RESPONSE_ITEM_TYPES = new Set(["reasoning", "function_call", "custom_tool_call"]);
 const IGNORED_EVENT_TYPES = new Set([
   "token_count",
   "task_started",
@@ -71,6 +74,33 @@ function safeNonNegativeInteger(value) {
 
 function nonNegativeFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function nativeGenerationTiming(raw, outputTokens, reasoningTokens) {
+  if (!isRecord(raw) || raw.schema_version !== 1) return null;
+  const first = safeNonNegativeInteger(raw.first_output_ms);
+  const last = safeNonNegativeInteger(raw.last_output_ms);
+  if (
+    first === null ||
+    last === null ||
+    last <= first ||
+    raw.observed_duration_ms !== last - first ||
+    raw.start_output_tokens !== 1 ||
+    outputTokens === null ||
+    reasoningTokens === null ||
+    raw.output_tokens !== outputTokens - reasoningTokens
+  )
+    return null;
+  try {
+    return normalizeGenerationTiming({
+      outputTokens: raw.output_tokens,
+      durationMs: raw.observed_duration_ms,
+      startOutputTokens: raw.start_output_tokens,
+      timingKind: "first_last_output",
+    });
+  } catch {
+    return null;
+  }
 }
 
 function fieldType(value, present) {
@@ -223,6 +253,7 @@ export async function readCodexRolloutMetadata(filePath) {
   let conflictingSessionMeta = false;
   let previousOrdinal = null;
   let previousOrdinalValid = false;
+  let currentTurnId = null;
   let lineNumber = 0;
   for await (const line of readRolloutLines(sourcePath)) {
     lineNumber += 1;
@@ -265,6 +296,8 @@ export async function readCodexRolloutMetadata(filePath) {
 
     const topType = text(row.type);
     const payload = isRecord(row.payload) ? row.payload : null;
+    const payloadTurnId = text(payload?.turn_id);
+    if (payloadTurnId) currentTurnId = payloadTurnId;
 
     if (topType === "session_meta") {
       if (!payload) {
@@ -308,6 +341,11 @@ export async function readCodexRolloutMetadata(filePath) {
       }
       const usage = isRecord(payload.usage) ? payload.usage : null;
       const turnTokenUsage = isRecord(payload.turn_token_usage) ? payload.turn_token_usage : null;
+      const generation = nativeGenerationTiming(
+        payload.generation_timing,
+        safeNonNegativeInteger(usage?.output_tokens),
+        safeNonNegativeInteger(usage?.reasoning_output_tokens),
+      );
       records.push(
         projectedRecord(
           "token_usage_record",
@@ -318,7 +356,37 @@ export async function readCodexRolloutMetadata(filePath) {
           {
             responseId: text(payload.response_id),
             outputTokens: safeNonNegativeInteger(usage?.output_tokens),
+            reasoningOutputTokens: safeNonNegativeInteger(usage?.reasoning_output_tokens),
+            reasoningOutputTokensKnown: safeNonNegativeInteger(usage?.reasoning_output_tokens) !== null,
+            ...(generation === null ? {} : { nativeGeneration: generation }),
             turnOutputTokens: safeNonNegativeInteger(turnTokenUsage?.output_tokens),
+            timestamp: text(row.timestamp),
+          },
+          ordinal,
+        ),
+      );
+      continue;
+    }
+
+    if (topType === "response_item") {
+      if (!payload) continue;
+      const itemType = text(payload.type);
+      const role = text(payload.role);
+      const generatedText = itemType === "message" && role === "assistant";
+      if (!generatedText && !PROJECTED_RESPONSE_ITEM_TYPES.has(itemType)) continue;
+      records.push(
+        projectedRecord(
+          "response_item",
+          sourcePath,
+          lineNumber,
+          text(payload.thread_id),
+          text(payload.turn_id) ?? currentTurnId,
+          {
+            itemId: text(payload.id),
+            responseItemType: itemType,
+            role,
+            status: text(payload.status),
+            callId: text(payload.call_id),
             timestamp: text(row.timestamp),
           },
           ordinal,

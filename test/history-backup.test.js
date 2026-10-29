@@ -9,7 +9,6 @@ import test from "node:test";
 
 import {
   createHistoryBackup,
-  HISTORY_BACKUP_SCHEMA_VERSION,
   loadHistoryBackupContext,
   restoreHistoryBackup,
   verifyHistoryBackup,
@@ -177,10 +176,15 @@ test("backup includes committed WAL rows and verifies a complete package", async
   try {
     assert.equal(source.database.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
     assert.equal(source.database.prepare("PRAGMA wal_autocheckpoint").get().wal_autocheckpoint, 0);
+    assert.equal(
+      source.database.prepare("PRAGMA user_version").get().user_version,
+      21,
+      "this is a deliberately frozen legacy schema 21 fixture",
+    );
     assert.ok(statSync(`${source.file}-wal`).size > 0);
     const destination = path.join(box.root, "package", "history.sqlite");
     const manifest = await createHistoryBackup(source.database, destination);
-    assert.equal(manifest.schemaVersion, HISTORY_BACKUP_SCHEMA_VERSION);
+    assert.equal(manifest.schemaVersion, 21);
     assert.deepEqual(
       { programVersion: manifest.programVersion, perfMethodVersion: manifest.perfMethodVersion },
       { programVersion: PACKAGE.version, perfMethodVersion: PERF_METHOD_VERSION },
@@ -309,7 +313,7 @@ test("manifest records the pricing catalog and digest captured at backup start",
   }
 });
 
-test("schema 21 backs up an empty archive directory and rejects registered segments", async () => {
+test("the current store schema backs up an empty archive directory and rejects registered segments", async () => {
   const box = withTempRoot("history-backup-schema21-");
   const store = new UsageStore({
     homeDir: box.root,
@@ -319,6 +323,7 @@ test("schema 21 backs up an empty archive directory and rejects registered segme
   });
   try {
     await store.open();
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
     store.database.exec(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
       VALUES ('schema21.jsonl', 'codex', 'home', 'Home', '/home', 1, 1, 'now');
@@ -334,7 +339,7 @@ test("schema 21 backs up an empty archive directory and rejects registered segme
 
     const destination = path.join(box.root, "package", "history.sqlite");
     const manifest = await createHistoryBackup(store.database, destination);
-    assert.equal(manifest.schemaVersion, 21);
+    assert.equal(manifest.schemaVersion, STORE_SCHEMA_VERSION);
     assert.equal(manifest.tables.archive_segments.rows, 0);
     await verifyHistoryBackup(destination);
 

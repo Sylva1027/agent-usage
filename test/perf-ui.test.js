@@ -507,13 +507,10 @@ test("every fixed performance label has an explicit English copy entry", () => {
     "满足当前计量条件",
     "满足当前计量条件的历史样本排序；分隔线以下为参考读数。",
     "样本数不可用",
-    "样本日期",
-    "样本日期范围",
-    "样本日期不可用",
     "请求",
     "步骤",
     "消息",
-    "回合",
+    "轮次",
     "混合样本",
     "样本",
     "p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。",
@@ -640,8 +637,8 @@ test("Codex with usage but no request duration stays selectable and explains the
     assert.match(table, /data-perf-model-key=/);
     assert.doesNotMatch(table, /mini-fill|\bn=|407/);
     assert.match(html, /407/);
-    assert.match(html, locale === "en-US" ? /Request duration is missing from the log/ : /日志未记录请求耗时/);
-    assert.doesNotMatch(html, /perf-model-band|0\.0|0 个回合|0 turns/);
+    assert.doesNotMatch(html, /perf-model-timing-missing|Request duration is missing from the log|日志未记录请求耗时/);
+    assert.doesNotMatch(html, /perf-model-band|0\.0|0 个轮次|0 turns/);
   }
 });
 
@@ -708,7 +705,7 @@ test("model identities group source and provider above model and optional effort
     assert.doesNotMatch(detail, /class="perf-model-separator"/);
     assert.match(
       detail,
-      /class="perf-model-identity-context"><span class="perf-model-source-name">WorkBuddy<\/span><\/div><div class="perf-model-identity-model">/,
+      /class="perf-model-identity-context"><span class="perf-model-source-name">WorkBuddy<\/span><span class="perf-model-sample-count">[^<]+<\/span><\/div><div class="perf-model-identity-model">/,
     );
     assert.match(
       table,
@@ -790,7 +787,7 @@ test("small sample rows retain speed and detail count without ranking labels", (
   const html = renderPerfModelTableHtml([row]);
   assert.match(html, /81.6/);
   assert.doesNotMatch(html, /样本不足|排名|参考行|\bn=/);
-  assert.match(renderPerfModelDetailHtml(row), /2 个回合/);
+  assert.match(renderPerfModelDetailHtml(row), /2 个轮次/);
 });
 
 test("model list preserves supplied row order without ranking segments", () => {
@@ -808,46 +805,22 @@ test("old rank fields have no effect on model list markup", () => {
   assert.equal(renderPerfModelTableHtml([row]), renderPerfModelTableHtml([{ ...row, rank: null }]));
 });
 
-test("model detail shows actual member dates in local and UTC across a day boundary", () => {
-  const previousTimeZone = process.env.TZ;
-  try {
-    process.env.TZ = "Asia/Shanghai";
+test("model detail omits sample and candidate dates in every state and locale", () => {
+  for (const state of ["ok", "missing_duration", "overflow"]) {
     const row = model({
+      state,
+      candidateCount: 407,
       firstSampleAtMs: Date.parse("2026-10-04T15:30:00Z"),
       lastSampleAtMs: Date.parse("2026-10-04T16:50:00Z"),
+      firstCandidateAtMs: Date.parse("2026-10-04T15:30:00Z"),
+      lastCandidateAtMs: Date.parse("2026-10-04T16:50:00Z"),
     });
-    const local = renderPerfModelDetailHtml(row, { locale: "zh-CN", calendarZone: "local" });
-    const utc = renderPerfModelDetailHtml(row, { locale: "zh-CN", calendarZone: "utc" });
-    const models = renderPerfModelsHtml({ models: [row] }, { locale: "en-US", calendarZone: "utc" });
-
-    assert.match(local, /样本日期范围 2026-10-04–2026-10-05/);
-    assert.match(utc, /样本日期 2026-10-04/);
-    assert.match(models, /Sample date 2026-10-04/);
-    assert.doesNotMatch(models, /2026-10-05/);
-  } finally {
-    if (previousTimeZone === undefined) delete process.env.TZ;
-    else process.env.TZ = previousTimeZone;
-  }
-});
-
-test("model detail collapses a same-day date and omits missing or invalid dates", () => {
-  const sameDay = model({
-    firstSampleAtMs: Date.parse("2026-10-04T12:00:00Z"),
-    lastSampleAtMs: Date.parse("2026-10-04T13:00:00Z"),
-  });
-  const sameHtml = renderPerfModelDetailHtml(sameDay, { locale: "en-US", calendarZone: "utc" });
-  assert.match(sameHtml, /Sample date 2026-10-04/);
-  assert.doesNotMatch(sameHtml, /2026-10-04–2026-10-04/);
-
-  const missing = model();
-  delete missing.firstSampleAtMs;
-  const invalid = model({ firstSampleAtMs: Number.NaN });
-  const reversed = model({
-    firstSampleAtMs: Date.parse("2026-10-05T00:00:00Z"),
-    lastSampleAtMs: Date.parse("2026-10-04T00:00:00Z"),
-  });
-  for (const row of [missing, invalid, reversed]) {
-    assert.doesNotMatch(renderPerfModelDetailHtml(row, { locale: "zh-CN" }), /样本日期|<br>/);
+    for (const locale of ["zh-CN", "en-US"]) {
+      const html = renderPerfModelsHtml({ models: [row] }, { locale });
+      assert.doesNotMatch(html, /样本日期|Sample date|2026-10-0[45]|<br>/);
+      assert.match(html, /perf-model-identity-context">.*?perf-model-sample-count/s);
+      assert.doesNotMatch(html, /perf-model-hero">.*?perf-model-sample-count/s);
+    }
   }
 });
 
@@ -856,7 +829,7 @@ test("model detail names each sample window and never calls Codex turns requests
     ["request", 6, "6 个请求", "6 requests"],
     ["step", 6, "6 个步骤", "6 steps"],
     ["message", 6, "6 条消息", "6 messages"],
-    ["turn", 6, "6 个回合", "6 turns"],
+    ["turn", 6, "6 个轮次", "6 turns"],
     ["mixed", 6, "6 个混合样本", "6 mixed samples"],
   ];
   for (const [window, n, chinese, english] of cases) {
@@ -885,7 +858,7 @@ test("model band keeps a mean outside p10-p90 outside the distribution and handl
 
   const one = model({ averageTps: 100, p10: 100, p90: 100, n: 1 });
   const oneHtml = renderPerfModelDetailHtml(one, { locale: "zh-CN" });
-  assert.match(oneHtml, /1 个回合/);
+  assert.match(oneHtml, /1 个轮次/);
   assert.match(oneHtml, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
 });
 

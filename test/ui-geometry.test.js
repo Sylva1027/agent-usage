@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createUsageServer } from "../src/server.js";
+import { UsageStore } from "../src/usage-store.js";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
-import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createPerfCodexIntegrationFixture, createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 /*
  * Offline Noto Sans SC subset pins the mixed-font probes independently of installed Noto fonts.
@@ -219,6 +221,7 @@ async function geometry(page) {
           ["provider", ".perf-model-provider-name"],
           ["name", ".perf-model-title-name"],
           ["effort", ".perf-model-title-effort"],
+          ["count", ".perf-model-sample-count"],
         ].map(([key, selector]) => [key, one(selector)]),
       ),
       metricGroups: [...document.querySelectorAll(".metrics")].map((group) => ({
@@ -304,6 +307,12 @@ function assertMainGeometry(g) {
   }
   near(g.performanceSlot.height, 242, "performance header and five-row slot");
   const identity = g.performanceIdentity;
+  near(identity.count.y, identity.source.y, "sample count aligns with source");
+  near(identity.count.right, identity.context.right, "sample count aligns to the right edge");
+  assert.ok(
+    identity.count.x >= (identity.provider || identity.source).right + 8,
+    "sample count clears source identity",
+  );
   near(identity.model.y - identity.context.bottom, 4, "model identity follows source context");
   if (identity.provider) near(identity.provider.x - identity.source.right, 8, "provider follows source closely");
   if (identity.effort) near(identity.effort.x - identity.name.right, 8, "effort follows model closely");
@@ -644,18 +653,37 @@ test("UI geometry uses the production app and isolated source fixtures", async (
   }
   const palette = await createPaletteFixture();
   const perf = createPerfIntegrationFixture({ sources: ["zcode", "dsh", "opencode"] });
-  const server = createUsageServer({
+  const codex = createPerfCodexIntegrationFixture();
+  const serverOptions = {
     ...createPaletteServerOptions(palette),
     extraZcodeHomes: perf.reportOptions.extraZcodeHomes,
     extraDshHomes: perf.reportOptions.extraDshHomes,
     extraOpencodeHomes: perf.reportOptions.extraOpencodeHomes,
-  });
+    extraHomes: codex.codexHome,
+  };
+  const store = new UsageStore(serverOptions);
+  try {
+    await store.sync({ options: serverOptions });
+    const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(codex.codexHome));
+    assert.ok(home, "geometry fixture must discover its Codex home");
+    // Explicit synthetic timing exercises the UI without asserting native capture exists.
+    store.importRequestTimingEvidence({
+      homeId: String(home.id),
+      records: codex.timingRecords,
+      reviewedOrigins: ["fixture@1"],
+    });
+    await store.sync({ options: serverOptions });
+  } finally {
+    store.close();
+  }
+  const server = createUsageServer(serverOptions);
   let browser;
   t.after(async () => {
     await browser?.close();
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await palette.close();
     perf.close();
+    codex.close();
   });
   const imports = JSON.parse(await readFile(palette.importStoreFile, "utf8"));
   const projectLog = `${imports.imports[0].path}/.codex-usage/usage.jsonl`;
@@ -998,9 +1026,13 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       try {
         const { page } = normalSession;
         await page.locator('#presetButtons button[data-preset="all"]').click();
-        await page.locator(".comparison-unavailable").waitFor({ state: "visible" });
+        await page.waitForFunction(
+          () =>
+            [...document.querySelectorAll("#comparisonSummary strong")].length === 3 &&
+            [...document.querySelectorAll("#comparisonSummary strong")].every((node) => node.textContent === "—"),
+        );
         const unavailable = await geometry(page);
-        assert.equal(unavailable.comparisonCards.length, 1);
+        assert.equal(unavailable.comparisonCards.length, 3);
         states.push(["unavailable comparison", unavailable]);
         await page.locator('#presetButtons button[data-preset="today"]').click();
         await page.locator("#detailList .empty").waitFor({ state: "visible" });

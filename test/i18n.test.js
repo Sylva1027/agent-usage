@@ -61,6 +61,13 @@ test("browser language sets the first locale and a saved choice takes precedence
   setLocale("zh-CN", { persist: false });
 });
 
+test("quota trend labels have explicit English copy", () => {
+  assert.equal(localizeText("较上一5h", "en-US"), "VS Previous 5h");
+  assert.equal(localizeText("较上一7d", "en-US"), "VS Previous 7d");
+  assert.equal(localizeText("上一5h Tokens", "en-US"), "Previous 5h Tokens");
+  assert.equal(localizeText("上一7d Tokens", "en-US"), "Previous 7d Tokens");
+});
+
 test("English recent ranges preserve the existing Chinese request values", () => {
   assert.equal(canonicalRecentValue("1 day"), "1天");
   assert.equal(canonicalRecentValue("2 weeks"), "2周");
@@ -90,14 +97,11 @@ test("ranking reference copy stays explainable in both locales", () => {
   );
 });
 
-test("sample dates, units, and the p90 percentile are explicit in both locales", () => {
-  assert.equal(localizeText("样本日期", "en-US"), "Sample date");
-  assert.equal(localizeText("样本日期范围", "en-US"), "Sample date range");
-  assert.equal(localizeText("样本日期不可用", "en-US"), "Sample dates unavailable");
-  assert.equal(localizeText("回合", "en-US"), "turn");
+test("sample units and the p90 percentile are explicit in both locales", () => {
+  assert.equal(localizeText("轮次", "en-US"), "turn");
   assert.equal(localizeText("消息", "en-US"), "message");
   assert.equal(localizeText("混合样本", "en-US"), "mixed sample");
-  assert.equal(localizeText("样本日期", "zh-CN"), "样本日期");
+  assert.equal(localizeText("轮次", "zh-CN"), "轮次");
   assert.match(
     localizeText("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", "en-US"),
     /90th percentile.*not the average of the fastest 10%.*not a speed ceiling/i,

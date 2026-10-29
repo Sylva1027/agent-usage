@@ -512,10 +512,10 @@ test("列清单与 AO-1/AO-2 对照：映射表 = 计划 30 列 + diagnostic_rea
 });
 
 // ---------------------------------------------------------------------------
-// ★ A：新库与旧库升级都落到当前 schema（v21）
+// ★ A：新库与旧库升级都落到当前 schema（v22）
 // ---------------------------------------------------------------------------
 
-test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 21", async () => {
+test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，user_version 抬到 22", async () => {
   const dir = await makeTempDir();
   try {
     const databaseFile = path.join(dir, "usage-index.sqlite");
@@ -523,8 +523,8 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
     store.close();
     const db = inspect(databaseFile);
     try {
-      assert.equal(userVersion(db), 21);
-      assert.equal(STORE_SCHEMA_VERSION, 21, "常量与实际落点必须一致");
+      assert.equal(userVersion(db), 23);
+      assert.equal(STORE_SCHEMA_VERSION, 23, "常量与实际落点必须一致");
       // 列：DDL 实际形状 = 冻结映射表。
       const columns = tableColumns(db, "perf_samples");
       assert.deepEqual(
@@ -534,6 +534,11 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
       assert.deepEqual(
         columns.map((column) => column.type),
         PERF_SAMPLE_FIELDS.map((entry) => (entry.kind === "text" || entry.kind === "reasonChain" ? "TEXT" : "INTEGER")),
+      );
+      assert.match(
+        objectDefinition(db, "perf_samples").sql,
+        /timing_kind IN \('request_e2e', 'item_span_estimate', 'generation'\)/,
+        "v22 CHECK must admit current generation samples",
       );
       // 三个索引，列序逐字。
       assert.deepEqual(tableIndexes(db, "perf_samples"), [
@@ -551,7 +556,7 @@ test("★A 空库（version=0）路径：建出 perf_samples 与三个索引，u
   }
 });
 
-test("★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
+test("★A v11 夹具路径：迁移到 22，且 perf_samples 的表/索引定义与全新库路径【逐字相同】", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
   try {
@@ -566,8 +571,8 @@ test("★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定�
     const migratedDb = inspect(fixture.databaseFile);
     const freshDb = inspect(freshFile);
     try {
-      assert.equal(userVersion(migratedDb), 21, "v11 夹具迁移后必须是当前版本");
-      assert.equal(userVersion(freshDb), 21);
+      assert.equal(userVersion(migratedDb), 23, "v11 夹具迁移后必须是当前版本");
+      assert.equal(userVersion(freshDb), 23);
       assert.equal(objectDefinition(migratedDb, "perf_samples").type, "table");
       assert.equal(migratedDb.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 0);
 
@@ -586,7 +591,7 @@ test("★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定�
         "外键与级联必须在 DDL 里（其生效由 ★C/★D 实测，不以文本为证据）",
       );
       // ③ 版本落点用字面量（不是常量拼接）：迁移段里不得出现 STORE_SCHEMA_VERSION 的插值。
-      assert.equal(userVersion(migratedDb), 21);
+      assert.equal(userVersion(migratedDb), 23);
     } finally {
       migratedDb.close();
       freshDb.close();
@@ -594,6 +599,122 @@ test("★A v11 夹具路径：迁移到 21，且 perf_samples 的表/索引定�
   } finally {
     await cleanupDir(fixture.dir);
     await cleanupDir(freshDir);
+  }
+});
+
+test("★A v21→v22 rebuild admits generation and retains samples plus source dependencies", async () => {
+  const { dir, databaseFile, store, sample } = await makeWritableStore({
+    methodVersion: "tps-v2",
+    window: "request",
+    timingKind: "request_e2e",
+    tokenScope: "reported_output_unspecified",
+  });
+  let beforeSample;
+  let beforeDependency;
+  try {
+    store.insertPerfSample(sample);
+    store.database
+      .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, 'primary')")
+      .run(sample.sampleKey, sample.sourcePath);
+    beforeSample = store.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sample.sampleKey);
+    beforeDependency = store.database
+      .prepare("SELECT sample_key, source_path, role FROM perf_sample_sources WHERE sample_key = ? AND source_path = ?")
+      .get(sample.sampleKey, sample.sourcePath);
+    assert.ok(beforeSample);
+    assert.ok(beforeDependency);
+
+    const currentDdl = objectDefinition(store.database, "perf_samples").sql;
+    const v21TableDdl = currentDdl
+      .replace("CREATE TABLE perf_samples", "CREATE TABLE perf_samples_v21_migration")
+      .replace("'request_e2e', 'item_span_estimate', 'generation'", "'request_e2e', 'item_span_estimate'");
+    assert.notEqual(v21TableDdl, currentDdl, "fixture must downgrade the timing CHECK");
+    assert.doesNotMatch(v21TableDdl, /'generation'/, "v21 fixture must reject the v22-only enum");
+    store.close();
+
+    const fixture = inspect(databaseFile);
+    try {
+      fixture.exec("PRAGMA foreign_keys = OFF");
+      try {
+        fixture.exec(`
+          BEGIN IMMEDIATE;
+          ${v21TableDdl};
+          INSERT INTO perf_samples_v21_migration SELECT * FROM perf_samples;
+          DROP TABLE perf_samples;
+          ALTER TABLE perf_samples_v21_migration RENAME TO perf_samples;
+          CREATE INDEX perf_samples_source_path_idx ON perf_samples(source_path);
+          CREATE INDEX perf_samples_home_ts_idx ON perf_samples(home_id, ts_ms);
+          CREATE INDEX perf_samples_source_kind_home_ts_idx ON perf_samples(source_kind, home_id, ts_ms);
+          PRAGMA user_version = 21;
+          COMMIT;
+        `);
+      } catch (error) {
+        try {
+          fixture.exec("ROLLBACK");
+        } catch {
+          // Preserve the original fixture-construction failure.
+        }
+        throw error;
+      } finally {
+        fixture.exec("PRAGMA foreign_keys = ON");
+      }
+
+      assert.equal(userVersion(fixture), 21);
+      assert.doesNotMatch(objectDefinition(fixture, "perf_samples").sql, /'generation'/);
+      assert.throws(
+        () => insertRawRow(fixture, validRow({ sample_key: "k-v21-generation", timing_kind: "generation" })),
+        (error) => {
+          assert.equal(error.errcode, 275, "v21 CHECK must reject generation");
+          return true;
+        },
+      );
+      assert.deepEqual(
+        fixture.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sample.sampleKey),
+        beforeSample,
+      );
+      assert.deepEqual(
+        fixture
+          .prepare(
+            "SELECT sample_key, source_path, role FROM perf_sample_sources WHERE sample_key = ? AND source_path = ?",
+          )
+          .get(sample.sampleKey, sample.sourcePath),
+        beforeDependency,
+      );
+    } finally {
+      fixture.close();
+    }
+
+    const migrated = await openStore(dir, databaseFile);
+    try {
+      assert.equal(userVersion(migrated.database), 23);
+      assert.match(objectDefinition(migrated.database, "perf_samples").sql, /'generation'/);
+      assert.deepEqual(
+        migrated.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sample.sampleKey),
+        beforeSample,
+        "migration must preserve every old sample column byte-for-byte",
+      );
+      assert.deepEqual(
+        migrated.database
+          .prepare(
+            "SELECT sample_key, source_path, role FROM perf_sample_sources WHERE sample_key = ? AND source_path = ?",
+          )
+          .get(sample.sampleKey, sample.sourcePath),
+        beforeDependency,
+        "rebuilding the parent table must retain the dependency graph",
+      );
+      assert.deepEqual(migrated.database.prepare("PRAGMA foreign_key_check").all(), []);
+
+      insertRawRow(migrated.database, validRow({ sample_key: "k-v22-generation", timing_kind: "generation" }));
+      assert.equal(
+        migrated.database.prepare("SELECT timing_kind FROM perf_samples WHERE sample_key = 'k-v22-generation'").get()
+          .timing_kind,
+        "generation",
+      );
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    store.close();
+    await cleanupDir(dir);
   }
 });
 
@@ -1002,13 +1123,14 @@ test("★E 枚举约束：status / timing_kind / agent_kind 非法值必须失�
       validRow({ sample_key: "k-unverified", status: "unverified" }),
       validRow({ sample_key: "k-e2e", timing_kind: "request_e2e" }),
       validRow({ sample_key: "k-span", timing_kind: "item_span_estimate" }),
+      validRow({ sample_key: "k-generation", timing_kind: "generation" }),
       validRow({ sample_key: "k-main", agent_kind: "main" }),
       validRow({ sample_key: "k-sub", agent_kind: "subagent" }),
       validRow({ sample_key: "k-unknown", agent_kind: "unknown" }),
     ]) {
       insertRawRow(db, row);
     }
-    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 10);
+    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 11);
   } finally {
     store.close();
     await cleanupDir(dir);
@@ -1131,7 +1253,7 @@ test("★E 主键：STRICT 表的主键列隐含 NOT NULL，且重复主键失�
 // ★ F：既有数据不得丢失
 // ---------------------------------------------------------------------------
 
-test("★F v11 夹具里的 events / rate_limit_observations / store_meta / source_files 逐行不变（行数 + 内容哈希；store_meta 既有键不变、只允许新增读取器标记）", async () => {
+test("★F v11 迁移保留用量行和既有元数据；来源仅允许标脏，归属列保持不变", async () => {
   const fixture = await makeV11Fixture();
   try {
     const before = inspect(fixture.databaseFile);
@@ -1169,11 +1291,8 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
         snapshot.rateLimits,
         "rate_limit_observations 内容哈希必须不变",
       );
-      // `store_meta`：迁移**不得改写既有键**。但 `open()` 在读完迁移后会有一次合法的
-      // 一次性写入 `codex_rollout_reader_version`（zstd 读取器上线时的重读标记，见
-      // `src/usage-store.js` 的 `CODEX_ROLLOUT_READER_VERSION` 分支与
-      // `test/codex-rollout-compression.test.js`）。冻结的 v11 库早于该标记，所以这里按
-      // "既有键逐行不变 + 新增键只有这一个"来断言，而不是整表哈希。
+      // `store_meta`：迁移不得改写既有键。打开 v11 库会合法补入读取器版本标记和
+      // request timing 发布序号初值，因此断言"既有键逐行不变 + 新增键恰为这两个"。
       const afterMeta = after.prepare("SELECT key, value FROM store_meta ORDER BY key").all();
       const beforeByKey = new Map(snapshot.metaRows);
       const afterByKey = new Map(afterMeta.map((row) => [String(row.key), String(row.value)]));
@@ -1184,17 +1303,18 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
       );
       assert.deepEqual(
         afterMeta.map((row) => String(row.key)).filter((key) => !beforeByKey.has(key)),
-        ["codex_rollout_reader_version"],
-        "迁移只允许新增读取器版本标记这一个键",
+        ["codex_rollout_reader_version", "perf_request_timing_publication_seq"],
+        "迁移只允许新增读取器标记和 request timing 发布序号",
       );
       assert.equal(afterByKey.get("codex_rollout_reader_version"), "zstd-jsonl-v1");
+      assert.equal(afterByKey.get("perf_request_timing_publication_seq"), "0");
       assert.equal(Number(after.prepare("SELECT COUNT(*) AS c FROM events").get().c), snapshot.eventsCount);
       assert.equal(
         Number(after.prepare("SELECT COUNT(*) AS c FROM rate_limit_observations").get().c),
         snapshot.rateLimitsCount,
       );
-      assert.equal(userVersion(after), 21);
-      // 标脏只动 size/mtime_ms，不动 kind/home/路径等归属列。
+      assert.equal(userVersion(after), 23);
+      // v22 的全量重建会把既有来源标脏（size/mtime_ms = -1），但不能动归属列。
       const rows = after
         .prepare("SELECT path, kind, home_id, home_label, home_path, indexed_at FROM source_files ORDER BY path")
         .all();
@@ -1225,7 +1345,7 @@ test("★F v11 夹具里的 events / rate_limit_observations / store_meta / sour
 // ★ G：幂等性（AN-8）
 // ---------------------------------------------------------------------------
 
-test("★G 重复打开无害：版本仍为当前 v21、表与行数不变、且迁移的标脏 UPDATE 不重跑（哨兵值实测）", async () => {
+test("★G 重复打开无害：版本仍为当前 v22、表与行数不变、且迁移的标脏 UPDATE 不重跑（哨兵值实测）", async () => {
   const fixture = await makeV11Fixture();
   try {
     const first = await openStore(fixture.dir, fixture.databaseFile);
@@ -1253,7 +1373,7 @@ test("★G 重复打开无害：版本仍为当前 v21、表与行数不变、�
 
     const second = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(second.database), 21, "第二次打开不得再抬版本");
+      assert.equal(userVersion(second.database), 23, "第二次打开不得再抬版本");
       assert.equal(objectDefinition(second.database, "perf_samples").sql, firstDdl, "DDL 不得被重写");
       assert.equal(second.database.prepare("SELECT COUNT(*) AS c FROM perf_samples").get().c, 1, "行数不得变");
       assert.deepEqual(second.perfSampleByKey(sample.sampleKey), sample, "行内容不得变");
@@ -1267,7 +1387,7 @@ test("★G 重复打开无害：版本仍为当前 v21、表与行数不变、�
           ["/v11/dsh-session.jsonl", 424242, 424242],
           ["/v11/zcode.db", 424242, 424242],
         ],
-        "v21 打开不得重跑迁移标脏（哨兵必须原样保留）",
+        "v22 打开不得重跑迁移标脏（哨兵必须原样保留）",
       );
       // 三个索引也不得被重复创建成重复项。
       assert.deepEqual(
@@ -1282,23 +1402,23 @@ test("★G 重复打开无害：版本仍为当前 v21、表与行数不变、�
   }
 });
 
-test("★G 四类夹具都实测可达：空库 / 当前版本（v21） / v11 夹具迁移 / 重开库", async () => {
+test("★G 四类夹具都实测可达：空库 / 当前版本（v22） / v11 夹具迁移 / 重开库", async () => {
   const fixture = await makeV11Fixture();
   const freshDir = await makeTempDir();
   try {
     // 夹具一：空库（version 0）。
     const emptyFile = path.join(freshDir, "empty.sqlite");
     const empty = await openStore(freshDir, emptyFile);
-    assert.equal(userVersion(empty.database), 21);
+    assert.equal(userVersion(empty.database), 23);
     empty.close();
 
     // 夹具二：v11 夹具迁移（同一份库连续打开三次，串行，避免双写连接互相争锁）。
     const migrated = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(migrated.database), 21);
+    assert.equal(userVersion(migrated.database), 23);
     assert.ok(objectDefinition(migrated.database, "perf_samples"));
     migrated.close();
 
-    // 夹具三：当前版本（v21）再打开 —— 不跑任何迁移段，且标脏不重跑（哨兵判别式见上一个用例）。
+    // 夹具三：当前版本（v22）再打开 —— 不跑任何迁移段，且标脏不重跑（哨兵判别式见上一个用例）。
     const probe = inspect(fixture.databaseFile);
     try {
       probe.exec("UPDATE source_files SET size = 777, mtime_ms = 777");
@@ -1306,17 +1426,17 @@ test("★G 四类夹具都实测可达：空库 / 当前版本（v21） / v11 �
       probe.close();
     }
     const current = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(current.database), 21);
+    assert.equal(userVersion(current.database), 23);
     assert.deepEqual(
       sourceFilesFingerprint(current.database).map((row) => Number(row.size)),
       [777, 777],
-      "v21 打开不得再次标脏",
+      "v22 打开不得再次标脏",
     );
     current.close();
 
     // 夹具四：重开库 —— 同一实例关闭后再开（幂等）。
     const reopened = await openStore(fixture.dir, fixture.databaseFile);
-    assert.equal(userVersion(reopened.database), 21);
+    assert.equal(userVersion(reopened.database), 23);
     reopened.close();
   } finally {
     await cleanupDir(fixture.dir);
@@ -1368,7 +1488,7 @@ test("★H 迁移中途失败（触发器 ABORT 在标脏那一步）⇒ 回滚�
     // 同一份库重试：必须能成功迁移（失败不留死局）。
     const retry = await openStore(fixture.dir, fixture.databaseFile);
     try {
-      assert.equal(userVersion(retry.database), 21);
+      assert.equal(userVersion(retry.database), 23);
       assert.ok(objectDefinition(retry.database, "perf_samples"));
       assert.deepEqual(
         sourceFilesFingerprint(retry.database).map((row) => [String(row.path), Number(row.size)]),
@@ -1877,7 +1997,8 @@ test("★B 一次 replaceFile 写入全部候选；重复同步为【替换】�
         assert.equal(String(row.home_id), "zcode-home");
         assert.equal(String(row.model), "fixture-model");
         assert.equal(String(row.status), "completed");
-        assert.equal(Number(row.output_tokens), 20);
+        assert.equal(row.output_tokens, null, "raw-only ZCode evidence has no v3 output count");
+        assert.equal(row.duration_ms, null, "raw-only ZCode evidence has no v3 generation duration");
       }
       assert.deepEqual(first.map((row) => String(row.sample_key)).sort(), [
         '["zcode","zcode-home","r1"]',
@@ -1888,6 +2009,8 @@ test("★B 一次 replaceFile 写入全部候选；重复同步为【替换】�
         const decoded = store.perfSampleByKey(String(row.sample_key));
         assert.equal(Object.keys(decoded).length, 31, "写库前必须归一化（31 字段）");
         assert.equal(decoded.homeId, "zcode-home");
+        assert.equal(decoded.outputTokens, null);
+        assert.equal(decoded.durationMs, null);
       }
 
       // 第二次：同一 info ⇒ 必须替换而非追加
@@ -2757,7 +2880,6 @@ test("★C SQL 路径的候选必须经 decodePerfSample 全列解码，与内�
     {
       id: "home-A",
       rows: [
-        m33ZcodeRow("row-full", { startedAt: M33_BASE + 500, completedAt: M33_BASE + 1500, output: 30 }),
         zcodeRow("row-nulls", {
           started_at: M33_BASE + 600,
           completed_at: M33_BASE + 1600,
@@ -2774,6 +2896,24 @@ test("★C SQL 路径的候选必须经 decodePerfSample 全列解码，与内�
     const { store } = await openM33Store(workspace);
     try {
       await indexAllHomes(store, workspace.homes);
+      // ZCode's reported output and E2E duration are deliberately not v3
+      // generation values. Add a genuine current sample through the real
+      // normalizer so the positive control exercises SQL decoding rather than
+      // source semantics that intentionally leave both generation fields null.
+      store.insertPerfSample(
+        normalizedSample({
+          identity: ["row-full"],
+          homeId: "home-A",
+          sourcePath: workspace.homes[0].dbFile,
+          channel: "zcode",
+          model: "fixture-model",
+          tsMs: M33_BASE + 1500,
+          windowStartMs: M33_BASE + 500,
+          windowEndMs: M33_BASE + 1500,
+          durationMs: 1000,
+          outputTokens: 30,
+        }),
+      );
       const fromSql = store.perfCandidatesForRange(null, []);
 
       for (const sample of fromSql) {
@@ -2790,11 +2930,16 @@ test("★C SQL 路径的候选必须经 decodePerfSample 全列解码，与内�
       const nulls = fromSql.find((s) => s.sampleKey.includes("row-nulls"));
       assert.ok(nulls, "row-nulls 候选必须存在（否则下面的断言不可达）");
       assert.equal(nulls.outputTokens, null, "outputTokens 必须是 null，不得被伪造成 0");
+      assert.equal(nulls.durationMs, null, "缺少 v3 generation 时 E2E duration 不得冒充生成时长");
       assert.equal(nulls.inputTokens, null, "inputTokens 必须是 null，不得被伪造成 0");
       assert.ok(Array.isArray(nulls.diagnosticReasonChain), "链必须解成数组，不是字符串");
-      // 🟩 实测：该行的 `output_tokens` 为 NULL ⇒ M1 标注 `output_missing`，链**非空**。
-      // （我最初期望 `[]` 是错的：值缺失本来就该有诊断原因。）
-      assert.deepEqual(nulls.diagnosticReasonChain, ["output_missing"], "缺 output 必须标注 output_missing");
+      // Current evidence needs both v3 output and duration. Missing values remain
+      // independently visible in the reason chain instead of being filled from raw E2E.
+      assert.deepEqual(
+        nulls.diagnosticReasonChain,
+        ["output_missing", "duration_missing"],
+        "缺 output 与缺 duration 必须分别标注",
+      );
       // 对照：另一条 output 正常的候选**不应**带这条原因 ⇒ 证明链不是常量。
       const full = fromSql.find((s) => s.sampleKey.includes("row-full"));
       assert.ok(full, "row-full 候选必须存在");

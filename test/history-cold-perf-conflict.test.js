@@ -74,14 +74,18 @@ test("overlapping hot and cold perf payloads conflict, then recover on the same 
       return (
         live !== undefined &&
         sample.status === "completed" &&
-        sample.outputTokens > 0 &&
-        sample.durationMs > 0 &&
+        sample.outputTokens === null &&
+        sample.durationMs === null &&
+        sample.requestCount === 1 &&
         JSON.stringify(live) === JSON.stringify(sample)
       );
     });
     assert.ok(overlap, "fixture must retain an identical cold sample in both the candidate and live perf");
     assert.equal(overlap.sourceKind, "zcode");
     assert.equal(overlap.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(overlap.timingKind, "generation");
+    assert.equal(overlap.tokenScope, "non_reasoning_output");
+    assert.equal(overlap.timingSource, "unknown");
 
     archived.database.exec("BEGIN IMMEDIATE");
     try {

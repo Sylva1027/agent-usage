@@ -1,6 +1,6 @@
 # Agent Usage 文档入口
 
-更新：2026-10-27（Q2/Q3 投影复用最终验收）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-10-29（TPS v4 本地切换）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
 ## 使用与接手
 
@@ -11,7 +11,21 @@
 
 ## 当前计划
 
-[Q2/Q3 投影复用施工计划](plans/2026-10-27-q2-q3-projection-implementation-plan.md)已完成局部验收，最终状态与后续范围见[主计划 §13](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)和[验收记录](validation/2026-10-27-q2-q3-projection/README.md)：**Q2 静止/ledger-only 各 20/20 更快，配对合计节省中位数 801/875 ms；Q3 真实 executor 20/20 更快且接收，节省中位数 1,492 ms，收益不相加。v4 完整门禁通过，正常 60 s 浏览器各 3 次、共 6 次完成且数值/TPS 正确，最终 SHA 核验与清理完成；整体 max 与新鲜度目标未达，浏览器 p95 未验，未切生产。** 资源预算为 7 GiB 重任务 + 1 GiB 控制侧。后续性能实验已按用户要求暂停；普通追加、perf 与 N2 研究仅保留为候选，不继续执行。
+[TPS v4 本地切换](validation/2026-10-29-tps-cutover/README.md)：看板已切至包含 RANGE 的冻结快照 `abc831c025c1`、PID 28920，固定历史数值和页面资源核对通过，schema23 完整恢复点已保留。Codex release 已并排安装；用户已允许本次 Desktop 重启，实际引擎采用状态由[独立重启结果](validation/2026-10-29-tps-cutover/desktop-result.md)记录。下列“未部署/未重启”均是对应前轮验收的历史状态，不覆盖本次结果。
+
+[Codex release 并排包与 helper 验收](validation/2026-10-29-codex-release/README.md)已完成：同源码 release 引擎、host、runner、setup 全部组包，四条原生采集闭环、真实 JavaScript、runner 正向执行/写隔离、setup RX ACL refresh 和 unelevated command/exec 通过。启动器 11/11，21 条 worker 配置匹配；原 debug 包、RANGE 和 UI 保留。纯本地运行，不依赖 Magpie；Desktop 实际采用、完整账号 provisioning 与 service SCM 模式未执行，未部署、未重启。
+
+[本轮性能优化已切换生产](validation/2026-10-27-performance-production-cutover/README.md)：2026-10-27 按[切换与回滚方案](plans/2026-10-27-performance-production-cutover-plan.md)完成备份、回退包兼容核对和有限功能冒烟，当前运行 `852034b`、PID 42844。恢复点与回退包保留，服务树硬限 7 GiB、控制侧预算 1 GiB；未追加性能实验。
+
+[Q2/Q3 投影复用施工计划](plans/2026-10-27-q2-q3-projection-implementation-plan.md)已完成局部验收，最终状态与后续范围见[主计划 §13](plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)和[验收记录](validation/2026-10-27-q2-q3-projection/README.md)：**Q2 静止/ledger-only 各 20/20 更快，配对合计节省中位数 801/875 ms；Q3 真实 executor 20/20 更快且接收，节省中位数 1,492 ms，收益不相加。v4 完整门禁通过，正常 60 s 浏览器各 3 次、共 6 次完成且数值/TPS 正确，最终 SHA 核验与清理完成；整体 max 与新鲜度目标未达，浏览器 p95 未验；其后已另行完成上述生产切换。** 资源预算为 7 GiB 重任务 + 1 GiB 控制侧。后续性能实验已按用户要求暂停；普通追加、perf 与 N2 研究仅保留为候选，不继续执行。
+
+[模型生成速度 TPS 调整方案](plans/2026-10-27-generation-tps-plan.md)按用户要求改为**仅依靠工具原生本机记录**，Magpie 只作采集方法参考。通用 v3 内核与请求级采样已实现；前轮依赖 Magpie 的完成结论撤回，运行链路已移除其读取、导入和指纹，当前原生采集仍未完成，未部署。各来源的真实能力和缺口见[原生计时核验](validation/2026-10-28-native-generation-timing/README.md)；[前轮工程结果](validation/2026-10-28-generation-tps/README.md)保持版本归属，不代替本轮验收。页面保持现有简洁布局。
+
+[原生生成计时深入探索与实施计划](plans/2026-10-28-native-generation-timing-plan.md)已进入首批施工：Codex 独立 SSE/WS producer 补丁及本仓 reader、WorkBuddy 现有纯正文恢复、DSH 条件计数映射与原生流 reader 已整合，见[实施验收](validation/2026-10-29-native-generation-implementation/README.md)。WorkBuddy 最终 reader 在真实历史恢复 17 条样本；Codex 未替换普通安装引擎，DSH 可选 reasoning 字段尚无实际返回证据；六来源普通安装覆盖未完成，未部署。[探索验收](validation/2026-10-28-native-generation-timing/discovery/README.md)与本轮工程检查分别记录，不依赖 Magpie。
+
+[普通 Codex 安装与 DSH 官方 usage 核验](validation/2026-10-29-installed-generation-validation/README.md)已完成本轮检查：普通 CLI/Desktop 引擎缺生成摘要，隔离补丁版完整构建及 22 个本地路径通过；一次获准的 DSH 官方请求成功，但两个 usage 事件均缺 reasoning 明细。该结果收紧后继实施条件，不代表采集覆盖已全部完成；RANGE 改动保留，未部署。
+
+[Codex 普通安装接入与 DSH 后续方案](plans/2026-10-29-local-generation-adoption-plan.md)已完成本轮本地实现与[隔离验收](validation/2026-10-29-local-generation-implementation/README.md)：完整并排包和 CLI/Desktop 启动器、DSH 官方全部生成 reader、v4 数值/排名分离及 v3 Codex/WorkBuddy 归档恢复已接通。DSH 881 个官方候选中 870 个有效、8 个无正窗口、3 个身份冲突。Codex 四条本地 SSE/WS 闭环、rg/code-mode host 协议及非管理员沙箱 command/exec 通过；Desktop 实际采用及 elevated runner/service 尚未验证。RANGE 保留，产品前端零改动，未部署。[前期研究](validation/2026-10-29-local-generation-adoption/README.md)保持原版本归属。
 
 [预扫移除、状态切换与真实读侧投影复测](validation/2026-10-27-codex-refresh-followup/README.md)记录 Q2/Q3 施工前阶段：预扫移除已实施，状态专项 6/6 与既有回归 38/38 通过。独立双 Store 按 AB/BA 交替，静止与 ledger-only 各 20 对，sync p95 分别为 3,660→2,904 ms、4,905→3,905 ms；绝对值不可与上轮单 Store 直接比较。同步 readSync 读量减少 170,361,023 bytes。真实 executor 已确认临时 reader 投影空槽与 writer 的 `total_changes` miss，投影缓存未放宽。
 
@@ -58,7 +72,7 @@ GPT-6.1 Sol 的 Codex / ChatGPT Work 500K 与全长度短档计费已于 2026-10
 - [12 看板行为](12-dashboard.md)：周期、排序、刷新、语言、主题、角色和聚光。
 - [14 项目日志接入](14-project-log.md)：其他项目的 JSONL 字段、语义与最小校验。
 
-旧 HTML 导出说明已融入[开发说明](03-development.md#旧-html-导出与历史验证)，不再维护独立专题。以上专题描述现有实现，TPS已完成最终审核；分享与配色方案状态仍由各自任务入口维护。
+旧 HTML 导出说明已融入[开发说明](03-development.md#旧-html-导出与历史验证)，不再维护独立专题。旧版 TPS 的最终审核仅适用于对应历史版本；当前生成速度与分享、配色方案的状态分别由各自任务入口维护。
 
 ## 验证与归档
 

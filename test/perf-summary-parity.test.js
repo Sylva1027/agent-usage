@@ -193,7 +193,7 @@ test("★M4.1-a 内存载体：无候选的 Codex home 不伪造样本，且 uns
     const homeC = makeProjectLogHome(root, "proj-C");
     const homes = [homeA, homeB, homeC];
 
-    const report = await buildUsageReport({ homes });
+    const report = await buildUsageReport({ homeDir: root, homes });
     const { perfSamples, perfMeta } = report;
 
     console.log(
@@ -276,7 +276,7 @@ test("★M4.1-b 一个 home 读失败：只标该 home degraded，其他来源�
     // 破坏物理库：仍是**已发现**的文件，但 reader 只读打开必然失败。
     writeFileSync(broken.dbFile, "this is not a sqlite database");
 
-    const report = await buildUsageReport({ homes: [good, broken] });
+    const report = await buildUsageReport({ homeDir: root, homes: [good, broken] });
     const { perfSamples, perfMeta } = report;
     console.log(
       "  [实测] 样本数 =",
@@ -319,8 +319,10 @@ test("★M4.1-b 一个 home 读失败：只标该 home degraded，其他来源�
     );
     const summary = summarizeUsage(report, { preset: "all", now: FIXED_NOW }).perf;
     assert.equal(summary.state, "degraded");
-    assert.equal(summary.models.length, 1, "健康来源仍须保留模型速度行");
-    assert.equal(summary.models[0].n, 3, "失败 home 的候选不得混入健康来源的速度行");
+    assert.equal(summary.models.length, 1, "健康来源仍须保留可归属模型行");
+    assert.equal(summary.models[0].n, 0);
+    assert.equal(summary.models[0].state, "missing_duration");
+    assert.equal(summary.models[0].candidateCount, 3, "失败 home 的候选不得混入健康来源的模型行");
     assert.deepEqual(perfMeta.rankedHomeIds, ["zcode-good"], "受阻 home 必须排除出默认排名（D4）");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -348,7 +350,7 @@ test("★M4.1-c 读取期间追加：degraded + LIVE_SOURCE_CHANGED 且 indexVer
       return await streamZcodePerfSamples(filePath, source, onSample, options);
     });
 
-    const report = await buildUsageReport({ homes: [homeA] });
+    const report = await buildUsageReport({ homeDir: root, homes: [homeA] });
     const { perfSamples, perfMeta } = report;
     console.log(
       "  [实测] 注入 =",
@@ -392,11 +394,13 @@ test("★M4.1-d 载体不得改动旧字段；同夹具两次构建的指纹与�
     const homeA = makeZcodeDb(root, "zcode-A", { rows: 3 });
     const homeB = makeCodexHome(root, "codex-B");
     const homes = [homeA, homeB];
+    const reportOptions = { homeDir: root, homes };
 
-    const withPerf = await buildUsageReport({ homes });
-    const again = await buildUsageReport({ homes });
+    const withPerf = await buildUsageReport(reportOptions);
+    const again = await buildUsageReport(reportOptions);
 
     // ① 确定性：同一份未变夹具 ⇒ 同一指纹、同样本（指纹不得含易变分量）
+    assert.match(String(withPerf.perfMeta.indexVersion), /^[0-9a-f]{64}$/);
     assert.equal(again.perfMeta.indexVersion, withPerf.perfMeta.indexVersion, "未变化时指纹必须稳定");
     assert.equal(again.perfSamples.length, withPerf.perfSamples.length);
     // `indexedAt` 是**采集时刻**，两次调用必然不同 ⇒ 只比较其余字段（并单独锁 ISO 形状）。
@@ -410,7 +414,7 @@ test("★M4.1-d 载体不得改动旧字段；同夹具两次构建的指纹与�
     // ② 旧字段不变：清空 reader 注册表（⇒ 该来源 not_enabled，一条候选都不产生）后，
     //    用量侧的 events/sessions/warnings 必须与开启载体时**逐字相同**。
     PERF_SOURCE_READERS.clear();
-    const control = await buildUsageReport({ homes });
+    const control = await buildUsageReport(reportOptions);
     assert.deepEqual(control.events, withPerf.events, "perf 载体不得改动 events");
     assert.deepEqual(control.sessions, withPerf.sessions, "perf 载体不得改动 sessions");
     assert.deepEqual(control.warnings, withPerf.warnings, "perf 载体不得改动 warnings");
@@ -436,7 +440,7 @@ test("★M4.1-e 内存版本必须由与 M3 同源的内容指纹构造（与 st
     pinMtime(homeA.dbFile, BASE);
 
     // ① 内存链路：版本 = 已启用来源内容指纹的两层聚合
-    const report = await buildUsageReport({ homes: [homeA] });
+    const report = await buildUsageReport({ homeDir: root, homes: [homeA] });
     const memoryVersion = report.perfMeta.indexVersion;
 
     // ② 索引链路：同一个物理文件经 M3 的 `replaceFile` 发布出**权威**逐文件内容指纹
@@ -463,7 +467,9 @@ test("★M4.1-e 内存版本必须由与 M3 同源的内容指纹构造（与 st
     //    若本地镜像与 M3 的算法出现任何漂移（探测宽度、`-wal` 折叠、摘要截断长度…），
     //    内存版本就不会等于这个期望值 ⇒ 本用例转红。
     const homeAggregate = createHash("sha256").update(`${homeA.dbFile}\t${canonical}\n`).digest("hex");
-    const expected = createHash("sha256").update(`${homeA.id}\tzcode\t${homeAggregate}\n`).digest("hex");
+    const expected = createHash("sha256")
+      .update(`method\ttps-v4\n${homeA.id}\tzcode\t${homeAggregate}\n`)
+      .digest("hex");
     assert.equal(memoryVersion, expected, "内存版本必须由【与 M3 相同的逐文件内容指纹】构造 —— 镜像一旦漂移即转红");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -493,7 +499,7 @@ test("★M7 Codex rollout 变成多 session_meta 时只阻断 Codex，稳定 ZCo
       return result;
     });
 
-    const report = await buildUsageReport({ homes: [homeZ, homeC] });
+    const report = await buildUsageReport({ homeDir: root, homes: [homeZ, homeC] });
     const { perfSamples, perfMeta } = report;
     console.log(
       "  [实测] 注入 =",
@@ -543,7 +549,7 @@ test("★M4.1-g 同尺寸同 mtime 原地改写：必须检出、不得 ready、
     pinMtime(homeA.dbFile, BASE);
 
     // 基线（干净读取：输出 100）—— 这是"旧内容"的版本号
-    const baseline = await buildUsageReport({ homes: [homeA] });
+    const baseline = await buildUsageReport({ homeDir: root, homes: [homeA] });
     const v1 = baseline.perfMeta.indexVersion;
     assert.equal(baseline.perfMeta.state, "ready");
     assert.match(String(v1), /^[0-9a-f]{64}$/, "基线版本必须可发布");
@@ -562,7 +568,7 @@ test("★M4.1-g 同尺寸同 mtime 原地改写：必须检出、不得 ready、
       return result;
     });
 
-    const live = await buildUsageReport({ homes: [homeA] });
+    const live = await buildUsageReport({ homeDir: root, homes: [homeA] });
     const statAfter = statSync(homeA.dbFile);
     console.log(
       "  [实测] sameSize =",
@@ -590,11 +596,11 @@ test("★M4.1-g 同尺寸同 mtime 原地改写：必须检出、不得 ready、
     // 恢复：稳定完整读取 ⇒ 版本必须与新内容对应（≠ 旧内容版本）且可复现
     PERF_SOURCE_READERS.clear();
     for (const [key, value] of savedReaders) PERF_SOURCE_READERS.set(key, value);
-    const recovered = await buildUsageReport({ homes: [homeA] });
-    const recoveredAgain = await buildUsageReport({ homes: [homeA] });
+    const recovered = await buildUsageReport({ homeDir: root, homes: [homeA] });
+    const recoveredAgain = await buildUsageReport({ homeDir: root, homes: [homeA] });
     console.log(
-      "  [实测] recoveredOutput =",
-      recovered.perfSamples[0].outputTokens,
+      "  [实测] recoveredDuration =",
+      recovered.perfSamples[0].durationMs,
       " v1 =",
       String(v1).slice(0, 12),
       " v3 =",
@@ -602,7 +608,12 @@ test("★M4.1-g 同尺寸同 mtime 原地改写：必须检出、不得 ready、
     );
 
     assert.equal(recovered.perfMeta.state, "ready", "稳定完整读取必须恢复 ready");
-    assert.equal(recovered.perfSamples[0].outputTokens, 200, "恢复后读到的是**新**内容");
+    assert.equal(recovered.perfSamples.length, 1, "恢复后仍保留可归属的 ZCode 候选");
+    assert.equal(recovered.perfSamples[0].durationMs, null, "请求总时长不得冒充生成时长");
+    const recoveredPerf = summarizeUsage(recovered, { preset: "all" }).perf;
+    assert.deepEqual(recoveredPerf.groups, [], "缺少真实生成时长时不得产生速度组");
+    assert.equal(recoveredPerf.models[0].state, "missing_duration");
+    assert.equal(recoveredPerf.models[0].candidateCount, 1);
     assert.notEqual(recovered.perfMeta.indexVersion, v1, "版本必须随内容变化（旧实现复用同一版本号）");
     assert.match(String(recovered.perfMeta.indexVersion), /^[0-9a-f]{64}$/);
     assert.equal(recoveredAgain.perfMeta.indexVersion, recovered.perfMeta.indexVersion, "稳定读取的版本必须可复现");
@@ -637,7 +648,7 @@ test("★M7 Codex 与 ZCode 同时变化时分别归因，各自影响排名", a
       return result;
     });
 
-    const report = await buildUsageReport({ homes: [homeZ, homeC] });
+    const report = await buildUsageReport({ homeDir: root, homes: [homeZ, homeC] });
     const { perfMeta } = report;
     console.log(
       "  [实测] state =",
@@ -695,7 +706,7 @@ test("★M4.1-i 多 ZCode home：稳定者照常排名，变化者与读失败�
       return result;
     });
 
-    const report = await buildUsageReport({ homes: [stable, changed, broken] });
+    const report = await buildUsageReport({ homeDir: root, homes: [stable, changed, broken] });
     const { perfSamples, perfMeta } = report;
     console.log(
       "  [实测] 样本 =",
@@ -754,7 +765,7 @@ test("★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮�
     const homes = [homeA, homeB];
 
     // ① 稳定 A/B：两个 home 都 ready、都进排名、版本可发布（顺序与基线）
-    const stable = await buildUsageReport({ homes });
+    const stable = await buildUsageReport({ homeDir: root, homes });
     const stableVersion = stable.perfMeta.indexVersion;
     console.log(
       "  [实测·稳定] state =",
@@ -786,7 +797,7 @@ test("★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮�
       return result;
     });
 
-    const live = await buildUsageReport({ homes });
+    const live = await buildUsageReport({ homeDir: root, homes });
     const { perfSamples, perfMeta } = live;
     console.log(
       "  [实测·注入] 读取顺序 =",
@@ -806,9 +817,11 @@ test("★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮�
     // 注入与顺序必须**实测**：A 先读完，注入发生在 B 读完之后
     assert.deepEqual(readOrder, [homeA.dbFile, homeB.dbFile], "顺序：先读 A 再读 B");
     assert.equal(injectedAfter, homeB.dbFile, "注入发生在 B 的 reader 完成之后");
-    // A 的候选是**改写前**读到的 100（这正是"候选与上游已不一致"的体现）
+    // A 的候选仍可归属，但请求总时长/未证包含关系的 output 不得进入 v3 速度。
     const sampleA = perfSamples.find((sample) => sample.homeId === "z-a");
-    assert.equal(sampleA?.outputTokens, 100, "A 的候选是改写前读到的值");
+    assert.ok(sampleA, "A 必须保留可归属候选");
+    assert.equal(sampleA.durationMs, null, "请求总时长不得冒充生成时长");
+    assert.equal(sampleA.outputTokens, null, "未证包含关系的 ZCode output 不得进入非推理计数");
 
     // 归因：**只有 A** 被阻断并告警；B 稳定、保留排名；版本不可发布
     assert.equal(perfMeta.state, "degraded", "整轮结束核对必须发现 A 变了");
@@ -824,20 +837,24 @@ test("★M4.1-k 跨 home 窗口：读取 B 期间改写已读完的 A，整轮�
     //    "用量诊断不能替代性能来源的整轮验证"（复核2 §1 原话）；检测必须由内容指纹完成。
     assert.equal(perfMeta.usageFingerprintStable, true, "size/mtime 型用量指纹对同尺寸同 mtime 改写是盲的");
 
-    // ③ 恢复：稳定完整读取 ⇒ 读到 A=200、两个 home 都 ready、版本与旧内容版本不同
+    // ③ 恢复：稳定完整读取 ⇒ 两个 home 都 ready，版本随上游内容变化
     PERF_SOURCE_READERS.clear();
     for (const [key, value] of savedReaders) PERF_SOURCE_READERS.set(key, value);
-    const recovered = await buildUsageReport({ homes });
+    const recovered = await buildUsageReport({ homeDir: root, homes });
     console.log(
-      "  [实测·恢复] A 输出 =",
-      recovered.perfSamples.find((sample) => sample.homeId === "z-a")?.outputTokens,
+      "  [实测·恢复] A duration =",
+      recovered.perfSamples.find((sample) => sample.homeId === "z-a")?.durationMs,
       " state =",
       recovered.perfMeta.state,
       " version ≠ 旧 =",
       recovered.perfMeta.indexVersion !== stableVersion,
     );
     assert.equal(recovered.perfMeta.state, "ready");
-    assert.equal(recovered.perfSamples.find((sample) => sample.homeId === "z-a")?.outputTokens, 200);
+    assert.equal(recovered.perfSamples.find((sample) => sample.homeId === "z-a")?.durationMs, null);
+    const recoveredPerf = summarizeUsage(recovered, { preset: "all" }).perf;
+    assert.deepEqual(recoveredPerf.groups, []);
+    assert.equal(recoveredPerf.models[0].state, "missing_duration");
+    assert.equal(recoveredPerf.models[0].candidateCount, 2);
     assert.deepEqual(recovered.perfMeta.rankedHomeIds, ["z-a", "z-b"]);
     assert.match(String(recovered.perfMeta.indexVersion), /^[0-9a-f]{64}$/);
     assert.notEqual(recovered.perfMeta.indexVersion, stableVersion, "版本必须随内容变化");
@@ -914,7 +931,7 @@ async function bothPerfBlocks(root, specs, filters = {}, options = {}) {
   const { homes, options: discovery } = await parityHomes(root, specs);
   // 供用例在"建好 home、还没读"的时点改上游（例如把某行时间戳清空造 unplaced）。
   if (typeof options.beforeReport === "function") await options.beforeReport(homes);
-  const report = await buildUsageReport({ homes });
+  const report = await buildUsageReport({ homeDir: root, homes });
   const memory = summarizeUsage(report, filters).perf;
   const store = await openParityStore(root);
   try {
@@ -953,7 +970,7 @@ function assertStatsParity(memory, indexed, label) {
   }
 }
 
-test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐字相同（诊断统计保留、未获统一排名）", async () => {
+test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐字相同（候选与缺失时长模型行保留）", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "m42-a-"));
   try {
     const { memory, indexed } = await bothPerfBlocks(root, [{ name: "z-a", rows: 25 }], {
@@ -963,33 +980,34 @@ test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐
     console.log(
       "  [实测] memory groups =",
       memory.groups.length,
-      "n =",
-      memory.groups[0]?.n,
-      "rank =",
-      memory.groups[0]?.rank,
+      "models =",
+      memory.models.length,
+      "candidateCount =",
+      memory.models[0]?.candidateCount,
       "coverage.eligible =",
       memory.coverage.eligible,
     );
-    assert.equal(memory.groups.length, 1, "前置：恰好一个组（否则 parity 无判别力）");
-    assert.equal(memory.groups[0].n, 25);
-    assert.equal(memory.groups[0].rank, null, "ZCode 输出范围未知 ⇒ 保留诊断统计但不进入统一排名");
-    // 判别力前置：行 id 必须是真的，否则『两端相同』可能只是『两端都空/都错』
-    assert.equal(memory.groups[0].sums.outputTokens, 2800, "前置：确实读到了 25 行 fixture 输出");
-    assert.equal(memory.groups[0].insufficientSamples, false);
+    assert.deepEqual(memory.groups, [], "ZCode 没有真实 generation 字段 ⇒ 不产出 E2E 速度组");
     assert.equal(memory.models.length, 1);
-    assert.equal(memory.models[0].n, 25);
+    assert.equal(memory.models[0].n, 0);
+    assert.equal(memory.models[0].state, "missing_duration");
+    assert.equal(memory.models[0].candidateCount, 25);
+    assert.equal(memory.models[0].averageTps, null);
+    assert.equal(memory.models[0].p10, null);
+    assert.equal(memory.models[0].p90, null);
     assert.equal(memory.models[0].rank, null);
     assert.equal(memory.models[0].modelProvider, "fixture-provider");
     assert.equal(memory.models[0].window, "request");
     assert.equal(memory.models[0].rankState, "unverified");
-    assert.equal(memory.models[0].firstSampleAtMs, BASE + 500);
-    assert.equal(memory.models[0].lastSampleAtMs, BASE + 24_500);
     assert.deepEqual(
       Object.keys(memory.models[0]).sort(),
       [
         "averageTps",
+        "candidateCount",
+        "firstCandidateAtMs",
         "firstSampleAtMs",
         "key",
+        "lastCandidateAtMs",
         "lastSampleAtMs",
         "model",
         "modelProvider",
@@ -1006,7 +1024,10 @@ test("★M4.2-a 普通范围：两端 groups/coverage/methodVersion 与计数逐
     );
     assert.equal(memory.codexTimingCoverage, null, "没有 Codex 来源，不伪造零覆盖统计");
     assert.equal(memory.coverage.eligible, 25);
-    assert.equal(memory.coverage.sampled, 25);
+    assert.equal(memory.coverage.positiveOutput, 0);
+    assert.equal(memory.coverage.sampled, 0);
+    assert.equal(memory.coverage.dropped, 25);
+    assert.equal(memory.coverage.droppedByReason.output_missing_zero_invalid, 25);
     assertStatsParity(memory, indexed, "普通范围");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -1018,7 +1039,7 @@ test("E-1 all perf projection reuses complete isolated results without widening 
   let store;
   try {
     const { homes, options } = await parityHomes(root, [{ name: "z-e1", rows: 3 }]);
-    const report = await buildUsageReport({ homes });
+    const report = await buildUsageReport({ homeDir: root, homes });
     store = await openParityStore(root);
     await store.sync({ options });
     const filters = { preset: "all", calendarZone: "utc", now: FIXED_NOW };
@@ -1037,9 +1058,9 @@ test("E-1 all perf projection reuses complete isolated results without widening 
     assert.equal(builds, 1, "unchanged all skips perf decoding and statistics");
     assert.deepEqual(second.perf, first.perf, "cache retains the entire perf block");
     assert.notStrictEqual(second.perf, first.perf);
-    assert.notStrictEqual(second.perf.groups[0].sums, first.perf.groups[0].sums);
+    assert.notStrictEqual(second.perf.models[0], first.perf.models[0]);
     second.perf.coverage.eligible = -1;
-    second.perf.groups[0].sums.outputTokens = -1;
+    second.perf.models[0].candidateCount = -1;
     second.perf.models.length = 0;
     second.perf.missingSources.push({ path: "caller-only" });
     second.perf.sourceWarnings.push({ code: "caller-only" });
@@ -1111,14 +1132,11 @@ test("★M4.2-c UTC 时区范围：两端使用同一日历换算", async () => 
       now: FIXED_NOW,
     };
     const { memory, indexed } = await bothPerfBlocks(root, [{ name: "z-c", rows: 25, spacingMs: 86_400_000 }], filters);
-    console.log(
-      "  [实测] UTC 单日范围内 eligible =",
-      memory.coverage.eligible,
-      " insufficient =",
-      memory.groups[0]?.insufficientSamples,
-    );
+    console.log("  [实测] UTC 单日范围内 eligible =", memory.coverage.eligible, " groups =", memory.groups.length);
     assert.equal(memory.coverage.eligible, 1, "前置：UTC 单日窗口只含一行");
-    assert.equal(memory.groups[0]?.insufficientSamples, true, "n=1 < minSamples ⇒ 保留但不得排名");
+    assert.deepEqual(memory.groups, [], "ZCode E2E 行不得生成 v3 速度组");
+    assert.equal(memory.models[0].state, "missing_duration");
+    assert.equal(memory.models[0].candidateCount, 1);
     assertStatsParity(memory, indexed, "UTC 范围");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -1295,15 +1313,17 @@ test("★M4.2-h rebuilding/uninitialized：不返回部分排名，也不因状�
       } finally {
         probe.close();
       }
-      // 真实 sync 后立刻变 ready 且有组（证明空组只来自"未就绪"，不是被永久屏蔽）
+      // 真实 sync 后立刻变 ready 并保留缺失时长模型行（证明空组不是“未就绪”永久屏蔽）
       await store.sync({ options: discovery });
       const ready = store.summarize({ preset: "all", now: FIXED_NOW }, {});
       console.log("  [实测] sync 后：state =", ready.perf.state, " groups =", ready.perf.groups.length);
       assert.equal(ready.perf.state, "ready", "sync 收尾写入 ready");
       assert.equal(ready.perf.meta.state, "ready");
-      assert.ok(ready.perf.groups.length > 0, "ready 后必须给出组");
+      assert.deepEqual(ready.perf.groups, [], "ZCode 没有真实 generation 字段 ⇒ ready 后仍无速度组");
       assert.equal(ready.perf.models.length, 1);
-      assert.equal(ready.perf.models[0].n, 5);
+      assert.equal(ready.perf.models[0].n, 0);
+      assert.equal(ready.perf.models[0].state, "missing_duration");
+      assert.equal(ready.perf.models[0].candidateCount, 5);
       assert.equal(ready.perf.coverage.eligible, 5);
       assert.equal(homes.length, 1, "前置：真实 discovery 发现一个 home");
     } finally {
@@ -1396,26 +1416,22 @@ test("★M4.2-k 受阻 home：degraded 时两端都排除该 home 的候选（�
         summary.perf.coverage.eligible,
         " ranked =",
         JSON.stringify(summary.perf.rankedHomeIds),
-        " groups.homeId =",
-        JSON.stringify(summary.perf.groups.map((group) => group.homeId)),
+        " models =",
+        summary.perf.models.length,
       );
       assert.deepEqual(summary.perf.degradedHomeIds, [homeK2.id]);
       assert.deepEqual(summary.perf.rankedHomeIds, [homeK1.id], "受阻 home 不得进默认排名");
       assert.equal(summary.perf.coverage.eligible, 25, "受阻 home 的陈旧候选不得进统计");
-      assert.deepEqual(
-        summary.perf.groups.map((group) => group.homeId),
-        [homeK1.id],
-      );
+      assert.deepEqual(summary.perf.groups, [], "ZCode 不生成 v3 速度组");
+      assert.equal(summary.perf.models[0].candidateCount, 25);
 
       // 内存路径：把**同一个**受阻集合交给它（生产里由 M4.1 的 `perfMeta.degradedHomeIds` 提供）
-      const report = await buildUsageReport({ homes });
+      const report = await buildUsageReport({ homeDir: root, homes });
       /** @type {any} */ (report).perfMeta.degradedHomeIds = [homeK2.id];
       const memory = summarizeUsage(report, { preset: "all", now: FIXED_NOW }).perf;
       assert.equal(memory.coverage.eligible, 25, "内存路径同样必须排除受阻 home");
-      assert.deepEqual(
-        memory.groups.map((group) => group.homeId),
-        [homeK1.id],
-      );
+      assert.deepEqual(memory.groups, [], "ZCode 不生成 v3 速度组");
+      assert.equal(memory.models[0].candidateCount, 25);
       assertStatsParity(memory, summary.perf, "受阻 home 排除后");
     } finally {
       store.close();
@@ -1491,7 +1507,7 @@ test("★M4.2-l 配额范围：同一 quota_5h 窗口下两端排除同一批非
       await store.sync({ options: discovery });
       const quotaFilters = { preset: "quota_5h", now: QUOTA_AS_OF };
       const indexed = store.summarize(quotaFilters, {}).perf;
-      const report = await buildUsageReport({ homes });
+      const report = await buildUsageReport({ homeDir: root, homes });
       const memory = summarizeUsage(report, quotaFilters).perf;
       console.log(
         "  [实测] 配额窗口：memory.eligible =",
@@ -1557,7 +1573,7 @@ test("★M4.1-j 仅 -wal 变化：主库 size/mtime 不变也必须检出并令�
       return result;
     });
 
-    const report = await buildUsageReport({ homes: [walHome] });
+    const report = await buildUsageReport({ homeDir: root, homes: [walHome] });
     const statAfter = statSync(walHome.dbFile);
     console.log(
       "  [实测] 主库 size/mtime 不变 =",
@@ -1636,14 +1652,7 @@ test("M4.4 shared ZCode fixture: literal hand oracle across memory/index and fil
       for (const actual of [memory, indexed]) {
         assert.equal(actual.state, "ready");
         assert.deepEqual(actual.sourceWarnings, []);
-        assert.equal(actual.groups.length, fixture.expected[name].groups.length);
-        fixture.expected[name].groups.forEach((expected, i) => {
-          for (const [key, value] of Object.entries(expected))
-            assert.deepEqual(actual.groups[i][key], value, `${name}.${key}`);
-        });
-        for (const [key, value] of Object.entries(fixture.expected[name].coverage)) {
-          assert.deepEqual(actual.coverage[key], value, `${name}.coverage.${key}`);
-        }
+        assertM45Expected(actual, fixture.expected[name]);
         const c = actual.coverage;
         assert.equal(c.eligible, c.sampled + c.dropped + c.pending);
         assert.equal(
@@ -1660,9 +1669,11 @@ test("M4.4 shared ZCode fixture: literal hand oracle across memory/index and fil
         );
       }
     }
-    const small = fixture.expected.smallOnly.groups[0];
-    assert.notEqual(small.tps.pooled, 3, "unequal durations must distinguish pooled from mean TPS");
-    console.log(`M4.4 fixtureHash=${fixture.fixtureHash}; candidates=35; all=34/30/3/1+unplaced1`);
+    assert.deepEqual(fixture.expected.smallOnly.groups, [], "ZCode has no genuine generation duration");
+    assert.equal(fixture.expected.smallOnly.models[0].state, "missing_duration");
+    console.log(
+      `M4.4 fixtureHash=${fixture.fixtureHash}; candidates=35; all=34 eligible/0 sampled/33 dropped/1 pending`,
+    );
   } finally {
     store.close();
     fixture.close();
@@ -1720,6 +1731,15 @@ function assertM45Expected(perf, expected) {
   expected.groups.forEach((group, i) => {
     for (const [key, value] of Object.entries(group)) assert.deepEqual(perf.groups[i][key], value, key);
   });
+  assert.equal(perf.models.length, expected.models.length);
+  const modelsByKey = new Map(perf.models.map((model) => [`${model.sourceKind}\u0000${model.model}`, model]));
+  for (const expectedModel of expected.models) {
+    const actual = modelsByKey.get(`${expectedModel.sourceKind}\u0000${expectedModel.model}`);
+    assert.ok(actual, `missing model row ${expectedModel.sourceKind}/${expectedModel.model}`);
+    for (const [key, value] of Object.entries(expectedModel)) {
+      assert.deepEqual(actual[key], value, `${expectedModel.sourceKind}/${expectedModel.model}.${key}`);
+    }
+  }
   for (const [key, value] of Object.entries(expected.coverage)) assert.deepEqual(perf.coverage[key], value, key);
 }
 
@@ -1785,7 +1805,7 @@ test("M4.5 DSH multiframe identity and literal oracle: memory/index/all/date/exc
       store.database.prepare("SELECT sample_key FROM perf_samples WHERE source_kind='dsh' ORDER BY sample_key").all(),
       rows,
     );
-    console.log(`M4.5 fixtureHash=${fixture.fixtureHash}; DSH TPS=10/20/40, pooled=30; identity count=4`);
+    console.log(`M4.5 fixtureHash=${fixture.fixtureHash}; DSH identity count=4, missing generation duration`);
   } finally {
     store.close();
     fixture.close();
@@ -2372,6 +2392,8 @@ test("M4.6 OpenCode multi-database fixture has independent literal parity and co
 
     const openSamples = report.perfSamples.filter((sample) => sample.sourceKind === "opencode");
     assert.equal(openSamples.length, 4);
+    assert.ok(openSamples.every((sample) => sample.outputTokens > 0));
+    assert.ok(openSamples.every((sample) => sample.durationMs === null));
     const identityOf = (sample) => JSON.parse(sample.sampleKey);
     const duplicates = openSamples.filter((sample) => identityOf(sample).at(-1) === "same-message");
     assert.equal(duplicates.length, 2, "same message id in separate databases remains two candidates");
@@ -2426,8 +2448,8 @@ test("M4.6 OpenCode multi-database fixture has independent literal parity and co
     assert.equal(
       reportPerf({ preset: "all", now: new Date(fixture.expected.now) }).coverage.droppedByReason
         .duration_missing_nonpositive_invalid,
-      2,
-      "missing completed is a duration drop, not a terminal warning",
+      4,
+      "all OpenCode candidates have raw non-reasoning output but no genuine generation duration",
     );
     assert.equal(
       store.database.prepare("SELECT count(*) AS n FROM perf_samples WHERE source_kind='opencode'").get().n,
@@ -2538,9 +2560,20 @@ test("M4.6 OpenCode WAL-only changes publish once; read failure degrades only it
     assert.deepEqual(memory.sourceWarnings, [
       { sourceKind: "opencode", homeId: opencodeHome.id, code: "UNSUPPORTED_SCHEMA", count: 2 },
     ]);
-    const changedGroup = memory.groups.find((group) => group.sourceKind === "opencode");
-    assert.deepEqual(changedGroup.tps, { p10: 100 / 3, p50: 120, p90: 125, pooled: (470 * 1000) / 6000 });
-    assert.deepEqual(changedGroup.sums, { outputTokens: 470, durationMs: 6000 });
+    assert.deepEqual(memory.groups, [], "OpenCode has no genuine generation duration");
+    const changedSample = recoveredReport.perfSamples.find((sample) => {
+      const identity = JSON.parse(sample.sampleKey);
+      return sample.sourcePath === file && sample.sourceKind === "opencode" && identity.at(-1) === "same-message";
+    });
+    assert.ok(changedSample, "recovered WAL candidate must retain its physical source and message identity");
+    assert.equal(changedSample.outputTokens, 250, "raw non-reasoning output follows the WAL update");
+    assert.equal(changedSample.durationMs, null);
+    const changedModel = memory.models.find(
+      (model) => model.sourceKind === "opencode" && model.model === "opencode-model",
+    );
+    assert.ok(changedModel, "OpenCode candidate must retain an attributable model row");
+    assert.equal(changedModel.state, "missing_duration");
+    assert.equal(changedModel.candidateCount, 4);
     assert.equal(
       sha256File(file),
       mainHashBefore,
@@ -2663,7 +2696,7 @@ function d5Instrument(store) {
   return phases;
 }
 
-/** D5 夹具：一个真实 Codex home（25 turn，样本全部落在 2026-10-04，线程身份 = fixture-codex-thread）。 */
+/** D5 夹具：一个真实 Codex home（25 turn / 26 request，样本全部落在 2026-10-04，线程身份 = fixture-codex-thread）。 */
 async function d5CodexHomes(fixture) {
   const homes = await discoverUsageSources(fixture.reportOptions);
   assert.equal(homes.length, 1, "夹具只有一个 Codex home");
@@ -2686,8 +2719,24 @@ test("★D5-a 全局有可信样本、今日无样本：该 home 仍在默认排
 
     // 对照：换成样本当天 ⇒ 确实有排名与组（证明上面的 0 不是夹具坏了）
     const memoryAll = summarizeUsage(report, { preset: "all", now: D5_FIXED_NOW }).perf;
-    assert.equal(memoryAll.coverage.eligible, 25);
+    assert.equal(memoryAll.coverage.eligible, fixture.expected.coverage.eligible);
     assert.equal(memoryAll.groups.length, 1);
+    const codexGroup = memoryAll.groups[0];
+    assert.equal(codexGroup.n, fixture.expected.n);
+    assert.equal(codexGroup.rank, fixture.expected.rank);
+    assert.equal(Object.hasOwn(codexGroup, "window"), false, "PerfSummaryGroup intentionally has no window field");
+    const codexModel = memoryAll.models.find(
+      (model) => model.sourceKind === "codex" && model.model === fixture.expected.model,
+    );
+    assert.equal(codexModel?.window, "request", "request-level semantics belong to the model row");
+    assert.equal(codexGroup.timingKind, fixture.expected.timingKind);
+    assert.equal(codexGroup.tokenScope, fixture.expected.tokenScope);
+    assert.deepEqual(codexGroup.tps, fixture.expected.tps);
+    assert.deepEqual(codexGroup.durationMs, fixture.expected.durationMs);
+    assert.deepEqual(codexGroup.sums, fixture.expected.sums);
+    for (const [key, value] of Object.entries(fixture.expected.coverage)) {
+      assert.deepEqual(memoryAll.coverage[key], value, `Codex coverage.${key}`);
+    }
     assert.deepEqual(memoryAll.rankedHomeIds, [homeId]);
 
     const store = new UsageStore({
@@ -2730,7 +2779,7 @@ test("★D5-b 失败 home 的陈旧候选：既不排名也不进可信统计（
       await fixture.seedRequestTiming(store);
       const baseline = store.summarize({ preset: "all", now: D5_FIXED_NOW }, {}).perf;
       assert.deepEqual(baseline.rankedHomeIds, [homeId], "前置：未受阻时该 home 在排名里");
-      assert.equal(baseline.coverage.eligible, 25);
+      assert.equal(baseline.coverage.eligible, 26);
       const firstKey = store.database
         .prepare("SELECT sample_key FROM perf_samples WHERE source_kind = 'codex' LIMIT 1")
         .get().sample_key;
@@ -2759,14 +2808,14 @@ test("★D5-b 失败 home 的陈旧候选：既不排名也不进可信统计（
       );
       const permitted = store.summarize({ preset: "all", now: D5_FIXED_NOW }, {}).perf;
       assert.deepEqual(permitted.rankedHomeIds, [homeId], "部分许可：未被封的线程仍可排名");
-      assert.equal(permitted.coverage.eligible, 25, "部分许可：未被封的候选仍进统计");
+      assert.equal(permitted.coverage.eligible, 26, "部分许可：未被封的候选仍进统计");
 
       // ③ 恢复 ready ⇒ 排名与统计回到基线
       store.writePerfState("ready", { degradedHomeIds: [] });
       store.writeMeta("perf_codex_publication_policy", "");
       const restored = store.summarize({ preset: "all", now: D5_FIXED_NOW }, {}).perf;
       assert.deepEqual(restored.rankedHomeIds, [homeId]);
-      assert.equal(restored.coverage.eligible, 25);
+      assert.equal(restored.coverage.eligible, 26);
     } finally {
       store.close();
     }
@@ -2789,7 +2838,7 @@ test("★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解�
       await store.sync({ options: fixture.reportOptions });
       await fixture.seedRequestTiming(store);
       const total = store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples").get().n;
-      assert.equal(total, 25, "前置：25 个 Codex 样本");
+      assert.equal(total, 26, "前置：26 个 Codex request 样本");
 
       const phases = d5Instrument(store);
       const summary = store.summarize({ preset: "all", now: D5_FIXED_NOW }, {});
@@ -2828,7 +2877,7 @@ test("★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解�
   }
 });
 
-test("C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一致", async () => {
+test("C2 WorkBuddy：trace-only 样本与冲突在 memory/index 两条路径都保留缺失候选", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-parity-"));
   const homePath = path.join(root, ".workbuddy-ai");
   const projectDir = path.join(homePath, "projects", "fixture");
@@ -2889,10 +2938,15 @@ test("C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一
     assert.ok(workbuddyHome, "真实 discovery 必须发现 WorkBuddy home");
     const filters = { preset: "all", now: new Date("2026-10-21T01:00:00.000Z") };
 
-    const report = await buildUsageReport({ homes: [workbuddyHome] });
-    assert.equal(report.perfSamples.length, 1, "冲突 messageId 在内存路径不得产生候选");
-    assert.match(report.perfSamples[0].sampleKey, /msg-same/);
+    const report = await buildUsageReport({ homeDir: root, homes: [workbuddyHome] });
+    assert.equal(report.perfSamples.length, 2, "两个 messageId 都必须保留可归属候选");
+    assert.ok(report.perfSamples.some((sample) => sample.sampleKey.includes("msg-same")));
+    assert.ok(report.perfSamples.some((sample) => sample.sampleKey.includes("msg-conflict")));
+    assert.ok(report.perfSamples.every((sample) => sample.durationMs === null));
     const memory = summarizeUsage(report, filters).perf;
+    assert.deepEqual(memory.groups, [], "trace-only generation span duration is not a v3 speed sample");
+    assert.equal(memory.models[0].state, "missing_duration");
+    assert.equal(memory.models[0].candidateCount, 2);
 
     const store = new UsageStore({ homeDir: root, databaseFile: path.join(root, "usage-index.sqlite") });
     await store.open();
@@ -2910,9 +2964,9 @@ test("C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一
         Number(
           store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind = 'workbuddy'").get().n,
         ),
-        1,
+        2,
       );
-      assert.equal(memory.coverage.eligible, 1);
+      assert.equal(memory.coverage.eligible, 2);
       assertStatsParity(memory, indexed, "C2 WorkBuddy same/conflict");
     } finally {
       store.close();
@@ -2922,7 +2976,7 @@ test("C2 WorkBuddy：同值样本与异值冲突在 memory/index 两条路径一
   }
 });
 
-test("C2 WorkBuddy：trace-only duration change moves memory candidates and indexVersion", async () => {
+test("C2 WorkBuddy：trace-only duration changes the fingerprint but candidates stay missing", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-version-"));
   const homePath = path.join(root, ".workbuddy-ai");
   const projectDir = path.join(homePath, "projects", "fixture");
@@ -2967,22 +3021,26 @@ test("C2 WorkBuddy：trace-only duration change moves memory candidates and inde
     assert.ok(workbuddyHome);
     const filters = { preset: "all", now: new Date("2026-10-21T01:00:00.000Z") };
 
-    const firstReport = await buildUsageReport({ homes: [workbuddyHome] });
+    const firstReport = await buildUsageReport({ homeDir: root, homes: [workbuddyHome] });
     const first = summarizeUsage(firstReport, filters).perf;
-    assert.equal(firstReport.perfSamples[0].durationMs, 800);
+    assert.equal(firstReport.perfSamples[0].durationMs, null);
     assert.equal(first.state, "ready");
     assert.equal(first.coverage.eligible, 1);
+    assert.deepEqual(first.groups, []);
+    assert.equal(first.models[0].state, "missing_duration");
     assert.match(String(first.indexVersion), /^[0-9a-f]{64}$/);
 
     writeFileSync(tracePath, `${JSON.stringify(traceRow(900))}\n`);
-    const changedReport = await buildUsageReport({ homes: [workbuddyHome] });
+    const changedReport = await buildUsageReport({ homeDir: root, homes: [workbuddyHome] });
     const changed = summarizeUsage(changedReport, filters).perf;
-    assert.equal(changedReport.perfSamples[0].durationMs, 900);
+    assert.equal(changedReport.perfSamples[0].durationMs, null);
     assert.equal(changed.state, "ready");
     assert.equal(changed.coverage.eligible, 1);
+    assert.deepEqual(changed.groups, []);
+    assert.equal(changed.models[0].state, "missing_duration");
     assert.notEqual(changed.indexVersion, first.indexVersion);
 
-    const repeated = summarizeUsage(await buildUsageReport({ homes: [workbuddyHome] }), filters).perf;
+    const repeated = summarizeUsage(await buildUsageReport({ homeDir: root, homes: [workbuddyHome] }), filters).perf;
     assert.equal(repeated.indexVersion, changed.indexVersion);
   } finally {
     rmSync(root, { recursive: true, force: true });

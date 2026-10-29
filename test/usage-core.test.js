@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, link, mkdir, mkdtemp, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,7 +8,6 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildUsageIndex,
   buildUsageReport,
-  buildMagpieTimingFingerprint,
   buildUsageFingerprint,
   classifyImportDirectory,
   discoverClaudeHomes,
@@ -634,95 +633,6 @@ test("buildUsageReport and summarizeUsage include imported project usage logs", 
   assert.equal(fingerprint.fileCount, 1);
 });
 
-test("buildMagpieTimingFingerprint keeps the optional ledger separate from usage sources", async (t) => {
-  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-optional-"));
-  t.after(() => rm(fakeHome, { recursive: true, force: true }));
-  const options = { homeDir: fakeHome, env: {} };
-  const sessionDir = path.join(fakeHome, ".codex", "sessions");
-  await mkdir(sessionDir, { recursive: true });
-  await writeFile(path.join(sessionDir, "rollout.jsonl"), "{}\n");
-  const before = await buildUsageFingerprint(options);
-  assert.equal(await buildMagpieTimingFingerprint(options), "");
-  const ledgerDir = path.join(fakeHome, ".config", "magpie");
-  await mkdir(ledgerDir, { recursive: true });
-  assert.equal(await buildMagpieTimingFingerprint(options), "");
-  await writeFile(path.join(ledgerDir, "usage.jsonl"), "");
-  const fingerprint = await buildMagpieTimingFingerprint(options);
-  assert.match(fingerprint, /^[a-f0-9]{64}$/);
-  assert.equal(await buildMagpieTimingFingerprint(options), fingerprint);
-  const after = await buildUsageFingerprint(options);
-  assert.equal(after.fingerprint, before.fingerprint);
-  assert.equal(after.fileCount, 1);
-  assert.equal(after.homeCount, before.homeCount);
-  await assert.rejects(buildMagpieTimingFingerprint({ homeDir: `${fakeHome}\0` }), {
-    code: "ERR_INVALID_ARG_VALUE",
-  });
-});
-
-test("buildMagpieTimingFingerprint tracks append, mtime, truncation and disappearance", async (t) => {
-  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-changes-"));
-  t.after(() => rm(fakeHome, { recursive: true, force: true }));
-  const options = { homeDir: fakeHome };
-  const ledgerDir = path.join(fakeHome, ".config", "magpie");
-  const ledgerFile = path.join(ledgerDir, "usage.jsonl");
-  await mkdir(ledgerDir, { recursive: true });
-  await writeFile(ledgerFile, "{}\n");
-  const first = await buildMagpieTimingFingerprint(options);
-  await appendFile(ledgerFile, 'invalid\n{"unfinished":');
-  const appended = await buildMagpieTimingFingerprint(options);
-  assert.notEqual(appended, first);
-  assert.equal(await buildMagpieTimingFingerprint(options), appended);
-  await utimes(ledgerFile, 946684800, 946684800);
-  const touched = await buildMagpieTimingFingerprint(options);
-  assert.notEqual(touched, appended);
-  await writeFile(ledgerFile, "");
-  const truncated = await buildMagpieTimingFingerprint(options);
-  assert.notEqual(truncated, touched);
-  await rm(ledgerFile);
-  assert.equal(await buildMagpieTimingFingerprint(options), "");
-  await writeFile(ledgerFile, "{}\n");
-  assert.match(await buildMagpieTimingFingerprint(options), /^[a-f0-9]{64}$/);
-});
-
-test("buildMagpieTimingFingerprint detects replacement with unchanged size and mtime", async (t) => {
-  const fakeHome = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-replace-"));
-  t.after(() => rm(fakeHome, { recursive: true, force: true }));
-  const options = { homeDir: fakeHome };
-  const ledgerDir = path.join(fakeHome, ".config", "magpie");
-  const ledgerFile = path.join(ledgerDir, "usage.jsonl");
-  const replacement = path.join(ledgerDir, "replacement.jsonl");
-  await mkdir(ledgerDir, { recursive: true });
-  for (const file of [ledgerFile, replacement]) {
-    await writeFile(file, "{}\n");
-    await utimes(file, 946684800, 946684800);
-  }
-  const before = await buildMagpieTimingFingerprint(options);
-  const originalStat = await stat(ledgerFile);
-  await rename(ledgerFile, path.join(ledgerDir, "previous.jsonl"));
-  await rename(replacement, ledgerFile);
-  const replacementStat = await stat(ledgerFile);
-  assert.equal(replacementStat.size, originalStat.size);
-  assert.equal(replacementStat.mtimeMs, originalStat.mtimeMs);
-  assert.notEqual(await buildMagpieTimingFingerprint(options), before);
-});
-
-test("buildMagpieTimingFingerprint includes the ledger path in its signature", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "magpie-fingerprint-path-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const firstHome = path.join(root, "first");
-  const secondHome = path.join(root, "second");
-  const firstLedger = path.join(firstHome, ".config", "magpie", "usage.jsonl");
-  const secondLedger = path.join(secondHome, ".config", "magpie", "usage.jsonl");
-  await mkdir(path.dirname(firstLedger), { recursive: true });
-  await mkdir(path.dirname(secondLedger), { recursive: true });
-  await writeFile(firstLedger, "{}\n");
-  await link(firstLedger, secondLedger);
-  assert.notEqual(
-    await buildMagpieTimingFingerprint({ homeDir: firstHome }),
-    await buildMagpieTimingFingerprint({ homeDir: secondHome }),
-  );
-});
-
 test("buildUsageFingerprint changes when session files change", async () => {
   const fakeHome = await mkdtemp(path.join(tmpdir(), "codex-fingerprint-"));
   const sessionDir = path.join(fakeHome, ".codex", "sessions", "2026", "05", "01");
@@ -1057,7 +967,13 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
   const startMs = Date.parse("2026-09-25T12:37:00.000Z");
   const asOfMs = Date.parse("2026-09-25T13:20:00.000Z");
   const endMs = Date.parse("2026-09-25T17:37:00.000Z");
+  const previousResetMs = startMs - 10 * 60 * 1000;
+  const previousStartMs = previousResetMs - 300 * 60 * 1000;
   const events = [
+    usageEvent(new Date(previousStartMs + 60 * 1000).toISOString(), 7),
+    usageEvent(new Date(previousResetMs - 1).toISOString(), 3),
+    usageEvent(new Date(previousResetMs).toISOString(), 100),
+    usageEvent(new Date(startMs - 5 * 60 * 1000).toISOString(), 101),
     usageEvent(new Date(startMs - 1).toISOString(), 3),
     usageEvent(new Date(startMs).toISOString(), 5),
     usageEvent(new Date(startMs + 30 * 60 * 1000).toISOString(), 6),
@@ -1065,6 +981,18 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
     usageEvent(new Date(endMs).toISOString(), 13),
   ];
   const rateLimitObservations = [
+    {
+      sourcePath: "codex.jsonl",
+      lineNumber: 1,
+      role: "primary",
+      observedAtMs: previousStartMs + 60_000,
+      limitId: "codex",
+      limitName: null,
+      planType: null,
+      windowMinutes: 300,
+      resetsAtMs: previousResetMs,
+      usedPercent: 20,
+    },
     {
       sourcePath: "codex.jsonl",
       lineNumber: 2,
@@ -1092,7 +1020,11 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
   assert.equal(reportSummary.range.windowStart, new Date(startMs).toISOString());
   assert.equal(reportSummary.range.windowEndExclusive, new Date(endMs).toISOString());
   assert.equal(reportSummary.totals.total, 11);
-  assert.equal(reportSummary.comparison, null);
+  assert.equal(reportSummary.comparison.previousRange.start, new Date(previousStartMs).toISOString());
+  assert.equal(reportSummary.comparison.previousRange.end, new Date(previousResetMs - 1).toISOString());
+  assert.equal(reportSummary.comparison.previousTotals.total, 10);
+  assert.equal(reportSummary.comparison.previousEventCount, 2);
+  assert.equal(reportSummary.comparison.totalDelta, 1);
   assert.equal(reportSummary.timeline.length, 10);
   assert.equal(reportSummary.timeline[0].total.total, 5);
   assert.equal(reportSummary.timeline[1].total.total, 6);
@@ -1101,6 +1033,7 @@ test("report and memory-index summaries share fixed quota slots and half-open ev
     indexSummary.timeline.map((row) => [row.key, row.total.total, row.future]),
     reportSummary.timeline.map((row) => [row.key, row.total.total, row.future]),
   );
+  assert.deepEqual(indexSummary.comparison, reportSummary.comparison);
   assert.deepEqual(indexSummary.quota, reportSummary.quota);
 });
 

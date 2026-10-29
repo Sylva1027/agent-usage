@@ -19,6 +19,7 @@
  * @property {string} [sourceKind]
  * @property {string} channel
  * @property {string} model
+ * @property {string} [quotaSource]
  * @property {UsageTotals} total
  * @property {number} detailMask
  * @property {string} [cwd]
@@ -59,6 +60,7 @@
  * @property {string} sessionId
  * @property {string} channel
  * @property {string} model
+ * @property {string} [quotaSource]
  * @property {string} [project]
  * @property {string} [repositoryKey]
  * @property {string} [repositoryPath]
@@ -158,13 +160,14 @@
  * @property {string} turnKey
  * @property {string} model
  * @property {string} modelProvider
+ * @property {string} [quotaSource]
  * @property {string} reasoningEffort
  * @property {string} modelEvidence
  * @property {string} window `request` | `step` | `message` | `turn`
- * @property {string} timingKind `request_e2e` (Codex v2 sums complete request durations
+ * @property {string} timingKind `generation` (v3), or historical `request_e2e` (Codex v2 sums complete request durations
  *   within one turn) | `item_span_estimate` (historical diagnostic only)
  * @property {string} timingSource `explicit` | `timestamp_fallback` | `mixed` | `unknown`
- * @property {string} tokenScope `reported_output_includes_reasoning` | `visible_plus_reasoning` | `reported_output_unspecified`
+ * @property {string} tokenScope `non_reasoning_output` (v3), or historical `reported_output_includes_reasoning` | `visible_plus_reasoning` | `reported_output_unspecified`
  * @property {string} status `completed` | `failed` | `cancelled` | `in_progress` | `unverified`
  * @property {number | null} tsMs
  * @property {number | null} windowStartMs
@@ -311,7 +314,7 @@
  * accepts only the eight codes frozen by plan §3:83; ruling Q keeps the M1
  * normalization warning codes out of this shape.
  * @typedef {object} PerfSummaryMeta
- * @property {string} methodVersion Defaults to `tps-v2`. Historical `tps-v1`
+ * @property {string} methodVersion Defaults to `tps-v4`. Historical `tps-v1` / `tps-v2` / `tps-v3`
  *   samples remain diagnostic and are never rank-admitted.
  * @property {"rebuilding" | "ready" | "degraded"} state
  * @property {string | null} indexVersion Fingerprint of the published sources.

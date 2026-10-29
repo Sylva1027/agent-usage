@@ -11,14 +11,17 @@ import {
   selectPerfSamples,
   summarizePerf,
 } from "../src/perf-stats.js";
-import { buildCodexTurnCandidates } from "../src/perf-sources/codex-candidates.js";
+import { buildCodexResponseCandidates, buildCodexTurnCandidates } from "../src/perf-sources/codex-candidates.js";
 import { readCodexRolloutMetadata } from "../src/perf-sources/codex-jsonl.js";
 import {
+  CODEX_PROJECTION_METHOD_VERSION,
   buildCodexThreadPerfSamples,
+  codexSampleThreadId,
   planCodexHomeThreads,
   readCodexRollout,
 } from "../src/perf-sources/codex-thread.js";
 import { foldCodexRolloutMetadata } from "../src/perf-sources/codex-fold.js";
+import { resolveCodexRequestTiming, resolveCodexTurnRequestTiming } from "../src/perf-sources/codex-request-timing.js";
 
 const BODY_SENTINEL = "M61_BODY_SENTINEL_MUST_NOT_ESCAPE";
 const SIX_TURN_FIXTURE_URL = new URL(
@@ -73,6 +76,38 @@ function requestRecord(turnId, responseId, outputTokens, timestampMs, turnOutput
   });
 }
 
+function responseRecord(
+  turnId,
+  responseId,
+  outputTokens,
+  timestampMs,
+  { reasoningOutputTokens = null, turnOutputTokens = outputTokens } = {},
+) {
+  return projected("token_usage_record", {
+    threadId: "Thread-A",
+    turnId,
+    responseId,
+    outputTokens,
+    reasoningOutputTokens,
+    reasoningOutputTokensKnown: reasoningOutputTokens !== null,
+    turnOutputTokens,
+    timestamp: timestampMs === null ? null : new Date(timestampMs).toISOString(),
+  });
+}
+
+function responseItemRecord({ turnId, itemId, responseItemType, role = null, callId = null, timestampMs }) {
+  return projected("response_item", {
+    threadId: "Thread-A",
+    turnId,
+    itemId,
+    responseItemType,
+    role,
+    status: "completed",
+    callId,
+    timestamp: timestampMs === null ? null : new Date(timestampMs).toISOString(),
+  });
+}
+
 function itemRecord(turnId, itemId, startedAtMs, completedAtMs, itemType = "AgentMessage") {
   return projected("item_completed", { threadId: "Thread-A", turnId, itemId, itemType, startedAtMs, completedAtMs });
 }
@@ -101,6 +136,14 @@ function buildCandidates(homeId, foldedResult, rolloutFiles = [], options = {}) 
   return buildCodexTurnCandidates(homeId, foldedResult, rolloutFiles, options);
 }
 
+function buildResponseCandidates(homeId, foldedResult, rolloutFiles = [], options = {}) {
+  return buildCodexResponseCandidates(homeId, foldedResult, rolloutFiles, options);
+}
+
+function generationTiming(outputTokens, durationMs = 100, startOutputTokens = 1) {
+  return { outputTokens, durationMs, startOutputTokens, timingKind: "first_last_output" };
+}
+
 function lookupDurations(durations) {
   const byResponse = new Map(Object.entries(durations));
   return ({ responseId, model, outputTokens }) => {
@@ -112,7 +155,11 @@ function lookupDurations(durations) {
   };
 }
 
-function sixTurnProjection(fixture, { itemSpanTurnId = null, missingResponseId = null } = {}) {
+function sixTurnGenerationDuration(fixtureRequest) {
+  return Math.max(1, Math.floor(fixtureRequest.durationMs / 2));
+}
+
+function sixTurnProjection(fixture, { missingResponseId = null } = {}) {
   const homeId = "home-six-turn";
   const threadId = "thread-six-turn";
   const sourcePath = "sessions/six-turn-fixture.jsonl";
@@ -139,35 +186,12 @@ function sixTurnProjection(fixture, { itemSpanTurnId = null, missingResponseId =
         turnId: fixtureTurn.id,
         responseId: fixtureRequest.id,
         outputTokens: fixtureRequest.outputTokens,
+        reasoningOutputTokens: null,
+        reasoningOutputTokensKnown: false,
         turnOutputTokens,
         timestamp: new Date(endedAtMs).toISOString(),
       });
     }
-    if (fixtureTurn.id === itemSpanTurnId) {
-      append("item_completed", {
-        threadId,
-        turnId: fixtureTurn.id,
-        itemId: "tool-only-request-span",
-        itemType: "CommandExecution",
-        startedAtMs: endedAtMs - 20_000,
-        completedAtMs: endedAtMs,
-      });
-      append("item_completed", {
-        threadId,
-        turnId: fixtureTurn.id,
-        itemId: "target-span-that-must-not-fill-a-missing-request",
-        itemType: "AgentMessage",
-        startedAtMs: endedAtMs - 10_000,
-        completedAtMs: endedAtMs,
-      });
-    }
-    append("task_complete", {
-      threadId,
-      turnId: fixtureTurn.id,
-      startedAtSec: Math.floor((endedAtMs - fixtureTurn.durationMs) / 1_000),
-      completedAtSec: Math.floor(endedAtMs / 1_000),
-      durationMs: fixtureTurn.durationMs,
-    });
   }
 
   const lookupRequestTiming = ({ responseId, model, outputTokens }) => {
@@ -183,6 +207,7 @@ function sixTurnProjection(fixture, { itemSpanTurnId = null, missingResponseId =
       durationMs: fixtureRequest.durationMs,
       reportedOutputTokens: fixtureRequest.outputTokens,
       requestedModel: fixture.requestedModel,
+      generation: generationTiming(fixtureRequest.outputTokens, sixTurnGenerationDuration(fixtureRequest), 1),
     };
   };
 
@@ -345,6 +370,8 @@ test("M6.1 streams a metadata-only projection, counts malformed/unknown rows, an
     turnId: "Turn-A",
     responseId: "Response-A",
     outputTokens: 31,
+    reasoningOutputTokens: 8,
+    reasoningOutputTokensKnown: true,
     turnOutputTokens: 31,
     timestamp: "2026-10-01T00:00:03.000Z",
   });
@@ -388,6 +415,455 @@ test("M6.1 streams a metadata-only projection, counts malformed/unknown rows, an
       `${forbiddenKey} must not be projected`,
     );
   }
+});
+
+test("T2 projects response identity and reasoning counts without retaining stream bodies", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "t2-codex-response-projection-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const filePath = await createRollout(root, "sessions/response-projection.jsonl", [
+    json(sessionMeta("Thread-A")),
+    json({ type: "turn_context", payload: { turn_id: "Turn-A", model: "Model-A", effort: "high" } }),
+    json({
+      type: "response_item",
+      timestamp: "2026-10-01T00:00:01.000Z",
+      payload: { id: "Reasoning-1", type: "reasoning", summary: [{ text: BODY_SENTINEL }] },
+    }),
+    json({
+      type: "response_item",
+      timestamp: "2026-10-01T00:00:02.000Z",
+      payload: { id: "Text-1", type: "message", role: "assistant", content: [{ text: BODY_SENTINEL }] },
+    }),
+    json({
+      type: "response_item",
+      timestamp: "2026-10-01T00:00:03.000Z",
+      payload: {
+        id: "Tool-1",
+        type: "function_call",
+        call_id: "Call-1",
+        arguments: BODY_SENTINEL,
+      },
+    }),
+    json({
+      type: "token_usage_record",
+      timestamp: "2026-10-01T00:00:04.000Z",
+      payload: {
+        turn_id: "Turn-A",
+        response_id: "Response-1",
+        usage: { output_tokens: 20, reasoning_output_tokens: 5 },
+      },
+    }),
+    json({
+      type: "token_usage_record",
+      timestamp: "2026-10-01T00:00:05.000Z",
+      payload: {
+        turn_id: "Turn-A",
+        response_id: "Response-2",
+        usage: { output_tokens: 7 },
+      },
+    }),
+  ]);
+
+  const { records, stats } = await readCodexRolloutMetadata(filePath);
+  const responseItems = records.filter((record) => record.kind === "response_item");
+  assert.equal(responseItems.length, 3);
+  assert.ok(responseItems.every((record) => record.threadId === "Thread-A" && record.turnId === "Turn-A"));
+  assert.deepEqual(
+    responseItems.map(({ itemId, responseItemType, role, callId, timestamp }) => ({
+      itemId,
+      responseItemType,
+      role,
+      callId,
+      timestamp,
+    })),
+    [
+      {
+        itemId: "Reasoning-1",
+        responseItemType: "reasoning",
+        role: null,
+        callId: null,
+        timestamp: "2026-10-01T00:00:01.000Z",
+      },
+      {
+        itemId: "Text-1",
+        responseItemType: "message",
+        role: "assistant",
+        callId: null,
+        timestamp: "2026-10-01T00:00:02.000Z",
+      },
+      {
+        itemId: "Tool-1",
+        responseItemType: "function_call",
+        role: null,
+        callId: "Call-1",
+        timestamp: "2026-10-01T00:00:03.000Z",
+      },
+    ],
+  );
+  const usage = records.filter((record) => record.kind === "token_usage_record");
+  assert.equal(usage[0].reasoningOutputTokens, 5);
+  assert.equal(usage[0].reasoningOutputTokensKnown, true);
+  assert.equal(usage[1].reasoningOutputTokens, null);
+  assert.equal(usage[1].reasoningOutputTokensKnown, false);
+  assert.equal(stats.recordsWithoutThreadId, 0);
+  assert.equal(stats.recordsWithoutTurnId, 0);
+  assert.equal(JSON.stringify(records).includes(BODY_SENTINEL), false);
+});
+
+test("T2 folds response items onto the following usage row and enriches replay counts", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Reasoning-1",
+      responseItemType: "reasoning",
+      timestampMs: baseMs,
+    }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Text-1",
+      responseItemType: "message",
+      role: "assistant",
+      timestampMs: baseMs + 100,
+    }),
+    itemRecord("Turn-A", "Text-1", baseMs + 50, baseMs + 150),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Tool-1",
+      responseItemType: "function_call",
+      callId: "Call-1",
+      timestampMs: baseMs + 200,
+    }),
+    responseRecord("Turn-A", "Response-A", 20, baseMs + 300, { reasoningOutputTokens: 5 }),
+    projected("token_usage_record", {
+      threadId: "Thread-A",
+      turnId: "Turn-A",
+      responseId: "Response-A",
+      outputTokens: null,
+      reasoningOutputTokens: null,
+      reasoningOutputTokensKnown: false,
+      turnOutputTokens: null,
+      timestamp: null,
+    }),
+  );
+  const [turn] = result.turns;
+  assert.equal(turn.responseCount, 1);
+  assert.equal(result.stats.responseCount, 1);
+  assert.equal(turn.responses[0].outputTokens, 20);
+  assert.equal(turn.responses[0].reasoningOutputTokens, 5);
+  assert.equal(turn.responses[0].reasoningOutputTokensKnown, true);
+  assert.deepEqual(
+    turn.responses[0].events.map(({ itemId, outputKind }) => [itemId, outputKind]),
+    [
+      ["Reasoning-1", "reasoning"],
+      ["Text-1", "text"],
+      ["Tool-1", "tool"],
+    ],
+  );
+});
+
+test("T2 emits one v3 candidate per response and only samples exact gateway generation", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    responseRecord("Turn-A", "Response-A", 20, baseMs + 1_000, { reasoningOutputTokens: 5 }),
+    responseRecord("Turn-A", "Response-B", 25, baseMs + 2_000, { reasoningOutputTokens: 0 }),
+  );
+  const queries = [];
+  const built = buildResponseCandidates("home-A", result, [], {
+    lookupRequestTiming: (query) => {
+      queries.push(query);
+      if (query.responseId === "Response-B") {
+        return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: null };
+      }
+      return {
+        state: "available",
+        durationMs: 900,
+        reportedOutputTokens: 20,
+        requestedModel: "Model-A",
+        generation: generationTiming(15, 200, 1),
+      };
+    },
+  });
+
+  assert.deepEqual(
+    queries.map(({ responseId, outputTokens }) => [responseId, outputTokens]),
+    [
+      ["Response-A", 20],
+      ["Response-B", 25],
+    ],
+    "gateway lookup reconciles the raw total before subtracting reasoning or the start token",
+  );
+  assert.equal(queries[0].reasoningOutputTokens, 5);
+  assert.equal(queries[1].reasoningOutputTokens, 0);
+  assert.equal(built.candidates.length, 2);
+  const [sampled, missing] = built.candidates;
+  assert.equal(sampled.outputTokens, 14);
+  assert.equal(sampled.durationMs, 200);
+  assert.equal(sampled.requestCount, 1);
+  assert.equal(sampled.reportedOutputTokens, 20);
+  assert.equal(sampled.window, "request");
+  assert.equal(sampled.timingKind, "generation");
+  assert.equal(sampled.tokenScope, "non_reasoning_output");
+  assert.equal(sampled.methodVersion, "tps-v4");
+  assert.equal(missing.outputTokens, null);
+  assert.equal(missing.durationMs, null);
+  assert.equal(missing.requestCount, 1);
+  assert.equal(missing.model, "Model-A");
+  assert.ok(missing.sampleFlags.includes("MISSING_DURATION"));
+
+  const samples = built.candidates.map(normalized);
+  assert.deepEqual(
+    samples.map((sample) => sample.sampleKey),
+    ['["codex","home-A","Thread-A","Turn-A","Response-A"]', '["codex","home-A","Thread-A","Turn-A","Response-B"]'],
+  );
+  assert.equal(samples[0].tsMs, baseMs + 1_000, "usage completion places the response without task_complete");
+  assert.equal(samples[1].tsMs, baseMs + 2_000);
+});
+
+test("T2 isolates response, cumulative-turn, and native item conflicts from request generation samples", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    responseRecord("Turn-A", "Response-Raw-Conflict", 20, baseMs + 1_000, { reasoningOutputTokens: 0 }),
+    responseRecord("Turn-A", "Response-Raw-Conflict", 21, baseMs + 1_000, { reasoningOutputTokens: 0 }),
+    responseRecord("Turn-A", "Response-Timing-Conflict", 30, baseMs + 2_000, {
+      reasoningOutputTokens: 0,
+    }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Item-Conflict",
+      responseItemType: "message",
+      role: "assistant",
+      timestampMs: baseMs + 2_900,
+    }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Item-Conflict",
+      responseItemType: "function_call",
+      callId: "Call-Conflict",
+      timestampMs: baseMs + 2_900,
+    }),
+    responseRecord("Turn-A", "Response-Cumulative-Conflict", 35, baseMs + 2_500, {
+      reasoningOutputTokens: 0,
+      turnOutputTokens: 35,
+    }),
+    responseRecord("Turn-A", "Response-Cumulative-Conflict", 35, baseMs + 2_500, {
+      reasoningOutputTokens: 0,
+      turnOutputTokens: 70,
+    }),
+    responseRecord("Turn-A", "Response-Valid", 40, baseMs + 3_000, { reasoningOutputTokens: 0 }),
+  );
+  const built = buildResponseCandidates("home-A", result, [], {
+    lookupRequestTiming: ({ responseId, model, outputTokens }) => {
+      if (responseId === "Response-Timing-Conflict") {
+        return {
+          state: "conflict",
+          durationMs: null,
+          reportedOutputTokens: null,
+          requestedModel: null,
+          generation: null,
+        };
+      }
+      return {
+        state: "available",
+        durationMs: 500,
+        reportedOutputTokens: outputTokens,
+        requestedModel: model,
+        generation: generationTiming(outputTokens, 200, 1),
+      };
+    },
+  });
+
+  assert.equal(built.candidates.length, 4);
+  const byResponse = new Map(built.candidates.map((candidate) => [candidate.responseId, candidate]));
+  assert.equal(byResponse.get("Response-Raw-Conflict").outputTokens, null);
+  assert.ok(byResponse.get("Response-Raw-Conflict").sampleFlags.includes("RECORD_CONFLICT"));
+  assert.equal(byResponse.get("Response-Timing-Conflict").outputTokens, null);
+  assert.ok(byResponse.get("Response-Timing-Conflict").sampleFlags.includes("RECORD_CONFLICT"));
+
+  const cumulative = byResponse.get("Response-Cumulative-Conflict");
+  assert.equal(
+    result.turns[0].responses.find((response) => response.responseId === "Response-Cumulative-Conflict").conflict,
+    false,
+    "the cumulative snapshot does not become a per-response conflict",
+  );
+  assert.equal(cumulative.outputTokens, 34);
+  assert.equal(cumulative.durationMs, 200);
+  assert.equal(cumulative.timingSource, "explicit");
+  assert.equal(cumulative.sampleFlags.includes("RECORD_CONFLICT"), false);
+  assert.equal(cumulative.sampleFlags.includes("MISSING_DURATION"), false);
+  assert.equal(cumulative.generation.outputTokens, 35);
+  assert.ok(
+    result.turns[0].flags.includes("RECORD_CONFLICT"),
+    "the conflicting cumulative snapshot remains visible in turn diagnostics",
+  );
+
+  const valid = byResponse.get("Response-Valid");
+  assert.equal(valid.outputTokens, 39);
+  assert.equal(valid.durationMs, 200);
+  assert.equal(valid.timingSource, "explicit");
+  assert.equal(valid.sampleFlags.includes("RECORD_CONFLICT"), false);
+  assert.equal(valid.sampleFlags.includes("MISSING_DURATION"), false);
+  assert.equal(
+    result.turns[0].recordConflictCount,
+    4,
+    "raw request, native item, cumulative snapshot, and turn-total conflicts remain visible as diagnostics",
+  );
+  assert.equal(valid.generation.outputTokens, 40);
+
+  const ambiguous = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-Ambiguous", model: "Model-A", effort: "high" }),
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-Ambiguous", model: "Model-B", effort: "high" }),
+    responseRecord("Turn-Ambiguous", "Response-Ambiguous", 20, baseMs + 4_000, {
+      reasoningOutputTokens: 0,
+    }),
+  );
+  const ambiguousBuilt = buildResponseCandidates("home-A", ambiguous, [], {
+    lookupRequestTiming: ({ outputTokens }) => ({
+      state: "available",
+      durationMs: 500,
+      reportedOutputTokens: outputTokens,
+      requestedModel: "Model-A",
+      generation: generationTiming(outputTokens, 200, 1),
+    }),
+  });
+  assert.equal(ambiguousBuilt.candidates.length, 1);
+  assert.equal(ambiguousBuilt.candidates[0].outputTokens, null);
+  assert.ok(ambiguousBuilt.candidates[0].sampleFlags.includes("MODEL_AMBIGUOUS"));
+});
+
+test("T2 never derives generation from native item lifecycle timestamps", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Text-1",
+      responseItemType: "message",
+      role: "assistant",
+      timestampMs: baseMs + 150,
+    }),
+    itemRecord("Turn-A", "Text-1", baseMs, baseMs + 150),
+    responseRecord("Turn-A", "Response-Text", 20, baseMs + 200, { reasoningOutputTokens: 0 }),
+    responseItemRecord({
+      turnId: "Turn-A",
+      itemId: "Tool-1",
+      responseItemType: "function_call",
+      callId: "Call-1",
+      timestampMs: baseMs + 1_100,
+    }),
+    responseRecord("Turn-A", "Response-Tool", 10, baseMs + 1_200, { reasoningOutputTokens: 0 }),
+  );
+  const built = buildResponseCandidates("home-A", result, []);
+
+  assert.equal(built.candidates.length, 2);
+  assert.ok(
+    built.candidates.every(
+      (candidate) =>
+        candidate.durationMs === null &&
+        candidate.outputTokens === null &&
+        candidate.sampleFlags.includes("MISSING_DURATION"),
+    ),
+    "item spans and response_item timestamps are lifecycle metadata, not stream output deltas",
+  );
+});
+
+test("T2 keeps legacy turn timing readable while request resolution uses raw totals", () => {
+  const turn = {
+    threadId: "Thread-A",
+    turnId: "Turn-A",
+    model: "Model-A",
+    requestSetComplete: true,
+    requests: [
+      { responseId: "Response-A", outputTokens: 20 },
+      { responseId: "Response-B", outputTokens: 30 },
+    ],
+  };
+  const e2eDurations = new Map([
+    ["Response-A", 100],
+    ["Response-B", 200],
+  ]);
+  let legacyQuery;
+  const legacy = resolveCodexTurnRequestTiming("home-A", turn, (query) => {
+    legacyQuery = query;
+    return {
+      state: "available",
+      durationMs: e2eDurations.get(query.responseId),
+      reportedOutputTokens: query.outputTokens,
+      requestedModel: query.model,
+    };
+  });
+  assert.deepEqual(legacy, {
+    state: "complete",
+    durationMs: 300,
+    timedRequestCount: 2,
+    requestCount: 2,
+  });
+  assert.equal(Object.hasOwn(legacyQuery, "reasoningOutputTokens"), false);
+
+  const request = { responseId: "Response-A", outputTokens: 20 };
+  const resolved = resolveCodexRequestTiming("home-A", turn, request, ({ model, outputTokens }) => ({
+    state: "available",
+    durationMs: 100,
+    reportedOutputTokens: outputTokens,
+    requestedModel: model,
+    generation: generationTiming(15, 60, 1),
+  }));
+  assert.equal(resolved.state, "available");
+  assert.equal(resolved.reportedOutputTokens, 20);
+  assert.deepEqual(resolved.generation, generationTiming(15, 60, 1));
+
+  const mismatch = resolveCodexRequestTiming("home-A", turn, request, ({ model }) => ({
+    state: "available",
+    durationMs: 100,
+    reportedOutputTokens: 21,
+    requestedModel: model,
+    generation: generationTiming(15, 60, 1),
+  }));
+  assert.equal(mismatch.state, "conflict");
+});
+
+test("T2 keeps global response ownership conflicts and reads both legacy and v3 sample keys", () => {
+  const baseMs = 1_800_000_000_000;
+  const result = folded(
+    "home-A",
+    responseRecord("Turn-A", "Shared", 20, baseMs + 1_000, { reasoningOutputTokens: 0 }),
+    responseRecord("Turn-B", "Shared", 20, baseMs + 1_000, { reasoningOutputTokens: 0 }),
+  );
+  const built = buildResponseCandidates("home-A", result, []);
+  assert.equal(built.candidates.length, 2);
+  assert.ok(
+    built.candidates.every(
+      (candidate) =>
+        candidate.outputTokens === null &&
+        candidate.durationMs === null &&
+        candidate.sampleFlags.includes("RECORD_CONFLICT"),
+    ),
+  );
+  assert.equal(
+    codexSampleThreadId({
+      sourceKind: "codex",
+      homeId: "home-A",
+      sampleKey: '["codex","home-A","Thread-A","Turn-A"]',
+    }),
+    "Thread-A",
+  );
+  assert.equal(
+    codexSampleThreadId({
+      sourceKind: "codex",
+      homeId: "home-A",
+      sampleKey: '["codex","home-A","Thread-A","Turn-A","Response-A"]',
+    }),
+    "Thread-A",
+  );
+  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v5");
 });
 
 test("M6.1 resolves no-thread records only from one file's unique session_meta and keeps same turn IDs in separate threads", async (t) => {
@@ -1043,8 +1519,9 @@ test("B1 builds a completed candidate from full request timing, without TTFT or 
   assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), []);
   const resultCoverage = coverage([sample]);
   assert.equal(resultCoverage.eligible, 1);
-  assert.equal(resultCoverage.sampled, 1, "the complete 500 ms request timing is retained despite TTFT=5000 ms");
-  assert.equal(resultCoverage.dropped, 0);
+  assert.equal(resultCoverage.sampled, 0, "legacy tps-v2 request E2E is readable but is not a current v3 speed sample");
+  assert.equal(resultCoverage.dropped, 1);
+  assert.equal(resultCoverage.droppedByReason.historical_method, 1);
 });
 
 test("B1 keeps a JSONL-only turn visible but missing when no request timing lookup is supplied", async (t) => {
@@ -1109,8 +1586,9 @@ test("B1 keeps complete multi-request long turns sampled using summed request ti
   const sample = normalized(raw);
   assert.deepEqual(perfFlagNamesOf(sample.sampleFlags), ["LONG_WINDOW", "MULTI_REQUEST_TURN"]);
   const resultCoverage = coverage([sample]);
-  assert.equal(resultCoverage.sampled, 1, "LONG_WINDOW and MULTI_REQUEST_TURN are hints, not exclusions");
-  assert.equal(resultCoverage.dropped, 0);
+  assert.equal(resultCoverage.sampled, 0, "legacy tps-v2 request E2E remains historical despite complete timing");
+  assert.equal(resultCoverage.dropped, 1);
+  assert.equal(resultCoverage.droppedByReason.historical_method, 1);
 });
 
 test("B1 ignores incomplete item spans when every request has complete timing", () => {
@@ -1135,7 +1613,7 @@ test("B1 ignores incomplete item spans when every request has complete timing", 
   assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
   const resultCoverage = coverage([sample]);
   assert.equal(resultCoverage.completeTimedPositiveOutput, 1);
-  assert.equal(resultCoverage.sampled, 1);
+  assert.equal(resultCoverage.sampled, 0, "legacy tps-v2 request E2E remains outside current v3 speed stats");
   assert.equal(resultCoverage.droppedByReason.partial_item_span, 0);
 });
 
@@ -1209,7 +1687,7 @@ test("B1 ignores unkeyable target items when request timing is complete without 
     assert.equal(candidate.timedItemCount, 1);
     assert.equal(candidate.durationMs, 100, "complete request timing does not depend on the item ledger");
     assert.equal(perfFlagNamesOf(sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
-    assert.equal(coverage([sample]).sampled, 1);
+    assert.equal(coverage([sample]).sampled, 0, "legacy tps-v2 request E2E remains outside current v3 speed stats");
     assert.equal(coverage([sample]).completeTimedPositiveOutput, 1);
   }
 
@@ -1224,7 +1702,7 @@ test("B1 ignores unkeyable target items when request timing is complete without 
   assert.equal(normal.candidate.itemCount, 1);
   assert.equal(normal.candidate.durationMs, 100);
   assert.equal(perfFlagNamesOf(normal.sample.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
-  assert.equal(coverage(samples).sampled, 4, "item-key diagnostics do not veto complete request timing");
+  assert.equal(coverage(samples).sampled, 0, "legacy tps-v2 request E2E remains outside current v3 speed stats");
   assert.equal(coverage(samples).droppedByReason.partial_item_span, 0);
   assert.equal(coverage(samples).droppedByReason.duration_missing_nonpositive_invalid, 0);
 });
@@ -1779,7 +2257,7 @@ test("M8.2 C: the four observed paginated child shapes prove one child owner", a
   assert.equal(nonzeroRead.projection.ownershipProof.boundaryOrdinal, 42);
 });
 
-test("B1 forwards thread request timing while preserving key, placement, and request count", () => {
+test("T2 forwards exact request generation through the thread builder", () => {
   const placedAt = Date.parse("2026-10-01T00:00:03.000Z");
   const records = [
     projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
@@ -1812,6 +2290,7 @@ test("B1 forwards thread request timing while preserving key, placement, and req
           durationMs: 400,
           reportedOutputTokens: 40,
           requestedModel: "Model-A",
+          generation: generationTiming(40, 200, 1),
         };
       },
     },
@@ -1824,53 +2303,62 @@ test("B1 forwards thread request timing while preserving key, placement, and req
     responseId: "Response-A",
     model: "Model-A",
     outputTokens: 40,
+    reasoningOutputTokens: null,
   });
   assert.equal(built.samples.length, 1);
   const [sample] = built.samples;
-  assert.equal(sample.sampleKey, '["codex","home-A","Thread-A","Turn-A"]');
+  assert.equal(sample.sampleKey, '["codex","home-A","Thread-A","Turn-A","Response-A"]');
   assert.equal(sample.tsMs, placedAt);
-  assert.equal(sample.durationMs, 400);
+  assert.equal(sample.durationMs, 200);
+  assert.equal(sample.outputTokens, 39);
   assert.equal(sample.requestCount, 1);
   assert.equal(sample.timingSource, "explicit");
+  assert.equal(sample.methodVersion, "tps-v4");
 });
 
-test("B1 full chain builds all six A fixture turns from native projection records", async () => {
+test("T2 full chain builds one v3 generation sample per fixture response", async () => {
   const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
   const projection = sixTurnProjection(fixture);
   const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
     lookupRequestTiming: projection.lookupRequestTiming,
   });
+  const fixtureRequests = fixture.turns.flatMap((fixtureTurn) =>
+    fixtureTurn.requests.map((fixtureRequest) => ({
+      ...fixtureRequest,
+      turnId: fixtureTurn.id,
+      endedAtMs: Date.parse(fixtureTurn.endedAt),
+    })),
+  );
 
   assert.deepEqual(built.warnings, []);
   assert.deepEqual(
     built.samples.map((sample) => sample.sampleKey),
-    fixture.turns.map((fixtureTurn) =>
-      JSON.stringify(["codex", projection.homeId, projection.threadId, fixtureTurn.id]),
+    fixtureRequests.map((fixtureRequest) =>
+      JSON.stringify(["codex", projection.homeId, projection.threadId, fixtureRequest.turnId, fixtureRequest.id]),
     ),
   );
   assert.deepEqual(
     built.samples.map((sample) => sample.tsMs),
-    fixture.turns.map((fixtureTurn) => Date.parse(fixtureTurn.endedAt)),
+    fixtureRequests.map((fixtureRequest) => fixtureRequest.endedAtMs),
   );
   assert.deepEqual(
     built.samples.map((sample) => sample.durationMs),
-    fixture.turns.map((fixtureTurn) => fixtureTurn.durationMs),
+    fixtureRequests.map(sixTurnGenerationDuration),
   );
-  assert.deepEqual(
-    built.samples.map((sample) => sample.requestCount),
-    fixture.turns.map((fixtureTurn) => fixtureTurn.requestCount),
-  );
+  assert.ok(built.samples.every((sample) => sample.requestCount === 1));
   assert.deepEqual(
     built.samples.map((sample) => sample.outputTokens),
-    fixture.turns.map((fixtureTurn) => fixtureTurn.outputTokens),
+    fixtureRequests.map((fixtureRequest) => fixtureRequest.outputTokens - 1),
   );
   assert.ok(
     built.samples.every(
       (sample) =>
         sample.windowStartMs === null &&
         sample.windowEndMs === null &&
-        sample.timingKind === "request_e2e" &&
-        sample.methodVersion === "tps-v2" &&
+        sample.window === "request" &&
+        sample.timingKind === "generation" &&
+        sample.tokenScope === "non_reasoning_output" &&
+        sample.methodVersion === "tps-v4" &&
         sample.timingSource === "explicit" &&
         !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
         !perfFlagNamesOf(sample.sampleFlags).includes("METHOD_ESTIMATE"),
@@ -1879,62 +2367,73 @@ test("B1 full chain builds all six A fixture turns from native projection record
 
   assert.equal(
     built.samples.reduce((sum, sample) => sum + sample.requestCount, 0),
-    fixture.totals.requests,
+    fixtureRequests.length,
   );
+  const expectedDurationMs = fixtureRequests.reduce((sum, request) => sum + sixTurnGenerationDuration(request), 0);
+  const expectedOutputTokens = fixtureRequests.reduce((sum, request) => sum + request.outputTokens - 1, 0);
   assert.equal(
     built.samples.reduce((sum, sample) => sum + sample.durationMs, 0),
-    fixture.totals.durationMs,
+    expectedDurationMs,
   );
   assert.equal(
     built.samples.reduce((sum, sample) => sum + sample.outputTokens, 0),
-    fixture.totals.outputTokens,
+    expectedOutputTokens,
   );
 
   const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
-  assert.equal(summary.coverage.sampled, 6);
+  assert.equal(summary.coverage.sampled, fixtureRequests.length);
   assert.equal(summary.groups.length, 1);
-  assert.equal(summary.groups[0].n, 6);
-  assert.equal(summary.groups[0].sums.durationMs, fixture.totals.durationMs);
-  assert.equal(summary.groups[0].sums.outputTokens, fixture.totals.outputTokens);
-  assert.equal(summary.groups[0].tps.pooled, fixture.totals.pooledSpeedTokPerSec);
+  assert.equal(summary.groups[0].n, fixtureRequests.length);
+  assert.equal(summary.groups[0].sums.durationMs, expectedDurationMs);
+  assert.equal(summary.groups[0].sums.outputTokens, expectedOutputTokens);
+  assert.equal(summary.groups[0].tps.pooled, (expectedOutputTokens * 1_000) / expectedDurationMs);
   assert.equal(summary.groups[0].rank, 1);
   assert.equal(summary.models[0].rank, 1);
 });
 
-test("B1 full chain makes only the affected turn missing when a tool-only request timing is absent", async () => {
+test("T2 full chain keeps only the response with missing generation unsampled", async () => {
   const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
   const affectedTurn = fixture.turns[3];
   const missingResponseId = affectedTurn.requests[0].id;
-  const projection = sixTurnProjection(fixture, {
-    itemSpanTurnId: affectedTurn.id,
-    missingResponseId,
-  });
+  const projection = sixTurnProjection(fixture, { missingResponseId });
   const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
     lookupRequestTiming: projection.lookupRequestTiming,
   });
+  const fixtureRequests = fixture.turns.flatMap((fixtureTurn) =>
+    fixtureTurn.requests.map((fixtureRequest) => ({
+      ...fixtureRequest,
+      turnId: fixtureTurn.id,
+    })),
+  );
 
-  assert.equal(built.samples.length, fixture.turns.length);
-  const affectedKey = JSON.stringify(["codex", projection.homeId, projection.threadId, affectedTurn.id]);
+  assert.equal(built.samples.length, fixtureRequests.length);
+  const affectedKey = JSON.stringify([
+    "codex",
+    projection.homeId,
+    projection.threadId,
+    affectedTurn.id,
+    missingResponseId,
+  ]);
   const affected = built.samples.find((sample) => sample.sampleKey === affectedKey);
   assert.ok(affected);
   assert.equal(affected.durationMs, null);
+  assert.equal(affected.outputTokens, null);
   assert.ok(perfFlagNamesOf(affected.sampleFlags).includes("MISSING_DURATION"));
-  assert.equal(affected.requestCount, affectedTurn.requestCount);
-  assert.equal(affected.outputTokens, affectedTurn.outputTokens);
-  assert.equal(affected.itemCount, 1, "the target item span remains visible for diagnostics");
-  assert.equal(affected.timedItemCount, 1);
+  assert.equal(affected.requestCount, 1);
+  assert.equal(affected.model, fixture.requestedModel);
+  assert.equal(affected.itemCount, 0);
+  assert.equal(affected.timedItemCount, 0);
   assert.equal(affected.windowStartMs, null);
   assert.equal(affected.windowEndMs, null);
   assert.equal(perfFlagNamesOf(affected.sampleFlags).includes("PARTIAL_ITEM_SPAN"), false);
   assert.equal(perfFlagNamesOf(affected.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"), false);
 
   const complete = built.samples.filter((sample) => sample.sampleKey !== affectedKey);
-  assert.equal(complete.length, 5);
+  assert.equal(complete.length, fixtureRequests.length - 1);
+  const completeRequests = fixtureRequests.filter((request) => request.id !== missingResponseId);
   assert.deepEqual(
     complete.map((sample) => sample.durationMs),
-    fixture.turns
-      .filter((fixtureTurn) => fixtureTurn.id !== affectedTurn.id)
-      .map((fixtureTurn) => fixtureTurn.durationMs),
+    completeRequests.map(sixTurnGenerationDuration),
   );
   assert.ok(
     complete.every(
@@ -1945,14 +2444,16 @@ test("B1 full chain makes only the affected turn missing when a tool-only reques
     ),
   );
   const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
-  assert.equal(summary.coverage.sampled, 5);
-  assert.equal(summary.groups[0].n, 5);
-  assert.equal(summary.groups[0].sums.durationMs, fixture.totals.durationMs - affectedTurn.durationMs);
-  assert.equal(
-    summary.groups[0].tps.pooled,
-    ((fixture.totals.outputTokens - affectedTurn.outputTokens) * 1_000) /
-      (fixture.totals.durationMs - affectedTurn.durationMs),
-  );
+  const missingRequest = affectedTurn.requests[0];
+  const expectedDurationMs =
+    fixtureRequests.reduce((sum, request) => sum + sixTurnGenerationDuration(request), 0) -
+    sixTurnGenerationDuration(missingRequest);
+  const expectedOutputTokens =
+    fixtureRequests.reduce((sum, request) => sum + request.outputTokens - 1, 0) - (missingRequest.outputTokens - 1);
+  assert.equal(summary.coverage.sampled, fixtureRequests.length - 1);
+  assert.equal(summary.groups[0].n, fixtureRequests.length - 1);
+  assert.equal(summary.groups[0].sums.durationMs, expectedDurationMs);
+  assert.equal(summary.groups[0].tps.pooled, (expectedOutputTokens * 1_000) / expectedDurationMs);
 });
 
 test("M8.2 C: proven child segmentation preserves stats and excludes parent request/item/terminal evidence before fold", async (t) => {
@@ -2025,18 +2526,6 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
       ordinal: 7,
     },
     {
-      type: "token_usage_record",
-      timestamp: "2026-10-01T00:00:02.000Z",
-      payload: {
-        thread_id: "Child",
-        turn_id: "Turn-Shared",
-        response_id: "Response-Shared",
-        usage: { output_tokens: 40 },
-        turn_token_usage: { output_tokens: 40 },
-      },
-      ordinal: 8,
-    },
-    {
       type: "event_msg",
       payload: {
         type: "item_completed",
@@ -2045,6 +2534,18 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
         item: { id: "Item-Shared", type: "AgentMessage" },
         started_at_ms: 1_800_000_000_000,
         completed_at_ms: 1_800_000_000_400,
+      },
+      ordinal: 8,
+    },
+    {
+      type: "token_usage_record",
+      timestamp: "2026-10-01T00:00:02.000Z",
+      payload: {
+        thread_id: "Child",
+        turn_id: "Turn-Shared",
+        response_id: "Response-Shared",
+        usage: { output_tokens: 40 },
+        turn_token_usage: { output_tokens: 40 },
       },
       ordinal: 9,
     },
@@ -2085,22 +2586,28 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
     ["Child"],
   );
   const built = buildCodexThreadPerfSamples("home-child-prefix", "Child", plan.threads[0].rollouts, {
-    lookupRequestTiming: lookupDurations({ "Response-Shared": 400 }),
+    lookupRequestTiming: ({ model, outputTokens }) => ({
+      state: "available",
+      durationMs: 400,
+      reportedOutputTokens: outputTokens,
+      requestedModel: model,
+      generation: generationTiming(40, 200, 1),
+    }),
   });
   assert.deepEqual(built.warnings, []);
   assert.deepEqual(built.rolloutFiles, [file]);
   assert.equal(built.samples.length, 1, "the parent prefix must not produce a second candidate");
   const [sample] = built.samples;
-  assert.equal(sample.sampleKey, '["codex","home-child-prefix","Child","Turn-Shared"]');
+  assert.equal(sample.sampleKey, '["codex","home-child-prefix","Child","Turn-Shared","Response-Shared"]');
   assert.equal(sample.model, "Child-model");
   assert.equal(sample.reasoningEffort, "high");
-  assert.equal(sample.outputTokens, 40);
+  assert.equal(sample.outputTokens, 39);
   assert.equal(sample.requestCount, 1);
   assert.equal(sample.itemCount, 1);
-  assert.equal(sample.durationMs, 400);
+  assert.equal(sample.durationMs, 200);
   const summary = summarizePerf(built.samples);
   assert.equal(summary.groups.length, 1, JSON.stringify({ sample, summary }));
-  assert.equal(summary.groups[0].tps.pooled, 100);
+  assert.equal(summary.groups[0].tps.pooled, 195);
 });
 
 test("M8.2 C: paginated child proof rejects incomplete ordinals, invalid bounds, malformed rows and identity conflicts", async (t) => {

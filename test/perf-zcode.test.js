@@ -1,7 +1,7 @@
-// M2.1 ZCode reader 专项测试。
+// ZCode generation TPS reader 专项测试。
 //
 // 纪律（M1 教训固化）：
-// - **只测一侧 = 没测规则**：每条规则都测正例与反例（显式真 0 vs 字段缺失回退；只读成功 vs 只读失败；
+// - **只测一侧 = 没测规则**：每条规则都测正例与反例（请求时长诊断值 vs 生成时长缺失；只读成功 vs 只读失败；
 //   有身份 vs 无身份；subagent 标志 vs 无标志）。
 // - **不写死期望值**：断言恒等式与判别式，不硬编码本机行数。
 // - **遇 0 先问"判别式可达吗"**：凡是断言 `0`/`null` 的地方，都另有一条用例证明该分支确实可达。
@@ -416,8 +416,8 @@ test("断言：集成层调用 normalizePerfSample 后 unknown 归一到空串�
     assert.deepEqual(warnings, [], "可信候选不应产生归一化警告");
     // 语义字段必须与内核权威值一致，否则会得 SOURCE_SEMANTICS_MISMATCH。
     assert.equal(sample.window, "request");
-    assert.equal(sample.timingKind, "request_e2e");
-    assert.equal(sample.tokenScope, "reported_output_unspecified");
+    assert.equal(sample.timingKind, "generation");
+    assert.equal(sample.tokenScope, "non_reasoning_output");
     assert.equal(sample.sampleKey, JSON.stringify(["zcode", "home-1", "u-1"]));
   } finally {
     workspace.cleanup();
@@ -432,8 +432,8 @@ test("window/timingKind/tokenScope 与 sourceKind=zcode 自洽（防 SOURCE_SEMA
     createFixtureDatabase(workspace.dbFile, { rows: [defaultRow()] });
     const { samples } = await collect(workspace.dbFile, workspace.source);
     assert.equal(samples[0].window, "request");
-    assert.equal(samples[0].timingKind, "request_e2e");
-    assert.equal(samples[0].tokenScope, "reported_output_unspecified");
+    assert.equal(samples[0].timingKind, "generation");
+    assert.equal(samples[0].tokenScope, "non_reasoning_output");
     assert.equal(samples[0].sourceKind, "zcode");
   } finally {
     workspace.cleanup();
@@ -522,22 +522,24 @@ test("TTFT 与正文字段即使有值也永不读取；同 logical_request_id �
   }
 });
 
-test("缺 TTFT 不剔除候选；超长时长只记录不剔除（LONG_WINDOW 由内核判）", async () => {
+test("缺 TTFT 不剔除候选；旧请求时长只保留为诊断，不进入生成 TPS", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDatabase(workspace.dbFile, {
       rows: [
         // TTFT 两列为 NULL（缺 TTFT）。
         defaultRow({ id: "no-ttft", first_token_at: null, time_to_first_token_ms: null }),
-        // 约 20 分钟的请求（超长窗口），reader 必须原样输出，不自行剔除。
+        // 约 20 分钟的请求（超长窗口），reader 保留原始事实但不把它当生成时长。
         defaultRow({ id: "long", duration_ms: 1_200_000, started_at: BASE_TS, completed_at: BASE_TS + 1_200_000 }),
       ],
     });
     const { samples } = await collect(workspace.dbFile, workspace.source);
     assert.equal(samples.length, 2, "缺 TTFT 与超长时长都不得自动剔除");
     const long = samples.find((sample) => sample.rowId === "long");
-    assert.equal(long.durationMs, 1_200_000);
-    assert.equal(long.timingSource, "explicit");
+    assert.equal(long.durationMs, null);
+    assert.equal(long.timingSource, "unknown");
+    assert.equal(long.reportedDurationMs, 1_200_000);
+    assert.equal(long.reportedTimingSource, "explicit");
   } finally {
     workspace.cleanup();
   }
@@ -719,16 +721,16 @@ test("逐列缺失退化：任一白名单列缺失都不崩，且不把缺值�
       const { samples } = await collect(workspace.dbFile, workspace.source);
       assert.equal(samples.length, 1, `缺列 ${dropped} 时仍应产出候选`);
       const sample = samples[0];
-      // 缺 duration_ms → 走回退（本例时间戳齐备）→ 1000；绝不变成 0。
+      // 请求时长无论显式还是回退都只进入诊断字段；生成时长恒为 null。
+      assert.equal(sample.durationMs, null);
+      assert.equal(sample.timingSource, "unknown");
       if (dropped === "duration_ms") {
-        assert.equal(sample.durationMs, 1000);
-        assert.equal(sample.timingSource, "timestamp_fallback");
+        assert.equal(sample.reportedDurationMs, 1000);
+        assert.equal(sample.reportedTimingSource, "timestamp_fallback");
       }
-      // 缺 output_tokens → null，不是 0。
-      if (dropped === "output_tokens") {
-        assert.equal(sample.outputTokens, null);
-        assert.notEqual(sample.outputTokens, 0, "缺字段不得变成 0");
-      }
+      // output/reasoning 包含关系未证明：v3 分子置空，原值只进入诊断字段。
+      assert.equal(sample.outputTokens, null);
+      if (dropped === "output_tokens") assert.equal(sample.reportedOutputTokens, null);
       // 缺 input_tokens → null。
       if (dropped === "input_tokens") {
         assert.equal(sample.inputTokens, null);
@@ -1026,7 +1028,7 @@ test("返工2 可达性如实标注：SQLite 类型宽容使 TEXT 载体可达�
   }
 });
 
-test("输出 tokens 直接取原值：不叠 reasoning；input 不叠缓存（真 0 保留 0）", async () => {
+test("原始 output 只保留在诊断字段；v3 非推理分子在关系未证明时为 null", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDatabase(workspace.dbFile, {
@@ -1037,10 +1039,12 @@ test("输出 tokens 直接取原值：不叠 reasoning；input 不叠缓存（�
     });
     const { samples } = await collect(workspace.dbFile, workspace.source);
     const byId = new Map(samples.map((sample) => [sample.rowId, sample]));
-    // 真 0 保留 0（不是 null，也不是"缺失"）。
-    assert.equal(byId.get("z-1").outputTokens, 0);
+    // 原始真 0 仍可诊断，但不能冒充 v3 非推理 output。
+    assert.equal(byId.get("z-1").reportedOutputTokens, 0);
+    assert.equal(byId.get("z-1").outputTokens, null);
     assert.equal(byId.get("z-1").inputTokens, 0);
-    assert.equal(byId.get("p-1").outputTokens, 123);
+    assert.equal(byId.get("p-1").reportedOutputTokens, 123);
+    assert.equal(byId.get("p-1").outputTokens, null);
     assert.equal(byId.get("p-1").inputTokens, 456);
     // 不得出现任何"叠加"字段（reasoning/cache 不是本 reader 的概念）。
     assert.ok(!("reasoningTokens" in byId.get("p-1")));

@@ -16,7 +16,10 @@ import {
   pricingVersionForTimestamp,
 } from "./pricing.js";
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
-import { canonicalModelName, isCodexAutoReview } from "../public/pricing-models.js";
+import { loadQuotaSourceEvidence } from "./quota-source-evidence.js";
+import { quotaSourceResolver } from "./quota-usage-source.js";
+import { createQuotaSourceTracker, isQuotaUsage } from "../public/quota-usage.js";
+import { canonicalModelName } from "../public/pricing-models.js";
 import {
   USAGE_DETAIL_MASK,
   USAGE_FIELDS,
@@ -39,6 +42,9 @@ import {
   workbuddyHomeLooksUsable,
   workbuddySessionFiles,
   workbuddyTraceSnapshot,
+  workbuddyLogSnapshot,
+  workbuddyTextTimingSpans,
+  createWorkbuddyTextTimingLookup,
 } from "./workbuddy-usage.js";
 import {
   opencodeDatabaseFiles,
@@ -74,6 +80,7 @@ import {
   deriveTimelineBucket,
   resolveNamedRecentRange,
   completedQuotaWindows,
+  previousQuotaRange,
 } from "../public/timeline-utils.js";
 import {
   COMPARISON_PERIOD_KEYS,
@@ -868,18 +875,6 @@ export async function discoverSessionFiles(homePath) {
   return files.filter((file) => file === plainRolloutPath(file) || !paths.has(key(plainRolloutPath(file))));
 }
 
-export async function buildMagpieTimingFingerprint(options = {}) {
-  const filePath = path.join(options.homeDir || os.homedir(), ".config", "magpie", "usage.jsonl");
-  try {
-    const details = await stat(filePath);
-    const identity = `${details.dev}:${details.ino}:${details.birthtimeMs}`;
-    return createHash("sha256").update(`${filePath}\t${identity}\t${details.size}\t${details.mtimeMs}\n`).digest("hex");
-  } catch (error) {
-    if (error?.code === "ENOENT") return "";
-    throw error;
-  }
-}
-
 export async function buildUsageFingerprint(options = {}) {
   const homes = options.homes || (await discoverUsageSources(options));
   const hash = createHash("sha256");
@@ -1318,7 +1313,9 @@ export async function parseSessionFile(filePath, home, options = {}) {
   const rateLimitObservations = [];
 
   // Stream JSONL rows so full-detail reports do not read large session files at once.
+  const quotaSourceForRow = createQuotaSourceTracker();
   for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
+    const { quotaSource, quotaSourceUntil } = quotaSourceForRow(row);
     if (row.timestamp) {
       firstAt ||= row.timestamp;
       lastAt = row.timestamp;
@@ -1343,6 +1340,14 @@ export async function parseSessionFile(filePath, home, options = {}) {
       continue;
     }
 
+    if (["plan", "credits"].includes(quotaSource))
+      await options.onQuotaSource?.({
+        homeId: home.homeId || home.id,
+        sessionId: meta.id,
+        timestampMs: Date.parse(row.timestamp),
+        quotaSource,
+        quotaSourceUntil,
+      });
     const observations = parseRateLimitObservations(row, {
       sourcePath: filePath,
       lineNumber,
@@ -1433,6 +1438,8 @@ export async function parseSessionFile(filePath, home, options = {}) {
       conversationName: threadNames.get(meta.id) || "",
       model,
       total: increment,
+      quotaSource,
+      quotaSourceUntil,
       detailMask: detailValidation.detailMask,
       reconciliationGap: detailValidation.reconciliationGap,
       cacheWriteTokens: cacheWrite.tokens,
@@ -1693,7 +1700,9 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
   let baselineLoaded = false;
   let hasUsageInFile = false;
 
+  const quotaSourceForRow = createQuotaSourceTracker();
   for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
+    const { quotaSource, quotaSourceUntil } = quotaSourceForRow(row);
     if (row.timestamp) {
       firstAt ||= row.timestamp;
       lastAt = row.timestamp;
@@ -1716,6 +1725,14 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       continue;
     }
 
+    if (["plan", "credits"].includes(quotaSource))
+      await options.onQuotaSource?.({
+        homeId: home.homeId || home.id,
+        sessionId: meta.id,
+        timestampMs: Date.parse(row.timestamp),
+        quotaSource,
+        quotaSourceUntil,
+      });
     for (const observation of parseRateLimitObservations(row, {
       sourcePath: filePath,
       lineNumber,
@@ -1797,6 +1814,8 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       repositoryKind: repository.kind,
       model,
       usage: increment,
+      quotaSource,
+      quotaSourceUntil,
       detailMask: detailValidation.detailMask,
       reconciliationGap: detailValidation.reconciliationGap,
       cacheWriteTokens: cacheWrite.tokens,
@@ -1902,6 +1921,7 @@ async function parseSessionFileForIndex(
   previousCumulativeForSession,
   onRateLimit,
   onWarning,
+  onQuotaSource,
 ) {
   const events = [];
   await streamSessionUsageFileEvents(
@@ -1919,6 +1939,8 @@ async function parseSessionFileForIndex(
         rp: intern(event.repositoryPath),
         rt: intern(event.repositoryKind),
         m: intern(event.model),
+        quotaSource: event.quotaSource || "unknown",
+        quotaSourceUntil: event.quotaSourceUntil || 0,
         total: event.usage.total,
         input: event.usage.input,
         cached: event.usage.cached,
@@ -1934,7 +1956,7 @@ async function parseSessionFileForIndex(
         priceVersion: intern(event.priceVersion),
       });
     },
-    { repositoryResolver: resolveRepository, previousCumulativeForSession, onRateLimit, onWarning },
+    { repositoryResolver: resolveRepository, previousCumulativeForSession, onRateLimit, onWarning, onQuotaSource },
   );
   return events;
 }
@@ -2332,6 +2354,8 @@ function perfContentFingerprint(kind, filePath) {
       mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
     }
     const digest = createHash("sha256");
+    const readerKind = canonicalPerfKind(kind);
+    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:native-generation-v1`);
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],
@@ -2515,6 +2539,7 @@ if (workerData?.task === "codex-prefix-window" && parentPort) {
  */
 function aggregatePerfContentFingerprint(homes, fingerprints, requestTimingRevision = 0) {
   const hash = createHash("sha256");
+  hash.update(`method\t${PERF_METHOD_VERSION}\n`);
   for (const home of homes) {
     const homeId = String(home?.id ?? "");
     hash.update(`${homeId}\t${canonicalPerfKind(home?.kind)}\t${fingerprints.get(homeId) ?? "!"}\n`);
@@ -2547,14 +2572,14 @@ async function perfHomeRoundFingerprint(home, dependency = null) {
  * Trace files are not perf files (the session transcript is the candidate file),
  * but they are inputs to WorkBuddy duration lookup. Keep discovery/stat separate
  * from span parsing so one round reuses the latter.
- * @param {Awaited<ReturnType<typeof workbuddyTraceSnapshot>>} snapshot
+ * @param {Awaited<ReturnType<typeof workbuddyPerfSnapshot>>} snapshot
  * @param {Array<{ messageId: string, durationMs: number, endedAtMs: number | null }> | null} spans
  */
 function workbuddyTraceDependency(snapshot, spans) {
   const hash = createHash("sha256");
   let complete = snapshot.complete && spans !== null;
   for (const entry of [...snapshot.entries].sort((left, right) => left.filePath.localeCompare(right.filePath))) {
-    const fingerprint = perfContentFingerprint("workbuddy", entry.filePath);
+    const fingerprint = snapshot.fingerprints.get(entry.filePath) ?? null;
     if (fingerprint === null) complete = false;
     hash.update(`${entry.filePath}\t${fingerprint ?? "!"}\n`);
   }
@@ -2565,6 +2590,16 @@ function workbuddyTraceDependency(snapshot, spans) {
     for (const row of rows) hash.update(`span\t${JSON.stringify(row)}\n`);
   }
   return { fingerprint: hash.digest("hex"), complete };
+}
+
+async function workbuddyPerfSnapshot(homePath) {
+  const trace = await workbuddyTraceSnapshot(homePath);
+  const text = await workbuddyLogSnapshot(homePath);
+  const entries = [...trace.entries, ...text.entries];
+  const fingerprints = new Map(
+    entries.map((entry) => [entry.filePath, perfContentFingerprint("workbuddy", entry.filePath)]),
+  );
+  return { ...trace, entries, textFiles: text.files, fingerprints, complete: trace.complete && text.complete };
 }
 
 /**
@@ -2972,9 +3007,10 @@ function workbuddyDurationLookupFromSpans(spans) {
  */
 async function collectMemoryPerfCarrier(homes, options = {}) {
   /** @type {any[]} */
-  const perfSamples = [];
-  /** @type {any[]} */
   const rawWarnings = [];
+  const lookupRequestTiming = options.lookupRequestTiming;
+  /** @type {any[]} */
+  const perfSamples = [];
   const degradedHomeIds = new Set();
   const wholeHomeCodexBlocks = new Set();
   /** @type {{homeId: string, blockedThreadIds: string[]}[]} */
@@ -3008,26 +3044,31 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
   //    没有它就无法发现"先读完的 home 在后续读取期间被改写"。
   /** @type {Map<string, { fingerprint: string, complete: boolean } | null>} */
   const roundStart = new Map();
-  /** @type {Map<string, { snapshot: any, spans: any[] | null, dependency: { fingerprint: string, complete: boolean } }>} */
+  /** @type {Map<string, { snapshot: any, spans: any[] | null, textSpans: any[] | null, dependency: { fingerprint: string, complete: boolean } }>} */
   const workbuddyTraceDependencies = new Map();
   for (const home of enabledHomes) {
     const homeId = String(home.id ?? "");
     let dependency = null;
     if (canonicalPerfKind(home.kind) === "workbuddy") {
-      const snapshot = await workbuddyTraceSnapshot(home.path);
+      const snapshot = await workbuddyPerfSnapshot(home.path);
       let spans = null;
+      let textSpans = null;
       try {
         spans = await workbuddyGenerationSpans(home.path, {
           files: snapshot.files,
           onWarning: (warning) => rawWarnings.push(normalizePerfWarningEntry(warning)),
         });
+        textSpans = [];
+        for (const filePath of snapshot.textFiles) {
+          textSpans.push(...(await workbuddyTextTimingSpans(filePath)));
+        }
       } catch {
         degradedHomeIds.add(homeId);
         rawWarnings.push({ sourceKind: "workbuddy", homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 });
       }
-      dependency = workbuddyTraceDependency(snapshot, spans);
+      dependency = workbuddyTraceDependency(snapshot, textSpans === null ? null : spans);
       if (!snapshot.complete) degradedHomeIds.add(homeId);
-      workbuddyTraceDependencies.set(homeId, { snapshot, spans, dependency });
+      workbuddyTraceDependencies.set(homeId, { snapshot, spans, textSpans, dependency });
     }
     roundStart.set(homeId, await perfHomeRoundFingerprint(home, dependency));
   }
@@ -3078,7 +3119,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
           for (const thread of window.plan.threads) {
             if (liveThreadIds.has(thread.threadId)) continue;
             const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts, {
-              lookupRequestTiming: options.lookupRequestTiming,
+              lookupRequestTiming,
             });
             stagedSamples.push(...built.samples);
             stagedWarnings.push(...built.warnings);
@@ -3147,6 +3188,10 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
         kind === "workbuddy" && traceDependency?.spans
           ? workbuddyDurationLookupFromSpans(traceDependency.spans)
           : undefined;
+      const lookupTextTiming =
+        kind === "workbuddy" && traceDependency?.textSpans && traceDependency?.spans
+          ? createWorkbuddyTextTimingLookup(traceDependency.textSpans, traceDependency.spans)
+          : undefined;
       for (const filePath of files || []) {
         try {
           await streamPerfSamplesForFile(
@@ -3166,6 +3211,8 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
                 rawWarnings.push(normalizePerfWarningEntry(warning));
               },
               lookupGenerationDuration,
+              lookupTextTiming,
+              lookupRequestTiming,
             },
           );
         } catch (error) {
@@ -3182,7 +3229,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
       if (kind === "workbuddy" && files !== null) {
         try {
           afterDependency = workbuddyTraceDependency(
-            await workbuddyTraceSnapshot(home.path),
+            await workbuddyPerfSnapshot(home.path),
             traceDependency?.spans ?? null,
           );
         } catch {
@@ -3222,7 +3269,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
       const traceDependency = workbuddyTraceDependencies.get(homeId);
       try {
         endDependency = workbuddyTraceDependency(
-          await workbuddyTraceSnapshot(home.path),
+          await workbuddyPerfSnapshot(home.path),
           traceDependency?.spans ?? null,
         );
       } catch {
@@ -3383,6 +3430,9 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
     ),
   ].sort();
   const codexPublicationPolicy = encodeCodexPublicationPolicy(finalPartialHomes);
+  const indexVersion = perfFingerprintStable
+    ? aggregatePerfContentFingerprint(enabledHomes, perfFingerprintsAfter, options.requestTimingRevision)
+    : null;
 
   return {
     perfSamples: retainedPerfSamples,
@@ -3393,13 +3443,7 @@ async function collectMemoryPerfCarrier(homes, options = {}) {
       // 已启用性能来源**内容**指纹的聚合（与 M3.4 `buildPublishedSourcesFingerprint` 同口径：
       // 只含已启用来源）⇒ **内容变则版本变**；任一已启用 home 的指纹不可取得或前后不同 ⇒ `null`
       //（一个描述不了所载候选的版本号就是"元数据说谎"，同 M3.4 BC-2 的裁决）。
-      indexVersion: perfFingerprintStable
-        ? aggregatePerfContentFingerprint(
-            enabledHomes,
-            perfFingerprintsAfter,
-            /** @type {number | undefined} */ (options.requestTimingRevision),
-          )
-        : null,
+      indexVersion,
       indexedAt: new Date().toISOString(),
       degradedHomeIds: degradedList,
       sourceWarnings: projectPerfSourceFailures(rawWarnings),
@@ -3487,6 +3531,7 @@ export async function buildUsageReport(options = {}) {
   const sessions = [];
   const events = [];
   const rateLimitObservations = [];
+  const quotaSourceObservations = [];
   const warnings = [];
 
   for (const home of homes) {
@@ -3590,6 +3635,7 @@ export async function buildUsageReport(options = {}) {
           threadNames,
           previousCumulativeForSession: (sessionId) => previousBySession.get(sessionId),
           onWarning: (warning) => warnings.push(warning),
+          onQuotaSource: (row) => quotaSourceObservations.push(row),
         });
         if (!parsed) {
           continue;
@@ -3614,8 +3660,16 @@ export async function buildUsageReport(options = {}) {
   }
 
   const tierEvidence = loadServiceTierEvidence(homes);
+  const quotaEvidence = loadQuotaSourceEvidence(homes, options.quotaSourceEvidenceSnapshot);
+  const resolveQuotaSource = quotaSourceResolver([...events, ...quotaSourceObservations], quotaEvidence);
   for (const event of events) {
     event.serviceTier = tierEvidence.resolve(event.sessionId, Date.parse(event.timestamp), event.serviceTier);
+    event.quotaSource = resolveQuotaSource(
+      event.homeId,
+      event.sessionId,
+      Date.parse(event.timestamp),
+      event.quotaSource,
+    );
   }
   events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   sessions.sort((a, b) => Date.parse(a.lastAt) - Date.parse(b.lastAt));
@@ -3625,6 +3679,8 @@ export async function buildUsageReport(options = {}) {
   // `perfMeta.indexVersion` 的"读取前后"窗口只覆盖 perf 读取本身，不含用量解析。
   // ⚠️ 该函数**不抛错**（逐来源失败降级为状态/告警）⇒ 内存报告不会因 perf 失败而整体失败。
   const { perfSamples, perfMeta } = await collectMemoryPerfCarrier(homes, options);
+  for (const sample of perfSamples)
+    sample.quotaSource = resolveQuotaSource(sample.homeId, sample.sessionId, sample.tsMs);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -3645,6 +3701,7 @@ export async function buildUsageIndex(options = {}) {
   const warnings = [];
   const events = [];
   const rateLimitObservations = [];
+  const quotaSourceObservations = [];
   const interner = createStringInterner();
 
   for (const home of homes) {
@@ -3741,6 +3798,7 @@ export async function buildUsageIndex(options = {}) {
           (sessionId) => previousBySession.get(sessionId),
           (observation) => rateLimitObservations.push(observation),
           (warning) => warnings.push(warning),
+          (row) => quotaSourceObservations.push(row),
         );
         events.push(...parsed);
         for (const event of parsed) {
@@ -3760,9 +3818,29 @@ export async function buildUsageIndex(options = {}) {
   }
 
   const tierEvidence = loadServiceTierEvidence(homes);
+  const quotaEvidence = loadQuotaSourceEvidence(homes, options.quotaSourceEvidenceSnapshot);
+  const resolveQuotaSource = quotaSourceResolver(
+    [
+      ...quotaSourceObservations,
+      ...events.map((event) => ({
+        homeId: interner.values[event.h],
+        sessionId: interner.values[event.s],
+        timestampMs: event.t,
+        quotaSource: event.quotaSource,
+        quotaSourceUntil: event.quotaSourceUntil,
+      })),
+    ],
+    quotaEvidence,
+  );
   for (const event of events) {
     const tier = tierEvidence.resolve(interner.values[event.s], event.t, interner.values[event.serviceTier]);
     event.serviceTier = interner.intern(tier);
+    event.quotaSource = resolveQuotaSource(
+      interner.values[event.h],
+      interner.values[event.s],
+      event.t,
+      event.quotaSource,
+    );
   }
   events.sort((a, b) => a.t - b.t);
 
@@ -4288,15 +4366,27 @@ function comparisonLabel(preset) {
       month: "较上月",
       custom: "较上一等长周期",
       recent: "较上一等长周期",
+      quota_5h: "较上一5h",
+      quota_week: "较上一7d",
     }[preset] || "暂无对比"
   );
 }
 
-function usageComparison({ range, allEvents, eventTime, eventSession, addEventUsage, currentTotals, now }) {
+function usageComparison({
+  range,
+  allEvents,
+  eventTime,
+  eventSession,
+  addEventUsage,
+  currentTotals,
+  now,
+  quota,
+  observations,
+}) {
   // 保持调用方事件结构不变，只在这里统一计算上一周期和趋势。
-  const previousRange = previousUsageRange(range);
+  const previousRange = range.quotaWindow ? previousQuotaRange(range, quota, observations) : previousUsageRange(range);
   if (!previousRange) {
-    return usageComparisonFromAggregates({ range, currentTotals, now });
+    return usageComparisonFromAggregates({ range, currentTotals, now, previousRange });
   }
   const previousEvents = allEvents.filter((event) => {
     const time = eventTime(event);
@@ -4311,6 +4401,7 @@ function usageComparison({ range, allEvents, eventTime, eventSession, addEventUs
     previousEventCount: previousEvents.length,
     previousSessionCount: previousSessions.size,
     now,
+    previousRange,
   });
 }
 
@@ -4321,11 +4412,11 @@ export function usageComparisonFromAggregates({
   previousEventCount = 0,
   previousSessionCount = 0,
   now,
+  previousRange = previousUsageRange(range),
 }) {
-  const previousRange = previousUsageRange(range);
   if (!previousRange) {
     return {
-      label: comparisonLabel(range.preset),
+      label: comparisonLabel(range.quotaPreset || range.preset),
       previousRange: null,
       previousTotals: emptyUsage(),
       previousEventCount: 0,
@@ -4340,7 +4431,7 @@ export function usageComparisonFromAggregates({
   const average = averageTrend(currentTotals, previousTotals, range, previousRange, now);
 
   return {
-    label: comparisonLabel(range.preset),
+    label: comparisonLabel(range.quotaPreset || range.preset),
     previousRange: {
       start: previousRange.start.toISOString(),
       end: previousRange.end.toISOString(),
@@ -4367,6 +4458,10 @@ function summaryQuotaContext(observations, filters) {
   const initialAsOf = filters.quota?.asOf || filters.now || new Date();
   const quota = filters.quota || selectQuotaWindows(observations || [], initialAsOf);
   return { quota, asOf: new Date(quota.asOf) };
+}
+
+function sourceGroupForQuota(kind) {
+  return !kind || canonicalPerfSourceKind(kind) === "codex";
 }
 
 function summaryRangeFields(range, bucket) {
@@ -4411,8 +4506,15 @@ export function summarizeUsageIndex(index, filters = {}) {
     range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
   );
   const now = range.asOf || asOf;
-  const events = index.events.filter((event) => {
-    if (quotaPreset && isCodexAutoReview(strings[event.m])) return false;
+  const excluded = new Set((filters.excludeHomes || []).map(String));
+  const allEvents = index.events.filter(
+    (event) =>
+      !excluded.has(String(strings[event.h])) &&
+      (!quotaPreset ||
+        (sourceGroupForQuota(sourceKinds.get(String(strings[event.h]))) &&
+          isQuotaUsage({ model: strings[event.m], quotaSource: event.quotaSource }))),
+  );
+  const events = allEvents.filter((event) => {
     if (!Number.isFinite(event.t)) {
       return false;
     }
@@ -4427,17 +4529,17 @@ export function summarizeUsageIndex(index, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.s));
   const totals = events.reduce((sum, event) => addIndexedUsage(sum, event), emptyUsage());
-  const comparison = quotaPreset
-    ? null
-    : usageComparison({
-        range,
-        allEvents: index.events,
-        eventTime: (event) => event.t,
-        eventSession: (event) => event.s,
-        addEventUsage: addIndexedUsage,
-        currentTotals: totals,
-        now,
-      });
+  const comparison = usageComparison({
+    range,
+    allEvents,
+    eventTime: (event) => event.t,
+    eventSession: (event) => event.s,
+    addEventUsage: addIndexedUsage,
+    currentTotals: totals,
+    now,
+    quota,
+    observations: index.rateLimitObservations,
+  });
   function* timelineEvents() {
     for (const event of events) {
       yield {
@@ -4519,8 +4621,13 @@ export function summarizeUsage(report, filters = {}) {
     range.bucket || (quotaPreset ? (range.preset === "quota_5h" ? "quota_30m" : "quota_24h") : filters.bucket || "day"),
   );
   const now = range.asOf || asOf;
-  const events = report.events.filter((event) => {
-    if (quotaPreset && isCodexAutoReview(event.model)) return false;
+  const excluded = new Set((filters.excludeHomes || []).map(String));
+  const allEvents = report.events.filter(
+    (event) =>
+      !excluded.has(String(event.homeId)) &&
+      (!quotaPreset || (sourceGroupForQuota(sourceKinds.get(String(event.homeId))) && isQuotaUsage(event))),
+  );
+  const events = allEvents.filter((event) => {
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) {
       return false;
@@ -4536,17 +4643,17 @@ export function summarizeUsage(report, filters = {}) {
 
   const sessionIds = new Set(events.map((event) => event.sessionId));
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
-  const comparison = quotaPreset
-    ? null
-    : usageComparison({
-        range,
-        allEvents: report.events,
-        eventTime: (event) => Date.parse(event.timestamp),
-        eventSession: (event) => event.sessionId,
-        addEventUsage: (sum, event) => addUsage(sum, event.total),
-        currentTotals: totals,
-        now,
-      });
+  const comparison = usageComparison({
+    range,
+    allEvents,
+    eventTime: (event) => Date.parse(event.timestamp),
+    eventSession: (event) => event.sessionId,
+    addEventUsage: (sum, event) => addUsage(sum, event.total),
+    currentTotals: totals,
+    now,
+    quota,
+    observations: report.rateLimitObservations,
+  });
   const costAccumulator = createCostEstimateAccumulator();
   const { timeline, timelineError } = buildTimelineRowsWithLimit(events, range, bucket, {
     sourceKinds,
@@ -4616,7 +4723,7 @@ export function summarizeUsage(report, filters = {}) {
       ]),
     ];
     const publishableSamples = perfReport.perfSamples.filter(
-      (sample) => codexSampleAllowed(publishFilter, sample) && (!quotaPreset || !isCodexAutoReview(sample.model)),
+      (sample) => codexSampleAllowed(publishFilter, sample) && (!quotaPreset || isQuotaUsage(sample)),
     );
     const degradedHomeIds = new Set(degraded);
     const rankedHomeIds = [

@@ -12,10 +12,11 @@ import {
   verifyHistoryBackup,
   withVerifiedHistoryBackup,
 } from "./history-backup.js";
-import { PERF_METHOD_VERSION } from "./perf-stats.js";
+import { PERF_SUPPORTED_METHOD_VERSIONS, isGenerationPerfMethod } from "./perf-stats.js";
+import { generationPerfValues, mergeRequestTimingEvidence } from "./perf-request-timing.js";
 import { lookupRequestTiming, validateStoredEvidence } from "./perf-request-timing-store.js";
 import { foldCodexRolloutMetadata } from "./perf-sources/codex-fold.js";
-import { resolveCodexTurnRequestTiming } from "./perf-sources/codex-request-timing.js";
+import { resolveCodexRequestTiming, resolveCodexTurnRequestTiming } from "./perf-sources/codex-request-timing.js";
 import { getPricingCatalog } from "./pricing.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 
@@ -101,6 +102,7 @@ const HISTORY_ARCHIVE_PERF_TIMING_EVIDENCE_COLUMNS = Object.freeze([
   "status",
   "completed_at_ms",
 ]);
+const HISTORY_ARCHIVE_SUPPORTED_PERF_METHOD_VERSIONS = PERF_SUPPORTED_METHOD_VERSIONS;
 const HISTORY_ARCHIVE_WORKBUDDY_OBSERVATIONS_TABLE_NAMES = Object.freeze([
   "workbuddy_generation_duration_observations",
   "source_files",
@@ -694,6 +696,7 @@ export function historyArchivePerfDeletion(database, startMs, endMs, { requireCo
     .prepare(
       `SELECT samples.sample_key, samples.source_kind, samples.method_version,
               samples.status, samples.timing_kind, samples.timing_source,
+              samples.window, samples.token_scope, samples.output_tokens, samples.duration_ms,
               EXISTS (
                 SELECT 1 FROM perf_sample_sources AS dependencies
                 WHERE dependencies.sample_key = samples.sample_key
@@ -703,21 +706,40 @@ export function historyArchivePerfDeletion(database, startMs, endMs, { requireCo
        ORDER BY samples.sample_key`,
     )
     .all(startMs, endMs);
-  if (rows.length === 0 || rows.some((row) => row.method_version !== PERF_METHOD_VERSION)) return undefined;
+  if (rows.length === 0) return undefined;
+  const methodVersions = new Set(rows.map((row) => String(row.method_version)));
+  if (methodVersions.size !== 1) return undefined;
+  const [methodVersion] = methodVersions;
+  if (!HISTORY_ARCHIVE_SUPPORTED_PERF_METHOD_VERSIONS.includes(methodVersion)) return undefined;
   const sourceKinds = new Set(rows.map((row) => row.source_kind));
   if (sourceKinds.size !== 1) return undefined;
   const [sourceKind] = sourceKinds;
+  const generationWindow = (row) =>
+    isGenerationPerfMethod(methodVersion) &&
+    row.timing_kind === "generation" &&
+    row.window === "request" &&
+    row.token_scope === "non_reasoning_output";
   const supported =
     sourceKind === "zcode"
       ? rows.every((row) => Number(row.has_dependency) === 0)
-      : sourceKind === "codex" &&
-        rows.every(
-          (row) =>
-            Number(row.has_dependency) === 1 &&
-            row.status === "completed" &&
-            row.timing_kind === "request_e2e" &&
-            row.timing_source === "explicit",
-        );
+      : sourceKind === "workbuddy"
+        ? rows.every(
+            (row) =>
+              Number(row.has_dependency) === 0 &&
+              row.status === "completed" &&
+              row.timing_source === "explicit" &&
+              generationWindow(row) &&
+              Number(row.output_tokens) > 0 &&
+              Number(row.duration_ms) > 0,
+          )
+        : sourceKind === "codex" &&
+          rows.every(
+            (row) =>
+              Number(row.has_dependency) === 1 &&
+              row.status === "completed" &&
+              row.timing_source === "explicit" &&
+              (isGenerationPerfMethod(methodVersion) ? generationWindow(row) : row.timing_kind === "request_e2e"),
+          );
   if (!supported) return undefined;
   if (sourceKind === "codex" && requireComponents) {
     const codexRequestsRow = database
@@ -740,7 +762,7 @@ export function historyArchivePerfDeletion(database, startMs, endMs, { requireCo
     sampleKeys: rows.map((row) => String(row.sample_key)),
     sha256: perfSampleEvidence(database, startMs, endMs).sha256,
     sourceKind,
-    methodVersion: PERF_METHOD_VERSION,
+    methodVersion,
   };
 }
 
@@ -825,53 +847,98 @@ function perfIndexEvidence(database, startMs, endMs) {
 }
 
 function assertExplicitCodexTimingEvidence(database, startMs, endMs) {
-  const orphan = database
-    .prepare(
-      `SELECT samples.sample_key
-       FROM perf_samples AS samples
-       WHERE samples.ts_ms >= ? AND samples.ts_ms < ?
-         AND samples.source_kind = 'codex'
-         AND samples.status = 'completed'
-         AND samples.timing_kind = 'request_e2e'
-         AND samples.timing_source = 'explicit'
-         AND (
-           NOT EXISTS (
-             SELECT 1
-             FROM perf_sample_sources AS dependencies
-             JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
-             JOIN perf_request_timing_threads AS timing
-               ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
-             JOIN perf_request_timing_evidence AS evidence
-               ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
-             WHERE dependencies.sample_key = samples.sample_key
-           )
-           OR EXISTS (
-             SELECT 1
-             FROM perf_sample_sources AS dependencies
-             JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
-             JOIN perf_request_timing_threads AS timing
-               ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
-             LEFT JOIN perf_request_timing_evidence AS evidence
-               ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
-             WHERE dependencies.sample_key = samples.sample_key
-               AND evidence.response_id IS NULL
-           )
-         )
-       ORDER BY samples.ts_ms, samples.sample_key
-       LIMIT 1`,
-    )
-    .get(startMs, endMs);
-  if (orphan) {
-    throw archiveError(
+  const samples = codexBoundedExplicitSamples(database, startMs, endMs);
+  const legacyThreads = new Map();
+  const missing = (sampleKey) =>
+    archiveError(
       "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_DEPENDENCIES_MISSING",
-      `bounded explicit Codex perf sample ${String(orphan.sample_key)} has no native request-timing evidence`,
+      `bounded explicit Codex perf sample ${String(sampleKey)} has no native request-timing evidence`,
     );
+
+  for (const sample of samples) {
+    const identity = parseCodexRequestSampleKey(sample);
+    try {
+      codexRequestSampleGraph(database, sample, identity.threadId);
+    } catch {
+      throw missing(sample.sample_key);
+    }
+    if (identity.responseId === undefined) {
+      legacyThreads.set(JSON.stringify([identity.homeId, identity.threadId]), identity);
+      continue;
+    }
+    const evidence = database
+      .prepare(
+        `SELECT
+           (
+             SELECT COUNT(*)
+             FROM perf_request_timing_threads AS timing
+             WHERE timing.home_id = ? AND timing.thread_id = ? AND timing.response_id = ?
+           ) AS link_count,
+           (
+             SELECT COUNT(*)
+             FROM perf_request_timing_evidence AS evidence
+             WHERE evidence.home_id = ? AND evidence.response_id = ?
+           ) AS evidence_count`,
+      )
+      .get(identity.homeId, identity.threadId, identity.responseId, identity.homeId, identity.responseId);
+    if (Number(evidence.link_count) !== 1 || Number(evidence.evidence_count) < 1) {
+      throw missing(sample.sample_key);
+    }
+  }
+
+  for (const identity of legacyThreads.values()) {
+    const orphan = database
+      .prepare(
+        `SELECT samples.sample_key
+         FROM perf_samples AS samples
+         WHERE samples.ts_ms >= ? AND samples.ts_ms < ?
+           AND samples.source_kind = 'codex'
+           AND samples.status = 'completed'
+           AND samples.timing_kind = 'request_e2e'
+           AND samples.timing_source = 'explicit'
+           AND (
+             NOT EXISTS (
+               SELECT 1
+               FROM perf_sample_sources AS dependencies
+               JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
+               JOIN perf_request_timing_threads AS timing
+                 ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
+               JOIN perf_request_timing_evidence AS evidence
+                 ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
+               WHERE dependencies.sample_key = samples.sample_key
+                 AND owners.home_id = ? AND owners.thread_id = ?
+             )
+             OR EXISTS (
+               SELECT 1
+               FROM perf_sample_sources AS dependencies
+               JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
+               JOIN perf_request_timing_threads AS timing
+                 ON timing.home_id = owners.home_id AND timing.thread_id = owners.thread_id
+               LEFT JOIN perf_request_timing_evidence AS evidence
+                 ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
+               WHERE dependencies.sample_key = samples.sample_key
+                 AND owners.home_id = ? AND owners.thread_id = ?
+                 AND evidence.response_id IS NULL
+             )
+           )
+         ORDER BY samples.ts_ms, samples.sample_key
+         LIMIT 1`,
+      )
+      .get(startMs, endMs, identity.homeId, identity.threadId, identity.homeId, identity.threadId);
+    if (orphan) throw missing(orphan.sample_key);
   }
 }
 
 function perfTimingEvidence(database, startMs, endMs) {
   try {
     assertExplicitCodexTimingEvidence(database, startMs, endMs);
+    const availableEvidenceColumns = database
+      .prepare("PRAGMA table_info(perf_request_timing_evidence)")
+      .all()
+      .map((row) => String(row.name));
+    const evidenceColumns = availableEvidenceColumns.includes("generation_json")
+      ? [...HISTORY_ARCHIVE_PERF_TIMING_EVIDENCE_COLUMNS, "generation_json"]
+      : [...HISTORY_ARCHIVE_PERF_TIMING_EVIDENCE_COLUMNS];
     const threads = perfTableEvidence(
       "perf_request_timing_threads",
       HISTORY_ARCHIVE_PERF_TIMING_THREAD_COLUMNS,
@@ -889,16 +956,13 @@ function perfTimingEvidence(database, startMs, endMs) {
     );
     const evidence = perfTableEvidence(
       "perf_request_timing_evidence",
-      HISTORY_ARCHIVE_PERF_TIMING_EVIDENCE_COLUMNS,
+      evidenceColumns,
       startMs,
       endMs,
       database
         .prepare(
           `${HISTORY_ARCHIVE_PERF_TIMING_LINKS_CTE}
-           SELECT evidence.home_id, evidence.evidence_origin, evidence.response_id,
-                  evidence.variant_key, evidence.schema_version, evidence.requested_model,
-                  evidence.reported_output_tokens, evidence.duration_ms, evidence.status,
-                  evidence.completed_at_ms
+           SELECT ${evidenceColumns.map((column) => `evidence.${column}`).join(", ")}
            FROM perf_request_timing_evidence AS evidence
            JOIN links ON links.home_id = evidence.home_id AND links.response_id = evidence.response_id
            ORDER BY evidence.home_id, evidence.evidence_origin, evidence.response_id, evidence.variant_key`,
@@ -935,12 +999,13 @@ function codexRequestTimingMismatch(message) {
 function codexBoundedExplicitSamples(database, startMs, endMs) {
   return database
     .prepare(
-      `SELECT sample_key, source_path, source_kind, home_id, model, duration_ms, request_count
+      `SELECT sample_key, source_path, source_kind, home_id, model, output_tokens, duration_ms,
+              request_count, method_version, timing_kind, window, token_scope
        FROM perf_samples
        WHERE ts_ms >= ? AND ts_ms < ?
          AND source_kind = 'codex'
          AND status = 'completed'
-         AND timing_kind = 'request_e2e'
+         AND timing_kind IN ('request_e2e', 'generation')
          AND timing_source = 'explicit'
        ORDER BY sample_key`,
     )
@@ -964,7 +1029,13 @@ function effectiveCodexRequestTiming(database, timingEvidence, query) {
   const responseId = String(query.responseId);
   const rows = timingEvidence.filter((row) => String(row.home_id) === homeId && String(row.response_id) === responseId);
   if (rows.length === 0) {
-    return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+    return {
+      state: "missing",
+      durationMs: null,
+      reportedOutputTokens: null,
+      requestedModel: "",
+      generation: null,
+    };
   }
 
   const links = database
@@ -979,18 +1050,45 @@ function effectiveCodexRequestTiming(database, timingEvidence, query) {
     throw codexRequestTimingMismatch(`native request timing link for response ${responseId} is not unique`);
   }
   if (query.threadId !== undefined && query.threadId !== "" && String(links[0].thread_id) !== String(query.threadId)) {
-    return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+    return {
+      state: "missing",
+      durationMs: null,
+      reportedOutputTokens: null,
+      requestedModel: "",
+      generation: null,
+    };
   }
-  const variants = rows.map(validateStoredEvidence);
-  if (rows.length !== 1) {
-    return { state: "conflict", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+  const variants = rows.map((row) => {
+    const variant = validateStoredEvidence(row);
+    const schemaVersion = Number(row.schema_version);
+    return {
+      schemaVersion,
+      evidenceOrigin: String(row.evidence_origin),
+      responseId,
+      requestedModel: variant.requestedModel,
+      reportedOutputTokens: variant.reportedOutputTokens,
+      durationMs: variant.durationMs,
+      status: "completed",
+      completedAtMs: row.completed_at_ms === null ? null : Number(row.completed_at_ms),
+      ...(schemaVersion === 2 ? { generation: variant.generation } : {}),
+    };
+  });
+  const merged = mergeRequestTimingEvidence(variants);
+  if (merged.state !== "available" || merged.evidence === null) {
+    return {
+      state: "conflict",
+      durationMs: null,
+      reportedOutputTokens: null,
+      requestedModel: "",
+      generation: null,
+    };
   }
-
   return {
     state: "available",
-    durationMs: variants[0].durationMs,
-    reportedOutputTokens: variants[0].reportedOutputTokens,
-    requestedModel: variants[0].requestedModel,
+    durationMs: merged.evidence.durationMs,
+    reportedOutputTokens: merged.evidence.reportedOutputTokens,
+    requestedModel: merged.evidence.requestedModel,
+    generation: merged.evidence.generation ?? null,
   };
 }
 
@@ -1001,14 +1099,30 @@ function parseCodexRequestSampleKey(sample) {
   } catch {
     throw codexRequestTimingMismatch(`bounded Codex sample ${String(sample.sample_key)} has an invalid sample_key`);
   }
-  if (!Array.isArray(parsed) || parsed.length !== 4 || parsed.some((part) => typeof part !== "string" || part === "")) {
+  if (
+    !Array.isArray(parsed) ||
+    (parsed.length !== 4 && parsed.length !== 5) ||
+    parsed.some((part) => typeof part !== "string" || part === "")
+  ) {
     throw codexRequestTimingMismatch(`bounded Codex sample ${String(sample.sample_key)} has an invalid sample_key`);
   }
-  const [sourceKind, homeId, threadId, turnId] = parsed;
+  const [sourceKind, homeId, threadId, turnId, responseId] = parsed;
   if (sourceKind !== String(sample.source_kind) || homeId !== String(sample.home_id)) {
     throw codexRequestTimingMismatch(`bounded Codex sample ${String(sample.sample_key)} disagrees with its identity`);
   }
-  return { sourceKind, homeId, threadId, turnId };
+  const current = isGenerationPerfMethod(String(sample.method_version));
+  if ((current && parsed.length !== 5) || (!current && parsed.length !== 4)) {
+    throw codexRequestTimingMismatch(
+      `bounded Codex sample ${String(sample.sample_key)} has an unsupported key shape for its method version`,
+    );
+  }
+  return {
+    sourceKind,
+    homeId,
+    threadId,
+    turnId,
+    ...(responseId === undefined ? {} : { responseId }),
+  };
 }
 
 function codexRequestSampleGraph(database, sample, threadId) {
@@ -1110,18 +1224,34 @@ function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByT
   if (!turn) {
     throw codexRequestTimingMismatch(`bounded Codex sample ${String(sample.sample_key)} has no native request turn`);
   }
+  const response =
+    identity.responseId === undefined
+      ? null
+      : (Array.isArray(turn.responses) ? turn.responses : []).filter(
+          (candidate) => candidate.responseId === identity.responseId,
+        );
   if (
-    turn.requestSetComplete !== true ||
-    turn.recordConflictCount !== 0 ||
     typeof turn.model !== "string" ||
-    turn.model === ""
+    turn.model === "" ||
+    (identity.responseId === undefined
+      ? turn.requestSetComplete !== true || turn.recordConflictCount !== 0
+      : response.length !== 1 || response[0].conflict === true)
   ) {
     throw codexRequestTimingMismatch(
       `bounded Codex sample ${String(sample.sample_key)} has incomplete native request facts`,
     );
   }
 
-  const requests = turn.requests
+  const turnRequests =
+    identity.responseId === undefined
+      ? turn.requests
+      : turn.requests.filter((request) => request.responseId === identity.responseId);
+  if (identity.responseId !== undefined && turnRequests.length !== 1) {
+    throw codexRequestTimingMismatch(
+      `bounded Codex sample ${String(sample.sample_key)} has no unique native response request`,
+    );
+  }
+  const requests = turnRequests
     .map((request) => ({
       responseId: request.responseId,
       outputTokens: request.outputTokens,
@@ -1268,6 +1398,7 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
     }
     samplesByKey.delete(turn.sampleKey);
     const identity = parseCodexRequestSampleKey(sample);
+    const currentMethod = isGenerationPerfMethod(String(sample.method_version));
     if (
       turn.sourceKind !== identity.sourceKind ||
       turn.homeId !== identity.homeId ||
@@ -1276,55 +1407,93 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
       turn.sourcePath !== String(sample.source_path) ||
       turn.model !== String(sample.model) ||
       turn.requestSetComplete !== true ||
-      turn.requests.length !== Number(sample.request_count)
+      turn.requests.length !== Number(sample.request_count) ||
+      (currentMethod
+        ? turn.requests.length !== 1 ||
+          sample.timing_kind !== "generation" ||
+          sample.window !== "request" ||
+          sample.token_scope !== "non_reasoning_output"
+        : sample.timing_kind !== "request_e2e")
     ) {
       throw codexRequestTimingMismatch(`Codex request facts disagree with bounded sample ${turn.sampleKey}`);
     }
     codexRequestSampleGraph(database, sample, identity.threadId);
 
-    let timing;
-    try {
-      timing = resolveCodexTurnRequestTiming(
-        identity.homeId,
-        {
-          threadId: identity.threadId,
-          turnId: identity.turnId,
-          model: turn.model,
-          requests: turn.requests,
-          requestSetComplete: turn.requestSetComplete,
-        },
-        (query) =>
-          effective
-            ? effectiveCodexRequestTiming(database, effective.timingEvidence, query)
-            : lookupRequestTiming(database, {
-                homeId: query.homeId,
-                threadId: query.threadId,
-                turnId: query.turnId,
-                responseId: query.responseId,
-                model: query.model,
-                outputTokens: typeof query.outputTokens === "number" ? query.outputTokens : undefined,
-              }),
-      );
-    } catch (error) {
-      throw codexRequestTimingMismatch(
-        `bounded Codex sample ${turn.sampleKey} native timing lookup failed: ${error.message}`,
-      );
-    }
-    const effectiveTimingSource = timing.state === "complete" ? "explicit" : "unknown";
-    const effectiveDurationMs = timing.state === "complete" ? timing.durationMs : null;
-    if (
+    const lookup = (query) =>
       effective
-        ? sample.timing_source !== effectiveTimingSource ||
-          sample.duration_ms !== effectiveDurationMs ||
-          Number(sample.request_count) !== timing.requestCount
-        : timing.state !== "complete" ||
-          timing.timedRequestCount !== Number(sample.request_count) ||
-          timing.requestCount !== Number(sample.request_count) ||
-          timing.durationMs !== Number(sample.duration_ms)
-    ) {
-      throw codexRequestTimingMismatch(
-        `bounded Codex sample ${turn.sampleKey} duration or request count contradicts native timing facts`,
-      );
+        ? effectiveCodexRequestTiming(database, effective.timingEvidence, query)
+        : lookupRequestTiming(database, {
+            homeId: query.homeId,
+            threadId: query.threadId,
+            turnId: query.turnId,
+            responseId: query.responseId,
+            model: query.model,
+            outputTokens: typeof query.outputTokens === "number" ? query.outputTokens : undefined,
+            reasoningOutputTokens:
+              typeof query.reasoningOutputTokens === "number" ? query.reasoningOutputTokens : undefined,
+          });
+    if (currentMethod) {
+      let timing;
+      try {
+        timing = resolveCodexRequestTiming(
+          identity.homeId,
+          { threadId: identity.threadId, turnId: identity.turnId, model: turn.model },
+          turn.requests[0],
+          lookup,
+        );
+      } catch (error) {
+        throw codexRequestTimingMismatch(
+          `bounded Codex sample ${turn.sampleKey} native timing lookup failed: ${error.message}`,
+        );
+      }
+      const generation = generationPerfValues(timing.generation);
+      if (
+        timing.state !== "available" ||
+        timing.reportedOutputTokens !== turn.requests[0].outputTokens ||
+        generation === null ||
+        Number(sample.output_tokens) !== generation.outputTokens ||
+        Number(sample.duration_ms) !== generation.durationMs ||
+        Number(sample.request_count) !== 1
+      ) {
+        throw codexRequestTimingMismatch(
+          `bounded Codex sample ${turn.sampleKey} raw output, duration, or generation window contradicts native timing facts`,
+        );
+      }
+    } else {
+      let timing;
+      try {
+        timing = resolveCodexTurnRequestTiming(
+          identity.homeId,
+          {
+            threadId: identity.threadId,
+            turnId: identity.turnId,
+            model: turn.model,
+            requests: turn.requests,
+            requestSetComplete: turn.requestSetComplete,
+          },
+          lookup,
+        );
+      } catch (error) {
+        throw codexRequestTimingMismatch(
+          `bounded Codex sample ${turn.sampleKey} native timing lookup failed: ${error.message}`,
+        );
+      }
+      const effectiveTimingSource = timing.state === "complete" ? "explicit" : "unknown";
+      const effectiveDurationMs = timing.state === "complete" ? timing.durationMs : null;
+      if (
+        effective
+          ? sample.timing_source !== effectiveTimingSource ||
+            sample.duration_ms !== effectiveDurationMs ||
+            Number(sample.request_count) !== timing.requestCount
+          : timing.state !== "complete" ||
+            timing.timedRequestCount !== Number(sample.request_count) ||
+            timing.requestCount !== Number(sample.request_count) ||
+            timing.durationMs !== Number(sample.duration_ms)
+      ) {
+        throw codexRequestTimingMismatch(
+          `bounded Codex sample ${turn.sampleKey} duration or request count contradicts native timing facts`,
+        );
+      }
     }
   }
   return normalized;
@@ -2040,8 +2209,9 @@ export function assertHistoryArchiveCommitPlan(prepared, plan) {
       Array.isArray(perfDeletion) ||
       Object.keys(perfDeletion).sort().join(",") !== "methodVersion,sampleKeys,sha256,sourceKind,table" ||
       perfDeletion.table !== "perf_samples" ||
-      !["zcode", "codex"].includes(perfDeletion.sourceKind) ||
-      perfDeletion.methodVersion !== PERF_METHOD_VERSION ||
+      !["zcode", "codex", "workbuddy"].includes(perfDeletion.sourceKind) ||
+      (perfDeletion.sourceKind === "workbuddy" && !isGenerationPerfMethod(perfDeletion.methodVersion)) ||
+      !HISTORY_ARCHIVE_SUPPORTED_PERF_METHOD_VERSIONS.includes(perfDeletion.methodVersion) ||
       !/^[a-f0-9]{64}$/.test(perfDeletion.sha256) ||
       !Array.isArray(perfDeletion.sampleKeys) ||
       perfDeletion.sampleKeys.length === 0 ||

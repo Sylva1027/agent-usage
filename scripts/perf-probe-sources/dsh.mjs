@@ -8,9 +8,10 @@
  * - `step/start` 的 `(data.turn, data.step, row.time)`；
  * - `assistant/message` 的 `(data.turn, data.step, row.time, data.usage.outputTokens)`。
  *
- * 不访问 `data.stream`、任何正文载体、`step/end` 的 data/time —— `guardData()` 用 Proxy
- * 在运行时拦下这些键，因此 `streamAccessed/contentAccessed/stepEndAccessed` 是**实测**结果，
- * 而不是硬编码声明。产物只含聚合计数/布尔/穷举枚举，不含路径、会话 ID、模型名或正文。
+ * 只在成功 message 同时带可扣除非推理计数时检查其自身 `data.stream`；正文载体与
+ * `step/end` 的 data/time 仍不访问。`guardData()` 用 Proxy 在运行时拦下这些键，因此
+ * `streamAccessed/contentAccessed/stepEndAccessed` 是**实测**结果，而不是硬编码声明。
+ * 产物只含聚合计数/布尔/穷举枚举，不含路径、会话 ID、模型名或正文。
  *
  * 有界探测：按规范排序取首尾文件、全源最多 `maxRows` 行；截断时 `truncated/capped/complete`
  * 明确置位。含坏帧的文件其剩余记录同样不算完整来源（`complete=false` + `MALFORMED_FRAME`）。
@@ -19,6 +20,7 @@ import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
 
 import { dshSessionFiles, readDshSessionRows } from "../../src/dsh-usage.js";
+import { inspectDshAssistantGeneration } from "../../src/perf-sources/dsh.js";
 import { discoverDshHomes } from "../../src/usage-core.js";
 
 /** 生产 reader 只认识已实测的 v4；更高版本不按 v4 硬解。 */
@@ -39,6 +41,7 @@ const REASON_ENUM = Object.freeze({
   output: "output_missing_zero_invalid",
   duration: "duration_missing_nonpositive_invalid",
 });
+const DSH_ALL_GENERATION_PROVIDERS = new Set(["deepseek-account", "deepseek-official"]);
 
 /** 正文载体键：命中即计数并返回 undefined，原文永不进入投影。 */
 const STREAM_CARRIER_KEYS = new Set(["stream", "delta", "chunks", "chunk"]);
@@ -86,6 +89,10 @@ function integer(value) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function safeNonNegativeInteger(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function stringField(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -94,7 +101,7 @@ function stringField(value) {
  * 只读访问守卫：包住 `data`，拦下 stream/正文载体键。
  * 命中时返回 undefined 并计数，原文永不进入投影结果。
  */
-function guardData(data, access) {
+function guardData(data, access, { allowStream = false } = {}) {
   if (!data || typeof data !== "object") {
     return data;
   }
@@ -103,7 +110,7 @@ function guardData(data, access) {
       if (typeof property === "string") {
         if (STREAM_CARRIER_KEYS.has(property)) {
           access.stream += 1;
-          return undefined;
+          return allowStream ? Reflect.get(target, property, receiver) : undefined;
         }
         if (CONTENT_CARRIER_KEYS.has(property)) {
           access.content += 1;
@@ -124,20 +131,30 @@ function readHeaderConfig(data) {
   return { model: stringField(config.model), provider: stringField(config.provider) };
 }
 
-/** 只取 `data.usage.outputTokens`；usage 其余字段（input/cache/total）不读。 */
+/** Successful messages carry canonical provider/model source; only those two metadata fields are read. */
+function readMessageSourceConfig(data) {
+  const source = data?.message?.source;
+  if (!source || typeof source !== "object") {
+    return { model: "", provider: "" };
+  }
+  return { model: stringField(source.model), provider: stringField(source.provider) };
+}
+
+/** 只取 `data.usage.{outputTokens,reasoningTokens}`；input/cache/total 不读。 */
 function readUsageOutput(data) {
   const usage = data?.usage;
   if (!usage || typeof usage !== "object") {
-    return { present: false, output: null, invalid: false };
+    return { present: false, output: null, reasoning: null, invalid: false };
   }
   const raw = usage.outputTokens;
+  const reasoning = safeNonNegativeInteger(usage.reasoningTokens);
   if (raw === undefined || raw === null) {
-    return { present: false, output: null, invalid: false };
+    return { present: false, output: null, reasoning, invalid: false };
   }
   if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw) || raw < 0) {
-    return { present: true, output: null, invalid: true };
+    return { present: true, output: null, reasoning, invalid: true };
   }
-  return { present: true, output: raw, invalid: false };
+  return { present: true, output: raw, reasoning, invalid: false };
 }
 
 function createStats() {
@@ -149,6 +166,16 @@ function createStats() {
     stepStartCount: 0,
     assistantMessageCount: 0,
     outputTokensPresent: 0,
+    reasoningItemCount: 0,
+    reasoningMissingCount: 0,
+    reasoningZeroCount: 0,
+    generationInspectedCount: 0,
+    generationDurationKnownCount: 0,
+    generationDurationUnknownCount: 0,
+    officialMessageCount: 0,
+    officialCompleteSuccessCount: 0,
+    officialUsageParityCount: 0,
+    officialUsageMismatchCount: 0,
     // 终态证据（M0.6 决议 DSH-G1）：只统计 `step/end` **判别式**与其 (turn,step) 归位，
     // 不读取该帧的 data 其余键与 time。
     stepEndFrames: 0,
@@ -338,14 +365,53 @@ function pairRows(rows, session, stats, access) {
     }
     if (type === "assistant/message") {
       const time = numeric(row.time);
+      const sourceConfig = readMessageSourceConfig(row.data);
       const data = guardData(row.data, access);
       const turn = integer(data?.turn);
       const step = integer(data?.step);
+      const messageModel = sourceConfig.model || session.currentModel;
+      const messageProvider = sourceConfig.provider || session.currentProvider;
       const usage = readUsageOutput(data);
       if (usage.present) {
         stats.outputTokensPresent += 1;
       } else {
         stats.missingUsage += 1;
+      }
+      const explicitReasoningKnown =
+        usage.output !== null && !usage.invalid && usage.reasoning !== null && usage.reasoning <= usage.output;
+      const official = DSH_ALL_GENERATION_PROVIDERS.has(messageProvider);
+      if (official || explicitReasoningKnown) {
+        const generationData = guardData(row.data, access, { allowStream: true });
+        const generation = inspectDshAssistantGeneration(generationData);
+        if (generation.outputTokens !== usage.output || generation.reasoningTokens !== usage.reasoning) {
+          throw new Error("DSH probe invariant violated: usage changed while inspecting one message");
+        }
+        stats.generationInspectedCount += 1;
+        if (official) {
+          stats.officialMessageCount += 1;
+          if (generation.successful) {
+            stats.officialCompleteSuccessCount += 1;
+          }
+          if (generation.usageParity) {
+            stats.officialUsageParityCount += 1;
+          } else if (generation.usageChunks > 0) {
+            stats.officialUsageMismatchCount += 1;
+          }
+        }
+        const selectedDuration = official ? generation.allGenerationDurationMs : generation.durationMs;
+        if (selectedDuration !== null) {
+          stats.generationDurationKnownCount += 1;
+        } else {
+          stats.generationDurationUnknownCount += 1;
+        }
+      }
+      if (explicitReasoningKnown) {
+        stats.reasoningItemCount += 1;
+        if (usage.reasoning === 0) {
+          stats.reasoningZeroCount += 1;
+        }
+      } else {
+        stats.reasoningMissingCount += 1;
       }
       if (time === null || turn === null || step === null) {
         stats.unplaced += 1;
@@ -360,8 +426,8 @@ function pairRows(rows, session, stats, access) {
         time,
         output: usage.output,
         invalid: usage.invalid,
-        model: session.currentModel,
-        provider: session.currentProvider,
+        model: messageModel,
+        provider: messageProvider,
         frameIndex,
       });
       addStepTurn(session, step, turn);
@@ -552,6 +618,16 @@ function assertLayerInvariants(stats) {
     "unpairedCandidates",
     "stepEndFrames",
     "completeEvidenceCount",
+    "reasoningItemCount",
+    "reasoningMissingCount",
+    "reasoningZeroCount",
+    "generationInspectedCount",
+    "generationDurationKnownCount",
+    "generationDurationUnknownCount",
+    "officialMessageCount",
+    "officialCompleteSuccessCount",
+    "officialUsageParityCount",
+    "officialUsageMismatchCount",
   ];
   for (const name of counters) {
     const value = stats[name];
@@ -572,6 +648,21 @@ function assertLayerInvariants(stats) {
   }
   if (stats.sampled !== stats.completeEvidenceCount) {
     throw new Error("DSH probe invariant violated: sampled !== completeEvidenceCount");
+  }
+  if (stats.reasoningItemCount + stats.reasoningMissingCount !== stats.assistantMessageCount) {
+    throw new Error("DSH probe invariant violated: reasoning known + missing must equal assistant messages");
+  }
+  if (stats.reasoningZeroCount > stats.reasoningItemCount) {
+    throw new Error("DSH probe invariant violated: reasoning zero count exceeds known reasoning count");
+  }
+  if (stats.generationDurationKnownCount + stats.generationDurationUnknownCount !== stats.generationInspectedCount) {
+    throw new Error("DSH probe invariant violated: generation duration state must partition inspected messages");
+  }
+  if (stats.officialCompleteSuccessCount > stats.officialMessageCount) {
+    throw new Error("DSH probe invariant violated: official successes exceed official messages");
+  }
+  if (stats.officialUsageParityCount + stats.officialUsageMismatchCount > stats.officialMessageCount) {
+    throw new Error("DSH probe invariant violated: official usage parity exceeds official messages");
   }
 }
 
@@ -691,12 +782,15 @@ export async function probe({ maxFiles = null, maxRows = null, full = false } = 
       budgetExhausted = true;
     }
     rowsScanned += usable.length;
+    const assistantMessagesBefore = stats.assistantMessageCount;
     observeRows(usable, stats);
+    const observedAssistantMessages = stats.assistantMessageCount - assistantMessagesBefore;
 
     const header = usable.find((row) => frameType(row) === "session") ?? null;
     if (!header) {
       stats.missingSessionHeader += 1;
       stats.unplaced += usable.length;
+      stats.reasoningMissingCount += observedAssistantMessages;
       addFlag(stats, "TIME_UNPLACED", usable.length);
     } else {
       const version = numeric(header.version);
@@ -706,6 +800,7 @@ export async function probe({ maxFiles = null, maxRows = null, full = false } = 
         // v4 之外的版本不按 v4 硬解（与生产 reader 一致）；其帧不进入配对。
         stats.versionNonV4Count += 1;
         stats.unsupportedVersionCount += 1;
+        stats.reasoningMissingCount += observedAssistantMessages;
         if (rowsScanned >= rowBudget) {
           budgetExhausted = true;
         }
@@ -824,12 +919,21 @@ export async function probe({ maxFiles = null, maxRows = null, full = false } = 
     stats.sessionsWithHeader > 0 && stats.versionNonV4Count === 0 && stats.unknownVersions === 0 ? "v4" : "unknown";
   // delegationDepth > 0 是**唯一**可证的 subagent 证据；depth == 0 不能反推 main。
   const allSubagentDepth = stats.sessionsWithHeader > 0 && stats.subagentDepthSessions === stats.sessionsWithHeader;
+  const reasoningKnown = stats.reasoningItemCount > 0;
+  const generationInspected = stats.generationInspectedCount > 0;
+  const generationTimingSource = !generationInspected
+    ? "derived"
+    : stats.generationDurationKnownCount === 0
+      ? "none"
+      : stats.generationDurationUnknownCount > 0
+        ? "mixed"
+        : "explicit";
 
   const fields = {
     windowKind: "step",
     timingKind: "request_e2e",
-    timingSource: "derived",
-    durationBasis: "message_minus_start",
+    timingSource: generationTimingSource,
+    durationBasis: generationInspected ? "epoch_diff" : "message_minus_start",
     durationProvenance: "timestamp_fallback",
     tokenScope: "reported_output_unspecified",
     statusKind: stats.completeEvidenceCount > 0 ? "completed" : "unverified",
@@ -865,10 +969,12 @@ export async function probe({ maxFiles = null, maxRows = null, full = false } = 
     stepResetObserved: stats.stepReuseAcrossTurns > 0,
     modelChangedMidSession: stats.headerChanges > 0,
     unitAmbiguous,
-    timestampFallbackUsed: true,
-    explicitDurationUsed: false,
+    timestampFallbackUsed: !generationInspected,
+    explicitDurationUsed: stats.generationDurationKnownCount > 0,
     completedExplicit: false,
     outputExplicit: true,
+    reasoningRelationKnown: reasoningKnown,
+    reasoningSeparate: reasoningKnown,
     allColumnsPresent: REQUIRED_COLUMN_NAMES.every((name) => frameColumns[name] === "present"),
     distinctModels: stats.modelKeys.size,
     distinctProviders: stats.providerKeys.size,
@@ -898,6 +1004,9 @@ export async function probe({ maxFiles = null, maxRows = null, full = false } = 
     sessionHeaderCount: stats.sessionHeaderCount,
     stepStartCount: stats.stepStartCount,
     assistantMessageCount: stats.assistantMessageCount,
+    reasoningItemCount: stats.reasoningItemCount,
+    reasoningMissingCount: stats.reasoningMissingCount,
+    reasoningZeroCount: stats.reasoningZeroCount,
     stepEndFrames: stats.stepEndFrames,
     stepEndUnkeyable: stats.stepEndUnkeyable,
     completeEvidenceCount: stats.completeEvidenceCount,

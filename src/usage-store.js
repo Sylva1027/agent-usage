@@ -9,7 +9,6 @@ import { plainRolloutPath } from "./codex-rollout.js";
 import {
   COMPARISON_PERIOD_KEYS,
   buildPerfStatsBlock,
-  buildMagpieTimingFingerprint,
   buildUsageFingerprint,
   discoverSessionFiles,
   discoverUsageSources,
@@ -43,13 +42,15 @@ import {
   getPricingCatalog,
 } from "./pricing.js";
 import { loadServiceTierEvidence, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
-import { HistoryQuoteInputs } from "./history-quote-inputs.js";
 import {
-  buildModelActivity,
-  canonicalModelName,
-  CODEX_AUTO_REVIEW_MODEL,
-  isCodexAutoReview,
-} from "../public/pricing-models.js";
+  loadQuotaSourceEvidence,
+  quotaSourceEvidenceSnapshot,
+  quotaSourceEvidenceFromSnapshot,
+} from "./quota-source-evidence.js";
+import { quotaSourceResolver } from "./quota-usage-source.js";
+import { isQuotaUsage } from "../public/quota-usage.js";
+import { HistoryQuoteInputs } from "./history-quote-inputs.js";
+import { buildModelActivity, canonicalModelName } from "../public/pricing-models.js";
 import { addPeriodEvent, emptyPeriodMetrics, summarizePeriodComparison } from "../public/period-comparison.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
@@ -60,6 +61,9 @@ import {
   workbuddySessionMessageFiles,
   workbuddyTraceFiles,
   workbuddyTraceSpans,
+  workbuddyLogSnapshot,
+  workbuddyTextTimingSpans,
+  createWorkbuddyTextTimingLookup,
 } from "./workbuddy-usage.js";
 import { isPerfSourceEnabled, streamPerfSamplesForFile, classifyPerfSources } from "./perf-sources/index.js";
 import {
@@ -75,13 +79,19 @@ import {
 } from "./perf-sources/codex-thread.js";
 import { foldCodexRolloutMetadata } from "./perf-sources/codex-fold.js";
 import { normalizeRequestTimingEvidence } from "./perf-request-timing.js";
-import { MAGPIE_TIMING_ORIGIN, MagpieRequestTimings } from "./perf-magpie-timing.js";
 import {
   importRequestTimingEvidence as importStoredRequestTimingEvidence,
   lookupRequestTiming as lookupStoredRequestTiming,
+  validateStoredEvidence,
   readRequestTimingRevision,
 } from "./perf-request-timing-store.js";
-import { PERF_METHOD_VERSION, PERF_SOURCE_WARNING_CODES, canonicalPerfSourceKind } from "./perf-stats.js";
+import {
+  PERF_METHOD_VERSION,
+  PERF_SUPPORTED_METHOD_VERSIONS,
+  PERF_SOURCE_WARNING_CODES,
+  canonicalPerfSourceKind,
+  isGenerationPerfMethod,
+} from "./perf-stats.js";
 import { createHash } from "node:crypto";
 import {
   buildTimelineRows,
@@ -90,9 +100,16 @@ import {
   deriveTimelineBucket,
   quotaRecordsForRange,
   quotaRecordValues,
+  previousQuotaRange,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 21;
+export const STORE_SCHEMA_VERSION = 23;
+
+const QUOTA_SOURCES_DDL = `CREATE TABLE IF NOT EXISTS quota_usage_sources (
+  source_path TEXT NOT NULL, home_id TEXT NOT NULL, session_id TEXT NOT NULL,
+  timestamp_ms INTEGER NOT NULL, quota_source TEXT NOT NULL, until_ms INTEGER NOT NULL,
+  PRIMARY KEY (source_path, session_id, timestamp_ms)
+) STRICT;`;
 
 const REQUEST_TIMING_PUBLISHED_REVISION_META = "perf_request_timing_published_revision";
 const REQUEST_TIMING_PUBLICATION_SEQ_META = "perf_request_timing_publication_seq";
@@ -118,7 +135,6 @@ const USAGE_PROJECTION_IGNORED_META = [
   "perf_missing_sources",
   "perf_file_fingerprints",
   "perf_file_warnings",
-  "perf_magpie_ledger_fingerprint",
   "perf_method_version",
   "perf_index_version",
   "perf_indexed_at",
@@ -153,6 +169,15 @@ const HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS = Object.freeze([
   "status",
   "completed_at_ms",
 ]);
+
+function historyArchiveTimingEvidenceColumns(database) {
+  return database
+    .prepare("PRAGMA table_info(perf_request_timing_evidence)")
+    .all()
+    .some((row) => row.name === "generation_json")
+    ? [...HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS, "generation_json"]
+    : HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS;
+}
 const PROJECT_LOG_TRUNCATION_WARNING_CODE = "PROJECT_LOG_TRUNCATED";
 const PROJECT_LOG_MALFORMED_LINE_WARNING_CODE = "PROJECT_LOG_MALFORMED_JSONL";
 
@@ -880,7 +905,7 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
   return rows;
 }
 
-function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence) {
+function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence, resolveQuotaSource) {
   const timestampMs = Number(row.timestamp_ms);
   const sessionId = String(row.session_id);
   return {
@@ -892,6 +917,9 @@ function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence) {
     channel: String(row.channel),
     project: String(row.project),
     model: String(row.model),
+    ...(canonicalPerfSourceKind(String(sourceKind)) === "codex"
+      ? { quotaSource: resolveQuotaSource?.(String(row.home_id), sessionId, timestampMs) || "unknown" }
+      : {}),
     cwd: String(row.cwd),
     repositoryKey: String(row.repository_key),
     repositoryPath: String(row.repository_path),
@@ -1082,7 +1110,7 @@ function publishedUsageSessionsFromEvents(events, homes) {
   );
 }
 
-function publishedUsageEventsFromUnion(union, serviceTierEvidence) {
+function publishedUsageEventsFromUnion(union, serviceTierEvidence, resolveQuotaSource) {
   // This request owns the rows; release raw facts as their public projection replaces them.
   for (let index = 0; index < union.rows.length; index += 1) {
     const row = union.rows[index];
@@ -1093,7 +1121,7 @@ function publishedUsageEventsFromUnion(union, serviceTierEvidence) {
         `published source ${String(row.source_path)} has no verified source identity`,
       );
     }
-    union.rows[index] = publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence);
+    union.rows[index] = publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence, resolveQuotaSource);
   }
   return union.rows;
 }
@@ -1163,7 +1191,7 @@ function historyArchivePerfAuthority(database, authorizedSegmentIds, recordsById
   ) {
     throw historyArchiveError(
       "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID",
-      "history archive perf authority must grant one or more zcode or codex tps-v2 segments matching their database digests",
+      "history archive perf authority must grant one or more supported source segments matching their database digests",
     );
   }
 
@@ -1178,15 +1206,16 @@ function historyArchivePerfAuthority(database, authorizedSegmentIds, recordsById
       segment.databaseSha256 !== segmentId ||
       !Array.isArray(segment.sourceKinds) ||
       segment.sourceKinds.length !== 1 ||
-      !["zcode", "codex"].includes(segment.sourceKinds[0]) ||
+      !["zcode", "codex", "workbuddy"].includes(segment.sourceKinds[0]) ||
       !Array.isArray(segment.methodVersions) ||
       segment.methodVersions.length !== 1 ||
-      segment.methodVersions[0] !== PERF_METHOD_VERSION ||
+      !PERF_SUPPORTED_METHOD_VERSIONS.includes(segment.methodVersions[0]) ||
+      (segment.sourceKinds[0] === "workbuddy" && !isGenerationPerfMethod(segment.methodVersions[0])) ||
       segmentIds.has(segmentId)
     ) {
       throw historyArchiveError(
         "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID",
-        "history archive perf authority must grant unique zcode or codex tps-v2 segments matching their database digests",
+        "history archive perf authority must grant unique supported source segments matching their database digests",
       );
     }
     const sourceKind = segment.sourceKinds[0];
@@ -1198,7 +1227,7 @@ function historyArchivePerfAuthority(database, authorizedSegmentIds, recordsById
         `perf authority segment ${segmentId} is not the authorized registered segment`,
       );
     }
-    segments.push({ segmentId, record, sourceKind });
+    segments.push({ segmentId, record, sourceKind, methodVersion: segment.methodVersions[0] });
   }
   return segments;
 }
@@ -1215,7 +1244,7 @@ function mergeHistoryArchivePerfSamples(perfCarrier, coldSamples, sourceKind, re
   );
   const coldSampleKeys = new Set(coldSamples.map((sample) => String(sample.sampleKey)));
   for (const sample of coldSamples) {
-    if (sample.sourceKind !== sourceKind || sample.methodVersion !== PERF_METHOD_VERSION) {
+    if (sample.sourceKind !== sourceKind || !PERF_SUPPORTED_METHOD_VERSIONS.includes(sample.methodVersion)) {
       throw historyArchiveError(
         "HISTORY_ARCHIVE_PERF_AUTHORITY_MISMATCH",
         `perf authority declared ${sourceKind} but returned sample ${sample.sampleKey} from ${sample.sourceKind}`,
@@ -1451,7 +1480,7 @@ const PERF_SAMPLES_DDL = `
         reasoning_effort TEXT NOT NULL,
         model_evidence TEXT NOT NULL,
         window TEXT NOT NULL,
-        timing_kind TEXT NOT NULL CHECK (timing_kind IN ('request_e2e', 'item_span_estimate')),
+        timing_kind TEXT NOT NULL CHECK (timing_kind IN ('request_e2e', 'item_span_estimate', 'generation')),
         timing_source TEXT NOT NULL,
         token_scope TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('completed', 'failed', 'cancelled', 'in_progress', 'unverified')),
@@ -1848,14 +1877,17 @@ export function decodePerfSample(row) {
 }
 
 function historyArchiveTimingVariantKey(payload) {
-  return JSON.stringify([
+  const values = [
     payload.schema_version,
     payload.requested_model,
     payload.reported_output_tokens,
     payload.duration_ms,
     payload.status,
     payload.completed_at_ms,
-  ]);
+  ];
+  if (payload.schema_version === 2)
+    values.push(payload.generation_json === null ? null : JSON.parse(payload.generation_json));
+  return JSON.stringify(values);
 }
 
 function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, segment) {
@@ -1877,9 +1909,9 @@ function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, s
       payload.source_kind === "" ||
       payload.home_id === "" ||
       !["main", "subagent", "unknown"].includes(payload.agent_kind) ||
-      !["request_e2e", "item_span_estimate"].includes(payload.timing_kind) ||
+      !["request_e2e", "item_span_estimate", "generation"].includes(payload.timing_kind) ||
       !["completed", "failed", "cancelled", "in_progress", "unverified"].includes(payload.status) ||
-      payload.method_version !== PERF_METHOD_VERSION ||
+      !PERF_SUPPORTED_METHOD_VERSIONS.includes(payload.method_version) ||
       !Number.isSafeInteger(payload.ts_ms) ||
       payload.ts_ms < Number(segment.start_ms) ||
       payload.ts_ms >= Number(segment.end_ms)
@@ -1892,16 +1924,24 @@ function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, s
   }
 
   if (factTable === "perf_request_timing_evidence") {
-    if (!hasExactObjectKeys(payload, HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS)) {
+    const columns = Object.hasOwn(payload, "generation_json")
+      ? [...HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS, "generation_json"]
+      : HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS;
+    if (!hasExactObjectKeys(payload, columns)) {
       throw historyArchiveRevisionError(
         "archive timing revision payload must contain exactly the perf_request_timing_evidence columns",
       );
+    }
+    try {
+      validateStoredEvidence(payload);
+    } catch (error) {
+      throw historyArchiveRevisionError(`archive timing revision payload is invalid: ${error.message}`);
     }
     const textColumns = ["home_id", "evidence_origin", "response_id", "variant_key", "requested_model", "status"];
     if (
       textColumns.some((column) => typeof payload[column] !== "string" || payload[column] === "") ||
       payload.home_id !== sourceIdentity.home_id ||
-      payload.schema_version !== 1 ||
+      ![1, 2].includes(payload.schema_version) ||
       !Number.isSafeInteger(payload.reported_output_tokens) ||
       payload.reported_output_tokens < 0 ||
       !Number.isSafeInteger(payload.duration_ms) ||
@@ -1913,7 +1953,7 @@ function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, s
     ) {
       throw historyArchiveRevisionError("archive timing revision payload is invalid");
     }
-    return Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, payload[column]]));
+    return Object.fromEntries(columns.map((column) => [column, payload[column]]));
   }
 
   throw historyArchiveRevisionError(`archive perf revision table ${String(factTable)} is unsupported`);
@@ -2080,9 +2120,10 @@ function assertHistoryArchiveRevisionColumns(database, table, expectedColumns) {
 }
 
 function linkedPerfRequestTimingEvidence(database, sampleKey) {
+  const columns = historyArchiveTimingEvidenceColumns(database);
   return database
     .prepare(
-      `SELECT DISTINCT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => `evidence.${column}`).join(", ")}
+      `SELECT DISTINCT ${columns.map((column) => `evidence.${column}`).join(", ")}
        FROM perf_sample_sources AS dependencies
        JOIN perf_rollout_threads AS owners ON owners.source_path = dependencies.source_path
        JOIN perf_request_timing_threads AS timing
@@ -2090,10 +2131,10 @@ function linkedPerfRequestTimingEvidence(database, sampleKey) {
        JOIN perf_request_timing_evidence AS evidence
          ON evidence.home_id = timing.home_id AND evidence.response_id = timing.response_id
        WHERE dependencies.sample_key = ?
-       ORDER BY ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => `evidence.${column}`).join(", ")}`,
+       ORDER BY ${columns.map((column) => `evidence.${column}`).join(", ")}`,
     )
     .all(String(sampleKey))
-    .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+    .map((row) => Object.fromEntries(columns.map((column) => [column, row[column]])));
 }
 
 function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence) {
@@ -2101,7 +2142,7 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
     (sample) =>
       sample.source_kind === "codex" &&
       sample.status === "completed" &&
-      sample.timing_kind === "request_e2e" &&
+      ["request_e2e", "generation"].includes(sample.timing_kind) &&
       sample.timing_source === "explicit",
   );
   if (required.length === 0) return;
@@ -2117,7 +2158,8 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
   );
   for (const sample of required) {
     const sampleKey = String(sample.sample_key);
-    const links = linked.all(sampleKey);
+    const responseId = isGenerationPerfMethod(sample.method_version) ? JSON.parse(sampleKey)[4] : null;
+    const links = linked.all(sampleKey).filter((link) => responseId === null || link.response_id === responseId);
     if (
       links.length === 0 ||
       links.some((link) => !evidenceKeys.has(JSON.stringify([String(link.home_id), String(link.response_id)])))
@@ -2130,6 +2172,7 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
 }
 
 function applyHistoryArchivePerfRevisions(database, segment, samples, revisions = []) {
+  const timingColumns = historyArchiveTimingEvidenceColumns(database);
   if (revisions.length === 0) {
     return { samples: samples.map(decodePerfSample), revisionsBySampleKey: new Map() };
   }
@@ -2177,11 +2220,7 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
       continue;
     }
 
-    assertHistoryArchiveRevisionColumns(
-      database,
-      "perf_request_timing_evidence",
-      HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS,
-    );
+    assertHistoryArchiveRevisionColumns(database, "perf_request_timing_evidence", timingColumns);
     const linked = database.prepare(
       `SELECT 1 AS present
        FROM perf_request_timing_threads AS timing
@@ -2199,12 +2238,12 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
     }
     effectiveTimingEvidence ??= database
       .prepare(
-        `SELECT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.join(", ")}
+        `SELECT ${timingColumns.join(", ")}
          FROM perf_request_timing_evidence
          ORDER BY home_id, evidence_origin, response_id, variant_key`,
       )
       .all()
-      .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+      .map((row) => Object.fromEntries(timingColumns.map((column) => [column, row[column]])));
     effectiveTimingEvidence = applyHistoryArchivePerfRevisionDeltas(
       effectiveTimingEvidence,
       revision,
@@ -2214,12 +2253,12 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
   }
   effectiveTimingEvidence ??= database
     .prepare(
-      `SELECT ${HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.join(", ")}
+      `SELECT ${timingColumns.join(", ")}
        FROM perf_request_timing_evidence
        ORDER BY home_id, evidence_origin, response_id, variant_key`,
     )
     .all()
-    .map((row) => Object.fromEntries(HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS.map((column) => [column, row[column]])));
+    .map((row) => Object.fromEntries(timingColumns.map((column) => [column, row[column]])));
   assertHistoryArchiveEffectiveTimingEvidence(database, effectiveSamples, effectiveTimingEvidence);
   return {
     samples: effectiveSamples.map(decodePerfSample),
@@ -2854,8 +2893,8 @@ function eventRangeFilter(range) {
       params: rangeParameters(range),
     };
   }
-  const predicates = ["LOWER(TRIM(model)) <> ?"];
-  const params = [CODEX_AUTO_REVIEW_MODEL];
+  const predicates = ["usage_quota_allowed(model, home_id, session_id, timestamp_ms) = 1"];
+  const params = [];
   if (range.start) {
     predicates.push("timestamp_ms >= ?");
     params.push(range.start.getTime());
@@ -3008,7 +3047,7 @@ function summarizeQuotaRecordWindow(events, window, excludedHomeIds, usdToCnyRat
       timestamp >= start &&
       timestamp <= end &&
       !excludedHomeIds.has(String(event.homeId)) &&
-      !isCodexAutoReview(event.model)
+      isQuotaUsage(event)
     );
   });
   const total = { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
@@ -3088,6 +3127,9 @@ function enabledPerfSourceStat(kind, filePath) {
     }
     // 内容摘要：首尾各 64KiB（SQLite 头 + 追加/改写的尾部页都能覆盖）。
     const digest = createHash("sha256");
+    const readerKind = canonicalizeKind(kind);
+    if (readerKind === "dsh") digest.update("dsh:all-generation-v2");
+    if (readerKind === "workbuddy") digest.update("workbuddy:native-generation-v1");
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],
@@ -3322,7 +3364,7 @@ function buildPublishedSourcesFingerprint(
   missingSources = [],
 ) {
   const byPath = publishedFingerprints || {};
-  const parts = [];
+  const parts = [JSON.stringify(["method", PERF_METHOD_VERSION])];
   const rowsByHome = new Map();
   for (const row of publishedFiles || []) {
     const key = `${canonicalizeKind(row?.kind)}\u0000${String(row?.home_id ?? "")}`;
@@ -3380,17 +3422,18 @@ function buildPublishedSourcesFingerprint(
  */
 async function inspectWorkbuddyTrace(homePath) {
   const traceFiles = await workbuddyTraceFiles(homePath);
+  const text = await workbuddyLogSnapshot(homePath);
   /** @type {Map<string, string>} */
   const fingerprints = new Map();
   const hash = createHash("sha256");
-  let complete = true;
-  for (const filePath of traceFiles) {
+  let complete = text.complete;
+  for (const filePath of [...traceFiles, ...text.files].sort()) {
     const fingerprint = enabledPerfSourceStat("workbuddy", filePath);
     fingerprints.set(filePath, fingerprint);
     if (fingerprint === null) complete = false;
     hash.update(`${filePath}\t${fingerprint ?? "!"}\n`);
   }
-  return { traceFiles, fingerprints, fingerprint: hash.digest("hex"), complete };
+  return { traceFiles, textFiles: text.files, fingerprints, fingerprint: hash.digest("hex"), complete };
 }
 
 /**
@@ -4292,12 +4335,7 @@ function createPublishedFileMapsView(store) {
 export class UsageStore {
   constructor(options = {}) {
     this.options = options;
-    this.magpieRequestTimings = new MagpieRequestTimings();
-    this.magpieTimingLoaded = false;
-    this.magpieTimingPublication = "";
-    this.magpieTimingFile = "";
     this.nativeTimingThreads = new Map();
-    this.magpieNativeSignatures = new Map();
     /** Last successfully published live and retained path sets, by Codex home. */
     this.codexPublishedPaths = new Map();
     this.metadataCache = null;
@@ -4338,6 +4376,9 @@ export class UsageStore {
     this.checkedAt = "";
     this.repositoryResolver = createRepositoryResolver();
     this.serviceTierEvidence = null;
+    this.quotaSourceEvidence = null;
+    this.quotaSourceLookup = quotaSourceResolver([]);
+    this.quotaSourceRevision = -1;
     /** S1：**同步轮次内**已解码的 published 映射视图（轮外恒为 `null`）。 */
     this.publishedFileMapsView = null;
     /**
@@ -4357,6 +4398,9 @@ export class UsageStore {
      * @type {Map<string, string>}
      */
     this.workbuddyTraceFingerprints = new Map();
+    this.workbuddyTimingSpans = new Map();
+    this.workbuddyTextTimingLookups = new Map();
+    this.workbuddyTextMessageIds = new Map();
     /**
      * C3 卡：**实例私有**的"未变文件标准化投影"缓存（`readCodexRolloutMetadata` 的返回对象）。
      *
@@ -4783,12 +4827,45 @@ export class UsageStore {
       migrate(ARCHIVE_SEGMENTS_DDL, 21, () => assertArchiveSegmentsSchema(this.database));
       version = 21;
     }
+    if (version === 21) {
+      // Rebuild the CHECK without cascading away the existing dependency graph.
+      this.database.exec("PRAGMA foreign_keys = OFF");
+      try {
+        migrate(
+          `CREATE TEMP TABLE perf_samples_v3_migration AS SELECT * FROM perf_samples;
+           DROP TABLE perf_samples;
+           ${PERF_SAMPLES_DDL}
+           INSERT INTO perf_samples SELECT * FROM temp.perf_samples_v3_migration;
+           DROP TABLE temp.perf_samples_v3_migration;
+           UPDATE source_files SET size = -1, mtime_ms = -1;`,
+          22,
+          () => {
+            assertPerfSamplesSchema(this.database);
+            initializeRequestTimingSchema(this.database);
+            if (this.database.prepare("PRAGMA foreign_key_check").all().length > 0)
+              throw new Error("TPS schema migration changed source dependencies");
+          },
+        );
+        version = 22;
+      } finally {
+        this.database?.exec("PRAGMA foreign_keys = ON");
+      }
+    }
+    if (version === 22) {
+      migrate(
+        `${QUOTA_SOURCES_DDL}
+        UPDATE source_files SET size = -1, mtime_ms = -1 WHERE kind IN ('main', 'jetbrains', 'extra', 'codex');`,
+        23,
+      );
+      version = 23;
+    }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
       throw new Error(`不支持的用量索引版本：${version}`);
     }
     if (version === 0) {
+      this.database.exec(QUOTA_SOURCES_DDL);
       // 全新库：这个分支被**无条件**标成常量当前值（AN-9），因此它**结构上不可能**覆盖
       // v11→12 迁移 —— 建表放在抬版本之前，中途失败留下的库仍是 version 0，下次打开可自愈。
       this.database.exec(PERF_SAMPLES_DDL);
@@ -4813,6 +4890,11 @@ export class UsageStore {
       assertArchiveSegmentsSchema(this.database);
       this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     }
+    if (this.readMetaRaw(REQUEST_TIMING_PUBLICATION_SEQ_META) === undefined) {
+      this.database
+        .prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, '0')")
+        .run(REQUEST_TIMING_PUBLICATION_SEQ_META);
+    }
     this.database.exec("CREATE INDEX IF NOT EXISTS events_repository_idx ON events(repository_key)");
     this.database.exec("CREATE INDEX IF NOT EXISTS events_source_path_idx ON events(source_path)");
     if (this.readMetaRaw("codex_rollout_reader_version") !== CODEX_ROLLOUT_READER_VERSION) {
@@ -4830,6 +4912,9 @@ export class UsageStore {
       }
     }
     this.generatedAt = this.readMeta("generated_at");
+    const quotaEvidence = this.readMetaRaw("quota_source_log_evidence");
+    if (quotaEvidence) this.quotaSourceEvidence = quotaSourceEvidenceFromSnapshot(JSON.parse(quotaEvidence));
+    this.quotaSourceRevision = -1;
     this.fingerprint = this.readMeta("fingerprint");
     // ── T2 卡：把 T1 的**私有持久投影**接到 planner 实际使用的实例字段 ─────────────────────────
     // 位置必须在这里（`open()` 尾部），两个理由都是硬性的：
@@ -5058,8 +5143,6 @@ export class UsageStore {
     this.externalCommitCount += 1;
     this.codexPublishedPaths.clear();
     this.nativeTimingThreads.clear();
-    this.magpieNativeSignatures.clear();
-    this.magpieTimingPublication = "";
     if (this.publishedFileMapsView) {
       this.publishedFileMapsView.fingerprints = null;
       this.publishedFileMapsView.warnings = null;
@@ -5068,6 +5151,8 @@ export class UsageStore {
     try {
       this.generatedAt = this.readMeta("generated_at");
       this.fingerprint = this.readMeta("fingerprint");
+      const quotaEvidence = this.readMetaRaw("quota_source_log_evidence");
+      if (quotaEvidence) this.quotaSourceEvidence = quotaSourceEvidenceFromSnapshot(JSON.parse(quotaEvidence));
     } catch {
       // 库在两步之间被换掉/关掉 ⇒ 保持原值：读路径不得因为"元数据重载"而抛错。
     }
@@ -5182,7 +5267,6 @@ export class UsageStore {
     return {
       indexVersion: this.readMeta("perf_index_version"),
       timingRevision: timingPending ? String(timingRevision) : "",
-      magpieTimingFingerprint: this.readMeta("perf_magpie_ledger_fingerprint"),
     };
   }
 
@@ -5273,6 +5357,7 @@ export class UsageStore {
                 requests: /** @type {Array<Record<string, unknown>>} */ (turn.requests).map((request) => ({
                   responseId: request.responseId,
                   outputTokens: request.outputTokens,
+                  reasoningTokens: request.reasoningOutputTokensKnown === true ? request.reasoningOutputTokens : null,
                 })),
               })),
             };
@@ -5720,7 +5805,7 @@ export class UsageStore {
               segmentId: segment.segmentId,
               databaseSha256: segment.segmentId,
               sourceKinds: [segment.sourceKind],
-              methodVersions: [PERF_METHOD_VERSION],
+              methodVersions: [segment.methodVersion],
             },
           ]),
         );
@@ -5728,7 +5813,7 @@ export class UsageStore {
           segmentId,
           databaseSha256: segmentId,
           sourceKinds: [plan.perfDeletion.sourceKind],
-          methodVersions: [PERF_METHOD_VERSION],
+          methodVersions: [plan.perfDeletion.methodVersion],
         });
         this.writeMeta(
           HISTORY_ARCHIVE_PERF_AUTHORITY_META,
@@ -6017,7 +6102,7 @@ export class UsageStore {
         assertHistoryArchiveRevisionColumns(
           database,
           "perf_request_timing_evidence",
-          HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS,
+          historyArchiveTimingEvidenceColumns(database),
         );
         for (const sampleKey of includeTimingEvidenceForSampleKeys) {
           timingEvidenceBySampleKey.set(String(sampleKey), linkedPerfRequestTimingEvidence(database, sampleKey));
@@ -6990,6 +7075,10 @@ export class UsageStore {
     };
     if (!database) return outcome;
     const scopedHomeId = String(homeId ?? "").trim() || homePath;
+    const previousLookup = this.workbuddyTextTimingLookups.get(scopedHomeId);
+    const previousTextIds = this.workbuddyTextMessageIds.get(scopedHomeId) ?? new Set();
+    this.workbuddyTextTimingLookups.delete(scopedHomeId);
+    this.workbuddyTextMessageIds.delete(scopedHomeId);
     let traceState;
     try {
       traceState = await inspectWorkbuddyTrace(homePath);
@@ -6997,33 +7086,40 @@ export class UsageStore {
       onWarning?.(`无法读取 WorkBuddy trace 目录 ${homePath}: ${error.message}`);
       return outcome;
     }
-    outcome.filesScanned = traceState.traceFiles.length;
+    outcome.filesScanned = traceState.fingerprints.size;
     outcome.traceComplete = traceState.complete;
     outcome.traceDependency = traceState.complete ? traceState.fingerprint : null;
 
     const changed = [];
+    const changedMessageIds = new Set();
     for (const [filePath, fingerprint] of traceState.fingerprints) {
       if (fingerprint === null) continue;
       const previous = this.workbuddyTraceFingerprints.get(filePath);
       if (previous === fingerprint) continue;
       changed.push({ filePath, fingerprint });
     }
+    const removed = [];
     const homePrefix = `${canonicalPerfProbePath(homePath)}${path.sep}`;
     for (const knownPath of this.workbuddyTraceFingerprints.keys()) {
       if (canonicalPerfProbePath(knownPath).startsWith(homePrefix) && !traceState.fingerprints.has(knownPath)) {
-        this.workbuddyTraceFingerprints.delete(knownPath);
+        removed.push(knownPath);
       }
     }
-    if (changed.length === 0) return outcome;
 
     const rows = [];
     const parsed = [];
     const insertedMessageIds = new Set();
     for (const file of changed) {
       try {
-        const spans = await workbuddyTraceSpans(file.filePath, { onWarning });
-        rows.push(...spans);
-        parsed.push(file);
+        const text = traceState.textFiles.includes(file.filePath);
+        let spans;
+        if (text) {
+          spans = await workbuddyTextTimingSpans(file.filePath, { onWarning });
+        } else {
+          spans = await workbuddyTraceSpans(file.filePath, { onWarning });
+          rows.push(...spans);
+        }
+        parsed.push({ ...file, spans });
         outcome.filesParsed += 1;
       } catch (error) {
         onWarning?.(`无法解析 WorkBuddy trace ${file.filePath}: ${error.message}`);
@@ -7067,10 +7163,32 @@ export class UsageStore {
       }
     }
 
+    for (const filePath of removed) {
+      this.workbuddyTimingSpans.delete(filePath);
+      this.workbuddyTraceFingerprints.delete(filePath);
+    }
     for (const file of parsed) {
+      this.workbuddyTimingSpans.set(file.filePath, file.spans);
       this.workbuddyTraceFingerprints.set(file.filePath, file.fingerprint);
     }
-    outcome.insertedMessageIds = [...insertedMessageIds].sort();
+    const textSpans = traceState.textFiles.flatMap((file) => this.workbuddyTimingSpans.get(file) ?? []);
+    const generationSpans = traceState.traceFiles.flatMap((file) => this.workbuddyTimingSpans.get(file) ?? []);
+    const textMessageIds = new Set(textSpans.map((span) => span.messageId));
+    const lookup = outcome.traceComplete ? createWorkbuddyTextTimingLookup(textSpans, generationSpans) : () => null;
+    if (parsed.length > 0 || removed.length > 0) {
+      // Shared trace graphs can change without changing another response's timing proof.
+      for (const id of new Set([...previousTextIds, ...textMessageIds])) {
+        if (
+          previousTextIds.has(id) !== textMessageIds.has(id) ||
+          JSON.stringify(previousLookup?.(id) ?? null) !== JSON.stringify(lookup(id))
+        ) {
+          changedMessageIds.add(id);
+        }
+      }
+    }
+    this.workbuddyTextMessageIds.set(scopedHomeId, textMessageIds);
+    this.workbuddyTextTimingLookups.set(scopedHomeId, lookup);
+    outcome.insertedMessageIds = [...new Set([...insertedMessageIds, ...changedMessageIds])].sort();
     return outcome;
   }
 
@@ -7130,6 +7248,23 @@ export class UsageStore {
         plan_type, window_minutes, resets_at_ms, used_percent
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const insertQuotaSource = database.prepare(`INSERT OR REPLACE INTO quota_usage_sources
+      (source_path, home_id, session_id, timestamp_ms, quota_source, until_ms) VALUES (?, ?, ?, ?, ?, ?)`);
+    const previousQuotaSources = new Map();
+    const rememberQuotaSource = (event) => {
+      if (canonicalizeKind(source.kind) !== "codex" || !Number.isFinite(event.timestampMs)) return;
+      const value = `${event.quotaSource || "unknown"}:${event.quotaSourceUntil || 0}`;
+      if (previousQuotaSources.get(event.sessionId) === value) return;
+      insertQuotaSource.run(
+        filePath,
+        event.homeId,
+        event.sessionId,
+        event.timestampMs,
+        event.quotaSource || "unknown",
+        event.quotaSourceUntil || 0,
+      );
+      previousQuotaSources.set(event.sessionId, value);
+    };
     const insertReplacedFact = database.prepare(HISTORY_REPLACED_FACT_INSERT_SQL);
     const previousStatement = database.prepare(`
       SELECT COUNT(*) AS count, COALESCE(SUM(total), 0) AS total,
@@ -7223,21 +7358,33 @@ export class UsageStore {
       );
       database.prepare("DELETE FROM events WHERE source_path = ?").run(filePath);
       database.prepare("DELETE FROM rate_limit_observations WHERE source_path = ?").run(filePath);
+      database.prepare("DELETE FROM quota_usage_sources WHERE source_path = ?").run(filePath);
       // Replace the sibling representation's usage rows, but keep its source row
       // until Codex publication has moved the native ownership.
       if (previousSiblingSource) {
         database.prepare("DELETE FROM events WHERE source_path = ?").run(previousSiblingSource.path);
         database.prepare("DELETE FROM rate_limit_observations WHERE source_path = ?").run(previousSiblingSource.path);
+        database.prepare("DELETE FROM quota_usage_sources WHERE source_path = ?").run(previousSiblingSource.path);
       }
       // M3.2：性能候选的**显式**替换。必须显式 DELETE —— `source_files` 行是上面的 upsert，
       // **没有**被删除，因此 `ON DELETE CASCADE` 在这条路径上**不会触发**（M3.1 实测级联只在
       // 真删父行时生效）。旧候选保留在同一事务里，任何后续失败都会被 ROLLBACK 一起撤销。
+      const previousWorkbuddySamples =
+        canonicalizeKind(source.kind) === "workbuddy"
+          ? new Map(
+              database
+                .prepare("SELECT * FROM perf_samples WHERE source_path = ?")
+                .all(filePath)
+                .map((row) => [String(row.sample_key), row]),
+            )
+          : new Map();
       if (!codexThreaded) database.prepare("DELETE FROM perf_samples WHERE source_path = ?").run(filePath);
       await streamUsageFileEvents(
         filePath,
         source,
         (event) => {
           const date = new Date(event.timestampMs);
+          rememberQuotaSource(event);
           const row = {
             source_path: filePath,
             timestamp_ms: event.timestampMs,
@@ -7281,6 +7428,7 @@ export class UsageStore {
         {
           repositoryResolver: this.repositoryResolver,
           previousCumulativeForSession,
+          onQuotaSource: rememberQuotaSource,
           onRateLimit: ["main", "jetbrains", "extra", "codex"].includes(source.kind)
             ? (observation) => {
                 insertRateLimitObservation.run(
@@ -7477,7 +7625,37 @@ export class UsageStore {
           filePath,
           { ...source, path: filePath },
           (sample) => {
-            const row = encodePerfSample(sample);
+            let row = encodePerfSample(sample);
+            const previous = previousWorkbuddySamples.get(row.sample_key);
+            // Log rotation does not erase a verified summary for unchanged response usage.
+            if (
+              previous &&
+              row.duration_ms === null &&
+              previous.duration_ms > 0 &&
+              previous.sample_flags === 0 &&
+              previous.timing_source === "explicit" &&
+              previous.timing_kind === "generation" &&
+              isGenerationPerfMethod(previous.method_version) &&
+              previous.output_tokens + 1 === row.output_tokens &&
+              !this.workbuddyTextMessageIds.get(String(source.id ?? ""))?.has(JSON.parse(String(row.sample_key))[2]) &&
+              [
+                "home_id",
+                "source_kind",
+                "channel",
+                "session_id",
+                "turn_key",
+                "model",
+                "model_provider",
+                "reasoning_effort",
+                "ts_ms",
+                "input_tokens",
+                "status",
+                "window",
+                "token_scope",
+              ].every((field) => previous[field] === row[field])
+            ) {
+              row = previous;
+            }
             insertPerfSample.run(...PERF_SAMPLE_FIELDS.map((entry) => row[entry.column]));
           },
           {
@@ -7487,6 +7665,7 @@ export class UsageStore {
               onWarning?.(formatPerfWarning(warning));
             },
             lookupGenerationDuration,
+            lookupTextTiming: this.workbuddyTextTimingLookups.get(String(source.id ?? "")),
           },
         );
         // S4：缺时长的计数不在码域里，交给调用点合并成"每 home 每轮一条"的普通 warning。
@@ -7655,264 +7834,12 @@ export class UsageStore {
     const view = createPublishedFileMapsView(this);
     this.publishedFileMapsView = view;
     try {
-      let status = await this.syncRound(args);
-      const timingWarnings = [];
-      try {
-        const observedLedger = await buildMagpieTimingFingerprint(this.options);
-        if (await this.importMagpieRequestTimings(timingWarnings)) {
-          if (!this.publishMagpieRequestTimings()) {
-            const timingStatus = await this.syncRound(args);
-            status = { ...timingStatus, updatedFileCount: status.updatedFileCount + timingStatus.updatedFileCount };
-          }
-        }
-        if (timingWarnings.length === 0 && this.requestTimingDirtyThreadCount() === 0) {
-          this.magpieTimingPublication = `${this.fingerprint}\u0000${this.readMeta("perf_index_version")}`;
-          const pending = this.magpieRequestTimings.pendingChanges();
-          this.magpieRequestTimings.acknowledge(pending.revision);
-          if (this.readMeta("perf_magpie_ledger_fingerprint") !== observedLedger)
-            this.writeMeta("perf_magpie_ledger_fingerprint", observedLedger);
-        } else {
-          this.magpieTimingPublication = "";
-        }
-      } catch {
-        // Timing enrichment must not discard a successful native-source publication.
-        timingWarnings.push("MAGPIE_TIMING_SYNC_FAILED: 本地请求计时暂不可用，下次同步重试");
-        this.magpieTimingPublication = "";
-      }
-      if (timingWarnings.length > 0) {
-        this.warnings.push(...timingWarnings);
-        this.metadataCache = null;
-      }
-      return { ...status, magpieTimingFingerprint: this.readMeta("perf_magpie_ledger_fingerprint") };
+      return await this.syncRound(args);
     } catch (error) {
       this.codexPublishedPaths.clear();
       throw error;
     } finally {
       if (this.publishedFileMapsView === view) this.publishedFileMapsView = null;
-      this.magpieTimingPublicationContext = null;
-    }
-  }
-
-  async importMagpieRequestTimings(warnings) {
-    const filePath = path.join(this.options.homeDir || os.homedir(), ".config", "magpie", "usage.jsonl");
-    const ledgerChanged = await this.magpieRequestTimings.read(filePath);
-    if (ledgerChanged) this.magpieTimingLoaded = true;
-    if (!this.magpieTimingLoaded) return false;
-    const publication = `${this.fingerprint}\u0000${this.readMeta("perf_index_version")}`;
-    if (!ledgerChanged && filePath === this.magpieTimingFile && publication === this.magpieTimingPublication)
-      return false;
-    this.magpieTimingFile = filePath;
-    const pending = this.magpieRequestTimings.pendingChanges();
-    let changed = false;
-    const activeHomes = new Set();
-    for (const home of this.homes.filter((entry) => canonicalPerfSourceKind(entry.kind) === "codex")) {
-      const homeId = String(home.id);
-      activeHomes.add(homeId);
-      try {
-        const threads = this.requestTimingNativeThreads(homeId);
-        const previous = this.magpieNativeSignatures.get(homeId) || new Map();
-        const foreignResponses = new Set(
-          this.database
-            .prepare(
-              "SELECT DISTINCT response_id FROM perf_request_timing_evidence WHERE home_id = ? AND evidence_origin <> ?",
-            )
-            .all(homeId, MAGPIE_TIMING_ORIGIN)
-            .map((row) => String(row.response_id)),
-        );
-        const records = new Map();
-        for (const [threadId, thread] of threads) {
-          if (!thread.trusted) continue;
-          const nativeChanged = previous.get(threadId) !== thread.signature;
-          for (const turn of thread.turns) {
-            const requests = /** @type {Array<Record<string, unknown>>} */ (turn.requests);
-            for (const request of requests) {
-              if (typeof request.responseId !== "string" || typeof request.outputTokens !== "number") continue;
-              if (!pending.reset && !nativeChanged && !pending.responseIds.has(request.responseId)) continue;
-              if (foreignResponses.has(request.responseId)) continue;
-              for (const record of this.magpieRequestTimings.recordsForRequest(
-                request.responseId,
-                typeof turn.model === "string" ? turn.model : "",
-                request.outputTokens,
-              ))
-                records.set(JSON.stringify(record), record);
-            }
-          }
-        }
-        if (records.size > 0) {
-          const result = this.importRequestTimingEvidence({
-            homeId,
-            records: [...records.values()],
-            reviewedOrigins: [MAGPIE_TIMING_ORIGIN],
-          });
-          changed ||= result.changed;
-        }
-        this.magpieNativeSignatures.set(homeId, new Map([...threads].map(([id, thread]) => [id, thread.signature])));
-      } catch {
-        warnings.push("MAGPIE_TIMING_IMPORT_FAILED: 本地请求计时未通过原生映射验证，下次同步重试");
-      }
-    }
-    for (const homeId of this.nativeTimingThreads.keys()) {
-      if (!activeHomes.has(homeId)) {
-        this.nativeTimingThreads.delete(homeId);
-        this.magpieNativeSignatures.delete(homeId);
-      }
-    }
-    if (warnings.length > 0) this.magpieTimingPublication = "";
-    return changed;
-  }
-
-  /** Publish timing-only changes against the native dependencies verified in this sync. */
-  publishMagpieRequestTimings() {
-    const context = this.magpieTimingPublicationContext;
-    if (
-      !context ||
-      context.dataVersion !== this.readDataVersion() ||
-      this.perfState().state !== PERF_STATE_READY ||
-      Number(this.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count) > 0
-    )
-      return false;
-    const fingerprints = this.publishedFileFingerprintsForRead();
-    const nextWarnings = this.publishedFileWarningsForRound();
-    const staged = [];
-    const homes = new Set();
-    const nativeByHome = new Map();
-    const oldKeysByHome = new Map();
-    const dirty = this.database.prepare("SELECT home_id, thread_id FROM perf_request_timing_dirty_threads").all();
-    for (const row of dirty) {
-      const homeId = String(row.home_id);
-      const threadId = String(row.thread_id);
-      if (!nativeByHome.has(homeId))
-        nativeByHome.set(
-          homeId,
-          this.requestTimingNativeThreads(
-            homeId,
-            new Set(dirty.filter((entry) => String(entry.home_id) === homeId).map((entry) => String(entry.thread_id))),
-          ),
-        );
-      const thread = nativeByHome.get(homeId).get(threadId);
-      if (!thread?.trusted || thread.rollouts.length === 0) return false;
-      for (const rollout of thread.rollouts) {
-        if (enabledPerfSourceStat("codex", rollout.filePath) !== fingerprints[rollout.filePath]) return false;
-      }
-      const built = buildCodexThreadPerfSamples(homeId, threadId, thread.rollouts, {
-        lookupRequestTiming: (query) => this.lookupRequestTiming(query),
-      });
-      if (!oldKeysByHome.has(homeId)) {
-        const byThread = new Map();
-        for (const sample of this.database
-          .prepare("SELECT sample_key FROM perf_samples WHERE source_kind = 'codex' AND home_id = ?")
-          .all(homeId)) {
-          const sampleKey = String(sample.sample_key);
-          const id = codexSampleThreadId({ sourceKind: "codex", homeId, sampleKey });
-          const keys = byThread.get(id) || [];
-          keys.push(sampleKey);
-          byThread.set(id, keys);
-        }
-        oldKeysByHome.set(homeId, byThread);
-      }
-      const oldKeys = oldKeysByHome.get(homeId).get(threadId) || [];
-      staged.push({ homeId, threadId, built, oldKeys });
-      homes.add(homeId);
-    }
-    if (staged.length === 0) return true;
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      if (
-        context.dataVersion !== this.readDataVersion() ||
-        staged.some(({ homeId, threadId }) =>
-          nativeByHome
-            .get(homeId)
-            .get(threadId)
-            .rollouts.some(
-              (rollout) => enabledPerfSourceStat("codex", rollout.filePath) !== fingerprints[rollout.filePath],
-            ),
-        )
-      ) {
-        this.database.exec("ROLLBACK");
-        return false;
-      }
-      const previousSamples = new Map();
-      const previousSources = new Map();
-      for (const { oldKeys } of staged) {
-        for (const sampleKey of oldKeys) {
-          const sample = this.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey);
-          if (sample) {
-            const rows = previousSamples.get(String(sample.source_path)) || [];
-            rows.push(sample);
-            previousSamples.set(String(sample.source_path), rows);
-          }
-          for (const source of this.database
-            .prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ?")
-            .all(sampleKey)) {
-            const rows = previousSources.get(String(source.source_path)) || [];
-            rows.push(source);
-            previousSources.set(String(source.source_path), rows);
-          }
-          this.database.prepare("DELETE FROM perf_samples WHERE sample_key = ?").run(sampleKey);
-        }
-      }
-      for (const { homeId, threadId, built } of staged) {
-        for (const sample of built.samples) {
-          this.insertPerfSample(sample);
-          for (const sourcePath of built.rolloutFiles) {
-            this.database
-              .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)")
-              .run(sample.sampleKey, sourcePath, sourcePath === sample.sourcePath ? "primary" : "dependency");
-          }
-        }
-        nextWarnings[built.rolloutFiles[0]] = normalizeSourceWarnings(built.warnings);
-        this.database
-          .prepare("DELETE FROM perf_request_timing_dirty_threads WHERE home_id = ? AND thread_id = ?")
-          .run(homeId, threadId);
-      }
-      const insertReplacedFact = this.database.prepare(HISTORY_REPLACED_FACT_INSERT_SQL);
-      for (const [factTable, previousByPath] of [
-        ["perf_samples", previousSamples],
-        ["perf_sample_sources", previousSources],
-      ]) {
-        for (const [sourcePath, previousRows] of previousByPath) {
-          const source = this.database
-            .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-            .get(sourcePath);
-          saveMissingHistoryFacts(insertReplacedFact, {
-            factTable,
-            source,
-            previousRows,
-            currentRows: this.database.prepare(`SELECT * FROM ${factTable} WHERE source_path = ?`).all(sourcePath),
-            methodVersion: PERF_METHOD_VERSION,
-          });
-        }
-      }
-      const seq = Number(this.readMeta(REQUEST_TIMING_PUBLICATION_SEQ_META)) || 0;
-      const publicationSeq = seq + homes.size;
-      const indexVersion = buildPublishedSourcesFingerprint(
-        context.fingerprintHomes,
-        fingerprints,
-        context.publishedFiles,
-        publicationSeq,
-        context.workbuddyTraceDependencies,
-        context.legacyWorkbuddyFallbackAllowed,
-        context.missingSources,
-      );
-      this.writeMeta("perf_file_warnings", JSON.stringify(nextWarnings));
-      this.writeMeta(REQUEST_TIMING_PUBLICATION_SEQ_META, String(publicationSeq));
-      this.writeMeta(REQUEST_TIMING_PUBLISHED_REVISION_META, String(readRequestTimingRevision(this.database)));
-      this.writeMeta("perf_index_version", indexVersion);
-      this.writePerfState(PERF_STATE_READY, {
-        sourceWarnings: projectSourceWarnings(
-          context.publishedFiles
-            .filter((row) => isPerfSourceEnabled(String(row.kind ?? "")))
-            .flatMap((row) => nextWarnings[String(row.path)] || []),
-        ),
-      });
-      this.database.exec("COMMIT");
-      this.publishedFileMapsView?.commit(null, nextWarnings);
-      this.commitStoreRevision("perf");
-      this.syncDerivedRevision();
-      return true;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
     }
   }
 
@@ -8354,7 +8281,10 @@ export class UsageStore {
         .map((home) => [String(home.id ?? ""), home]),
     );
     const priorPolicy = decodeCodexPublicationPolicy(this.readMetaRaw("perf_codex_publication_policy"));
-    const policyNeedsUpgrade = !priorPolicy.usable || priorPolicy.revision !== CODEX_PUBLICATION_POLICY_REVISION;
+    const policyNeedsUpgrade =
+      !priorPolicy.usable ||
+      priorPolicy.revision !== CODEX_PUBLICATION_POLICY_REVISION ||
+      this.readMeta("perf_method_version") !== PERF_METHOD_VERSION;
     const priorPartialHomeIds = new Set(
       (priorPolicy.usable ? priorPolicy.partialHomes : []).map((entry) => entry.homeId),
     );
@@ -8859,6 +8789,12 @@ export class UsageStore {
         }
       } catch (error) {
         failedUsagePaths.add(file.filePath);
+        if (
+          canonicalizeKind(file.source.kind) === "workbuddy" &&
+          workbuddyTraceTargets.get(String(file.source.id))?.has(file.filePath)
+        ) {
+          liveChangedPaths.add(file.filePath);
+        }
         // ⚠️ **保留原用量告警**（用户明示）：这条字符串带着路径与原因，是**用量侧**的告警，
         // 不因我们另外做 perf 归因而被吞掉。
         warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
@@ -9222,6 +9158,7 @@ export class UsageStore {
             (entry) => entry.homeId !== homeId || blockedOldThreadIds.has(entry.threadId),
           );
           if (retainedOwner) continue;
+          this.database.prepare("DELETE FROM quota_usage_sources WHERE source_path = ?").run(sourcePath);
           this.database.prepare("DELETE FROM source_files WHERE path = ?").run(sourcePath);
           delete nextFingerprints[sourcePath];
           delete nextWarnings[sourcePath];
@@ -9290,6 +9227,7 @@ export class UsageStore {
         if (canonicalizeKind(String(row.kind)) === "codex") continue;
         const replacement = replacementTargetByOldPath.get(String(row.path));
         if (replacement === undefined || !committedUsagePaths.has(replacement)) continue;
+        this.database.prepare("DELETE FROM quota_usage_sources WHERE source_path = ?").run(row.path);
         this.database.prepare("DELETE FROM source_files WHERE path = ?").run(row.path);
         removedSourcePaths.add(String(row.path));
         // C5 提交点 ③：非 codex 来源的真实删除 ⇒ `events` 经 `ON DELETE CASCADE` 一并消失。
@@ -9473,6 +9411,19 @@ export class UsageStore {
     const nextState = degradedHomeIds.length > 0 ? PERF_STATE_DEGRADED : PERF_STATE_READY;
 
     const nextServiceTierEvidence = loadServiceTierEvidence(homes);
+    const nextQuotaEvidence = loadQuotaSourceEvidence(
+      homes,
+      this.quotaSourceEvidence && quotaSourceEvidenceSnapshot(this.quotaSourceEvidence),
+    );
+    const quotaEvidenceSnapshot = JSON.stringify(quotaSourceEvidenceSnapshot(nextQuotaEvidence));
+    const previousQuotaEvidence = this.readMetaRaw("quota_source_log_evidence");
+    if (quotaEvidenceSnapshot !== previousQuotaEvidence) {
+      this.writeMeta("quota_source_log_evidence", quotaEvidenceSnapshot);
+      if (previousQuotaEvidence !== undefined || quotaSourceEvidenceSnapshot(nextQuotaEvidence).entries.length)
+        this.commitStoreRevision("quota-source");
+    }
+    this.quotaSourceEvidence = nextQuotaEvidence;
+    this.quotaSourceRevision = -1;
     let sameServiceTierEvidence = false;
     if (this.serviceTierEvidence) {
       try {
@@ -9595,14 +9546,6 @@ export class UsageStore {
           legacyWorkbuddyFallbackAllowed,
           missingSources,
         );
-    this.magpieTimingPublicationContext = {
-      dataVersion: this.readDataVersion(),
-      fingerprintHomes,
-      publishedFiles,
-      workbuddyTraceDependencies,
-      legacyWorkbuddyFallbackAllowed,
-      missingSources,
-    };
     // 源告警只投影 {sourceKind, homeId, code, count}（**不含路径**）。
     // Preserve successful per-file reader diagnostics (for example UNKEYABLE_RECORD)
     // alongside current file failures. Sidecar entries describe committed rows;
@@ -9988,7 +9931,7 @@ export class UsageStore {
       completeHistory: true,
       includeMetadataCarrier: true,
     });
-    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
     return metadataFromHistoryEvents(events, union.metadataCarrier, asOf);
   }
 
@@ -10070,7 +10013,9 @@ export class UsageStore {
          ORDER BY e.timestamp_ms, e.id`,
       )
       .all();
-    return rows.map((row) => publishedUsageEventFromRow(row, row.source_kind, this.serviceTierEvidence));
+    return rows.map((row) =>
+      publishedUsageEventFromRow(row, row.source_kind, this.serviceTierEvidence, this.quotaSourceFor.bind(this)),
+    );
   }
 
   /**
@@ -10081,7 +10026,7 @@ export class UsageStore {
    */
   async publishedHistoryUsageEvents() {
     const union = await this.historyArchiveEventUnionForRange(undefined, { completeHistory: true });
-    return publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    return publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
   }
 
   /**
@@ -10203,7 +10148,7 @@ export class UsageStore {
       includeUsageCarrier: true,
       includePerfCarrier,
     });
-    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
     const homes = union.homes ?? [];
     return {
       events,
@@ -10967,10 +10912,35 @@ export class UsageStore {
   }
 
   registerReadFunctions() {
+    this.database.function("usage_quota_allowed", (model, homeId, sessionId, time) =>
+      Number(
+        isQuotaUsage({ model, quotaSource: this.quotaSourceFor(String(homeId), String(sessionId), Number(time)) }),
+      ),
+    );
     this.database.function("usage_source_group", (channel, kind) => sourceGroup(channel, String(kind ?? "")));
     this.database.function("usage_model_group", (model) =>
       canonicalModelName(String(model ?? ""), this.readPricingModels),
     );
+  }
+
+  quotaSourceFor(homeId, sessionId, time) {
+    if (this.quotaSourceRevision !== this.storeRevision) {
+      const rows = this.database
+        .prepare("SELECT home_id, session_id, timestamp_ms, quota_source, until_ms FROM quota_usage_sources")
+        .all();
+      this.quotaSourceLookup = quotaSourceResolver(
+        rows.map((row) => ({
+          homeId: String(row.home_id),
+          sessionId: String(row.session_id),
+          timestampMs: Number(row.timestamp_ms),
+          quotaSource: String(row.quota_source),
+          quotaSourceUntil: Number(row.until_ms),
+        })),
+        this.quotaSourceEvidence,
+      );
+      this.quotaSourceRevision = this.storeRevision;
+    }
+    return this.quotaSourceLookup(homeId, sessionId, time);
   }
 
   /** SQL fast path for one unchanged event segment; other scopes retain the complete carrier. */
@@ -11060,6 +11030,9 @@ export class UsageStore {
       reader.warnings = [...this.warnings];
       reader.generatedAt = this.generatedAt;
       reader.serviceTierEvidence = this.serviceTierEvidence;
+      reader.quotaSourceEvidence = this.quotaSourceEvidence;
+      reader.quotaSourceLookup = this.quotaSourceLookup;
+      reader.quotaSourceRevision = this.quotaSourceRevision;
       reader.serviceTierEvidenceInput = this.serviceTierEvidenceInput;
       reader.storeRevision = reader.derivedRevision = this.storeRevision;
       reader.summarySnapshotRead = true;
@@ -11111,7 +11084,7 @@ export class UsageStore {
       includePerfCarrier: true,
       includeMetadataCarrier: true,
     });
-    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence);
+    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
     const homes = union.homes ?? [];
     const report = {
       events,
@@ -11295,7 +11268,9 @@ export class UsageStore {
       ...new Set([...scopeExclusions, ...perfState.degradedHomeIds.filter((homeId) => !partialHomeIds.has(homeId))]),
     ];
     const publishableInRange = (sample) =>
-      codexSampleAllowed(publicationFilter, sample) && (!quotaPreset || !isCodexAutoReview(sample.model));
+      codexSampleAllowed(publicationFilter, sample) &&
+      (!quotaPreset ||
+        isQuotaUsage({ ...sample, quotaSource: this.quotaSourceFor(sample.homeId, sample.sessionId, sample.tsMs) }));
     const perfStats = buildPerfStatsBlock({
       samples: perfCarrier.samples.filter(publishableInRange),
       bounds: perfBounds,
@@ -11439,18 +11414,19 @@ export class UsageStore {
     }
     const aggregate = this.aggregateRange(range, scopeExclusions);
     const totals = usageFromRow(aggregate);
-    const previousRange = quotaPreset ? null : previousUsageRange(range);
-    const previousAggregate = previousRange ? this.aggregateRange(previousRange, excludeHomes) : null;
-    const comparison = quotaPreset
-      ? null
-      : usageComparisonFromAggregates({
-          range,
-          currentTotals: totals,
-          previousTotals: usageFromRow(previousAggregate),
-          previousEventCount: Number(previousAggregate?.event_count || 0),
-          previousSessionCount: Number(previousAggregate?.session_count || 0),
-          now: asOf,
-        });
+    const previousRange = quotaPreset
+      ? previousQuotaRange(range, quota, this.quotaObservations())
+      : previousUsageRange(range);
+    const previousAggregate = previousRange ? this.aggregateRange(previousRange, scopeExclusions) : null;
+    const comparison = usageComparisonFromAggregates({
+      range,
+      currentTotals: totals,
+      previousRange,
+      previousTotals: usageFromRow(previousAggregate),
+      previousEventCount: Number(previousAggregate?.event_count || 0),
+      previousSessionCount: Number(previousAggregate?.session_count || 0),
+      now: asOf,
+    });
     let timeline = projection?.timeline ?? [];
     let timelineError = projection?.timelineError ?? null;
     let costEstimate = projection?.costEstimate;
@@ -11663,14 +11639,8 @@ export class UsageStore {
   close() {
     this.historySqlDashboardCache?.store.close();
     this.historySqlDashboardCache = null;
-    this.magpieRequestTimings.clear();
-    this.magpieTimingLoaded = false;
-    this.magpieTimingPublication = "";
-    this.magpieTimingFile = "";
     this.codexPublishedPaths.clear();
     this.nativeTimingThreads.clear();
-    this.magpieNativeSignatures.clear();
-    this.magpieTimingPublicationContext = null;
     // C1 卡：**实例私有**记录在 `close()` 时清空 —— 卡面/规格明文"close/open、实例销毁和方法变更
     // 使记录失效"。记录不跨实例、不跨 close 存活（重开后重新预热一次规划）。
     this.codexStableAttempts.clear();
@@ -11679,6 +11649,9 @@ export class UsageStore {
     this.codexThreadBuildPlan.clear();
     // S4：trace 指纹是**进程内**状态（刻意不落盘）⇒ `close()` 丢弃；重开后首轮自然全扫一次。
     this.workbuddyTraceFingerprints.clear();
+    this.workbuddyTimingSpans.clear();
+    this.workbuddyTextTimingLookups.clear();
+    this.workbuddyTextMessageIds.clear();
     // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
     // `observedDataVersion` 重新取基准（外部提交检测在重开后**从零**开始计），
     // 而 `storeRevision` 是这个**实例**的单调修订号，跨 `close()/open()` 保留。

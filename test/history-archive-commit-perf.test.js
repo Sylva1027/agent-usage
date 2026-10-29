@@ -112,7 +112,7 @@ test("ZCode perf moves with its archive event commit, rolls back, and replays", 
     assert.deepEqual(
       [...new Set(coldPerf.map((sample) => sample.method_version))],
       [PERF_METHOD_VERSION],
-      "the fixture must contain only the frozen tps-v2 method",
+      "the fixture must contain only the current method version",
     );
     assert.deepEqual(
       plan.perfDeletion.sampleKeys,

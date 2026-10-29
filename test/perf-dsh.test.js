@@ -1,12 +1,12 @@
 /**
- * M2.2 DSH step 请求时窗 reader 契约测试。
+ * DSH generation TPS reader 契约测试。
  *
  * 夹具是**人工合成**的多帧 `.jsonl.zstd`（每帧独立 zstd 压缩后拼接，复现 DSH 的流式追加写法），
  * 直接驱动 `streamDshPerfSamples(filePath, source, onSample, { onWarning })`。
  *
  * **正文哨兵**：message 文本、流式载荷、步骤结束帧的产物里各塞一个独特魔法串；断言交给
- * `onSample` 的规范候选完全不含它们。另有一条**毒化对照**：载荷被改写/删除后候选集合逐字节相同，
- * 证明公式只用到白名单字段（这是"从未读取载荷键即可完成公式"的功能性证据，不只是声明）。
+ * `onSample` 的规范候选完全不含它们。合法 packed stream 只贡献计数、时间与空串边界，
+ * text/args 原文不离开 reader。
  *
  * 帧序判别式（裁定 G）：`step/end` 必须**严格晚于**本组最后一条 `assistant/message`。
  * 本文件用一段**静态访问证明**锁定"步骤结束帧只读 `{turn,step}` + 帧序、不读 `time`"。
@@ -31,6 +31,7 @@ const BODY_SENTINEL = "DSH-READER-BODY-SENTINEL-3d71";
 const STREAM_SENTINEL = "DSH-READER-STREAM-SENTINEL-9c02";
 const STEP_END_SENTINEL = "DSH-READER-STEP-END-SENTINEL-5abe";
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+const NO_REASONING_FIELD = Symbol("missing reasoning field");
 
 function frame(rows) {
   return zstdCompressSync(Buffer.from(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8"));
@@ -110,6 +111,50 @@ function messageRow({
   return { type: "assistant/message", seq, time, surfaceOp: "append", data };
 }
 
+function generationMessageRow({
+  seq = 5,
+  time = T0 + 2000,
+  turn = 1,
+  step = 1,
+  outputTokens = 12,
+  reasoningTokens = NO_REASONING_FIELD,
+  stream,
+} = {}) {
+  const row = messageRow({
+    seq,
+    time,
+    turn,
+    step,
+    outputTokens,
+    includePayload: false,
+  });
+  row.data.stream = stream;
+  if (reasoningTokens !== NO_REASONING_FIELD) {
+    row.data.usage.reasoningTokens = reasoningTokens;
+  }
+  return row;
+}
+
+function textChunks(time0, texts, dt, index = 0) {
+  return { type: "text-chunks", time0, index, dt, texts };
+}
+
+function reasoningChunks(time0, texts, dt, index = 0) {
+  return { type: "reasoning-chunks", time0, index, dt, texts };
+}
+
+function toolChunks(time0, args, dt, { index = 0, id = "tool-fixture", name = "fixture-tool" } = {}) {
+  return {
+    type: "tool-call-chunks",
+    time0,
+    index,
+    dt,
+    id,
+    ...(name === undefined ? {} : { name }),
+    args,
+  };
+}
+
 function writeLog(frames, { fileName = "session.v4.jsonl.zstd" } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "perf-dsh-reader-"));
   const file = path.join(dir, fileName);
@@ -183,17 +228,33 @@ function flagsOf(sample) {
   return perfFlagNamesOf(sample.sampleFlags);
 }
 
-/** 手算公式：请求 TPS = outputTokens ÷ (durationMs ÷ 1000)。 */
-function tpsByHand(sample) {
-  return (sample.outputTokens * 1000) / sample.durationMs;
+function rawByIdentity(rawSamples) {
+  return new Map(rawSamples.map((raw) => [JSON.stringify(raw.identity), raw]));
 }
 
-// ---------------------------------------------------------------- 主夹具：身份、字段、手算 TPS
+function identityKey(turn, step) {
+  return JSON.stringify([SESSION_ID, turn, step]);
+}
+
+function assertMissingGeneration(sample) {
+  assert.equal(sample.window, "request");
+  assert.equal(sample.timingKind, "generation");
+  assert.equal(sample.tokenScope, "non_reasoning_output");
+  assert.equal(sample.timingSource, "unknown");
+  assert.equal(sample.windowStartMs, null);
+  assert.equal(sample.windowEndMs, null);
+  assert.equal(sample.durationMs, null);
+  assert.equal(sample.outputTokens, null);
+  assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
+  assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+}
+
+// ---------------------------------------------------------------- 主夹具：身份、字段、缺失生成速度
 
 /**
  * 主夹具（一帧一会话头，5 帧）：
- * - turn1/step1：model-a 作用域，duration 2000ms、output 600 → 手算 300 tok/s
- * - turn1/step2：**同 turn 无新 header**，沿用 model-a，duration 1500ms、output 300 → 手算 200 tok/s
+ * - turn1/step1：model-a 作用域，step 诊断时长 2000ms、原始 output 600
+ * - turn1/step2：**同 turn 无新 header**，沿用 model-a，诊断时长 1500ms、原始 output 300
  * - turn2/step1：新 header（model-b）→ **跨 turn 的 step 重置**（与 turn1/step1 同 step 值）；
  *   末尾接 `step/end` → 唯一一个 `completed` 的形态
  */
@@ -218,10 +279,10 @@ function mainFixtureFrames() {
   ];
 }
 
-test("主夹具：身份元组、请求作用域模型、手算两组 TPS 与正文哨兵", async () => {
+test("主夹具：身份元组、请求作用域模型、原始诊断值与缺失生成速度", async () => {
   const { dir, file } = writeLog(mainFixtureFrames());
   try {
-    const { samples, warnings, result } = await readLog(file);
+    const { samples, warnings, result, rawSamples } = await readLogWithRaw(file);
     assert.deepEqual(warnings, []);
     assert.equal(result.sampleCount, 3);
     assert.equal(result.stepEndFrames, 1);
@@ -235,16 +296,16 @@ test("主夹具：身份元组、请求作用域模型、手算两组 TPS 与正
     assert.ok(first && second && third, "三个 (turn,step) 必须是三个不同身份");
     assert.equal(byKey.size, 3, "turn 参与身份：turn1/step1 与 turn2/step1 不得合并");
 
-    // 手算 TPS：600 / (2000/1000) = 300；300 / (1500/1000) = 200
-    assert.equal(first.outputTokens, 600);
-    assert.equal(first.durationMs, 2000);
-    assert.equal(tpsByHand(first), 300);
-    assert.equal(second.outputTokens, 300);
-    assert.equal(second.durationMs, 1500);
-    assert.equal(tpsByHand(second), 200);
-    assert.equal(third.outputTokens, 250);
-    assert.equal(third.durationMs, 2000);
-    assert.equal(tpsByHand(third), 125);
+    const rawByKey = rawByIdentity(rawSamples);
+    const firstRaw = rawByKey.get(identityKey(1, 1));
+    const secondRaw = rawByKey.get(identityKey(1, 2));
+    const thirdRaw = rawByKey.get(identityKey(2, 1));
+    assert.equal(firstRaw.reportedOutputTokens, 600);
+    assert.equal(firstRaw.reportedDurationMs, 2000);
+    assert.equal(secondRaw.reportedOutputTokens, 300);
+    assert.equal(secondRaw.reportedDurationMs, 1500);
+    assert.equal(thirdRaw.reportedOutputTokens, 250);
+    assert.equal(thirdRaw.reportedDurationMs, 2000);
 
     // 请求作用域：header 生效于其后帧；同 turn 无新 header 沿用；新 turn 有新 header 则切换
     for (const [sample, model, provider] of [
@@ -257,20 +318,17 @@ test("主夹具：身份元组、请求作用域模型、手算两组 TPS 与正
       assert.equal(sample.modelEvidence, "request_scope");
     }
 
-    // 语义与来源口径：window/timingKind/tokenScope/methodVersion/时间来源
+    // 语义与来源口径：没有首/末有效输出证据时，完整 step 时窗与原始 output 只留在 raw 诊断。
     for (const sample of samples) {
       assert.equal(sample.sourceKind, "dsh");
       assert.equal(sample.homeId, HOME_ID);
       assert.equal(sample.sessionId, SESSION_ID);
-      assert.equal(sample.window, "step");
-      assert.equal(sample.timingKind, "request_e2e");
-      assert.equal(sample.tokenScope, "reported_output_unspecified");
-      assert.equal(sample.timingSource, "timestamp_fallback");
       assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
       assert.equal(sample.channel, "dsh", "channel 冻结为小写 kebab-case（裁定 AL-5）");
       assert.equal(sample.agentKind, "unknown", "depth=0 不给 main");
       assert.equal(sample.agent, "standard");
       assert.equal(sample.sourcePath, file);
+      assertMissingGeneration(sample);
     }
 
     // 终态：只有 turn2/step1 的步骤结束帧严格晚于其 message
@@ -290,9 +348,9 @@ test("主夹具：身份元组、请求作用域模型、手算两组 TPS 与正
   }
 });
 
-// ---------------------------------------------------------------- 载荷无关：毒化对照 + 静态访问证明
+// ---------------------------------------------------------------- 旧载荷对照 + 静态访问证明
 
-test("载荷无关：改写/删除流式与正文载荷后候选逐字节相同（公式只用白名单字段）", async () => {
+test("无 reasoning/合法 packed stream 的旧载荷：删除 message 与无效 stream 后候选不变", async () => {
   const poisoned = writeLog(mainFixtureFrames());
   const stripped = writeLog([
     [sessionRow()],
@@ -329,24 +387,27 @@ test("载荷无关：改写/删除流式与正文载荷后候选逐字节相同�
   }
 });
 
-test("静态访问证明：步骤结束帧只读 {turn,step} + 帧序，且模块不读流式/正文/输入侧用量键", () => {
+test("静态访问证明：只读成功 message 的生成 usage/stream；步骤结束帧不读 time，输入侧用量不读", () => {
   const source = readFileSync(READER_FILE, "utf8");
-  // 不得出现流式载荷键、正文键、输入侧用量键（只允许 outputTokens）
+  // 生成侧只允许 output/reasoning 与 packed stream；正文、输入侧用量仍不得进入投影。
   for (const forbidden of [
-    "data.stream",
-    ".stream",
-    '"stream"',
     ".content",
     '"content"',
     "inputTokens",
     "cacheReadTokens",
     "cacheWriteTokens",
     "totalTokens",
-    "reasoningEffort",
     "localeCompare",
   ]) {
     assert.equal(source.includes(forbidden), false, `reader 源码不得引用 ${forbidden}`);
   }
+  assert.ok(source.includes("outputTokens"));
+  assert.ok(source.includes("reasoningTokens"));
+  assert.ok(source.includes("reasoningEffort"), "scope must include the reviewed effort range");
+  assert.ok(source.includes('record.type === "text-chunks"'));
+  assert.ok(source.includes('record.type === "tool-call-chunks"'));
+  assert.ok(source.includes('value !== ""'), "空串边界判据必须保留，不能 trim");
+  assert.equal(source.includes("reasoningSequences"), false, "reasoning 穿插只保留 scalar phase 状态");
   // 步骤结束帧分支：只允许 data 的 turn/step + 帧序，不得出现时间读取
   const branchStart = source.indexOf("if (type === STEP_END_TYPE)");
   assert.ok(branchStart > 0, "必须存在步骤结束帧分支");
@@ -362,7 +423,7 @@ test("静态访问证明：步骤结束帧只读 {turn,step} + 帧序，且模�
 
 // ---------------------------------------------------------------- 裁定 G：五种终态形态
 
-test("裁定 G 五种终态形态：只有『end 严格晚于最后一条 message』才 completed", async () => {
+test("无完整 stream 终态时，只有『end 严格晚于最后一条 message』才 completed", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     // (1,1) end 在 message 之后 → 唯一可判完成的形态
@@ -400,7 +461,7 @@ test("裁定 G 五种终态形态：只有『end 严格晚于最后一条 messag
     ],
   ]);
   try {
-    const { samples, result } = await readLog(file);
+    const { samples, result, rawSamples } = await readLogWithRaw(file);
     assert.equal(result.stepEndFrames, 4, "四条步骤结束帧都被读到了判别式");
     assert.equal(samples.length, 5, "五个分组各一个候选");
     const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
@@ -415,15 +476,17 @@ test("裁定 G 五种终态形态：只有『end 严格晚于最后一条 messag
     // 冲突形态：保留一个候选 + RECORD_CONFLICT（下游据此扣除），且不因"有 end"而变成干净完成
     const form4 = byKey.get(sampleKeyOf(SESSION_ID, 1, 4));
     assert.ok(flagsOf(form4).includes("RECORD_CONFLICT"));
-    assert.equal(form4.durationMs, 1000, "取文档顺序第一对（8000-7000）");
-    assert.equal(form4.outputTokens, 230, "不任选末条、不求和");
+    assertMissingGeneration(form4);
+    const form4Raw = rawByIdentity(rawSamples).get(identityKey(1, 4));
+    assert.equal(form4Raw.reportedDurationMs, 1000, "诊断值取文档顺序第一对（8000-7000）");
+    assert.equal(form4Raw.reportedOutputTokens, 230, "诊断值不任选末条、不求和");
     assert.equal(form4.status, "completed", "end 确实晚于最后一条 message；扣除由 RECORD_CONFLICT 负责");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// ---------------------------------------------------------------- 折叠、冲突与时窗选择
+// ---------------------------------------------------------------- 折叠、冲突与诊断值选择
 
 test("一致重复折叠：同 (turn,step) 的相同 start/message 只产出一个候选", async () => {
   const { dir, file } = writeLog([
@@ -436,17 +499,18 @@ test("一致重复折叠：同 (turn,step) 的相同 start/message 只产出一�
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
+    const { samples, rawSamples } = await readLogWithRaw(file);
     assert.equal(samples.length, 1, "一致重复必须折叠成一条");
-    assert.equal(samples[0].durationMs, 2000);
-    assert.equal(samples[0].outputTokens, 400);
+    assertMissingGeneration(samples[0]);
+    assert.equal(rawSamples[0].reportedDurationMs, 2000);
+    assert.equal(rawSamples[0].reportedOutputTokens, 400);
     assert.ok(!flagsOf(samples[0]).includes("RECORD_CONFLICT"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("冲突不任选较快时窗：慢窗口在前、快窗口在后时，取文档顺序第一对", async () => {
+test("冲突不任选较快诊断时窗：慢窗口在前、快窗口在后时，取文档顺序第一对", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [
@@ -459,12 +523,12 @@ test("冲突不任选较快时窗：慢窗口在前、快窗口在后时，取�
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
+    const { samples, rawSamples } = await readLogWithRaw(file);
     assert.equal(samples.length, 1, "冲突保留一个候选");
     assert.ok(flagsOf(samples[0]).includes("RECORD_CONFLICT"));
-    assert.equal(samples[0].durationMs, 10000, "文档顺序第一对，而不是 500ms 的快窗口");
-    assert.equal(samples[0].outputTokens, 100);
-    assert.equal(tpsByHand(samples[0]), 10);
+    assertMissingGeneration(samples[0]);
+    assert.equal(rawSamples[0].reportedDurationMs, 10000, "文档顺序第一对，而不是 500ms 的快窗口");
+    assert.equal(rawSamples[0].reportedOutputTokens, 100);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -691,19 +755,18 @@ test("P1-3 反例：组内已证明/未证明混合不得误报（V2 突变的�
 
 // ---------------------------------------------------------------- 缺失与异常分支
 
-test("缺 start：保留候选、时长 null 与 MISSING_DURATION，且不回填模型", async () => {
+test("缺 start：保留候选与原始 output 诊断，生成时长/输出均为 null，且不回填模型", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [messageRow({ seq: 1, time: T0 + 3000, turn: 1, step: 1, outputTokens: 120 })],
   ]);
   try {
-    const { samples } = await readLog(file);
+    const { samples, rawSamples } = await readLogWithRaw(file);
     assert.equal(samples.length, 1);
-    assert.equal(samples[0].durationMs, null, "没有 start 就没有可算的时窗");
+    assertMissingGeneration(samples[0]);
     assert.equal(samples[0].tsMs, T0 + 3000);
-    assert.equal(samples[0].outputTokens, 120);
-    assert.equal(samples[0].timingSource, "unknown", "无 start ⇒ 既非时间戳差、也非单位混淆");
-    assert.ok(flagsOf(samples[0]).includes("MISSING_DURATION"));
+    assert.equal(rawSamples[0].reportedOutputTokens, 120);
+    assert.equal(rawSamples[0].reportedDurationMs, null, "没有 start 就没有请求诊断时窗");
     assert.equal(samples[0].model, "", "无 header 作用域时不回填任何模型");
     assert.equal(samples[0].modelEvidence, "");
   } finally {
@@ -711,7 +774,7 @@ test("缺 start：保留候选、时长 null 与 MISSING_DURATION，且不回填
   }
 });
 
-test("同 step 的重试以最后一条早于 message 的 retry-started 为起点；较早尝试与 message 后帧不参与", async () => {
+test("同 step 的诊断时窗以最后一条早于 message 的 retry-started 为起点；该时窗不进入生成速度", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [
@@ -730,22 +793,23 @@ test("同 step 的重试以最后一条早于 message 的 retry-started 为起�
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
-    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
-    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 1)).durationMs, 3000, "单次重试从 retry-started 起算");
-    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 2)).durationMs, 3000, "多次重试取最后一条早于 message 的起点");
+    const { samples, rawSamples } = await readLogWithRaw(file);
+    const rawByKey = rawByIdentity(rawSamples);
+    assert.equal(rawByKey.get(identityKey(1, 1)).reportedDurationMs, 3000, "单次重试从 retry-started 起算");
+    assert.equal(rawByKey.get(identityKey(1, 2)).reportedDurationMs, 3000, "多次重试取最后一条早于 message 的起点");
     assert.equal(
-      byKey.get(sampleKeyOf(SESSION_ID, 1, 3)).durationMs,
+      rawByKey.get(identityKey(1, 3)).reportedDurationMs,
       2000,
       "message 后的 retry-started 不得倒灌进已完成样本",
     );
-    assert.equal(byKey.get(sampleKeyOf(SESSION_ID, 1, 4)).durationMs, 2000, "无重试仍使用 step/start");
+    assert.equal(rawByKey.get(identityKey(1, 4)).reportedDurationMs, 2000, "无重试仍使用 step/start");
+    for (const sample of samples) assertMissingGeneration(sample);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("缺 usage 与真 0 输出：区分『缺值』与『真 0』，两者都保留候选", async () => {
+test("缺 usage 与真 0 原始输出：诊断值区分缺值和 0，生成输出都保持 null", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [
@@ -756,22 +820,22 @@ test("缺 usage 与真 0 输出：区分『缺值』与『真 0』，两者都�
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
+    const { samples, rawSamples } = await readLogWithRaw(file);
     assert.equal(samples.length, 2);
-    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
-    const missing = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
-    const zero = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
-    assert.equal(missing.outputTokens, null, "缺值不得写成 0");
-    assert.ok(flagsOf(missing).includes("MISSING_OUTPUT"));
-    assert.equal(zero.outputTokens, 0, "真 0 必须保留为 0");
-    assert.ok(flagsOf(zero).includes("OUTPUT_ZERO"));
-    assert.ok(!flagsOf(zero).includes("MISSING_OUTPUT"));
+    const sampleByKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const rawByKey = rawByIdentity(rawSamples);
+    const missing = sampleByKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    const zero = sampleByKey.get(sampleKeyOf(SESSION_ID, 1, 2));
+    assert.equal(rawByKey.get(identityKey(1, 1)).reportedOutputTokens, undefined, "缺值不得写成 0");
+    assert.equal(rawByKey.get(identityKey(1, 2)).reportedOutputTokens, 0, "真 0 必须保留为 0");
+    for (const sample of [missing, zero]) assertMissingGeneration(sample);
+    assert.ok(!flagsOf(zero).includes("OUTPUT_ZERO"), "生成分子未提供，不能用原始 0 冒充有效零输出");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("0 时长与负时长：原值保留、置 DURATION_NONPOSITIVE，不暗中回退", async () => {
+test("0 与负诊断时长：原值只留在 reportedDurationMs，生成 durationMs 保持 null", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [
@@ -782,30 +846,29 @@ test("0 时长与负时长：原值保留、置 DURATION_NONPOSITIVE，不暗中
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
-    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
-    const zero = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
-    const negative = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
-    assert.equal(zero.durationMs, 0);
-    assert.ok(flagsOf(zero).includes("DURATION_NONPOSITIVE"));
-    assert.equal(negative.durationMs, -1000);
-    assert.ok(flagsOf(negative).includes("DURATION_NONPOSITIVE"));
-    assert.equal(negative.timingSource, "timestamp_fallback", "负时长仍然来自时间戳差");
+    const { samples, rawSamples } = await readLogWithRaw(file);
+    const sampleByKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const rawByKey = rawByIdentity(rawSamples);
+    const zero = sampleByKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    const negative = sampleByKey.get(sampleKeyOf(SESSION_ID, 1, 2));
+    assert.equal(rawByKey.get(identityKey(1, 1)).reportedDurationMs, 0);
+    assert.equal(rawByKey.get(identityKey(1, 2)).reportedDurationMs, -1000);
+    for (const sample of [zero, negative]) assertMissingGeneration(sample);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// ---------------------------------------------------------------- P1-2：时间单位闸门
+// ---------------------------------------------------------------- 请求诊断时窗单位
 
 /**
- * P1-2：**秒级 start + 毫秒 message** 必须被判为非法单位，而不是算出一个约 56 年的时长。
+ * **秒级 start + 毫秒 message** 不能相减后成为一个约 56 年的诊断时长。
  *
  * 判别式的可达性前提（已实测）：真实 epoch 毫秒 ≥ `PERF_EPOCH_MS_MIN`（1e12，约
  * 2001-09-09T01:46:40Z），秒级出现在 1e9 量级，两者相差三个数量级。本用例用
  * **同一个 `T0`** 派生出两种单位的端点，因此"混合"本身就是唯一变量。
  */
-test("P1-2 时间单位：混合单位（秒 start + 毫秒 message）⇒ TIME_INVALID，正常毫秒 ⇒ 照常进 TPS", async () => {
+test("请求诊断时窗：混合单位不产生 reportedDurationMs，正常毫秒仅保留诊断值", async () => {
   const msLog = writeLog([
     [sessionRow()],
     [
@@ -822,33 +885,32 @@ test("P1-2 时间单位：混合单位（秒 start + 毫秒 message）⇒ TIME_I
     ],
   ]);
   try {
-    const ok = await readLog(msLog.file);
-    const mixed = await readLog(mixedLog.file);
+    const ok = await readLogWithRaw(msLog.file);
+    const mixed = await readLogWithRaw(mixedLog.file);
 
-    // 正例侧：正常毫秒必须仍然产出可用时长（闸门不得误杀）
+    // 正例侧：正常毫秒只产生请求诊断值，不进入生成速度。
     assert.equal(ok.samples.length, 1);
-    assert.equal(ok.samples[0].durationMs, 2000);
-    assert.equal(ok.samples[0].timingSource, "timestamp_fallback");
+    assertMissingGeneration(ok.samples[0]);
+    assert.equal(ok.rawSamples[0].reportedDurationMs, 2000);
     assert.ok(!flagsOf(ok.samples[0]).includes("TIME_INVALID"));
     assert.ok(!flagsOf(ok.samples[0]).includes("LONG_WINDOW"));
 
-    // 反例侧：混合单位**保留候选**（纪律：不得用"消失"代替"标记"）
+    // 反例侧：混合单位仍保留可归属候选，但诊断差值不可计算。
     assert.equal(mixed.samples.length, 1, "异常数据必须保留候选，不能靠丢弃变干净");
-    assert.equal(mixed.samples[0].durationMs, null, "绝不把混合单位相减的结果（约 56 年）交给 M1");
+    assertMissingGeneration(mixed.samples[0]);
+    assert.equal(mixed.rawSamples[0].reportedDurationMs, null, "绝不把混合单位相减的结果交给诊断字段");
     const mixedFlags = flagsOf(mixed.samples[0]);
-    assert.ok(mixedFlags.includes("TIME_INVALID"), "单位非法必须是 TIME_INVALID，不是 LONG_WINDOW");
-    assert.ok(!mixedFlags.includes("LONG_WINDOW"), "LONG_WINDOW 是提示位、仍会进 TPS");
-    // 两个候选的身份/输出不受影响：被拒的是时长，不是整条记录
-    assert.equal(mixed.samples[0].outputTokens, 100);
+    assert.ok(!mixedFlags.includes("TIME_INVALID"), "混合诊断时窗未进入样本时间字段");
+    assert.ok(!mixedFlags.includes("LONG_WINDOW"));
+    assert.equal(mixed.rawSamples[0].reportedOutputTokens, 100);
     assert.equal(mixed.samples[0].sampleKey, ok.samples[0].sampleKey);
-    assert.notEqual(mixed.samples[0].durationMs, 1_788_000_000_000);
   } finally {
     rmSync(msLog.dir, { recursive: true, force: true });
     rmSync(mixedLog.dir, { recursive: true, force: true });
   }
 });
 
-test("P1-2 单位闸门的三个邻接形态：两端秒级/两端毫秒/缺 start 各自的档位", async () => {
+test("诊断时窗的三个邻接形态：两端毫秒、两端秒级、缺 start 均不进入生成速度", async () => {
   const bothMs = writeLog([
     [sessionRow()],
     [stepStartRow({ seq: 1, time: T0, turn: 1, step: 1 }), messageRow({ seq: 2, time: T0 + 1500, turn: 1, step: 1 })],
@@ -866,29 +928,25 @@ test("P1-2 单位闸门的三个邻接形态：两端秒级/两端毫秒/缺 sta
     [messageRow({ seq: 1, time: T0 + 3000, turn: 1, step: 1, outputTokens: 120 })],
   ]);
   try {
-    const ms = await readLog(bothMs.file);
-    const seconds = await readLog(bothSeconds.file);
-    const missing = await readLog(noStart.file);
+    const ms = await readLogWithRaw(bothMs.file);
+    const seconds = await readLogWithRaw(bothSeconds.file);
+    const missing = await readLogWithRaw(noStart.file);
 
-    assert.equal(ms.samples[0].durationMs, 1500);
-    assert.equal(ms.samples[0].timingSource, "timestamp_fallback");
+    assertMissingGeneration(ms.samples[0]);
+    assert.equal(ms.rawSamples[0].reportedDurationMs, 1500);
 
-    // 两端秒级：单位**一致** ⇒ reader 的"混合单位"判据**不成立**（`timingSource !== 'mixed'`），
-    // 也不会把相减结果（2）当成可用时长 —— 因为 `isEpochMsUnit` 要求端点 ≥ `PERF_EPOCH_MS_MIN`，
-    // 秒级一律不可比，于是 `durationMs` 走缺失档。真正指出"单位不对"的是 M1 自己的 `tsMs` 闸门：
-    // `TIME_INVALID` + 细分原因 `timestamp_unit_unsupported`（**不是** reader 冒充的混淆标记）。
-    assert.equal(seconds.samples[0].timingSource, "unknown", "两端同单位 ⇒ 不是混淆档");
-    assert.equal(seconds.samples[0].durationMs, null, "秒级端点不可比，不得把 2 当毫秒时长");
+    // 两端秒级不形成诊断差值；message 作为样本时间仍由 M1 的单位闸门拦下。
+    assertMissingGeneration(seconds.samples[0]);
+    assert.equal(seconds.rawSamples[0].reportedDurationMs, null);
     assert.ok(flagsOf(seconds.samples[0]).includes("TIME_INVALID"), "秒级 tsMs 由 M1 的时间单位闸门拦下");
     assert.equal(seconds.samples[0].diagnosticReasonChain.includes("timestamp_unit_unsupported"), true);
     assert.equal(seconds.samples[0].tsMs, null);
 
-    // 缺 start：量级缺失，**不得**误报成单位混淆（这是修复过程中真实踩到的误报）
-    assert.equal(missing.samples[0].durationMs, null);
-    assert.equal(missing.samples[0].timingSource, "unknown", "缺 start 是缺失，不是混合单位");
+    // 缺 start：只是诊断值缺失，不得误报成时间单位非法。
+    assertMissingGeneration(missing.samples[0]);
+    assert.equal(missing.rawSamples[0].reportedDurationMs, null);
     assert.equal(missing.samples[0].windowStartMs, null, "缺 start 时不得伪造一个窗口端点");
     assert.equal(missing.samples[0].windowEndMs, null, "缺 start 时不得伪造一个窗口端点");
-    assert.ok(flagsOf(missing.samples[0]).includes("MISSING_DURATION"));
     assert.ok(!flagsOf(missing.samples[0]).includes("TIME_INVALID"), "缺失 ≠ 单位非法");
   } finally {
     rmSync(bothMs.dir, { recursive: true, force: true });
@@ -1022,7 +1080,7 @@ test("代理：delegationDepth 只证 subagent，名与 kind 分离，depth=0 �
   }
 });
 
-test("两会话相同的 (turn,step)：身份含 sessionId，不碰撞", async () => {
+test("两会话相同的 (turn,step)：身份含 sessionId，原始诊断值也不串会话", async () => {
   const first = writeLog([
     [sessionRow({ id: "session-alpha" })],
     [
@@ -1038,12 +1096,17 @@ test("两会话相同的 (turn,step)：身份含 sessionId，不碰撞", async (
     ],
   ]);
   try {
-    const alpha = await readLog(first.file);
-    const beta = await readLog(second.file);
+    const alpha = await readLogWithRaw(first.file);
+    const beta = await readLogWithRaw(second.file);
     assert.equal(alpha.samples[0].sampleKey, JSON.stringify(["dsh", HOME_ID, "session-alpha", 1, 1]));
     assert.equal(beta.samples[0].sampleKey, JSON.stringify(["dsh", HOME_ID, "session-beta", 1, 1]));
     assert.notEqual(alpha.samples[0].sampleKey, beta.samples[0].sampleKey, "同 (turn,step) 不同会话不得同键");
-    assert.notEqual(alpha.samples[0].durationMs, beta.samples[0].durationMs);
+    assertMissingGeneration(alpha.samples[0]);
+    assertMissingGeneration(beta.samples[0]);
+    assert.equal(alpha.rawSamples[0].reportedDurationMs, 2000);
+    assert.equal(beta.rawSamples[0].reportedDurationMs, 4000);
+    assert.equal(alpha.rawSamples[0].reportedOutputTokens, 100);
+    assert.equal(beta.rawSamples[0].reportedOutputTokens, 200);
   } finally {
     rmSync(first.dir, { recursive: true, force: true });
     rmSync(second.dir, { recursive: true, force: true });
@@ -1062,11 +1125,12 @@ test("坏帧：sourceWarnings 记 MALFORMED_FRAME（文件 degraded），坏帧�
     ],
   ]);
   try {
-    const { samples, warnings, result } = await readLog(file);
+    const { samples, warnings, result, rawSamples } = await readLogWithRaw(file);
     assert.deepEqual(warnings, [{ sourceKind: "dsh", homeId: HOME_ID, code: "MALFORMED_FRAME", count: 1 }]);
     assert.deepEqual(result.warnings, warnings);
     assert.equal(samples.length, 1, "坏帧不得让整文件的合法记录消失");
-    assert.equal(samples[0].outputTokens, 42);
+    assertMissingGeneration(samples[0]);
+    assert.equal(rawSamples[0].reportedOutputTokens, 42);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1080,10 +1144,11 @@ test("坏 JSON 行：sourceWarnings 记 MALFORMED_JSON 且 count 为真实坏行
     textFrame(`${validStart}\n{ 这不是 JSON\n"also-broken\n${validMessage}\n`),
   ]);
   try {
-    const { samples, warnings } = await readLog(file);
+    const { samples, warnings, rawSamples } = await readLogWithRaw(file);
     assert.deepEqual(warnings, [{ sourceKind: "dsh", homeId: HOME_ID, code: "MALFORMED_JSON", count: 2 }]);
     assert.equal(samples.length, 1, "坏行之后的合法行仍然解析");
-    assert.equal(samples[0].outputTokens, 77);
+    assertMissingGeneration(samples[0]);
+    assert.equal(rawSamples[0].reportedOutputTokens, 77);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1167,6 +1232,478 @@ test("source 允许只给 homeId 字符串；onWarning 省略时不报错", asyn
     assert.equal(result.sampleCount, 3);
     assert.equal(samples[0].homeId, HOME_ID);
     assert.deepEqual(result.warnings, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------- 成功 message 的 N/D 直连
+
+test("同一成功 message 的 known reasoning 与 packed stream：N=8、B=1、D=末边界-首边界", async () => {
+  const stream = [
+    reasoningChunks(T0 + 800, [STREAM_SENTINEL], []),
+    textChunks(T0 + 1000, ["", "a", " "], [20, 80]),
+    toolChunks(T0 + 1200, ["", "\t"], [30], { index: 1, name: STREAM_SENTINEL }),
+  ];
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 100, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        outputTokens: 12,
+        reasoningTokens: 4,
+        stream,
+      }),
+    ],
+  ]);
+  try {
+    const { samples, rawSamples } = await readLogWithRaw(file);
+    assert.equal(samples.length, 1);
+    const [sample] = samples;
+    assert.equal(sample.outputTokens, 7, "N=12-4=8；首输出已含 B=1，分子为 7");
+    assert.equal(sample.durationMs, 210);
+    assert.equal(sample.windowStartMs, T0 + 1020);
+    assert.equal(sample.windowEndMs, T0 + 1230);
+    assert.equal(sample.timingSource, "explicit");
+    assert.equal(sample.window, "request");
+    assert.equal(sample.timingKind, "generation");
+    assert.equal(sample.tokenScope, "non_reasoning_output");
+    assert.equal(rawSamples[0].reportedOutputTokens, 12);
+    assert.equal(rawSamples[0].reportedReasoningTokens, 4);
+    assert.equal(JSON.stringify(rawSamples).includes(STREAM_SENTINEL), false);
+    assert.equal(JSON.stringify(samples).includes(STREAM_SENTINEL), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("已识别 stream 记录的多余 metadata 不影响 N/D；未知输出事件语义不猜测", async () => {
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        step: 1,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [
+          {
+            ...reasoningChunks(T0 + 900, ["reasoning"], []),
+            recordMetadata: "ignored",
+          },
+          {
+            ...textChunks(T0 + 1000, ["", "a", " "], [20, 80]),
+            recordMetadata: { ignored: true },
+          },
+          {
+            ...toolChunks(T0 + 1100, ["{", "}"], [10], { index: 1 }),
+            recordMetadata: ["ignored"],
+          },
+          {
+            type: "chunk",
+            time: T0 + 1200,
+            recordMetadata: "ignored",
+            chunk: { type: "usage", usage: { output_tokens: 999 }, metadata: true },
+          },
+        ],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 3, time: T0 + 1600, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 4,
+        time: T0 + 2600,
+        step: 2,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [
+          textChunks(T0 + 2000, ["a", "b"], [10]),
+          { type: "future-output-chunks", time0: T0 + 2100, index: 0, dt: [], texts: ["?"] },
+        ],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 5, time: T0 + 2700, turn: 1, step: 3 }),
+      generationMessageRow({
+        seq: 6,
+        time: T0 + 3700,
+        step: 3,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [
+          textChunks(T0 + 3000, ["a", "b"], [10]),
+          { type: "chunk", time: T0 + 3100, chunk: { type: "future-output-delta", text: "?" } },
+        ],
+      }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const metadata = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    assert.equal(metadata.outputTokens, 7);
+    assert.equal(metadata.windowStartMs, T0 + 1020);
+    assert.equal(metadata.windowEndMs, T0 + 1110);
+    assert.equal(metadata.durationMs, 90);
+    assert.equal(metadata.timingSource, "explicit");
+
+    for (const step of [2, 3]) {
+      const unknownEvent = byKey.get(sampleKeyOf(SESSION_ID, 1, step));
+      assert.equal(unknownEvent.outputTokens, 7, "未知 stream 事件不得污染已知 N");
+      assert.equal(unknownEvent.durationMs, null, "未知事件语义不得被猜成可计时输出");
+      assert.ok(flagsOf(unknownEvent).includes("MISSING_DURATION"));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reasoning 缺/null/非整数/负数/超 output 均为 unknown；known 0 保留", async () => {
+  const streams = new Map();
+  const cases = [
+    ["missing", NO_REASONING_FIELD],
+    ["null", null],
+    ["string", "4"],
+    ["fraction", 1.5],
+    ["negative", -1],
+    ["over-output", 9],
+    ["zero", 0],
+  ];
+  const frames = [[sessionRow()]];
+  for (let index = 0; index < cases.length; index += 1) {
+    const step = index + 1;
+    const stream = [textChunks(T0 + 1000 + step * 100, ["a", "b"], [10])];
+    streams.set(step, stream);
+    frames.push([
+      stepStartRow({ seq: step * 2, time: T0 + 500 + step * 100, turn: 1, step }),
+      generationMessageRow({
+        seq: step * 2 + 1,
+        time: T0 + 1200 + step * 100,
+        step,
+        outputTokens: 8,
+        reasoningTokens: cases[index][1],
+        stream,
+      }),
+    ]);
+  }
+  const { dir, file } = writeLog(frames);
+  try {
+    const { samples, rawSamples } = await readLogWithRaw(file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const rawByKey = rawByIdentity(rawSamples);
+    for (let index = 0; index < cases.length - 1; index += 1) {
+      const step = index + 1;
+      const sample = byKey.get(sampleKeyOf(SESSION_ID, 1, step));
+      assert.equal(sample.outputTokens, null, `${cases[index][0]} reasoning 必须保持 unknown`);
+      assert.equal(sample.durationMs, 10, "D 仍可由同一 message 的 stream 独立成立");
+      assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+    }
+    const zeroStep = cases.length;
+    const zero = byKey.get(sampleKeyOf(SESSION_ID, 1, zeroStep));
+    assert.equal(zero.outputTokens, 7, "known reasoning=0 ⇒ N=8，B=1 后为 7");
+    assert.equal(rawByKey.get(identityKey(1, zeroStep)).reportedReasoningTokens, 0);
+    for (const [step, stream] of streams) {
+      assert.equal(rawByKey.get(identityKey(1, step)).durationMs, 10);
+      assert.ok(stream.length > 0);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("N-B<=0 不把 0/负分子写成样本：N=1 与 N=0 都保持 MISSING_OUTPUT", async () => {
+  const stream1 = [textChunks(T0 + 1000, ["a", "b"], [10])];
+  const stream2 = [textChunks(T0 + 2000, ["a", "b"], [10])];
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        step: 1,
+        outputTokens: 2,
+        reasoningTokens: 1,
+        stream: stream1,
+      }),
+    ],
+    [
+      stepStartRow({ seq: 3, time: T0 + 1600, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 4,
+        time: T0 + 2500,
+        step: 2,
+        outputTokens: 1,
+        reasoningTokens: 1,
+        stream: stream2,
+      }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    assert.equal(samples.length, 2);
+    for (const sample of samples) {
+      assert.equal(sample.outputTokens, null);
+      assert.equal(sample.durationMs, 10);
+      assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+      assert.ok(!flagsOf(sample).includes("OUTPUT_ZERO"));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("空串不设边界，真实空白设边界；tool name 元数据与空 args 不设边界", async () => {
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        step: 1,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [textChunks(T0 + 1000, ["", " ", "\n"], [5, 5])],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 3, time: T0 + 1600, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 4,
+        time: T0 + 2600,
+        step: 2,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [toolChunks(T0 + 1005, [""], [], { name: STREAM_SENTINEL }), textChunks(T0 + 1020, ["a", "b"], [10])],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 5, time: T0 + 2700, turn: 1, step: 3 }),
+      generationMessageRow({
+        seq: 6,
+        time: T0 + 3700,
+        step: 3,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [textChunks(T0 + 1040, ["a"], []), toolChunks(T0 + 1100, ["\t", ""], [100])],
+      }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const whitespaceText = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    assert.equal(whitespaceText.windowStartMs, T0 + 1005);
+    assert.equal(whitespaceText.windowEndMs, T0 + 1010);
+    assert.equal(whitespaceText.durationMs, 5);
+
+    const nameMetadata = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
+    assert.equal(nameMetadata.windowStartMs, T0 + 1020, "tool name 不能成为更早边界");
+    assert.equal(nameMetadata.windowEndMs, T0 + 1030);
+    assert.equal(nameMetadata.durationMs, 10);
+
+    const whitespaceTool = byKey.get(sampleKeyOf(SESSION_ID, 1, 3));
+    assert.equal(whitespaceTool.windowEndMs, T0 + 1100, "空白 args 有效，随后空 args 无效");
+    assert.equal(whitespaceTool.durationMs, 60);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("多个 packed run 按各自 time0+累计 dt 重建，usage/finish chunk 不更新边界", async () => {
+  const stream = [
+    textChunks(T0 + 1010, ["a", "b", ""], [20, 30]),
+    { type: "chunk", time: T0 + 1150, chunk: { type: "usage", usage: { output_tokens: 999 } } },
+    toolChunks(T0 + 1200, ["x", "y"], [40], { index: 1 }),
+    { type: "chunk", time: T0 + 1300, chunk: { type: "finish" } },
+    textChunks(T0 + 1400, ["z"], [], 2),
+  ];
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        outputTokens: 20,
+        reasoningTokens: 5,
+        stream,
+      }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    assert.equal(samples.length, 1);
+    assert.equal(samples[0].windowStartMs, T0 + 1010);
+    assert.equal(samples[0].windowEndMs, T0 + 1400);
+    assert.equal(samples[0].durationMs, 390);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reasoning 完全位于正文前/后可排除；穿插在两个有效输出之间拒绝 D", async () => {
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1500,
+        step: 1,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [
+          reasoningChunks(T0 + 900, ["before"], []),
+          textChunks(T0 + 1000, ["a", "b"], [20]),
+          reasoningChunks(T0 + 1100, ["after"], []),
+        ],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 3, time: T0 + 1600, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 4,
+        time: T0 + 2600,
+        step: 2,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [textChunks(T0 + 2000, ["a", "b"], [100]), reasoningChunks(T0 + 2050, ["interleaved"], [])],
+      }),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const separated = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    assert.equal(separated.durationMs, 20);
+    assert.equal(separated.windowStartMs, T0 + 1000);
+    assert.equal(separated.windowEndMs, T0 + 1020);
+
+    const interleaved = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
+    assert.equal(interleaved.durationMs, null);
+    assert.equal(interleaved.timingSource, "unknown");
+    assert.ok(flagsOf(interleaved).includes("MISSING_DURATION"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("失败 assistant/attempt 与另一条 message 的 stream 不得补成功 message 的 D", async () => {
+  const successfulStream = [textChunks(T0 + 1000, ["only-one-boundary"], [])];
+  const failedAttempt = {
+    type: "assistant/attempt",
+    seq: 3,
+    time: T0 + 1500,
+    data: {
+      turn: 1,
+      step: 1,
+      usage: { outputTokens: 100, reasoningTokens: 0 },
+      stream: [textChunks(T0 + 900, ["failed-a", "failed-b"], [50])],
+    },
+  };
+  const otherMessageStream = [textChunks(T0 + 1900, ["other-a", "other-b"], [50])];
+  const repaired = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 1200,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: successfulStream,
+      }),
+      failedAttempt,
+    ],
+    [
+      stepStartRow({ seq: 4, time: T0 + 1700, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 5,
+        time: T0 + 1800,
+        step: 2,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: successfulStream,
+      }),
+      (() => {
+        const row = messageRow({
+          seq: 6,
+          time: T0 + 2000,
+          step: 2,
+          includeUsage: false,
+          includePayload: false,
+        });
+        row.data.stream = otherMessageStream;
+        return row;
+      })(),
+    ],
+  ]);
+  try {
+    const { samples } = await readLog(repaired.file);
+    const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
+    const failedIgnored = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
+    assert.equal(failedIgnored.durationMs, null);
+    assert.equal(failedIgnored.outputTokens, 7, "失败 attempt 不影响成功 message 的 N");
+    const noCrossJoin = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
+    assert.equal(noCrossJoin.durationMs, null, "首条成功 message 只有一个边界");
+    assert.ok(flagsOf(noCrossJoin).includes("RECORD_CONFLICT"));
+  } finally {
+    rmSync(repaired.dir, { recursive: true, force: true });
+  }
+});
+
+test("packed dt 长度/索引/回退时间非法时 D unknown；step 时长仍只作诊断", async () => {
+  const { dir, file } = writeLog([
+    [sessionRow()],
+    [
+      stepStartRow({ seq: 1, time: T0 + 500, turn: 1, step: 1 }),
+      generationMessageRow({
+        seq: 2,
+        time: T0 + 2500,
+        step: 1,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [{ type: "text-chunks", time0: T0 + 1000, index: 0, dt: [], texts: ["a", "b"] }],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 3, time: T0 + 2600, turn: 1, step: 2 }),
+      generationMessageRow({
+        seq: 4,
+        time: T0 + 3600,
+        step: 2,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [{ type: "text-chunks", time0: T0 + 3000, index: -1, dt: [10], texts: ["a", "b"] }],
+      }),
+    ],
+    [
+      stepStartRow({ seq: 5, time: T0 + 3700, turn: 1, step: 3 }),
+      generationMessageRow({
+        seq: 6,
+        time: T0 + 4700,
+        step: 3,
+        outputTokens: 10,
+        reasoningTokens: 2,
+        stream: [{ type: "text-chunks", time0: T0 + 4000, index: 0, dt: [-10], texts: ["a", "b"] }],
+      }),
+    ],
+  ]);
+  try {
+    const { samples, rawSamples } = await readLogWithRaw(file);
+    for (const sample of samples) {
+      assert.equal(sample.durationMs, null);
+      assert.equal(sample.outputTokens, 7, "非法 D 不污染同一 message 的 known N");
+    }
+    for (const raw of rawSamples) {
+      assert.ok(raw.reportedDurationMs > 0, "step 差值只留在诊断字段");
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

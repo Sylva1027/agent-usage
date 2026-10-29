@@ -9,6 +9,7 @@ import {
   buildTimelineRows,
   completedQuotaWindows,
   deriveTimelineBucket,
+  previousQuotaRange,
   quotaRecordsForRange,
 } from "../public/timeline-utils.js";
 import {
@@ -59,23 +60,42 @@ test("previous 7d follows actual replacements and retains its planned reset and 
   assert.match(rangeLabel({ range }), /仅显示有用量的日期/);
 });
 
-test("unused allowance and a delayed restart extend the interval without requiring a zero percent observation", () => {
+test("current quota records use the sealed planned-reset window across a gap", () => {
   const start = "2026-10-05T08:00:00+08:00",
-    next = "2026-10-13T08:00:00+08:00";
-  const range = rangeFor([observation(start, start, 1), observation(next, next, 4)], next);
-  assert.equal(range.durationMinutes, 8 * 24 * 60);
-  assert.equal(iso(range.windowEndExclusive), iso(next));
+    next = "2026-10-13T08:00:00+08:00",
+    currentAsOf = "2026-10-14T08:00:00+08:00";
+  const rows = [observation(start, start, 1), observation(next, next, 4)];
+  const range = rangeFor(rows, currentAsOf);
+  const plannedReset = stamp(start) + duration;
+  assert.equal(iso(range.start), iso(start));
+  assert.equal(iso(range.windowEndExclusive), iso(plannedReset));
+  assert.equal(range.durationMinutes, 10080);
+
+  const quota = selectQuotaWindows(rows, currentAsOf);
+  const current = resolveDateRange({
+    preset: "quota_week",
+    calendarZone: "utc",
+    now: currentAsOf,
+    quota,
+  });
+  const seen = [];
+  const records = quotaRecordsForRange(current, quota, rows, (window) => {
+    seen.push([iso(window.start), iso(window.end)]);
+    return { eventCount: 1, values: { totalTokens: window === current ? 100 : 10 } };
+  });
+  assert.equal(records.totalTokens.comparedWindowCount, 1);
+  assert.deepEqual(seen[0], [iso(start), iso(plannedReset - 1)]);
 });
 
-test("expiry without another start does not make the latest cycle the previous cycle", () => {
-  assert.equal(
-    selectQuotaWindows([observation(second)], "2026-10-20T00:00:00Z").previousWindows.quota_week.state,
-    "missing",
-  );
+test("an expired single cycle is available and the latest real cycle becomes previous", () => {
+  const expired = selectQuotaWindows([observation(second)], "2026-10-20T00:00:00Z").previousWindows.quota_week;
+  assert.equal(expired.state, "available");
+  assert.equal(expired.windowStart, iso(second));
+  assert.equal(expired.windowEndExclusive, iso(stamp(second) + duration));
   const quota = selectQuotaWindows(observations, "2026-10-25T00:00:00Z");
   assert.equal(quota.windows.quota_week.state, "waiting");
-  assert.equal(quota.previousWindows.quota_week.windowStart, iso(second));
-  assert.equal(quota.previousWindows.quota_week.windowEndExclusive, iso(third));
+  assert.equal(quota.previousWindows.quota_week.windowStart, iso(third));
+  assert.equal(quota.previousWindows.quota_week.windowEndExclusive, iso(stamp(third) + duration));
 });
 
 test("jitter, duplicate observations, later writes of old snapshots and future observations do not add cycles", () => {
@@ -98,27 +118,30 @@ test("conflicting snapshots do not silently produce certain weekly boundaries", 
   assert.equal(selectQuotaWindows(rows, asOf).previousWindows.quota_week.state, "ambiguous");
 });
 
-test("a year-long interval produces only usage dates and respects both exact boundaries", () => {
+test("a year-long delayed replacement seals at the planned reset without filling the gap", () => {
   const start = "2025-10-07T08:00:00Z",
     next = "2026-10-07T08:00:00Z";
   const range = rangeFor([observation(start), observation(next)], next);
+  const plannedReset = stamp(start) + duration;
   const event = (timestamp, total) => ({ timestamp, total: { total, input: total }, model: "free", channel: "CLI" });
   const rows = buildTimelineRows(
     [
       event(iso(stamp(start) - 1), 999),
       event(start, 10),
-      event("2026-10-06T10:00:00Z", 20),
-      event("2026-03-01T00:00:00Z", 0),
+      event(iso(plannedReset - 1), 20),
+      event(iso(plannedReset), 30),
+      event("2026-03-01T00:00:00Z", 40),
       event(next, 999),
     ],
     range,
     deriveTimelineBucket(range, "month"),
     { estimateCost: () => ({ totalUsd: 0, currency: "USD" }) },
   );
-  assert.equal(range.durationMinutes, 365 * 24 * 60);
+  assert.equal(range.durationMinutes, 10080);
+  assert.equal(iso(range.windowEndExclusive), iso(plannedReset));
   assert.deepEqual(
     rows.map((row) => row.key),
-    ["2025-10-07", "2026-10-06"],
+    ["2025-10-07", "2025-10-14"],
   );
   assert.equal(
     rows.reduce((sum, row) => sum + row.total.total, 0),
@@ -127,7 +150,7 @@ test("a year-long interval produces only usage dates and respects both exact bou
   assert.equal(rows[0].costByModel.free.totalUsd, 0);
 });
 
-test("weekly record badges compare actual completed intervals, including early replacements", () => {
+test("historical quota records use the same sealed early-replacement windows", () => {
   const range = rangeFor();
   const seen = [];
   const records = quotaRecordsForRange(range, selectQuotaWindows(observations, asOf), observations, (window) => {
@@ -138,7 +161,7 @@ test("weekly record badges compare actual completed intervals, including early r
   assert.deepEqual(seen[0], [iso(first), iso(stamp(second) - 1)]);
 });
 
-test("previous 5h retains the full interval until its replacement starts", () => {
+test("previous 5h seals at its planned reset when replacement starts later", () => {
   const row = (start) => ({
     ...observation(start),
     role: "primary",
@@ -151,8 +174,37 @@ test("previous 5h retains the full interval until its replacement starts", () =>
   );
   assert.equal(
     stamp(quota.previousWindows.quota_5h.windowEndExclusive) - stamp(quota.previousWindows.quota_5h.windowStart),
-    (12 * 60 + 46 + 40 / 60) * 60000,
+    300 * 60000,
   );
+});
+
+test("previousQuotaRange walks sealed windows with an inclusive upper-bound comparison", () => {
+  const quota = selectQuotaWindows(observations, asOf);
+  const current = resolveDateRange({
+    preset: "quota_week",
+    calendarZone: "utc",
+    now: asOf,
+    quota,
+  });
+  const previous = previousQuotaRange(current, quota, observations);
+  assert.equal(iso(previous.start), iso(second));
+  assert.equal(iso(previous.end), iso(stamp(third) - 1));
+  assert.equal(iso(previous.windowStart), iso(second));
+  assert.equal(iso(previous.windowEndExclusive), iso(third));
+  assert.equal(previous.durationMinutes, 5697);
+  assert.equal(previous.preset, "recent");
+  assert.equal(previous.quotaPreset, "quota_week");
+  assert.equal(previous.quotaState, "available");
+  assert.equal(previous.asOf.getTime(), stamp(asOf));
+
+  const beforeBoundary = previousQuotaRange({ ...current, start: new Date(stamp(third) - 1) }, quota, observations);
+  assert.equal(iso(beforeBoundary.windowStart), iso(first));
+  assert.equal(iso(beforeBoundary.windowEndExclusive), iso(second));
+  const earlier = previousQuotaRange(previous, quota, observations);
+  assert.equal(iso(earlier.windowStart), iso(first));
+  assert.equal(iso(earlier.windowEndExclusive), iso(second));
+  assert.equal(previousQuotaRange({ ...current, quotaState: "missing" }, quota, observations), null);
+  assert.equal(previousQuotaRange({ ...current, start: new Date(stamp(first)) }, quota, observations), null);
 });
 
 test("menu and selected weekly labels match in both languages while legacy values remain supported", () => {
@@ -247,23 +299,18 @@ for (const [minutes, recentValue, bucket] of [
         summarizeUsageIndex(index, filters),
         summarize(pricedReport(report, asOf)),
       ];
+      const expectedStart = minutes === 300 ? stamp(third) : stamp(second);
+      const expectedEnd = minutes === 300 ? expectedStart + 300 * 60000 : stamp(third);
       for (const summary of summaries) {
-        assert.equal(iso(summary.range.start), iso(second));
-        assert.equal(iso(summary.range.windowEndExclusive), iso(third));
-        assert.equal(summary.range.durationMinutes, 5697);
+        assert.equal(iso(summary.range.start), iso(expectedStart));
+        assert.equal(iso(summary.range.windowEndExclusive), iso(expectedEnd));
+        assert.equal(summary.range.durationMinutes, minutes === 300 ? 300 : 5697);
         assert.equal(summary.range.bucket, bucket);
-        assert.equal(summary.totals.total, 50);
-        assert.equal(summary.sessionCount, 2);
+        assert.equal(summary.totals.total, minutes === 300 ? 999 : 50);
+        assert.equal(summary.sessionCount, minutes === 300 ? 1 : 2);
         assert.deepEqual(
           summary.timeline.map((row) => row.key),
-          minutes === 10080
-            ? ["2026-10-07", "2026-10-10"]
-            : [
-                String(stamp(second)),
-                String(
-                  stamp(second) + Math.floor((stamp("2026-10-10T20:00:00+08:00") - stamp(second)) / 1800000) * 1800000,
-                ),
-              ],
+          minutes === 10080 ? ["2026-10-07", "2026-10-10"] : [String(stamp(third))],
         );
         assert.ok(summary.costEstimate.totalUsd > 0);
         assert.equal(
@@ -302,28 +349,37 @@ test("5h expiry, early replacement, timestamp jitter and late old snapshots shar
     row(next, "2026-09-30T15:10:00+08:00"),
   ];
   const quota = selectQuotaWindows(rows, "2026-10-02T00:00:00Z");
-  assert.equal(quota.previousWindows.quota_5h.windowStart, iso(start));
-  assert.equal(quota.previousWindows.quota_5h.windowEndExclusive, iso(next));
+  const completed = completedQuotaWindows(rows, "codex", stamp("2026-10-02T00:00:00Z"), 300);
+  assert.equal(completed[0].windowStart, iso(start));
+  assert.equal(completed[0].windowEndExclusive, iso(next));
+  assert.equal(quota.previousWindows.quota_5h.windowStart, iso(next));
+  assert.equal(quota.previousWindows.quota_5h.windowEndExclusive, iso(stamp(next) + 300 * 60000));
   assert.equal(quota.windows.quota_5h.state, "waiting");
-  assert.equal(selectQuotaWindows([row(start)], "2026-10-02T00:00:00Z").previousWindows.quota_5h.state, "missing");
+  const expired = selectQuotaWindows([row(start)], "2026-10-02T00:00:00Z").previousWindows.quota_5h;
+  assert.equal(expired.state, "available");
+  assert.equal(expired.windowStart, iso(start));
+  assert.equal(expired.windowEndExclusive, iso(stamp(start) + 300 * 60000));
 });
 
-test("5h sparse half-hours preserve exact final boundaries across a year-long rest", () => {
+test("5h sparse half-hours seal a delayed restart at the planned reset", () => {
   const start = stamp("2025-10-10T23:49:27Z"),
-    end = stamp("2026-10-11T00:08:20Z");
-  const range = {
+    next = stamp("2026-10-11T00:08:20Z");
+  const row = (time) => ({
+    ...observation(new Date(time).toISOString()),
+    role: "primary",
+    windowMinutes: 300,
+    resetsAtMs: time + 300 * 60000,
+  });
+  const quota = selectQuotaWindows([row(start), row(next)], next);
+  const range = resolveDateRange({
     preset: "recent",
-    quotaWindow: true,
-    quotaPreset: "quota_5h",
-    quotaState: "available",
-    start: new Date(start),
-    end: new Date(end - 1),
-    windowStart: new Date(start),
-    windowEndExclusive: new Date(end),
-    asOf: new Date(end),
+    recentValue: "上一个5h",
+    now: next,
     calendarZone: "utc",
-  };
-  const events = [start - 1, start, start + 1800000, end - 1, end].map((timestamp, i) => ({
+    quota,
+  });
+  const end = stamp(range.windowEndExclusive);
+  const events = [start - 1, start, start + 1800000, end - 1, end, next].map((timestamp, i) => ({
     timestamp,
     sessionId: String(i),
     model: "test",
@@ -337,6 +393,7 @@ test("5h sparse half-hours preserve exact final boundaries across a year-long re
     rows.reduce((n, row) => n + row.total.total, 0),
     20,
   );
+  assert.equal(end - start, 300 * 60000);
   assert.equal(deriveTimelineBucket(range, "month"), "quota_30m");
-  assert.match(rangeLabel({ range }), /2025-10-10 23:49.*2026-10-11 00:08.*仅显示有用量的半小时/);
+  assert.equal(rangeLabel({ range }), "2025-10-10 23:49–2025-10-11 04:49");
 });

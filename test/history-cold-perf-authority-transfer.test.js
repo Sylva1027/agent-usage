@@ -125,11 +125,18 @@ test("explicit ZCode perf authority survives complete bundle import after source
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: HOT_START_MS - 1 })
       .sort((left, right) => left.tsMs - right.tsMs || left.sampleKey.localeCompare(right.sampleKey));
     const coldSample = coldSamples.find(
-      (sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0,
+      (sample) =>
+        sample.status === "completed" &&
+        sample.outputTokens === null &&
+        sample.durationMs === null &&
+        sample.requestCount === 1,
     );
-    assert.ok(coldSample, "fixture must expose a computable cold ZCode perf sample");
+    assert.ok(coldSample, "fixture must expose a cold ZCode candidate with missing generation timing");
     assert.equal(coldSample.sourceKind, "zcode");
     assert.equal(coldSample.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(coldSample.timingKind, "generation");
+    assert.equal(coldSample.tokenScope, "non_reasoning_output");
+    assert.equal(coldSample.timingSource, "unknown");
     assert.deepEqual([...new Set(coldSamples.map((sample) => sample.sourceKind))], ["zcode"]);
     assert.deepEqual([...new Set(coldSamples.map((sample) => sample.methodVersion))], [PERF_METHOD_VERSION]);
 

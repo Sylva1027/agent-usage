@@ -77,16 +77,33 @@ test("summarizeHistory fails wholly when a later authorized perf segment disappe
 
     const smallSample = archived
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: SEGMENT_BOUNDARY_MS - 1 })
-      .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
+      .find(
+        (sample) =>
+          sample.status === "completed" &&
+          sample.outputTokens === null &&
+          sample.durationMs === null &&
+          sample.requestCount === 1,
+      );
     const rankedSample = archived
       .perfCandidatesForRange({ startMs: SEGMENT_BOUNDARY_MS, endMs: coldEndMs - 1 })
-      .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
-    assert.ok(smallSample, "fixture must expose a computable small-model perf sample");
-    assert.ok(rankedSample, "fixture must expose a computable ranked-model perf sample");
+      .find(
+        (sample) =>
+          sample.status === "completed" &&
+          sample.outputTokens === null &&
+          sample.durationMs === null &&
+          sample.requestCount === 1,
+      );
+    assert.ok(smallSample, "fixture must expose a small-model candidate with missing generation timing");
+    assert.ok(rankedSample, "fixture must expose a ranked-model candidate with missing generation timing");
     assert.equal(smallSample.sourceKind, "zcode");
     assert.equal(rankedSample.sourceKind, "zcode");
     assert.equal(smallSample.methodVersion, PERF_METHOD_VERSION);
     assert.equal(rankedSample.methodVersion, PERF_METHOD_VERSION);
+    for (const sample of [smallSample, rankedSample]) {
+      assert.equal(sample.timingKind, "generation");
+      assert.equal(sample.tokenScope, "non_reasoning_output");
+      assert.equal(sample.timingSource, "unknown");
+    }
 
     const eventCount = Number(
       archived.database

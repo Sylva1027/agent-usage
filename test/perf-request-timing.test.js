@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { mergeRequestTimingEvidence, normalizeRequestTimingEvidence } from "../src/perf-request-timing.js";
+import {
+  generationMatchesKnownReasoning,
+  generationPerfValues,
+  mergeRequestTimingEvidence,
+  normalizeGenerationTiming,
+  normalizeRequestTimingEvidence,
+} from "../src/perf-request-timing.js";
 
 const FIXTURE_URL = new URL(
   "../docs/validation/2026-10-21-tps-measurement-correction/A/review/six-turn-request-fixture.json",
@@ -21,6 +27,20 @@ function evidence(overrides = {}) {
     completedAtMs: null,
     ...overrides,
   };
+}
+
+function generation(overrides = {}) {
+  return {
+    outputTokens: 100,
+    durationMs: 500,
+    startOutputTokens: 1,
+    timingKind: "first_last_output",
+    ...overrides,
+  };
+}
+
+function generatedEvidence(overrides = {}) {
+  return evidence({ schemaVersion: 2, generation: generation(), ...overrides });
 }
 
 function assertInvalidInput(fn) {
@@ -42,6 +62,41 @@ test("exact duplicates are available and idempotent", () => {
   });
 });
 
+test("generation timing normalizes and exposes only its net output and duration", () => {
+  const timing = generation();
+
+  assert.deepEqual(normalizeGenerationTiming(timing), timing);
+  assert.deepEqual(generationPerfValues(timing), { outputTokens: 99, durationMs: 500 });
+  assert.equal(generationPerfValues(null), null);
+  assert.equal(generationPerfValues(generation({ outputTokens: 1, startOutputTokens: 1 })), null);
+  assert.deepEqual(
+    normalizeGenerationTiming(generation({ timingKind: "first_output_response_end" })),
+    generation({ timingKind: "first_output_response_end" }),
+  );
+  assert.deepEqual(
+    normalizeGenerationTiming(generation({ timingKind: "explicit", startOutputTokens: 0 })),
+    generation({ timingKind: "explicit", startOutputTokens: 0 }),
+  );
+});
+
+test("known reasoning reconciles generation output without narrowing unknown evidence", () => {
+  assert.equal(generationMatchesKnownReasoning(generation({ outputTokens: 80 }), 100, 20), true);
+  assert.equal(generationMatchesKnownReasoning(generation({ outputTokens: 100 }), 100, 20), false);
+  assert.equal(generationMatchesKnownReasoning(generation({ outputTokens: 100 }), 100, null), true);
+  assert.equal(generationMatchesKnownReasoning(generation({ outputTokens: 100 }), 100, undefined), true);
+  assert.equal(generationMatchesKnownReasoning(null, 100, 20), true);
+});
+
+test("schema v1 remains unchanged while v2 carries a nullable generation object", () => {
+  const v1 = normalizeRequestTimingEvidence(evidence());
+  const v2Null = normalizeRequestTimingEvidence(evidence({ schemaVersion: 2, generation: null }));
+  const v2 = normalizeRequestTimingEvidence(generatedEvidence());
+
+  assert.equal(Object.hasOwn(v1, "generation"), false);
+  assert.deepEqual(v2Null, evidence({ schemaVersion: 2, generation: null }));
+  assert.deepEqual(v2, generatedEvidence());
+});
+
 test("strings are validated without trimming the returned value", () => {
   const canonical = normalizeRequestTimingEvidence(
     evidence({ evidenceOrigin: " producer-v1 ", responseId: " response-a ", requestedModel: " model-a " }),
@@ -61,9 +116,8 @@ test("an unknown origin is shape-valid but remains unauthenticated", () => {
   });
 });
 
-test("any differing normative field is a conflict", () => {
+test("true identity and count differences remain conflicts", () => {
   const variants = [
-    { evidenceOrigin: "producer-v2" },
     { responseId: "response-b" },
     { requestedModel: "model-b" },
     { reportedOutputTokens: 101 },
@@ -83,11 +137,72 @@ test("any differing normative field is a conflict", () => {
   });
 });
 
-test("identical fields from different origins are a conflict", () => {
+test("different origins and newly filled generation fields are compatible", () => {
+  const older = evidence({ evidenceOrigin: "producer-a" });
+  const completed = generatedEvidence({ evidenceOrigin: "producer-b" });
+
+  assert.deepEqual(mergeRequestTimingEvidence([older, completed]), { state: "available", evidence: completed });
+});
+
+test("a complete first-last window replaces a response-end approximation", () => {
+  const approximate = generatedEvidence({
+    generation: generation({ durationMs: 900, timingKind: "first_output_response_end" }),
+  });
+  const explicit = generatedEvidence({
+    generation: generation({ durationMs: 700, timingKind: "explicit" }),
+  });
+  const complete = generatedEvidence({
+    evidenceOrigin: "producer-b",
+    generation: generation({ durationMs: 500, timingKind: "first_last_output" }),
+  });
+
+  assert.deepEqual(mergeRequestTimingEvidence([approximate, complete]), {
+    state: "available",
+    evidence: complete,
+  });
+  assert.deepEqual(mergeRequestTimingEvidence([complete, approximate]), {
+    state: "available",
+    evidence: complete,
+  });
+  assert.deepEqual(mergeRequestTimingEvidence([approximate, explicit]), {
+    state: "available",
+    evidence: explicit,
+  });
+  assert.deepEqual(mergeRequestTimingEvidence([explicit, approximate]), {
+    state: "available",
+    evidence: explicit,
+  });
+});
+
+test("progressive v1 and v2 records compare every same-origin window type", () => {
+  const older = evidence();
+  const approximate = generatedEvidence({
+    generation: generation({ durationMs: 900, timingKind: "first_output_response_end" }),
+  });
+  const complete = generatedEvidence();
+
+  assert.deepEqual(mergeRequestTimingEvidence([older, approximate, complete]), {
+    state: "available",
+    evidence: complete,
+  });
   assert.deepEqual(
     mergeRequestTimingEvidence([
-      evidence({ evidenceOrigin: "producer-a" }),
-      evidence({ evidenceOrigin: "producer-b" }),
+      older,
+      generatedEvidence({ generation: generation({ durationMs: 500 }) }),
+      generatedEvidence({ generation: generation({ durationMs: 600 }) }),
+    ]),
+    { state: "conflict", evidence: null },
+  );
+});
+
+test("conflicting non-reasoning generation counts are a real conflict", () => {
+  assert.deepEqual(
+    mergeRequestTimingEvidence([
+      generatedEvidence(),
+      generatedEvidence({
+        evidenceOrigin: "producer-b",
+        generation: generation({ outputTokens: 99 }),
+      }),
     ]),
     { state: "conflict", evidence: null },
   );
@@ -108,7 +223,13 @@ test("normalization rejects malformed evidence with one stable code", () => {
   const invalidRecords = [
     null,
     [],
-    evidence({ schemaVersion: 2 }),
+    evidence({ schemaVersion: 3 }),
+    evidence({ generation: null }),
+    evidence({ schemaVersion: 2, generation: generation({ outputTokens: 101 }) }),
+    evidence({ schemaVersion: 2, generation: generation({ durationMs: 1_001 }) }),
+    evidence({ schemaVersion: 2, generation: generation({ startOutputTokens: 101 }) }),
+    evidence({ schemaVersion: 2, generation: generation({ durationMs: 0 }) }),
+    evidence({ schemaVersion: 2, generation: generation({ timingKind: "unknown" }) }),
     evidence({ evidenceOrigin: "" }),
     evidence({ evidenceOrigin: "   " }),
     evidence({ evidenceOrigin: 1 }),

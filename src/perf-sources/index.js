@@ -128,7 +128,7 @@ export function classifyPerfSources(sources) {
  * @param {string} filePath
  * @param {{ id?: unknown, path?: unknown, kind?: unknown, label?: unknown }} source
  * @param {(sample: any) => void} onSample
- * @param {{ onWarning?: (warning: any) => void, lookupGenerationDuration?: (messageId: string) => any }} [options]
+ * @param {{ onWarning?: (warning: any) => void, lookupGenerationDuration?: (messageId: string) => any, lookupTextTiming?: (messageId: string) => any, lookupRequestTiming?: (query: any) => any }} [options]
  */
 export async function streamPerfSamplesForFile(filePath, source, onSample, options = {}) {
   const { kind, state, reader } = resolvePerfSourceReader(source?.kind);
@@ -159,6 +159,8 @@ export async function streamPerfSamplesForFile(filePath, source, onSample, optio
       // WorkBuddy：时长不在会话转录里，由 store/memory 的 trace 预扫结果提供。
       // 其它 reader 忽略这个字段（各自的时间戳/时长语义与它无关）。
       lookupGenerationDuration: options.lookupGenerationDuration,
+      lookupTextTiming: options.lookupTextTiming,
+      lookupRequestTiming: options.lookupRequestTiming,
     },
   );
   if (staged !== null) {

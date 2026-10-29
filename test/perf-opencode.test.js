@@ -1,8 +1,8 @@
-// M2.3 OpenCode reader 专项测试。
+// OpenCode generation TPS reader 专项测试。
 //
 // 纪律（M1/M2.1 教训固化）：
 // - **只测一侧 = 没测规则**：每条规则都测正例与反例（v1 排除 vs v2 放行；坏 JSON 中断 vs 不中断；
-//   reasoning 真 0 vs 缺失；`finish` 已识别 vs 未识别；只读成功 vs 只读失败）。
+//   reasoning 已折叠 vs 分列；`finish` 已识别 vs 未识别；只读成功 vs 只读失败）。
 // - **不写死期望值**：断言恒等式与判别式，不硬编码本机行数；期望值全部手算写进注释。
 // - **遇 0 先问"判别式可达吗"**：凡断言 `0`/`null` 的地方，都另有一条用例证明该分支确实可达。
 // - 夹具全部是临时目录里的合成 SQLite，绝不触碰本机真实库（`~/.local/share/opencode/opencode.db`）。
@@ -108,7 +108,7 @@ function messageData(options = {}) {
   return data;
 }
 
-/** 默认消息行：正常完成、输出 100、reasoning 真 0、时长 1000ms（手算基准）。 */
+/** 默认消息行：正常完成、非推理 output 100、reasoning 真 0、请求诊断时长 1000ms。 */
 function message(overrides = {}) {
   return {
     id: "msg-1",
@@ -389,7 +389,8 @@ test("非必需列（time_updated）缺失不影响读取：白名单只认 6 �
     const { samples, stats } = await collect(workspace.dbFile, workspace.source);
     assert.equal(stats.rowsScanned, 1);
     assert.equal(samples.length, 1);
-    assert.equal(samples[0].durationMs, 1000);
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(samples[0].reportedDurationMs, 1000);
   } finally {
     workspace.cleanup();
   }
@@ -720,22 +721,22 @@ test("session_v2 整表缺失 或 缺 version 列 → 非致命：全部按未�
   }
 });
 
-// ---------------------------------------------------------------- 6. output/reasoning：缺一项绝不当 0
+// ---------------------------------------------------------------- 6. v3 原始 output 与非推理分子
 
-test("output+reasoning 三态：reasoning 正值 / 真 0 / 字段缺失三者必须区分（两侧都测）", async () => {
+test("v3 直接使用原始 output：reasoning 正值 / 真 0 / 字段缺失都不参与折叠", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
       messages: [
-        // 手算：100 + 40 = 140。
+        // v2 原始 tokens.output 已是非推理输出：保留 100。
         message({ id: "reasoning-positive", data: messageData({ output: 100, reasoning: 40 }) }),
-        // 手算：100 + 0 = 100（真 0 是参与相加的合法值，不是缺失）。
+        // reasoning 真 0 同样不改变分子。
         message({ id: "reasoning-zero", seq: 2, data: messageData({ output: 100, reasoning: 0 }) }),
-        // reasoning 路径缺失 → 合计未知 → null（不是 100）。
+        // reasoning 缺失不影响已经单列的非推理 output。
         message({ id: "reasoning-missing", seq: 3, data: messageData({ output: 100, drop: ["tokens.reasoning"] }) }),
-        // 反向：output 缺失而 reasoning 存在 → 同样必须 null（只测一侧 = 没测规则）。
+        // 反向：output 缺失时不能用 reasoning 顶替。
         message({ id: "output-missing", seq: 4, data: messageData({ drop: ["tokens.output"], reasoning: 7 }) }),
-        // JSON null 与键缺失必须等价。
+        // reasoning JSON null 同样不影响原始 output。
         message({ id: "reasoning-null", seq: 5, data: messageData({ output: 100, reasoning: null }) }),
       ],
       sessions: [{ id: "ses-1", version: "2.0.20" }],
@@ -743,17 +744,18 @@ test("output+reasoning 三态：reasoning 正值 / 真 0 / 字段缺失三者必
     const { samples } = await collect(workspace.dbFile, workspace.source);
     const rows = byMessageId(samples);
 
-    assert.equal(rows.get("reasoning-positive").outputTokens, 140);
+    assert.equal(rows.get("reasoning-positive").outputTokens, 100);
+    assert.equal(rows.get("reasoning-positive").reportedReasoningTokens, 40);
     assert.equal(rows.get("reasoning-zero").outputTokens, 100);
-    assert.equal(rows.get("reasoning-missing").outputTokens, null);
-    assert.notEqual(rows.get("reasoning-missing").outputTokens, 100);
+    assert.equal(rows.get("reasoning-missing").outputTokens, 100);
+    assert.equal(rows.get("reasoning-missing").reportedReasoningTokens, null);
     assert.equal(rows.get("output-missing").outputTokens, null);
-    assert.equal(rows.get("reasoning-null").outputTokens, null);
+    assert.equal(rows.get("reasoning-null").outputTokens, 100);
 
-    // 内核侧：真 0 与实际缺失必须落到不同 flag。
-    assert.deepEqual(flagNamesOf(rows.get("reasoning-zero")), []);
-    assert.deepEqual(flagNamesOf(rows.get("reasoning-missing")), ["MISSING_OUTPUT"]);
-    assert.deepEqual(flagNamesOf(rows.get("output-missing")), ["MISSING_OUTPUT"]);
+    // 生成时长缺失仍是共同扣除位；只有 output 本身缺失才增加 MISSING_OUTPUT。
+    assert.deepEqual(flagNamesOf(rows.get("reasoning-zero")), ["MISSING_DURATION"]);
+    assert.deepEqual(flagNamesOf(rows.get("reasoning-missing")), ["MISSING_DURATION"]);
+    assert.deepEqual(flagNamesOf(rows.get("output-missing")), ["MISSING_DURATION", "MISSING_OUTPUT"]);
   } finally {
     workspace.cleanup();
   }
@@ -777,9 +779,9 @@ test("`$.tokens` 整体缺失（本机 3 条 error 行的真实形态）→ outp
 
     assert.equal(rows.get("no-tokens").outputTokens, null);
     assert.notEqual(rows.get("no-tokens").outputTokens, 0);
-    assert.deepEqual(flagNamesOf(rows.get("no-tokens")), ["MISSING_OUTPUT", "SOURCE_FILTERED"]);
+    assert.deepEqual(flagNamesOf(rows.get("no-tokens")), ["MISSING_DURATION", "MISSING_OUTPUT", "SOURCE_FILTERED"]);
     assert.equal(rows.get("zero-tokens").outputTokens, 0);
-    assert.deepEqual(flagNamesOf(rows.get("zero-tokens")), ["OUTPUT_ZERO"]);
+    assert.deepEqual(flagNamesOf(rows.get("zero-tokens")), ["OUTPUT_ZERO", "MISSING_DURATION"]);
   } finally {
     workspace.cleanup();
   }
@@ -805,14 +807,14 @@ test("反洗白：boolean/null/object 形式的 token 值不得被 json_extract 
     // 非标量一律被闸门变成"缺失"，绝不冒充 1/0。
     assert.equal(rows.get("bool-output").outputTokens, null);
     assert.notEqual(rows.get("bool-output").outputTokens, 1);
-    assert.equal(rows.get("bool-reasoning").outputTokens, null);
+    assert.equal(rows.get("bool-reasoning").outputTokens, 100, "非推理 output 已单列，非法 reasoning 不污染分子");
     assert.equal(rows.get("text-output").outputTokens, null);
     assert.equal(rows.get("object-output").outputTokens, null);
     // 非法分量**原样**交给内核归类：既不参与相加（避免抵消/凑整），也不伪装成缺失。
     assert.equal(rows.get("float-output").outputTokens, 1.5, "小数分量原样保留，不得与 2 凑成 3.5");
     assert.equal(rows.get("negative-output").outputTokens, -5, "负分量原样保留，不得与 3 抵消成 -2");
-    assert.deepEqual(flagNamesOf(rows.get("float-output")), ["TOKEN_INVALID"]);
-    assert.deepEqual(flagNamesOf(rows.get("negative-output")), ["TOKEN_INVALID"]);
+    assert.deepEqual(flagNamesOf(rows.get("float-output")), ["MISSING_DURATION", "TOKEN_INVALID"]);
+    assert.deepEqual(flagNamesOf(rows.get("negative-output")), ["MISSING_DURATION", "TOKEN_INVALID"]);
   } finally {
     workspace.cleanup();
   }
@@ -826,7 +828,7 @@ test("裁定 AL-4：输入侧未验证路径不投影 —— inputTokens 恒 nul
     const CACHE_SENTINEL = 123_456_789;
     createFixtureDb(workspace.dbFile, {
       messages: [
-        // 输出侧必须照旧可用（证明删除只影响输入侧，output 口径零变化）。
+        // 输出侧必须照旧可用（证明删除只影响输入侧）。
         message({
           id: "full",
           data: messageData({
@@ -855,10 +857,10 @@ test("裁定 AL-4：输入侧未验证路径不投影 —— inputTokens 恒 nul
     for (const [id, sample] of rows) {
       assert.equal(sample.inputTokens, null, `${id}: inputTokens 必须恒为 null（裁定 AL-4）`);
     }
-    // 输出侧零变化（手算 100 + 40 = 140），且不得因删除输入侧而带上任何缺失 flag。
+    // 输出侧使用原始非推理 output 100；唯一扣除位来自尚缺的生成时长。
     for (const [id, sample] of rows) {
-      assert.equal(sample.outputTokens, 140, `${id}: output 口径不受删除影响`);
-      assert.deepEqual(flagNamesOf(sample), [], `${id}: 输入侧不投影不得产生任何扣除位`);
+      assert.equal(sample.outputTokens, 100, `${id}: 原始 output 口径不受输入侧删除影响`);
+      assert.deepEqual(flagNamesOf(sample), ["MISSING_DURATION"], `${id}: 输入侧不投影不得增加扣除位`);
     }
     // 哨兵绝不出现在候选/警告/stats 的序列化结果里（= 真的没有读那些路径）。
     const serialized = JSON.stringify({ samples, warnings: stats.warnings, stats });
@@ -873,14 +875,14 @@ test("裁定 AL-4：输入侧未验证路径不投影 —— inputTokens 恒 nul
   }
 });
 
-// ---------------------------------------------------------------- 7. 时长与时间（响应流结束，排除工具执行）
+// ---------------------------------------------------------------- 7. 请求诊断时窗与生成时长缺失
 
-test("durationMs = streamed − created（手算 1000）；不用工具后的 completed 或缺失端顶替", async () => {
+test("streamed − created 只进入 reportedDurationMs；生成 durationMs 恒缺失", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
       messages: [
-        // 手算：BASE_TS+1000 − BASE_TS = 1000。completed 故意晚 1 小时。
+        // 请求诊断值：BASE_TS+1000 − BASE_TS = 1000。completed 故意晚 1 小时。
         message({ id: "normal" }),
         message({ id: "no-streamed", seq: 2, data: messageData({ drop: ["time.streamed"] }) }),
         message({ id: "no-created", seq: 3, data: messageData({ drop: ["time.created"] }) }),
@@ -892,30 +894,35 @@ test("durationMs = streamed − created（手算 1000）；不用工具后的 co
     const { samples, stats } = await collect(workspace.dbFile, workspace.source);
     const rows = byMessageId(samples);
 
-    assert.equal(rows.get("normal").durationMs, 1000);
-    assert.equal(rows.get("normal").windowEndMs, BASE_TS + 1000, "观测窗口结束仍取 streamed");
+    assert.equal(rows.get("normal").durationMs, null);
+    assert.equal(rows.get("normal").reportedDurationMs, 1000);
+    assert.equal(rows.get("normal").windowEndMs, null, "请求诊断终点不得进入生成窗口");
     assert.equal(rows.get("normal").tsMs, BASE_TS + 3_600_000, "日历归属仍取 completed");
-    assert.notEqual(rows.get("normal").durationMs, 3_600_000, "completed 在工具结束后，不能当时长终点");
+    assert.notEqual(rows.get("normal").reportedDurationMs, 3_600_000, "completed 在工具结束后，不能当诊断时长终点");
     assert.equal(rows.get("no-streamed").durationMs, null);
     assert.notEqual(rows.get("no-streamed").durationMs, 0, "缺失不得变成 0");
+    assert.equal(rows.get("no-streamed").reportedDurationMs, null);
     assert.equal(rows.get("no-created").durationMs, null);
+    assert.equal(rows.get("no-created").reportedDurationMs, null);
     assert.equal(rows.get("streamed-null").durationMs, null, "JSON null 与键缺失等价");
-    assert.equal(rows.get("no-completed").durationMs, 1000, "completed 缺失不影响请求时长");
+    assert.equal(rows.get("streamed-null").reportedDurationMs, null, "JSON null 与键缺失等价");
+    assert.equal(rows.get("no-completed").reportedDurationMs, 1000, "completed 缺失不影响请求诊断时长");
 
     // 缺 streamed 不影响日历归属：completed 仍优先于 created。
     assert.equal(rows.get("no-streamed").tsMs, BASE_TS + 3_600_000);
+    assert.equal(rows.get("no-streamed").windowStartMs, null);
     assert.equal(rows.get("no-streamed").windowEndMs, null);
     assert.deepEqual(flagNamesOf(rows.get("no-streamed")), ["MISSING_DURATION"]);
-    assert.deepEqual(flagNamesOf(rows.get("normal")), []);
+    assert.deepEqual(flagNamesOf(rows.get("normal")), ["MISSING_DURATION"]);
     assert.equal(stats.completedMissingRows, 1, "step-ended 诊断仍独立计数");
     assert.equal(rows.get("no-streamed").terminalVerified, true, "finish 仍在 ⇒ 不因缺 streamed 降级终态");
-    assert.deepEqual(flagNamesOf(rows.get("no-completed")), [], "缺失工具后的 completed 不制造扣除位");
+    assert.deepEqual(flagNamesOf(rows.get("no-completed")), ["MISSING_DURATION"]);
   } finally {
     workspace.cleanup();
   }
 });
 
-test("时序矛盾（streamed < created）与显式真 0 各自可达：负数/0 都不得被抹平", async () => {
+test("请求时窗负值/真 0 只保留在诊断字段，不进入生成 TPS 时长", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
@@ -936,18 +943,15 @@ test("时序矛盾（streamed < created）与显式真 0 各自可达：负数/0
     const { samples } = await collect(workspace.dbFile, workspace.source);
     const rows = byMessageId(samples);
 
-    assert.equal(rows.get("inverted").durationMs, -500);
-    assert.equal(rows.get("zero-span").durationMs, 0);
-    assert.ok(
-      flagNamesOf(rows.get("inverted")).includes("DURATION_NONPOSITIVE"),
-      "负时长必须被诊断为 DURATION_NONPOSITIVE",
-    );
-    assert.ok(
-      flagNamesOf(rows.get("inverted")).includes("TIME_INVALID"),
-      "streamed < created 必须被诊断为 TIME_INVALID",
-    );
-    assert.ok(flagNamesOf(rows.get("zero-span")).includes("DURATION_NONPOSITIVE"), "真 0 时长同样是非正");
-    assert.equal(rows.get("seconds").durationMs, 1);
+    assert.equal(rows.get("inverted").durationMs, null);
+    assert.equal(rows.get("inverted").reportedDurationMs, -500);
+    assert.equal(rows.get("zero-span").durationMs, null);
+    assert.equal(rows.get("zero-span").reportedDurationMs, 0);
+    assert.ok(!flagNamesOf(rows.get("inverted")).includes("DURATION_NONPOSITIVE"));
+    assert.ok(!flagNamesOf(rows.get("inverted")).includes("TIME_INVALID"));
+    assert.ok(!flagNamesOf(rows.get("zero-span")).includes("DURATION_NONPOSITIVE"));
+    assert.equal(rows.get("seconds").durationMs, null);
+    assert.equal(rows.get("seconds").reportedDurationMs, 1);
     assert.ok(flagNamesOf(rows.get("seconds")).includes("TIME_INVALID"), "秒级时间戳必须判单位不支持");
     assert.ok(rows.get("seconds").tsMs < 1e12, "绝不把秒级时间戳乘 1000 冒充毫秒");
   } finally {
@@ -955,7 +959,7 @@ test("时序矛盾（streamed < created）与显式真 0 各自可达：负数/0
   }
 });
 
-test("超长窗口（≥300000ms）只提示不剔除：仍然产出候选并置 LONG_WINDOW", async () => {
+test("超长请求诊断时窗不产生生成 LONG_WINDOW，候选仍保留", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
@@ -973,8 +977,12 @@ test("超长窗口（≥300000ms）只提示不剔除：仍然产出候选并置
     const { samples, stats } = await collect(workspace.dbFile, workspace.source);
     const rows = byMessageId(samples);
     assert.equal(stats.samples, 2, "长窗口绝不是剔除理由");
+    assert.equal(rows.get("exactly-threshold").durationMs, null);
+    assert.equal(rows.get("exactly-threshold").reportedDurationMs, 300_000);
+    assert.equal(rows.get("over-threshold").durationMs, null);
+    assert.equal(rows.get("over-threshold").reportedDurationMs, 300_001);
     assert.ok(!flagNamesOf(rows.get("exactly-threshold")).includes("LONG_WINDOW"));
-    assert.ok(flagNamesOf(rows.get("over-threshold")).includes("LONG_WINDOW"));
+    assert.ok(!flagNamesOf(rows.get("over-threshold")).includes("LONG_WINDOW"));
   } finally {
     workspace.cleanup();
   }
@@ -1006,7 +1014,7 @@ test("终态字面量：stop/tool-calls → completed；error → failed + SOURC
     assert.equal(rows.get("error").status, "failed");
     assert.equal(rows.get("error").sourceFiltered, true);
     assert.equal(rows.get("error").filterReason, "source_failed");
-    assert.deepEqual(flagNamesOf(rows.get("error")).sort(), ["SOURCE_FILTERED"]);
+    assert.deepEqual(flagNamesOf(rows.get("error")).sort(), ["MISSING_DURATION", "SOURCE_FILTERED"]);
     // 三个已识别字面量都不得触发 schema 漂移告警。
     assert.equal(warningCount(warnings, "UNSUPPORTED_SCHEMA"), 0);
   } finally {
@@ -1207,13 +1215,12 @@ test("source 缺 id → 全部行无身份：只告警不抛错，且不算 sche
   }
 });
 
-// ---------------------------------------------------------------- 10. 反例：>1000 tok/s 不自动剔除
+// ---------------------------------------------------------------- 10. 缺生成窗口时不伪算 TPS
 
-test("合成 >1000 tok/s 反例不自动剔除：候选照常产出，只如实记录原始值", async () => {
+test("大 output 与短请求诊断时窗不组成伪 TPS：候选保留且 durationMs 缺失", async () => {
   const workspace = makeWorkspace();
   try {
-    // 手算：output 200000 + reasoning 0 = 200000 tokens；跨度 100ms。
-    //   TPS = 200000 × 1000 / 100 = 2_000_000 tok/s ≫ 1000。
+    // 原始非推理 output 200000；请求诊断跨度 100ms，但没有首/末有效输出边界。
     createFixtureDb(workspace.dbFile, {
       messages: [
         message({
@@ -1224,15 +1231,12 @@ test("合成 >1000 tok/s 反例不自动剔除：候选照常产出，只如实�
       sessions: [{ id: "ses-1", version: "2.0.20" }],
     });
     const { samples, stats } = await collect(workspace.dbFile, workspace.source);
-    assert.equal(stats.samples, 1, "超速绝不是剔除理由（§17.4 无超速位）");
+    assert.equal(stats.samples, 1, "缺生成边界不是剔除理由");
     const sample = samples[0];
     assert.equal(sample.outputTokens, 200_000);
-    assert.equal(sample.durationMs, 100);
-    const tps = (sample.outputTokens * 1000) / sample.durationMs;
-    assert.equal(tps, 2_000_000);
-    assert.ok(tps > 1000);
-    // 也没有因为它快而被置任何扣除位（LONG_WINDOW 是"长"窗口，不是"快"）。
-    assert.deepEqual(flagNamesOf(sample), []);
+    assert.equal(sample.durationMs, null);
+    assert.equal(sample.reportedDurationMs, 100);
+    assert.deepEqual(flagNamesOf(sample), ["MISSING_DURATION"]);
   } finally {
     workspace.cleanup();
   }
@@ -1299,7 +1303,7 @@ test("agent：只证明名称，agentKind 恒为 unknown；缺名称用空串（
 
 // ---------------------------------------------------------------- 12. 与 M1 内核的接口自洽
 
-test("raw 候选与 M1.1 输入契约自洽：normalizePerfSample 零警告，语义三件套与来源表一致", async () => {
+test("raw 候选与 v3 内核输入契约自洽：零警告，语义三件套与来源表一致", async () => {
   const workspace = makeWorkspace();
   try {
     createFixtureDb(workspace.dbFile, {
@@ -1314,15 +1318,15 @@ test("raw 候选与 M1.1 输入契约自洽：normalizePerfSample 零警告，�
     assert.equal(sample.sampleKey, perfSampleKey("opencode", "home-1", raw.databaseIdentity, "m-1"));
     assert.equal(sample.sourceKind, "opencode");
     assert.equal(sample.homeId, "home-1");
-    assert.equal(sample.window, "message");
-    assert.equal(sample.timingKind, "request_e2e");
-    assert.equal(sample.tokenScope, "visible_plus_reasoning");
-    assert.equal(sample.outputTokens, 140);
-    assert.equal(sample.durationMs, 1000);
+    assert.equal(sample.window, "request");
+    assert.equal(sample.timingKind, "generation");
+    assert.equal(sample.tokenScope, "non_reasoning_output");
+    assert.equal(sample.outputTokens, 100);
+    assert.equal(sample.durationMs, null);
     assert.equal(sample.status, "completed");
-    assert.equal(sample.timingSource, "explicit");
+    assert.equal(sample.timingSource, "unknown");
     assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
-    assert.deepEqual(flagNamesOf(sample), []);
+    assert.deepEqual(flagNamesOf(sample), ["MISSING_DURATION"]);
   } finally {
     workspace.cleanup();
   }
@@ -1540,7 +1544,7 @@ test("确定性：同一夹具连续两次读取给出完全相同的候选序�
 });
 
 // ===========================================================================
-// M2 返工2 · P1-1：OpenCode 输出合计**不得**掩盖非法分量
+// 兼容辅助函数：旧版 output + reasoning 合计的非法分量守卫
 // ===========================================================================
 //
 // 回归的事故（用户独立夹具复现、Lead 核实、我复现）：
@@ -1768,7 +1772,7 @@ test("★P1-1 正常正整数仍必须干净通过（双向证据的『合法仍
   assert.deepEqual(c.flags, [], "正常输入不得带任何标记");
   assert.equal(c.sample.outputTokens, 15);
   assert.equal(c.sample.status, "completed");
-  assert.equal(c.sample.timingKind, "request_e2e");
+  assert.equal(c.sample.timingKind, "generation");
 });
 
 test("★P1-1 非数值/NaN/Infinity 的既有语义保持不变（缺失 ⇒ null，不进 TPS 分子）", () => {

@@ -118,10 +118,8 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: COLD_END_MS })
       .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
     assert.ok(coldSample, "fixture must expose a computable cold Codex perf sample");
-    const [, , , turnId] = JSON.parse(coldSample.sampleKey);
-    const turnNumber = Number(/^turn-(\d+)$/.exec(String(turnId))?.[1]);
-    assert.ok(Number.isSafeInteger(turnNumber));
-    const responseId = `response-${turnNumber}-1`;
+    const [, , , , responseId] = JSON.parse(coldSample.sampleKey);
+    assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
 
@@ -163,7 +161,12 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
       throw error;
     }
 
-    const lateTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 500 };
+    const lateTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@1",
+      durationMs: baseTiming.durationMs + 500,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
+    };
     archived.importRequestTimingEvidence({
       homeId: codexHomeId(archived, fixture.codexHome),
       records: [lateTiming],

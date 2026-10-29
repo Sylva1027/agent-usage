@@ -6,8 +6,9 @@ import test from "node:test";
 
 import { createHistoryBackup, verifyHistoryBackup } from "../src/history-backup.js";
 import { createHistoryArchiveCandidate, verifyHistoryArchiveCandidate } from "../src/history-archive.js";
+import { generationPerfValues } from "../src/perf-request-timing.js";
 import { lookupRequestTiming } from "../src/perf-request-timing-store.js";
-import { resolveCodexTurnRequestTiming } from "../src/perf-sources/codex-request-timing.js";
+import { resolveCodexRequestTiming } from "../src/perf-sources/codex-request-timing.js";
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -20,12 +21,17 @@ function manifestPathFor(databaseFile) {
   return path.join(parsed.dir, `${parsed.name}.manifest.json`);
 }
 
-function nativeRequests(database, homeId, threadId, turnId) {
+function nativeRequests(database, homeId, threadId, turnId, responseId) {
   const requests = [];
   for (const row of database.prepare("SELECT projection FROM perf_codex_projections WHERE home_id = ?").all(homeId)) {
     const projection = JSON.parse(String(row.projection));
     for (const record of projection.records ?? []) {
-      if (record.kind === "token_usage_record" && record.threadId === threadId && record.turnId === turnId) {
+      if (
+        record.kind === "token_usage_record" &&
+        record.threadId === threadId &&
+        record.turnId === turnId &&
+        record.responseId === responseId
+      ) {
         requests.push({ ...record });
       }
     }
@@ -37,13 +43,31 @@ function nativeRequests(database, homeId, threadId, turnId) {
   );
 }
 
-function nativeSnapshot(database, sampleKey, homeId, threadId, turnId) {
+function mutateNativeRequestOutput(database, homeId, responseId) {
+  const projections = database
+    .prepare("SELECT path, projection FROM perf_codex_projections WHERE home_id = ? ORDER BY path")
+    .all(homeId);
+  const update = database.prepare("UPDATE perf_codex_projections SET projection = ? WHERE path = ?");
+  for (const row of projections) {
+    const projection = JSON.parse(String(row.projection));
+    const request = (projection.records ?? []).find(
+      (record) => record?.kind === "token_usage_record" && record.responseId === responseId,
+    );
+    if (!request) continue;
+    request.outputTokens = Number(request.outputTokens) + 1;
+    update.run(JSON.stringify(projection), String(row.path));
+    return;
+  }
+  assert.fail(`native response ${responseId} must have a token_usage_record`);
+}
+
+function nativeSnapshot(database, sampleKey, homeId, threadId, turnId, responseId) {
   const sample = database
     .prepare(`SELECT ${PERF_COLUMNS.join(", ")} FROM perf_samples WHERE sample_key = ?`)
     .get(sampleKey);
   assert.ok(sample, "the selected native source must retain its perf sample");
 
-  const requests = nativeRequests(database, homeId, threadId, turnId);
+  const requests = nativeRequests(database, homeId, threadId, turnId, responseId);
   const responses = [...new Set(requests.map((request) => String(request.responseId)))].sort();
   assert.ok(responses.length > 0, "the selected turn must retain native request records");
 
@@ -93,7 +117,8 @@ function nativeSnapshot(database, sampleKey, homeId, threadId, turnId) {
   const evidence = database
     .prepare(
       `SELECT home_id, evidence_origin, response_id, variant_key, schema_version,
-              requested_model, reported_output_tokens, duration_ms, status, completed_at_ms
+              requested_model, reported_output_tokens, duration_ms, status, completed_at_ms,
+              generation_json
        FROM perf_request_timing_evidence
        WHERE home_id = ? AND response_id IN (${responses.map(() => "?").join(",")})
        ORDER BY response_id, evidence_origin, variant_key`,
@@ -118,14 +143,13 @@ function nativeSnapshot(database, sampleKey, homeId, threadId, turnId) {
 function recomputeNativeTiming(snapshot) {
   const evidenceByResponse = new Map(snapshot.evidence.map((row) => [String(row.response_id), row]));
   assert.equal(evidenceByResponse.size, snapshot.responses.length);
+  const sampleKey = JSON.parse(snapshot.sample.sample_key);
   const turn = {
-    threadId: JSON.parse(snapshot.sample.sample_key)[2],
-    turnId: JSON.parse(snapshot.sample.sample_key)[3],
+    threadId: sampleKey[2],
+    turnId: sampleKey[3],
     model: String(snapshot.sample.model),
-    requests: snapshot.requests,
-    requestSetComplete: true,
   };
-  return resolveCodexTurnRequestTiming(String(snapshot.sample.home_id), turn, (query) => {
+  return resolveCodexRequestTiming(String(snapshot.sample.home_id), turn, snapshot.requests[0], (query) => {
     const evidence = evidenceByResponse.get(String(query.responseId));
     if (!evidence) {
       return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
@@ -136,6 +160,7 @@ function recomputeNativeTiming(snapshot) {
       durationMs: evidence.duration_ms,
       reportedOutputTokens: evidence.reported_output_tokens,
       requestedModel: evidence.requested_model,
+      generation: evidence.generation_json === null ? null : JSON.parse(String(evidence.generation_json)),
     };
   });
 }
@@ -162,7 +187,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
          WHERE ts_ms >= ? AND ts_ms < ?
            AND source_kind = 'codex'
            AND status = 'completed'
-           AND timing_kind = 'request_e2e'
+           AND timing_kind = 'generation'
            AND timing_source = 'explicit'
            AND EXISTS (
              SELECT 1
@@ -179,13 +204,18 @@ test("candidate enforces bounded Codex request facts without depending on projec
     assert.ok(selected, "fixture must expose a cold completed explicit Codex sample");
     const sampleKey = String(selected.sample_key);
     const homeId = String(selected.home_id);
-    const [, keyHomeId, threadId, turnId] = JSON.parse(sampleKey);
+    const [, keyHomeId, threadId, turnId, responseId] = JSON.parse(sampleKey);
     assert.equal(keyHomeId, homeId);
-    const original = nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId);
+    assert.equal(typeof responseId, "string");
+    const original = nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId, responseId);
     assert.equal(original.requests.length, original.sample.request_count);
     const nativeTiming = recomputeNativeTiming(original);
-    assert.equal(nativeTiming.state, "complete");
-    assert.equal(nativeTiming.durationMs, original.sample.duration_ms);
+    assert.equal(nativeTiming.state, "available");
+    assert.equal(nativeTiming.reportedOutputTokens, original.requests[0].outputTokens);
+    assert.deepEqual(generationPerfValues(nativeTiming.generation), {
+      outputTokens: Number(original.sample.output_tokens),
+      durationMs: Number(original.sample.duration_ms),
+    });
 
     await createHistoryArchiveCandidate(store.database, controlCandidateFile, {
       startMs: coldStartMs,
@@ -193,7 +223,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
     });
     await verifyHistoryArchiveCandidate(controlCandidateFile);
     assert.deepEqual(
-      nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId),
+      nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId, responseId),
       original,
       "control creation must not mutate native facts",
     );
@@ -219,9 +249,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
           turnId,
           model: String(original.sample.model),
           requestSetComplete: true,
-          requests: original.requests
-            .map((request) => ({ responseId: String(request.responseId), outputTokens: Number(request.outputTokens) }))
-            .sort((left, right) => left.responseId.localeCompare(right.responseId)),
+          requests: [{ responseId, outputTokens: Number(original.requests[0].outputTokens) }],
         },
         "the persisted facts must be the minimal native request ledger",
       );
@@ -262,15 +290,14 @@ test("candidate enforces bounded Codex request facts without depending on projec
       const transferredTurn = requestFacts.turns.find((turn) => turn.sampleKey === sampleKey);
       assert.ok(transferredTurn);
       assert.deepEqual(
-        resolveCodexTurnRequestTiming(
+        resolveCodexRequestTiming(
           transferredTurn.homeId,
           {
             threadId: transferredTurn.threadId,
             turnId: transferredTurn.turnId,
             model: transferredTurn.model,
-            requests: transferredTurn.requests,
-            requestSetComplete: transferredTurn.requestSetComplete,
           },
+          transferredTurn.requests[0],
           (query) => lookupRequestTiming(transferred, query),
         ),
         nativeTiming,
@@ -311,7 +338,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
         .prepare("UPDATE perf_samples SET duration_ms = duration_ms + 1 WHERE sample_key = ?")
         .run(sampleKey);
       assert.equal(Number(updated.changes), 1);
-      mutated = nativeSnapshot(isolated, sampleKey, homeId, threadId, turnId);
+      mutated = nativeSnapshot(isolated, sampleKey, homeId, threadId, turnId, responseId);
       assert.equal(mutated.sample.duration_ms, original.sample.duration_ms + 1);
       assert.deepEqual(
         { ...mutated, sample: { ...mutated.sample, duration_ms: original.sample.duration_ms } },
@@ -337,7 +364,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
         },
       );
       assert.deepEqual(
-        nativeSnapshot(isolatedReadOnly, sampleKey, homeId, threadId, turnId),
+        nativeSnapshot(isolatedReadOnly, sampleKey, homeId, threadId, turnId, responseId),
         mutated,
         "candidate rejection must not mutate the isolated native facts",
       );
@@ -348,9 +375,74 @@ test("candidate enforces bounded Codex request facts without depending on projec
     assert.equal(existsSync(candidateFile), false, "candidate creation must not publish a destination database");
     assert.equal(existsSync(candidateManifest), false, "candidate creation must not publish a destination manifest");
     assert.deepEqual(
-      nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId),
+      nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId, responseId),
       original,
       "isolated numeric work must not mutate the native source",
+    );
+
+    const outputMismatchFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-output-source.sqlite");
+    const outputCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-output-candidate.sqlite");
+    await backup(store.database, outputMismatchFile);
+    const outputMismatch = new DatabaseSync(outputMismatchFile);
+    try {
+      const updated = outputMismatch
+        .prepare("UPDATE perf_samples SET output_tokens = output_tokens + 1 WHERE sample_key = ?")
+        .run(sampleKey);
+      assert.equal(Number(updated.changes), 1);
+    } finally {
+      outputMismatch.close();
+    }
+    const outputMismatchReadOnly = new DatabaseSync(outputMismatchFile, { readOnly: true });
+    try {
+      await assert.rejects(
+        () =>
+          createHistoryArchiveCandidate(outputMismatchReadOnly, outputCandidateFile, {
+            startMs: coldStartMs,
+            endMs: COLD_END_MS,
+          }),
+        (error) => {
+          assert.equal(error?.code, TIMING_MISMATCH_CODE);
+          return true;
+        },
+      );
+    } finally {
+      outputMismatchReadOnly.close();
+    }
+    assert.equal(
+      existsSync(outputCandidateFile),
+      false,
+      "a sample whose net output disagrees with generation evidence must not publish a candidate",
+    );
+
+    const rawMismatchFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-raw-source.sqlite");
+    const rawCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-raw-candidate.sqlite");
+    await backup(store.database, rawMismatchFile);
+    const rawMismatch = new DatabaseSync(rawMismatchFile);
+    try {
+      mutateNativeRequestOutput(rawMismatch, homeId, responseId);
+    } finally {
+      rawMismatch.close();
+    }
+    const rawMismatchReadOnly = new DatabaseSync(rawMismatchFile, { readOnly: true });
+    try {
+      await assert.rejects(
+        () =>
+          createHistoryArchiveCandidate(rawMismatchReadOnly, rawCandidateFile, {
+            startMs: coldStartMs,
+            endMs: COLD_END_MS,
+          }),
+        (error) => {
+          assert.equal(error?.code, TIMING_MISMATCH_CODE);
+          return true;
+        },
+      );
+    } finally {
+      rawMismatchReadOnly.close();
+    }
+    assert.equal(
+      existsSync(rawCandidateFile),
+      false,
+      "raw request output must reconcile with reportedOutputTokens before a candidate is published",
     );
   } finally {
     store.close();

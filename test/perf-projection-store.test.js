@@ -57,21 +57,23 @@ test("WebSearch compatibility rebuilds an unchanged rollout's old rejected proje
       reviewedOrigins: ["fixture@1"],
       records: [
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           evidenceOrigin: "fixture@1",
           responseId: "resp-t1-thread-a",
           requestedModel: "gpt-fixture",
           reportedOutputTokens: 500,
+          generation: { outputTokens: 500, durationMs: 1500, startOutputTokens: 0, timingKind: "explicit" },
           durationMs: 1500,
           status: "completed",
           completedAtMs: null,
         },
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           evidenceOrigin: "fixture@1",
           responseId: "resp-t1-thread-b",
           requestedModel: "gpt-fixture",
           reportedOutputTokens: 700,
+          generation: { outputTokens: 700, durationMs: 1500, startOutputTokens: 0, timingKind: "explicit" },
           durationMs: 1500,
           status: "completed",
           completedAtMs: null,
@@ -261,8 +263,8 @@ test("T1 · schema 13 → 14 只建表 + 索引、不回填（表存在且为空
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 21, "当前 schema 包含 home-scoped WorkBuddy duration observations");
-    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 21);
+    assert.equal(STORE_SCHEMA_VERSION, 23, "当前 schema 包含 home-scoped WorkBuddy duration observations");
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 23);
     assert.deepEqual(columnNames(store.database, TABLE), [
       "path",
       "home_id",
@@ -312,7 +314,7 @@ test("T1 · 迁移幂等：重复 open 不再建、不清表；已存在的行�
   const second = new UsageStore({ homeDir, databaseFile });
   try {
     await second.open();
-    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 21);
+    assert.equal(Number(second.database.prepare("PRAGMA user_version").get().user_version), 23);
     assert.equal(rowCount(second.database), 1, "重复 open 不得清表");
     assert.equal(storeRows(second.database)[0].path, "c:\\t1\\sentinel.jsonl");
   } finally {
@@ -348,7 +350,7 @@ test("T1 · 迁移中断可重入：未提交的建表 + v13 版本号 ⇒ 重�
   const retried = new UsageStore({ homeDir, databaseFile });
   try {
     await retried.open();
-    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 21, "重开必须重试成功");
+    assert.equal(Number(retried.database.prepare("PRAGMA user_version").get().user_version), 23, "重开必须重试成功");
     assert.deepEqual(columnNames(retried.database, TABLE).length, 8);
   } finally {
     retried.close();
@@ -356,7 +358,7 @@ test("T1 · 迁移中断可重入：未提交的建表 + v13 版本号 ⇒ 重�
   }
 });
 
-test("T1 · v13 → v14 不标脏全库：既有 source_files 不被标 -1，首个 sync 不重读未变文件", async () => {
+test("v13 migrates through v22 and rebuilds generation candidates once", async () => {
   const { homeDir, databaseFile } = await makeCodexHome();
   const seed = new UsageStore({ homeDir, databaseFile });
   const firstSync = await seed.sync();
@@ -374,17 +376,18 @@ test("T1 · v13 → v14 不标脏全库：既有 source_files 不被标 -1，首
   const migrated = new UsageStore({ homeDir, databaseFile });
   try {
     await migrated.open();
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 21);
+    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 23);
     assert.equal(
       Number(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE size = -1 OR mtime_ms = -1").get().n,
       ),
-      0,
-      "13 → 14 迁移**不得**做无条件标脏（`UPDATE source_files SET size = -1` 是 v12 段的老做法）",
+      firstSync.updatedFileCount,
+      "v22 must rebuild candidates for the new generation method",
     );
     assert.equal(rowCount(migrated.database), 0, "不回填 ⇒ 空表");
     const secondSync = await migrated.sync();
-    assert.equal(secondSync.updatedFileCount, 0, "迁移后第一个 sync 不得重读未变文件（无回填 ⇒ 与今日等价）");
+    assert.equal(secondSync.updatedFileCount, firstSync.updatedFileCount);
+    assert.equal((await migrated.sync()).updatedFileCount, 0, "the rebuilt projection is reused on the next sync");
   } finally {
     migrated.close();
     await rm(homeDir, { recursive: true, force: true });
@@ -653,7 +656,7 @@ test("T1 · 未提交即中断（关连接）⇒ 重开后无半行（模拟进�
   try {
     await reopened.open();
     assert.equal(rowCount(reopened.database), 0, "未提交的写必须被回滚 ⇒ 库里没有半行");
-    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 21);
+    assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 23);
   } finally {
     reopened.close();
     await rm(homeDir, { recursive: true, force: true });

@@ -52,14 +52,20 @@ test("formally evicting cold events and perf keeps cold metrics in summarizeHist
           `SELECT sample_key, ts_ms, output_tokens, duration_ms, model
            FROM perf_samples
            WHERE ts_ms >= ? AND ts_ms < ?
-             AND output_tokens > 0 AND duration_ms > 0 AND status = 'completed'
+             AND output_tokens IS NULL
+             AND duration_ms IS NULL
+             AND status = 'completed'
+             AND timing_kind = 'generation'
+             AND request_count = 1
            ORDER BY ts_ms, sample_key
            LIMIT 1`,
         )
         .get(startMs, endMs);
     const coldSample = selectSample(coldStartMs, HOT_START_MS);
     const hotSample = selectSample(HOT_START_MS, Number.MAX_SAFE_INTEGER);
-    if (!coldSample || !hotSample) throw new Error("fixture did not expose computable cold and hot perf samples");
+    if (!coldSample || !hotSample) {
+      throw new Error("fixture did not expose cold and hot missing-generation ZCode candidates");
+    }
     assert.ok(plan.perfDeletion.sampleKeys.includes(String(coldSample.sample_key)));
     const committed = await archived.commitHistoryArchiveEvents(plan);
     const remainingSampleKeys = archived.database

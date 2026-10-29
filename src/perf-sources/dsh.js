@@ -1,21 +1,24 @@
 /**
- * M2.2 DSH（DeepSeek Harness）step 请求时窗 reader（只读）。
+ * DSH（DeepSeek Harness）生成 TPS 候选 reader（只读）。
  *
- * 读一个物理会话日志（`session.v4.jsonl.zstd`，多帧拼接），用回调逐条输出
- * `normalizePerfSample()` 认可的标准候选。解压、坏帧告警与 v4 守护复用生产
- * `readDshSessionRows()`；本文件不碰任何生产写入路径。
+ * 读一个物理会话日志（`session.v4.jsonl.zstd`，多帧拼接），按稳定的
+ * `(sessionId,turn,step)` 输出可归属模型的候选。只有成功 message 自身的 usage 与 stream
+ * 同时闭合时才提供生成 N/D；任一未知都保留候选但不出 TPS。解压、坏帧告警与 v4 守护复用
+ * `readDshSessionRows()`。
  *
  * 投影**只访问**：
  * - `session` 头的 `id`/`version`/`delegationDepth`/`agentPreset`；
  * - `request/header`、`request/context` 的 `data.header.config.{model,provider}`；
  * - `step/start` 的 `data.{turn,step}` 与 `row.time`；
  * - `llm/retry-started` 的 `data.{turn,step}` 与 `row.time`（仅作最终尝试起点）；
- * - `assistant/message` 的 `data.{turn,step}`、`row.time`、`data.usage.outputTokens`；
+ * - 成功 `assistant/message` 的 `data.{turn,step}`、`row.time`、
+ *   `data.message.source.{model,provider}`、`data.usage.{outputTokens,reasoningTokens}`
+ *   与同一 `data.stream` 的时间/空串结构；
  * - 步骤结束帧（裁定 G / M0.6 / task-24 裁定 (B)）**只取 `data.{turn,step}` 定位键与帧序**，
  *   它的 `row.time` 与 `data` 其余键**从不访问**。
  *
- * **不访问**：`data` 的流式载荷键、任何正文载体（message 文本等）、步骤结束帧的产物载荷与时间戳。
- * 产物只含规范候选与聚合计数/布尔/穷举枚举，不含正文；`sampleKey` 由规范元组序列化而来。
+ * stream 只用于校验 packed 记录、重建边界并区分空串与真实空白；text/args 原文不离开本函数，
+ * 不进入候选、日志或告警。**不访问** message 正文载体或步骤结束帧的产物载荷与时间戳。
  *
  * 身份：`sampleKey = JSON.stringify(['dsh', homeId, sessionId, turn, step])` —— 逐帧 `(turn,step)`
  * 按键分组，且 turn 参与身份，因此**跨 turn 的 step 重置**与**两会话相同的 `(turn,step)`** 都不碰撞。
@@ -48,6 +51,10 @@ const MALFORMED_JSON_PREFIX = /^MALFORMED_JSON:(\d+)\b/;
 /** 步骤结束帧的判别式字面量（裁定 G：只据它做归属与帧序判定，不读其载荷）。 */
 const STEP_END_TYPE = "step/end";
 const RETRY_STARTED_TYPE = "llm/retry-started";
+const FIRST_OUTPUT_TOKEN_COUNT = 1;
+const SUCCESS_FINISH_KINDS = new Set(["stop", "tool-calls", "max-tokens"]);
+const GENERATION_BLOCK_TYPES = new Set(["reasoning", "text", "tool-call"]);
+const DSH_ALL_GENERATION_PROVIDERS = new Set(["deepseek-account", "deepseek-official"]);
 
 function trimmedText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -59,24 +66,8 @@ function finiteNumber(value) {
 }
 
 /**
- * 端点观测时间的**单位闸门**（P1-2）。`true` = 与 `PERF_EPOCH_MS_MIN` 同单位（毫秒）。
- *
- * 依据 §3 第 7 条（绝对秒时间戳必须先转毫秒）与裁定 T（该阈值属方法元数据、可更新），
- * 复用 M1 的**同一常量**，避免把阈值复制成第二个漂移点。
- *
- * **为什么必须在 reader 侧做**：M1 对 `tsMs` 有单位闸门（秒级 ⇒ `timestamp_unit_unsupported`
- * ⇒ 位 15 `TIME_UNPLACED` ⇒ 不进 eligible），但**对 `durationMs` 没有单位闸门** —— 秒/毫秒
- * 混淆只会得到 `LONG_WINDOW`（位 4，**提示位、仍然进 sampled**）。实测证据：`durationMs =
- * 1789000000000` 时 M1 给出 `flags=["LONG_WINDOW"], reason="status_missing"`，即
- * **一个时长约 56 年的候选照样进 TPS**。因此 reader 必须自己判单位。
- *
- * 判据只用了"时间戳必须 ≥ `PERF_EPOCH_MS_MIN`"这一个**已冻结**的规则：
- * - 本世纪（≈2001-09-09T01:46:40Z 起）的真实 epoch 毫秒必然 ≥ 1e12；
- * - 秒级出现在 `1e9` 量级，与 `1e12` 差三个数量级；
- * - 日志内以**纳秒/微秒**为单位时 `1e12` 对应 1970-01-01T00:16:40Z（早于任何会话），
- *   与本世纪的真实时间戳同时出现即说明两单位不同。
- *
- * **只翻转单位标记，绝不换算**（不乘 1000、不改写原值）：换算会凭空造出一个未曾观测的时刻。
+ * 请求诊断时窗的单位检查。只有两端都达到既有 epoch-ms 阈值时才计算诊断差值；
+ * 不换算原值，也不把该差值交给生成 TPS。
  * @param {unknown} value
  * @returns {boolean}
  */
@@ -111,7 +102,369 @@ function startKey(entry) {
 }
 
 function messageKey(entry) {
-  return `${valueTag(entry.time)}|${valueTag(entry.output)}`;
+  return [
+    valueTag(entry.time),
+    valueTag(entry.output),
+    valueTag(entry.reasoning),
+    valueTag(entry.effort),
+    entry.generation.timingKey,
+    entry.generation.allGenerationTimingKey,
+    entry.generation.successful,
+    entry.generation.usageParity,
+  ].join("|");
+}
+
+function nonNegativeSafeInteger(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function stringArray(value) {
+  return Array.isArray(value) && value.every((member) => typeof member === "string") ? value : null;
+}
+
+/**
+ * 从一条成功 message 的同一 `data` 读取 N/D。返回的字符串只在函数内用于空串/空白边界，
+ * 结果仅含数字、布尔与穷举状态。
+ * @param {unknown} data
+ */
+export function inspectDshAssistantGeneration(data) {
+  const root = data !== null && typeof data === "object" ? /** @type {any} */ (data) : {};
+  const usage = root.usage !== null && typeof root.usage === "object" ? root.usage : null;
+  const reportedOutputTokens = usage?.outputTokens;
+  const reportedReasoningTokens = usage?.reasoningTokens;
+  const outputTokens = nonNegativeSafeInteger(reportedOutputTokens);
+  const reasoningTokens =
+    outputTokens !== null &&
+    nonNegativeSafeInteger(reportedReasoningTokens) !== null &&
+    reportedReasoningTokens <= outputTokens
+      ? reportedReasoningTokens
+      : null;
+  const nonReasoningTokens = outputTokens !== null && reasoningTokens !== null ? outputTokens - reasoningTokens : null;
+  const sampleOutputTokens =
+    nonReasoningTokens !== null && nonReasoningTokens - FIRST_OUTPUT_TOKEN_COUNT > 0
+      ? nonReasoningTokens - FIRST_OUTPUT_TOKEN_COUNT
+      : null;
+
+  const emptyTiming = (state) => ({
+    state,
+    durationMs: null,
+    windowStartMs: null,
+    windowEndMs: null,
+    timingKey: state,
+  });
+  const makeTiming = (state, firstTime, lastTime, interleaved = false) => {
+    if (state !== "complete") {
+      return emptyTiming(state);
+    }
+    if (interleaved) {
+      return emptyTiming("reasoning_interleaved");
+    }
+    if (!isEpochMsUnit(firstTime) || !isEpochMsUnit(lastTime)) {
+      return emptyTiming("unit_invalid");
+    }
+    const durationMs = lastTime - firstTime;
+    if (!Number.isSafeInteger(durationMs) || durationMs <= 0) {
+      return {
+        ...emptyTiming("window_nonpositive"),
+        timingKey: `window_nonpositive:${durationMs}`,
+      };
+    }
+    return {
+      state: "known",
+      durationMs,
+      windowStartMs: firstTime,
+      windowEndMs: lastTime,
+      timingKey: `known:${firstTime}:${lastTime}:${durationMs}`,
+    };
+  };
+
+  let streamValid = false;
+  let streamState = "missing_stream";
+  let usageChunks = 0;
+  let finishChunks = 0;
+  let finishKind = null;
+  let streamOutputTokens = null;
+  let usageParity = false;
+  let successFinish = false;
+  let successful = false;
+  let allGenerationTiming = emptyTiming("missing_stream");
+  let nonReasoningTiming = emptyTiming("missing_stream");
+  const stream = root.stream;
+  if (!Array.isArray(stream)) {
+    if (stream !== undefined && stream !== null) {
+      streamState = "invalid_stream";
+      allGenerationTiming = emptyTiming(streamState);
+      nonReasoningTiming = emptyTiming(streamState);
+    }
+  } else if (stream.length > 0) {
+    streamValid = true;
+    streamState = "incomplete_success";
+    let previousTime = null;
+    /** @type {{ time: number } | null} */
+    let firstAllBoundary = null;
+    /** @type {{ time: number } | null} */
+    let lastAllBoundary = null;
+    /** @type {{ time: number } | null} */
+    let firstNonReasoningBoundary = null;
+    /** @type {{ time: number } | null} */
+    let lastNonReasoningBoundary = null;
+    let reasoningAfterOutput = false;
+    let interleavedReasoning = false;
+    let invalid = false;
+    const finishKinds = new Set();
+    const streamOutputs = [];
+
+    const acceptTime = (time) => {
+      if (!Number.isSafeInteger(time) || (previousTime !== null && time < previousTime)) {
+        invalid = true;
+        return false;
+      }
+      previousTime = time;
+      return true;
+    };
+    const acceptMember = (time, type, value) => {
+      if (!acceptTime(time)) {
+        return;
+      }
+      if (type === "reasoning" && value !== "") {
+        const boundary = { time };
+        firstAllBoundary ??= boundary;
+        lastAllBoundary = boundary;
+        if (firstNonReasoningBoundary !== null) {
+          reasoningAfterOutput = true;
+        }
+      } else if ((type === "text" || type === "tool-args") && value !== "") {
+        if (reasoningAfterOutput) {
+          interleavedReasoning = true;
+        }
+        const boundary = { time };
+        firstAllBoundary ??= boundary;
+        lastAllBoundary = boundary;
+        firstNonReasoningBoundary ??= boundary;
+        lastNonReasoningBoundary = boundary;
+        reasoningAfterOutput = false;
+      }
+    };
+
+    for (const record of stream) {
+      if (invalid) {
+        break;
+      }
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        invalid = true;
+        break;
+      }
+      if (record.type === "text-chunks" || record.type === "reasoning-chunks") {
+        const texts = stringArray(record.texts);
+        if (
+          texts === null ||
+          texts.length === 0 ||
+          !Number.isSafeInteger(record.time0) ||
+          nonNegativeSafeInteger(record.index) === null ||
+          !Array.isArray(record.dt) ||
+          record.dt.some((gap) => !Number.isSafeInteger(gap)) ||
+          record.dt.length !== texts.length - 1
+        ) {
+          invalid = true;
+          break;
+        }
+        let time = record.time0;
+        for (let index = 0; index < texts.length; index += 1) {
+          if (index > 0) {
+            time += record.dt[index - 1];
+            if (!Number.isSafeInteger(time)) {
+              invalid = true;
+              break;
+            }
+          }
+          acceptMember(time, record.type === "text-chunks" ? "text" : "reasoning", texts[index]);
+          if (invalid) {
+            break;
+          }
+        }
+        continue;
+      }
+      if (record.type === "tool-call-chunks") {
+        const args = stringArray(record.args);
+        if (
+          args === null ||
+          args.length === 0 ||
+          typeof record.id !== "string" ||
+          record.id.length === 0 ||
+          (Object.hasOwn(record, "name") && (typeof record.name !== "string" || record.name.length === 0)) ||
+          !Number.isSafeInteger(record.time0) ||
+          nonNegativeSafeInteger(record.index) === null ||
+          !Array.isArray(record.dt) ||
+          record.dt.some((gap) => !Number.isSafeInteger(gap)) ||
+          record.dt.length !== args.length - 1
+        ) {
+          invalid = true;
+          break;
+        }
+        let time = record.time0;
+        for (let index = 0; index < args.length; index += 1) {
+          if (index > 0) {
+            time += record.dt[index - 1];
+            if (!Number.isSafeInteger(time)) {
+              invalid = true;
+              break;
+            }
+          }
+          // Tool name is metadata; only a non-empty generated argument fragment is a boundary.
+          acceptMember(time, "tool-args", args[index]);
+          if (invalid) {
+            break;
+          }
+        }
+        continue;
+      }
+      if (record.type === "chunk") {
+        if (
+          !Number.isSafeInteger(record.time) ||
+          record.chunk === null ||
+          typeof record.chunk !== "object" ||
+          Array.isArray(record.chunk)
+        ) {
+          invalid = true;
+          break;
+        }
+        const chunk = record.chunk;
+        if (chunk.type === "text-delta") {
+          if (typeof chunk.text !== "string") {
+            invalid = true;
+            break;
+          }
+          acceptMember(record.time, "text", chunk.text);
+        } else if (chunk.type === "reasoning-delta") {
+          if (typeof chunk.text !== "string") {
+            invalid = true;
+            break;
+          }
+          acceptMember(record.time, "reasoning", chunk.text);
+        } else if (chunk.type === "tool-call-delta") {
+          if (typeof chunk.argumentsDelta !== "string") {
+            invalid = true;
+            break;
+          }
+          acceptMember(record.time, "tool-args", chunk.argumentsDelta);
+        } else if (chunk.type === "block-start") {
+          if (!GENERATION_BLOCK_TYPES.has(chunk.blockType)) {
+            invalid = true;
+            break;
+          }
+          acceptTime(record.time);
+        } else if (chunk.type === "block-end") {
+          if (
+            chunk.block === null ||
+            typeof chunk.block !== "object" ||
+            Array.isArray(chunk.block) ||
+            !GENERATION_BLOCK_TYPES.has(chunk.block.type)
+          ) {
+            invalid = true;
+            break;
+          }
+          acceptTime(record.time);
+        } else if (chunk.type === "usage") {
+          usageChunks += 1;
+          const streamUsage = chunk.usage !== null && typeof chunk.usage === "object" ? chunk.usage : null;
+          streamOutputs.push(nonNegativeSafeInteger(streamUsage?.outputTokens));
+          acceptTime(record.time);
+        } else if (chunk.type === "finish") {
+          finishChunks += 1;
+          const kind = typeof chunk.reason?.kind === "string" ? chunk.reason.kind : "";
+          if (kind !== "") {
+            finishKinds.add(kind);
+          }
+          acceptTime(record.time);
+        } else if (chunk.type === "message_start" || chunk.type === "message_delta") {
+          // Known wire metadata; it contributes only to the stream clock.
+          acceptTime(record.time);
+        } else {
+          invalid = true;
+          break;
+        }
+        continue;
+      }
+      invalid = true;
+    }
+
+    if (invalid) {
+      streamValid = false;
+      streamState = "invalid_stream";
+      allGenerationTiming = emptyTiming(streamState);
+      nonReasoningTiming = emptyTiming(streamState);
+    } else {
+      const firstAllTime = firstAllBoundary?.time;
+      const lastAllTime = lastAllBoundary?.time;
+      const firstNonReasoningTime = firstNonReasoningBoundary?.time;
+      const lastNonReasoningTime = lastNonReasoningBoundary?.time;
+      allGenerationTiming =
+        firstAllTime === undefined || lastAllTime === undefined
+          ? emptyTiming("no_output")
+          : makeTiming("complete", firstAllTime, lastAllTime);
+      nonReasoningTiming =
+        firstNonReasoningTime === undefined || lastNonReasoningTime === undefined
+          ? emptyTiming("no_output")
+          : makeTiming("complete", firstNonReasoningTime, lastNonReasoningTime, interleavedReasoning);
+
+      streamOutputTokens =
+        usageChunks === 1 && streamOutputs.length === 1 && streamOutputs[0] !== null ? streamOutputs[0] : null;
+      finishKind = finishKinds.size === 1 ? [...finishKinds][0] : null;
+      const last = stream.at(-1);
+      const lastIsFinish = last?.type === "chunk" && last.chunk?.type === "finish";
+      successFinish =
+        finishChunks === 1 && lastIsFinish && finishKinds.size === 1 && SUCCESS_FINISH_KINDS.has(finishKind);
+      usageParity = outputTokens !== null && streamOutputTokens !== null && outputTokens === streamOutputTokens;
+      successful = successFinish && usageParity;
+      if (successful) {
+        streamState = "success";
+      }
+    }
+  } else if (stream.length === 0) {
+    streamValid = true;
+    streamState = "incomplete_success";
+    allGenerationTiming = emptyTiming("no_output");
+    nonReasoningTiming = emptyTiming("no_output");
+  }
+
+  const allGenerationSampleOutputTokens =
+    successful && outputTokens !== null && outputTokens - FIRST_OUTPUT_TOKEN_COUNT > 0
+      ? outputTokens - FIRST_OUTPUT_TOKEN_COUNT
+      : null;
+  if (!successful) {
+    allGenerationTiming = emptyTiming(
+      allGenerationTiming.state === "invalid_stream" ? "invalid_stream" : "not_successful",
+    );
+  }
+
+  return {
+    reportedOutputTokens,
+    reportedReasoningTokens,
+    outputTokens,
+    reasoningTokens,
+    nonReasoningTokens,
+    sampleOutputTokens,
+    allGenerationSampleOutputTokens,
+    streamValid,
+    streamState,
+    usageChunks,
+    finishChunks,
+    finishKind,
+    streamOutputTokens,
+    usageParity,
+    successFinish,
+    successful,
+    timingState: nonReasoningTiming.state,
+    durationMs: nonReasoningTiming.durationMs,
+    windowStartMs: nonReasoningTiming.windowStartMs,
+    windowEndMs: nonReasoningTiming.windowEndMs,
+    timingKey: nonReasoningTiming.timingKey,
+    allGenerationTimingState: allGenerationTiming.state,
+    allGenerationDurationMs: allGenerationTiming.durationMs,
+    allGenerationWindowStartMs: allGenerationTiming.windowStartMs,
+    allGenerationWindowEndMs: allGenerationTiming.windowEndMs,
+    allGenerationTimingKey: allGenerationTiming.timingKey,
+  };
 }
 
 /**
@@ -120,7 +473,18 @@ function messageKey(entry) {
  * `request/header|context` **开启**一个请求作用域；它归**随后第一条**带 `(turn,step)` 的帧所有。
  * 同一 turn 内的后续帧复用已开启的作用域；**新 turn 而没有新 header 时，作用域是空模型**
  * —— 绝不把上一轮的模型套到无 header 的下一请求（M0 未证明 header 作用域时 model 留空）。
- * @param {{ pendingHeader: {model: string, provider: string} | null, active: {turn: number, model: string, provider: string, proven: boolean} | null }} state
+ * @param {{
+ *   pendingHeader: {model: string, provider: string, effort: string} | null,
+ *   currentHeader: {model: string, provider: string, effort: string} | null,
+ *   active: {
+ *     turn: number,
+ *     model: string,
+ *     provider: string,
+ *     effort: string,
+ *     proven: boolean,
+ *     evidence: string
+ *   } | null
+ * }} state
  * @param {number} turn
  */
 function claimScope(state, turn) {
@@ -129,7 +493,9 @@ function claimScope(state, turn) {
       turn,
       model: state.pendingHeader.model,
       provider: state.pendingHeader.provider,
+      effort: state.pendingHeader.effort,
       proven: true,
+      evidence: "request_scope",
     };
     state.pendingHeader = null;
     return state.active;
@@ -137,8 +503,38 @@ function claimScope(state, turn) {
   if (state.active && state.active.turn === turn) {
     return state.active;
   }
-  state.active = { turn, model: "", provider: "", proven: false };
+  state.active = { turn, model: "", provider: "", effort: "", proven: false, evidence: "request_scope" };
   return state.active;
+}
+
+/**
+ * A successful message carries its own canonical provider/model source. DSH only emits a
+ * request header when the effective header changes, so the latest header is also retained
+ * for effort. The message source can therefore prove scope on a later turn without
+ * borrowing that proof into an unrelated header-less record.
+ * @param {any} row
+ * @param {number} turn
+ * @param {{model: string, provider: string, effort: string, proven: boolean, evidence: string}} requestScope
+ * @param {{model: string, provider: string, effort: string} | null} currentHeader
+ */
+function messageSourceScope(row, turn, requestScope, currentHeader) {
+  const source = row?.data?.message?.source;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return null;
+  }
+  const model = trimmedText(source.model);
+  const provider = trimmedText(source.provider);
+  if (model === "" && provider === "") {
+    return null;
+  }
+  return {
+    turn,
+    model: model || requestScope.model || currentHeader?.model || "",
+    provider: provider || requestScope.provider || currentHeader?.provider || "",
+    effort: requestScope.effort || currentHeader?.effort || "",
+    proven: true,
+    evidence: "message_source",
+  };
 }
 
 /**
@@ -178,6 +574,7 @@ async function emitGroup(group, session, onSample, addWarning) {
   const provenScopes = [...group.starts, ...group.messages].filter((entry) => entry.proven);
   const modelValues = new Set(provenScopes.map((entry) => entry.model));
   const providerValues = new Set(provenScopes.map((entry) => entry.provider));
+  const effortValues = new Set(provenScopes.map((entry) => entry.effort));
   // M1 的 `MODEL_AMBIGUOUS` 只有**一个位**，因此 model 或 provider 任一不一致都置位。
   //
   // ⚠️ **裁定 AU / D3（拒绝）**：本 reader **不得**为"模型变了还是 provider 变了"写 `filterReason`。
@@ -187,23 +584,49 @@ async function emitGroup(group, session, onSample, addWarning) {
   // 恰是 P1-3 所修缺陷的**镜像**（P1-3 是"该报的没报"，借道是"报了不该报的"）。
   // 若确需细分，正确路径是在 M1 **增加独立位**，不得借用 `filterReason`。
   const modelAmbiguous = modelValues.size > 1 || providerValues.size > 1;
+  const effortConflict = effortValues.size > 1;
+  const generationConflict = recordConflict || modelAmbiguous || effortConflict;
 
-  // ---- P1-2：时长既要求两端可算，也要求**两端单位一致**（P1-2 判别式，见 `isEpochMsUnit`）。
-  // 单位不一致时**保留候选**、`durationMs` 保持 `null`，并把两个原值端点交给 M1 的单位闸门
-  // （见下方 `windowStartMs`/`windowEndMs` 赋值处，那里列出实测否决的两条路）。
-  // 绝不把混合单位相减的结果交给 M1 —— 那会得到 `LONG_WINDOW`（提示位、仍进 TPS）。
-  // 判别式把所有"两端都可算"与"单位一致"拆成正交两轴，因此 `null`/缺 start 一律走
-  // `MISSING_DURATION`，只有"两值都在、单位不同"才走 `TIME_INVALID`。
+  // Step/retry duration is diagnostics only. Generation D comes from the selected
+  // message's own stream; usage and stream are never joined across messages.
   const startTime = start ? finiteNumber(start.time) : null;
   const messageTime = finiteNumber(message.time);
-  // 缺 start 时 `startUnitOk` 必为 false，但那是**量级缺失**、不是**单位混淆**：必须靠
-  // `startTime !== null && messageTime !== null` 把这两个情形分开，否则"缺 start"会被
-  // 误报成 `TIME_INVALID`（实测过：缺 start 的候选一度得到 `timingSource='mixed'`）。
-  const unitMismatch =
-    startTime !== null && messageTime !== null && isEpochMsUnit(startTime) !== isEpochMsUnit(messageTime);
   const unitsComparable = isEpochMsUnit(startTime) && isEpochMsUnit(messageTime);
-  const durationMs =
+  const reportedDurationMs =
     start && unitsComparable && startTime !== null && messageTime !== null ? messageTime - startTime : null;
+  const officialAllGeneration = DSH_ALL_GENERATION_PROVIDERS.has(scope?.provider ?? "");
+  const generationOutputTokens = generationConflict
+    ? null
+    : officialAllGeneration
+      ? message.generation.allGenerationSampleOutputTokens
+      : message.generation.sampleOutputTokens;
+  const generationDurationMs = generationConflict
+    ? null
+    : officialAllGeneration
+      ? message.generation.allGenerationDurationMs
+      : message.generation.durationMs;
+  const generationWindowStartMs = generationConflict
+    ? null
+    : officialAllGeneration
+      ? message.generation.allGenerationWindowStartMs
+      : message.generation.windowStartMs;
+  const generationWindowEndMs = generationConflict
+    ? null
+    : officialAllGeneration
+      ? message.generation.allGenerationWindowEndMs
+      : message.generation.windowEndMs;
+  const finishKind = message.generation.finishKind;
+  const finishFailed = finishKind === "error" || finishKind === "failed";
+  const finishCancelled = finishKind === "aborted" || finishKind === "cancelled" || finishKind === "canceled";
+  const lastMessageFrameIndex = group.messages[group.messages.length - 1].frameIndex;
+  const terminalVerified = group.ends.some((entry) => entry.frameIndex > lastMessageFrameIndex);
+  const status = finishFailed
+    ? "failed"
+    : finishCancelled
+      ? "cancelled"
+      : message.generation.successFinish || terminalVerified
+        ? "completed"
+        : "unverified";
 
   /** @type {Record<string, unknown>} */
   const raw = {
@@ -221,33 +644,33 @@ async function emitGroup(group, session, onSample, addWarning) {
     agent: session.agent,
     model: scope ? scope.model : "",
     modelProvider: scope ? scope.provider : "",
+    reasoningEffort: scope ? scope.effort : "",
     // 名字类字段：无证据就是空串（M1.1 的 nameOrEmpty 口径），不写 "unknown"。
-    modelEvidence: scope ? "request_scope" : "",
-    recordConflict,
+    modelEvidence: scope ? (scope.evidence ?? "request_scope") : "",
+    recordConflict: generationConflict,
     modelAmbiguous,
+    window: "request",
+    timingKind: "generation",
+    tokenScope: officialAllGeneration ? "all_generated_output" : "non_reasoning_output",
+    timingSource: generationDurationMs !== null ? "explicit" : "unknown",
     tsMs: message.time,
-    durationMs,
-    outputTokens: message.output,
+    windowStartMs: generationWindowStartMs,
+    windowEndMs: generationWindowEndMs,
+    durationMs: generationDurationMs,
+    outputTokens: generationOutputTokens,
+    status,
+    reportedDurationMs,
+    reportedOutputTokens: message.generation.reportedOutputTokens,
+    reportedReasoningTokens: message.generation.reportedReasoningTokens,
+    reportedStreamOutputTokens: message.generation.streamOutputTokens,
+    usageParity: message.generation.usageParity,
+    generationState: message.generation.streamState,
   };
-  if (durationMs !== null) {
-    raw.timingSource = "timestamp_fallback";
-  } else if (unitMismatch) {
-    // P1-2：把**未经换算的原值端点**交给 M1 自己的时间单位闸门，由它置 `TIME_INVALID`
-    // （实测 `window_start_unit_unsupported`，位 14、在扣除集内）。
-    // ⚠️ 实测否决的两条路：① 直接传 `durationMs = ` 混合相减结果 ⇒ 只得到 `LONG_WINDOW`
-    // （提示位、仍进 TPS）；② 只传 `timingSource:'mixed'` ⇒ M1 对 `timingSource` **没有**任何
-    // 时间位映射，仍只有 `MISSING_DURATION`。窗口键是 M1 唯一会据**单位**判非法的入参。
-    raw.windowStartMs = startTime;
-    raw.windowEndMs = messageTime;
-  }
   // 裁定 AU / D3：**此处刻意不写 `filterReason`**（"模型变了 / provider 变了"的细分）。
   // 理由见上方 `modelAmbiguous` 定义处的长注：`filterReason !== ""` 会被 M1 无条件映射为
   // `SOURCE_FILTERED`，即"来源侧失败"。一个模型歧义样本不该同时声称来源侧失败。
   // 细分需求若成立，应走 M1 独立位，而不是借这个通道。
-  // 终态证据（裁定 G / task-24 裁定 (B)）：**当且仅当**本组存在严格晚于最后一条
-  // assistant/message 的步骤结束帧。绝不用 message 本身推断完成（§17.4 位 10）。
-  const lastMessageFrameIndex = group.messages[group.messages.length - 1].frameIndex;
-  const terminalVerified = group.ends.some((entry) => entry.frameIndex > lastMessageFrameIndex);
+  // 完整成功 stream 已决定 status；step/end 只为缺少 stream 终态的旧记录提供完成证据。
   if (terminalVerified) {
     raw.terminalVerified = true;
   }
@@ -262,7 +685,7 @@ async function emitGroup(group, session, onSample, addWarning) {
 }
 
 /**
- * 逐条产出 DSH 的 step 请求时窗候选。
+ * 逐条产出 DSH 的生成 TPS 候选。
  * @param {string} filePath 物理会话日志路径（`sourcePath` 的来源）
  * @param {{ id?: unknown, label?: unknown, path?: unknown } | string} source 源描述；`source.id` 是 `homeId`
  * @param {(sample: any) => Promise<void> | void} onSample 规范候选回调（按文件内出现顺序）
@@ -333,7 +756,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     agent: header.agentPreset,
   };
 
-  const scopeState = { pendingHeader: null, active: null };
+  const scopeState = { pendingHeader: null, currentHeader: null, active: null };
   /**
    * 分组键用 JSON 元组（**不是**拼接分隔符）：键空间里没有任何字符串拼接，
    * 因此"分隔符可能出现在数据里"的碰撞问题不存在。
@@ -360,11 +783,15 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     if (type === "request/header" || type === "request/context") {
       const config = row?.data?.header?.config;
       if (config && typeof config === "object") {
-        // 只取两个名字键；config 其余键（effort 等）一律不读。
-        scopeState.pendingHeader = {
+        // Scope is fixed per source/provider/model/effort. The effort key is read only to
+        // prevent samples from one reviewed range being mixed with another.
+        const header = {
           model: trimmedText(config.model),
           provider: trimmedText(config.provider),
+          effort: trimmedText(config.reasoningEffort),
         };
+        scopeState.pendingHeader = header;
+        scopeState.currentHeader = header;
       }
       continue;
     }
@@ -380,6 +807,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         time: row?.time,
         model: scope.model,
         provider: scope.provider,
+        effort: scope.effort,
         proven: scope.proven,
       });
       continue;
@@ -391,15 +819,18 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         addWarning(UNKEYABLE_RECORD_CODE, 1);
         continue;
       }
-      const scope = claimScope(scopeState, turn);
-      const usage = row?.data?.usage;
-      // 只取 `outputTokens` **原值**（缺 → undefined）；input/cache/total 一概不读。
-      const output = usage && typeof usage === "object" ? usage.outputTokens : undefined;
+      const requestScope = claimScope(scopeState, turn);
+      const scope = messageSourceScope(row, turn, requestScope, scopeState.currentHeader) ?? requestScope;
+      const generation = inspectDshAssistantGeneration(row?.data);
       groupFor(turn, step).messages.push({
         time: row?.time,
-        output,
+        output: generation.reportedOutputTokens,
+        reasoning: generation.reportedReasoningTokens,
+        generation,
         model: scope.model,
         provider: scope.provider,
+        effort: scope.effort,
+        evidence: scope.evidence,
         proven: scope.proven,
         frameIndex: currentFrameIndex,
       });

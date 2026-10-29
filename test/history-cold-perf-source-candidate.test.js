@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
+import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -58,11 +59,20 @@ test("cold perf candidate is column-for-column faithful to real ZCode source row
       "cold source must include a NULL metric",
     );
     assert.ok(
-      sourceRows.some((row) => row.duration_ms === 0),
-      "cold source must include a real zero metric",
+      sourceRows.some(
+        (row) =>
+          row.status === "completed" &&
+          row.output_tokens === null &&
+          row.duration_ms === null &&
+          row.timing_kind === "generation" &&
+          row.token_scope === "non_reasoning_output" &&
+          row.timing_source === "unknown" &&
+          row.request_count === 1,
+      ),
+      "cold source must retain missing-generation candidates without inventing TPS",
     );
     assert.ok(
-      sourceRows.some((row) => row.method_version === "tps-v2" && row.sample_flags !== 0),
+      sourceRows.some((row) => row.method_version === PERF_METHOD_VERSION && row.sample_flags !== 0),
       "cold source must include method and non-zero flag evidence",
     );
 
@@ -84,7 +94,15 @@ test("cold perf candidate is column-for-column faithful to real ZCode source row
     assert.deepEqual(actualRows, sourceRows, "every cold perf column must match the independent source SQL oracle");
     assert.ok(actual.every((sample) => sample.tsMs >= coldStartMs && sample.tsMs < HOT_START_MS));
     assert.ok(actual.some((sample) => sample.itemCount === null));
-    assert.ok(actual.some((sample) => sample.durationMs === 0));
+    assert.ok(
+      actual.some(
+        (sample) =>
+          sample.outputTokens === null &&
+          sample.durationMs === null &&
+          sample.timingKind === "generation" &&
+          sample.timingSource === "unknown",
+      ),
+    );
     assert.equal(fileSha256(candidateFile), digestBefore, "cold perf reads must not modify the candidate");
   } finally {
     store.close();

@@ -84,9 +84,18 @@ test("candidate binds complete cold perf payloads and rejects value or format ch
       )
       .all(coldStartMs, HOT_START_MS)
       .map((row) => ({ ...row }));
-    const sourceSample = sourceRows.find((row) => Number(row.duration_ms) > 0 && Number(row.output_tokens) > 0);
+    const sourceSample = sourceRows.find(
+      (row) =>
+        row.status === "completed" &&
+        row.output_tokens === null &&
+        row.duration_ms === null &&
+        Number(row.request_count) === 1,
+    );
     assert.ok(sourceRows.length > 0, "source SQL must find complete cold perf rows");
-    assert.ok(sourceSample, "source SQL must expose a positive duration/output sample");
+    assert.ok(sourceSample, "source SQL must expose a missing-generation ZCode candidate");
+    assert.equal(sourceSample.timing_kind, "generation");
+    assert.equal(sourceSample.token_scope, "non_reasoning_output");
+    assert.equal(sourceSample.timing_source, "unknown");
     const expectedPerfSamples = sourcePerfSampleEvidence(sourceRows, coldStartMs, HOT_START_MS);
 
     await createHistoryArchiveCandidate(store.database, candidateFile, {

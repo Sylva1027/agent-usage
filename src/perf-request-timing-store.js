@@ -6,12 +6,45 @@
  * gateway access, body storage, or model/time inference happens here.
  */
 
+import {
+  generationMatchesKnownReasoning,
+  mergeRequestTimingEvidence,
+  normalizeGenerationTiming,
+  normalizeRequestTimingEvidence,
+} from "./perf-request-timing.js";
+
 const META_TABLE = "perf_request_timing_meta";
 const EVIDENCE_TABLE = "perf_request_timing_evidence";
 const THREAD_TABLE = "perf_request_timing_threads";
 const DIRTY_TABLE = "perf_request_timing_dirty_threads";
 
-/** @typedef {{state: "missing" | "available" | "conflict", durationMs: number | null, reportedOutputTokens: number | null, requestedModel: string}} RequestTimingLookup */
+/** @typedef {import("./perf-request-timing.js").GenerationTiming} GenerationTiming */
+/**
+ * @typedef {object} RequestTimingLookup
+ * @property {"missing" | "available" | "conflict"} state
+ * @property {number | null} durationMs
+ * @property {number | null} reportedOutputTokens
+ * @property {string} requestedModel
+ * @property {GenerationTiming | null} generation
+ */
+
+function evidenceTableSql(table = EVIDENCE_TABLE) {
+  return `
+  CREATE TABLE ${table} (
+    home_id TEXT NOT NULL CHECK (length(home_id) > 0),
+    evidence_origin TEXT NOT NULL CHECK (length(evidence_origin) > 0),
+    response_id TEXT NOT NULL CHECK (length(response_id) > 0),
+    variant_key TEXT NOT NULL CHECK (length(variant_key) > 0),
+    schema_version INTEGER NOT NULL CHECK (schema_version IN (1, 2)),
+    requested_model TEXT NOT NULL CHECK (length(requested_model) > 0),
+    reported_output_tokens INTEGER NOT NULL CHECK (reported_output_tokens >= 0),
+    duration_ms INTEGER NOT NULL CHECK (duration_ms > 0),
+    status TEXT NOT NULL CHECK (status = 'completed'),
+    completed_at_ms INTEGER CHECK (completed_at_ms IS NULL OR completed_at_ms >= 0),
+    generation_json TEXT,
+    PRIMARY KEY (home_id, evidence_origin, response_id, variant_key)
+  ) STRICT;`;
+}
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS ${META_TABLE} (
@@ -27,12 +60,13 @@ const SCHEMA_SQL = `
     evidence_origin TEXT NOT NULL CHECK (length(evidence_origin) > 0),
     response_id TEXT NOT NULL CHECK (length(response_id) > 0),
     variant_key TEXT NOT NULL CHECK (length(variant_key) > 0),
-    schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+    schema_version INTEGER NOT NULL CHECK (schema_version IN (1, 2)),
     requested_model TEXT NOT NULL CHECK (length(requested_model) > 0),
     reported_output_tokens INTEGER NOT NULL CHECK (reported_output_tokens >= 0),
     duration_ms INTEGER NOT NULL CHECK (duration_ms > 0),
     status TEXT NOT NULL CHECK (status = 'completed'),
     completed_at_ms INTEGER CHECK (completed_at_ms IS NULL OR completed_at_ms >= 0),
+    generation_json TEXT,
     PRIMARY KEY (home_id, evidence_origin, response_id, variant_key)
   ) STRICT;
 
@@ -75,54 +109,46 @@ function requiredString(value, field) {
 }
 
 function normalizedEvidence(record) {
-  if (!isRecord(record)) {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "Timing evidence must be an object");
+  try {
+    return normalizeRequestTimingEvidence(record);
+  } catch (error) {
+    if (isRecord(error) && error.code === "REQUEST_TIMING_INVALID_INPUT") {
+      throw timingError("REQUEST_TIMING_INVALID_INPUT", String(error.message));
+    }
+    throw error;
   }
-  if (record.schemaVersion !== 1) {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "schemaVersion must be 1");
-  }
-  if (!Number.isSafeInteger(record.reportedOutputTokens) || record.reportedOutputTokens < 0) {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "reportedOutputTokens must be a non-negative safe integer");
-  }
-  if (!Number.isSafeInteger(record.durationMs) || record.durationMs <= 0) {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "durationMs must be a positive safe integer");
-  }
-  if (record.status !== "completed") {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "status must be completed");
-  }
-  if (record.completedAtMs !== null && (!Number.isSafeInteger(record.completedAtMs) || record.completedAtMs < 0)) {
-    throw timingError("REQUEST_TIMING_INVALID_INPUT", "completedAtMs must be null or a non-negative safe integer");
-  }
-
-  return {
-    schemaVersion: 1,
-    evidenceOrigin: requiredString(record.evidenceOrigin, "evidenceOrigin"),
-    responseId: requiredString(record.responseId, "responseId"),
-    requestedModel: requiredString(record.requestedModel, "requestedModel"),
-    reportedOutputTokens: record.reportedOutputTokens,
-    durationMs: record.durationMs,
-    status: "completed",
-    completedAtMs: record.completedAtMs,
-  };
 }
 
 function evidenceVariantKey(record) {
   // Origin and identity are primary-key columns. Every other normative value is
   // part of the variant, so conflicting observations are retained side by side.
-  return JSON.stringify([
+  const values = [
     record.schemaVersion,
     record.requestedModel,
     record.reportedOutputTokens,
     record.durationMs,
     record.status,
     record.completedAtMs,
-  ]);
+  ];
+  if (record.schemaVersion === 2) values.push(record.generation ?? null);
+  return JSON.stringify(values);
+}
+
+function generationJson(record) {
+  return record.generation === null || record.generation === undefined ? null : JSON.stringify(record.generation);
 }
 
 function tableExists(database, name) {
   return (
     database.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined
   );
+}
+
+function tableColumns(database, name) {
+  return database
+    .prepare(`PRAGMA table_info(${name})`)
+    .all()
+    .map((row) => String(row.name));
 }
 
 const EXPECTED_COLUMNS = Object.freeze([
@@ -140,6 +166,7 @@ const EXPECTED_COLUMNS = Object.freeze([
       "duration_ms",
       "status",
       "completed_at_ms",
+      "generation_json",
     ],
   ],
   [THREAD_TABLE, ["home_id", "response_id", "thread_id"]],
@@ -148,8 +175,7 @@ const EXPECTED_COLUMNS = Object.freeze([
 
 function assertSchema(database) {
   for (const [table, expectedColumns] of EXPECTED_COLUMNS) {
-    const rows = database.prepare(`PRAGMA table_info(${table})`).all();
-    const actualColumns = rows.map((row) => String(row.name));
+    const actualColumns = tableColumns(database, table);
     if (JSON.stringify(actualColumns) !== JSON.stringify(expectedColumns)) {
       throw timingError(
         "REQUEST_TIMING_SCHEMA_MISMATCH",
@@ -165,8 +191,33 @@ function assertSchema(database) {
   }
 }
 
+function migrateEvidenceTable(database) {
+  const columns = tableColumns(database, EVIDENCE_TABLE);
+  const ddl = String(
+    database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(EVIDENCE_TABLE)?.sql ?? "",
+  );
+  if (columns.includes("generation_json") && !/schema_version\s*=\s*1/i.test(ddl)) return;
+
+  const temporaryTable = `${EVIDENCE_TABLE}_v2`;
+  const generationSelect = columns.includes("generation_json") ? "generation_json" : "NULL";
+  database.exec(`
+    DROP INDEX IF EXISTS perf_request_timing_evidence_response;
+    DROP TABLE IF EXISTS ${temporaryTable};
+    ALTER TABLE ${EVIDENCE_TABLE} RENAME TO ${temporaryTable};
+    ${evidenceTableSql()}
+    INSERT INTO ${EVIDENCE_TABLE}
+      (home_id, evidence_origin, response_id, variant_key, schema_version,
+       requested_model, reported_output_tokens, duration_ms, status, completed_at_ms, generation_json)
+    SELECT home_id, evidence_origin, response_id, variant_key, schema_version,
+           requested_model, reported_output_tokens, duration_ms, status, completed_at_ms, ${generationSelect}
+    FROM ${temporaryTable};
+    DROP TABLE ${temporaryTable};
+  `);
+}
+
 function ensureSchema(database) {
   database.exec(SCHEMA_SQL);
+  migrateEvidenceTable(database);
   const index = "perf_request_timing_evidence_response";
   if (database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(index) === undefined) {
     database.exec(`CREATE INDEX ${index} ON ${EVIDENCE_TABLE} (home_id, response_id); ANALYZE ${index}`);
@@ -193,7 +244,7 @@ export function validateStoredEvidence(row) {
   const durationMs = Number(row.duration_ms);
   const completedAtMs = row.completed_at_ms === null ? null : Number(row.completed_at_ms);
   if (
-    schemaVersion !== 1 ||
+    (schemaVersion !== 1 && schemaVersion !== 2) ||
     typeof row.evidence_origin !== "string" ||
     row.evidence_origin === "" ||
     typeof row.requested_model !== "string" ||
@@ -207,17 +258,54 @@ export function validateStoredEvidence(row) {
   ) {
     throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Stored request timing evidence is invalid");
   }
-  return { requestedModel: row.requested_model, reportedOutputTokens, durationMs };
+
+  let generation = null;
+  if (schemaVersion === 2) {
+    if (row.generation_json !== null && row.generation_json !== undefined) {
+      let raw;
+      try {
+        raw = JSON.parse(String(row.generation_json));
+      } catch {
+        throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Stored generation timing is not valid JSON");
+      }
+      try {
+        generation = normalizeGenerationTiming(raw);
+      } catch {
+        throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Stored generation timing is invalid");
+      }
+      if (
+        generation !== null &&
+        (generation.outputTokens > reportedOutputTokens || generation.durationMs > durationMs)
+      ) {
+        throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Stored generation timing exceeds its request totals");
+      }
+    }
+  } else if (row.generation_json !== null && row.generation_json !== undefined) {
+    throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Stored v1 request timing evidence contains generation data");
+  }
+  return { requestedModel: row.requested_model, reportedOutputTokens, durationMs, generation };
 }
 
 /** @returns {RequestTimingLookup} */
 function missingLookup() {
-  return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+  return {
+    state: "missing",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: "",
+    generation: null,
+  };
 }
 
 /** @returns {RequestTimingLookup} */
 function conflictLookup() {
-  return { state: "conflict", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
+  return {
+    state: "conflict",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: "",
+    generation: null,
+  };
 }
 
 /**
@@ -293,8 +381,8 @@ export function importRequestTimingEvidence(database, input) {
     const insertEvidence = database.prepare(`
       INSERT INTO ${EVIDENCE_TABLE}
         (home_id, evidence_origin, response_id, variant_key, schema_version,
-         requested_model, reported_output_tokens, duration_ms, status, completed_at_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         requested_model, reported_output_tokens, duration_ms, status, completed_at_ms, generation_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(home_id, evidence_origin, response_id, variant_key) DO NOTHING
     `);
     const insertThread = database.prepare(`
@@ -334,6 +422,7 @@ export function importRequestTimingEvidence(database, input) {
         record.durationMs,
         record.status,
         record.completedAtMs,
+        generationJson(record),
       );
       if (Number(result.changes) > 0) changedResponseIds.add(record.responseId);
     }
@@ -384,11 +473,11 @@ export function importRequestTimingEvidence(database, input) {
 
 /**
  * Read timing evidence for one native response. A thread supplied by the
- * caller must match the persisted native link. The model/token query fields are
- * deliberately not used to select evidence: B still performs the exact match.
+ * caller must match the persisted native link. When model or output is supplied
+ * by the native request, the selected evidence must match those values exactly.
  *
  * @param {import("node:sqlite").DatabaseSync} database
- * @param {{homeId: string, threadId?: string, turnId?: string, responseId: string, model?: string, outputTokens?: number}} query
+ * @param {{homeId: string, threadId?: string, turnId?: string, responseId: string, model?: string | null, outputTokens?: number, reasoningOutputTokens?: number | null}} query
  * @returns {RequestTimingLookup}
  */
 export function lookupRequestTiming(database, query) {
@@ -404,10 +493,13 @@ export function lookupRequestTiming(database, query) {
     throw timingError("REQUEST_TIMING_STORE_CORRUPT", "Timing evidence exists without a thread mapping table");
   }
 
+  const generationColumn = tableColumns(database, EVIDENCE_TABLE).includes("generation_json")
+    ? "generation_json"
+    : "NULL AS generation_json";
   const rows = database
     .prepare(`
       SELECT evidence_origin, schema_version, requested_model, reported_output_tokens,
-             duration_ms, status, completed_at_ms
+             duration_ms, status, completed_at_ms, ${generationColumn}
       FROM ${EVIDENCE_TABLE}
       WHERE home_id = ? AND response_id = ?
       ORDER BY evidence_origin, variant_key
@@ -423,13 +515,53 @@ export function lookupRequestTiming(database, query) {
   }
   if (threadId !== "" && String(links[0].thread_id) !== threadId) return missingLookup();
 
-  const variants = rows.map(validateStoredEvidence);
-  if (rows.length !== 1) return conflictLookup();
+  const evidence = rows.map((row) => {
+    const variant = validateStoredEvidence(row);
+    return {
+      schemaVersion: Number(row.schema_version),
+      evidenceOrigin: String(row.evidence_origin),
+      responseId,
+      requestedModel: variant.requestedModel,
+      reportedOutputTokens: variant.reportedOutputTokens,
+      durationMs: variant.durationMs,
+      status: "completed",
+      completedAtMs: row.completed_at_ms === null ? null : Number(row.completed_at_ms),
+      ...(Number(row.schema_version) === 2 ? { generation: variant.generation } : {}),
+    };
+  });
+  const merged = mergeRequestTimingEvidence(evidence);
+  if (merged.state !== "available" || merged.evidence === null) return conflictLookup();
+  if (
+    query.model !== undefined &&
+    query.model !== null &&
+    query.model !== "" &&
+    (typeof query.model !== "string" || merged.evidence.requestedModel !== query.model)
+  ) {
+    return conflictLookup();
+  }
+  if (
+    query.outputTokens !== undefined &&
+    (!Number.isSafeInteger(query.outputTokens) ||
+      query.outputTokens < 0 ||
+      merged.evidence.reportedOutputTokens !== query.outputTokens)
+  ) {
+    return conflictLookup();
+  }
+  if (
+    !generationMatchesKnownReasoning(
+      merged.evidence.generation ?? null,
+      merged.evidence.reportedOutputTokens,
+      query.reasoningOutputTokens,
+    )
+  ) {
+    return conflictLookup();
+  }
   return {
     state: "available",
-    durationMs: variants[0].durationMs,
-    reportedOutputTokens: variants[0].reportedOutputTokens,
-    requestedModel: variants[0].requestedModel,
+    durationMs: merged.evidence.durationMs,
+    reportedOutputTokens: merged.evidence.reportedOutputTokens,
+    requestedModel: merged.evidence.requestedModel,
+    generation: merged.evidence.generation ?? null,
   };
 }
 

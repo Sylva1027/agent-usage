@@ -1,6 +1,6 @@
 # 数据来源与统计口径
 
-更新：2026-10-21（新增 WorkBuddy 来源）。本文维护共同规则；各来源的字段映射分别见下方专题。
+更新：2026-10-29（生成 TPS v4）。本文维护共同规则；各来源的字段映射分别见下方专题。
 
 ## 来源与导入
 
@@ -28,17 +28,19 @@ WorkBuddy 的判定必须排在 Claude Code 之前：两者都是 `projects/<cwd
 
 DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都完整满足输入超集关系”作为已验收事实，见[任务清单](02-tasks.md)。
 
-## 历史输出吞吐（TPS）
+## 模型生成速度（TPS）
 
-TPS 是基于历史结构化记录的输出吞吐统计，不是 TTFT，也不是纯解码速度。单样本按 `outputTokens * 1000 / durationMs` 计算。Codex 的 `tps-v2` 对同轮全部已识别请求求完整端到端时长之和，分子与分母严格覆盖同一集合；缺任一计时整轮不采样，不使用旧 item span 补缺。计时须显式离线导入已审 producer 批次，正常 summary 不访问网关。ZCode、DSH 使用来源记录的请求窗口，OpenCode 使用 `streamed-created`，排除流结束后的工具处理。WorkBuddy 使用 trace 的显式 generation duration，并持久保留异值冲突。Claude 使用转录时间戳回退（`timingSource=timestamp_fallback`）：同一 `message.id` 末行减有效 user/attachment 锚点，同轮续写不采样；既有采样集比用量事件少 597 output token（0.0137%），不从面板用量总数删除这部分。各来源均计入其请求窗口内的等待。
+当前工作树方法为 `tps-v4`，统一使用 `window=request`、`timingKind=generation`。一次已完成模型响应作为一个样本，速度为 `(N−B) * 1000 / D`：B 是计时起点已经输出的 token 数，D 是对应生成耗时。常规首 token 边界取 B=1；覆盖全部生成的明确阶段耗时取 B=0。Codex 等已核验路径使用 `non_reasoning_output`，N 为非推理输出（含正文、代码和工具参数）；DSH 官方 `deepseek-account` / `deepseek-official` 固定使用 `all_generated_output`，N 为同一成功响应最终 output，D 覆盖 reasoning、正文及实际工具参数增量。不猜缺失的 reasoning 拆分。原始 output、reasoning、请求 E2E 保留，用量、费用和限额口径不变。范围契约见[本地接入方案](plans/2026-10-29-local-generation-adoption-plan.md)。
 
-代码中的统计内核版本为 `tps-v2`；正式服务是否已加载新方法以实际 API 为准，验收状态见[主审整合记录](validation/2026-10-21-tps-measurement-correction/review/final-integration/README.md)。来源、来源实例、渠道、代理类别/名称、模型、provider、effort、计时方法、token 范围和窗口共同决定旧 `groups` 分组；组内报告最近秩 p10/p50/p90、n、时长分位与 pooled（总输出/总时长）。Codex 的 n/分位仍按轮，不能与请求级分位当成同粒度稳定性比较。旧 groups 的 `n < 20` 不获排名；样本只取已完成且输出和时长均为正的候选，溢出不伪造数值。
+性能来源限定为各工具已经保存在本机的原生记录，运行链路不读取 Magpie 数据，也不要求中继或修改路由。Codex 补丁版已提供完整并排包及 CLI/Desktop 启动器，官方普通安装不会自动采用它；当前 Desktop 保持运行，实际采用尚未验收。DSH 可直接从现有 canonical stream 恢复全部生成，真实 reader 的 881 个官方候选中 870 个有效、8 个无正窗口、3 个身份冲突。WorkBuddy 已恢复已核验的纯正文子集；Claude、ZCode、OpenCode 的剩余 producer 缺口见[原生采集计划](plans/2026-10-28-native-generation-timing-plan.md)。缺计时只排除该请求，不把请求、step、item 或 trace span 总耗时回退成生成速度；模型候选和用量保留，速度沿用 `—`。旧 v1/v2 保留版本供恢复，不混入当前速度；同语义 v3 生成样本保留原版本并继续可读、可统计和归档恢复。
 
-`summary.perf.models` 供独立模型速度区域消费：同一过滤、去重和sampled集合按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合，同provider仍合并home、渠道与主/子代理；空provider保持未知，不从名称推断。平均速度仍为总输出乘1000除以总时长，p10/p90仍取同集逐条TPS最近秩。行含实际成员首末日期、window与rankState；eligible先于参考行，溢出最后，各段按未舍入均值降序、key决胜。编号要求原有已审时间/输出范围准入，并满足有效meta.minSamples（默认20）；rankState优先级为overflow、unverified、insufficient_samples、eligible。DSH/ZCode输出范围未知，OpenCode/WorkBuddy缺逐样本来源版本证明，保留参考统计但不编号；混合单位不排名。旧Codex估算只留诊断，不进入模型总览。空模型不生成行，溢出不伪造数值。验收与限制见[修复账本](validation/2026-10-23-tps-remediation/README.md)。
+[深入采集计划](plans/2026-10-28-native-generation-timing-plan.md)已固定实际 producer 边界：Codex 现有 OTel 不含完整摘要，OpenCode 的 ephemeral/合批事件不能靠持久化开关恢复；WorkBuddy 的 `qua.end` 正文间隔只作待验证子集，ZCode 两条已知 adapter 可用 output-reasoning。默认接入仍为原生本地摘要到各自 reader，不建设中继依赖或通用遥测平台。
 
-`summary.perf.codexTimingCoverage` 单列当前方法Codex的同范围覆盖，沿用来源排除及健康发布过滤：counts复用候选/采样/互斥丢因/pending/unplaced；recordedOutputTokens只累加已知非负输出，sampledOutputTokens为可采样子集，unknownOutputCandidates单列未知输出。两个安全整数和独立溢出为null。没有适用Codex来源为null，已配置但范围无候选为零计数；rebuilding/uninitialized不发布假覆盖。全历史unplaced不纳入当前范围分母。旧coverage及groups不变。
+`summary.perf.models` 按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合同一有效请求集合，同 provider 合并 home、渠道与主/子代理；空 provider 保持未知。同一来源/provider 在当前方法中固定一个已审核范围，DSH 官方 v4 会替代同响应的 v3 非推理投影，不混合两种范围。平均速度为有效分子之和除以生成耗时之和，p10/p90 是同集逐请求 TPS 的最近秩，n 是请求数。一个有效样本即可显示数值；既有排名门槛仍为 20，统一非推理排名不接收全部生成范围，DSH 行仍显示数值、区间和样本数，rank 为 null。没有有效样本的模型行保留空值，不填 0 或借旧 E2E。页面沿用现有表格、样本数和区间，不新增说明、警告、徽标或详情区块。实施及普通安装边界见[本地接入方案](plans/2026-10-29-local-generation-adoption-plan.md)，[前轮验收](validation/2026-10-28-generation-tps/README.md)保持历史版本归属。
 
-coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplaced`。对可定位候选，恒等式为 `eligible = sampled + dropped + pending`；缺时间的 `unplaced` 作为所选来源的全历史诊断，不进入当前日期范围分母。没有样本的来源只报告诊断，不合成 0 TPS。未知来源格式、无法唯一归属、读取错误、来源变化及发布失败按 warning/degraded 状态显式呈现；Codex 对可靠归属的坏线程整线程隔离，未知或含糊边界 fail closed。TPS 候选与普通用量事件分开存储和汇总，不增加 `totals`、费用、时间线或限额统计。
+`summary.perf.codexTimingCoverage` 保留当前方法的同范围内部诊断，沿用来源排除及健康发布过滤。counts 记录候选、采样、互斥丢因、pending 和 unplaced；输出计数使用性能投影字段，不代替原始用量总数。没有适用 Codex 来源为 null，已配置但范围无候选为零计数；rebuilding/uninitialized 不发布假覆盖。全历史 unplaced 不纳入当前范围分母。
+
+coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplaced`，可定位候选满足 `eligible = sampled + dropped + pending`。计时晚到或升级只重算受影响请求和性能分组；Q2 静态用量缓存继续复用，Q3 同步 reader 从自身快照读取性能数据。请求局部缺失或冲突不连带淘汰其它可测响应；真实身份、归属与发布冲突继续按既有规则处理。
 
 默认及 dashboard 用量响应、`/api/summary` 和 `detail=full` 的 `summary.perf` 携带性能聚合与公开状态。内部 `perfSamples/perfMeta`、sampleKey 与物理来源路径不序列化到公开 report；full 提供的是原有用量明细，并非 TPS 候选明细。冻结查询绑定当时索引，后续同步不会改变已冻结的统计；full 走 live 内存路径，不能与 freeze/snapshot 组合，明确返回 `SNAPSHOT_FULL_DETAIL_UNSUPPORTED`。来源变化或事务失败时保留旧数据用于恢复，并按发布 policy 排除失败线程，不能让旧样本继续排名。公开 `indexVersion` 反映已发布统计及告警的变化。具体验收与残留见[最终审核包](validation/2026-10-04-perf-metrics/20261004T035100/final-audit.md)。
 
@@ -62,7 +64,7 @@ coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplac
 
 WorkBuddy 的计时是独立输入：普通 `sync` 每轮对每个启用 home 预扫 trace，复用未变化文件的进程内指纹，把新 distinct duration 写入 home-scoped observation 表，并定位受影响会话重建。预扫发生在 `replaceFile` 事务之外，不把 `await` 拉进写事务。trace 集合与已解析计时参与 memory/store 性能版本及读取稳定性检查；删除 trace 不遗忘已知时长或冲突。
 
-当前代码 `STORE_SCHEMA_VERSION` 为 19。11→12 增加 TPS 样本表，12→13 增加 Codex rollout 依赖，13→14 增加投影表；14→15 登记 Claude，15→16 更正 Claude 线路模型并定向重扫；16→17 登记 WorkBuddy 和旧无 home 时长表；17→18 增加 Codex 请求计时证据与 dirty 线程；18→19 增加 WorkBuddy home-scoped duration observation。旧无 home 行保留，不猜归属回填；多 home 不借用，单/多模式变化重建相关候选。迁移短事务执行，保留用量/费用及原始来源；证据导入不等于候选发布，性能版本用成功消费 dirty 的事务内发布序号表达部分成功。无需手动删除索引；本机 3765 正式服务已于 2026-10-21 切换至 schema19/tps-v2，并导入原六轮 326 条审核计时；其他安装仍由首次打开执行迁移。
+当前代码 `STORE_SCHEMA_VERSION` 为 22。11→19 依次建立性能样本、Codex 依赖/投影、Claude 和 WorkBuddy、请求计时及 home-scoped duration observation；19→20 保存重解析替换的用量事实，20→21 建立冷归档目录，21→22 扩展生成计时约束和证据并标记来源重解析。旧行和依赖保留，不把 v1/v2 数值改名为 v3。新增证据随导入导出、备份及冷归档恢复保留，旧十列计时清单仍可读；无需手动删除索引。本机正式服务上次[切换记录](validation/2026-10-27-performance-production-cutover/README.md)为 `852034b` / schema21 / tps-v2，本轮源码尚未部署。
 
 ## 读取与数据边界
 
@@ -77,3 +79,7 @@ SQLite 适配器优先只读打开；当前 ZCode/OpenCode 在只读打开失败
 ## 接线与回归
 
 新增来源要同时核对 `usage-core` 的分类/发现/指纹/事件分派、`usage-store` 的文件展开与元数据、服务器导入标签、前端 harness 分组、非 Codex 限额排除、i18n 和 README。来源测试、索引测试与三路一致测试分别覆盖语义和接线；真实来源 UI 验收独立记录。
+
+### 本地额度来源筛选
+
+5h/7d 的来源判定只读本机 Codex 会话与 `logs_2.sqlite` 中可关联线程的原生诊断，不查询线上账户、不依赖 Magpie、不读取凭据。SQLite 保存脱敏来源状态，静态快照携带相同分类；既有原始用量保持不变。额度周期与趋势口径见[看板说明](12-dashboard.md)。

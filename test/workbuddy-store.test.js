@@ -1,4 +1,4 @@
-// S1-S4：WorkBuddy 索引（文件展开、v17 迁移、harness 桶、trace 预扫与时长注入）的验收。
+// S1-S4：WorkBuddy 索引（文件展开、迁移、harness 桶、trace 观测与缺生成时长候选）的验收。
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -88,6 +88,32 @@ function countSamples(store) {
   );
 }
 
+function assertMissingGenerationCandidates(store, expectedCount) {
+  const samples = store.database
+    .prepare("SELECT * FROM perf_samples WHERE source_kind = 'workbuddy' ORDER BY sample_key")
+    .all();
+  assert.equal(samples.length, expectedCount);
+  for (const sample of samples) {
+    assert.equal(sample.duration_ms, null, "trace E2E 时长不得进入生成 TPS");
+    assert.equal(sample.output_tokens, 190, "原始 output 200 含 reasoning 10");
+    assert.equal(sample.request_count, 1);
+    assert.equal(sample.window, "request");
+    assert.equal(sample.timing_kind, "generation");
+    assert.equal(sample.token_scope, "non_reasoning_output");
+    assert.equal(sample.method_version, "tps-v4");
+    assert.equal(sample.diagnostic_reason, "duration_missing");
+    const identity = JSON.parse(sample.sample_key);
+    assert.equal(identity.length, 3);
+    assert.deepEqual(identity.slice(0, 2), ["workbuddy", sample.home_id]);
+    const source = store.database.prepare("SELECT home_id FROM source_files WHERE path = ?").get(sample.source_path);
+    assert.equal(source.home_id, sample.home_id);
+  }
+  const perf = store.summarize({ preset: "all" }).perf;
+  assert.deepEqual(perf.groups, []);
+  assert.equal(perf.coverage.sampled, 0);
+  return samples;
+}
+
 function durationRows(store) {
   return store.database
     .prepare(
@@ -159,12 +185,12 @@ test("S1：目录不可读 ⇒ 进 failedHomes 且不抛", async () => {
   });
 });
 
-test("S2：全新库直接 v21 且旧时长表与 observation 表都存在", async () => {
+test("S2：全新库直接 v22 且旧时长表与 observation 表都存在", async () => {
   await withWorkspace(async ({ options, storeFile }) => {
     const store = await openStore(options.homeDir, storeFile);
     try {
-      assert.equal(STORE_SCHEMA_VERSION, 21);
-      assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 21);
+      assert.equal(STORE_SCHEMA_VERSION, 23);
+      assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 23);
       for (const table of ["workbuddy_generation_durations", "workbuddy_generation_duration_observations"]) {
         assert.equal(store.database.prepare("SELECT type FROM sqlite_master WHERE name = ?").get(table)?.type, "table");
       }
@@ -174,7 +200,7 @@ test("S2：全新库直接 v21 且旧时长表与 observation 表都存在", asy
   });
 });
 
-test("S2：v16 真库升级到 v21，重复打开幂等", async () => {
+test("S2：v16 真库升级到 v22，重复打开幂等", async () => {
   await withWorkspace(async ({ options, storeFile }) => {
     const store = await openStore(options.homeDir, storeFile);
     store.close();
@@ -185,13 +211,13 @@ test("S2：v16 真库升级到 v21，重复打开幂等", async () => {
 
     const upgraded = await openStore(options.homeDir, storeFile);
     try {
-      assert.equal(Number(upgraded.database.prepare("PRAGMA user_version").get().user_version), 21);
+      assert.equal(Number(upgraded.database.prepare("PRAGMA user_version").get().user_version), 23);
     } finally {
       upgraded.close();
     }
     const again = await openStore(options.homeDir, storeFile);
     try {
-      assert.equal(Number(again.database.prepare("PRAGMA user_version").get().user_version), 21);
+      assert.equal(Number(again.database.prepare("PRAGMA user_version").get().user_version), 23);
     } finally {
       again.close();
     }
@@ -339,7 +365,7 @@ test("S4：trace 未变化 ⇒ 第二次触发不重解析", async () => {
   });
 });
 
-test("S4：删掉 trace 目录后重解析会话文件 ⇒ 样本数不变（表兜底）", async () => {
+test("S4：删掉 trace 目录后重解析会话文件 ⇒ 候选与持久观测不变", async () => {
   await withWorkspace(async ({ projectDir, traceDir, options, storeFile }) => {
     await writeSessions(projectDir, { [SESSION_A]: [usageRecord("m-1")] });
     await writeTraces(traceDir, [traceRow("m-1")]);
@@ -348,14 +374,16 @@ test("S4：删掉 trace 目录后重解析会话文件 ⇒ 样本数不变（表
       await store.sync({ options });
       assert.equal(countSamples(store), 1);
       const before = store.database.prepare("SELECT sample_key, duration_ms FROM perf_samples").all();
+      const observations = durationRows(store);
 
       await rm(path.join(options.homeDir, ".workbuddy-ai", "traces"), { recursive: true, force: true });
       // 标脏：模拟"30 天后会话文件被重新解析"。
       store.database.exec("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE kind = 'workbuddy'");
       await store.sync({ options });
 
-      assert.equal(countSamples(store), 1);
+      assertMissingGenerationCandidates(store, 1);
       assert.deepEqual(store.database.prepare("SELECT sample_key, duration_ms FROM perf_samples").all(), before);
+      assert.deepEqual(durationRows(store), observations);
     } finally {
       store.close();
     }
@@ -410,7 +438,7 @@ test("S4：非 ok 的 span、坏 toolOutput、非正时长都不写表", async (
   });
 });
 
-test("S4：traces 不可用（是普通文件）⇒ sync 不失败，无时长行，样本被跳过", async () => {
+test("S4：traces 不可用（是普通文件）⇒ sync 不失败，无观测但保留缺生成时长候选", async () => {
   await withWorkspace(async ({ home, projectDir, options, storeFile }) => {
     await writeSessions(projectDir, { [SESSION_A]: [usageRecord("m-1")] });
     await rm(path.join(home, "traces"), { recursive: true, force: true });
@@ -420,11 +448,12 @@ test("S4：traces 不可用（是普通文件）⇒ sync 不失败，无时长�
       const round = await store.sync({ options });
       assert.ok(round);
       assert.equal(durationRows(store).length, 0);
-      assert.equal(countSamples(store), 0);
-      assert.ok(
-        store.warnings.some((warning) => warning.includes("缺少 generation 时长")),
-        "缺时长必须如实告警",
-      );
+      assertMissingGenerationCandidates(store, 1);
+      const perf = store.summarize({ preset: "all" }).perf;
+      assert.equal(perf.models.length, 1);
+      assert.equal(perf.models[0].state, "missing_duration");
+      assert.equal(perf.models[0].candidateCount, 1);
+      assert.equal(perf.models[0].averageTps, null);
     } finally {
       store.close();
     }
@@ -442,52 +471,45 @@ test("C2：同值重复写 observation 一次，保留一个样本", async () =>
         durationRows(store).map((row) => [row.message_id, row.duration_ms]),
         [["msg-same", 900]],
       );
-      assert.equal(countSamples(store), 1);
-      assert.equal(
-        Number(
-          store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get()
-            .duration_ms,
-        ),
-        900,
-      );
+      assertMissingGenerationCandidates(store, 1);
     } finally {
       store.close();
     }
   });
 });
 
-test("C2：缺时长的会话在 trace 到达后由普通 sync 补采样", async () => {
+test("C2：trace 晚到由普通 sync 补观测，候选仍缺生成时长", async () => {
   await withWorkspace(async ({ projectDir, traceDir, options, storeFile }) => {
     await writeSessions(projectDir, { [SESSION_A]: [usageRecord("msg-late")] });
     const store = await openStore(options.homeDir, storeFile);
     try {
       await store.sync({ options });
-      assert.equal(countSamples(store), 0);
+      const before = assertMissingGenerationCandidates(store, 1);
+      const usageBefore = usageSnapshot(store);
+      assert.deepEqual(durationRows(store), []);
 
       await writeTraces(traceDir, [traceRow("msg-late", { duration: 800 })]);
       await store.sync({ options });
-      assert.equal(countSamples(store), 1);
-      assert.equal(
-        Number(
-          store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get()
-            .duration_ms,
-        ),
-        800,
+      assert.deepEqual(assertMissingGenerationCandidates(store, 1), before);
+      assert.deepEqual(
+        durationRows(store).map((row) => [row.home_id, row.message_id, row.duration_ms]),
+        [[before[0].home_id, "msg-late", 800]],
       );
+      assert.deepEqual(usageSnapshot(store), usageBefore);
     } finally {
       store.close();
     }
   });
 });
 
-test("C2：异值冲突不选一个，阻断样本但用量与费用不变", async () => {
+test("C2：异值冲突保留全部观测与缺生成时长候选，用量与费用不变", async () => {
   await withWorkspace(async ({ projectDir, traceDir, options, storeFile }) => {
     await writeSessions(projectDir, { [SESSION_A]: [usageRecord("msg-conflict")] });
     await writeTraces(traceDir, [traceRow("msg-conflict", { duration: 800 })]);
     const store = await openStore(options.homeDir, storeFile);
     try {
       await store.sync({ options });
-      assert.equal(countSamples(store), 1);
+      const candidates = assertMissingGenerationCandidates(store, 1);
       const before = usageSnapshot(store);
 
       await writeTraces(traceDir, [
@@ -500,7 +522,11 @@ test("C2：异值冲突不选一个，阻断样本但用量与费用不变", asy
         durationRows(store).map((row) => row.duration_ms),
         [800, 850],
       );
-      assert.equal(countSamples(store), 0, "多种时长必须阻断采样，不能先到先得");
+      assert.deepEqual(
+        assertMissingGenerationCandidates(store, 1),
+        candidates,
+        "冲突不得删除 message 候选或选定生成时长",
+      );
       assert.deepEqual(usageSnapshot(store), before, "冲突不得改动用量事件或费用估算");
       assert.equal(
         Number(store.database.prepare("SELECT COUNT(*) AS n FROM events WHERE home_id LIKE 'workbuddy-%'").get().n),
@@ -520,13 +546,13 @@ test("C2：trace-only 变化推进 indexVersion，重复 sync 保持稳定", asy
     try {
       await store.sync({ options });
       const firstVersion = store.readMeta("perf_index_version");
-      assert.equal(countSamples(store), 1);
+      const candidates = assertMissingGenerationCandidates(store, 1);
 
       await writeTraces(traceDir, [traceRow("msg-version", { duration: 900 })]);
       await store.sync({ options });
       const changedVersion = store.readMeta("perf_index_version");
       assert.notEqual(changedVersion, firstVersion);
-      assert.equal(countSamples(store), 0);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 1), candidates);
       assert.deepEqual(
         durationRows(store).map((row) => row.duration_ms),
         [800, 900],
@@ -534,7 +560,7 @@ test("C2：trace-only 变化推进 indexVersion，重复 sync 保持稳定", asy
 
       await store.sync({ options });
       assert.equal(store.readMeta("perf_index_version"), changedVersion);
-      assert.equal(countSamples(store), 0);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 1), candidates);
     } finally {
       store.close();
     }
@@ -585,7 +611,11 @@ test("C2：关库重开后冲突仍持久，重复 sync 不恢复先到先得", 
       await store.sync({ options });
       const observations = durationRows(store);
       const before = usageSnapshot(store);
-      assert.equal(countSamples(store), 0);
+      const candidates = assertMissingGenerationCandidates(store, 1);
+      assert.deepEqual(
+        observations.map((row) => row.duration_ms),
+        [800, 850],
+      );
       store.close();
 
       store = await openStore(options.homeDir, storeFile);
@@ -593,7 +623,7 @@ test("C2：关库重开后冲突仍持久，重复 sync 不恢复先到先得", 
       await store.sync({ options });
 
       assert.deepEqual(durationRows(store), observations);
-      assert.equal(countSamples(store), 0);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 1), candidates);
       assert.deepEqual(usageSnapshot(store), before);
     } finally {
       store.close();
@@ -614,13 +644,17 @@ test("C2：删掉 traces 后冲突仍持久，不会退回旧表的单值", asyn
       const observations = durationRows(store);
       const before = usageSnapshot(store);
       const beforeVersion = store.readMeta("perf_index_version");
-      assert.equal(countSamples(store), 0);
+      const candidates = assertMissingGenerationCandidates(store, 1);
+      assert.deepEqual(
+        observations.map((row) => row.duration_ms),
+        [800, 850],
+      );
 
       await rm(path.join(home, "traces"), { recursive: true, force: true });
       await store.sync({ options });
 
       assert.deepEqual(durationRows(store), observations);
-      assert.equal(countSamples(store), 0);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 1), candidates);
       assert.deepEqual(usageSnapshot(store), before);
       assert.notEqual(store.readMeta("perf_index_version"), beforeVersion);
     } finally {
@@ -629,7 +663,7 @@ test("C2：删掉 traces 后冲突仍持久，不会退回旧表的单值", asyn
   });
 });
 
-test("C2：旧表无 observation 时仍可兜底读取既有正确时长", async () => {
+test("C2：旧表无 observation 时保留历史 E2E 值，但候选仍缺生成时长", async () => {
   await withWorkspace(async ({ home, projectDir, options, storeFile }) => {
     await writeSessions(projectDir, { [SESSION_A]: [usageRecord("msg-legacy")] });
     await rm(path.join(home, "traces"), { recursive: true, force: true });
@@ -645,21 +679,14 @@ test("C2：旧表无 observation 时仍可兜底读取既有正确时长", async
       await store.sync({ options });
       assert.deepEqual(durationRows(store), []);
       assert.deepEqual(legacyDurationRows(store), [{ message_id: "msg-legacy", duration_ms: 700 }]);
-      assert.equal(countSamples(store), 1);
-      assert.equal(
-        Number(
-          store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get()
-            .duration_ms,
-        ),
-        700,
-      );
+      assertMissingGenerationCandidates(store, 1);
     } finally {
       store.close();
     }
   });
 });
 
-test("C2：多个 WorkBuddy home 共用无归属旧时长时，两个 home 都不采样", async () => {
+test("C2：多个 WorkBuddy home 共用无归属旧时长时，各自保留缺生成时长候选", async () => {
   await withWorkspace(async ({ root, projectDir, options, storeFile }) => {
     const secondHome = path.join(root, ".workbuddy-ai-second");
     const secondProjectDir = path.join(secondHome, "projects", "slug");
@@ -678,7 +705,14 @@ test("C2：多个 WorkBuddy home 共用无归属旧时长时，两个 home 都�
         .run("msg-legacy-shared", 700);
       await store.sync({ options: { ...options, extraWorkbuddyHomes: secondHome } });
 
-      assert.equal(countSamples(store), 0);
+      const candidates = assertMissingGenerationCandidates(store, 2);
+      assert.deepEqual(
+        candidates.map((sample) => sample.source_path).sort(),
+        [path.join(projectDir, `${SESSION_A}.jsonl`), path.join(secondProjectDir, `${SESSION_B}.jsonl`)].sort(),
+      );
+      assert.equal(new Set(candidates.map((sample) => sample.home_id)).size, 2);
+      assert.ok(candidates.every((sample) => JSON.parse(sample.sample_key)[2] === "msg-legacy-shared"));
+      assert.deepEqual(durationRows(store), [], "无归属旧值不得伪造成 home observation");
       assert.deepEqual(legacyDurationRows(store), [{ message_id: "msg-legacy-shared", duration_ms: 700 }]);
     } finally {
       store.close();
@@ -686,8 +720,8 @@ test("C2：多个 WorkBuddy home 共用无归属旧时长时，两个 home 都�
   });
 });
 
-test("C2：两个 home 的同名 messageId 各自采样，不跨 home 冲突", async () => {
-  await withWorkspace(async ({ root, projectDir, traceDir, options, storeFile }) => {
+test("C2：两个 home 的同名 messageId 各自保留候选和观测，不跨 home 冲突", async () => {
+  await withWorkspace(async ({ root, home, projectDir, traceDir, options, storeFile }) => {
     const secondHome = path.join(root, ".workbuddy-ai-second");
     const secondProjectDir = path.join(secondHome, "projects", "slug");
     const secondTraceDir = path.join(secondHome, "traces", "102285");
@@ -701,10 +735,10 @@ test("C2：两个 home 的同名 messageId 各自采样，不跨 home 冲突", a
     const store = await openStore(options.homeDir, storeFile);
     try {
       await store.sync({ options: { ...options, extraWorkbuddyHomes: secondHome } });
-      assert.equal(countSamples(store), 2);
+      assertMissingGenerationCandidates(store, 2);
       const samples = store.database
         .prepare(
-          `SELECT source_files.home_path, perf_samples.duration_ms
+          `SELECT source_files.home_path, perf_samples.home_id, perf_samples.duration_ms
            FROM perf_samples
            JOIN source_files ON source_files.path = perf_samples.source_path
            WHERE perf_samples.source_kind = 'workbuddy'
@@ -713,11 +747,18 @@ test("C2：两个 home 的同名 messageId 各自采样，不跨 home 冲突", a
         .all()
         .map((row) => ({ ...row }));
       assert.deepEqual(
-        samples.map((row) => row.duration_ms).sort((left, right) => left - right),
-        [800, 900],
+        samples.map((row) => row.duration_ms),
+        [null, null],
       );
-      assert.equal(new Set(samples.map((row) => row.home_path)).size, 2);
-      assert.equal(new Set(durationRows(store).map((row) => row.home_id)).size, 2);
+      assert.deepEqual(samples.map((row) => row.home_path).sort(), [home, secondHome].sort());
+      const homeIds = new Map(samples.map((row) => [row.home_path, row.home_id]));
+      assert.deepEqual(
+        durationRows(store).map((row) => [row.home_id, row.message_id, row.duration_ms]),
+        [
+          [homeIds.get(home), "msg-shared", 800],
+          [homeIds.get(secondHome), "msg-shared", 900],
+        ].sort((left, right) => left[0].localeCompare(right[0])),
+      );
     } finally {
       store.close();
     }
@@ -744,6 +785,8 @@ test("C2：trace 到达只重解析包含该 messageId 的会话文件与 home",
     try {
       const syncOptions = { ...options, extraWorkbuddyHomes: secondHome };
       await store.sync({ options: syncOptions });
+      const candidates = assertMissingGenerationCandidates(store, 3);
+      const before = usageSnapshot(store);
       const rebuilt = [];
       const original = store.replaceFile.bind(store);
       store.replaceFile = async (file, replaceOptions) => {
@@ -759,17 +802,28 @@ test("C2：trace 到达只重解析包含该 messageId 的会话文件与 home",
       const secondHomeId = store.database
         .prepare("SELECT home_id FROM source_files WHERE path = ?")
         .get(secondFile).home_id;
-      const sample = store.database
-        .prepare("SELECT duration_ms FROM perf_samples WHERE sample_key = ?")
-        .get(JSON.stringify(["workbuddy", secondHomeId, "m-second"]));
-      assert.equal(Number(sample?.duration_ms), 850);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 3), candidates);
+      const sample = candidates.find(
+        (row) => row.sample_key === JSON.stringify(["workbuddy", secondHomeId, "m-second"]),
+      );
+      assert.ok(sample);
+      assert.equal(sample.source_path, secondFile);
+      const firstHomeId = candidates.find((row) => row.source_path === firstFile).home_id;
+      assert.deepEqual(
+        durationRows(store).map((row) => [row.home_id, row.message_id, row.duration_ms]),
+        [
+          [firstHomeId, "m-first", 15455],
+          [secondHomeId, "m-second", 850],
+        ].sort((left, right) => left[0].localeCompare(right[0])),
+      );
+      assert.deepEqual(usageSnapshot(store), before);
     } finally {
       store.close();
     }
   });
 });
 
-test("C2：legacy 单 home → 多 home 撤样本，返回单 home 恢复，noop 与重开稳定", async () => {
+test("C2：legacy 单/多 home 模式切换保留空速候选，noop 与重开稳定", async () => {
   await withWorkspace(async ({ root, projectDir, options, storeFile }) => {
     const secondHome = path.join(root, ".workbuddy-ai-second");
     const secondProjectDir = path.join(secondHome, "projects", "slug");
@@ -787,50 +841,50 @@ test("C2：legacy 单 home → 多 home 撤样本，返回单 home 恢复，noop
         .run("msg-shared-legacy", 700);
 
       await store.sync({ options });
-      assert.equal(countSamples(store), 1);
-      assert.equal(
-        Number(
-          store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get()
-            .duration_ms,
-        ),
-        700,
-      );
+      const [singleCandidate] = assertMissingGenerationCandidates(store, 1);
+      assert.equal(store.readMeta("perf_workbuddy_legacy_fallback_allowed"), "1");
 
       await writeSessions(secondProjectDir, { [SESSION_B]: [usageRecord("msg-shared-legacy")] });
       const multiOptions = { ...options, extraWorkbuddyHomes: secondHome };
       await store.sync({ options: multiOptions });
-      assert.equal(countSamples(store), 0, "多 home 时无归属旧值必须撤出");
+      const multiCandidates = assertMissingGenerationCandidates(store, 2);
+      assert.deepEqual(
+        multiCandidates.find((row) => row.sample_key === singleCandidate.sample_key),
+        singleCandidate,
+      );
+      assert.equal(new Set(multiCandidates.map((row) => row.home_id)).size, 2);
+      assert.ok(multiCandidates.every((row) => JSON.parse(row.sample_key)[2] === "msg-shared-legacy"));
+      assert.equal(store.readMeta("perf_workbuddy_legacy_fallback_allowed"), "0");
       const multiVersion = store.readMeta("perf_index_version");
 
       await store.sync({ options: multiOptions });
-      assert.equal(countSamples(store), 0);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 2), multiCandidates);
       assert.equal(store.readMeta("perf_index_version"), multiVersion);
 
       store.close();
       store = await openStore(options.homeDir, storeFile);
       await store.sync({ options: multiOptions });
-      assert.equal(countSamples(store), 0, "重开后多 home 仍不得恢复旧值");
+      assert.deepEqual(assertMissingGenerationCandidates(store, 2), multiCandidates, "重开不得把旧 E2E 值变成生成时长");
 
       await store.sync({ options });
-      assert.equal(countSamples(store), 1, "回到唯一 home 后旧值重新可用");
-      assert.equal(
-        Number(
-          store.database.prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'").get()
-            .duration_ms,
-        ),
-        700,
+      assert.deepEqual(
+        assertMissingGenerationCandidates(store, 2),
+        multiCandidates,
+        "移除配置仍保留另一 home 的历史候选",
       );
+      assert.equal(store.readMeta("perf_workbuddy_legacy_fallback_allowed"), "1");
       const singleVersion = store.readMeta("perf_index_version");
       assert.notEqual(singleVersion, multiVersion);
 
       await store.sync({ options });
       assert.equal(store.readMeta("perf_index_version"), singleVersion);
+      assert.deepEqual(durationRows(store), [], "legacy 历史值不得变成有 home 归属的观测");
       assert.deepEqual(legacyDurationRows(store), [{ message_id: "msg-shared-legacy", duration_ms: 700 }]);
 
       store.close();
       store = await openStore(options.homeDir, storeFile);
       await store.sync({ options });
-      assert.equal(countSamples(store), 1);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 2), multiCandidates);
       assert.equal(store.readMeta("perf_index_version"), singleVersion);
     } finally {
       store.close();
@@ -838,7 +892,7 @@ test("C2：legacy 单 home → 多 home 撤样本，返回单 home 恢复，noop
   });
 });
 
-test("C2：legacy 模式切换只影响兜底候选，同/异 message 与 home observation 隔离", async () => {
+test("C2：legacy 模式切换保留全部空速候选，同/异 message 与 home observation 隔离", async () => {
   await withWorkspace(async ({ root, projectDir, traceDir, options, storeFile }) => {
     const secondHome = path.join(root, ".workbuddy-ai-second");
     const secondProjectDir = path.join(secondHome, "projects", "slug");
@@ -860,37 +914,36 @@ test("C2：legacy 模式切换只影响兜底候选，同/异 message 与 home o
         .run("msg-main-legacy", 700, "msg-second-legacy", 800);
 
       await store.sync({ options });
+      const singleCandidates = assertMissingGenerationCandidates(store, 2);
+      const homeId = singleCandidates[0].home_id;
+      const observations = durationRows(store);
       assert.deepEqual(
-        store.database
-          .prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy' ORDER BY duration_ms")
-          .all()
-          .map((row) => row.duration_ms),
-        [700, 900],
+        observations.map((row) => [row.home_id, row.message_id, row.duration_ms]),
+        [[homeId, "msg-observed", 900]],
       );
 
       await writeSessions(secondProjectDir, { [SESSION_B]: [usageRecord("msg-second-legacy")] });
       const multiOptions = { ...options, extraWorkbuddyHomes: secondHome };
       await store.sync({ options: multiOptions });
+      const multiCandidates = assertMissingGenerationCandidates(store, 3);
       assert.deepEqual(
-        store.database
-          .prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy' ORDER BY duration_ms")
-          .all()
-          .map((row) => row.duration_ms),
-        [900],
-        "只撤 legacy 候选，home observation 仍保留",
+        multiCandidates.filter((row) => row.home_id === homeId),
+        singleCandidates,
       );
+      const secondCandidate = multiCandidates.find((row) => row.home_id !== homeId);
+      assert.ok(secondCandidate);
+      assert.equal(secondCandidate.source_path, path.join(secondProjectDir, `${SESSION_B}.jsonl`));
+      assert.equal(JSON.parse(secondCandidate.sample_key)[2], "msg-second-legacy");
+      assert.deepEqual(durationRows(store), observations, "无归属旧值与其它 home 不得改写本 home 的观测");
+      assert.equal(store.readMeta("perf_workbuddy_legacy_fallback_allowed"), "0");
 
       await store.sync({ options: multiOptions });
-      assert.equal(countSamples(store), 1);
+      assert.deepEqual(assertMissingGenerationCandidates(store, 3), multiCandidates);
 
       await store.sync({ options });
-      assert.deepEqual(
-        store.database
-          .prepare("SELECT duration_ms FROM perf_samples WHERE source_kind = 'workbuddy' ORDER BY duration_ms")
-          .all()
-          .map((row) => row.duration_ms),
-        [700, 900],
-      );
+      assert.deepEqual(assertMissingGenerationCandidates(store, 3), multiCandidates);
+      assert.deepEqual(durationRows(store), observations);
+      assert.equal(store.readMeta("perf_workbuddy_legacy_fallback_allowed"), "1");
       assert.deepEqual(
         legacyDurationRows(store),
         [

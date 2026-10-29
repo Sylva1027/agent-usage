@@ -47,11 +47,10 @@ function sample(overrides = {}) {
     model: "m1",
     modelProvider: "",
     reasoningEffort: "",
-    // §17.1 source semantics: `window` and `tokenScope` must agree with `sourceKind`
-    // or normalization reports SOURCE_SEMANTICS_MISMATCH.
+    // Every current v3 source uses the same request-level generation semantics.
     window: "request",
-    timingKind: "request_e2e",
-    tokenScope: "reported_output_unspecified",
+    timingKind: "generation",
+    tokenScope: "non_reasoning_output",
     durationMs: 2_000,
     outputTokens: 1_000,
     ...overrides,
@@ -239,9 +238,9 @@ test("M1.3-4 pooled uses the sampled set only: pending, partial and filtered nev
   );
 });
 
-test("M1.3-5 mixed dimensions split into separate groups, each aggregated on its own", () => {
+test("M1.3-5 mixed current dimensions split into separate groups, each aggregated on its own", () => {
   // Two sources, two homes, and separation by modelProvider / reasoningEffort /
-  // tokenScope / agentKind / channel — §17.1 dimensions must all partition.
+  // channel / agentKind — §17.1 dimensions must all partition.
   const rows = [
     sample({
       identity: ["d-1"],
@@ -271,15 +270,13 @@ test("M1.3-5 mixed dimensions split into separate groups, each aggregated on its
       durationMs: 1_000,
       outputTokens: 3_000,
     }),
-    // different tokenScope -> different group (`opencode` is the source whose
-    // semantics carry `visible_plus_reasoning`)
+    // different channel -> different group
     sample({
       identity: ["d-4"],
-      sourceKind: "opencode",
+      sourceKind: "zcode",
       homeId: "h1",
       model: "m1",
-      window: "message",
-      tokenScope: "visible_plus_reasoning",
+      channel: "worker",
       durationMs: 1_000,
       outputTokens: 4_000,
     }),
@@ -293,34 +290,41 @@ test("M1.3-5 mixed dimensions split into separate groups, each aggregated on its
       durationMs: 1_000,
       outputTokens: 5_000,
     }),
-    // other source and other home -> different group. `dsh` is a step window, so the
-    // window must move with the source kind to stay semantically consistent.
+    // other source -> different group
     sample({
       identity: ["d-6"],
       sourceKind: "dsh",
-      homeId: "h2",
+      homeId: "h1",
       model: "m1",
-      window: "step",
       durationMs: 1_000,
       outputTokens: 6_000,
+    }),
+    // other home -> different group
+    sample({
+      identity: ["d-7"],
+      sourceKind: "zcode",
+      homeId: "h2",
+      model: "m1",
+      durationMs: 1_000,
+      outputTokens: 7_000,
     }),
   ];
   const summary = summarizePerf(rows, { range: RANGE });
 
-  assert.equal(summary.groups.length, 6, "every differing §17.1 dimension must split the group");
-  assert.equal(summary.coverage.sampled, 6);
+  assert.equal(summary.groups.length, 7, "every differing §17.1 dimension must split the group");
+  assert.equal(summary.coverage.sampled, 7);
   // each group holds exactly its own single member
   for (const group of summary.groups) {
     assert.equal(group.n, 1);
     assert.equal(group.sums.durationMs, 1_000);
   }
-  // the provider/reasoning/tokenScope variants of one model are distinct groups
+  // the provider/reasoning/channel variants of one model are distinct groups
   const keys = new Set(summary.groups.map((group) => group.groupKey));
-  assert.equal(keys.size, 6);
+  assert.equal(keys.size, 7);
   const providers = summary.groups.filter((group) => group.modelProvider === "prov-a");
   assert.equal(providers.length, 1);
-  const scopes = summary.groups.filter((group) => group.tokenScope === "visible_plus_reasoning");
-  assert.equal(scopes.length, 1);
+  assert.equal(summary.groups.filter((group) => group.channel === "worker").length, 1);
+  assert.ok(summary.groups.every((group) => group.tokenScope === "non_reasoning_output"));
   // sourceKind and homeId both participate
   assert.equal(summary.groups.filter((group) => group.sourceKind === "dsh").length, 1);
   assert.equal(summary.groups.filter((group) => group.homeId === "h2").length, 1);
@@ -611,7 +615,6 @@ test("M1.3-15 parity: a full mixed fixture is invariant under every input permut
       identity: ["mix-4"],
       sourceKind: "dsh",
       homeId: "h2",
-      window: "step",
       durationMs: 500,
       outputTokens: 750,
       tsMs: T + 3,
@@ -756,7 +759,6 @@ test("M1.3-18 unsupported declared sources are surfaced without becoming groups"
     sample({
       identity: ["u-2"],
       sourceKind: "dsh",
-      window: "step",
       homeId: "h2",
       durationMs: 1_000,
       outputTokens: 1_000,
@@ -937,17 +939,17 @@ test("M1.3-20 reachability ledger: every 0, null and error branch has a trigger"
 // ---------------------------------------------------------------------------
 
 /**
- * Build a codex sample. Codex is the only source with an era split, so every
- * era assertion needs this semantic combination (`turn` window, explicit request
- * timing, reasoning-inclusive tokens).
+ * Build a current Codex sample. Historical method fixtures switch back to the
+ * legacy source semantics so they remain readable without becoming current samples.
  */
 function codexSample(overrides = {}) {
+  const historical = overrides.methodVersion !== undefined && overrides.methodVersion !== PERF_METHOD_VERSION;
   return sample({
     sourceKind: "codex",
-    window: "turn",
-    timingKind: "request_e2e",
+    window: historical ? "turn" : "request",
+    timingKind: historical ? "request_e2e" : "generation",
     timingSource: "explicit",
-    tokenScope: "reported_output_includes_reasoning",
+    tokenScope: historical ? "reported_output_includes_reasoning" : "non_reasoning_output",
     ...overrides,
   });
 }
@@ -1626,12 +1628,12 @@ test("A4 codexTimingCoverage: only an applicable, non-excluded Codex source enab
   assert.equal(empty.counts.sampleRate, null);
 });
 
-test("A4 codexTimingCoverage: v1/v2 mix counts only current-method Codex candidates", () => {
+test("A4 codexTimingCoverage: v2/v3 mix counts only current-method Codex candidates", () => {
   const rows = [
-    codexSample({ identity: ["a4-v2"], outputTokens: 1_000, durationMs: 1_000 }),
+    codexSample({ identity: ["a4-v3"], outputTokens: 1_000, durationMs: 1_000 }),
     codexSample({
-      identity: ["a4-v1"],
-      methodVersion: "tps-v1",
+      identity: ["a4-v2"],
+      methodVersion: "tps-v2",
       outputTokens: 1_000,
       durationMs: 1_000,
     }),
@@ -1642,7 +1644,7 @@ test("A4 codexTimingCoverage: v1/v2 mix counts only current-method Codex candida
   });
   const counts = summary.codexTimingCoverage.counts;
 
-  assert.equal(summary.coverage.eligible, 2, "old coverage keeps v1");
+  assert.equal(summary.coverage.eligible, 2, "old coverage keeps v2");
   assert.equal(counts.eligible, 1);
   assert.equal(counts.sampled, 1);
   assert.equal(counts.dropped, 0);

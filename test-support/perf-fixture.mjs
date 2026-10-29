@@ -43,101 +43,95 @@ function row(id, base, output, duration, extra = {}) {
   };
 }
 
-const SMALL = {
-  sourceKind: "zcode",
-  channel: "zcode",
-  modelProvider: "fixture-provider",
-  reasoningEffort: "",
-  timingKind: "request_e2e",
-  tokenScope: "reported_output_unspecified",
-  model: "small-model",
-  agentKind: "unknown",
-  agent: "",
-  n: 5,
-  rank: null,
-  insufficientSamples: true,
-  tps: { p10: 1, p50: 3, p90: 5, pooled: (55 * 1000) / 15000 },
-  durationMs: { p50: 3000, p90: 5000 },
-  sums: { outputTokens: 55, durationMs: 15000 },
-};
-const RANKED = {
-  sourceKind: "zcode",
-  channel: "zcode-subagent",
-  modelProvider: "fixture-provider",
-  reasoningEffort: "",
-  timingKind: "request_e2e",
-  tokenScope: "reported_output_unspecified",
-  model: "ranked-model",
-  agentKind: "subagent",
-  agent: "worker",
-  n: 25,
-  rank: null,
-  insufficientSamples: false,
-  tps: { p10: 204, p50: 224, p90: 244, pooled: 224 },
-  durationMs: { p50: 500, p90: 500 },
-  sums: { outputTokens: 2800, durationMs: 12500 },
-};
-const REASONS = {
+const NO_REASONS = {
   record_conflict: 0,
   model_ambiguous: 0,
   terminal_unverified: 0,
-  source_filtered: 1,
-  output_missing_zero_invalid: 1,
-  duration_missing_nonpositive_invalid: 1,
+  source_filtered: 0,
+  output_missing_zero_invalid: 0,
+  duration_missing_nonpositive_invalid: 0,
   partial_item_span: 0,
   overlapping_item_span: 0,
+  historical_method: 0,
+  source_semantics_mismatch: 0,
 };
 const SMALL_COVERAGE = {
   eligible: 9,
-  positiveOutput: 8,
-  timedPositiveOutput: 7,
-  completeTimedPositiveOutput: 7,
-  sampled: 5,
-  dropped: 3,
+  positiveOutput: 0,
+  timedPositiveOutput: 0,
+  completeTimedPositiveOutput: 0,
+  sampled: 0,
+  dropped: 8,
   pending: 1,
   unplaced: 1,
-  droppedByReason: REASONS,
-  timingRate: 7 / 8,
-  completeTimingRate: 7 / 8,
-  sampleRate: 5 / 9,
+  droppedByReason: {
+    ...NO_REASONS,
+    source_filtered: 1,
+    output_missing_zero_invalid: 7,
+  },
+  timingRate: null,
+  completeTimingRate: null,
+  sampleRate: 0,
+  byEra: null,
+};
+const ZCODE_ALL_COVERAGE = {
+  eligible: 34,
+  positiveOutput: 0,
+  timedPositiveOutput: 0,
+  completeTimedPositiveOutput: 0,
+  sampled: 0,
+  dropped: 33,
+  pending: 1,
+  unplaced: 1,
+  droppedByReason: {
+    ...NO_REASONS,
+    source_filtered: 1,
+    output_missing_zero_invalid: 32,
+  },
+  timingRate: null,
+  completeTimingRate: null,
+  sampleRate: 0,
+  byEra: null,
+};
+const ZCODE_DAY_B_COVERAGE = {
+  eligible: 25,
+  positiveOutput: 0,
+  timedPositiveOutput: 0,
+  completeTimedPositiveOutput: 0,
+  sampled: 0,
+  dropped: 25,
+  pending: 0,
+  unplaced: 1,
+  droppedByReason: {
+    ...NO_REASONS,
+    output_missing_zero_invalid: 25,
+  },
+  timingRate: null,
+  completeTimingRate: null,
+  sampleRate: 0,
   byEra: null,
 };
 
-const DSH_GROUP = {
-  sourceKind: "dsh",
-  channel: "dsh-subagent",
-  agentKind: "subagent",
-  agent: "fixture-worker",
-  model: "dsh-model",
-  modelProvider: "fixture-provider",
-  reasoningEffort: "",
-  timingKind: "request_e2e",
-  tokenScope: "reported_output_unspecified",
-  n: 4,
-  rank: null,
-  insufficientSamples: true,
-  tps: { p10: 10, p50: 20, p90: 40, pooled: 30 },
-  durationMs: { p50: 2000, p90: 4000 },
-  sums: { outputTokens: 300, durationMs: 10000 },
-};
+function missingModel(sourceKind, model, candidateCount) {
+  return {
+    sourceKind,
+    model,
+    window: "request",
+    averageTps: null,
+    p10: null,
+    p90: null,
+    n: 0,
+    state: "missing_duration",
+    rankState: "unverified",
+    rank: null,
+    candidateCount,
+  };
+}
 
-const OPENCODE_GROUP = {
-  sourceKind: "opencode",
-  channel: "opencode",
-  modelProvider: "fixture-provider",
-  reasoningEffort: "",
-  timingKind: "request_e2e",
-  tokenScope: "visible_plus_reasoning",
-  model: "opencode-model",
-  agentKind: "unknown",
-  agent: "fixture-agent",
-  n: 3,
-  rank: null,
-  insufficientSamples: true,
-  tps: { p10: 100 / 3, p50: 100, p90: 120, pooled: 70 },
-  durationMs: { p50: 2000, p90: 3000 },
-  sums: { outputTokens: 420, durationMs: 6000 },
-};
+const RANKED_MODEL = missingModel("zcode", "ranked-model", 25);
+const SMALL_MODEL = missingModel("zcode", "small-model", 9);
+const DSH_MODEL = missingModel("dsh", "dsh-model", 4);
+const OPENCODE_MODEL = missingModel("opencode", "opencode-model", 4);
 
 function dshRows(session, offset) {
   const rows = [
@@ -391,67 +385,50 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
       pricingRefreshSchedulerEnabled: false,
     };
     const expected = {
-      provenance: "M0.6 frozen fixture-cases X-05..X-09/N-02; literal manual calculations, not product output",
+      provenance:
+        "M0.6 frozen fixture-cases X-05..X-09/N-02 with tps-v3 generation semantics; literal manual calculations, not product output",
       now: "2026-10-04T13:00:00.000Z",
       physicalRows: 35,
       candidates: 35,
       all: {
-        groups: [RANKED, SMALL],
-        coverage: {
-          ...SMALL_COVERAGE,
-          eligible: 34,
-          positiveOutput: 33,
-          timedPositiveOutput: 32,
-          completeTimedPositiveOutput: 32,
-          sampled: 30,
-          timingRate: 32 / 33,
-          completeTimingRate: 32 / 33,
-          sampleRate: 30 / 34,
-        },
+        groups: [],
+        models: [RANKED_MODEL, SMALL_MODEL],
+        coverage: structuredClone(ZCODE_ALL_COVERAGE),
       },
-      smallOnly: { groups: [SMALL], coverage: SMALL_COVERAGE },
+      smallOnly: {
+        groups: [],
+        models: [SMALL_MODEL],
+        coverage: structuredClone(SMALL_COVERAGE),
+      },
       dayB: {
-        groups: [RANKED],
-        coverage: {
-          eligible: 25,
-          positiveOutput: 25,
-          timedPositiveOutput: 25,
-          completeTimedPositiveOutput: 25,
-          sampled: 25,
-          dropped: 0,
-          pending: 0,
-          unplaced: 1,
-          droppedByReason: Object.fromEntries(Object.keys(REASONS).map((key) => [key, 0])),
-          timingRate: 1,
-          completeTimingRate: 1,
-          sampleRate: 1,
-          byEra: null,
-        },
+        groups: [],
+        models: [RANKED_MODEL],
+        coverage: structuredClone(ZCODE_DAY_B_COVERAGE),
       },
     };
     if (sources.includes("dsh")) {
       expected.physicalRows = 57; // 35 SQLite rows + 22 independently compressed JSON records.
       expected.candidates = 39;
-      expected.dsh = { files: 2, frames: 22, candidates: 4, group: DSH_GROUP };
+      expected.dsh = { files: 2, frames: 22, candidates: 4, model: DSH_MODEL };
       expected.zcodeOnly = structuredClone(expected.all);
-      expected.all.groups = [RANKED, DSH_GROUP, SMALL];
+      expected.all.models = [DSH_MODEL, RANKED_MODEL, SMALL_MODEL];
       Object.assign(expected.all.coverage, {
         eligible: 38,
-        positiveOutput: 37,
-        timedPositiveOutput: 36,
-        completeTimedPositiveOutput: 36,
-        sampled: 34,
-        timingRate: 36 / 37,
-        completeTimingRate: 36 / 37,
-        sampleRate: 34 / 38,
+        dropped: 37,
+        droppedByReason: {
+          ...NO_REASONS,
+          source_filtered: 1,
+          output_missing_zero_invalid: 36,
+        },
       });
-      expected.dayB.groups = [RANKED, DSH_GROUP];
+      expected.dayB.models = [DSH_MODEL, RANKED_MODEL];
       Object.assign(expected.dayB.coverage, {
         eligible: 29,
-        positiveOutput: 29,
-        timedPositiveOutput: 29,
-        completeTimedPositiveOutput: 29,
-        sampled: 29,
+        dropped: 29,
+        droppedByReason: {
+          ...NO_REASONS,
+          output_missing_zero_invalid: 29,
+        },
       });
       // In a mixed fixture smallOnly means excluding BOTH the ranked ZCode home and DSH home.
     }
@@ -459,36 +436,41 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
       expected.zcodeDshOnly = structuredClone(expected.all);
       expected.physicalRows = 62;
       expected.candidates = 43;
-      expected.opencode = { files: 2, rows: 5, candidates: 4, group: OPENCODE_GROUP };
-      expected.all.groups = [RANKED, OPENCODE_GROUP, DSH_GROUP, SMALL];
+      expected.opencode = { files: 2, rows: 5, candidates: 4, model: OPENCODE_MODEL };
+      expected.all.models = [DSH_MODEL, OPENCODE_MODEL, RANKED_MODEL, SMALL_MODEL];
       Object.assign(expected.all.coverage, {
         eligible: 42,
-        positiveOutput: 41,
-        timedPositiveOutput: 39,
-        completeTimedPositiveOutput: 39,
-        sampled: 37,
-        dropped: 4,
-        pending: 1,
-        timingRate: 39 / 41,
-        completeTimingRate: 39 / 41,
-        sampleRate: 37 / 42,
-        droppedByReason: { ...REASONS, duration_missing_nonpositive_invalid: 2 },
+        positiveOutput: 4,
+        timedPositiveOutput: 0,
+        completeTimedPositiveOutput: 0,
+        sampled: 0,
+        dropped: 41,
+        timingRate: 0,
+        completeTimingRate: 0,
+        sampleRate: 0,
+        droppedByReason: {
+          ...NO_REASONS,
+          source_filtered: 1,
+          output_missing_zero_invalid: 36,
+          duration_missing_nonpositive_invalid: 4,
+        },
       });
-      expected.dayB.groups = [RANKED, OPENCODE_GROUP, DSH_GROUP];
+      expected.dayB.models = [DSH_MODEL, OPENCODE_MODEL, RANKED_MODEL];
       Object.assign(expected.dayB.coverage, {
         eligible: 33,
-        positiveOutput: 33,
-        timedPositiveOutput: 32,
-        completeTimedPositiveOutput: 32,
-        sampled: 32,
-        dropped: 1,
-        pending: 0,
-        timingRate: 32 / 33,
-        completeTimingRate: 32 / 33,
-        sampleRate: 32 / 33,
-        droppedByReason: Object.fromEntries(
-          Object.keys(REASONS).map((key) => [key, key === "duration_missing_nonpositive_invalid" ? 1 : 0]),
-        ),
+        positiveOutput: 4,
+        timedPositiveOutput: 0,
+        completeTimedPositiveOutput: 0,
+        sampled: 0,
+        dropped: 33,
+        timingRate: 0,
+        completeTimingRate: 0,
+        sampleRate: 0,
+        droppedByReason: {
+          ...NO_REASONS,
+          output_missing_zero_invalid: 29,
+          duration_missing_nonpositive_invalid: 4,
+        },
       });
     }
     return {
@@ -557,25 +539,32 @@ export function createPerfCodexIntegrationFixture() {
           thread_id: threadId,
           turn_id: turnId,
           response_id: responseId,
-          usage: { output_tokens: outputTokens },
+          usage: { output_tokens: outputTokens, reasoning_output_tokens: 0 },
           turn_token_usage: { output_tokens: cumulativeOutput },
         },
       });
+      const generationDurationMs = turn === 25 ? 200000 : 1000;
       const timing = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         evidenceOrigin: "fixture@1",
         responseId,
         requestedModel: "codex-fixture-model",
         reportedOutputTokens: outputTokens,
-        durationMs: turn === 25 ? 200000 : 1000,
+        durationMs: generationDurationMs + 500,
         status: "completed",
         completedAtMs: null,
+        generation: {
+          outputTokens,
+          durationMs: generationDurationMs,
+          startOutputTokens: 0,
+          timingKind: "explicit",
+        },
       };
       timingRecords.push(registerTiming(timing));
     }
     const itemRollout = turn <= 18 ? 1 : 2;
     const startedAtMs = base + turn * 10000;
-    const durationMs = turn === 25 ? 400000 : 1000;
+    const durationMs = turn === 25 ? 200500 : 1500;
     rows[itemRollout].push({
       type: "event_msg",
       payload: {
@@ -624,6 +613,7 @@ export function createPerfCodexIntegrationFixture() {
               durationMs: timing.durationMs,
               reportedOutputTokens: timing.reportedOutputTokens,
               requestedModel: timing.requestedModel,
+              generation: timing.generation,
             }
           : { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
       },
@@ -667,22 +657,23 @@ export function createPerfCodexIntegrationFixture() {
       expected: {
         model: "codex-fixture-model",
         agentKind: "unknown",
-        timingKind: "request_e2e",
-        tokenScope: "reported_output_includes_reasoning",
-        n: 25,
+        timingKind: "generation",
+        tokenScope: "non_reasoning_output",
+        n: 26,
         rank: 1,
-        tps: { p10: 101, p50: 111, p90: 121, pooled: (2800 * 1000) / 424000 },
+        tps: { p10: 100, p50: 110, p90: 121, pooled: (2800 * 1000) / 424000 },
         durationMs: { p50: 1000, p90: 1000 },
         sums: { outputTokens: 2800, durationMs: 424000 },
         coverage: {
-          eligible: 25,
-          positiveOutput: 25,
-          timedPositiveOutput: 25,
-          completeTimedPositiveOutput: 25,
-          sampled: 25,
+          eligible: 26,
+          positiveOutput: 26,
+          timedPositiveOutput: 26,
+          completeTimedPositiveOutput: 26,
+          sampled: 26,
           dropped: 0,
           pending: 0,
           unplaced: 0,
+          droppedByReason: NO_REASONS,
           timingRate: 1,
           completeTimingRate: 1,
           sampleRate: 1,

@@ -38,6 +38,8 @@ const REQUIRED_TABLES_BY_SCHEMA_VERSION = Object.freeze({
   19: REQUIRED_TABLES_19,
   20: REQUIRED_TABLES_20,
   21: REQUIRED_TABLES_21,
+  22: REQUIRED_TABLES_21,
+  23: Object.freeze([...REQUIRED_TABLES_21, "quota_usage_sources"]),
 });
 
 const verifiedTableEvidence = new Set();
@@ -126,12 +128,12 @@ function assertSupportedSchema(database) {
   if (missing.length > 0) {
     throw backupError("HISTORY_BACKUP_MISSING_TABLE", `missing required table(s): ${missing.join(", ")}`);
   }
-  if (version === 21) {
+  if (version >= 21) {
     const archiveRows = Number(database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get()?.count ?? 0);
     if (archiveRows > 0) {
       throw backupError(
         "HISTORY_BACKUP_ARCHIVES_UNSUPPORTED",
-        `schema 21 archive_segments contains ${archiveRows} row(s); external archive files are not packaged`,
+        `schema ${version} archive_segments contains ${archiveRows} row(s); external archive files are not packaged`,
       );
     }
   }

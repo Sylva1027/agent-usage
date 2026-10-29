@@ -85,7 +85,7 @@ test("candidate rejects a cold explicit Codex sample whose rollout owner is miss
          WHERE samples.ts_ms >= ? AND samples.ts_ms < ?
            AND samples.source_kind = 'codex'
            AND samples.status = 'completed'
-           AND samples.timing_kind = 'request_e2e'
+           AND samples.timing_kind = 'generation'
            AND samples.timing_source = 'explicit'
            AND EXISTS (
              SELECT 1

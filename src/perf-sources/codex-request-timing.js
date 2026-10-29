@@ -19,6 +19,76 @@ function result(state, durationMs, timedRequestCount, requestCount) {
 }
 
 /**
+ * Resolve one response without imposing the legacy whole-turn completeness
+ * rule. Raw output and E2E duration remain available for reconciliation; the
+ * v3 generation window is optional and is validated by the caller.
+ *
+ * @param {string} homeId
+ * @param {{threadId: string, turnId: string, model: string | null}} turn
+ * @param {{responseId: string, outputTokens: unknown, reasoningOutputTokensKnown?: boolean, reasoningOutputTokens?: number | null}} request
+ * @param {(query: {homeId: string, threadId: string, turnId: string, responseId: string, model: string | null, outputTokens: unknown, reasoningOutputTokens: number | null}) => Record<string, unknown>} [lookupRequestTiming]
+ */
+export function resolveCodexRequestTiming(homeId, turn, request, lookupRequestTiming) {
+  if (typeof homeId !== "string" || homeId.trim() === "")
+    throw new TypeError("Codex homeId must be a non-empty string");
+  if (!isRecord(turn)) throw new TypeError("Codex turn must be an object");
+  if (!isRecord(request) || typeof request.responseId !== "string" || request.responseId === "") {
+    throw new TypeError("Codex request must contain a responseId");
+  }
+  const missing = {
+    state: "missing",
+    durationMs: null,
+    reportedOutputTokens: null,
+    requestedModel: null,
+    generation: null,
+  };
+  if (typeof lookupRequestTiming !== "function") return missing;
+
+  const timing = lookupRequestTiming({
+    homeId,
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    responseId: request.responseId,
+    model: turn.model,
+    outputTokens: request.outputTokens,
+    reasoningOutputTokens:
+      request.reasoningOutputTokensKnown === true && isNonNegativeSafeInteger(request.reasoningOutputTokens)
+        ? request.reasoningOutputTokens
+        : null,
+  });
+  if (!isRecord(timing)) return missing;
+  if (timing.state === "conflict") {
+    return {
+      state: "conflict",
+      durationMs: timing.durationMs ?? null,
+      reportedOutputTokens: timing.reportedOutputTokens ?? null,
+      requestedModel: timing.requestedModel ?? null,
+      generation: null,
+    };
+  }
+  if (timing.state !== "available") {
+    return {
+      state: timing.state === "invalid" ? "invalid" : "missing",
+      durationMs: timing.durationMs ?? null,
+      reportedOutputTokens: timing.reportedOutputTokens ?? null,
+      requestedModel: timing.requestedModel ?? null,
+      generation: null,
+    };
+  }
+
+  const modelMatches = typeof turn.model === "string" && turn.model !== "" && timing.requestedModel === turn.model;
+  const outputMatches =
+    isNonNegativeSafeInteger(request.outputTokens) && timing.reportedOutputTokens === request.outputTokens;
+  return {
+    state: modelMatches && outputMatches ? "available" : "conflict",
+    durationMs: timing.durationMs ?? null,
+    reportedOutputTokens: timing.reportedOutputTokens ?? null,
+    requestedModel: timing.requestedModel ?? null,
+    generation: isRecord(timing.generation) ? timing.generation : null,
+  };
+}
+
+/**
  * @param {string} homeId
  * @param {{threadId: string, turnId: string, model: string | null, requests: Array<Record<string, unknown>>, requestSetComplete?: boolean}} turn
  * @param {(query: {homeId: string, threadId: string, turnId: string, responseId: string, model: string | null, outputTokens: unknown}) => {state: string, durationMs: unknown, reportedOutputTokens: unknown, requestedModel: unknown}} [lookupRequestTiming]

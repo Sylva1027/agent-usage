@@ -105,7 +105,7 @@ const SAMPLE_UNITS = {
   request: { label: "请求", measure: "个" },
   step: { label: "步骤", measure: "个" },
   message: { label: "消息", measure: "条" },
-  turn: { label: "回合", measure: "个" },
+  turn: { label: "轮次", measure: "个" },
   mixed: { label: "混合样本", measure: "个" },
 };
 
@@ -118,39 +118,6 @@ function sampleCountText(model, locale) {
   return `${formatted} ${unit.measure}${unit.label}`;
 }
 
-function sampleDateKey(value, calendarZone) {
-  if (!Number.isFinite(value)) return null;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    ...(calendarZone === "utc" ? { timeZone: "UTC" } : {}),
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const part = (type) => parts.find((entry) => entry.type === type)?.value;
-  const year = part("year");
-  const month = part("month");
-  const day = part("day");
-  return year && month && day ? `${year}-${month}-${day}` : null;
-}
-
-function sampleDateText(model, locale, calendarZone) {
-  const firstMs = model?.firstSampleAtMs;
-  const lastMs = model?.lastSampleAtMs;
-  if (!Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) {
-    return "";
-  }
-  const first = sampleDateKey(firstMs, calendarZone);
-  const last = sampleDateKey(lastMs, calendarZone);
-  if (!first || !last) return "";
-  return first === last ? `${copy("样本日期", locale)} ${first}` : `${copy("样本日期范围", locale)} ${first}–${last}`;
-}
-
-function sampleMetaText(model, locale, calendarZone) {
-  return [sampleCountText(model, locale), sampleDateText(model, locale, calendarZone)].filter(Boolean).join(" · ");
-}
-
 function agentName(group, locale) {
   const name = String(group?.agent ?? "").trim();
   if (group?.agentKind === "main") return copy("主代理", locale);
@@ -160,6 +127,7 @@ function agentName(group, locale) {
 }
 
 function measurementName(group, locale) {
+  if (group?.timingKind === "generation") return copy("生成速度", locale);
   if (group?.timingKind === "item_span_estimate") return copy("轮级 item 时窗 TPS 估算", locale);
   if (group?.timingKind === "request_e2e") return copy("请求端到端 TPS（含请求等待）", locale);
   return escapeHtml(group?.timingKind || copy("计时方式未知", locale));
@@ -167,6 +135,7 @@ function measurementName(group, locale) {
 
 function tokenScopeName(group, locale) {
   const scopes = {
+    non_reasoning_output: "非推理输出 tokens",
     reported_output_unspecified: "报告的输出 tokens（范围未注明）",
     visible_plus_reasoning: "可见输出与推理 tokens",
     reported_output_includes_reasoning: "报告的输出 tokens（含推理）",
@@ -630,7 +599,7 @@ export function renderPerfModelTableHtml(perf, { locale = "zh-CN", selectedKey =
   return `<section class="panel perf-model-table-panel" aria-label="${copy("模型速度", locale)}"><div class="comparison-table-frame"><div class="comparison-table-scroll perf-model-table-scroll" tabindex="0" role="region" aria-label="${copy("模型速度", locale)}"><table class="comparison-table perf-model-table perf-model-data-table" aria-label="${copy("模型速度", locale)}">${columns}${header}<tbody>${rows}</tbody></table></div></div></section>`;
 }
 
-export function renderPerfModelDetailHtml(model, { locale = "zh-CN", calendarZone = "local" } = {}) {
+export function renderPerfModelDetailHtml(model, { locale = "zh-CN" } = {}) {
   if (!model) return `<p class="empty">${copy("选择一行模型查看速度详情。", locale)}</p>`;
   const source = sourceLabel(model.sourceKind, locale);
   const modelLabel = model.model || localizeText("模型未知", locale);
@@ -640,28 +609,25 @@ export function renderPerfModelDetailHtml(model, { locale = "zh-CN", calendarZon
     ? `<span class="perf-model-title-effort">${escapeHtml(model.reasoningEffort)}</span>`
     : "";
   const titleLabel = [source, providerText, modelLabel, model.reasoningEffort].filter(Boolean).join(" · ");
-  const title = `<div class="perf-model-detail-title" title="${escapeHtml(titleLabel)}" aria-label="${escapeHtml(titleLabel)}"><div class="perf-model-identity-context"><span class="perf-model-source-name">${escapeHtml(source)}</span>${providerText ? `<span class="perf-model-provider-name" title="${provider}">${provider}</span>` : ""}</div><div class="perf-model-identity-model"><span class="perf-model-title-name">${escapeHtml(modelLabel)}</span>${effort}</div></div>`;
+  const count =
+    model.state === "missing_duration"
+      ? `${localizeText("用量记录", locale)} ${formatPerfNumber(model.candidateCount, locale)}`
+      : sampleCountText(model, locale);
+  const title = `<div class="perf-model-detail-title" title="${escapeHtml(titleLabel)}" aria-label="${escapeHtml(titleLabel)}"><div class="perf-model-identity-context"><span class="perf-model-source-name">${escapeHtml(source)}</span>${providerText ? `<span class="perf-model-provider-name" title="${provider}">${provider}</span>` : ""}${count ? `<span class="perf-model-sample-count">${escapeHtml(count)}</span>` : ""}</div><div class="perf-model-identity-model"><span class="perf-model-title-name">${escapeHtml(modelLabel)}</span>${effort}</div></div>`;
   if (model.state === "overflow") {
-    return `<div class="perf-model-detail-head">${title}</div><p class="perf-model-overflow">${copy("聚合溢出", locale)} · ${escapeHtml(sampleMetaText(model, locale, calendarZone))}</p>`;
+    return `<div class="perf-model-detail-head">${title}</div><p class="perf-model-overflow">${copy("聚合溢出", locale)}</p>`;
   }
   if (model.state === "missing_duration") {
-    const first = sampleDateKey(model.firstCandidateAtMs, calendarZone);
-    const last = sampleDateKey(model.lastCandidateAtMs, calendarZone);
-    const dates = first && last ? (first === last ? first : `${first}–${last}`) : "";
-    const records = `${copy("用量记录", locale)} ${formatPerfNumber(model.candidateCount, locale)}`;
-    return `<div class="perf-model-detail-head">${title}</div><div class="perf-model-hero"><strong>${dash}</strong><span class="perf-model-unit">tok/s</span><span class="perf-model-sample-count">${records}${dates ? `<br>${dates}` : ""}</span></div><p class="perf-model-timing-missing">${copy("日志未记录请求耗时", locale)}</p>`;
+    return `<div class="perf-model-detail-head">${title}</div><div class="perf-model-hero"><strong>${dash}</strong><span class="perf-model-unit">tok/s</span></div>`;
   }
-  const sampleMeta = [sampleCountText(model, locale), sampleDateText(model, locale, calendarZone)]
-    .filter(Boolean)
-    .join("<br>");
-  const hero = `<div class="perf-model-hero"><strong>${escapeHtml(formatPerfTps(model.averageTps, locale))}</strong><span class="perf-model-unit">tok/s</span>${sampleMeta ? `<span class="perf-model-sample-count">${sampleMeta}</span>` : ""}</div>`;
+  const hero = `<div class="perf-model-hero"><strong>${escapeHtml(formatPerfTps(model.averageTps, locale))}</strong><span class="perf-model-unit">tok/s</span></div>`;
   return `<div class="perf-model-detail-head">${title}</div>${hero}${renderModelBand(model, locale)}`;
 }
 
-export function renderPerfModelsHtml(perf, { locale = "zh-CN", selectedKey = null, calendarZone = "local" } = {}) {
+export function renderPerfModelsHtml(perf, { locale = "zh-CN", selectedKey = null } = {}) {
   const models = perfModels(perf);
   const selected = selectedPerfModel(models, selectedKey);
-  return `<div class="main-grid perf-models-grid">${renderPerfModelTableHtml(perf, { locale, selectedKey: selected?.key ?? selectedKey })}<section class="panel detail-panel perf-model-detail-panel" aria-label="${copy("模型速度", locale)}">${models.length ? renderPerfModelDetailHtml(selected, { locale, calendarZone }) : `<p class="empty perf-model-empty">${modelEmptyMessage(perf, locale)}</p>`}</section></div>`;
+  return `<div class="main-grid perf-models-grid">${renderPerfModelTableHtml(perf, { locale, selectedKey: selected?.key ?? selectedKey })}<section class="panel detail-panel perf-model-detail-panel" aria-label="${copy("模型速度", locale)}">${models.length ? renderPerfModelDetailHtml(selected, { locale }) : `<p class="empty perf-model-empty">${modelEmptyMessage(perf, locale)}</p>`}</section></div>`;
 }
 
 let observedBandPlots = new WeakSet();

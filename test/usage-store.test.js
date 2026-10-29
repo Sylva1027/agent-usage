@@ -425,10 +425,11 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
   }
 });
 
-test("UsageStore upgrades schema v13 to v14 with the private Codex projection table only (no backfill, no dirtying)", async () => {
+test("UsageStore upgrades schema v13 to current with an empty private projection table and v3 reparse", async () => {
   const { homeDir, databaseFile } = await makeStoreFixture();
   const initial = new UsageStore({ homeDir, databaseFile });
   await initial.sync();
+  const eventsBefore = initial.database.prepare("SELECT * FROM events ORDER BY id").all();
   initial.close();
 
   // 退回**真实 v13 形状**：业务表齐全、只是没有 T1 的私有投影表。
@@ -449,20 +450,161 @@ test("UsageStore upgrades schema v13 to v14 with the private Codex projection ta
       ),
       1,
     );
-    // **不回填** ⇒ 空表；迁移唯一的 schema 变化就是新表 + 索引。
+    // The private projection is rebuilt on sync; migration preserves usage facts.
     assert.equal(Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM perf_codex_projections").get().n), 0);
-    // **不**无条件标脏全库（v12 段那种 `UPDATE source_files SET size = -1` 在这里被明确禁止）。
+    assert.deepEqual(migrated.database.prepare("SELECT * FROM events ORDER BY id").all(), eventsBefore);
+    const sourceCount = Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n);
     assert.equal(
       Number(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE size = -1 OR mtime_ms = -1").get().n,
       ),
-      0,
+      sourceCount,
     );
     const result = await migrated.sync();
-    assert.equal(result.updatedFileCount, 0, "迁移后第一个 sync 不得重读未变文件");
+    assert.equal(result.updatedFileCount, sourceCount, "v22 rebuilds source projections for the generation method");
     assert.ok(Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM events").get().n) >= 1, "业务数据未被触碰");
   } finally {
     migrated.close();
+  }
+});
+
+test("UsageStore upgrades v22 to v23 without replacing usage facts and rereads only Codex sources", async () => {
+  const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
+  const projectRoot = path.join(homeDir, "migration-project");
+  const projectLog = path.join(projectRoot, ".codex-usage", "usage.jsonl");
+  await mkdir(path.dirname(projectLog), { recursive: true });
+  await writeFile(
+    projectLog,
+    jsonl([
+      {
+        schema_version: "codex-usage.project-log.v1",
+        timestamp: "2026-07-12T02:00:00.000Z",
+        source: "test",
+        channel: "Test",
+        project_root: "/work/migration",
+        cwd: "/work/migration",
+        session_id: "migration-project",
+        model: "gpt-6-sol",
+        usage: { total: 70, input: 50, cached: 10, output: 20, reasoning: 2 },
+      },
+    ]),
+  );
+  await appendFile(sessionFile, jsonl([quotaTokenRow("2026-07-12T01:02:00.000Z", "2026-07-12T06:02:00.000Z")]));
+
+  let eventsBefore;
+  let observationsBefore;
+  try {
+    const initial = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
+    try {
+      await initial.sync();
+      eventsBefore = initial.database
+        .prepare("SELECT * FROM events ORDER BY id")
+        .all()
+        .map((row) => ({ ...row }));
+      observationsBefore = initial.database
+        .prepare("SELECT * FROM rate_limit_observations ORDER BY source_path, line_number")
+        .all()
+        .map((row) => ({ ...row }));
+      assert.deepEqual(
+        initial.database
+          .prepare("SELECT DISTINCT kind FROM source_files ORDER BY kind")
+          .all()
+          .map((row) => row.kind),
+        ["main", "project-log"],
+      );
+    } finally {
+      initial.close();
+    }
+
+    const legacy = new DatabaseSync(databaseFile);
+    legacy.exec("DROP TABLE quota_usage_sources; PRAGMA user_version = 22;");
+    legacy.close();
+
+    let dirtyBeforeReopen;
+    const migrated = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
+    try {
+      await migrated.open();
+      assert.equal(STORE_SCHEMA_VERSION, 23);
+      assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 23);
+      assert.equal(
+        Number(
+          migrated.database
+            .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'quota_usage_sources'")
+            .get().n,
+        ),
+        1,
+      );
+      assert.deepEqual(
+        migrated.database
+          .prepare("PRAGMA table_info(quota_usage_sources)")
+          .all()
+          .map((row) => row.name),
+        ["source_path", "home_id", "session_id", "timestamp_ms", "quota_source", "until_ms"],
+      );
+      assert.deepEqual(
+        migrated.database
+          .prepare("SELECT * FROM events ORDER BY id")
+          .all()
+          .map((row) => ({ ...row })),
+        eventsBefore,
+      );
+      assert.deepEqual(
+        migrated.database
+          .prepare("SELECT * FROM rate_limit_observations ORDER BY source_path, line_number")
+          .all()
+          .map((row) => ({ ...row })),
+        observationsBefore,
+      );
+      dirtyBeforeReopen = migrated.database
+        .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
+        .all()
+        .map((row) => ({ ...row }));
+      assert.deepEqual(
+        dirtyBeforeReopen.map((row) => row.kind),
+        ["main"],
+      );
+      const projectSource = migrated.database
+        .prepare("SELECT size, mtime_ms FROM source_files WHERE path = ?")
+        .get(projectLog);
+      assert.notEqual(Number(projectSource.size), -1);
+      assert.notEqual(Number(projectSource.mtime_ms), -1);
+    } finally {
+      migrated.close();
+    }
+
+    const reopened = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
+    try {
+      await reopened.open();
+      assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 23);
+      assert.deepEqual(
+        reopened.database
+          .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
+          .all()
+          .map((row) => ({ ...row })),
+        dirtyBeforeReopen,
+      );
+
+      const result = await reopened.sync();
+      assert.equal(result.updatedFileCount, dirtyBeforeReopen.length);
+      assert.ok(
+        reopened.database
+          .prepare("SELECT source_path FROM quota_usage_sources")
+          .all()
+          .some((row) => row.source_path === sessionFile),
+      );
+      assert.deepEqual(
+        reopened.database
+          .prepare("SELECT * FROM rate_limit_observations ORDER BY source_path, line_number")
+          .all()
+          .map((row) => ({ ...row })),
+        observationsBefore,
+      );
+      assert.equal((await reopened.sync()).updatedFileCount, 0);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
   }
 });
 
@@ -624,10 +766,21 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
   const quotaFile = path.join(sessionsDir, "quota.jsonl");
   const startFile = path.join(sessionsDir, "start.jsonl");
   const asOfFile = path.join(sessionsDir, "as-of.jsonl");
+  const previousFile = path.join(sessionsDir, "previous.jsonl");
+  const gapFile = path.join(sessionsDir, "gap.jsonl");
+  const currentStartMs = Date.parse("2026-09-25T09:37:00.000Z");
+  const previousResetMs = currentStartMs - 10 * 60 * 1000;
+  const previousStartMs = previousResetMs - 300 * 60 * 1000;
   await mkdir(sessionsDir, { recursive: true });
   await writeFile(
     quotaFile,
     jsonl([
+      {
+        type: "session_meta",
+        timestamp: new Date(previousStartMs + 60_000).toISOString(),
+        payload: { id: "quota-observation-previous" },
+      },
+      quotaTokenRow(new Date(previousStartMs + 60_000).toISOString(), new Date(previousResetMs).toISOString()),
       { type: "session_meta", timestamp: "2026-09-25T11:00:00.000Z", payload: { id: "quota-observation" } },
       quotaTokenRow("2026-09-25T11:59:00.000Z", "2026-09-25T14:37:00.000Z"),
     ]),
@@ -635,6 +788,7 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
   await writeFile(
     startFile,
     jsonl([
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
       { type: "session_meta", timestamp: "2026-09-25T09:37:00.000Z", payload: { id: "at-start" } },
       tokenRow("2026-09-25T09:37:00.000Z", 50, 40, 5, 10, 0),
     ]),
@@ -642,8 +796,35 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
   await writeFile(
     asOfFile,
     jsonl([
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
       { type: "session_meta", timestamp: "2026-09-25T12:00:00.000Z", payload: { id: "at-as-of" } },
       tokenRow("2026-09-25T12:00:00.000Z", 100, 80, 10, 20, 0),
+    ]),
+  );
+  await writeFile(
+    previousFile,
+    jsonl([
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
+      {
+        type: "session_meta",
+        timestamp: new Date(previousStartMs + 60_000).toISOString(),
+        payload: { id: "previous-window" },
+      },
+      tokenRow(new Date(previousStartMs + 60_000).toISOString(), 7, 6, 0, 1, 0),
+      tokenRow(new Date(previousResetMs - 1).toISOString(), 10, 8, 0, 2, 0),
+    ]),
+  );
+  await writeFile(
+    gapFile,
+    jsonl([
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
+      {
+        type: "session_meta",
+        timestamp: new Date(previousResetMs).toISOString(),
+        payload: { id: "quota-gap" },
+      },
+      tokenRow(new Date(previousResetMs).toISOString(), 100, 80, 10, 20, 0),
+      tokenRow(new Date(previousResetMs + 3 * 60 * 1000).toISOString(), 200, 160, 20, 40, 0),
     ]),
   );
   const store = new UsageStore({ homeDir, databaseFile });
@@ -655,7 +836,8 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
     };
     const indexedSnapshots = store.database
       .prepare(
-        "SELECT line_number, role, limit_id, window_minutes, used_percent FROM rate_limit_observations WHERE source_path = ?",
+        `SELECT line_number, role, limit_id, window_minutes, used_percent
+         FROM rate_limit_observations WHERE source_path = ? ORDER BY observed_at_ms`,
       )
       .all(quotaFile);
     const summary = store.summarize({ preset: "quota_5h", bucket: "month", now: "2026-09-25T12:00:00.000Z" });
@@ -678,10 +860,11 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
       excludeHomes: [store.homes[0].id],
     });
 
-    assert.equal(indexedSnapshots.length, 1);
-    assert.equal(Number(indexedSnapshots[0].line_number), 2);
-    assert.equal(indexedSnapshots[0].role, "primary");
-    assert.equal(indexedSnapshots[0].limit_id, "codex");
+    assert.deepEqual(
+      indexedSnapshots.map((row) => Number(row.line_number)),
+      [2, 4],
+    );
+    assert.ok(indexedSnapshots.every((row) => row.role === "primary" && row.limit_id === "codex"));
     assert.equal(summary.range.bucket, "quota_30m");
     assert.equal(summary.range.quotaState, "available");
     assert.equal(summary.range.quotaReason, null);
@@ -698,8 +881,13 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
       summary.totals.total,
     );
     assert.ok(summary.timeline.slice(5).every((slot) => slot.future));
-    assert.equal(summary.comparison, null);
-    assert.deepEqual(summary.records, {});
+    assert.equal(summary.comparison.previousRange.start, new Date(previousStartMs).toISOString());
+    assert.equal(summary.comparison.previousRange.end, new Date(previousResetMs - 1).toISOString());
+    assert.equal(summary.comparison.previousTotals.total, 10);
+    assert.equal(summary.comparison.previousEventCount, 2);
+    assert.equal(summary.comparison.totalDelta, 40);
+    assert.equal(summary.records.totalTokens.value, 50);
+    assert.equal(summary.records.totalTokens.comparedWindowCount, 1);
     assert.equal(excluded.quota.windows.quota_5h.state, "available");
     assert.equal(excluded.totals.total, 0);
     assert.equal(
@@ -714,7 +902,7 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
           .prepare("SELECT COUNT(*) AS count FROM rate_limit_observations WHERE source_path = ?")
           .get(quotaFile).count,
       ),
-      1,
+      2,
     );
     await writeFile(
       quotaFile,
@@ -1246,7 +1434,7 @@ test("UsageStore 索引 Claude Code 主转录与子代理，且只在文件变�
   }
 });
 
-test("UsageStore upgrades v15 → v16 by re-reading Claude sources only", async () => {
+test("UsageStore upgrades v15 to current by restoring Claude models and rebuilding generation projections", async () => {
   const { homeDir, mainFile, databaseFile } = await makeClaudeStoreFixture();
   const initial = new UsageStore({ homeDir, databaseFile });
   await initial.sync();
@@ -1262,14 +1450,14 @@ test("UsageStore upgrades v15 → v16 by re-reading Claude sources only", async 
     const dirty = migrated.database
       .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
       .all();
-    assert.ok(dirty.length > 0, "v16 必须标脏 Claude 来源");
     assert.ok(
-      dirty.every((row) => row.kind === "claude"),
-      "只标脏 kind='claude'，其它来源不因本次迁移重读",
+      dirty.some((row) => row.kind === "claude"),
+      "the v16 migration must still refresh Claude identities",
     );
+    assert.equal(dirty.length, migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n);
 
     const result = await migrated.sync();
-    assert.equal(result.updatedFileCount, dirty.length, "首个 sync 重读全部被标脏的 Claude 转录");
+    assert.equal(result.updatedFileCount, dirty.length, "the v22 migration reparses all generation projections once");
     const models = migrated.database
       .prepare("SELECT DISTINCT model FROM events WHERE home_id LIKE 'claude%' ORDER BY model")
       .all()

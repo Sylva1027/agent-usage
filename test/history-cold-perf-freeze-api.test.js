@@ -69,10 +69,19 @@ test("cold perf authority stays self-contained in an HTTP snapshot after candida
     const registered = await archived.registerHistoryArchiveCandidate(candidateFile);
     const coldSample = archived
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: HOT_START_MS - 1 })
-      .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
-    assert.ok(coldSample, "fixture must expose a computable cold ZCode perf sample");
+      .find(
+        (sample) =>
+          sample.status === "completed" &&
+          sample.outputTokens === null &&
+          sample.durationMs === null &&
+          sample.requestCount === 1,
+      );
+    assert.ok(coldSample, "fixture must expose a cold ZCode candidate with missing generation timing");
     assert.equal(coldSample.sourceKind, "zcode");
     assert.equal(coldSample.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(coldSample.timingKind, "generation");
+    assert.equal(coldSample.tokenScope, "non_reasoning_output");
+    assert.equal(coldSample.timingSource, "unknown");
 
     archived.database.exec("BEGIN IMMEDIATE");
     try {

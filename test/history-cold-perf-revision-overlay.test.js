@@ -93,17 +93,15 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: COLD_END_MS })
       .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
     assert.ok(coldSample, "fixture must expose a computable cold Codex perf sample");
-    const [, , , turnId] = JSON.parse(coldSample.sampleKey);
-    const turnNumber = Number(/^turn-(\d+)$/.exec(String(turnId))?.[1]);
-    assert.ok(Number.isSafeInteger(turnNumber));
-    const responseId = `response-${turnNumber}-1`;
+    const [, , , , responseId] = JSON.parse(coldSample.sampleKey);
+    assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
     const oldSampleRow = {
       ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
     assert.equal(oldSampleRow.status, "completed");
-    assert.equal(oldSampleRow.timing_kind, "request_e2e");
+    assert.equal(oldSampleRow.timing_kind, "generation");
     assert.equal(oldSampleRow.timing_source, "explicit");
 
     await createHistoryArchiveCandidate(archived.database, candidateFile, {
@@ -158,7 +156,12 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       throw error;
     }
 
-    const lateTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 500 };
+    const lateTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@1",
+      durationMs: baseTiming.durationMs + 500,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
+    };
     const archivedHomeId = codexHomeId(archived, fixture.codexHome);
     const oracleHomeId = codexHomeId(oracle, fixture.codexHome);
     archived.importRequestTimingEvidence({

@@ -1,4 +1,4 @@
-// M2.1 ZCode 请求尝试行 reader（只读）。
+// ZCode 生成 TPS 候选 reader（只读）。
 //
 // 职责边界：读**一个**物理 `db.sqlite`，把 `model_usage` 的每条**尝试行**变成一个 raw 候选，
 // 用回调逐条输出。本模块**不做**规范化、不做统计、不做去重：`normalizePerfSample`
@@ -12,9 +12,8 @@
 //   裁定 P（名字类字段用 `""`、枚举用 `unknown`）、裁定 R（`diagnosticReason` 是来源侧词表）、
 //   裁定 T（`PERF_EPOCH_MS_MIN = 1e12` 秒/毫秒判据）
 //
-// 三条不容妥协的规则（M0 裁定 + M2 卡明文）：
-// 1. **显式真 0/负数不暗中回退**：`duration_ms` 列存在且为安全整数时**一律**采用原值
-//    （含 0 与负数），只有该列为 NULL/缺失/非整数时才用两个 epoch-ms 时间戳之差。
+// 三条不容妥协的规则：
+// 1. **请求时长只作诊断**：`duration_ms` 或时间戳差可保留原事实，但不能冒充生成阶段 D。
 // 2. **只读打开失败不回退普通打开**：本文件只有一个 `readOnly: true` 构造点。
 // 3. **被过滤的候选仍要交给集成层**（覆盖率要用它算 drained 原因）：过滤只体现为
 //    `overlay` 字段（status/retryCount/cancelledByUser/sourceFiltered/filterReason），
@@ -32,8 +31,10 @@ export const ZCODE_IDENTITY_COLUMNS = Object.freeze(["id"]);
 /**
  * SQL 字段白名单（M2.1 卡第 2 条）。
  * 身份 / 状态 / 计数 / 时长 / 代理 / 模型 六类必需列，一个不多一个不少。
- * **TTFT 两列不在其中**：方案 §17.1:202 与 `source-contract.md` §1.1 要求只验存在性、
- * 永不读取取值，因此它们**永远不可能**进入 SELECT 列表。
+ * **TTFT 两列不在其中**：现有证据只说明 `first_token_at` /
+ * `time_to_first_token_ms` 与请求首 token 相关，未证明首内容为非推理输出；而
+ * `output_tokens` 是否含 `reasoning_tokens` 也未证实。在补齐上游写入语义前，两列都不能
+ * 组合成 v3 的非推理生成窗口。
  */
 export const ZCODE_SELECT_COLUMNS = Object.freeze([
   "id",
@@ -372,9 +373,8 @@ export function resolveZcodeDuration(row, available) {
 /**
  * 把一行变成 raw 候选（`PerfSampleRaw` 形状，供集成层喂 `normalizePerfSample`）。
  *
- * 产出的字段全部是 M1.1 认识的输入名；语义字段（window/timingKind/tokenScope）**不在此处**
- * 提供 ZCode 之外的任何值——由集成层按 `PERF_SOURCE_SEMANTICS` 权威赋值，reader 显式传
- * 与 `PERF_SOURCE_SEMANTICS.zcode` 完全一致的值只是为了早期暴露不一致。
+ * 产出的字段全部是 M1.1 认识的输入名；语义字段显式写成当前 v3 来源表的值，以便在集成层
+ * 提前暴露漂移。请求时长与原始 output 只保留在诊断字段，不进入生成 TPS。
  *
  * @param {Record<string, unknown>} row
  * @param {Set<string>} available
@@ -388,7 +388,7 @@ export function zcodeRowToRawSample(row, available, context) {
   if (rowId === "") return null;
 
   const classification = classifyZcodeRow(row, available);
-  const { durationMs, timingSource } = resolveZcodeDuration(row, available);
+  const reportedDuration = resolveZcodeDuration(row, available);
 
   const started = selectableColumn(available, "started_at") ? normalizeZcodeTimestamp(row.started_at) : { ms: null };
   const completed = selectableColumn(available, "completed_at")
@@ -438,11 +438,11 @@ export function zcodeRowToRawSample(row, available, context) {
     reasoningEffort: variant,
     // §17.1:203：model_id/provider_id/variant 是请求作用域列，不是轮上下文。
     modelEvidence: "request_scope",
-    // 显式传与 PERF_SOURCE_SEMANTICS.zcode 相同的值；不一致会得 SOURCE_SEMANTICS_MISMATCH。
+    // v3 只接收非推理输出与生成阶段时长。当前 TTFT 列及 output/reasoning 包含关系未证实，
+    // 因此候选保留，生成耗时置空；旧请求时长仅作诊断值。
     window: "request",
-    timingKind: "request_e2e",
-    // 2026-10-21 evidence: output_tokens and reasoning_tokens are separate columns, but their inclusion relation is unproven.
-    tokenScope: "reported_output_unspecified",
+    timingKind: "generation",
+    tokenScope: "non_reasoning_output",
     status: classification.status,
     terminalVerified: classification.terminalVerified,
     inProgress: classification.inProgress,
@@ -453,11 +453,14 @@ export function zcodeRowToRawSample(row, available, context) {
     tsMs,
     startedAtMs: started.ms,
     completedAtMs: completed.ms,
-    windowStartMs: started.ms,
-    windowEndMs: completed.ms,
-    durationMs,
-    timingSource,
-    outputTokens,
+    windowStartMs: null,
+    windowEndMs: null,
+    durationMs: null,
+    timingSource: "unknown",
+    outputTokens: null,
+    reportedOutputTokens: outputTokens,
+    reportedDurationMs: reportedDuration.durationMs,
+    reportedTimingSource: reportedDuration.timingSource,
     inputTokens,
     requestCount: 1,
     // `logical_request_id` **只辅助重试过滤**（§17.1:205 明文"不作唯一键"）：

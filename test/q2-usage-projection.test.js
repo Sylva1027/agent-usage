@@ -567,28 +567,14 @@ for (const damage of ["main schema", "TEMP reset"]) {
   });
 }
 
-function ledgerLine(record) {
-  return `${JSON.stringify({
-    agent: "codex",
-    provider: "codex",
-    req: `codex/${record.requestedModel}`,
-    model: record.requestedModel,
-    response_id: record.responseId,
-    status: 200,
-    ms: record.durationMs,
-    out: record.reportedOutputTokens,
-    stop: "completed",
-    ep: "/backend-api/codex/responses",
-  })}\n`;
-}
-
 const LATE_TIMING = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   evidenceOrigin: "fixture@1",
   responseId: "q2-response",
   requestedModel: "q2-late-model",
   reportedOutputTokens: 137,
-  durationMs: 4000,
+  durationMs: 4500,
+  generation: { outputTokens: 137, durationMs: 4000, startOutputTokens: 0, timingKind: "explicit" },
   status: "completed",
   completedAtMs: null,
 };
@@ -596,13 +582,10 @@ const LATE_TIMING = {
 async function withNativeStore(run) {
   const fixture = createPerfCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
-  const ledger = path.join(fixture.serverOptions.homeDir, ".config", "magpie", "usage.jsonl");
   const timestamp = "2026-10-04T12:10:00.000Z";
   const threadId = "fixture-codex-thread";
   const turnId = "q2-turn";
   try {
-    mkdirSync(path.dirname(ledger), { recursive: true });
-    writeFileSync(ledger, fixture.timingRecords.map(ledgerLine).join(""));
     appendFileSync(
       fixture.rolloutFiles[0],
       `${[
@@ -652,7 +635,8 @@ async function withNativeStore(run) {
     await store.open();
     store.database.exec("PRAGMA recursive_triggers = OFF");
     await store.sync();
-    await run({ store, ledger });
+    await fixture.seedRequestTiming(store);
+    await run({ store });
   } finally {
     store.close();
     fixture.close();
@@ -705,18 +689,23 @@ test("Q2 no-op sync retains independent range caches without ever warming all", 
   });
 });
 
-test("Q2 real ledger-only import then perf publication retains the usage timeline", async () => {
-  await withNativeStore(async ({ store, ledger }) => {
+test("Q2 explicit timing import then perf publication retains the usage timeline", async () => {
+  await withNativeStore(async ({ store }) => {
     const calls = countAllTimelines(store);
-    const before = await assertFresh(store, "native candidate before late ledger timing");
+    const before = await assertFresh(store, "native candidate before late timing");
     assert.ok(before.summary.totals.total > 0, "the retained usage projection must contain actual usage");
     const missing = before.summary.perf.models.find((entry) => entry.model === LATE_TIMING.requestedModel);
     assert.equal(missing.state, "missing_duration");
     const warmCalls = calls();
-    appendFileSync(ledger, ledgerLine(LATE_TIMING));
+    const home = store.homes.find((entry) => entry.kind === "extra");
+    store.importRequestTimingEvidence({
+      homeId: home.id,
+      records: [LATE_TIMING],
+      reviewedOrigins: [LATE_TIMING.evidenceOrigin],
+    });
     const status = await store.sync();
     assert.equal(status.updatedFileCount, 0);
-    const after = await assertFresh(store, "real ledger-only full dashboard components");
+    const after = await assertFresh(store, "timing-only full dashboard components");
     assert.equal(calls(), warmCalls, "the same writer must not rebuild all timeline after timing/perf commits");
     assertLateTiming(before, after);
     const beforeUsage = structuredClone(before.summary);
@@ -731,7 +720,7 @@ test("Q2 real ledger-only import then perf publication retains the usage timelin
   });
 });
 
-test("Q2 raw usage and quota between request-timing and perf commits cannot be retained as ledger-only", async () => {
+test("Q2 raw usage and quota between request-timing and perf commits cannot be retained as timing-only", async () => {
   await withNativeStore(async ({ store }) => {
     const calls = countAllTimelines(store);
     const before = await assertFresh(store, "before explicit timing import");

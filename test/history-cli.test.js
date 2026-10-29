@@ -8,11 +8,12 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate, verifyPublishedHistoryArchiveBundle } from "../src/history-archive.js";
-import { createHistoryBackup, HISTORY_BACKUP_SCHEMA_VERSION, loadHistoryBackupContext } from "../src/history-backup.js";
-import { UsageStore } from "../src/usage-store.js";
+import { createHistoryBackup, loadHistoryBackupContext } from "../src/history-backup.js";
+import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_FILE = path.join(REPO_ROOT, "src", "cli.js");
+const CURRENT_SCHEMA_LINE = new RegExp(`^Schema: ${STORE_SCHEMA_VERSION}$`, "m");
 
 function runCli(root, args, { nodeArgs = [], env = {} } = {}) {
   return spawnSync(process.execPath, [...nodeArgs, CLI_FILE, ...args], {
@@ -175,7 +176,7 @@ test("history verify prints package counts and rejects a bad database digest", a
     const verified = runCli(root, ["history", "verify", databaseFile]);
     assert.equal(verified.status, 0, verified.stderr);
     assert.match(verified.stdout, /^History backup verified\./);
-    assert.match(verified.stdout, /^Schema: 21$/m);
+    assert.match(verified.stdout, CURRENT_SCHEMA_LINE);
     assert.match(verified.stdout, /^- events: 1$/m);
     assert.match(verified.stdout, /^Service-tier evidence: not captured$/m);
     assert.doesNotMatch(verified.stdout, /history-cli-session|history-cli-fixture|\/work\/history-cli/);
@@ -199,10 +200,7 @@ test("history backup captures an uncheckpointed commit without changing the sour
   let source;
   try {
     source = await createUncheckpointedSource(root);
-    assert.equal(
-      source.store.database.prepare("PRAGMA user_version").get().user_version,
-      HISTORY_BACKUP_SCHEMA_VERSION,
-    );
+    assert.equal(source.store.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
     assert.ok(statSync(`${source.databaseFile}-wal`).size > 0);
     const sourceBytes = readFileSync(source.databaseFile);
     const sourceWalBytes = readFileSync(`${source.databaseFile}-wal`);
@@ -222,7 +220,7 @@ test("history backup captures an uncheckpointed commit without changing the sour
 
     const verified = runCli(root, ["history", "verify", packageFile]);
     assert.equal(verified.status, 0, verified.stderr);
-    assert.match(verified.stdout, /^Schema: 21$/m);
+    assert.match(verified.stdout, CURRENT_SCHEMA_LINE);
     assert.match(verified.stdout, /^- events: 1$/m);
     assert.match(verified.stdout, /^Service-tier evidence: not captured$/m);
     const packaged = new DatabaseSync(packageFile, { readOnly: true });

@@ -10,6 +10,7 @@ import {
   importRequestTimingEvidence,
   lookupRequestTiming,
   readRequestTimingRevision,
+  validateStoredEvidence,
 } from "../src/perf-request-timing-store.js";
 import { parseImportArgs, runImport } from "../scripts/import-perf-request-timings.mjs";
 import { foldCodexRolloutMetadata } from "../src/perf-sources/codex-fold.js";
@@ -29,6 +30,32 @@ function evidence(responseId, overrides = {}) {
     completedAtMs: null,
     ...overrides,
   };
+}
+
+function generatedEvidence(responseId, overrides = {}) {
+  return evidence(responseId, {
+    schemaVersion: 2,
+    generation: {
+      outputTokens: 100,
+      durationMs: 500,
+      startOutputTokens: 1,
+      timingKind: "first_last_output",
+    },
+    ...overrides,
+  });
+}
+
+function generatedEvidenceForRequest(responseId, durationMs, overrides = {}) {
+  return generatedEvidence(responseId, {
+    durationMs,
+    generation: {
+      outputTokens: 100,
+      durationMs,
+      startOutputTokens: 0,
+      timingKind: "first_last_output",
+    },
+    ...overrides,
+  });
 }
 
 function links(...pairs) {
@@ -221,6 +248,28 @@ function timingPublicationSeq(store) {
   return Number(store.readMeta("perf_request_timing_publication_seq"));
 }
 
+test("validateStoredEvidence treats an unselected generation column as absent for history compatibility", () => {
+  const row = {
+    evidence_origin: "producer-v1",
+    schema_version: 2,
+    requested_model: "model-a",
+    reported_output_tokens: 100,
+    duration_ms: 1_000,
+    status: "completed",
+    completed_at_ms: null,
+  };
+  assert.deepEqual(validateStoredEvidence(row), {
+    requestedModel: "model-a",
+    reportedOutputTokens: 100,
+    durationMs: 1_000,
+    generation: null,
+  });
+  assert.throws(
+    () => validateStoredEvidence({ ...row, generation_json: "{" }),
+    (error) => error?.code === "REQUEST_TIMING_STORE_CORRUPT",
+  );
+});
+
 test("C0 · read-only lookup/revision are missing/0 before import; import builds the tables", async () => {
   await withDatabase(({ database }) => {
     assert.deepEqual(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }), {
@@ -228,6 +277,7 @@ test("C0 · read-only lookup/revision are missing/0 before import; import builds
       durationMs: null,
       reportedOutputTokens: null,
       requestedModel: "",
+      generation: null,
     });
     assert.equal(readRequestTimingRevision(database), 0);
     assert.equal(
@@ -249,6 +299,278 @@ test("C0 · read-only lookup/revision are missing/0 before import; import builds
         1,
       );
     }
+  });
+});
+
+test("C0 · schema v2 generation is additive, preferred, and idempotent", async () => {
+  await withDatabase(({ database }) => {
+    const input = {
+      homeId: "home-a",
+      records: [evidence("response-a")],
+      requestLinks: links(["response-a", "thread-a"]),
+    };
+    importRequestTimingEvidence(database, input);
+    assert.equal(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }).generation, null);
+
+    const approximate = generatedEvidence("response-a", {
+      generation: {
+        outputTokens: 100,
+        durationMs: 900,
+        startOutputTokens: 1,
+        timingKind: "first_output_response_end",
+      },
+    });
+    assert.equal(importRequestTimingEvidence(database, { ...input, records: [approximate] }).revision, 2);
+    assert.deepEqual(
+      lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }).generation,
+      approximate.generation,
+    );
+
+    assert.equal(
+      importRequestTimingEvidence(database, { ...input, records: [generatedEvidence("response-a")] }).revision,
+      3,
+    );
+    assert.deepEqual(
+      lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }).generation,
+      generatedEvidence("response-a").generation,
+    );
+    assert.deepEqual(importRequestTimingEvidence(database, { ...input, records: [generatedEvidence("response-a")] }), {
+      revision: 3,
+      changed: false,
+      affectedThreadIds: [],
+    });
+    assert.deepEqual(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-a",
+        model: "model-a",
+        outputTokens: 100,
+        reasoningOutputTokens: 0,
+      }),
+      {
+        state: "available",
+        durationMs: 1_000,
+        reportedOutputTokens: 100,
+        requestedModel: "model-a",
+        generation: generatedEvidence("response-a").generation,
+      },
+    );
+    assert.equal(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-a",
+        model: "model-b",
+        outputTokens: 100,
+      }).state,
+      "conflict",
+    );
+    assert.equal(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-a",
+        model: "model-a",
+        outputTokens: 101,
+      }).state,
+      "conflict",
+    );
+  });
+});
+
+test("C0 · known native reasoning reconciles generation output without rewriting raw evidence", async () => {
+  await withDatabase(({ database }) => {
+    const explicit = (outputTokens) => ({
+      outputTokens,
+      durationMs: 500,
+      startOutputTokens: 0,
+      timingKind: "explicit",
+    });
+    importRequestTimingEvidence(database, {
+      homeId: "home-a",
+      records: [
+        generatedEvidence("response-valid", { generation: explicit(80) }),
+        generatedEvidence("response-conflict", { generation: explicit(100) }),
+      ],
+      requestLinks: links(["response-valid", "thread-valid"], ["response-conflict", "thread-conflict"]),
+    });
+
+    assert.deepEqual(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-valid",
+        model: "model-a",
+        outputTokens: 100,
+        reasoningOutputTokens: 20,
+      }),
+      {
+        state: "available",
+        durationMs: 1_000,
+        reportedOutputTokens: 100,
+        requestedModel: "model-a",
+        generation: explicit(80),
+      },
+    );
+    assert.equal(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-valid",
+        model: "model-a",
+        outputTokens: 100,
+        reasoningOutputTokens: 0,
+      }).state,
+      "conflict",
+    );
+    assert.equal(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-conflict",
+        model: "model-a",
+        outputTokens: 100,
+        reasoningOutputTokens: 20,
+      }).state,
+      "conflict",
+    );
+    assert.deepEqual(
+      lookupRequestTiming(database, {
+        homeId: "home-a",
+        responseId: "response-conflict",
+        model: "model-a",
+        outputTokens: 100,
+        reasoningOutputTokens: null,
+      }).generation,
+      explicit(100),
+    );
+
+    const stored = database
+      .prepare(`
+        SELECT reported_output_tokens, generation_json
+        FROM perf_request_timing_evidence
+        WHERE home_id = ? AND response_id = ?
+      `)
+      .get("home-a", "response-conflict");
+    assert.equal(Number(stored.reported_output_tokens), 100);
+    assert.deepEqual(JSON.parse(String(stored.generation_json)), explicit(100));
+  });
+});
+
+test("C0 · origins can differ but contradictory reported counts still conflict", async () => {
+  await withDatabase(({ database }) => {
+    const base = {
+      homeId: "home-a",
+      requestLinks: links(["response-a", "thread-a"]),
+    };
+    importRequestTimingEvidence(database, {
+      ...base,
+      records: [evidence("response-a", { evidenceOrigin: "producer-a" })],
+    });
+    importRequestTimingEvidence(database, {
+      ...base,
+      records: [evidence("response-a", { evidenceOrigin: "producer-b", durationMs: 2_000 })],
+    });
+    assert.deepEqual(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }), {
+      state: "available",
+      durationMs: 1_000,
+      reportedOutputTokens: 100,
+      requestedModel: "model-a",
+      generation: null,
+    });
+
+    importRequestTimingEvidence(database, {
+      ...base,
+      records: [evidence("response-a", { evidenceOrigin: "producer-c", reportedOutputTokens: 101 })],
+    });
+    assert.equal(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-a" }).state, "conflict");
+  });
+});
+
+test("C0 · an existing v1 evidence table upgrades without losing old rows", async () => {
+  await withDatabase(({ database }) => {
+    database.exec(`
+      CREATE TABLE perf_request_timing_meta (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        revision INTEGER NOT NULL CHECK (revision >= 0)
+      ) STRICT;
+      INSERT INTO perf_request_timing_meta VALUES (1, 0);
+      CREATE TABLE perf_request_timing_evidence (
+        home_id TEXT NOT NULL CHECK (length(home_id) > 0),
+        evidence_origin TEXT NOT NULL CHECK (length(evidence_origin) > 0),
+        response_id TEXT NOT NULL CHECK (length(response_id) > 0),
+        variant_key TEXT NOT NULL CHECK (length(variant_key) > 0),
+        schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+        requested_model TEXT NOT NULL CHECK (length(requested_model) > 0),
+        reported_output_tokens INTEGER NOT NULL CHECK (reported_output_tokens >= 0),
+        duration_ms INTEGER NOT NULL CHECK (duration_ms > 0),
+        status TEXT NOT NULL CHECK (status = 'completed'),
+        completed_at_ms INTEGER CHECK (completed_at_ms IS NULL OR completed_at_ms >= 0),
+        PRIMARY KEY (home_id, evidence_origin, response_id, variant_key)
+      ) STRICT;
+      CREATE TABLE perf_request_timing_threads (
+        home_id TEXT NOT NULL CHECK (length(home_id) > 0),
+        response_id TEXT NOT NULL CHECK (length(response_id) > 0),
+        thread_id TEXT NOT NULL CHECK (length(thread_id) > 0),
+        PRIMARY KEY (home_id, response_id, thread_id)
+      ) STRICT;
+      CREATE TABLE perf_request_timing_dirty_threads (
+        home_id TEXT NOT NULL CHECK (length(home_id) > 0),
+        thread_id TEXT NOT NULL CHECK (length(thread_id) > 0),
+        PRIMARY KEY (home_id, thread_id)
+      ) STRICT;
+    `);
+    const old = evidence("response-old");
+    database
+      .prepare(`
+        INSERT INTO perf_request_timing_evidence
+          (home_id, evidence_origin, response_id, variant_key, schema_version,
+           requested_model, reported_output_tokens, duration_ms, status, completed_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        "home-a",
+        old.evidenceOrigin,
+        old.responseId,
+        JSON.stringify([
+          old.schemaVersion,
+          old.requestedModel,
+          old.reportedOutputTokens,
+          old.durationMs,
+          old.status,
+          old.completedAtMs,
+        ]),
+        old.schemaVersion,
+        old.requestedModel,
+        old.reportedOutputTokens,
+        old.durationMs,
+        old.status,
+        old.completedAtMs,
+      );
+    database
+      .prepare("INSERT INTO perf_request_timing_threads VALUES (?, ?, ?)")
+      .run("home-a", "response-old", "thread-old");
+    assert.equal(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-old" }).generation, null);
+
+    importRequestTimingEvidence(database, {
+      homeId: "home-a",
+      records: [generatedEvidence("response-new")],
+      requestLinks: links(["response-new", "thread-new"]),
+    });
+
+    assert.equal(
+      database
+        .prepare("PRAGMA table_info(perf_request_timing_evidence)")
+        .all()
+        .some((row) => row.name === "generation_json"),
+      true,
+    );
+    assert.deepEqual(lookupRequestTiming(database, { homeId: "home-a", responseId: "response-old" }), {
+      state: "available",
+      durationMs: 1_000,
+      reportedOutputTokens: 100,
+      requestedModel: "model-a",
+      generation: null,
+    });
+    assert.deepEqual(
+      lookupRequestTiming(database, { homeId: "home-a", responseId: "response-new" }).generation,
+      generatedEvidence("response-new").generation,
+    );
   });
 });
 
@@ -342,6 +664,7 @@ test("C0 · exact duplicates are idempotent; differing output/model/duration/ori
         durationMs: 1_000,
         reportedOutputTokens: 100,
         requestedModel: "model-a",
+        generation: null,
       },
     );
 
@@ -381,6 +704,7 @@ test("C0 · exact duplicates are idempotent; differing output/model/duration/ori
       durationMs: null,
       reportedOutputTokens: null,
       requestedModel: "",
+      generation: null,
     });
     assert.equal(importRequestTimingEvidence(database, input).revision, 5, "duplicate after conflict is still inert");
   });
@@ -412,6 +736,7 @@ test("C0 · import order is symmetric, conflicts survive close/reopen, and cross
           durationMs: null,
           reportedOutputTokens: null,
           requestedModel: "",
+          generation: null,
         });
         assert.equal(readRequestTimingRevision(reopened), 2);
       } finally {
@@ -451,6 +776,7 @@ test("C0 · homes and native threads are isolated; an unmatched thread is missin
         durationMs: 1_000,
         reportedOutputTokens: 100,
         requestedModel: "model-a",
+        generation: null,
       },
     );
     assert.deepEqual(
@@ -460,6 +786,7 @@ test("C0 · homes and native threads are isolated; an unmatched thread is missin
         durationMs: 2_000,
         reportedOutputTokens: 100,
         requestedModel: "model-a",
+        generation: null,
       },
     );
     assert.equal(
@@ -493,6 +820,7 @@ test("C0 · an existing response/thread link rejects A→B and B→A without cha
         durationMs: 1_000,
         reportedOutputTokens: 100,
         requestedModel: "model-a",
+        generation: null,
       });
 
       const reopened = reopen();
@@ -545,6 +873,7 @@ test("C0 · a mixed batch with one link conflict leaves none of its other new re
       durationMs: 1_000,
       reportedOutputTokens: 100,
       requestedModel: "model-a",
+      generation: null,
     });
     assert.deepEqual(
       importRequestTimingEvidence(database, {
@@ -642,18 +971,19 @@ test("C0 · a SQL failure mid-batch rolls back new rows and preserves old usable
       durationMs: 1_000,
       reportedOutputTokens: 100,
       requestedModel: "model-a",
+      generation: null,
     });
   });
 });
 
-test("C1 · v17 migrates through timing tables to v21; reopen is idempotent", async () => {
+test("C1 · v17 migrates through timing tables to v22; reopen is idempotent", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "request-timing-migration-"));
   const databaseFile = path.join(root, "usage-index.sqlite");
   let store = new UsageStore({ homeDir: root, databaseFile });
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 21);
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(STORE_SCHEMA_VERSION, 23);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
     for (const table of [
       "perf_request_timing_meta",
       "perf_request_timing_evidence",
@@ -676,13 +1006,13 @@ test("C1 · v17 migrates through timing tables to v21; reopen is idempotent", as
 
     store = new UsageStore({ homeDir: root, databaseFile });
     await store.open();
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
     assert.equal(readRequestTimingRevision(store.database), 0);
     store.close();
 
     store = new UsageStore({ homeDir: root, databaseFile });
     await store.open();
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
   } finally {
     store.close();
     await rm(root, { recursive: true, force: true });
@@ -759,7 +1089,7 @@ test("C1 · import folds native projections, queues only the affected thread, an
     assert.deepEqual(
       store.importRequestTimingEvidence({
         homeId,
-        records: [evidence("response-a")],
+        records: [generatedEvidenceForRequest("response-a", 1_000)],
         reviewedOrigins: REVIEWED_ORIGINS,
       }),
       { revision: 1, changed: true, affectedThreadIds: ["thread-a"] },
@@ -777,6 +1107,12 @@ test("C1 · import folds native projections, queues only the affected thread, an
       durationMs: 1_000,
       reportedOutputTokens: 100,
       requestedModel: "model-a",
+      generation: {
+        outputTokens: 100,
+        durationMs: 1_000,
+        startOutputTokens: 0,
+        timingKind: "first_last_output",
+      },
     });
 
     await store.sync();
@@ -809,7 +1145,7 @@ test("C1 · import folds native projections, queues only the affected thread, an
     assert.deepEqual(
       store.importRequestTimingEvidence({
         homeId,
-        records: [evidence("response-a")],
+        records: [generatedEvidenceForRequest("response-a", 1_000)],
         reviewedOrigins: REVIEWED_ORIGINS,
       }),
       { revision: 1, changed: false, affectedThreadIds: [] },
@@ -824,7 +1160,7 @@ test("C1 · import folds native projections, queues only the affected thread, an
 
     store.importRequestTimingEvidence({
       homeId,
-      records: [evidence("response-a", { durationMs: 2_000 })],
+      records: [generatedEvidenceForRequest("response-a", 2_000)],
       reviewedOrigins: REVIEWED_ORIGINS,
     });
     store.database.exec(`
@@ -882,7 +1218,7 @@ test("C1 · a successful home publishes timing while another home fails, survive
     const importTiming = (homeId, responseId, durationMs) =>
       store.importRequestTimingEvidence({
         homeId,
-        records: [evidence(responseId, { durationMs })],
+        records: [generatedEvidenceForRequest(responseId, durationMs)],
         reviewedOrigins: REVIEWED_ORIGINS,
       });
 
@@ -954,7 +1290,7 @@ test("C1 · the second home can publish timing while the first home remains dirt
     const importTiming = (homeId, responseId, durationMs) =>
       store.importRequestTimingEvidence({
         homeId,
-        records: [evidence(responseId, { durationMs })],
+        records: [generatedEvidenceForRequest(responseId, durationMs)],
         reviewedOrigins: REVIEWED_ORIGINS,
       });
 

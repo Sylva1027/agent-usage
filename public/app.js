@@ -10,6 +10,7 @@ import {
   isPreviousWeeklyRange,
   isPreviousQuotaRange,
   hasSelectedCodexSource,
+  previousQuotaRange,
   quotaRecordsForRange,
   quotaRecordValues,
 } from "./timeline-utils.js";
@@ -29,9 +30,10 @@ import {
   buildModelActivity,
   buildUsagePricingCoverage,
   CODEX_GPT_61_CONTEXT_WINDOW,
-  isCodexAutoReview,
   resolvePricingModel,
+  canonicalModelName,
 } from "./pricing-models.js";
+import { isQuotaUsage } from "./quota-usage.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import { layoutPerfModelBands, renderPerfModelDetailHtml, renderPerfModelsHtml } from "./perf-ui.js";
@@ -1076,15 +1078,18 @@ function averageTrend(currentTotals, previousTotals, range, previousRange, now) 
   };
 }
 
-function comparisonLabel() {
+function comparisonLabel(range = null) {
+  const mode = range?.quotaPreset || range?.preset || state.preset;
   return (
     {
+      quota_5h: "较上一5h",
+      quota_week: "较上一7d",
       today: "较昨日",
       week: "较上周",
       month: "较上月",
       custom: "较上一等长周期",
       recent: "较上一等长周期",
-    }[state.preset] || "暂无对比"
+    }[mode] || "暂无对比"
   );
 }
 
@@ -1095,12 +1100,16 @@ function percentChange(current, previous) {
   return Math.round(((current - previous) / previous) * 10_000) / 100;
 }
 
-function summarizeComparison(allEvents, range, currentTotals) {
+function summarizeComparison(allEvents, range, currentTotals, options = {}) {
   // 纯统计辅助与服务端沿用同一套趋势口径。
-  const previousRange = previousPeriodRange(range);
-  if (!previousRange) {
+  const quotaMode = Boolean(range?.quotaWindow || isQuotaPreset(range?.preset));
+  const previousRange = quotaMode
+    ? previousQuotaRange(range, options.quota, options.observations)
+    : previousPeriodRange(range);
+  const currentAvailable = !quotaMode || range?.quotaState === "available";
+  if (!currentAvailable || !previousRange) {
     return {
-      label: comparisonLabel(),
+      label: comparisonLabel(range),
       previousRange: null,
       previousTotals: emptyUsage(),
       previousEventCount: 0,
@@ -1114,13 +1123,18 @@ function summarizeComparison(allEvents, range, currentTotals) {
   }
   const previousEvents = allEvents.filter((event) => {
     const time = Date.parse(event.timestamp);
-    return Number.isFinite(time) && time >= previousRange.start.getTime() && time <= previousRange.end.getTime();
+    return (
+      Number.isFinite(time) &&
+      time >= previousRange.start.getTime() &&
+      time <= previousRange.end.getTime() &&
+      (!options.eventEligible || options.eventEligible(event))
+    );
   });
   const previousTotals = previousEvents.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
-  const now = state.now ? new Date(state.now) : new Date();
+  const now = asDate(range?.asOf) || asDate(state.now) || new Date();
   const average = averageTrend(currentTotals, previousTotals, range, previousRange, now);
   return {
-    label: comparisonLabel(),
+    label: comparisonLabel(range),
     previousRange: {
       start: previousRange.start.toISOString(),
       end: previousRange.end.toISOString(),
@@ -1135,7 +1149,14 @@ function summarizeComparison(allEvents, range, currentTotals) {
 }
 
 function codexHomeIdSet(report) {
-  return new Set((report.homes || []).filter((home) => CODEX_HOME_KINDS.has(home.kind)).map((home) => String(home.id)));
+  return new Set(
+    (report.homes || [])
+      .filter((home) => {
+        const kind = String(home.kind ?? "").trim();
+        return !kind || CODEX_HOME_KINDS.has(kind);
+      })
+      .map((home) => String(home.id)),
+  );
 }
 
 export function summarize(report) {
@@ -1143,16 +1164,17 @@ export function summarize(report) {
   const excluded = new Set((state.excludedHomes || []).map(String));
   const sourceEvents = (report.events || []).filter((event) => !excluded.has(String(event.homeId)));
   const range = getRange(sourceEvents, report.quota);
+  const quotaObservations = report.quotaObservations || report.rateLimitObservations || [];
   const quotaPreset = isQuotaPreset(state.preset) || Boolean(range.quotaWindow);
   const quotaAvailable = !quotaPreset || range.quotaState === "available";
   // 限额窗口只衡量 Codex 用量，与服务端聚合保持同一口径。
   const codexHomeIds = quotaPreset ? codexHomeIdSet(report) : null;
+  const quotaEventEligible = (event) => Boolean(codexHomeIds?.has(String(event.homeId))) && isQuotaUsage(event);
   // 跨度升档在汇总时推导（此时范围已解析、跨度已知），而非切换预设时。
   const bucket = deriveTimelineBucket(range, range.bucket || state.bucket);
   const events = sourceEvents.filter((event) => {
     if (!quotaAvailable) return false;
-    if (quotaPreset && isCodexAutoReview(event.model)) return false;
-    if (codexHomeIds && !codexHomeIds.has(String(event.homeId))) {
+    if (quotaPreset && !quotaEventEligible(event)) {
       return false;
     }
     const date = new Date(event.timestamp);
@@ -1184,19 +1206,18 @@ export function summarize(report) {
     (a, b) => b.total.total - a.total.total,
   );
   const repositories = groupRepositoryEvents(events);
-  const models = groupEvents(events, (event) => event.model || "Unknown model").sort(
-    (a, b) => b.total.total - a.total.total,
-  );
+  const models = groupEvents(events, (event) =>
+    canonicalModelName(event.model || "Unknown model", report.pricingCatalog?.models),
+  ).sort((a, b) => b.total.total - a.total.total);
   return {
     range,
     totals,
     costEstimate: summarizeEmbeddedCostEstimates(events, report.pricing),
     records: quotaPreset
-      ? quotaRecordsForRange(range, report.quota, report.rateLimitObservations, (window) => {
+      ? quotaRecordsForRange(range, report.quota, quotaObservations, (window) => {
           const rows = sourceEvents.filter(
             (event) =>
-              codexHomeIds.has(String(event.homeId)) &&
-              !isCodexAutoReview(event.model) &&
+              quotaEventEligible(event) &&
               new Date(event.timestamp) >= window.start &&
               new Date(event.timestamp) <= window.end,
           );
@@ -1211,7 +1232,13 @@ export function summarize(report) {
           };
         })
       : {},
-    comparison: quotaPreset ? null : summarizeComparison(sourceEvents, range, totals),
+    comparison:
+      report.comparison ??
+      summarizeComparison(sourceEvents, range, totals, {
+        quota: report.quota,
+        observations: quotaObservations,
+        eventEligible: quotaPreset ? quotaEventEligible : null,
+      }),
     quota: report.quota || null,
     timeline,
     timelineError,
@@ -1529,7 +1556,7 @@ export function rangeLabel(summary) {
     if (isPreviousQuotaRange(range)) {
       const clock = (date) =>
         `${dateKey(date, range.calendarZone)} ${String(range.calendarZone === "utc" ? date.getUTCHours() : date.getHours()).padStart(2, "0")}:${String(range.calendarZone === "utc" ? date.getUTCMinutes() : date.getMinutes()).padStart(2, "0")}`;
-      return `${clock(start)}–${clock(end)} · 仅显示有用量的半小时`;
+      return `${clock(start)}–${clock(end)}`;
     }
     if (mode === "quota_week") return `${dateKey(start)} 至 ${dateKey(end)}`;
     const shortStart = dateKey(start).slice(5);
@@ -2063,6 +2090,8 @@ function formatExactDelta(value) {
 function previousTokensLabel(comparisonLabel) {
   return (
     {
+      较上一5h: "上一5h Tokens",
+      较上一7d: "上一7d Tokens",
       较昨日: "昨日 tokens",
       较上周: "上周 tokens",
       较上月: "上月 tokens",
@@ -2073,7 +2102,7 @@ function previousTokensLabel(comparisonLabel) {
 
 function formatPercent(value) {
   if (value === null || value === undefined) {
-    return "无基准";
+    return "—";
   }
   const percent = Number(value);
   if (!Number.isFinite(percent)) return "无基准";
@@ -2085,60 +2114,75 @@ function comparisonClass(value) {
   return value > 0 ? "up" : value < 0 ? "down" : "flat";
 }
 
-export function renderComparisonHtml(comparison) {
-  if (!comparison) {
-    const label = comparisonLabel();
-    return `
-      <article class="comparison-item flat">
-        <span>${escapeHtml(label)}</span>
-        <strong>—</strong>
-        <small>—</small>
-      </article>
-      <article class="comparison-item flat">
-        <span>同比流速</span>
-        <strong>—</strong>
-        <small>—</small>
-      </article>
-      <article class="comparison-item previous-period flat">
-        <span>${previousTokensLabel(label)}</span>
-        <strong>—</strong>
-      </article>
-    `;
-  }
-  if (!comparison.previousRange) {
-    return `
-      <article class="comparison-item comparison-unavailable flat">
-        <span>趋势变化</span>
-        <strong>暂无对比</strong>
-      </article>
-    `;
-  }
+function finiteComparisonNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function comparisonDelta(value) {
+  return value === null ? "—" : value === 0 ? "0" : formatDelta(value);
+}
+
+function comparisonTotal(value) {
+  return value === null ? "—" : value === 0 ? "0" : formatTokenMillions(value);
+}
+
+function renderUnavailableComparison(label) {
   return `
-    <article class="comparison-item ${comparisonClass(comparison.totalDelta)}">
+    <article class="comparison-item flat">
+      <span>${escapeHtml(label)}</span>
+      <strong>—</strong>
+      <small>—</small>
+    </article>
+    <article class="comparison-item flat">
+      <span>同比流速</span>
+      <strong>—</strong>
+      <small>—</small>
+    </article>
+    <article class="comparison-item previous-period flat">
+      <span>${previousTokensLabel(label)}</span>
+      <strong>—</strong>
+    </article>
+  `;
+}
+
+export function renderComparisonHtml(comparison, range = null) {
+  if (
+    !comparison ||
+    comparison.currentAvailable === false ||
+    !comparison.previousRange ||
+    finiteComparisonNumber(comparison.previousTotals?.total) === null
+  ) {
+    const label = comparison?.label || comparisonLabel(range);
+    return renderUnavailableComparison(label);
+  }
+  const totalDelta = finiteComparisonNumber(comparison.totalDelta);
+  const averageDelta = finiteComparisonNumber(comparison.averageDelta);
+  const previousTotal = finiteComparisonNumber(comparison.previousTotals.total);
+  return `
+    <article class="comparison-item ${comparisonClass(totalDelta)}">
       <span>${escapeHtml(comparison.label)}</span>
-      <strong title="${formatExactDelta(comparison.totalDelta)}">${formatDelta(comparison.totalDelta)}</strong>
+      <strong${totalDelta === null ? "" : ` title="${formatExactDelta(totalDelta)}"`}>${comparisonDelta(totalDelta)}</strong>
       <small>${formatPercent(comparison.percentChange)}</small>
     </article>
-    <article class="comparison-item ${comparisonClass(comparison.averageDelta)}">
+    <article class="comparison-item ${comparisonClass(averageDelta)}">
       <span>同比流速</span>
-      <strong title="${formatExactDelta(comparison.averageDelta)}">${formatDelta(comparison.averageDelta)}</strong>
+      <strong${averageDelta === null ? "" : ` title="${formatExactDelta(averageDelta)}"`}>${comparisonDelta(averageDelta)}</strong>
       <small>${formatPercent(comparison.averagePercentChange)}</small>
     </article>
     <article class="comparison-item previous-period">
       <span>${previousTokensLabel(comparison.label)}</span>
-      <strong title="${formatTokens(comparison.previousTotals.total)}">${formatTokenMillions(comparison.previousTotals.total)}</strong>
+      <strong title="${formatTokens(previousTotal)}">${comparisonTotal(previousTotal)}</strong>
     </article>
   `;
 }
 
 function renderComparison(summary) {
   const container = $("#comparisonSummary");
-  if (!container) {
-    return;
-  }
-  const quotaMode = isQuotaPreset(summary?.range?.preset || state.preset) || Boolean(summary?.range?.quotaWindow);
-  container.hidden = quotaMode;
-  container.innerHTML = quotaMode ? "" : renderComparisonHtml(summary?.comparison);
+  if (!container) return;
+  container.hidden = false;
+  container.innerHTML = renderComparisonHtml(summary?.comparison, summary?.range);
 }
 
 function getModelColor(name) {
@@ -2906,7 +2950,6 @@ function renderPerfModels(perf) {
   container.innerHTML = renderPerfModelsHtml(perf, {
     locale: getLocale(),
     selectedKey: state.selectedPerfModelKey,
-    calendarZone: state.calendarZone,
   });
   translatePage(container);
   layoutPerfModelBands(container);
@@ -2984,11 +3027,7 @@ function renderUnavailableQuota(reason, range = null) {
     const badge = card.querySelector(".metric-new");
     if (badge) badge.hidden = true;
   }
-  const comparison = $("#comparisonSummary");
-  if (comparison) {
-    comparison.hidden = true;
-    comparison.innerHTML = "";
-  }
+  renderComparison({ comparison: null, range: unavailableRange });
   const warning = $("#timelineRangeWarning");
   if (warning) {
     warning.hidden = true;
@@ -3008,7 +3047,7 @@ function renderUnavailableQuota(reason, range = null) {
 function renderEmptySummaryState() {
   hideUsageTooltip();
   updateTimelineModeButtons();
-  renderComparison(null);
+  renderComparison({ comparison: null, range: state.emptySummaryRange });
   const message = state.emptySummaryMessage || "用量摘要暂不可用。";
   const warning = $("#timelineRangeWarning");
   if (warning) {

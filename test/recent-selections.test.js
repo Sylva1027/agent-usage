@@ -69,7 +69,6 @@ test("quota records retain historical windows with small reset-time drift", () =
     observation("2026-09-25T10:01:00Z", "2026-09-25T14:00:00Z", 300, 2),
     observation("2026-09-25T10:02:00Z", "2026-09-25T14:00:00Z", 300, 3),
     observation("2026-09-25T10:03:00Z", "2026-09-25T14:00:10Z", 300, 4),
-    observation("2026-09-25T10:04:00Z", "2026-09-25T14:30:00Z", 300, 5),
   ];
   const summarize = (current) => (window) => ({
     eventCount: 1,
@@ -83,13 +82,15 @@ test("quota records retain historical windows with small reset-time drift", () =
   assert.equal(records.totalTokens.value, 120);
   assert.equal(records.totalTokens.comparedWindowCount, 2);
   assert.equal(records.totalCost.value, 12);
+  const conflicting = observation("2026-09-25T10:04:00Z", "2026-09-25T14:30:00Z", 300, 5);
+  assert.deepEqual(quotaRecordsForRange(range, quota, [...history, conflicting], summarize(120)), {});
 });
 
 test("previous reset selections use observed completed windows, including gaps between sessions", () => {
   const quota = selectQuotaWindows(observations, now);
   const five = resolveNamedRecentRange("上一个5h", now, quota);
   assert.equal(five.start.toISOString(), "2026-09-25T02:00:00.000Z");
-  assert.equal(five.end.toISOString(), "2026-09-26T08:59:59.999Z");
+  assert.equal(five.end.toISOString(), "2026-09-25T06:59:59.999Z");
   assert.equal(five.bucket, "quota_30m");
   const week = resolveNamedRecentRange("上周", now, quota);
   assert.equal(week.start.toISOString(), "2026-09-13T14:00:00.000Z");
@@ -150,8 +151,8 @@ test("server and browser previous-window summaries agree and exclude the next cy
     assert.equal(snapshot.totals.total, 5);
     assert.equal(live.timeline.length, 2);
     assert.equal(snapshot.timeline.length, 2);
-    assert.equal(live.comparison, null);
-    assert.equal(snapshot.comparison, null);
+    assert.equal(live.comparison.previousRange, null);
+    assert.equal(snapshot.comparison.previousRange, null);
   } finally {
     setSummaryFilters({ preset: "today", recentValue: "上个月", now: null, bucket: "hour" });
   }

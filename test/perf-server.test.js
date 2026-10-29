@@ -22,7 +22,8 @@ import { fileURLToPath } from "node:url";
 
 import { createUsageServer, withoutExcludedHomes } from "../src/server.js";
 import { buildUsageReport, discoverUsageSources, summarizeUsage } from "../src/usage-core.js";
-import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { UsageStore } from "../src/usage-store.js";
+import { createPerfCodexIntegrationFixture, createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 const ROW_FIELDS = [
   "id",
@@ -207,13 +208,42 @@ function perfKeys(value) {
 function assertModelRows(models, where) {
   assert.ok(Array.isArray(models), `${where}：models 必须是数组`);
   for (const [index, model] of models.entries()) {
+    const expectedKeys =
+      model.state === "missing_duration"
+        ? [...MODEL_ROW_KEYS, "candidateCount", "firstCandidateAtMs", "lastCandidateAtMs"]
+        : MODEL_ROW_KEYS;
     assert.deepEqual(
       Object.keys(model).sort(),
-      [...MODEL_ROW_KEYS].sort(),
-      `${where}：models[${index}] 必须恰好是公开的 15 字段`,
+      [...expectedKeys].sort(),
+      `${where}：models[${index}] 必须是普通 15 字段或缺失时长 18 字段`,
     );
     for (const internal of ["sampleKey", "sourcePath", "sessionId", "turnKey"]) {
       assert.equal(model[internal], undefined, `${where}：models[${index}] 不得泄露 ${internal}`);
+    }
+  }
+}
+
+function assertMissingZcodeModel(perf, candidateCount, where) {
+  assert.deepEqual(perf.groups, [], `${where}：ZCode E2E 数据不得生成 v3 速度组`);
+  const row = perf.models.find((model) => model.sourceKind === "zcode" && model.model === "fixture-model");
+  assert.ok(row, `${where}：必须保留可归属模型的缺失时长行`);
+  assert.equal(row.state, "missing_duration");
+  assert.equal(row.n, 0);
+  assert.equal(row.candidateCount, candidateCount);
+  assert.equal(row.averageTps, null);
+  assert.equal(row.p10, null);
+  assert.equal(row.p90, null);
+  assert.equal(row.rank, null);
+}
+
+function assertExpectedModels(models, expected, where) {
+  assert.equal(models.length, expected.length, `${where}：模型行数`);
+  const byIdentity = new Map(models.map((model) => [`${model.sourceKind}\u0000${model.model}`, model]));
+  for (const expectedModel of expected) {
+    const actual = byIdentity.get(`${expectedModel.sourceKind}\u0000${expectedModel.model}`);
+    assert.ok(actual, `${where}：缺少 ${expectedModel.sourceKind}/${expectedModel.model}`);
+    for (const [key, value] of Object.entries(expectedModel)) {
+      assert.deepEqual(actual[key], value, `${where}：${expectedModel.sourceKind}/${expectedModel.model}.${key}`);
     }
   }
 }
@@ -272,15 +302,9 @@ test("★M4.3-a 四个入口都返回同形状的完整 summary.perf，dashboard
         def.summary.perf.models.length,
       );
 
-      // 前置判别力：确实有采样统计，否则"四入口一致"可能只是"四处都空"
-      assert.equal(def.summary.perf.groups.length, 1);
-      assert.equal(def.summary.perf.groups[0].n, 25);
-      assert.equal(def.summary.perf.groups[0].rank, null);
-      assert.notEqual(def.summary.perf.groups[0].tps.p50, null);
+      // 前置判别力：候选仍在，并以缺失时长模型行保留；ZCode E2E 不得伪装成 generation。
+      assertMissingZcodeModel(def.summary.perf, 25, "四入口");
       assert.equal(def.summary.perf.models.length, 1);
-      assert.equal(def.summary.perf.models[0].n, 25);
-      assert.equal(def.summary.perf.models[0].rank, null);
-      assert.notEqual(def.summary.perf.models[0].p10, null);
       assert.equal(def.summary.perf.meta.state, "ready");
 
       // 卡片明文：`view=dashboard` 仍包含分组与覆盖率（只掉重详情）
@@ -314,7 +338,7 @@ test("★M4.3-b 公开投影：detail=full 的 report 与 CLI json 都不序列�
     const { close, json } = await startServer(root, { extraZcodeHomes: zcodePath });
     try {
       const full = await json("?detail=full&preset=all");
-      assert.ok(full.summary.perf.groups.length === 1, "前置：确有真实 perf 候选，投影才有判别力");
+      assertMissingZcodeModel(full.summary.perf, 25, "detail=full");
       const serialized = JSON.stringify(full.report);
       console.log("  [实测] report 键 =", Object.keys(full.report).sort().join(","), " 长度 =", serialized.length);
       assertModelRows(full.summary.perf.models, "detail=full");
@@ -465,17 +489,16 @@ test("★M4.3-c 来源排除必须同时作用于两条路径的内部候选与�
       assert.deepEqual(filtered.sessions, [{ homeId: "keep" }], "sessions 必须被排除");
       assert.deepEqual(filtered.perfSamples, [{ homeId: "keep" }], "内部 perf 候选必须被排除");
       assert.equal(withoutExcludedHomes(fakeReport, []), fakeReport, "无排除时必须原样返回");
-      assert.equal(indexed.summary.perf.coverage.positiveOutput, 25, "排除后仍有 25 条正输出（判别力前置）");
+      assert.equal(indexed.summary.perf.coverage.positiveOutput, 0, "ZCode raw output 不是 v3 generation 输出");
+      assert.equal(indexed.summary.perf.coverage.dropped, 25, "排除后仍保留 25 条缺失时长候选");
       assert.deepEqual(
         indexed.summary.perf.rankedHomeIds,
         zcodeHomes.map((home) => home.id).sort(),
         "M3.4 语义：`rankedHomeIds` 是**未受阻来源**的全集（与 `exclude` 筛选无关），本卡不改",
       );
-      assert.equal(indexed.summary.perf.groups.length, 1);
       assert.equal(indexed.summary.perf.models.length, 1);
-      assert.equal(indexed.summary.perf.models[0].n, 25);
-      assert.equal(memory.summary.perf.groups.length, 1);
-      assert.notEqual(indexed.summary.perf.groups[0].homeId, excludedId, "被排除的 home 不得出现在分组里");
+      assertMissingZcodeModel(indexed.summary.perf, 25, "排除一个 home 后的索引路径");
+      assertMissingZcodeModel(memory.summary.perf, 25, "排除一个 home 后的内存路径");
       // 两条路径的 perf 必须逐字相同（上游方案 :66"同一候选过滤"）
       assert.deepEqual(indexed.summary.perf.groups, memory.summary.perf.groups);
       assert.deepEqual(indexed.summary.perf.models, memory.summary.perf.models);
@@ -661,38 +684,26 @@ test("★M4.3-j 被拒绝的全文冻结请求不消耗快照名额，正常创�
   }
 });
 
-test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 overflow 与域外码）", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "m43-g-"));
+test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 generation overflow）", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  let running;
   try {
-    makeCodexHome(root);
-    // 构造 overflow：output 100…124（安全），duration 每条 = MAX_SAFE_INTEGER-100 ⇒
-    // 组内时长总和越过安全整数界限，内核应产出 `AGGREGATE_OVERFLOW` 告警。
-    const dir = path.join(root, "z-g", "cli", "db");
-    mkdirSync(dir, { recursive: true });
-    const db = new DatabaseSync(path.join(dir, "db.sqlite"));
-    db.exec(`CREATE TABLE "model_usage" (${ROW_FIELDS.map((c) => `"${c}"`).join(", ")})`);
-    const insert = db.prepare(
-      `INSERT INTO "model_usage" (${ROW_FIELDS.map((c) => `"${c}"`).join(", ")}) VALUES (${ROW_FIELDS.map(() => "?").join(", ")})`,
-    );
-    for (let i = 0; i < 25; i += 1) {
-      insert.run(
-        `z-g-row-${i}`,
-        "z-g-session",
-        "completed",
-        BASE + i * 1000,
-        BASE + i * 1000 + 500,
-        Number.MAX_SAFE_INTEGER - 100,
-        10,
-        100 + i,
-        "fixture-model",
-        "fixture-provider",
-      );
+    // 26 条真实 generation 时长各 4e14 ms：每条仍在安全整数内，组内总和必然 overflow。
+    const durationMs = 400_000_000_000_000;
+    for (const timing of fixture.timingRecords) {
+      timing.durationMs = durationMs + 500;
+      timing.generation = { ...timing.generation, durationMs };
     }
-    db.close();
-
-    const { close, json } = await startServer(root, { extraZcodeHomes: path.join(root, "z-g") });
+    const store = new UsageStore(fixture.serverOptions);
     try {
-      const body = await json("?preset=all");
+      await store.sync({ options: fixture.reportOptions });
+      await fixture.seedRequestTiming(store);
+    } finally {
+      store.close();
+    }
+    running = await startServer(fixture.reportOptions.homeDir, fixture.serverOptions);
+    try {
+      const body = await fetch(`${running.baseUrl}/api/usage?preset=all`).then((response) => response.json());
       const perf = body.summary.perf;
       const top = perf.sourceWarnings;
       const meta = perf.meta.sourceWarnings;
@@ -720,7 +731,9 @@ test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 overflow �
 
       // **内存路径**（`/api/usage?detail=full` → `summarizeUsage`）也必须同源：
       // 只钉索引路径时，`summarizeUsage` 单独回退到原始状态告警不会被发现（本卡实测变异 L 未打死）。
-      const memory = await json("?detail=full&preset=all");
+      const memory = await fetch(`${running.baseUrl}/api/usage?detail=full&preset=all`).then((response) =>
+        response.json(),
+      );
       const memoryPerf = memory.summary.perf;
       console.log(
         "  [实测] 内存路径 顶层 =",
@@ -734,10 +747,10 @@ test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 overflow �
         "内存路径顶层也必须带 overflow 告警",
       );
     } finally {
-      await close();
+      if (running) await running.close();
     }
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    fixture.close();
   }
 });
 
@@ -802,7 +815,7 @@ test("★M4.3-i 域外冻结码不得出现在任何公开字段（含顶层）"
       console.log("  [实测] 注入域外码后顶层 sourceWarnings =", JSON.stringify(codes));
       assert.ok(!codes.includes("UNKNOWN_FROZEN_CODE"), "域外码不得出现在顶层公开字段");
       assert.deepEqual(after.summary.perf.sourceWarnings, after.summary.perf.meta.sourceWarnings);
-      assert.ok(before.summary.perf.groups.length === 1);
+      assertMissingZcodeModel(before.summary.perf, 25, "域外告警前置");
     } finally {
       await close();
     }
@@ -828,7 +841,9 @@ test("★M4.3-d 冻结快照：live 源变化不影响旧 snapshot；过期 snap
         meta: frozen.summary.perf.meta,
       };
       assert.equal(before.coverage.eligible, 25);
-      assert.equal(before.models[0].n, 25);
+      assert.equal(before.models[0].n, 0);
+      assert.equal(before.models[0].state, "missing_duration");
+      assert.equal(before.models[0].candidateCount, 25);
 
       // 冻结后改动 live 源：追加 25 行（另一个 home 也一起变，确保是"旧 snapshot 不变"而非"没变化"）
       for (let i = 100; i < 125; i += 1) appendZcodeRow(root, "z-d", i);
@@ -843,8 +858,9 @@ test("★M4.3-d 冻结快照：live 源变化不影响旧 snapshot；过期 snap
         frozen.summary.perf.coverage.eligible,
       );
       assert.equal(live.summary.perf.coverage.eligible, 50, "前置：live 索引确实变了");
-      assert.equal(live.summary.perf.models[0].n, 50, "live 模型速度行必须反映新增样本");
-      assert.notDeepEqual(live.summary.perf.models, before.models, "live 模型速度必须随来源变化");
+      assert.equal(live.summary.perf.models[0].n, 0);
+      assert.equal(live.summary.perf.models[0].candidateCount, 50, "live 缺失时长行必须反映新增候选");
+      assert.notDeepEqual(live.summary.perf.models, before.models, "live 模型候选覆盖必须随来源变化");
 
       const reread = await json(`?snapshot=${encodeURIComponent(frozen.snapshotId)}&preset=all`);
       assert.deepEqual(reread.summary.perf.groups, before.groups, "旧 snapshot 的 groups 不得随 live 变化");
@@ -915,6 +931,8 @@ function runCliJsonSync(root, zcodePath) {
 
 test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable snapshot", async () => {
   const fixture = createPerfIntegrationFixture({ sources: ["zcode"] });
+  const discoveredHomes = await discoverUsageSources(fixture.reportOptions);
+  const rankedHomeId = discoveredHomes.find((home) => home.path.endsWith("zcode-ranked")).id;
   let running;
   try {
     running = await startServer(fixture.reportOptions.homeDir, fixture.serverOptions);
@@ -929,7 +947,7 @@ test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable s
       assert.equal(actual.state, "ready");
       assert.deepEqual(actual.sourceWarnings, []);
       assert.equal(actual.groups.length, fixture.expected[name].groups.length);
-      assert.equal(actual.models.length, fixture.expected[name].groups.length);
+      assertExpectedModels(actual.models, fixture.expected[name].models, name);
       fixture.expected[name].groups.forEach((expected, i) => {
         for (const [key, value] of Object.entries(expected))
           assert.deepEqual(actual.groups[i][key], value, `${name}.${key}`);
@@ -955,7 +973,6 @@ test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable s
     assert.ok(full.report);
     assert.equal("perfSamples" in full.report, false);
     assert.equal("perfMeta" in full.report, false);
-    const rankedHomeId = usage.summary.perf.groups[0].homeId;
     for (const route of ["usage", "summary"]) {
       assertExpected(
         await get(route, `preset=all&exclude=${encodeURIComponent(rankedHomeId)}&skipCheck=1`),
@@ -984,9 +1001,12 @@ test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable s
       db.close();
     }
     const live = await get("usage", "preset=all");
-    const changedSmall = live.summary.perf.groups.find((group) => group.model === "small-model");
-    assert.deepEqual(changedSmall.tps, { p10: 2, p50: 4, p90: 10, pooled: (64 * 1000) / 15000 });
-    assert.deepEqual(changedSmall.sums, { outputTokens: 64, durationMs: 15000 });
+    const changedSmall = live.summary.perf.models.find(
+      (model) => model.sourceKind === "zcode" && model.model === "small-model",
+    );
+    assert.equal(changedSmall.state, "missing_duration");
+    assert.equal(changedSmall.candidateCount, 9);
+    assert.deepEqual(live.summary.perf.groups, []);
     assert.notEqual(live.summary.perf.indexVersion, frozen.summary.perf.indexVersion);
     assert.deepEqual(
       await get("usage", `preset=all&snapshot=${frozen.snapshotId}`),
@@ -998,7 +1018,7 @@ test("M4.4 ZCode vertical slice: both APIs, full report, filters and immutable s
       await get("summary", `preset=all&snapshot=${frozen.snapshotId}&exclude=${encodeURIComponent(rankedHomeId)}`),
       "smallOnly",
     );
-    console.log(`M4.4 API fixtureHash=${fixture.fixtureHash}; live small pooled=64/15; frozen pooled=55/15`);
+    console.log(`M4.4 API fixtureHash=${fixture.fixtureHash}; ZCode rows stay missing_duration across live/frozen`);
   } finally {
     if (running) await running.close();
     fixture.close();
@@ -1019,6 +1039,7 @@ test("M4.5 mixed DSH/ZCode APIs and frozen snapshot survive corrupted multiframe
     const assertExpected = (perf, expected) => {
       assertModelRows(perf.models, "M4.5");
       assert.equal(perf.groups.length, expected.groups.length);
+      assertExpectedModels(perf.models, expected.models, "M4.5");
       expected.groups.forEach((group, i) => {
         for (const [key, value] of Object.entries(group)) assert.deepEqual(perf.groups[i][key], value, key);
       });
@@ -1026,7 +1047,7 @@ test("M4.5 mixed DSH/ZCode APIs and frozen snapshot survive corrupted multiframe
     };
     const initial = await get("usage", "preset=all");
     assert.equal(initial.summary.perf.state, "ready");
-    const dshHomeId = initial.summary.perf.groups.find((group) => group.sourceKind === "dsh").homeId;
+    const dshHomeId = (await discoverUsageSources(fixture.reportOptions)).find((home) => home.kind === "dsh").id;
     for (const [route, query] of [
       ["usage", "preset=all&skipCheck=1"],
       ["usage", "preset=all&view=dashboard&skipCheck=1"],
@@ -1096,6 +1117,7 @@ test("M4.5 nonfatal DSH diagnostics match default, summary, full and remain in f
   const diagnostic = zstdCompressSync(
     Buffer.from(`${JSON.stringify({ type: "step/start", time: BASE, data: { turn: "invalid", step: 1 } })}\n`),
   );
+  const dshHomeId = (await discoverUsageSources(fixture.reportOptions)).find((home) => home.kind === "dsh").id;
   try {
     for (const file of files) appendFileSync(file, diagnostic);
     running = await startServer(fixture.reportOptions.homeDir, fixture.serverOptions);
@@ -1107,8 +1129,7 @@ test("M4.5 nonfatal DSH diagnostics match default, summary, full and remain in f
     const expected = [
       {
         sourceKind: "dsh",
-        homeId: (await get("usage", "preset=all")).summary.perf.groups.find((group) => group.sourceKind === "dsh")
-          .homeId,
+        homeId: dshHomeId,
         code: "UNKEYABLE_RECORD",
         count: 2,
       },
@@ -1229,18 +1250,20 @@ test("M4.6 OpenCode is consistent across both APIs, full details and immutable s
       assert.equal(perf.state, "ready");
       assertModelRows(perf.models, "M4.6");
       assert.equal(perf.groups.length, expected.groups.length);
+      assertExpectedModels(perf.models, expected.models, "M4.6");
       expected.groups.forEach((group, index) => {
         for (const [key, value] of Object.entries(group)) assert.deepEqual(perf.groups[index][key], value, key);
       });
       for (const [key, value] of Object.entries(expected.coverage)) assert.deepEqual(perf.coverage[key], value, key);
     };
     const initial = await get("usage", "preset=all");
-    const openGroup = initial.summary.perf.groups.find((group) => group.sourceKind === "opencode");
-    assert.ok(openGroup);
+    const opencodeHomeId = (await discoverUsageSources(fixture.reportOptions)).find(
+      (home) => home.kind === "opencode",
+    ).id;
     const warning = initial.summary.perf.sourceWarnings.find((entry) => entry.sourceKind === "opencode");
     assert.deepEqual(warning, {
       sourceKind: "opencode",
-      homeId: openGroup.homeId,
+      homeId: opencodeHomeId,
       code: "UNSUPPORTED_SCHEMA",
       count: 2,
     });
@@ -1283,11 +1306,9 @@ test("M4.6 OpenCode is consistent across both APIs, full details and immutable s
       db.close();
     }
     const expectedChanged = structuredClone(fixture.expected.all);
-    const changedOpenGroup = expectedChanged.groups.find((group) => group.sourceKind === "opencode");
-    changedOpenGroup.tps = { p10: 100 / 3, p50: 120, p90: 125, pooled: (470 * 1000) / 6000 };
-    changedOpenGroup.sums = { outputTokens: 470, durationMs: 6000 };
     const changedInitial = await get("usage", "preset=all");
     assert.notEqual(changedInitial.summary.perf.indexVersion, frozen.summary.perf.indexVersion);
+    assert.deepEqual(changedInitial.summary.perf.groups, [], "OpenCode raw output does not imply generation timing");
     for (const [route, query] of entryRoutes) {
       const body = await get(route, query);
       assertExpected(body.summary.perf, expectedChanged);
@@ -1352,7 +1373,7 @@ test("D3 unsupported project-log sources stay out of model speed rows", async ()
   }
 });
 
-test("C2 WorkBuddy API keeps the valid sample and drops the conflicting message", async () => {
+test("C2 WorkBuddy API keeps trace-only messages as missing-duration candidates", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "c2-workbuddy-api-"));
   const homePath = path.join(root, ".workbuddy-ai");
   const projectDir = path.join(homePath, "projects", "fixture");
@@ -1401,7 +1422,7 @@ test("C2 WorkBuddy API keeps the valid sample and drops the conflicting message"
 
     const options = { homeDir: root, env: {} };
     const homes = await discoverUsageSources(options);
-    const memory = summarizeUsage(await buildUsageReport({ homes }), {
+    const memory = summarizeUsage(await buildUsageReport({ homeDir: root, homes }), {
       preset: "all",
       now: new Date("2026-10-21T01:00:00.000Z"),
     }).perf;
@@ -1413,7 +1434,11 @@ test("C2 WorkBuddy API keeps the valid sample and drops the conflicting message"
     );
 
     for (const perf of [usage.summary.perf, summary.summary.perf]) {
-      assert.equal(perf.coverage.eligible, 1);
+      assert.equal(perf.coverage.eligible, 2);
+      assert.deepEqual(perf.groups, [], "trace-only generation spans cannot produce speed groups");
+      assert.equal(perf.models.length, 1);
+      assert.equal(perf.models[0].state, "missing_duration");
+      assert.equal(perf.models[0].candidateCount, 2);
       assert.deepEqual(perf.groups, memory.groups);
       assert.deepEqual(perf.models, memory.models);
       assert.deepEqual(perf.coverage, memory.coverage);

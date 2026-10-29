@@ -56,7 +56,11 @@ async function makeSchema20Fixture(root, databaseFile) {
   const store = newStore(root, databaseFile);
   await store.open();
   try {
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
+    assert.equal(
+      store.database.prepare("PRAGMA user_version").get().user_version,
+      STORE_SCHEMA_VERSION,
+      "the source fixture starts at the current store schema before it is manually downgraded",
+    );
     store.database.exec(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
       VALUES ('rollout.jsonl', 'codex', 'home', 'Home', '/home', 10, 1.5, '2026-10-22T00:00:00.000Z');
@@ -522,7 +526,7 @@ function referenceEventUnion(hotRows, coldRows) {
     .flatMap(([payload, count]) => Array.from({ length: count }, () => ({ ...rows.get(payload) })));
 }
 
-test("schema 20 to 21 preserves current facts and starts with an empty archive directory", async () => {
+test("schema 20 migrates to the current schema while preserving facts and an empty archive directory", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-archive-store-"));
   const databaseFile = path.join(root, "usage-index.sqlite");
   try {
@@ -532,9 +536,16 @@ test("schema 20 to 21 preserves current facts and starts with an empty archive d
     const store = newStore(root, databaseFile);
     try {
       await store.open();
-      assert.equal(STORE_SCHEMA_VERSION, 21);
-      assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 21);
-      assert.deepEqual(snapshotFacts(store.database), before);
+      assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
+      const after = snapshotFacts(store.database);
+      assert.deepEqual(
+        after,
+        {
+          ...before,
+          source_files: before.source_files.map((row) => ({ ...row, size: -1, mtime_ms: -1 })),
+        },
+        "v22 may only mark existing sources dirty; every fact row and source ownership field must survive",
+      );
       assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count, 0);
     } finally {
       store.close();
@@ -544,27 +555,45 @@ test("schema 20 to 21 preserves current facts and starts with an empty archive d
   }
 });
 
-test("reopening schema 21 is idempotent and does not populate archive_segments", async () => {
+test("a schema 21 marker migrates to current and current-schema reopening stays idempotent", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-archive-store-"));
   const databaseFile = path.join(root, "usage-index.sqlite");
   try {
     const first = newStore(root, databaseFile);
     await first.open();
+    assert.equal(first.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
     first.close();
 
-    const second = newStore(root, databaseFile);
+    const legacy = new DatabaseSync(databaseFile);
     try {
-      await second.open();
-      assert.equal(second.database.prepare("PRAGMA user_version").get().user_version, 21);
+      legacy.exec("PRAGMA user_version = 21;");
+      assert.equal(legacy.prepare("PRAGMA user_version").get().user_version, 21);
+    } finally {
+      legacy.close();
+    }
+
+    const migrated = newStore(root, databaseFile);
+    try {
+      await migrated.open();
+      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
       assert.equal(
-        second.database
+        migrated.database
           .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'archive_segments'")
           .get().count,
         1,
       );
-      assert.equal(second.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count, 0);
+      assert.equal(migrated.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count, 0);
     } finally {
-      second.close();
+      migrated.close();
+    }
+
+    const reopened = newStore(root, databaseFile);
+    try {
+      await reopened.open();
+      assert.equal(reopened.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
+      assert.equal(reopened.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count, 0);
+    } finally {
+      reopened.close();
     }
   } finally {
     rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

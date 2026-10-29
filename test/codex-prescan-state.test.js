@@ -194,7 +194,12 @@ test("§12 · first replacement rolls back: mark once, preserve facts, recover n
   assert.equal(recovered.perfState, "ready");
   assert.deepEqual(observed.states, ["rebuilding", "ready"], "the marker belongs to each round");
   assert.deepEqual(observed.replacements, [{ filePath: failedFile, state: "rebuilding" }]);
-  assert.notDeepEqual(snapshotFile(store, failedFile).samples, before.samples);
+  assert.notDeepEqual(snapshotFile(store, failedFile).events, before.events);
+  assert.deepEqual(
+    snapshotFile(store, failedFile).samples,
+    before.samples,
+    "raw-only output changes do not create generation timing",
+  );
   assert.notEqual(store.readPublishedFileFingerprints()[failedFile], fingerprints[failedFile]);
   assert.deepEqual(JSON.parse(store.readMeta("perf_degraded_home_ids")), []);
 });

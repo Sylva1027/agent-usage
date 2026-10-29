@@ -50,8 +50,9 @@ const M34_BASE = 1_700_000_000_000;
 // 变成"自我引用"（T1 把 13 → 14 时，这里必须被人**显式**改一次，改不动就是红灯）。
 // T1（handoffs/T1-design.md，C6 触发 + 用户批准）把 STORE_SCHEMA_VERSION 抬到 16；
 // WorkBuddy 接入（docs/plans/2026-10-21-workbuddy-implementation-plan.md）再抬到 17；
-// request timing 抬到18，WorkBuddy observation抬到19，历史修订恢复事实抬到20。
-const STORE_SCHEMA_VERSION = 21;
+// request timing 抬到18，WorkBuddy observation抬到19，历史修订恢复事实抬到20；
+// request timing publication sequence 抬到22。
+const STORE_SCHEMA_VERSION = 23;
 
 // The Windows sandbox rejects rename(2) even for ordinary temp files.
 function moveFixtureFile(from, to) {
@@ -176,6 +177,11 @@ test("★0 新库：perf_* 元数据键必须存在，且『未同步』与『�
         "新库在首次 sync 前不得宣称任何 perf 状态（0/空 必须与键缺失可区分）",
       );
       assert.equal(readMetaValue(store, "perf_index_version"), undefined);
+      assert.equal(
+        readMetaValue(store, "perf_request_timing_publication_seq"),
+        "0",
+        "首次打开必须初始化发布序号，同时保持 perf_state 的未同步语义",
+      );
       // 库版本正确
       const version = store.database.prepare("PRAGMA user_version").get().user_version;
       assert.equal(Number(version), STORE_SCHEMA_VERSION, `新库 user_version 应为 ${STORE_SCHEMA_VERSION}`);

@@ -86,16 +86,16 @@ test("S1：首次 sync 自动回填 —— 无指纹 ⇒ 提取，样本数等�
         // `source_path` 是**物理文件路径**，不是 home 目录。
         assert.equal(dedupe.source_path, mainPath);
         assert.notEqual(dedupe.source_path, root);
-        assert.equal(dedupe.duration_ms, DEDUPE.expected.sample.durationMs);
-        assert.equal(dedupe.output_tokens, DEDUPE.expected.sample.outputTokens);
+        assert.equal(dedupe.duration_ms, null);
+        assert.equal(dedupe.output_tokens, null);
         assert.equal(dedupe.agent_kind, "main");
         assert.equal(dedupe.status, "completed");
 
         const subagent = byId.get("msg-subagent");
         assert.ok(subagent, "子代理转录样本必须落库");
         assert.equal(subagent.agent_kind, "subagent");
-        assert.equal(subagent.duration_ms, SUBAGENT.expected.sample.durationMs);
-        assert.equal(subagent.output_tokens, SUBAGENT.expected.sample.outputTokens);
+        assert.equal(subagent.duration_ms, null);
+        assert.equal(subagent.output_tokens, null);
         assert.equal(
           subagent.source_path,
           path.join(
@@ -112,9 +112,9 @@ test("S1：首次 sync 自动回填 —— 无指纹 ⇒ 提取，样本数等�
         // C-2：claude 样本的语义列按归一化结果落库。
         for (const sample of samples) {
           assert.equal(sample.window, "request");
-          assert.equal(sample.timing_kind, "request_e2e");
-          assert.equal(sample.timing_source, "timestamp_fallback");
-          assert.equal(sample.token_scope, "reported_output_includes_reasoning");
+          assert.equal(sample.timing_kind, "generation");
+          assert.equal(sample.timing_source, "unknown");
+          assert.equal(sample.token_scope, "non_reasoning_output");
           assert.equal(sample.method_version, PERF_METHOD_VERSION);
         }
       } finally {

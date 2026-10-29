@@ -24,6 +24,7 @@ export function usageText() {
     "Usage: node scripts/import-perf-request-timings.mjs --database <sqlite> --home <home-id> --input <json> [--reviewed-origin <origin> ...]",
     "",
     "The input is either an array of timing records or an object with a records array.",
+    "Schema v1 and v2 records are accepted; v2 generation evidence is preserved.",
     "If the object contains homeId, it must match --home.",
     "Each non-empty batch requires one or more explicit --reviewed-origin values matching its records.",
   ].join("\n");

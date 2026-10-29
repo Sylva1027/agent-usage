@@ -215,16 +215,21 @@ test("candidate seals referenced WorkBuddy observations and rejects drift", asyn
     assert.equal(path.resolve(String(event.source_path)), path.resolve(sessionFile));
     const startMs = Number(event.timestamp_ms);
     const endMs = startMs + 1;
-    const perfSampleCount = Number(
-      store.database
-        .prepare(
-          `SELECT COUNT(*) AS count
-           FROM perf_samples
-           WHERE source_kind = 'workbuddy' AND home_id = ?`,
-        )
-        .get(event.home_id).count,
-    );
-    assert.equal(perfSampleCount, 0, "the conflict fixture must reference its home through events, not perf samples");
+    const perfSamples = store.database
+      .prepare(
+        `SELECT sample_key, output_tokens, duration_ms, timing_kind, timing_source, request_count
+         FROM perf_samples
+         WHERE source_kind = 'workbuddy' AND home_id = ?
+         ORDER BY sample_key`,
+      )
+      .all(event.home_id)
+      .map((row) => ({ ...row }));
+    assert.equal(perfSamples.length, 1, "the conflicting observations must retain one attributable model row");
+    assert.deepEqual(JSON.parse(String(perfSamples[0].sample_key)), ["workbuddy", String(event.home_id), MESSAGE_ID]);
+    assert.equal(perfSamples[0].duration_ms, null);
+    assert.equal(perfSamples[0].timing_kind, "generation");
+    assert.equal(perfSamples[0].timing_source, "unknown");
+    assert.equal(Number(perfSamples[0].request_count), 1);
     const oracle = sourceWorkbuddyManifest(store.database, startMs, endMs);
     assert.deepEqual(oracle.homeIds, [String(event.home_id)]);
     assert.deepEqual(

@@ -52,6 +52,15 @@ function linkedTimingEvidence(database, sampleKey) {
     .map((row) => ({ ...row }));
 }
 
+function sortRevisionEvidence(rows) {
+  return [...rows].sort(
+    (left, right) =>
+      String(left.payload?.evidence_origin ?? "").localeCompare(String(right.payload?.evidence_origin ?? "")) ||
+      String(left.payload?.response_id ?? "").localeCompare(String(right.payload?.response_id ?? "")) ||
+      String(left.payload?.variant_key ?? "").localeCompare(String(right.payload?.variant_key ?? "")),
+  );
+}
+
 function codexHomeId(store, codexHome) {
   const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(codexHome));
   assert.ok(home, "fixture must discover the Codex home");
@@ -82,10 +91,8 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: COLD_END_MS })
       .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
     assert.ok(coldSample, "fixture must expose a computable cold Codex perf sample");
-    const [, , , turnId] = JSON.parse(coldSample.sampleKey);
-    const turnNumber = Number(/^turn-(\d+)$/.exec(String(turnId))?.[1]);
-    assert.ok(Number.isSafeInteger(turnNumber));
-    const responseId = `response-${turnNumber}-1`;
+    const [, , , , responseId] = JSON.parse(coldSample.sampleKey);
+    assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
     const oldSampleRow = {
@@ -129,7 +136,12 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
       throw error;
     }
 
-    const lateTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 500 };
+    const lateTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@1",
+      durationMs: baseTiming.durationMs + 500,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
+    };
     const archivedHomeId = codexHomeId(archived, fixture.codexHome);
     const oracleHomeId = codexHomeId(oracle, fixture.codexHome);
     const archivedTimingImport = archived.importRequestTimingEvidence({
@@ -256,7 +268,12 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
       "a no-op sync must not rewrite the revision metadata, recovery facts, or immutable candidate",
     );
 
-    const secondLateTiming = { ...baseTiming, durationMs: baseTiming.durationMs + 750 };
+    const secondLateTiming = {
+      ...baseTiming,
+      evidenceOrigin: "0-late@0",
+      durationMs: baseTiming.durationMs + 750,
+      generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 750 },
+    };
     const secondTimingImport = archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [secondLateTiming],
@@ -302,7 +319,7 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
         importChanged: secondTimingImport.changed,
         sampleAdded: secondSampleRevision.added,
         sourceIdentity: secondTimingRevision.sourceIdentity,
-        timingAdded: secondTimingRevision.added,
+        timingAdded: sortRevisionEvidence(secondTimingRevision.added),
       },
       {
         candidateDigest,
@@ -316,7 +333,7 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
           },
         ],
         sourceIdentity: previousTimingRevision.sourceIdentity,
-        timingAdded: expectedTimingAdded,
+        timingAdded: sortRevisionEvidence(expectedTimingAdded),
       },
       "a second late evidence variant must retain its real payload and cumulative revision metadata",
     );

@@ -9,7 +9,6 @@ import { promisify } from "node:util";
 import v8 from "node:v8";
 
 import {
-  buildMagpieTimingFingerprint,
   buildUsageFingerprint,
   buildUsageReport,
   classifyImportDirectory,
@@ -249,7 +248,6 @@ function clientFingerprint(
   perfIndexVersion = "",
   pendingTimingRevision = "",
   pricingVersion = pricingVersionForTimestamp(),
-  magpieTimingFingerprint = "",
 ) {
   return createHash("sha256")
     .update(String(sourceFingerprint ?? ""))
@@ -259,8 +257,6 @@ function clientFingerprint(
     .update(String(pendingTimingRevision ?? ""))
     .update("\0")
     .update(String(pricingVersion ?? ""))
-    .update("\0")
-    .update(String(magpieTimingFingerprint ?? ""))
     .digest("hex");
 }
 
@@ -682,7 +678,6 @@ export function createUsageServer(options = {}) {
     const cached = {
       indexVersion: usageStore.perfIndexVersion,
       timingRevision: usageStore.perfTimingRevision,
-      magpieTimingFingerprint: usageStore.magpieTimingFingerprint,
     };
     if (syncPromise) return cached;
     statusPerfReadPromise ||= usageStore.perfPublicationState().finally(() => {
@@ -825,10 +820,9 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/status") {
-        const [status, perf, observedLedger] = await Promise.all([
+        const [status, perf] = await Promise.all([
           buildUsageFingerprint(await usageOptions(options)),
           currentPerfPublicationState(),
-          importContext ? "" : buildMagpieTimingFingerprint(options),
         ]);
         const since = url.searchParams.get("since") || "";
         const fingerprint = clientFingerprint(
@@ -836,7 +830,6 @@ export function createUsageServer(options = {}) {
           perf.indexVersion,
           perf.timingRevision,
           localPricingCatalog().version,
-          importContext ? perf.magpieTimingFingerprint : observedLedger,
         );
         sendJson(response, 200, {
           fingerprint,
@@ -1089,7 +1082,10 @@ export function createUsageServer(options = {}) {
             const indexedStatus = await loadUsageStore({ check });
             const currentUsageOptions = await usageOptions(options);
             const status = await buildUsageFingerprint(currentUsageOptions);
-            const fullReport = await buildUsageReport(currentUsageOptions);
+            const fullReport = await buildUsageReport({
+              ...currentUsageOptions,
+              quotaSourceEvidenceSnapshot: usageStore.quotaSourceEvidenceSnapshot,
+            });
             fullReport.perfMeta.missingSources = indexedStatus.missingSources ?? [];
             let usePublishedHistory = fullReport.perfMeta.missingSources.length > 0;
             if (!usePublishedHistory) {
@@ -1126,7 +1122,6 @@ export function createUsageServer(options = {}) {
                 summary.perf?.meta?.indexVersion,
                 "",
                 pricingCatalog.version,
-                indexedStatus.magpieTimingFingerprint,
               ),
               checkedAt: status.checkedAt,
               metadata: {
@@ -1175,7 +1170,6 @@ export function createUsageServer(options = {}) {
               result.summary.perf?.meta?.indexVersion,
               "",
               responseCatalog.version,
-              published.magpieTimingFingerprint,
             ),
             checkedAt: published.checkedAt,
             snapshotId: requestedSnapshotId || null,
@@ -1216,7 +1210,6 @@ export function createUsageServer(options = {}) {
             summary.perf?.meta?.indexVersion,
             "",
             pricingCatalog.version,
-            usage.magpieTimingFingerprint,
           ),
           checkedAt: usage.checkedAt,
           snapshotId: frozen.id || requestedSnapshotId || null,

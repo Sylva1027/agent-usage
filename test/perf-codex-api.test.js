@@ -36,7 +36,7 @@ function assertCodexModel(perf, fixture, where) {
   assert.equal(model.model, fixture.expected.model);
   assert.equal(model.reasoningEffort, "high");
   assert.equal(model.modelProvider, "");
-  assert.equal(model.window, "turn");
+  assert.equal(model.window, "request");
   assert.equal(model.rankState, "eligible");
   assert.equal(model.firstSampleAtMs, Date.parse("2026-10-04T12:00:12.500Z"));
   assert.equal(model.lastSampleAtMs, Date.parse("2026-10-04T12:04:13.500Z"));
@@ -86,19 +86,19 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     for (const body of [usage, dashboard, summary, full, frozen]) {
       const perf = body.summary.perf;
       assert.equal(perf.state, "ready");
-      assert.equal(perf.meta.methodVersion, "tps-v2");
+      assert.equal(perf.meta.methodVersion, "tps-v4");
       assert.equal(perf.groups.length, 1);
       assert.equal(perf.groups[0].sourceKind, "codex");
-      assert.equal(perf.groups[0].timingKind, "request_e2e");
-      assert.equal(perf.groups[0].tokenScope, "reported_output_includes_reasoning");
+      assert.equal(perf.groups[0].timingKind, "generation");
+      assert.equal(perf.groups[0].tokenScope, "non_reasoning_output");
       assert.equal(perf.groups[0].agentKind, "unknown");
       assert.equal(perf.groups[0].n, fixture.expected.n);
       assert.deepEqual(perf.groups[0].tps, fixture.expected.tps);
       assertCodexModel(perf, fixture, "Codex API entry");
       const timing = perf.codexTimingCoverage;
-      assert.equal(timing.methodVersion, "tps-v2");
-      assert.equal(timing.counts.eligible, 25);
-      assert.equal(timing.counts.sampled, 25);
+      assert.equal(timing.methodVersion, "tps-v4");
+      assert.equal(timing.counts.eligible, 26);
+      assert.equal(timing.counts.sampled, 26);
       assert.equal(timing.recordedOutputTokens, 2800);
       assert.equal(timing.sampledOutputTokens, 2800);
       assert.equal(timing.unknownOutputCandidates, 0);
@@ -118,15 +118,15 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     const detailZh = renderPerfDetailHtml(group, dashboard.summary.perf.coverage);
     const detailEn = renderPerfDetailHtml(group, dashboard.summary.perf.coverage, { locale: "en-US" });
     const coverageZh = renderPerfCoverageHtml(dashboard.summary.perf);
-    assert.match(detailZh, /请求端到端 TPS（含请求等待）/);
+    assert.match(detailZh, /生成速度/);
     assert.match(detailZh, /代理未知/);
-    assert.match(detailEn, /Request end-to-end TPS \(includes request waiting\)/);
+    assert.match(detailEn, /Generation speed/);
     assert.match(detailEn, /Unknown agent/);
     assert.match(coverageZh, /近期/);
     assert.match(coverageZh, /历史/);
     const modelHtml = renderPerfModelsHtml(dashboard.summary.perf, { calendarZone: "utc" });
-    assert.match(modelHtml, /25 个回合/);
-    assert.match(modelHtml, /样本日期 2026-10-04/);
+    assert.match(modelHtml, /26 个请求/);
+    assert.doesNotMatch(modelHtml, /样本日期/);
     assert.doesNotMatch(modelHtml, /perf-codex-coverage|候选采样覆盖率|已记录输出覆盖率/);
 
     const snapshotId = frozen.snapshotId;
@@ -141,9 +141,9 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     assert.notEqual(live.summary.perf.indexVersion, frozen.summary.perf.indexVersion);
     assert.notDeepEqual(live.summary.perf.groups[0].tps, frozen.summary.perf.groups[0].tps);
     assert.notDeepEqual(live.summary.perf.models, frozenModels);
-    assert.equal(live.summary.perf.models[0].n, 24);
-    assert.equal(live.summary.perf.codexTimingCoverage.counts.eligible, 25);
-    assert.equal(live.summary.perf.codexTimingCoverage.counts.sampled, 24);
+    assert.equal(live.summary.perf.models[0].n, 25);
+    assert.equal(live.summary.perf.codexTimingCoverage.counts.eligible, 26);
+    assert.equal(live.summary.perf.codexTimingCoverage.counts.sampled, 25);
     const frozenAfterMutation = await get("summary", `preset=all&snapshot=${snapshotId}`);
     assert.deepEqual(frozenAfterMutation.summary.perf.models, frozenModels);
     assert.deepEqual(frozenAfterMutation.summary.perf.codexTimingCoverage, frozenTiming);
@@ -154,7 +154,7 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
   }
 });
 
-test("Codex API drops a turn with missing request timing without falling back to item spans", async () => {
+test("Codex API keeps measured responses when another request in the same turn lacks timing", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   let server;
@@ -164,8 +164,10 @@ test("Codex API drops a turn with missing request timing without falling back to
       store,
       fixture.timingRecords.filter((record) => record.responseId !== "response-25-2"),
     );
-    const missing = store.database.prepare("SELECT duration_ms FROM perf_samples WHERE output_tokens = 124").get();
-    assert.equal(missing.duration_ms, null, "the whole turn must have no denominator");
+    const missing = store.database
+      .prepare("SELECT duration_ms FROM perf_samples WHERE sample_key LIKE '%\"response-25-2\"%'")
+      .get();
+    assert.equal(missing.duration_ms, null, "only the unmeasured response lacks a denominator");
     store.close();
 
     server = createUsageServer({
@@ -175,24 +177,24 @@ test("Codex API drops a turn with missing request timing without falling back to
     const baseUrl = await listen(server);
     const body = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
     const perf = body.summary.perf;
-    assert.equal(perf.meta.methodVersion, "tps-v2");
-    assert.equal(perf.groups[0].n, 24);
-    assert.equal(perf.models[0].n, 24);
+    assert.equal(perf.meta.methodVersion, "tps-v4");
+    assert.equal(perf.groups[0].n, 25);
+    assert.equal(perf.models[0].n, 25);
     assert.equal(perf.models[0].rank, 1);
     assert.deepEqual(perf.groups[0].tps, {
-      p10: 102,
+      p10: 101,
       p50: 111,
       p90: 121,
-      pooled: 111.5,
+      pooled: 2736000 / 224000,
     });
     assert.equal(perf.models[0].averageTps, perf.groups[0].tps.pooled);
-    assert.equal(perf.codexTimingCoverage.counts.eligible, 25);
-    assert.equal(perf.codexTimingCoverage.counts.sampled, 24);
-    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 2800);
-    assert.equal(perf.codexTimingCoverage.sampledOutputTokens, 2676);
-    assert.equal(perf.codexTimingCoverage.unknownOutputCandidates, 0);
+    assert.equal(perf.codexTimingCoverage.counts.eligible, 26);
+    assert.equal(perf.codexTimingCoverage.counts.sampled, 25);
+    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 2736);
+    assert.equal(perf.codexTimingCoverage.sampledOutputTokens, 2736);
+    assert.equal(perf.codexTimingCoverage.unknownOutputCandidates, 1);
     const html = renderPerfModelsHtml(perf, { calendarZone: "utc" });
-    assert.match(html, /24 个回合/);
+    assert.match(html, /25 个请求/);
     assert.doesNotMatch(html, /perf-codex-coverage|已记录输出覆盖率|缺失或无效时长/);
   } finally {
     store.close();
@@ -217,16 +219,16 @@ test("Codex API explains current-method candidates when no request timing is ava
     const perf = body.summary.perf;
     assert.equal(perf.models.length, 1);
     assert.equal(perf.models[0].state, "missing_duration");
-    assert.equal(perf.models[0].candidateCount, 25);
+    assert.equal(perf.models[0].candidateCount, 26);
     assert.equal(perf.models[0].n, 0);
     assert.deepEqual([perf.models[0].averageTps, perf.models[0].p10, perf.models[0].p90], [null, null, null]);
     assert.deepEqual(perf.groups, []);
-    assert.equal(perf.codexTimingCoverage.counts.eligible, 25);
+    assert.equal(perf.codexTimingCoverage.counts.eligible, 26);
     assert.equal(perf.codexTimingCoverage.counts.sampled, 0);
-    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 2800);
+    assert.equal(perf.codexTimingCoverage.recordedOutputTokens, 0);
     assert.equal(perf.codexTimingCoverage.sampledOutputTokens, 0);
     const html = renderPerfModelsHtml(perf);
-    assert.match(html, /日志未记录请求耗时/);
+    assert.doesNotMatch(html, /日志未记录请求耗时/);
     assert.doesNotMatch(html, /perf-codex-coverage|缺失或无效时长|候选采样覆盖率/);
     assert.match(html, /perf-model-data-row/);
     assert.doesNotMatch(html, /n=0/);
@@ -361,7 +363,7 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
     const initial = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
     assert.equal(initial.summary.perf.models.length, 1);
     assert.equal(initial.summary.perf.models[0].state, "missing_duration");
-    assert.equal(initial.summary.perf.models[0].candidateCount, 25);
+    assert.equal(initial.summary.perf.models[0].candidateCount, 26);
     assert.equal(initial.summary.perf.models[0].n, 0);
     assert.equal(initial.summary.perf.models[0].averageTps, null);
     assert.deepEqual(initial.summary.perf.groups, []);
@@ -426,8 +428,8 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
     const externalSummary = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
     assert.equal(externalLive.fingerprint, externalStatus.fingerprint);
     assert.equal(externalSummary.fingerprint, externalStatus.fingerprint);
-    assert.equal(externalLive.summary.perf.models[0].n, 25);
-    assert.equal(externalSummary.summary.perf.models[0].n, 25);
+    assert.equal(externalLive.summary.perf.models[0].n, 26);
+    assert.equal(externalSummary.summary.perf.models[0].n, 26);
 
     const externalStableStatus = await getJson(baseUrl, "status", `since=${externalLive.fingerprint}`);
     assert.equal(externalStableStatus.changed, false);
@@ -459,8 +461,8 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
     assert.equal(afterConflictSummary.fingerprint, externalLive.fingerprint);
     assert.equal(afterConflictStatus.changed, false);
     assert.equal(afterConflictStatus.fingerprint, externalLive.fingerprint);
-    assert.equal(afterConflict.summary.perf.models[0].n, 25);
-    assert.equal(afterConflictSummary.summary.perf.models[0].n, 25);
+    assert.equal(afterConflict.summary.perf.models[0].n, 26);
+    assert.equal(afterConflictSummary.summary.perf.models[0].n, 26);
 
     const frozen = await getJson(
       baseUrl,

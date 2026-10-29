@@ -1957,7 +1957,7 @@ if (!HARNESS_ONLY) {
               model: "t1-model",
               reasoningEffort: "high",
               modelProvider: "",
-              window: "turn",
+              window: "request",
               firstSampleAtMs: Date.parse("2026-10-09T00:00:00.000Z"),
               lastSampleAtMs: Date.parse("2026-10-09T00:00:00.000Z"),
               averageTps,
@@ -2008,7 +2008,7 @@ if (!HARNESS_ONLY) {
         const oldHtml = models.innerHTML;
         const oldTokens = [total.textContent, output.textContent];
         assert.match(oldHtml, /<strong>40(?:\.0)?<\/strong>/);
-        assert.match(oldHtml, /20 个回合/);
+        assert.match(oldHtml, /20 个请求/);
         harness.resetCounts();
         refreshing = true;
         let completed = false;
@@ -2047,7 +2047,7 @@ if (!HARNESS_ONLY) {
         assert.equal(harness.state.fingerprint, expected.fingerprint);
         assert.equal(harness.state.selectedPerfModelKey, expected.summary.perf.models[0].key);
         assert.match(models.innerHTML, supersede ? /<strong>120(?:\.0)?<\/strong>/ : /<strong>80(?:\.0)?<\/strong>/);
-        assert.match(models.innerHTML, supersede ? /22 个回合/ : /21 个回合/);
+        assert.match(models.innerHTML, supersede ? /22 个请求/ : /21 个请求/);
         assert.notEqual(models.innerHTML, oldHtml, "TPS and n must change even while both token labels stay equal");
         assert.equal(harness.counts.renders, 1);
         assert.equal(spinner.classList.contains("is-loading"), false);
