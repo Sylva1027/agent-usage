@@ -130,23 +130,36 @@ export async function dshSourceStat(filePath) {
   return { size: info.size, mtimeMs: info.mtimeMs };
 }
 
+function dshFrameOffsets(buffer) {
+  const offsets = [];
+  for (let at = buffer.indexOf(ZSTD_MAGIC); at !== -1; at = buffer.indexOf(ZSTD_MAGIC, at + ZSTD_MAGIC.length)) {
+    offsets.push(at);
+  }
+  return offsets;
+}
+
 /**
- * 逐帧解压一个会话日志并产出每一行 JSON。
+ * 逐帧解压一个会话日志并逐行产出 JSON。
+ *
+ * 压缩文件本身仍一次读入（当前样本约 11 MiB）；关键是**不再**把全部解压帧转成字符串后
+ * `join().split()`，也不把全部 row 留给调用方。每帧只保留 pending line，并逐行 yield。
+ * 这样 usage / perf 两个消费端都可以在单行投影完成后立即释放原 row。
+ *
  * 用「魔数位置」作为帧边界：实测样本中每个魔数位置都是真实帧起点，
  * 但实现仍按「能否解压」容错，坏帧只记警告、不中断整个文件。
  * @param {string} filePath
  * @param {{ onWarning?: (warning: string) => void }} [options]
  */
-export async function readDshSessionRows(filePath, { onWarning } = {}) {
+export async function* streamDshSessionRows(filePath, { onWarning } = {}) {
   const buffer = await readFile(filePath);
-  const offsets = [];
-  for (let at = buffer.indexOf(ZSTD_MAGIC); at !== -1; at = buffer.indexOf(ZSTD_MAGIC, at + ZSTD_MAGIC.length)) {
-    offsets.push(at);
-  }
-
-  const chunks = [];
+  const offsets = dshFrameOffsets(buffer);
+  let successfulFrames = 0;
   let failedFrames = 0;
-  offsets.forEach((start, index) => {
+  let malformedLines = 0;
+  let pending = "";
+
+  for (let index = 0; index < offsets.length; index += 1) {
+    const start = offsets[index];
     const end = index + 1 < offsets.length ? offsets[index + 1] : buffer.length;
     let decompressed = null;
     try {
@@ -159,28 +172,40 @@ export async function readDshSessionRows(filePath, { onWarning } = {}) {
     // DSH 从不写空帧（每帧至少一条 JSON），因此这个判据是安全的。
     if (!decompressed?.length) {
       failedFrames += 1;
-      return;
+      continue;
     }
-    chunks.push(decompressed.toString("utf8"));
-  });
+    successfulFrames += 1;
 
-  if (!chunks.length) {
+    // 与冻结实现逐帧 `Buffer.toString("utf8")` 后 join 的语义一致：若写入方把
+    // UTF-8 码点拆到两个 zstd 帧，两帧各自产生 replacement character，而不是
+    // 在本内存优化中悄悄把它拼回原码点。
+    const lines = `${pending}${decompressed.toString("utf8")}`.split("\n");
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      try {
+        yield JSON.parse(line);
+      } catch {
+        // 写入中断可能留下半行：仍然跳过（用量事件行为不变），只把**行数**单独计数。
+        malformedLines += 1;
+      }
+    }
+  }
+
+  if (successfulFrames === 0) {
     throw new Error(`无法解压 DSH 会话日志（${offsets.length} 个候选帧全部失败）`);
   }
+  // 与旧数组 API 对齐：坏帧只在全文件扫描完成后汇总一次，且先于坏 JSON 告警。
   if (failedFrames) {
     onWarning?.(`DSH 会话日志 ${filePath} 有 ${failedFrames} 个损坏帧或空帧被跳过`);
   }
 
-  const rows = [];
-  let malformedLines = 0;
-  for (const line of chunks.join("").split("\n")) {
-    if (!line.trim()) {
-      continue;
-    }
+  if (pending.trim()) {
     try {
-      rows.push(JSON.parse(line));
+      yield JSON.parse(pending);
     } catch {
-      // 写入中断可能留下半行：仍然跳过（用量事件行为不变），只把**行数**单独计数。
       malformedLines += 1;
     }
   }
@@ -195,6 +220,19 @@ export async function readDshSessionRows(filePath, { onWarning } = {}) {
     onWarning?.(
       `MALFORMED_JSON:${malformedLines} DSH 会话日志 ${filePath} 有 ${malformedLines} 行 JSON 无法解析被跳过`,
     );
+  }
+}
+
+/**
+ * 兼容收集器：保留既有数组 API（scripts/probe 与直接调用方依赖），但内部已逐行流式解析。
+ * 新的大文件消费路径应使用 {@link streamDshSessionRows}，避免重新收回全部 row。
+ * @param {string} filePath
+ * @param {{ onWarning?: (warning: string) => void }} [options]
+ */
+export async function readDshSessionRows(filePath, options = {}) {
+  const rows = [];
+  for await (const row of streamDshSessionRows(filePath, options)) {
+    rows.push(row);
   }
   return rows;
 }
@@ -246,7 +284,9 @@ export function dshUsageFromRaw(raw) {
 }
 
 /**
- * 单遍扫描一个会话日志，产出标准化用量事件。
+ * 两遍扫描一个会话日志，产出标准化用量事件。
+ * 第一遍只保存薄 header 与 parser 告警；第二遍从头投影全部行。这样既不在
+ * 晚到 header 时保留全部原始 row，也能保证 parser 告警先于任何事件回调。
  * 只读用量与元数据字段；message/content/stream/tool 参数与结果一律不读。
  * @param {string} filePath
  * @param {{ id: string, label: string, path: string }} source
@@ -254,8 +294,24 @@ export function dshUsageFromRaw(raw) {
  */
 export async function streamDshSessionEvents(filePath, source, onEvent, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
-  const rows = await readDshSessionRows(filePath, options);
-  const header = dshSessionHeader(rows);
+  const parserWarnings = [];
+  let header = null;
+  let model = "";
+  let modelProvider = "";
+  let conversationName = "";
+
+  for await (const row of streamDshSessionRows(filePath, {
+    onWarning: (warning) => parserWarnings.push(warning),
+  })) {
+    if (header === null && row?.type === "session") {
+      header = dshSessionHeader([row]);
+    }
+  }
+
+  // 冻结实现先解压并解析完整文件、发出 parser 告警，之后才开始投影。
+  for (const warning of parserWarnings) {
+    options.onWarning?.(warning);
+  }
   if (!header) {
     return;
   }
@@ -271,11 +327,7 @@ export async function streamDshSessionEvents(filePath, source, onEvent, options 
   const cwd = header.cwd;
   const repository = await resolveRepository(cwd);
 
-  let model = "";
-  let modelProvider = "";
-  let conversationName = "";
-
-  for (const row of rows) {
+  const processRow = async (row) => {
     const type = String(row?.type || "");
     const data = row?.data;
 
@@ -283,27 +335,27 @@ export async function streamDshSessionEvents(filePath, source, onEvent, options 
       const config = data?.header?.config;
       model = String(config?.model || data?.model || model || "").trim();
       modelProvider = String(config?.provider || data?.provider || modelProvider || "").trim();
-      continue;
+      return;
     }
     if (type === "session/title") {
       const title = String(data?.title || "").trim();
       if (title) {
         conversationName = title.length > SESSION_TITLE_LIMIT ? `${title.slice(0, SESSION_TITLE_LIMIT)}…` : title;
       }
-      continue;
+      return;
     }
     if (type !== "assistant/message" || !data?.usage) {
-      continue;
+      return;
     }
 
     const timestampMs = numeric(row.time);
     if (timestampMs === null) {
-      continue;
+      return;
     }
 
     const mapped = dshUsageFromRaw(data.usage);
     if (isZeroUsage(mapped.usage)) {
-      continue;
+      return;
     }
     const timestamp = new Date(timestampMs).toISOString();
     const detailValidation = validateUsageDetails(mapped.usage, mapped.detailMask);
@@ -341,6 +393,10 @@ export async function streamDshSessionEvents(filePath, source, onEvent, options 
       turn: nonNegativeInt(data.turn),
       step: nonNegativeInt(data.step),
     });
+  };
+
+  for await (const row of streamDshSessionRows(filePath)) {
+    await processRow(row);
   }
 }
 

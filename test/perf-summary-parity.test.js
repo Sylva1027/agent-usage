@@ -2681,13 +2681,34 @@ function d5Instrument(store) {
     if (typeof store[name] !== "function") return;
     const original = store[name].bind(store);
     store[name] = (...args) => {
+      const intendedPhase = phaseFor(args);
       const previous = phase;
-      phase = phaseFor(args);
+      let result;
+      phase = intendedPhase;
       try {
-        return original(...args);
+        result = original(...args);
       } finally {
         phase = previous;
       }
+      // `capturePerfCarrier()` deliberately returns a lazy iterable. Keep the
+      // phase active while that iterable actually prepares and consumes rows.
+      if (
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        typeof result[Symbol.iterator] === "function"
+      ) {
+        return (function* phasedIterable() {
+          const iterPrevious = phase;
+          phase = intendedPhase;
+          try {
+            yield* result;
+          } finally {
+            phase = iterPrevious;
+          }
+        })();
+      }
+      return result;
     };
   };
   wrap("perfCandidatesForRange", (args) => (args.length >= 2 ? "stats" : "ranking"));
@@ -2860,6 +2881,7 @@ test("★D5-c 读路径阶段预算：取排名只读身份列（0 次全列解�
 
       // 身份投影与"候选 ∪ unplaced"逐行同集（这是"同一样本集"的直接证据）
       const identities = store.perfSampleIdentities();
+      assert.equal(Array.isArray(identities), true, "公共身份投影继续返回数组");
       const union = [...store.perfCandidatesForRange(null), ...store.unplacedPerfSamples()]
         .map((sample) => sample.sampleKey)
         .sort();

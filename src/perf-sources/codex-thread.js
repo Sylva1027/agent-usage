@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { PERF_METHOD_VERSION, canonicalPerfSourceKind, normalizePerfSample } from "../perf-stats.js";
@@ -313,6 +314,22 @@ function projectionByteEstimate(projection) {
 }
 
 /**
+ * A3: retain only a compact identity of the projection proven inside the
+ * stable planner window. Lazy hydration must reproduce this identity before it
+ * may be staged or built; this prevents a post-window read from being cached
+ * under the pre-window fingerprint.
+ */
+function codexProjectionDigest(projection) {
+  try {
+    const text = JSON.stringify(projection);
+    if (typeof text !== "string") return null;
+    return createHash("sha256").update(text).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+/**
  * C3：**实例私有**的标准化投影缓存。由 `UsageStore` 持有一个实例，`close()` 时清空。
  *
  * 生命周期与有界性：
@@ -485,6 +502,16 @@ export function createCodexProjectionCache({ maxBytes = DEFAULT_CODEX_PROJECTION
       counters.rollbacks += 1;
       return had;
     },
+    /** Drop one path from committed and staged memory after a lazy identity mismatch. */
+    discard(filePath) {
+      const canonicalPath = canonicalProjectionPath(filePath);
+      if (canonicalPath === "") return false;
+      let dropped = drop(canonicalPath);
+      for (const bucket of staged.values()) {
+        if (bucket.delete(canonicalPath)) dropped = true;
+      }
+      return dropped;
+    },
     /** 只保留该 home 当前的物理文件集（替换 / 删除 / 重命名淘汰）。 */
     prune(homeId, filePaths) {
       const keep = new Set((filePaths ?? []).map(canonicalProjectionPath));
@@ -565,6 +592,8 @@ export function createCodexProjectionCache({ maxBytes = DEFAULT_CODEX_PROJECTION
  *   `fingerprints` = **同一窗口的"读取前"内容指纹**（`planStableCodexHome` 的
  *   `before.fileFingerprints`），它是投影的身份来源，**不是**新增的摘要；
  *   `kind` = 发现时给出的原始 kind（`main`/`jetbrains`/`extra` 等同义别名）。
+ *   `projectionCache.lazyRollouts === true` 时，整 home 扫描只保留轻量归属索引；
+ *   受影响线程通过 `loadRollouts()` 在构建前逐文件水合。
  */
 export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
   if (typeof homeId !== "string" || homeId.trim() === "")
@@ -575,11 +604,41 @@ export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
   const fingerprints = options?.fingerprints;
   const sourceKind = options?.kind ?? "codex";
   const methodVersion = options?.methodVersion ?? codexProjectionMethodVersion();
+  const lazyRollouts = projectionCache?.lazyRollouts === true;
 
   const ownedByThread = new Map();
   const failedByThread = new Map();
   const unownedFiles = [];
   const homeBlocking = [];
+
+  const loadProjection = async (resolvedPath) => {
+    let projection = projectionCache?.lookup({
+      homeId,
+      kind: sourceKind,
+      filePath: resolvedPath,
+      fingerprints,
+      methodVersion,
+      transient: lazyRollouts,
+    });
+    if (projection !== undefined) return { projection, cacheHit: true };
+    projection = await readCodexRolloutMetadata(resolvedPath);
+    return { projection, cacheHit: false };
+  };
+
+  const stageProjection = (resolvedPath, projection) => {
+    // The lazy path stages only projections needed for an affected thread.
+    // It persists through the store's per-thread commit and never populates
+    // the in-memory full-home projection map.
+    projectionCache?.stage({
+      homeId,
+      kind: sourceKind,
+      filePath: resolvedPath,
+      fingerprints,
+      projection,
+      methodVersion,
+      transient: lazyRollouts,
+    });
+  };
 
   for (const filePath of [...filePaths].sort(compareText)) {
     const resolvedPath = path.resolve(filePath);
@@ -589,30 +648,17 @@ export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
     // 任何读取**（卡面红线 ① 的同型论证）。`undefined` ⇒ 走真实 `readCodexRolloutMetadata()`。
     // 归属证明与前后稳定性验证**完全不变**：命中的投影照样过 `evaluateCodexProjection()`，
     // `before`/`after` 两侧指纹与完整路径集也照样逐字比较。
-    let projection = projectionCache?.lookup({
-      homeId,
-      kind: sourceKind,
-      filePath: resolvedPath,
-      fingerprints,
-      methodVersion,
-    });
-    if (projection === undefined) {
-      try {
-        projection = await readCodexRolloutMetadata(resolvedPath);
-      } catch (error) {
-        homeBlocking.push({ filePath: resolvedPath, code: String(error?.code ?? "IO_ERROR") });
-        continue;
-      }
-      // 本轮真正读到的投影先**暂存**；只有该 home 的稳定窗口成立时才会被提升为可复用条目。
-      projectionCache?.stage({
-        homeId,
-        kind: sourceKind,
-        filePath: resolvedPath,
-        fingerprints,
-        projection,
-        methodVersion,
-      });
+    let loaded;
+    try {
+      // The eager path keeps the existing stage-before-verdict behavior. The
+      // lazy path drops each proof-only projection before reading the next file.
+      loaded = await loadProjection(resolvedPath);
+    } catch (error) {
+      homeBlocking.push({ filePath: resolvedPath, code: String(error?.code ?? "IO_ERROR") });
+      continue;
     }
+    const { projection } = loaded;
+    if (!lazyRollouts && !loaded.cacheHit) stageProjection(resolvedPath, projection);
     const verdict = evaluateCodexProjection(projection);
     // Strict reads and planning use this same proof and accepted projection.
     const provenId = verdict.ownershipProof?.threadId ?? null;
@@ -622,9 +668,19 @@ export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
     }
     if (verdict.ok) {
       if (!ownedByThread.has(provenId)) ownedByThread.set(provenId, []);
-      // The child-only projection reaches the builder; filePath still names the
-      // entire physical rollout for source dependency tracking.
-      ownedByThread.get(provenId).push({ filePath: resolvedPath, threadId: provenId, projection: verdict.projection });
+      // The eager path retains the child-only projection for the builder. The
+      // lazy path retains only identity and rehydrates before an affected build.
+      // Either way, filePath names the entire physical rollout dependency.
+      const projectionDigest = lazyRollouts ? codexProjectionDigest(verdict.projection) : null;
+      if (lazyRollouts && projectionDigest === null) {
+        homeBlocking.push({ filePath: resolvedPath, code: "UNSUPPORTED_SCHEMA", threadId: provenId });
+        continue;
+      }
+      ownedByThread.get(provenId).push({
+        filePath: resolvedPath,
+        threadId: provenId,
+        ...(lazyRollouts ? { projectionDigest } : { projection: verdict.projection }),
+      });
       continue;
     }
     if (!verdict.isolatable) {
@@ -643,7 +699,46 @@ export async function planCodexHomeThreads(homeId, filePaths, options = {}) {
   for (const [threadId, rollouts] of ownedByThread) {
     const failures = failedByThread.get(threadId);
     if (!failures) {
-      threads.push({ threadId, rollouts });
+      if (lazyRollouts) {
+        threads.push({
+          threadId,
+          rollouts,
+          async loadRollouts() {
+            const hydrated = [];
+            for (const rollout of rollouts) {
+              const loaded = await loadProjection(rollout.filePath);
+              const { projection } = loaded;
+              const verdict = evaluateCodexProjection(projection);
+              if (!verdict.ok) throw failure(verdict.code, verdict.message);
+              if (verdict.threadId !== threadId) {
+                throw failure("UNKEYABLE_RECORD", "Codex rollout ownership changed between planning and lazy loading");
+              }
+              if (codexProjectionDigest(verdict.projection) !== rollout.projectionDigest) {
+                projectionCache?.invalidate?.({
+                  homeId,
+                  kind: sourceKind,
+                  filePath: rollout.filePath,
+                  fingerprints,
+                  methodVersion,
+                });
+                throw Object.assign(
+                  failure("LIVE_SOURCE_CHANGED", "Codex rollout changed after the stable planning window"),
+                  { filePath: rollout.filePath },
+                );
+              }
+              if (!loaded.cacheHit) stageProjection(rollout.filePath, projection);
+              hydrated.push({
+                filePath: rollout.filePath,
+                threadId,
+                projection: verdict.projection,
+              });
+            }
+            return hydrated;
+          },
+        });
+      } else {
+        threads.push({ threadId, rollouts });
+      }
       continue;
     }
     failedThreads.push({

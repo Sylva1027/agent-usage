@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
 import { createUsageServer } from "../src/server.js";
@@ -73,8 +74,10 @@ function snapshotDirectories() {
   );
 }
 
-function newSnapshotDirectory(before) {
-  const created = [...snapshotDirectories()].filter((directory) => !before.has(directory));
+function newSnapshotDirectory(before, snapshotId) {
+  const created = [...snapshotDirectories()].filter(
+    (directory) => !before.has(directory) && existsSync(path.join(directory, `${snapshotId}.sqlite`)),
+  );
   assert.equal(created.length, 1, "one private snapshot directory");
   return created[0];
 }
@@ -155,7 +158,7 @@ test("ninth cold freeze closes and removes the evicted snapshot including staged
     const baseUrl = await listen(server);
     const first = await freeze(baseUrl);
     assert.equal(first.response.status, 200, first.text);
-    const snapshotDirectory = newSnapshotDirectory(beforeDirectories);
+    const snapshotDirectory = newSnapshotDirectory(beforeDirectories, first.body.snapshotId);
     const firstDatabase = path.join(snapshotDirectory, `${first.body.snapshotId}.sqlite`);
     assert.equal(existsSync(firstDatabase), true);
     assert.equal(existsSync(`${firstDatabase}.segments`), true);
@@ -194,34 +197,47 @@ test("post-create snapshot failure removes its artifacts and preserves the previ
     const baseUrl = await listen(server);
     const first = await freeze(baseUrl);
     assert.equal(first.response.status, 200, first.text);
-    const snapshotDirectory = newSnapshotDirectory(beforeDirectories);
+    const snapshotDirectory = newSnapshotDirectory(beforeDirectories, first.body.snapshotId);
     const firstDatabase = path.join(snapshotDirectory, `${first.body.snapshotId}.sqlite`);
 
-    const originalOpen = UsageStore.prototype.open;
-    let injected = null;
+    const flagFile = path.join(fixture.root, "inject-snapshot.json");
+    const resultFile = path.join(fixture.root, "injected.json");
+    const preloadFile = path.join(fixture.root, "inject-snapshot.mjs");
+    writeFileSync(flagFile, JSON.stringify({ snapshotDirectory, firstDatabase }));
+    writeFileSync(
+      preloadFile,
+      `
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import path from "node:path";
+import { UsageStore } from ${JSON.stringify(new URL("../src/usage-store.js", import.meta.url).href)};
+if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1") {
+  const original = UsageStore.prototype.open;
+  UsageStore.prototype.open = async function (...args) {
+    const result = await original.apply(this, args);
+    const flagFile = ${JSON.stringify(flagFile)};
+    if (!existsSync(flagFile)) return result;
+    const { snapshotDirectory, firstDatabase } = JSON.parse(readFileSync(flagFile, "utf8"));
+    const databaseFile = path.resolve(this.databaseFile);
+    if (path.dirname(databaseFile) === path.resolve(snapshotDirectory) && databaseFile !== path.resolve(firstDatabase) && existsSync(databaseFile + ".segments")) {
+      writeFileSync(${JSON.stringify(resultFile)}, JSON.stringify({ databaseFile, databaseExists: existsSync(databaseFile), segmentsExist: true }));
+      unlinkSync(flagFile);
+      throw new Error("INJECTED_SNAPSHOT_POST_CREATE_FAILURE");
+    }
+    return result;
+  };
+}
+`,
+    );
+    const oldArgv = [...process.execArgv];
     let failed;
     try {
-      UsageStore.prototype.open = async function openWithPostCreateFailure(...args) {
-        const result = await originalOpen.apply(this, args);
-        const databaseFile = path.resolve(this.databaseFile);
-        if (
-          !injected &&
-          path.dirname(databaseFile) === path.resolve(snapshotDirectory) &&
-          databaseFile !== path.resolve(firstDatabase)
-        ) {
-          injected = {
-            databaseFile,
-            databaseExists: existsSync(databaseFile),
-            segmentsExist: existsSync(`${databaseFile}.segments`),
-          };
-          throw new Error("INJECTED_SNAPSHOT_POST_CREATE_FAILURE");
-        }
-        return result;
-      };
+      process.execArgv.push("--import", pathToFileURL(preloadFile).href);
+      await new Promise((resolve) => setTimeout(resolve, 400));
       failed = await freeze(baseUrl);
     } finally {
-      UsageStore.prototype.open = originalOpen;
+      process.execArgv.splice(0, process.execArgv.length, ...oldArgv);
     }
+    const injected = JSON.parse(readFileSync(resultFile, "utf8"));
     assert.equal(failed.response.status, 500, failed.text);
     assert.equal(failed.body.error, "INJECTED_SNAPSHOT_POST_CREATE_FAILURE");
     assert.ok(injected);
@@ -274,7 +290,7 @@ test("server close removes the private snapshot directory including staged segme
     const baseUrl = await listen(server);
     const frozen = await freeze(baseUrl);
     assert.equal(frozen.response.status, 200, frozen.text);
-    const snapshotDirectory = newSnapshotDirectory(beforeDirectories);
+    const snapshotDirectory = newSnapshotDirectory(beforeDirectories, frozen.body.snapshotId);
     const databaseFile = path.join(snapshotDirectory, `${frozen.body.snapshotId}.sqlite`);
     assert.equal(existsSync(`${databaseFile}.segments`), true);
 

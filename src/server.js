@@ -19,8 +19,8 @@ import {
   toPublicUsageReport,
   USAGE_PRESETS,
 } from "./usage-core.js";
-import { UsageStore } from "./usage-store.js";
-import { createUsageExecutor, readHistoryArchiveDays, readHistoryArchiveStatus } from "./usage-executor.js";
+import { createUsageExecutor } from "./usage-executor.js";
+import { UsageSummaryCache, publishedSummarySource, summaryCacheKey } from "./usage-summary-cache.js";
 import { loadHistoryArchiveImport } from "./history-archive.js";
 import { serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 import { buildUsagePricingCoverage } from "../public/pricing-models.js";
@@ -43,7 +43,6 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 const MIN_FULL_DETAIL_HEAP_BYTES = 512 * 1024 * 1024;
-const STATUS_PERF_READ_TIMEOUT_MS = 50;
 const PRICING_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_IMPORT_STORE_FILE = path.join(os.homedir(), ".codex-usage", "imports.json");
 const execFileAsync = promisify(execFile);
@@ -248,6 +247,7 @@ function clientFingerprint(
   perfIndexVersion = "",
   pendingTimingRevision = "",
   pricingVersion = pricingVersionForTimestamp(),
+  asOf = null,
 ) {
   return createHash("sha256")
     .update(String(sourceFingerprint ?? ""))
@@ -257,6 +257,7 @@ function clientFingerprint(
     .update(String(pendingTimingRevision ?? ""))
     .update("\0")
     .update(String(pricingVersion ?? ""))
+    .update(asOf ? `${asOf.getFullYear()}-${asOf.getMonth()}-${asOf.getDate()}:${asOf.toISOString().slice(0, 10)}` : "")
     .digest("hex");
 }
 
@@ -363,6 +364,7 @@ export function createUsageServer(options = {}) {
   const liveAutomaticPricingStatus = () =>
     importContext ? (importContext.automaticPricingStatus ?? null) : getAutomaticPricingStatus();
   const usageStore = createUsageExecutor(options, { pricing: localPricingCatalog });
+  const summaryCache = new UsageSummaryCache(options);
   const pricingReady = importContext ? Promise.resolve() : loadPricingFile(options);
   const pricingRefreshSchedulerEnabled = !importContext && options.pricingRefreshSchedulerEnabled !== false;
   let pricingRefreshPromise = null;
@@ -372,7 +374,7 @@ export function createUsageServer(options = {}) {
   let pricingRefreshTimer = null;
   let storeStatus = null;
   let syncPromise = null;
-  let statusPerfReadPromise = null;
+  let publishedSource = null;
   let snapshotDirectoryPromise = null;
   let discoveryTimer = null;
   let discoveryTimerSignature = null;
@@ -389,7 +391,7 @@ export function createUsageServer(options = {}) {
   }
 
   async function removeSnapshotArtifacts(snapshot, snapshotDirectory) {
-    snapshot.store?.close();
+    await snapshot.store?.close();
     const databaseFile = path.resolve(snapshot.databaseFile);
     if (!isPrivateSnapshotPath(databaseFile, snapshotDirectory)) return;
     for (const file of [databaseFile, `${databaseFile}-wal`, `${databaseFile}-shm`]) {
@@ -602,12 +604,8 @@ export function createUsageServer(options = {}) {
       const frozen = await runWithPricingCatalog(pricingCatalog, () =>
         usageStore.snapshot({ databaseFile, asOf: asOf.getTime() }),
       );
-      store = new UsageStore({ databaseFile });
-      await store.open();
-      store.homes = structuredClone(frozen.homes ?? []);
-      // 使用 executor 随事实快照传回的证据，避免在备份后重读已经变化的来源。
-      store.serviceTierEvidence = frozen.serviceTierEvidence;
-      store.warnings = [...(frozen.warnings ?? [])];
+      store = createUsageExecutor({ databaseFile }, { pricing: () => pricingCatalog });
+      await store.open({ frozen });
       snapshot = {
         store,
         pricingCatalog,
@@ -617,6 +615,9 @@ export function createUsageServer(options = {}) {
         asOf,
         metadata: { ...frozen.metadata, imports: await listImportEntries(options) },
         databaseFile,
+        fingerprintSource: importContext
+          ? status.fingerprint
+          : publishedSource?.routingFingerprint || status.fingerprint,
       };
     } catch (error) {
       await removeSnapshotArtifacts({ store, databaseFile }, snapshotDirectory);
@@ -660,16 +661,32 @@ export function createUsageServer(options = {}) {
     }
     const currentUsageOptions = await usageOptions(options);
     if (!syncPromise) {
-      syncPromise = usageStore
-        .sync({ options: currentUsageOptions })
-        .then((status) => {
-          storeStatus = status;
-          scheduleUsageDiscovery(usageStore.metadata().harnessModels);
-          return status;
-        })
-        .finally(() => {
-          syncPromise = null;
+      syncPromise = (async () => {
+        const before = await summaryCache.readSourceState({
+          ...currentUsageOptions,
+          importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
         });
+        const retained = await summaryCache.stateFor(before);
+        if (retained) {
+          usageStore.restoreState(retained);
+          storeStatus = { ...retained.status, checkedAt: before.checkedAt };
+          publishedSource = before;
+          return storeStatus;
+        }
+        const status = await usageStore.sync({ options: currentUsageOptions });
+        publishedSource = publishedSummarySource(
+          before,
+          await summaryCache.readSourceState({
+            ...currentUsageOptions,
+            importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+          }),
+        );
+        storeStatus = status;
+        scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+        return status;
+      })().finally(() => {
+        syncPromise = null;
+      });
     }
     return syncPromise;
   }
@@ -680,17 +697,8 @@ export function createUsageServer(options = {}) {
       timingRevision: usageStore.perfTimingRevision,
     };
     if (syncPromise) return cached;
-    statusPerfReadPromise ||= usageStore.perfPublicationState().finally(() => {
-      statusPerfReadPromise = null;
-    });
     try {
-      const fresh = await Promise.race([
-        statusPerfReadPromise,
-        new Promise((resolve) => {
-          const timer = setTimeout(() => resolve(null), STATUS_PERF_READ_TIMEOUT_MS);
-          timer.unref?.();
-        }),
-      ]);
+      const fresh = await summaryCache.readPublication();
       return fresh || cached;
     } catch {
       return cached;
@@ -820,16 +828,21 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/status") {
-        const [status, perf] = await Promise.all([
-          buildUsageFingerprint(await usageOptions(options)),
-          currentPerfPublicationState(),
-        ]);
+        const currentOptions = await usageOptions(options);
+        const status = importContext
+          ? await buildUsageFingerprint(currentOptions)
+          : await summaryCache.readSourceState({
+              ...currentOptions,
+              importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+            });
+        const perf = "publication" in status ? status.publication || {} : await currentPerfPublicationState();
         const since = url.searchParams.get("since") || "";
         const fingerprint = clientFingerprint(
-          status.fingerprint,
+          "routingFingerprint" in status ? status.routingFingerprint : status.fingerprint,
           perf.indexVersion,
           perf.timingRevision,
           localPricingCatalog().version,
+          new Date(),
         );
         sendJson(response, 200, {
           fingerprint,
@@ -876,7 +889,7 @@ export function createUsageServer(options = {}) {
             response,
             200,
             snapshot
-              ? await snapshot.store.readHistoryArchiveEventPage(segmentId, page)
+              ? await snapshot.store.historyArchiveEventPage(segmentId, page)
               : await usageStore.historyArchiveEventPage(segmentId, page),
           );
         } catch (error) {
@@ -906,7 +919,7 @@ export function createUsageServer(options = {}) {
             response,
             200,
             snapshot
-              ? await readHistoryArchiveDays(snapshot.store, segmentId)
+              ? await snapshot.store.historyArchiveDays(segmentId)
               : await usageStore.historyArchiveDays(segmentId),
           );
         } catch (error) {
@@ -926,11 +939,7 @@ export function createUsageServer(options = {}) {
         const snapshotId = url.searchParams.get("snapshot");
         const snapshot = snapshotId ? snapshots.get(snapshotId) : null;
         if (snapshotId && !snapshot) throw httpError(410, "Snapshot is no longer available.", "SNAPSHOT_EXPIRED");
-        sendJson(
-          response,
-          200,
-          snapshot ? await readHistoryArchiveStatus(snapshot.store) : await usageStore.historyArchives(),
-        );
+        sendJson(response, 200, snapshot ? await snapshot.store.historyArchives() : await usageStore.historyArchives());
         return;
       }
 
@@ -985,6 +994,7 @@ export function createUsageServer(options = {}) {
           }
           const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
           await writeImportEntries(options, entries);
+          await summaryCache.invalidate();
           storeStatus = null;
           sendJson(response, 200, {
             import: entry,
@@ -997,6 +1007,7 @@ export function createUsageServer(options = {}) {
           const targetPath = path.resolve(url.searchParams.get("path") || "");
           const entries = (await readImportEntries(options)).filter((entry) => entry.path !== targetPath);
           await writeImportEntries(options, entries);
+          await summaryCache.invalidate();
           storeStatus = null;
           sendJson(response, 200, { imports: await listImportEntries(options) });
           return;
@@ -1159,19 +1170,48 @@ export function createUsageServer(options = {}) {
         const pricingCatalog = frozen?.pricingCatalog || localPricingCatalog();
         Object.assign(filters, { now: asOf, pricingModels: pricingCatalog.models });
         if (!frozen) {
-          const result = await usageStore.dashboard(filters, {
-            includeDetails: url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard",
-          });
+          const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
+          let source = !importContext && !syncPromise ? publishedSource : null;
+          if (source) {
+            source = publishedSummarySource(source, { ...source, publication: await summaryCache.readPublication() });
+            publishedSource = source;
+          }
+          const key = summaryCacheKey(filters, includeDetails, pricingCatalog);
+          let result = source ? await summaryCache.get(key, source, asOf) : null;
+          response.setHeader("x-summary-cache", result ? "hit" : "miss");
+          if (!result) {
+            result = await runWithPricingCatalog(pricingCatalog, () =>
+              usageStore.dashboard(filters, { includeDetails }),
+            );
+            if (source && !syncPromise && result.status?.fingerprint === usage.fingerprint) {
+              const currentOptions = await usageOptions(options);
+              const afterRead = await summaryCache.readSourceState({
+                ...currentOptions,
+                importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+              });
+              if (
+                afterRead.inputs === source.inputs &&
+                afterRead.publication?.signature === source.publication?.signature
+              ) {
+                try {
+                  await summaryCache.publish(key, result, usageStore.stateSnapshot(), source, asOf);
+                } catch {
+                  // A cache write failure must not discard a completed fresh result.
+                }
+              }
+            }
+          }
           const responseCatalog = result.pricingCatalog || pricingCatalog;
           const published = result.status || usage;
           sendJson(response, 200, {
             fingerprint: clientFingerprint(
-              published.fingerprint,
+              source?.routingFingerprint || published.fingerprint,
               result.summary.perf?.meta?.indexVersion,
               "",
               responseCatalog.version,
+              asOf,
             ),
-            checkedAt: published.checkedAt,
+            checkedAt: source?.checkedAt || published.checkedAt,
             snapshotId: requestedSnapshotId || null,
             metadata: { ...result.metadata, imports: await listImportEntries(options) },
             pricingCatalog: responseCatalog,
@@ -1181,35 +1221,15 @@ export function createUsageServer(options = {}) {
           });
           return;
         }
-        const hasColdSegments =
-          Number(store.database.prepare("SELECT COUNT(*) AS count FROM archive_segments").get().count) > 0;
-        const coldReport = hasColdSegments
-          ? await store.publishedHistoryUsageReport({ includePerfCarrier: true })
-          : null;
         const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
-        const { summary, periodComparison } = runWithPricingCatalog(frozen.pricingCatalog, () => ({
-          summary: coldReport
-            ? store.summarizeHistoryReport(coldReport, filters, { includeDetails })
-            : store.summarize(filters, { includeDetails }),
-          periodComparison: coldReport
-            ? summarizePeriodComparison(withoutExcludedHomes(coldReport, filters.excludeHomes).events, {
-                now: asOf,
-                calendarZone: filters.calendarZone,
-                pricingModels: pricingCatalog.models,
-              })
-            : store.periodComparison({
-                now: asOf,
-                excludeHomes: filters.excludeHomes,
-                calendarZone: filters.calendarZone,
-                pricingModels: pricingCatalog.models,
-              }),
-        }));
+        const { summary, periodComparison } = await store.dashboard(filters, { includeDetails });
         sendJson(response, 200, {
           fingerprint: clientFingerprint(
-            usage.fingerprint,
+            frozen.fingerprintSource || usage.fingerprint,
             summary.perf?.meta?.indexVersion,
             "",
             pricingCatalog.version,
+            asOf,
           ),
           checkedAt: usage.checkedAt,
           snapshotId: frozen.id || requestedSnapshotId || null,
@@ -1245,11 +1265,14 @@ export function createUsageServer(options = {}) {
     clearPricingRefreshTimer();
     clearDiscoveryTimer();
     void closeUsageExecutor();
-    for (const snapshot of snapshots.values()) snapshot.store.close();
+    const closingSnapshots = Promise.all([...snapshots.values()].map((snapshot) => snapshot.store.close()));
     snapshots.clear();
     snapshotDirectoryCleanup = snapshotDirectoryPromise
       ? snapshotDirectoryPromise
-          .then((directory) => rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
+          .then(async (directory) => {
+            await closingSnapshots;
+            await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+          })
           .catch(() => {})
       : Promise.resolve();
   });
@@ -1268,6 +1291,7 @@ export function createUsageServer(options = {}) {
     clearDiscoveryTimer();
     const done = new Promise((resolve) => closeHttpServer(() => resolve())).then(async () => {
       await closeUsageExecutor();
+      summaryCache.close();
       // A refresh can start its merged successor in a fulfillment continuation.
       while (pricingRefreshPromise) await pricingRefreshPromise.catch(() => {});
       await pricingMutationTail;

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { Worker } from "node:worker_threads";
+import { ChildProcess } from "node:child_process";
 
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
@@ -31,6 +31,7 @@ function isolatedOptions(root, fixture) {
     importDirs: [fixture.codexHome],
     automaticDiscoveryEnabled: false,
     pricingRefreshSchedulerEnabled: false,
+    executorIdleTimeoutMs: 60_000,
   };
 }
 
@@ -52,21 +53,23 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
   const ledgerFile = path.join(root, ".config", "magpie", "usage.jsonl");
   await mkdir(path.dirname(ledgerFile), { recursive: true });
   await writeFile(ledgerFile, "invalid\n");
-  const originalPostMessage = Worker.prototype.postMessage;
-  let activeWorker;
-  Worker.prototype.postMessage = function (message, ...args) {
-    if (message.type === "dashboard") activeWorker = this;
-    return originalPostMessage.call(this, message, ...args);
+  const originalEmit = ChildProcess.prototype.emit;
+  let activeChild;
+  ChildProcess.prototype.emit = function (event, ...args) {
+    if (event === "message" && args[0]?.type === "response") activeChild = this;
+    return originalEmit.call(this, event, ...args);
   };
   const server = createUsageServer(options);
   try {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const url = `http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`;
     const before = await fetch(url);
-    assert.equal(before.status, 200);
     const expected = await before.json();
-    assert.ok(activeWorker);
-    await activeWorker.terminate();
+    assert.equal(before.status, 200, JSON.stringify(expected));
+    assert.ok(activeChild);
+    const exited = new Promise((resolve) => activeChild.once("exit", resolve));
+    activeChild.kill("SIGKILL");
+    await exited;
     const after = await fetch(`${url}&skipCheck=1`);
     const actual = await after.json();
     assert.equal(after.status, 200, JSON.stringify(actual));
@@ -78,7 +81,7 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
     assert.equal(actual.summary.perf.codexTimingCoverage.counts.sampled, fixture.expected.n);
     assert.ok(actual.metadata.harnessModels);
   } finally {
-    Worker.prototype.postMessage = originalPostMessage;
+    ChildProcess.prototype.emit = originalEmit;
     await server.close();
     fixture.close();
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -486,36 +489,36 @@ test("W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 
   const fixture = createPerfCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   await seedRequestTiming(fixture, options);
-  // 直接数"向执行器发出的 sync 消息"：`checkedAt` 相等并不能证明只跑了一次（两次同步
-  // 也会得到同一个 checkedAt）⇒ 必须计数。插桩只包住 `Worker.prototype.postMessage`，
-  // 不改产品文件、不改 schema。
-  const originalPostMessage = Worker.prototype.postMessage;
+  // 直接数执行器发布的 sync 状态：`checkedAt` 相等并不能证明只跑了一次（两次同步
+  // 也会得到同一个 checkedAt）⇒ 必须计数。插桩只包住子进程 IPC，不改产品或 schema。
+  const originalEmit = ChildProcess.prototype.emit;
   const syncMessages = [];
-  Worker.prototype.postMessage = function countedPostMessage(message, ...rest) {
-    if (message && message.type === "sync") syncMessages.push({ id: message.id, at: Date.now() });
-    return originalPostMessage.call(this, message, ...rest);
+  ChildProcess.prototype.emit = function countedEmit(event, ...args) {
+    if (event === "message" && args[0]?.type === "state" && Array.isArray(args[0]?.state?.homes)) {
+      syncMessages.push({ at: Date.now() });
+    }
+    return originalEmit.call(this, event, ...args);
   };
   const server = createUsageServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    // 先热一轮（把启动期可能存在的同步清干净），再把计数归零。
-    await fetch(`${base}/api/usage?preset=all`).then((r) => r.json());
-    syncMessages.length = 0;
-    // 两个**同时**发出的重请求 ⇒ 只允许跑一次 sync（同一 checkedAt + 只有一条 sync 消息）。
+    // 从同一冷窗口同时发出两个重请求 ⇒ 只允许跑一次 sync（同一逻辑快照 + 只有一条 sync 状态）。
+    // 预热后的持久缓存命中按设计不会 sync，因此不能拿它证明 syncPromise 的并发去重。
     const [left, right] = await Promise.all([
       fetch(`${base}/api/usage?preset=all`).then((r) => r.json()),
       fetch(`${base}/api/usage?preset=all`).then((r) => r.json()),
     ]);
     assert.ok(left.checkedAt, "响应必须带 checkedAt");
-    assert.equal(left.checkedAt, right.checkedAt, "两轮并发 sync 必须合并成一次（checkedAt 必须相同）");
+    assert.ok(right.checkedAt, "响应必须带 checkedAt");
+    assert.equal(left.fingerprint, right.fingerprint, "两轮并发请求必须发布同一份逻辑快照");
     assert.equal(
       syncMessages.length,
       1,
       `两轮并发 sync 只允许向执行器发出一次 sync 消息（实测 ${syncMessages.length} 次：${JSON.stringify(syncMessages)}）`,
     );
   } finally {
-    Worker.prototype.postMessage = originalPostMessage;
+    ChildProcess.prototype.emit = originalEmit;
     await new Promise((resolve) => server.close(resolve));
     fixture.close();
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

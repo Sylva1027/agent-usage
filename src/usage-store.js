@@ -3820,11 +3820,13 @@ export function createPersistentCodexProjectionCache({
   return {
     /** 见 `codex-thread.js:397`：`undefined` = "不可复用" ⇒ 调用方必须走真实全文读。 */
     /**
-     * @param {{homeId?: string, kind?: string, filePath?: string, fingerprints?: Record<string, string>, methodVersion?: string}} [options={}]
+     * @param {{homeId?: string, kind?: string, filePath?: string, fingerprints?: Record<string, string>, methodVersion?: string, transient?: boolean}} [options={}]
      */
-    lookup({ homeId, kind, filePath, fingerprints, methodVersion: requestedMethodVersion } = {}) {
+    lookup({ homeId, kind, filePath, fingerprints, methodVersion: requestedMethodVersion, transient = false } = {}) {
       // ① 先走内存（与今日逐字节同一条路径；命中就连指纹都不再算）。
-      const memory = inner.lookup({ homeId, kind, filePath, fingerprints, methodVersion: requestedMethodVersion });
+      const memory = transient
+        ? undefined
+        : inner.lookup({ homeId, kind, filePath, fingerprints, methodVersion: requestedMethodVersion });
       if (memory !== undefined) return memory;
       // ② 只有 codex rollout 才有这张表（与 `:399` 的来源守卫同款）。
       if (canonicalizeKind(kind) !== "codex") return undefined;
@@ -3876,17 +3878,31 @@ export function createPersistentCodexProjectionCache({
         counters.corruptRows += 1;
         return undefined;
       }
-      // ⑥ 水合：交回内存缓存（只有稳定窗口的 `commit()` 才会把它提升为可复用条目）。**不**记入
-      // `freshRows` ⇒ `commit()` 不会把这些行再写一遍（否则每轮都是全表写放大）。
-      inner.stage({ homeId, kind, filePath, fingerprints, projection, methodVersion: expectedMethodVersion });
+      // ⑥ 水合：普通调用交回内存缓存（只有稳定窗口的 `commit()` 才会把它提升为可复用条目）。
+      // lazy planner 的 transient 调用只返回本次构建所需对象，不把整 home 的 parsed
+      // projection 留在内存 cache。**不**记入 `freshRows` ⇒ `commit()` 不会把这些行再写一遍。
+      if (!transient) {
+        inner.stage({ homeId, kind, filePath, fingerprints, projection, methodVersion: expectedMethodVersion });
+      }
       counters.hydratedRows += 1;
       return projection;
     },
 
-    /** 透传内存 `stage()`，并把"本轮真实读到"的行记下（落盘延迟到 `commit`）。 */
+    /**
+     * 普通调用透传内存 `stage()`；`transient: true` 只记待落盘行，不进入内存投影 cache。
+     * lazy thread 在构建前按 thread 提交，使本轮 parsed projection 不会跨 thread 累积。
+     */
     stage(args = {}) {
-      const ok = inner.stage(args);
-      if (!ok) return false;
+      const transient = args.transient === true;
+      if (!transient) {
+        const ok = inner.stage(args);
+        if (!ok) return false;
+      } else {
+        if (canonicalizeKind(args.kind) !== "codex") return false;
+        if (!args.projection || typeof args.projection !== "object") return false;
+        if (canonicalProjectionStorePath(args.filePath) === "") return false;
+        if (fingerprintOf(args.fingerprints, args.filePath) === undefined) return false;
+      }
       const canonicalPath = canonicalProjectionStorePath(args.filePath);
       const id = String(args.homeId ?? "");
       let text;
@@ -3913,6 +3929,17 @@ export function createPersistentCodexProjectionCache({
         updated_at: now(),
       });
       return true;
+    },
+
+    /**
+     * Remove one path when lazy hydration no longer matches the stable-window proof.
+     * @param {{ filePath?: string }} [options]
+     */
+    invalidate({ filePath } = {}) {
+      const canonicalPath = canonicalProjectionStorePath(filePath);
+      if (canonicalPath === "") return false;
+      inner.discard?.(canonicalPath);
+      return deleteRow(canonicalPath);
     },
 
     /** 稳定窗口（或已证明的 append 子集）⇒ 内存提升 + 本 home 的未排除行**单事务**落盘。 */
@@ -4416,7 +4443,8 @@ export class UsageStore {
      * 投影**可以**跨 `close()/open()` 与跨进程复用（这正是 T2 的目的），但**不入** `store_meta`、
      * **不进**公开 report、**不新增** meta 键。
      */
-    this.codexProjections = createCodexProjectionCache();
+    /** @type {ReturnType<typeof createPersistentCodexProjectionCache>} */
+    this.codexProjections = /** @type {any} */ (createCodexProjectionCache());
     /**
      * C4 卡：**最近一轮**的"受影响 / 原样保留"线程集合（`homeId → {staged, retained}`）。
      *
@@ -5288,10 +5316,11 @@ export class UsageStore {
     );
     const projections = new Map(
       this.database
-        .prepare("SELECT path, method_version, fingerprint, projection FROM perf_codex_projections WHERE home_id = ?")
+        .prepare("SELECT path, method_version, fingerprint FROM perf_codex_projections WHERE home_id = ?")
         .all(homeId)
         .map((row) => [canonicalProjectionStorePath(String(row.path)), row]),
     );
+    const readProjection = this.database.prepare("SELECT projection FROM perf_codex_projections WHERE path = ?");
     const owners = new Map();
     for (const row of this.database
       .prepare(
@@ -5315,12 +5344,10 @@ export class UsageStore {
         const row = projections.get(canonical);
         const fingerprint = published.get(canonical);
         hash.update(JSON.stringify([filePath, fingerprint, row?.method_version, row?.fingerprint]));
-        hash
-          .update("\0")
-          .update(String(row?.projection ?? ""))
-          .update("\0");
+        const projection = row === undefined ? "" : String(readProjection.get(row.path)?.projection ?? "");
+        hash.update("\0").update(projection).update("\0");
         if (!row || String(row.method_version) !== method || String(row.fingerprint) !== fingerprint) trusted = false;
-        return row;
+        return row === undefined ? undefined : { ...row, projection };
       });
       const signature = hash.digest("hex");
       const cached = previous.get(threadId);
@@ -6866,9 +6893,11 @@ export class UsageStore {
    * 外键要求 `source_path` 已存在于 `source_files`（M3.2 在同一事务里先写来源行）。
    * @param {unknown} sample
    */
-  insertPerfSample(sample) {
+  insertPerfSample(sample, statement) {
     const row = encodePerfSample(sample);
-    return this.database.prepare(PERF_SAMPLE_INSERT_SQL).run(...PERF_SAMPLE_FIELDS.map((entry) => row[entry.column]));
+    return (statement ?? this.database.prepare(PERF_SAMPLE_INSERT_SQL)).run(
+      ...PERF_SAMPLE_FIELDS.map((entry) => row[entry.column]),
+    );
   }
 
   /**
@@ -6902,7 +6931,7 @@ export class UsageStore {
    * @param {Iterable<string>} [excludedHomeIds]
    * @returns {import("./usage-types.js").PerfSampleRowDecoded[]} 按 `sample_key` 升序（稳定）
    */
-  perfCandidatesForRange(range, excludedHomeIds = []) {
+  perfCandidatesForRange(range, excludedHomeIds = [], stream = false) {
     const bounds = perfRangeBounds(range);
     const excluded = normalizeExcludedHomeIds(excludedHomeIds);
 
@@ -6928,7 +6957,15 @@ export class UsageStore {
     const sql = `${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`;
     // 全列解码，**不得**跳过：AP-4 已实测 STRICT 会把 `'7'` 无损换算成 7 ⇒ 信任库中值会出错。
     // Decode as rows arrive so raw SQL rows and decoded samples never coexist in full.
-    return Array.from(this.database.prepare(sql).iterate(...params), decodePerfSample);
+    const rows = this.database.prepare(sql).iterate(...params);
+    if (stream) {
+      return /** @type {any} */ (
+        (function* () {
+          for (const row of rows) yield decodePerfSample(row);
+        })()
+      );
+    }
+    return Array.from(rows, decodePerfSample);
   }
 
   /**
@@ -6939,7 +6976,7 @@ export class UsageStore {
    * @param {Iterable<string>} [excludedHomeIds]
    * @returns {import("./usage-types.js").PerfSampleRowDecoded[]} 按 `sample_key` 升序
    */
-  unplacedPerfSamples(excludedHomeIds = []) {
+  unplacedPerfSamples(excludedHomeIds = [], stream = false) {
     const excluded = normalizeExcludedHomeIds(excludedHomeIds);
     const predicates = ["ts_ms IS NULL"];
     const params = [];
@@ -6947,12 +6984,17 @@ export class UsageStore {
       predicates.push("home_id <> ?");
       params.push(homeId);
     }
-    return Array.from(
-      this.database
-        .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`)
-        .iterate(...params),
-      decodePerfSample,
-    );
+    const rows = this.database
+      .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ${predicates.join(" AND ")} ORDER BY sample_key`)
+      .iterate(...params);
+    if (stream) {
+      return /** @type {any} */ (
+        (function* () {
+          for (const row of rows) yield decodePerfSample(row);
+        })()
+      );
+    }
+    return Array.from(rows, decodePerfSample);
   }
 
   /**
@@ -6968,17 +7010,38 @@ export class UsageStore {
    *
    * ⚠️ 边界（D5 §5 已记录）：本方法**不做**行级解码校验 ⇒ 范围外的坏行不会在这里响亮失败；
    * 范围内的坏行仍由 `perfCandidatesForRange` 的解码路径响亮失败（该路径继续服务统计块）。
-   * @returns {ReadonlyArray<{ sampleKey: string, sourceKind: string, homeId: string }>}
+   * @param {boolean} [rankedOnly]
+   * @returns {ReadonlyArray<{ sampleKey: string, sourceKind: string, homeId: string }> | {
+   *   codexThreadsByHome: Map<string, Set<string>>,
+   *   otherHomeIds: Set<string>,
+   * }}
    */
-  perfSampleIdentities() {
-    return Array.from(
-      this.database.prepare("SELECT sample_key, source_kind, home_id FROM perf_samples").iterate(),
-      (row) => ({
+  perfSampleIdentities(rankedOnly = false) {
+    const rows = this.database.prepare("SELECT sample_key, source_kind, home_id FROM perf_samples").iterate();
+    if (!rankedOnly) {
+      return Array.from(rows, (row) => ({
         sampleKey: String(row.sample_key ?? ""),
         sourceKind: String(row.source_kind ?? ""),
         homeId: String(row.home_id ?? ""),
-      }),
-    );
+      }));
+    }
+    const codexThreadsByHome = new Map();
+    const otherHomeIds = new Set();
+    for (const row of rows) {
+      const sampleKey = String(row.sample_key ?? "");
+      const sourceKind = String(row.source_kind ?? "");
+      const homeId = String(row.home_id ?? "");
+      if (sourceKind === "codex") {
+        if (homeId === "") continue;
+        const threadId = codexSampleThreadId({ sampleKey, sourceKind, homeId });
+        const threadIds = codexThreadsByHome.get(homeId) ?? new Set();
+        threadIds.add(threadId);
+        codexThreadsByHome.set(homeId, threadIds);
+      } else if (homeId !== "") {
+        otherHomeIds.add(homeId);
+      }
+    }
+    return { codexThreadsByHome, otherHomeIds };
   }
 
   async usageFiles(homes) {
@@ -8521,8 +8584,18 @@ export class UsageStore {
         //   * `prune`：只保留本轮发现到的当前路径（替换/删除/重命名淘汰）。
         let window = null;
         try {
+          // A3：planner 仍逐文件完成 ownership proof，但只把轻量
+          // `{filePath, threadId}` 索引交给本轮的 affected-thread 判据。需要构建的
+          // thread 才经 `loadRollouts()` 逐文件水合；transient 模式避免持久 cache
+          // 同时持有整个 home 的 parsed projection。
+          const lazyProjectionCache = {
+            lazyRollouts: true,
+            lookup: (/** @type {any} */ args = {}) => this.codexProjections.lookup({ ...args, transient: true }),
+            stage: (/** @type {any} */ args = {}) => this.codexProjections.stage({ ...args, transient: true }),
+            invalidate: (args = {}) => this.codexProjections.invalidate(args),
+          };
           window = await planStableCodexHome(
-            { ...home, projectionCache: this.codexProjections, parallelPrefix: true },
+            { ...home, projectionCache: lazyProjectionCache, parallelPrefix: true },
             expectedPaths,
           );
         } finally {
@@ -8603,7 +8676,38 @@ export class UsageStore {
             retainedThreadIds.push(thread.threadId);
             continue;
           }
-          const built = buildCodexThreadPerfSamples(homeId, thread.threadId, thread.rollouts, {
+          let rollouts = thread.rollouts;
+          if (typeof thread.loadRollouts === "function") {
+            try {
+              rollouts = await thread.loadRollouts();
+              // Persist only this thread's lazy reads before the next thread
+              // replaces its parsed projections. Stable-window guards have
+              // already run; the cache write is independent of publication.
+              this.codexProjections.commit(homeId);
+            } catch (error) {
+              this.codexProjections.rollback(homeId);
+              if (error?.code === "LIVE_SOURCE_CHANGED") {
+                // The stable-window projection identity no longer matches the
+                // lazy read. Keep the old publication for this thread and let
+                // healthy sibling threads continue through the normal guards.
+                liveThreadIds.add(thread.threadId);
+                window.liveChangedThreadIds = [...liveThreadIds];
+                const changedPath = String(error.filePath ?? "");
+                if (changedPath !== "") {
+                  window.liveChangedPaths = [...new Set([...(window.liveChangedPaths ?? []), changedPath])];
+                  liveChangedPaths.add(changedPath);
+                }
+                const blockedThreads = partialHomesById.get(homeId) ?? new Set();
+                blockedThreads.add(thread.threadId);
+                partialHomesById.set(homeId, blockedThreads);
+                bumpCodexBlockEvent(homeId);
+                noteLiveChangeWarning("codex", homeId);
+                continue;
+              }
+              throw error;
+            }
+          }
+          const built = buildCodexThreadPerfSamples(homeId, thread.threadId, rollouts, {
             lookupRequestTiming: (query) => this.lookupRequestTiming(query),
           });
           stagedThreads.push({
@@ -8613,7 +8717,7 @@ export class UsageStore {
             samples: built.samples,
             warnings: built.warnings,
             fingerprints: Object.fromEntries(
-              thread.rollouts.map((rollout) => [rollout.filePath, window.after.fileFingerprints[rollout.filePath]]),
+              rollouts.map((rollout) => [rollout.filePath, window.after.fileFingerprints[rollout.filePath]]),
             ),
           });
         }
@@ -9057,6 +9161,12 @@ export class UsageStore {
         const previousPerfSampleSourcesByPath = new Map();
         const selectPerfSample = this.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?");
         const selectPerfSampleSources = this.database.prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ?");
+        // Reuse native statements throughout a bulk publication, rather than waiting for GC per row.
+        const insertPerfSample = this.database.prepare(PERF_SAMPLE_INSERT_SQL);
+        const insertPerfSource = this.database.prepare(
+          "INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)",
+        );
+        const deletePerfSample = this.database.prepare("DELETE FROM perf_samples WHERE sample_key = ?");
         const pushByPath = (groups, row) => {
           const sourcePath = String(row.source_path);
           const rows = groups.get(sourcePath) || [];
@@ -9073,7 +9183,7 @@ export class UsageStore {
         const committedDeletedPaths = [];
         for (const threadId of replaceOldThreadIds) {
           for (const sampleKey of codexOldSampleKeysByHome.get(homeId)?.get(threadId) || []) {
-            this.database.prepare("DELETE FROM perf_samples WHERE sample_key = ?").run(sampleKey);
+            deletePerfSample.run(sampleKey);
           }
         }
         for (const threadId of replaceOldThreadIds) {
@@ -9090,11 +9200,13 @@ export class UsageStore {
               .run(sourcePath, homeId, staged.threadId);
           }
           for (const sample of staged.samples) {
-            this.insertPerfSample(sample);
+            this.insertPerfSample(sample, insertPerfSample);
             for (const sourcePath of staged.rolloutFiles) {
-              this.database
-                .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)")
-                .run(sample.sampleKey, sourcePath, sourcePath === sample.sourcePath ? "primary" : "dependency");
+              insertPerfSource.run(
+                sample.sampleKey,
+                sourcePath,
+                sourcePath === sample.sourcePath ? "primary" : "dependency",
+              );
             }
           }
           if (staged.rolloutFiles.length > 0)
@@ -9113,11 +9225,13 @@ export class UsageStore {
             // Keep the last complete publication for an incomplete dependency set;
             // only genuinely new turn identities are added.
             if (oldKeys.has(sample.sampleKey)) continue;
-            this.insertPerfSample(sample);
+            this.insertPerfSample(sample, insertPerfSample);
             for (const sourcePath of staged.rolloutFiles) {
-              this.database
-                .prepare("INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, ?)")
-                .run(sample.sampleKey, sourcePath, sourcePath === sample.sourcePath ? "primary" : "dependency");
+              insertPerfSource.run(
+                sample.sampleKey,
+                sourcePath,
+                sourcePath === sample.sourcePath ? "primary" : "dependency",
+              );
             }
           }
           if (staged.rolloutFiles.length > 0)
@@ -11222,7 +11336,7 @@ export class UsageStore {
       range,
       scopeExclusions,
       quotaPreset,
-      this.capturePerfCarrier({ range, scopeExclusions }),
+      this.capturePerfCarrier({ range, scopeExclusions, streamSamples: true }),
     );
   }
 
@@ -11230,7 +11344,7 @@ export class UsageStore {
    * Capture every perf input used by a later build. Passing no range captures
    * the full table so cold-aware callers can apply the final carrier range.
    */
-  capturePerfCarrier({ range = null, scopeExclusions = [] } = {}) {
+  capturePerfCarrier({ range = null, scopeExclusions = [], streamSamples = false } = {}) {
     const perfState = this.perfState();
     const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
     const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
@@ -11241,11 +11355,16 @@ export class UsageStore {
     ];
     return {
       perfState,
-      samples: [
-        ...this.perfCandidatesForRange(perfBounds, perfExclusions),
-        ...this.unplacedPerfSamples(perfExclusions),
-      ],
-      identities: this.perfSampleIdentities(),
+      samples: streamSamples
+        ? Object.assign(
+            (function* (store) {
+              yield* store.perfCandidatesForRange(perfBounds, perfExclusions, true);
+              yield* store.unplacedPerfSamples(perfExclusions, true);
+            })(this),
+            { [Symbol.for("codex-usage.perf.unique-iterable.v1")]: true },
+          )
+        : [...this.perfCandidatesForRange(perfBounds, perfExclusions), ...this.unplacedPerfSamples(perfExclusions)],
+      identities: this.perfSampleIdentities(streamSamples),
       knownSources: (this.homes || []).map((home) => ({
         kind: canonicalPerfSourceKind(home?.kind),
         homeId: String(home?.id ?? ""),
@@ -11271,8 +11390,43 @@ export class UsageStore {
       codexSampleAllowed(publicationFilter, sample) &&
       (!quotaPreset ||
         isQuotaUsage({ ...sample, quotaSource: this.quotaSourceFor(sample.homeId, sample.sessionId, sample.tsMs) }));
+    const identities = perfCarrier.identities;
+    let rankedHomeIds;
+    if (Array.isArray(identities)) {
+      const codexHomeIds = rankedCodexHomeIds(publicationFilter, identities);
+      const otherHomeIds = identities
+        .filter((sample) => sample.sourceKind !== "codex")
+        .filter((sample) => !degraded.has(sample.homeId))
+        .map((sample) => sample.homeId)
+        .filter(Boolean);
+      rankedHomeIds = [...new Set([...codexHomeIds, ...otherHomeIds])].sort();
+    } else {
+      const homeIds = new Set();
+      for (const [homeId, threadIds] of identities?.codexThreadsByHome ?? []) {
+        for (const threadId of threadIds) {
+          if (!publicationFilter.threadAllowed(homeId, threadId)) continue;
+          homeIds.add(homeId);
+          break;
+        }
+      }
+      for (const homeId of identities?.otherHomeIds ?? []) {
+        if (homeId && !degraded.has(homeId)) homeIds.add(homeId);
+      }
+      rankedHomeIds = [...homeIds].sort();
+    }
     const perfStats = buildPerfStatsBlock({
-      samples: perfCarrier.samples.filter(publishableInRange),
+      samples: /** @type {any} */ (
+        (() => {
+          const filtered = (function* (samples) {
+            for (const sample of samples) if (publishableInRange(sample)) yield sample;
+          })(perfCarrier.samples);
+          const marker = Symbol.for("codex-usage.perf.unique-iterable.v1");
+          if (perfCarrier.samples?.[marker] === true) {
+            Object.defineProperty(filtered, marker, { value: true });
+          }
+          return filtered;
+        })()
+      ),
       bounds: perfBounds,
       excludedHomeIds: perfExclusions,
       knownSources: perfCarrier.knownSources,
@@ -11295,16 +11449,7 @@ export class UsageStore {
       missingSources: perfState.missingSources.filter((source) => !scopeExclusions.includes(source.homeId)),
       sourceWarnings: perfStats.meta.sourceWarnings,
       unsupportedSources: perfCarrier.unsupportedSources,
-      rankedHomeIds: (() => {
-        const identities = perfCarrier.identities;
-        const codexHomeIds = rankedCodexHomeIds(publicationFilter, identities);
-        const otherHomeIds = identities
-          .filter((sample) => sample.sourceKind !== "codex")
-          .filter((sample) => !degraded.has(sample.homeId))
-          .map((sample) => sample.homeId)
-          .filter(Boolean);
-        return [...new Set([...codexHomeIds, ...otherHomeIds])].sort();
-      })(),
+      rankedHomeIds,
       groups: perfStats.groups,
       models: perfStats.models,
       coverage: perfStats.coverage,

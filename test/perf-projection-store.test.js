@@ -700,8 +700,8 @@ test("T1 · 损坏 blob ⇒ 视为 miss + 删该行，不抛错（失效即重�
   }
 });
 
-test("T1 · 真 sync 不被打断：私有表被损坏后，一个有真变的轮次仍跑完且坏行被重算覆盖", async () => {
-  const { homeDir, sessionDir, rolloutA, databaseFile } = await makeCodexHome();
+test("T1 · 真 sync 不被打断：损坏 blob 定向删行，受影响线程在下一次懒构建时恢复", async () => {
+  const { homeDir, sessionDir, rolloutA, rolloutB, databaseFile } = await makeCodexHome();
   // 第三份 rollout：本轮**既不变也不损坏** ⇒ 它是"必须靠私有表水合"的那一份。
   const rolloutC = path.join(sessionDir, "rollout-t1-c.jsonl");
   await writeFile(rolloutC, codexRollout("t1-thread-c", "t1-turn-c1", { ordinalBase: 20, outputTokens: 900 }));
@@ -729,7 +729,7 @@ test("T1 · 真 sync 不被打断：私有表被损坏后，一个有真变的�
   raw.prepare(`UPDATE ${TABLE} SET projection = 'not json at all' WHERE path = ?`).run(victim.path);
   raw.close();
 
-  // ── 实例 2：冷态 + 真变轮 ⇒ 未变文件从私有表水合、坏 blob miss 重算、sync 不抛 ──────────
+  // ── 实例 2：冷态 + 真变轮 ⇒ 未变文件从私有表水合、坏 blob miss 定向删行、sync 不抛 ──────
   const second = new UsageStore({ homeDir, databaseFile });
   try {
     await second.open();
@@ -742,13 +742,25 @@ test("T1 · 真 sync 不被打断：私有表被损坏后，一个有真变的�
       stats.hydratedRows >= 1,
       `冷态真变轮必须从私有表水合未变文件（实测 ${stats.hydratedRows}）—— 证明 planner 真的走了接缝`,
     );
-    // 坏行被重算后覆盖回**合法** JSON。
-    const restored = second.database.prepare(`SELECT projection FROM ${TABLE} WHERE path = ?`).get(victim.path);
-    assert.ok(restored, "重算后该路径必须重新落盘");
-    assert.equal(typeof JSON.parse(String(restored.projection)), "object", "重算后的 blob 必须是合法 JSON");
+    // proof-only 读取发现坏行后立即删除；未变线程不需要为了缓存命中率重写它。
+    const removed = second.database.prepare(`SELECT projection FROM ${TABLE} WHERE path = ?`).get(victim.path);
+    assert.equal(removed, undefined, "损坏行必须由 lazy lookup 定向删除");
     for (const row of storeRows(second.database)) {
       assert.doesNotThrow(() => JSON.parse(String(row.projection)), `${row.path} 的 blob 必须是合法 JSON`);
     }
+    assert.equal(Number(second.database.prepare("PRAGMA foreign_key_check").all().length), 0);
+
+    // 受害线程真正变化时才进入构建；lazy 读取重算该文件并把合法投影写回。
+    await appendFile(
+      rolloutB,
+      `${JSON.stringify(extraTokenFrame("t1-thread-b", "t1-turn-b2", 25, 654, "2026-10-09T02:31:00.000Z"))}\n`,
+    );
+    const repaired = await second.sync();
+    assert.ok(Number.isFinite(Number(repaired.updatedFileCount)));
+    const restored = second.database.prepare(`SELECT projection FROM ${TABLE} WHERE path = ?`).get(victim.path);
+    assert.ok(restored, "受害线程真正重建后，该路径必须重新落盘");
+    assert.equal(typeof JSON.parse(String(restored.projection)), "object", "懒修复后的 blob 必须是合法 JSON");
+    assert.ok(storeRows(second.database).length >= 3, "A/B/C 当前文件集都应重新拥有持久投影");
     assert.equal(Number(second.database.prepare("PRAGMA foreign_key_check").all().length), 0);
   } finally {
     second.close();

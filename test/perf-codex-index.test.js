@@ -3341,12 +3341,12 @@ test("C2 · 触发矩阵：发布前复核发现来源变化（LIVE_SOURCE_CHANG
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// C3 卡：未变文件标准化投影复用
+// C3 卡：未变文件标准化投影复用（lazy planner 下由持久行承载）
 //   * 单元：缓存守卫（来源 / 窗口 / 路径 / 指纹 / 方法版本 / home 身份 / 索引身份）。
-//   * 端到端：内容真变轮只重读改变的文件；未变文件的投影对象被原样复用。
+//   * 端到端：内容真变轮只重读改变的文件；未变文件从持久行 transient 水合，不常驻 parsed cache。
 //   * 失效矩阵：同尺寸同 mtime 改写、路径集变化、方法版本、home 变化、跨轮/跨实例、
 //     稳定窗口（rollback）与发布事务回滚。
-//   * 有界：maxBytes 逐出 + 稳态不增长 + close() 清空 + 不落盘。
+//   * 有界：maxBytes 逐出 + 稳态不增长 + close() 清空 + 只按受影响线程写入私有表。
 // ─────────────────────────────────────────────────────────────────────────────
 const C3_ROOT = mkdtempSync(path.join(os.tmpdir(), "c3-projection-reuse-"));
 process.on("exit", () => rmSync(C3_ROOT, { recursive: true, force: true }));
@@ -3396,6 +3396,10 @@ function c3Write(file, threadId, options) {
   writeFileSync(file, `${c3Lines(threadId, options).join("\n")}\n`, "utf8");
   utimesSync(file, C3_PINNED_SECONDS, C3_PINNED_SECONDS);
   return file;
+}
+
+function c3AppendTurn(file, threadId, turn) {
+  writeFileSync(file, `${readFileSync(file, "utf8")}${c3Lines(threadId, { turn }).slice(1).join("\n")}\n`, "utf8");
 }
 
 let c3Seq = 0;
@@ -3465,26 +3469,67 @@ function c3OutputFor(store, threadId) {
   return projection.records.find((record) => record.kind === "token_usage_record").outputTokens;
 }
 
-function c3Entry(store, filePath) {
+function c3StoredEntry(store, filePath) {
   const suffix = path.basename(filePath).toLowerCase();
-  return store.codexProjections.entries().find((entry) => entry.path.endsWith(suffix));
+  return store.database
+    .prepare(
+      `SELECT path, home_id, kind, method_version, fingerprint, bytes, projection, updated_at
+       FROM perf_codex_projections`,
+    )
+    .all()
+    .find((entry) => String(entry.path).endsWith(suffix));
 }
 
-test("C3 · 端到端：有变更轮只重读改变的文件，未变文件拿到**同一个**投影对象且对象不被改写", async () => {
+function c3StoredSnapshot(store) {
+  return Object.fromEntries(
+    store.database
+      .prepare(
+        `SELECT path, home_id, kind, method_version, fingerprint, bytes, projection, updated_at
+         FROM perf_codex_projections`,
+      )
+      .all()
+      .map((entry) => [
+        String(entry.path),
+        {
+          homeId: String(entry.home_id),
+          kind: String(entry.kind),
+          methodVersion: String(entry.method_version),
+          fingerprint: String(entry.fingerprint),
+          bytes: Number(entry.bytes),
+          projection: String(entry.projection),
+          updatedAt: String(entry.updated_at),
+        },
+      ]),
+  );
+}
+
+function c3PersistenceDelta(before, after) {
+  const fields = [
+    "hydratedRows",
+    "staleFingerprintRows",
+    "invalidatedRows",
+    "corruptRows",
+    "persistedRows",
+    "prunedRows",
+  ];
+  return Object.fromEntries(fields.map((field) => [field, after.persistence[field] - before.persistence[field]]));
+}
+
+test("C3 · 端到端：有变更轮只重读改变的文件，未变文件从持久行水合并保持逐字不变", async () => {
   const fixture = makeC3Home();
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
     const cold = store.codexProjections.stats();
-    assert.equal(cold.entries, 3, "冷启动：3 份 rollout 读完后各留下一条投影");
-    assert.equal(cold.misses, 3, "冷缓存必须真读 3 份");
-    assert.equal(cold.hits, 0, "冷缓存不可能命中");
+    assert.equal(cold.entries, 0, "lazy planner 冷同步后不保留 parsed projection");
+    assert.equal(cold.stagedEntries, 0, "受影响线程提交后不得残留暂存");
+    assert.equal(cold.persistence.persistedRows, 3, "3 个受影响线程各落一条投影");
+    assert.equal(store.codexProjections.persistedRowCount(), 3, "持久行覆盖当前 3 个文件");
+    assert.equal(Array.isArray(store.perfCandidatesForRange(null)), true, "公共范围查询继续返回数组");
+    assert.equal(Array.isArray(store.unplacedPerfSamples()), true, "公共 unplaced 查询继续返回数组");
     assert.equal(store.readMeta("perf_state"), "ready");
-    const projectionRef = c3Entry(store, c3PathOf(fixture, "B")).projection;
-    // 未变文件的"结构化快照"（逐路径）—— 复用轮之后必须逐字不变（planner/builder 不得改写缓存对象）。
-    const snapshotBefore = Object.fromEntries(
-      store.codexProjections.entries().map((entry) => [entry.path, JSON.stringify(entry.projection)]),
-    );
+    // 持久行的完整快照：未变文件的 fingerprint、projection 与 updated_at 都必须逐字不变。
+    const snapshotBefore = c3StoredSnapshot(store);
 
     // 只让 A **真的变了**（追加一个可观测的新回合）⇒ 整 home 必须重新规划。
     const fileA = c3PathOf(fixture, "A");
@@ -3499,23 +3544,43 @@ test("C3 · 端到端：有变更轮只重读改变的文件，未变文件拿�
     assert.equal(c3Samples(store, "Thread-A").length, 2, "A 真的变了 ⇒ 必须被重新读取并多出一条 Turn-2 候选");
     assert.equal(c3Samples(store, "Thread-B").length, 1, "B 未变 ⇒ 候选数不变");
     const stats = store.codexProjections.stats();
-    assert.equal(stats.hits, 2, "B/C 两份未变文件必须命中投影（= 不再全文读取）");
-    assert.equal(stats.staleFingerprint, 1, "A 的旧投影必须被判定过期（失效即删）");
-    assert.equal(stats.misses, 3, "只有冷启动那 3 次是真读：本轮不得新增真读");
-    assert.equal(stats.entries, 3, "只保留当前文件版本：条目数仍是 3，不随轮数增长");
-    assert.equal(stats.rollbacks, 0);
-    assert.equal(stats.commits, 2, "两轮各一次稳定窗口提交");
+    assert.deepEqual(
+      c3PersistenceDelta(cold, stats),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "B/C 从持久行水合；A 定向失效并由受影响线程重新落盘",
+    );
+    assert.equal(stats.entries, 0, "lazy planner 不把当前 home 的 parsed projection 常驻内存");
+    assert.equal(stats.stagedEntries, 0, "逐线程提交后不得残留暂存");
 
-    const reused = c3Entry(store, c3PathOf(fixture, "B"));
-    assert.equal(reused.projection, projectionRef, "未变文件拿到的必须是**同一个**投影对象（复用而非重建）");
+    const snapshotAfter = c3StoredSnapshot(store);
     for (const letter of ["B", "C"]) {
-      const entry = c3Entry(store, c3PathOf(fixture, letter));
-      assert.equal(
-        JSON.stringify(entry.projection),
-        snapshotBefore[entry.path],
-        `planner/builder 不得改写缓存对象（${letter} 的结构化快照逐字不变）`,
+      const stored = c3StoredEntry(store, c3PathOf(fixture, letter));
+      assert.ok(stored, `未变文件 ${letter} 的持久行必须保留`);
+      assert.deepEqual(
+        snapshotAfter[String(stored.path)],
+        snapshotBefore[String(stored.path)],
+        `${letter} 从持久行水合，不得被重新序列化、改写或刷新 updated_at`,
       );
     }
+    const storedA = c3StoredEntry(store, c3PathOf(fixture, "A"));
+    assert.ok(storedA, "A 的新投影必须写回");
+    assert.notEqual(
+      snapshotAfter[String(storedA.path)].fingerprint,
+      snapshotBefore[String(storedA.path)].fingerprint,
+      "A 的持久 fingerprint 必须随真实内容变化",
+    );
+    assert.notEqual(
+      snapshotAfter[String(storedA.path)].projection,
+      snapshotBefore[String(storedA.path)].projection,
+      "A 的持久 projection 必须替换为包含 Turn-2 的新值",
+    );
   } finally {
     store.close();
     fixture.close();
@@ -3528,18 +3593,20 @@ test("C3 · 失效条件（最强）：同尺寸 + 同 mtime 的原地改写必�
   try {
     await store.sync({ options: fixture.reportOptions });
     assert.equal(c3OutputFor(store, "Thread-A"), 120);
+    const before = store.codexProjections.stats();
+    const snapshotBefore = c3StoredSnapshot(store);
 
     const fileA = c3PathOf(fixture, "A");
-    const before = statSync(fileA);
+    const fileBefore = statSync(fileA);
     const original = readFileSync(fileA, "utf8");
     const rewritten = original.replaceAll('"output_tokens":120', '"output_tokens":121');
     assert.notEqual(rewritten, original, "前置：内容确实被改写");
     assert.equal(rewritten.length, original.length, "前置：等长");
     writeFileSync(fileA, rewritten, "utf8");
     utimesSync(fileA, C3_PINNED_SECONDS, C3_PINNED_SECONDS);
-    const after = statSync(fileA);
-    assert.equal(after.size, before.size, "前置：尺寸完全相同");
-    assert.equal(after.mtimeMs, before.mtimeMs, "前置：mtime 完全相同 ⇒ 只有内容摘要能发现这次改写");
+    const fileAfter = statSync(fileA);
+    assert.equal(fileAfter.size, fileBefore.size, "前置：尺寸完全相同");
+    assert.equal(fileAfter.mtimeMs, fileBefore.mtimeMs, "前置：mtime 完全相同 ⇒ 只有内容摘要能发现这次改写");
 
     const status = await store.sync({ options: fixture.reportOptions });
     assert.equal(status.perfState, "ready");
@@ -3549,9 +3616,33 @@ test("C3 · 失效条件（最强）：同尺寸 + 同 mtime 的原地改写必�
       "首尾各 64KiB 的既有内容指纹必须发现这次改写 ⇒ 该文件必须重新读取",
     );
     const stats = store.codexProjections.stats();
-    assert.equal(stats.staleFingerprint, 1, "旧投影必须被判定过期并删除");
-    assert.equal(stats.hits, 2, "同轮未变的 B/C 仍然复用");
-    assert.equal(stats.entries, 3, "A 的新投影必须写回：条目数不变、不新增第二个版本");
+    assert.deepEqual(
+      c3PersistenceDelta(before, stats),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "摘要必须让 A 的旧持久行定向失效；B/C 仍从持久行水合",
+    );
+    assert.equal(stats.entries, 0, "lazy planner 不常驻整个 home 的 parsed projection");
+    const snapshotAfter = c3StoredSnapshot(store);
+    const storedA = c3StoredEntry(store, fileA);
+    assert.ok(storedA);
+    assert.notEqual(
+      snapshotAfter[String(storedA.path)].fingerprint,
+      snapshotBefore[String(storedA.path)].fingerprint,
+      "同尺寸同 mtime 改写必须改变持久 fingerprint",
+    );
+    assert.notEqual(
+      snapshotAfter[String(storedA.path)].projection,
+      snapshotBefore[String(storedA.path)].projection,
+      "A 的新投影必须写回且只保留当前版本",
+    );
+    assert.equal(store.codexProjections.persistedRowCount(), 3, "持久行数保持当前文件集大小");
   } finally {
     store.close();
     fixture.close();
@@ -3592,7 +3683,19 @@ test("C3 · 边界（如实声明）：首尾 64KiB 探针之外的等长改写�
     const statsBefore = store.codexProjections.stats();
     await store.sync({ options: fixture.reportOptions });
     const statsAfter = store.codexProjections.stats();
-    assert.equal(statsAfter.hits - statsBefore.hits, 2, "A/B 复用；只有 C 真读");
+    assert.deepEqual(
+      c3PersistenceDelta(statsBefore, statsAfter),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "A/B 从持久行水合；只有 C 的可见变化真读并落盘",
+    );
+    assert.equal(store.codexProjections.stats().entries, 0, "复用轮不得把三份 parsed projection 常驻内存");
     assert.equal(c3OutputFor(store, "Thread-B"), 120, "复用确实发生：B 没有被重读（重读会读到现在文件里的 121）");
     // 同一次 strict reader 直接读文件 ⇒ 磁盘上确实已是 121：差别就是「复用 vs 全文读」。
     const strict = await readCodexRollout(fileB);
@@ -3617,31 +3720,66 @@ test("C3 · 失效条件：路径集变化（新增 / 删除）立即重新规�
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
-    assert.equal(store.codexProjections.stats().entries, 3);
+    assert.equal(store.codexProjections.stats().entries, 0);
+    assert.equal(store.codexProjections.persistedRowCount(), 3);
 
     // 新增 D（探针天然可见：新路径）⇒ 必须真读 D。
+    const beforeAdd = store.codexProjections.stats();
     const fileD = c3Write(path.join(fixture.sessionsDir, "rollout-d.jsonl"), "Thread-D", {});
     const added = await store.sync({ options: fixture.reportOptions });
     assert.equal(added.perfState, "ready");
     assert.equal(c3OutputFor(store, "Thread-D"), 120, "新增文件必须被真正读取");
     let stats = store.codexProjections.stats();
-    assert.equal(stats.entries, 4, "新增 ⇒ 当前文件集变成 4 份");
-    assert.equal(stats.hits, 3, "其余 3 份复用");
+    assert.deepEqual(
+      c3PersistenceDelta(beforeAdd, stats),
+      {
+        hydratedRows: 3,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "A/B/C 从持久行水合；新增 D 作为受影响线程落盘",
+    );
+    assert.equal(stats.entries, 0, "lazy planner 不常驻 parsed projection");
+    assert.equal(store.codexProjections.persistedRowCount(), 4, "新增 ⇒ 当前文件集变成 4 行");
+    assert.ok(c3StoredEntry(store, fileD), "新增文件必须拥有持久投影");
 
     // 删除 D ⇒ home 重新规划（`shouldPlan` 的路径集判据）⇒ 淘汰 D 的投影。
+    const beforeDeleteD = store.codexProjections.stats();
     rmSync(fileD, { force: true });
     await store.sync({ options: fixture.reportOptions });
     stats = store.codexProjections.stats();
-    assert.equal(stats.entries, 3, "删除 ⇒ 只保留当前文件版本（D 的投影必须被淘汰）");
-    assert.equal(c3Entry(store, fileD), undefined, "被删除路径的投影不得残留");
-    assert.equal(
-      store.codexProjections.entries().every((entry) => entry.path.endsWith(".jsonl")),
-      true,
+    assert.deepEqual(
+      c3PersistenceDelta(beforeDeleteD, stats),
+      {
+        hydratedRows: 3,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 0,
+        prunedRows: 1,
+      },
+      "删除 D 只触发定向 prune；其余三行水合且不重写",
     );
+    assert.equal(store.codexProjections.persistedRowCount(), 3, "只保留当前文件集");
+    assert.equal(c3StoredEntry(store, fileD), undefined, "被删除路径的持久投影不得残留");
     // 再删一份 ⇒ 再淘汰一条（替换 / 删除淘汰是逐条的）。
+    const beforeDeleteC = store.codexProjections.stats();
     rmSync(c3PathOf(fixture, "C"), { force: true });
     await store.sync({ options: fixture.reportOptions });
-    assert.equal(store.codexProjections.stats().entries, 2);
+    stats = store.codexProjections.stats();
+    assert.deepEqual(c3PersistenceDelta(beforeDeleteC, stats), {
+      hydratedRows: 2,
+      staleFingerprintRows: 0,
+      invalidatedRows: 0,
+      corruptRows: 0,
+      persistedRows: 0,
+      prunedRows: 1,
+    });
+    assert.equal(store.codexProjections.persistedRowCount(), 2);
+    assert.equal(stats.entries, 0);
   } finally {
     store.close();
     fixture.close();
@@ -3654,8 +3792,9 @@ test("C3 · 已证明的 append 只隔离变更线程，未受影响的投影仍
   try {
     await store.sync({ options: fixture.reportOptions });
     const golden = store.codexProjections.stats();
-    assert.equal(golden.entries, 3);
-    assert.equal(golden.commits, 1);
+    assert.equal(golden.entries, 0);
+    assert.equal(golden.persistence.persistedRows, 3);
+    const goldenSnapshot = c3StoredSnapshot(store);
 
     // 先让 A 探针可见地变了（⇒ 本轮必然重新规划）。
     const fileA = c3PathOf(fixture, "A");
@@ -3686,18 +3825,68 @@ test("C3 · 已证明的 append 只隔离变更线程，未受影响的投影仍
     assert.equal(unstable.perfState, "degraded");
     assert.equal(c2WarningCodes(store).includes("LIVE_SOURCE_CHANGED"), true, "被隔离线程必须如实归因");
     const partial = store.codexProjections.stats();
-    assert.equal(partial.rollbacks, 0, "已证明的 append 不触发整窗口 rollback");
     assert.equal(partial.stagedEntries, 0, "被隔离路径的暂存投影必须被丢弃（不粘到下一轮）");
-    assert.equal(partial.entries, 2, "A 与 B 的旧条目被隔离，C 的已提交投影保留");
-    assert.equal(partial.commits, 2, "已证明的 append 仍提交未受影响文件的投影");
+    assert.equal(partial.entries, 0, "lazy planner 不保留整个 home 的 parsed projection");
+    assert.deepEqual(
+      c3PersistenceDelta(golden, partial),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 1,
+      },
+      "只提交 A 的新持久投影；B 的 live-change 旧投影被定向 prune，C 不受影响",
+    );
+    assert.equal(store.codexProjections.persistedRowCount(), 2, "B 的旧投影必须被淘汰，A/C 保留");
+    const partialSnapshot = c3StoredSnapshot(store);
+    assert.equal(c3StoredEntry(store, c3PathOf(fixture, "B")), undefined, "live-change 路径不得粘住旧投影");
+    const storedC = c3StoredEntry(store, c3PathOf(fixture, "C"));
+    assert.ok(storedC);
+    assert.deepEqual(
+      partialSnapshot[String(storedC.path)],
+      goldenSnapshot[String(storedC.path)],
+      "C 在隔离轮中必须保持逐字不变",
+    );
+    const storedA = c3StoredEntry(store, c3PathOf(fixture, "A"));
+    assert.ok(storedA);
+    assert.notDeepEqual(
+      partialSnapshot[String(storedA.path)],
+      goldenSnapshot[String(storedA.path)],
+      "A 的新持久投影必须先于发布事务提交",
+    );
+    assert.equal(c3Samples(store, "Thread-B").length, 1, "B 的旧候选在隔离轮保持原发布值");
+    assert.equal(c3Samples(store, "Thread-C").length, 1, "C 的候选保持原发布值");
 
     // 恢复轮：窗口稳定 ⇒ 提交；A 与 B 的新投影必须被读出来并发布。
+    const beforeRecovery = partial;
     const recovered = await store.sync({ options: fixture.reportOptions });
     assert.equal(recovered.perfState, "ready");
     assert.equal(c3Samples(store, "Thread-A").length, 2, "A 必须被重新读取（不稳定轮的投影没有留下来）");
     const after = store.codexProjections.stats();
-    assert.equal(after.commits, 3, "隔离轮与恢复轮各提交一次未受影响投影；B 的过期投影仍被排除");
-    assert.equal(after.entries, 3);
+    assert.deepEqual(
+      c3PersistenceDelta(beforeRecovery, after),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "恢复轮 A/C 水合；B 上轮旧投影已 prune，因此真读后只重写 B；A 可复用已提交的新行再发布",
+    );
+    assert.equal(c3Samples(store, "Thread-B").length, 1, "B 追加的是空行，重建后公共候选仍只有一条");
+    const storedB = c3StoredEntry(store, c3PathOf(fixture, "B"));
+    assert.ok(storedB);
+    assert.notEqual(
+      c3StoredSnapshot(store)[String(storedB.path)].fingerprint,
+      goldenSnapshot[String(storedB.path)].fingerprint,
+      "B 的持久 fingerprint 必须反映 live append，证明恢复轮真正重读并落盘",
+    );
+    assert.equal(after.entries, 0);
+    assert.equal(store.codexProjections.persistedRowCount(), 3);
     assert.equal(c2WarningCodes(store).includes("LIVE_SOURCE_CHANGED"), false, "告警随恢复消失");
   } finally {
     store.close();
@@ -3734,18 +3923,37 @@ test("C3 · 发布事务回滚：投影不因回滚失效（文件内容没变�
     assert.equal(store.readMeta("perf_index_version"), version, "回滚不得伪造成功变更（投影不得掩盖它）");
     assert.equal(c3Samples(store, "Thread-A").length, 1, "回滚后已发布候选保持旧值");
     const afterFailure = store.codexProjections.stats();
-    assert.equal(afterFailure.hits - baseline.hits, 2, "失败轮里 B/C 未变 ⇒ 复用（A 真读）");
-    assert.equal(afterFailure.staleFingerprint - baseline.staleFingerprint, 1, "A 真的变了 ⇒ 必须真读");
+    assert.deepEqual(
+      c3PersistenceDelta(baseline, afterFailure),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "失败轮里 B/C 从持久行水合；A 真读后先更新缓存行，发布事务仍独立回滚",
+    );
+    assert.equal(afterFailure.entries, 0, "lazy planner 不常驻整个 home 的 parsed projection");
+    assert.equal(store.codexProjections.persistedRowCount(), 3, "投影缓存行不因发布事务回滚而删除");
 
     const recovered = await store.sync({ options: fixture.reportOptions });
     assert.equal(recovered.perfState, "ready");
     assert.notEqual(store.readMeta("perf_index_version"), version, "恢复轮必须推进版本");
     assert.equal(c3Samples(store, "Thread-A").length, 2, "恢复轮必须发布新候选");
     const stats = store.codexProjections.stats();
-    assert.equal(
-      stats.hits - afterFailure.hits,
-      3,
-      "恢复轮 A/B/C 全部复用：发布事务回滚**不**使投影失效（文件内容没变），也**不**被投影掩盖",
+    assert.deepEqual(
+      c3PersistenceDelta(afterFailure, stats),
+      {
+        hydratedRows: 4,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 0,
+        prunedRows: 0,
+      },
+      "恢复轮 A 经 proof + affected-thread load 两次水合，B/C 各一次；没有任何全量重读或重写",
     );
     assert.equal(c2WarningCodes(store).includes("READ_ONLY_OPEN_FAILED"), false, "瞬态归因随轮消失");
   } finally {
@@ -3754,12 +3962,13 @@ test("C3 · 发布事务回滚：投影不因回滚失效（文件内容没变�
   }
 });
 
-test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、schema 已抬到 21 且不新增任何 meta 键", async () => {
+test("C3 · 生命周期：close() 清空内存、新实例按需水合持久行、schema 与 meta 键保持", async () => {
   const fixture = makeC3Home();
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
-    assert.equal(store.codexProjections.stats().entries, 3);
+    assert.equal(store.codexProjections.stats().entries, 0);
+    assert.equal(store.codexProjections.persistedRowCount(), 3);
     const metaKeys = store.database
       .prepare("SELECT key FROM store_meta ORDER BY key")
       .all()
@@ -3767,7 +3976,7 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
     assert.equal(
       metaKeys.some((key) => /projection/i.test(key)),
       false,
-      "投影缓存不得落盘（持久化属 T1，仅 C6 触发后才做）",
+      "持久投影只能进入私有表，不得新增任何 meta 键",
     );
     assert.equal(
       store.database.prepare("PRAGMA user_version").get().user_version,
@@ -3812,17 +4021,35 @@ test("C3 · 生命周期与不落盘：close() 清空、新实例冷启动、sch
     fixture.close();
   }
 
-  // 新实例：同一份库 + 同一份来源 ⇒ 冷启动（投影不跨实例）。
+  // 新实例：同一份库 + 同一份来源 ⇒ parsed cache 为空，需要规划时从持久行水合。
   const secondFixture = makeC3Home();
   const first = new UsageStore(secondFixture.serverOptions);
   const second = new UsageStore(secondFixture.serverOptions);
   try {
     await first.sync({ options: secondFixture.reportOptions });
-    assert.equal(first.codexProjections.stats().entries, 3);
+    assert.equal(first.codexProjections.stats().entries, 0);
+    assert.equal(first.codexProjections.persistedRowCount(), 3);
     assert.equal(second.codexProjections.stats().entries, 0, "新实例的缓存必须是空的");
+    await second.open();
+    const beforeSecond = second.codexProjections.stats();
+    c3AppendTurn(c3PathOf(secondFixture, "A"), "Thread-A", "Turn-2");
     await second.sync({ options: secondFixture.reportOptions });
-    assert.equal(second.codexProjections.stats().hits, 0, "跨实例不复用：第二个实例必须自证（哪怕第一轮无变更）");
-    assert.equal(first.codexProjections.stats().entries, 3, "另一个实例的缓存不受影响");
+    const afterSecond = second.codexProjections.stats();
+    assert.deepEqual(
+      c3PersistenceDelta(beforeSecond, afterSecond),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "新实例从共享持久表水合 B/C，只为真变的 A 线程重新落盘",
+    );
+    assert.equal(afterSecond.entries, 0, "水合不能重新制造整 home 的 parsed cache");
+    assert.equal(second.codexProjections.persistedRowCount(), 3);
+    assert.equal(first.codexProjections.persistedRowCount(), 3, "另一个实例的持久表视图不受影响");
   } finally {
     first.close();
     second.close();
@@ -4071,54 +4298,137 @@ test("C3 · 单元：retainHomes 淘汰整体消失的 home（含尚未提交的
   assert.equal(cache.stats().entries, 2);
 });
 
-test("C3 · planner 层接缝：显式指纹 + 注入缓存时「未变文件复用 / 变更文件真读」，且归属结果不变", async () => {
+test("C3 · planner 层接缝：lazy transient 下未变文件水合、变更文件真读，归属与 digest 复核不变", async () => {
   const fixture = makeC3Home({ count: 2 });
   const store = new UsageStore(fixture.serverOptions);
   try {
     // 用一次真实 sync 取得**真实探针口径**的逐文件指纹（避免在测试里再镜像一份指纹算法）。
     await store.sync({ options: fixture.reportOptions });
     const cache = store.codexProjections;
+    const storedRows = store.database
+      .prepare("SELECT path, home_id, fingerprint FROM perf_codex_projections ORDER BY path")
+      .all();
+    assert.equal(storedRows.length, 2, "前置：冷同步必须留下两份持久投影");
     const files = fixture.paths.slice().sort();
     const fingerprints = Object.fromEntries(
       files.map((file) => {
-        const entry = cache.entries().find((candidate) => candidate.path.endsWith(path.basename(file).toLowerCase()));
-        assert.ok(entry, `前置：${path.basename(file)} 必须已入缓存`);
-        return [file, entry.fingerprint];
+        const entry = storedRows.find((candidate) =>
+          String(candidate.path).endsWith(path.basename(file).toLowerCase()),
+        );
+        assert.ok(entry, `前置：${path.basename(file)} 必须已有持久行`);
+        return [file, String(entry.fingerprint)];
       }),
     );
-    const before = cache.stats();
+    const homeId = String(storedRows[0].home_id);
+    assert.equal(homeId !== "", true, "前置：持久行必须带真实 home 身份");
+    const lookupCalls = [];
+    const lazyCache = {
+      lazyRollouts: true,
+      lookup(args = {}) {
+        const projection = cache.lookup({ ...args, transient: true });
+        lookupCalls.push({ filePath: path.resolve(String(args.filePath)), hit: projection !== undefined });
+        return projection;
+      },
+      stage(args = {}) {
+        return cache.stage({ ...args, transient: true });
+      },
+      invalidate(args = {}) {
+        return cache.invalidate(args);
+      },
+    };
+    const beforeWarm = cache.stats();
 
     // 指纹逐字相同 ⇒ 两份都复用；归属结果必须与真实读取时一致。
     // ⚠️ homeId 必须用**真实的 home id**（缓存条目按 home 绑定；换 id 会走 foreignHome 守卫）。
-    const homeId = cache.entries()[0].homeId;
-    assert.equal(typeof homeId === "string" && homeId !== "", true, "前置：缓存条目必须带 home 身份");
     const warm = await planCodexHomeThreads(homeId, files, {
-      projectionCache: cache,
+      projectionCache: lazyCache,
       fingerprints,
       kind: "main",
     });
     assert.equal(warm.ok, true);
-    assert.equal(cache.stats().hits - before.hits, 2, "指纹逐字相同 ⇒ 两份都必须复用");
-    assert.equal(cache.stats().stagedEntries, 0, "复用不产生暂存（没有新的真实读取）");
+    assert.deepEqual(
+      c3PersistenceDelta(beforeWarm, cache.stats()),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 0,
+        prunedRows: 0,
+      },
+      "指纹逐字相同 ⇒ 两份都从持久行 transient 水合，不产生内存条目或回写",
+    );
+    assert.equal(lookupCalls.length, 2);
+    assert.equal(
+      lookupCalls.every((call) => call.hit),
+      true,
+      "两份 proof lookup 都必须命中持久行",
+    );
+    assert.equal(cache.stats().entries, 0, "lazy planner 不保留整 home 的 parsed projection");
+    assert.equal(cache.stats().stagedEntries, 0, "proof-only 水合不产生暂存");
     assert.deepEqual(
       warm.threads.map((thread) => thread.threadId).sort(),
       ["Thread-A", "Thread-B"],
       "复用不得改变归属结果",
     );
+    assert.equal(
+      warm.threads.every((thread) => typeof thread.loadRollouts === "function"),
+      true,
+    );
+    assert.equal(Array.isArray(store.perfCandidatesForRange(null)), true, "公共范围查询保持数组契约");
 
     // 只把一个文件的指纹改掉（等价于"它真的变了"）⇒ 那一份必须真读，另一份仍复用。
     const changedFile = files[0];
     const staleFingerprints = { ...fingerprints, [changedFile]: `${fingerprints[changedFile]}-stale` };
+    const beforeMixed = cache.stats();
     const mixed = await planCodexHomeThreads(homeId, files, {
-      projectionCache: cache,
+      projectionCache: lazyCache,
       fingerprints: staleFingerprints,
       kind: "main",
     });
     assert.equal(mixed.ok, true);
-    const stats = cache.stats();
-    assert.equal(stats.hits - before.hits, 3, "第二轮的未变那一份仍复用（2 + 1）");
-    assert.equal(stats.staleFingerprint, 1, "变更文件必须被判定过期并真读");
-    assert.equal(stats.stagedEntries, 1, "真读的那一份进入暂存（等稳定窗口才提交）");
+    assert.deepEqual(
+      c3PersistenceDelta(beforeMixed, cache.stats()),
+      {
+        hydratedRows: 1,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 0,
+        prunedRows: 0,
+      },
+      "未变文件继续水合；变更文件定向删行并真读，proof-only 阶段不落盘",
+    );
+    assert.equal(cache.stats().entries, 0);
+    assert.equal(cache.stats().stagedEntries, 0);
+    assert.equal(cache.persistedRowCount(), 1, "变更文件的旧持久行必须被定向删除");
+
+    const changedThread = mixed.threads.find((thread) =>
+      thread.rollouts.some((rollout) => path.resolve(rollout.filePath) === path.resolve(changedFile)),
+    );
+    assert.ok(changedThread, "变更文件必须仍能按完整 home 计划归属到唯一线程");
+    assert.equal(changedThread.threadId, "Thread-A");
+    const beforeRepair = cache.stats();
+    const loaded = await changedThread.loadRollouts();
+    assert.equal(loaded.length, 1, "变更线程 lazy load 必须返回完整 rollout 依赖");
+    assert.equal(loaded[0].projection && typeof loaded[0].projection === "object", true);
+    cache.commit(homeId);
+    assert.deepEqual(
+      c3PersistenceDelta(beforeRepair, cache.stats()),
+      {
+        hydratedRows: 0,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+        prunedRows: 0,
+      },
+      "受影响线程的 lazy 读取经 digest 复核后只回写该文件",
+    );
+    const repaired = c3StoredEntry(store, changedFile);
+    assert.ok(repaired, "懒修复后变更文件必须重新拥有持久投影");
+    assert.equal(typeof JSON.parse(String(repaired.projection)), "object");
+    assert.equal(cache.persistedRowCount(), 2, "当前文件集恢复为两份持久行");
   } finally {
     store.close();
     fixture.close();

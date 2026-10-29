@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
@@ -14,6 +15,17 @@ const HOT_TIME = "2026-07-12T02:01:00.000Z";
 const COLD_MS = Date.parse(COLD_TIME);
 const HOT_MS = Date.parse(HOT_TIME);
 const SESSION_ID = "cold-freeze-api-session";
+
+function installExecutorPreload(root, fileName, source) {
+  const preloadFile = path.join(root, fileName);
+  writeFileSync(preloadFile, source);
+  const previousNodeOptions = process.env.NODE_OPTIONS;
+  process.env.NODE_OPTIONS = `${previousNodeOptions ?? ""} --import=${pathToFileURL(preloadFile).href}`.trim();
+  return () => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = previousNodeOptions;
+  };
+}
 
 function tokenLine(timestamp, total, lastTotal) {
   return JSON.stringify({
@@ -214,9 +226,36 @@ test("freeze and snapshot reads retain authorized cold history after the segment
 test("cold HTTP freeze keeps catalog A costs after live pricing changes to B", async () => {
   const fixture = await createArchivedFixture();
   const originalCatalog = getPricingCatalog();
-  const originalSummarizeHistoryReport = UsageStore.prototype.summarizeHistoryReport;
+  const markerFile = path.join(fixture.root, "force-frozen-cold-summary-failure");
+  const usageStoreUrl = new URL("../src/usage-store.js", import.meta.url).href;
+  const liveDatabaseFile = path.resolve(fixture.serverOptions.databaseFile);
+  let restoreExecutorPreload;
   let server;
   try {
+    restoreExecutorPreload = installExecutorPreload(
+      fixture.root,
+      "cold-summary-failure.mjs",
+      `import { existsSync } from "node:fs";
+import path from "node:path";
+import { UsageStore } from ${JSON.stringify(usageStoreUrl)};
+
+if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "function") {
+  const markerFile = ${JSON.stringify(markerFile)};
+  const liveDatabaseFile = ${JSON.stringify(liveDatabaseFile)};
+  const shouldFail = (store) =>
+    existsSync(markerFile) &&
+    typeof store.databaseFile === "string" &&
+    path.resolve(store.databaseFile) !== liveDatabaseFile;
+  for (const method of ["summarizeInReadTransaction", "summarizeHistoryReport"]) {
+    const original = UsageStore.prototype[method];
+    UsageStore.prototype[method] = function (...args) {
+      if (shouldFail(this)) throw new Error("INJECTED_COLD_SUMMARY_FAILURE");
+      return Reflect.apply(original, this, args);
+    };
+  }
+}
+`,
+    );
     server = createUsageServer(fixture.serverOptions);
     const baseUrl = await listen(server);
     assert.equal((await fetch(`${baseUrl}/api/pricing`)).status, 200);
@@ -270,16 +309,14 @@ test("cold HTTP freeze keeps catalog A costs after live pricing changes to B", a
     let failedStatus;
     let failedError;
     let catalogAfterFailure;
-    UsageStore.prototype.summarizeHistoryReport = () => {
-      throw new Error("INJECTED_COLD_SUMMARY_FAILURE");
-    };
     try {
+      writeFileSync(markerFile, "fail frozen cold summaries");
       const failedResponse = await fetch(snapshotUrl);
       failedStatus = failedResponse.status;
       failedError = (await failedResponse.json()).error;
       catalogAfterFailure = getPricingCatalog();
     } finally {
-      UsageStore.prototype.summarizeHistoryReport = originalSummarizeHistoryReport;
+      rmSync(markerFile, { force: true });
     }
     assert.equal(failedStatus, 500);
     assert.equal(failedError, "INJECTED_COLD_SUMMARY_FAILURE");
@@ -292,9 +329,12 @@ test("cold HTTP freeze keeps catalog A costs after live pricing changes to B", a
     );
     assert.deepEqual(costFields(liveAfterRecovery.summary), liveCost);
   } finally {
-    UsageStore.prototype.summarizeHistoryReport = originalSummarizeHistoryReport;
-    setPricingCatalog(originalCatalog);
-    if (server) await server.close();
-    fixture.close();
+    try {
+      if (server) await server.close();
+    } finally {
+      restoreExecutorPreload?.();
+      setPricingCatalog(originalCatalog);
+      fixture.close();
+    }
   }
 });

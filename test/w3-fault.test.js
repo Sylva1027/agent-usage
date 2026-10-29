@@ -6,7 +6,7 @@
 //          ② 崩溃后**下一个请求**能恢复（新执行器、库重开、读侧快照不脏）；
 //          ③ 崩溃发生在**发布中途**不留半发布可见状态；④ `close()` 期间崩溃仍**必须落定**；
 //          ⑤ 多次 `close()` / `close()` 后再请求 / 异常路径 ⇒ 库文件与临时目录**立即可删**（Windows EBUSY/EPERM 硬判据）；
-//          ⑥ worker 数量/句柄在关闭前后对比（无连接/进程泄漏）。
+//          ⑥ executor child 数量/句柄在关闭前后对比（无连接/进程泄漏）。
 //
 // W4-FIX（task-24，**只动清理/超时/生命周期，判据一条未放宽**）：
 //   · ⑧ 的子进程：`stdio: "ignore"`（不继承任何管道）+ 标记文件报到（不再读 stdout）+ `unref()` +
@@ -58,7 +58,7 @@ const CELL_ORDER = [
   "④close() 期间崩溃",
   "⑤多次 close()/close 后再请求",
   "⑥异常路径退出",
-  "⑦存活 worker 线程不累积",
+  "⑦存活 executor child 不累积",
   "⑧外部 kill",
 ];
 
@@ -125,17 +125,23 @@ async function makeExecutor({ root, fixture, options = {} }) {
   return { executor: createUsageExecutor(isolated), options: isolated };
 }
 
-/**
- * **活着的 worker 线程数**（硬计数）：`process.report.getReport().workers` 每个存活线程一份子报告。
- * 注意 `process._getActiveHandles()` 在 Node 24 **看不到** Worker（实测 before/during 都是 0），
- * 所以句柄面用 report 计数，不用 `_getActiveHandles`。
- */
-const liveWorkerThreads = () => {
+/** OS 级存活检查；EPERM 仍表示目标 PID 存在。 */
+const processAlive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
-    return process.report.getReport().workers.length;
-  } catch {
-    return -1;
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
   }
+};
+
+const waitForProcessExit = async (pid, timeoutMs = 5_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (processAlive(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return !processAlive(pid);
 };
 
 test("W3 · 崩溃①：worker 被强制终止 ⇒ 在途请求以可重试错误结算，不挂死", async () => {
@@ -337,34 +343,47 @@ test("W3 · 泄漏②：异常路径（执行器内失败）后 close() ⇒ 库�
   });
 });
 
-test("W3 · 泄漏③：反复 create→sync→close 三个循环，存活 worker 线程数不累积（无孤儿线程）", async () => {
+test("W3 · 泄漏③：反复 create→sync→close 三个循环，存活 executor child 不累积（无孤儿进程）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-handles-"));
   const fixture = createPerfCodexIntegrationFixture();
-  const baseline = liveWorkerThreads();
   const cycles = [];
+  const priorPids = [];
   for (let cycle = 1; cycle <= 3; cycle += 1) {
     const { executor, options } = await makeExecutor({ root, fixture });
-    await executor.sync({ options: { ...options, force: true } });
-    const during = liveWorkerThreads();
-    const aliveDuring = executor.alive;
-    await executor.close();
-    await new Promise((resolve) => setTimeout(resolve, 150)); // 给线程退出留一拍
-    cycles.push({ cycle, during, after: liveWorkerThreads(), aliveDuring, aliveAfter: executor.alive });
+    let pid = null;
+    let aliveDuring = false;
+    let during = -1;
+    let after = -1;
+    let aliveAfter = true;
+    try {
+      await executor.sync({ options: { ...options, force: true } });
+      pid = executor.pid;
+      aliveDuring = executor.alive && processAlive(pid);
+      during = [...priorPids, pid].filter(processAlive).length;
+      assert.equal(during, 1, `第 ${cycle} 轮活着时恰好有一个 executor child（${JSON.stringify(priorPids)} + ${pid}）`);
+    } finally {
+      await executor.close();
+    }
+    const exited = await waitForProcessExit(pid);
+    aliveAfter = executor.alive;
+    after = [...priorPids, pid].filter(processAlive).length;
+    priorPids.push(pid);
+    cycles.push({ cycle, pid, during, after, aliveDuring, aliveAfter, exited });
   }
   fixture.close();
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   assert.ok(
-    cycles.every((row) => row.aliveDuring === true && row.aliveAfter === false),
-    `每个循环：活着时必须 alive、close() 后必须 !alive（${JSON.stringify(cycles)}）`,
+    cycles.every((row) => row.aliveDuring === true && row.aliveAfter === false && row.exited === true),
+    `每个循环：活着时 executor child 必须存活，close() 后必须 !alive 且 PID 已退出（${JSON.stringify(cycles)}）`,
   );
   assert.ok(
-    cycles.every((row) => row.during === baseline + 1 && row.after === baseline),
-    `活着时恰好 +1 个 worker 线程、close() 后回到基线（baseline=${baseline}，${JSON.stringify(cycles)}）`,
+    cycles.every((row) => row.during === 1 && row.after === 0),
+    `活着时恰好一个 executor child、close() 后不留下任何旧 PID（${JSON.stringify(cycles)}）`,
   );
   record({
-    cell: "⑦存活 worker 线程不累积",
-    expected: "3 个 create→close 循环：活着 +1、close() 后回基线；每次 close() 后 !alive",
-    observed: `baseline=${baseline}/during=[${cycles.map((row) => row.during).join(",")}]/after=[${cycles.map((row) => row.after).join(",")}]/aliveAfter=[${cycles.map((row) => row.aliveAfter).join(",")}]`,
+    cell: "⑦存活 executor child 不累积",
+    expected: "3 个 create→close 循环：活着恰好 1 个、close() 后 0 个；每次 close() 后 !alive 且 PID 已退出",
+    observed: `during=[${cycles.map((row) => row.during).join(",")}]/after=[${cycles.map((row) => row.after).join(",")}]/aliveAfter=[${cycles.map((row) => row.aliveAfter).join(",")}]`,
     detail: cycles,
   });
 });

@@ -6,15 +6,13 @@
 // 走的就是 `sync()` 的真实路径。
 //
 // 判据口径（必须写清楚，否则"没有重读"只是口号）：
-//   * `readCodexRolloutMetadata()` 只在 `projectionCache.lookup()` 返回 `undefined` 时被调用
-//     （`src/perf-sources/codex-thread.js:590-592`，唯一入口）；
-//   * 内存 `lookup()` 的三条"返回 undefined"路径各自计数：条目不存在 ⇒ `misses`（`:407-410`）、
-//     指纹变了并被删 ⇒ `staleFingerprint`（`:412-416`）、方法版本不符并被删 ⇒ `staleMethodVersion`
-//     （`:418-422`）；`foreignHome`（`:424-427`）也返回 undefined；
-//   * 持久包装在内存未命中后查表，命中即**水合**并计 `persistence.hydratedRows`
-//     （`createPersistentCodexProjectionCache().lookup ⑥`），水合**不**走 planner 的 `stage()`。
-//   ⇒ **本轮全文读份数 = misses + staleFingerprint + staleMethodVersion + foreignHome − hydratedRows**
-//   （本夹具下 `kind`/路径/指纹/库四道包装守卫恒成立，故没有其它"返回 undefined"的来源）。
+//   * 产品 sync 使用 lazy transient lookup：持久行命中只计 `persistence.hydratedRows`，不会把整个
+//     home 的 parsed projection 留在内存；
+//   * 指纹、方法版本或损坏 blob 失配时，持久层定向删行并分别计入
+//     `staleFingerprintRows` / `invalidatedRows` / `corruptRows`；
+//   * 只有受影响线程的 lazy 读取会进入 `stage()`，并在该线程构建前提交，计入 `persistedRows`；
+//   * `stats().entries` 在 lazy planner 路径保持 0；跨实例复用由 `persistedRowCount()` 与上述
+//     persistence 计数共同证明。
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -114,16 +112,10 @@ function samplesJson(store, threadId) {
   return JSON.stringify(rows.map((row) => ({ sample_key: String(row.sample_key), output_tokens: row.output_tokens })));
 }
 
-/** 本轮**全文读**份数（见文件头口径；各计数都是累计值，故用前后差分）。 */
-function fullReadsOf(before, after) {
-  const undefinedReturns =
-    after.misses -
-    before.misses +
-    (after.staleFingerprint - before.staleFingerprint) +
-    (after.staleMethodVersion - before.staleMethodVersion) +
-    (after.foreignHome - before.foreignHome);
-  const hydrated = after.persistence.hydratedRows - before.persistence.hydratedRows;
-  return { undefinedReturns, hydrated, fullReads: undefinedReturns - hydrated };
+/** lazy planner 的持久层计数（累计值，故一律使用前后差分）。 */
+function persistenceDelta(before, after) {
+  const fields = ["hydratedRows", "staleFingerprintRows", "invalidatedRows", "corruptRows", "persistedRows"];
+  return Object.fromEntries(fields.map((field) => [field, after.persistence[field] - before.persistence[field]]));
 }
 
 /** 私有表里**方法版本仍是当前值**的行数（业务侧只读查询，用于"只失效必要行"的前后行数）。 */
@@ -148,7 +140,12 @@ test("T2 · 缺省接线：open() 之前是纯内存缓存，open()（sync）之
     const stats = store.codexProjections.stats();
     assert.equal(stats.persistence?.table, "perf_codex_projections", "open() 之后必须接上私有持久表");
     assert.equal(store.codexProjections.persistedRowCount(), 1, "真读到的 1 份必须落盘（不是 null、不是 0）");
-    assert.equal(stats.entries, 1, "内存侧口径不变");
+    assert.equal(stats.entries, 0, "lazy planner 不保留整个 home 的 parsed projection");
+    assert.equal(stats.stagedEntries, 0, "受影响线程提交后不得残留暂存");
+    assert.equal(stats.bytes, 0, "lazy planner 的常驻内存投影字节为 0");
+    assert.equal(stats.persistence.persistedRows, 1, "只有真实构建的线程投影落盘");
+    assert.equal(Array.isArray(store.perfCandidatesForRange(null)), true, "公共统计查询继续返回数组");
+    assert.equal(Array.isArray(store.unplacedPerfSamples()), true, "公共 unplaced 查询继续返回数组");
   } finally {
     store.close();
     fixture.close();
@@ -164,7 +161,7 @@ test("T2 · 冷启动边界：close() 后重开实例 + 1 份真变 ⇒ 未变�
   const second = new UsageStore(fixture.serverOptions);
   try {
     await first.sync({ options: fixture.reportOptions });
-    assert.equal(first.codexProjections.stats().entries, 3, "冷启动：3 份各留一条内存投影");
+    assert.equal(first.codexProjections.stats().entries, 0, "lazy planner 冷同步后不保留 parsed projection");
     assert.equal(first.codexProjections.persistedRowCount(), 3, "3 份都必须落盘");
     const bBefore = samplesJson(first, "Thread-B");
     const cBefore = samplesJson(first, "Thread-C");
@@ -189,9 +186,15 @@ test("T2 · 冷启动边界：close() 后重开实例 + 1 份真变 ⇒ 未变�
     assert.equal(status.perfState, "ready");
     const after = second.codexProjections.stats();
     assert.deepEqual(
-      fullReadsOf(before, after),
-      { undefinedReturns: 3, hydrated: 2, fullReads: 1 },
-      "3 份全部内存未命中，但只有**被改的 1 份**必须真读：B/C 必须由持久投影水合（T2 的核心收益）",
+      persistenceDelta(before, after),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 1,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+      },
+      "B/C 由持久投影水合；只有被改的 A 定向失效并作为受影响线程重新落盘",
     );
     assert.equal(
       after.persistence.staleFingerprintRows - before.persistence.staleFingerprintRows,
@@ -203,7 +206,8 @@ test("T2 · 冷启动边界：close() 后重开实例 + 1 份真变 ⇒ 未变�
       1,
       "重读的 1 份写回（水合的 2 份不重写）",
     );
-    assert.equal(after.entries, 3, "只保留当前文件版本");
+    assert.equal(after.entries, 0, "lazy planner 不把三份 parsed projection 留在内存");
+    assert.equal(after.stagedEntries, 0, "逐线程提交后不得残留暂存");
 
     // 发布面：A 多一条新候选（真变生效），B/C 的候选**逐字节不变** ⇒ 水合回来的投影是新鲜的
     // （它照样过了 `evaluateCodexProjection()` 与前后指纹/路径集比较 —— 那条路径本卡一个字节没改）。
@@ -224,7 +228,7 @@ test("T2 · `stats()` 仍是纯内存口径：持久行在 `persistedRowCount()`
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
-    assert.equal(store.codexProjections.stats().entries, 2);
+    assert.equal(store.codexProjections.stats().entries, 0, "lazy planner 的 parsed projection 常驻数为 0");
     assert.equal(store.codexProjections.persistedRowCount(), 2);
     store.codexProjections.clear();
     assert.equal(store.codexProjections.stats().entries, 0, "clear() 后内存归零（内存口径）");
@@ -254,7 +258,9 @@ test("T2 · 方法版本失效（显式入口）：只删版本不符的行 + **
       store.database.prepare("SELECT * FROM perf_samples ORDER BY sample_key").all(),
     );
 
-    const victim = cache.entries()[0].path;
+    const victim = String(
+      store.database.prepare("SELECT path FROM perf_codex_projections ORDER BY path LIMIT 1").get().path,
+    );
     store.database.prepare("UPDATE perf_codex_projections SET method_version = 'stale:1' WHERE path = ?").run(victim);
     const swept = cache.invalidateStaleMethodVersions();
     assert.deepEqual(
@@ -283,7 +289,7 @@ test("T2 · 方法版本失效（显式入口）：只删版本不符的行 + **
 test("T2 · 方法版本失效（lookup 路径，跨实例）：版本不符的行由 `lookup()` 定向删除 + 只重读它", async () => {
   const fixture = makeHome();
   const a = fixture.write("A");
-  fixture.write("B");
+  const b = fixture.write("B");
   fixture.write("C");
   const first = new UsageStore(fixture.serverOptions);
   const second = new UsageStore(fixture.serverOptions);
@@ -291,7 +297,9 @@ test("T2 · 方法版本失效（lookup 路径，跨实例）：版本不符的�
     await first.sync({ options: fixture.reportOptions });
     const bBefore = samplesJson(first, "Thread-B");
     // 把 B 的行标成"旧方法版本"：这正是真实 bump 之后库里会出现的样子（比较在 `lookup ④`）。
-    const bEntry = first.codexProjections.entries().find((entry) => entry.path.endsWith("rollout-b.jsonl"));
+    const bEntry = first.database
+      .prepare("SELECT path FROM perf_codex_projections WHERE path LIKE ?")
+      .get("%rollout-b.jsonl");
     assert.ok(bEntry, "前置：B 的行必须存在");
     first.database
       .prepare("UPDATE perf_codex_projections SET method_version = 'stale:1' WHERE path = ?")
@@ -307,18 +315,52 @@ test("T2 · 方法版本失效（lookup 路径，跨实例）：版本不符的�
     assert.equal(status.perfState, "ready");
     const after = second.codexProjections.stats();
     assert.deepEqual(
-      fullReadsOf(before, after),
-      { undefinedReturns: 3, hydrated: 1, fullReads: 2 },
-      "只有「真变的那 1 份」+「版本不符的 1 份」需要真读，第三份必须水合",
+      persistenceDelta(before, after),
+      {
+        hydratedRows: 1,
+        staleFingerprintRows: 1,
+        invalidatedRows: 1,
+        corruptRows: 0,
+        persistedRows: 1,
+      },
+      "C 水合；A 因真变、B 因旧方法版本各自 miss；只有受影响的 A 线程需要重新落盘",
     );
     assert.equal(
       after.persistence.invalidatedRows - before.persistence.invalidatedRows,
       1,
       "版本不符的行由 `lookup()` 定向删除（只删那 1 行）",
     );
-    assert.equal(second.codexProjections.persistedRowCount(), 3, "重读的 2 份写回 ⇒ 行数回到 3，表既不膨胀也不清空");
-    assert.equal(currentVersionRows(second), 3, "第 2 轮之后库里 3 行都是当前版本");
+    assert.equal(second.codexProjections.persistedRowCount(), 2, "未受影响的 B 不因 proof-only 读取而重新落盘");
+    assert.equal(currentVersionRows(second), 2, "库里只剩 A/C 两条当前版本；B 等实际重建时懒修复");
+    assert.equal(
+      second.database
+        .prepare("SELECT COUNT(*) AS n FROM perf_codex_projections WHERE path LIKE ?")
+        .get("%rollout-b.jsonl").n,
+      0,
+      "旧方法版本行必须已经被 lookup 定向删除",
+    );
     assert.equal(samplesJson(second, "Thread-B"), bBefore, "B 重读后候选值不变（内容没变）");
+
+    // B 真正变化时才需要构建其线程；此时 lazy 读取把合法投影重新落盘。
+    const beforeRepair = second.codexProjections.stats();
+    appendTurn(b.file, b.threadId, "Turn-2");
+    const repaired = await second.sync({ options: fixture.reportOptions });
+    assert.equal(repaired.perfState, "ready");
+    const afterRepair = second.codexProjections.stats();
+    assert.deepEqual(
+      persistenceDelta(beforeRepair, afterRepair),
+      {
+        hydratedRows: 2,
+        staleFingerprintRows: 0,
+        invalidatedRows: 0,
+        corruptRows: 0,
+        persistedRows: 1,
+      },
+      "B 真变后 lazy 构建只重新落盘 B；A/C 仍从持久行水合",
+    );
+    assert.equal(second.codexProjections.persistedRowCount(), 3, "懒修复后当前文件集恢复为 3 行");
+    assert.equal(currentVersionRows(second), 3, "修复后的 B 行使用当前方法版本");
+    assert.notEqual(samplesJson(second, "Thread-B"), bBefore, "B 真变后公共候选数组必须发布新值");
   } finally {
     first.close();
     second.close();

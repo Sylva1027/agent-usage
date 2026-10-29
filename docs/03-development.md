@@ -43,15 +43,15 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 
 皮肤配色的唯一手写源是 `public/skin-palettes.js`（10 套 × 浅深 × 12 个 token）；`public/skin-bootstrap.js` 与 `public/skin-assets.json` 只能由 `npm.cmd run skins:prepare` 从当前源生成，`npm.cmd run skins:check` 只读核对发布内容（manifest、40 个 WebP 副本哈希、bootstrap），`npm.cmd run skins:check:sources` 再把副本与作者源 PNG 绑定。候选生成→捕获→报告→选择→production 的准确 CLI、隔离参数和输出位置以 [B 的 CLI 兼容调查](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/engineering-gates/cli-compatibility.md)为准；旧轮 `--production` 只绑定旧迁移来源，不能写成当前新轮通过或据此新增兼容层。任何源字节变化都会使旧摘要/capture 过期，须按受影响范围重测；本轮证据根为 [新轮验收](validation/2026-10-03-skin-palette-redesign/20261003T185748/integration/m62-reaccept-20261020/README.md)。本轮全仓工程门禁独立登记，不以旧 CLI 或本段生成/核对命令代替。
 
-## 单执行器与读侧快照（2026-10-10）
+## 轻量服务、计算进程与本地汇总（2026-10-29）
 
-重活（`sync`、`summarize`、`periodComparison`）全部在 `src/usage-executor.js` 的 worker 里执行，**数据库连接只在执行器内**；主线程不打开库，只用执行器 `postMessage` 发布的**已提交读侧快照**应答 `/api/status`、`/api/pricing`、`/api/imports`、`/index.html`（判据 p95 ≤ 100 ms / max ≤ 250 ms）。要点：
+重活（`sync`、`summarize`、`periodComparison`）由 `src/usage-executor.js` 启动独立计算进程执行，空闲 200 ms 后关闭索引连接并退出。HTTP 服务保存轻量状态，`src/usage-summary-cache.js` 将汇总写入索引旁的 `.summaries.sqlite`；主服务只对索引做短只读查询，检查已发布版本。来源及统计边界未变时，刷新和服务重启均可复用汇总，无需启动计算进程。冻结快照沿用独立数据库和相同计算入口。
 
-- **内存预算**：后台 `gateway` / `restart` 默认使用 `--max-old-space-size=512`，可通过 `--memory-mb` 或 `CODEX_USAGE_MEMORY_MB` 覆盖。这是 V8 老生代堆预算，不是整个进程的内存上限；Worker 也继承该参数。此前默认 256 MiB 在同步投影缓存、计价缓存及大范围性能查询叠加时可耗尽。性能候选现在逐行解码，避免同时保留完整 SQL 原始行和解码数组。
+- **内存预算**：后台 `gateway` / `restart` 的默认父服务参数仍为 `--max-old-space-size=512`，计算进程单独限制为 old-space 224 MiB、semi-space 4 MiB，计价 memo 为 8/16 MiB。它们都是堆或缓存预算，不能当作总内存上限；验收统计同一时刻服务与活跃计算进程的工作集、私有提交之和。性能投影按需加载，性能样本与 DSH 行流式消费，批量写样本复用 prepared statement。整合实测与限制见[验收记录](validation/2026-10-29-local-summary-adoption/README.md)。
 - **并发合并**：`src/server.js` 的 `loadUsageStore()` 用 `syncPromise` 把并发重请求合并成一次同步（"两轮并发只允许发出一次 `sync` 消息"由 `test/w1-executor.test.js` 的计数断言把守）。
 - **故障恢复**：执行器崩溃 ⇒ 在途请求以 `EXECUTOR_EXITED`（`retryable: true`）结算而不挂死；下一次请求就地重启一次（**无重试循环**）；`close()` 幂等且显式等待 flush/退出（`test/w3-fault.test.js`）。
 - **发布原子性**：读侧快照要么为空、要么完整；发布中途不得出现半成品（`F2-half-publish` 突变机械钉住）。
-- **时钟源**：`checkedAt` 由 worker 盖戳，与主线程注入的固定时钟**不同源** ⇒ 做"整响应逐字节对照"时必须屏蔽时刻/诊断字段（V1 用 7 条具名白名单，含 `^modelActivity\.modelUsageAsOf$`）。
+- **时钟源**：源检查的 `checkedAt` 由服务盖戳；汇总命中后用共享公式更新流速、模型活动期及额度陈旧状态。跨日、未来事实生效、额度边界、来源或索引发布变化会使相关汇总失效。冻结结果始终使用冻结时刻。
 - **对账纪律**：`tools/out` 是只读锚点，**禁止对其中任何 `.sqlite` 做打开（含 `readOnly:true`）**——WAL 库只读打开也会生成 `-wal`/`-shm`。跑会写它的套件前先逐字节快照、跑后还原，并用 `lead-acceptance/T1/pre-run-hashes.txt` 复核 0 变更/0 缺失。
 
 ## 检查命令

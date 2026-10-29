@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { fork } from "node:child_process";
 import { appendFileSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { Worker } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
 
 import { checkpointUsageStore, createUsageExecutor } from "../src/usage-executor.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
@@ -192,47 +193,83 @@ test("a failed sync publishes its checkpoint diagnostic without masking the orig
   const storeUrl = new URL("../src/usage-store.js", import.meta.url).href;
   const preload = `data:text/javascript,${encodeURIComponent(`
     import { UsageStore } from ${JSON.stringify(storeUrl)};
-    UsageStore.prototype.sync = async () => {
+    UsageStore.prototype.sync = async function () {
+      this.database.close();
       const error = new Error("injected sync failure");
       error.code = "INJECTED_SYNC";
       throw error;
     };
   `)}`;
-  const worker = new Worker(new URL("../src/usage-executor.js", import.meta.url), {
+  const options = {
+    homeDir: root,
+    env: {},
+    databaseFile: path.join(root, "usage-index.sqlite"),
+    importStoreFile: path.join(root, "imports.json"),
+    importDirs: [],
+    automaticDiscoveryEnabled: false,
+  };
+  const child = fork(fileURLToPath(new URL("../src/usage-executor.js", import.meta.url)), [], {
+    env: { ...process.env, CODEX_USAGE_EXECUTOR_CHILD: "1" },
     execArgv: ["--import", preload],
-    workerData: {
-      options: {
-        homeDir: root,
-        env: {},
-        databaseFile: path.join(root, "usage-index.sqlite"),
-        importStoreFile: path.join(root, "imports.json"),
-        importDirs: [],
-        automaticDiscoveryEnabled: false,
-      },
-    },
+    serialization: "advanced",
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+    windowsHide: true,
+  });
+  const exited = new Promise((resolve) => {
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
   try {
     const messages = [];
+    let resolveDiagnostic;
+    const diagnosticReady = new Promise((resolve) => {
+      resolveDiagnostic = resolve;
+    });
     const response = await new Promise((resolve, reject) => {
-      worker.on("message", (message) => {
+      child.on("message", (message) => {
         if (message.type === "ready") {
-          worker.postMessage({ type: "sync", id: 1, options: { force: true } });
+          child.send({ type: "sync", id: 1, options: { force: true } }, (error) => {
+            if (error) reject(error);
+          });
         } else if (message.type === "state") {
           messages.push(message.state);
+          if (message.state?.lastCheckpoint?.error?.stage) resolveDiagnostic(message.state.lastCheckpoint);
         } else if (message.type === "response" && message.id === 1) {
           resolve(message);
+        } else if (message.type === "fatal") {
+          reject(new Error(message.error?.message ?? "executor initialization failed"));
         }
       });
-      worker.on("error", reject);
-      worker.on("exit", (code) => reject(new Error(`worker exited before responding: ${code}`)));
+      child.once("error", reject);
+      child.once("exit", (code) => reject(new Error(`executor child exited before responding: ${code}`)));
+      child.send({ type: "init", options, state: {} }, (error) => {
+        if (error) reject(error);
+      });
     });
     assert.equal(response.ok, false);
     assert.equal(response.error.code, "INJECTED_SYNC");
     assert.match(response.error.message, /injected sync failure/);
-    const diagnostic = messages.find((state) => state.lastCheckpoint)?.lastCheckpoint;
+    let diagnosticTimer;
+    const diagnostic = await Promise.race([
+      diagnosticReady,
+      new Promise((_, reject) => {
+        diagnosticTimer = setTimeout(
+          () => reject(new Error(`checkpoint diagnostic state did not arrive: ${JSON.stringify(messages)}`)),
+          5_000,
+        );
+        diagnosticTimer.unref?.();
+      }),
+    ]);
+    clearTimeout(diagnosticTimer);
     assert.equal(diagnostic?.error?.stage, "checkpoint");
   } finally {
-    await worker.terminate();
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+    const stopped = await Promise.race([
+      exited.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+    ]);
+    assert.equal(stopped, true, "executor child must exit before cleanup");
     rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

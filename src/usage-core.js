@@ -100,7 +100,7 @@ const PROJECT_USAGE_FILE = "usage.jsonl";
 const PROJECT_LOG_SCHEMA_VERSION = "codex-usage.project-log.v1";
 const MS_PER_MINUTE = 60 * 1000;
 const QUOTA_WINDOW_MINUTES = Object.freeze({ quota_5h: 300, quota_week: 10080 });
-const QUOTA_PERCENT_STALE_AFTER_MS = 10 * 60 * 1000;
+export const QUOTA_PERCENT_STALE_AFTER_MS = 10 * 60 * 1000;
 export const USAGE_PRESETS = Object.freeze([
   "today",
   "week",

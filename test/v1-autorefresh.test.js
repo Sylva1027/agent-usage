@@ -16,12 +16,7 @@
  *      **不得增长**（证明没有重复发布 / 重复累积）；源真变后的那一周期必须发布新版本，
  *      之后再次稳定。
  *
- * ⚠️ 两条**实测发现**（写进 V1 报告）：
- *   1. W1-a 之后**源检查跑在 worker 线程**里，`checkedAt` / `asOf` 这类"服务端盖章"由
- *      **worker 自己的 `Date`** 产生，主线程里 `installFixedClock`（B3 的口径）**盖不住它们**。
- *      这正是卡片要求"差异白名单仅含预期时刻/诊断字段"的实证理由 ⇒ 本文件不做
- *      "整响应逐字节相同"，而是**按白名单屏蔽后**比较；并单独断言这两个字段走的是
- *      **真实时钟**（落在本测试的真实时间窗口内、且明显不同于固定时钟）。
+ * 源检查现由轻量服务完成，checkedAt 跟随服务时钟；重型计算由独立进程完成。
  *   2. 夹具 `createPerfCodexIntegrationFixture()` 的 codex 数据基准是 `2026-10-04T12:00:00.000Z`，
  *      落在 `preset=today` 窗口**之外**（today 返回 `groups: 0`）⇒ 承载"源检查/发布"语义
  *      用 `preset=all`；`today` 的真隔离输入覆盖见 `V1/verify-v1.mjs` 的 A/F 项。
@@ -152,7 +147,6 @@ const QUOTA_QUERIES = {
 };
 
 test("V1/K 自动刷新：固定时钟下多周期确定性等价，稳定源不重复发布（计数不增长）", async () => {
-  const realNowMs = Date.now(); // 必须在 installClock 之前取
   const fixture = createPerfCodexIntegrationFixture();
   const clock = installClock(FIXED_NOW_ISO);
   try {
@@ -203,19 +197,10 @@ test("V1/K 自动刷新：固定时钟下多周期确定性等价，稳定源不
         const counts = indexCounts(fixture.serverOptions.databaseFile);
         cycles.push({ cycle, checkedAt: reads.all.checkedAt, indexVersion: reads.all.indexVersion, counts });
 
-        // ③ 每一周期都**真的做了一次源检查**：`checkedAt` 必须是**真实时刻**
-        //    （⚠️ 由 worker 盖戳 ⇒ 只断言"走真实时钟"，不断言等于主线程固定时钟）
+        // ③ 每轮源检查的时间戳必须跟随当前服务时钟。
         const stamp = Date.parse(reads.all.checkedAt);
         assert.ok(Number.isFinite(stamp), `cycle${cycle} checkedAt 必须可解析：${reads.all.checkedAt}`);
-        assert.ok(
-          stamp >= realNowMs - 300_000,
-          `cycle${cycle} checkedAt 必须走真实时钟（worker 盖戳）：${reads.all.checkedAt}`,
-        );
-        assert.notEqual(
-          reads.all.checkedAt,
-          FIXED_NOW_ISO,
-          `cycle${cycle} checkedAt 不得等于主线程固定时钟（实证 worker 盖戳）`,
-        );
+        assert.equal(reads.all.checkedAt, new Date().toISOString(), `cycle${cycle} checkedAt 跟随源检查时钟`);
         // ④ 源未变 ⇒ `indexVersion` 可证且不变
         assert.equal(reads.all.perfState, "ready", `cycle${cycle} perfState 必须 ready`);
         assert.notEqual(reads.all.indexVersion, null, `cycle${cycle} indexVersion 必须可证（非 null）`);

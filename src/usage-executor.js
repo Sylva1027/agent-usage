@@ -17,23 +17,31 @@
 //     `warnings`/`serviceTierEvidence`/`checkedAt`）。status 在同步繁忙时读快照，空闲时限时读取发布版本。
 //   · 价目目录：**主线程**是唯一权威（它持有价目文件与自动刷新）；每次请求把 `getPricingCatalog()`
 //     带上，执行器在自己的模块实例里 `setPricingCatalog` 对齐（否则执行器会用内置缺省价目算成本）。
-//   · 生命周期：连接初始化/关闭归执行器；主线程 `close()` 后 `terminate()`，退出不留孤儿线程。
+//   · 生命周期：连接初始化/关闭归执行器；空闲 200 ms 后关闭连接并退出，下一请求再拉起独立进程。
 //   · 崩溃/超时：在飞请求收到**可重试**错误（`EXECUTOR_UNAVAILABLE`/`EXECUTOR_EXITED`/超时），
-//     不做无限重试（完整恢复是 W3）。
-import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
+//     不做无限重试。
+import { fork } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { backup } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { createHistoryBackup } from "./history-backup.js";
 import { publishHistoryArchiveImport, stageHistoryArchiveSegments } from "./history-archive.js";
-import { getPricingCatalog, runWithPricingCatalog, setPricingCatalog } from "./pricing.js";
+import { createEventCostMemo, getPricingCatalog, runWithPricingCatalog, setPricingCatalog } from "./pricing.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
-import { quotaSourceEvidenceSnapshot } from "./quota-source-evidence.js";
+import { quotaSourceEvidenceFromSnapshot, quotaSourceEvidenceSnapshot } from "./quota-source-evidence.js";
 import { UsageStore } from "./usage-store.js";
 
-const REQUEST_TIMEOUT_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 900_000;
+const IDLE_TIMEOUT_MS = 200;
 const CLOSE_TIMEOUT_MS = 5_000;
+const EXECUTOR_CHILD_ENV = "CODEX_USAGE_EXECUTOR_CHILD";
+const EXECUTOR_CHILD_MARKER = "1";
+const EXECUTOR_FILE = fileURLToPath(new URL("./usage-executor.js", import.meta.url));
+const EXECUTOR_EXEC_ARGV = ["--max-old-space-size=224", "--max-semi-space-size=4"];
+const EVENT_COST_MEMO_MAX_BYTES = 8 * 1024 * 1024;
+const EVENT_COST_MEMO_HARD_MAX_BYTES = 16 * 1024 * 1024;
 
 /**
  * 结果里可能带**类实例**（如 tier resolver）⇒ `postMessage` 的 structured clone 会抛
@@ -62,6 +70,7 @@ function restoreServiceTierEvidenceRecord(record) {
 function executorOptions(options = {}) {
   const forwarded = {};
   for (const [key, value] of Object.entries(options)) {
+    if (key === "executorIdleTimeoutMs") continue;
     if (typeof value === "function") continue;
     try {
       structuredClone(value);
@@ -327,20 +336,90 @@ export async function readHistoryArchiveDays(store, segmentId) {
 }
 
 // ---------------------------------------------------------------------------
-// 执行器侧（worker）
+// 执行器侧（独立进程）
 // ---------------------------------------------------------------------------
-if (!isMainThread && parentPort) {
-  const store = new UsageStore(workerData.options);
+
+function restoreExecutorLightState(store, lightState = {}) {
+  store.homes = structuredClone(lightState.homes ?? []);
+  store.warnings = [...(lightState.warnings ?? [])];
+  store.checkedAt = lightState.checkedAt ?? "";
+  store.generatedAt = lightState.status?.generatedAt ?? store.generatedAt;
+  store.fingerprint = lightState.status?.fingerprint ?? store.fingerprint;
+  store.serviceTierEvidence =
+    lightState.serviceTierEvidence === null || lightState.serviceTierEvidence === undefined
+      ? null
+      : serviceTierEvidenceFromSnapshot(lightState.serviceTierEvidence);
+  store.quotaSourceEvidence = lightState.quotaSourceEvidenceSnapshot
+    ? quotaSourceEvidenceFromSnapshot(lightState.quotaSourceEvidenceSnapshot)
+    : null;
+  store.serviceTierEvidenceInput = store.serviceTierEvidenceSignature(store.homes);
+}
+
+async function runExecutorProcess() {
+  const childProcess = process;
+  const childSend = childProcess.send;
+  if (!childSend) return;
+
+  let store = null;
   let storeStatus = null;
   let publishedStore = null;
   let publishedStatus = null;
   let publishedReady = Promise.resolve();
   let lastCheckpoint = null;
   let syncBackupTail = Promise.resolve();
+  let initialized = false;
+  let initializing = false;
+  let stopping = false;
+  let active = 0;
+  const queued = [];
+
+  const send = (message) =>
+    new Promise((resolve, reject) => {
+      if (!childProcess.connected) {
+        reject(new Error("executor parent IPC disconnected"));
+        return;
+      }
+      childSend.call(childProcess, message, (error) => {
+        if (error) reject(error);
+        else resolve(undefined);
+      });
+    });
+
+  const shutdown = async ({ notifyIdle = false, waitForActive = false } = {}) => {
+    if (stopping) return;
+    stopping = true;
+    const forceExit = setTimeout(() => childProcess.exit(0), CLOSE_TIMEOUT_MS);
+    try {
+      if (waitForActive) {
+        while (active > 0) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      try {
+        store?.close();
+      } catch {
+        // The process boundary releases any remaining SQLite handle.
+      }
+      if (notifyIdle && childProcess.connected) {
+        try {
+          await send({ type: "idle-exit" });
+        } catch {
+          // The parent may already be gone.
+        }
+      }
+    } finally {
+      clearTimeout(forceExit);
+      try {
+        if (childProcess.connected) childProcess.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+      childProcess.exit(0);
+    }
+  };
 
   const postState = ({ includeHomes = false } = {}) => {
+    if (!store) return;
     const perf = store.perfPublicationState();
-    parentPort.postMessage({
+    void send({
       type: "state",
       state: toWire({
         status: storeStatus,
@@ -360,15 +439,13 @@ if (!isMainThread && parentPort) {
             }
           : {}),
       }),
-    });
+    }).catch(() => {});
   };
 
   const postCheckpointDiagnostic = () => {
-    try {
-      parentPort.postMessage({ type: "state", state: toWire({ lastCheckpoint }) });
-    } catch {
+    void send({ type: "state", state: toWire({ lastCheckpoint }) }).catch(() => {
       // A diagnostic must never replace the original sync failure.
-    }
+    });
   };
 
   const releasePublishedReader = () => {
@@ -405,7 +482,19 @@ if (!isMainThread && parentPort) {
       case "open": {
         applyPricingCatalog(message.pricing);
         await store.open();
-        if (message.imported) {
+        if (message.frozen) {
+          restoreExecutorLightState(store, message.frozen);
+          const checkedAt = message.frozen.checkedAt ?? message.frozen.status?.checkedAt ?? new Date().toISOString();
+          storeStatus = message.frozen.status
+            ? { ...message.frozen.status, checkedAt }
+            : {
+                fingerprint: store.fingerprint,
+                generatedAt: store.generatedAt,
+                checkedAt,
+                missingSources: store.perfState().missingSources,
+              };
+          store.checkedAt = checkedAt;
+        } else if (message.imported) {
           store.serviceTierEvidence =
             message.serviceTierEvidence === null ? null : serviceTierEvidenceFromSnapshot(message.serviceTierEvidence);
           const report = await store.publishedHistoryUsageReport();
@@ -419,7 +508,7 @@ if (!isMainThread && parentPort) {
           };
         }
         postState({ includeHomes: true });
-        return message.imported ? storeStatus : { opened: true };
+        return message.frozen || message.imported ? storeStatus : { opened: true };
       }
       case "sync": {
         // WAL readers can keep the last committed view without copying the database.
@@ -497,8 +586,7 @@ if (!isMainThread && parentPort) {
       }
       case "summarize": {
         applyPricingCatalog(message.pricing);
-        // `now`/`asOf` 在主线程是 `Date`，跨线程只能传字符串 ⇒ 这里显式复活成 `Date`
-        // （否则 `summarize`/`periodComparison` 会拿到字符串，配额窗口/周期语义随之改变）。
+        // Dates survive advanced serialization, but legacy callers may still send milliseconds.
         const filters = { ...(message.filters ?? {}) };
         filters.pricingModels ??= getPricingCatalog().models;
         if (filters.now !== undefined && !(filters.now instanceof Date)) filters.now = new Date(filters.now);
@@ -512,12 +600,11 @@ if (!isMainThread && parentPort) {
         return store.periodComparisonHistory(args);
       }
       case "metadata": {
-        // 读侧时点：**必须**按调用方给的 `asOf` 现算，并包含已授权的冷事实。
+        // Read-side instants must be evaluated by the caller's asOf, including authorized cold facts.
         return store.metadataHistory(message.asOf ? new Date(message.asOf) : new Date());
       }
       case "snapshot": {
-        // 用户主动 freeze：备份在**执行器内**完成（主线程不再持有连接做备份）。
-        // `id`/`asOf`/`snapshots.set(...)` 是主线程簿记，这里只返回绑定该 `asOf` 的读侧状态。
+        // User-initiated freeze runs entirely in the executor process.
         applyPricingCatalog(message.pricing);
         const pricingCatalog = getPricingCatalog();
         const asOf = message.asOf ? new Date(message.asOf) : new Date();
@@ -564,6 +651,9 @@ if (!isMainThread && parentPort) {
             homes: store.homes,
             warnings: [...store.warnings],
             serviceTierEvidence: serviceTierEvidenceForWire(store.serviceTierEvidence),
+            quotaSourceEvidenceSnapshot: store.quotaSourceEvidence
+              ? quotaSourceEvidenceSnapshot(store.quotaSourceEvidence)
+              : null,
             pricingCatalog,
             checkedAt: store.checkedAt ?? storeStatus?.checkedAt ?? null,
             ...(staged ? { cleanupDirectory } : {}),
@@ -629,42 +719,45 @@ if (!isMainThread && parentPort) {
     }
   };
 
-  parentPort.on("message", (message) => {
-    void (async () => {
+  const executeMessage = async (message) => {
+    if (stopping) return;
+    if (message.type === "idleClose") {
+      await shutdown({ notifyIdle: true });
+      return;
+    }
+    active += 1;
+    try {
+      await store.open();
+      applyPricingCatalog(message.pricing);
+      const priceScoped =
+        message.type === "open" ||
+        message.type === "dashboard" ||
+        message.type === "summarize" ||
+        message.type === "periodComparison" ||
+        message.type === "snapshot" ||
+        message.type === "backupHistory";
+      const execute = () =>
+        priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
+      const result =
+        message.type === "sync" ||
+        message.type === "backupHistory" ||
+        message.type === "snapshot" ||
+        message.type === "rebuildHistoryRollups" ||
+        message.type === "historyArchiveDays" ||
+        message.type === "historyArchiveEventPage" ||
+        message.type === "historyArchiveEventCommit" ||
+        message.type === "historyArchiveImport" ||
+        message.type === "publishedUsageEvents" ||
+        message.type === "publishedUsageReport" ||
+        message.type === "perfPublicationState" ||
+        message.type === "close"
+          ? await serializeSyncBackup(execute)
+          : await execute();
+      await send({ type: "response", id: message.id, ok: true, result: toWire(result) });
+      if (message.type === "close") await shutdown();
+    } catch (error) {
       try {
-        applyPricingCatalog(message.pricing);
-        const priceScoped =
-          message.type === "open" ||
-          message.type === "dashboard" ||
-          message.type === "summarize" ||
-          message.type === "periodComparison" ||
-          message.type === "snapshot" ||
-          message.type === "backupHistory";
-        const execute = () =>
-          priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
-        const result =
-          message.type === "sync" ||
-          message.type === "backupHistory" ||
-          message.type === "snapshot" ||
-          message.type === "rebuildHistoryRollups" ||
-          message.type === "historyArchiveDays" ||
-          message.type === "historyArchiveEventPage" ||
-          message.type === "historyArchiveEventCommit" ||
-          message.type === "historyArchiveImport" ||
-          message.type === "publishedUsageEvents" ||
-          message.type === "publishedUsageReport" ||
-          message.type === "perfPublicationState" ||
-          message.type === "close"
-            ? await serializeSyncBackup(execute)
-            : await execute();
-        parentPort.postMessage({ type: "response", id: message.id, ok: true, result: toWire(result) });
-        if (message.type === "close") {
-          // 先让响应出队，再关闭端口让 worker **自然退出**（显式 `process.exit` 会在 Windows 上
-          // 触发 libuv `UV_HANDLE_CLOSING` 断言）。
-          setImmediate(() => parentPort.close());
-        }
-      } catch (error) {
-        parentPort.postMessage({
+        await send({
           type: "response",
           id: message.id,
           ok: false,
@@ -672,13 +765,74 @@ if (!isMainThread && parentPort) {
             message: error?.message ?? String(error),
             code: error?.code ?? "EXECUTOR_ERROR",
             statusCode: error?.statusCode ?? null,
-            quota: error?.quota ?? null,
+            quota: toWire(error?.quota ?? null),
           },
         });
+      } catch {
+        await shutdown();
       }
-    })();
+    } finally {
+      active = Math.max(0, active - 1);
+    }
+  };
+
+  const initialize = async () => {
+    if (initializing) return;
+    const initIndex = queued.findIndex((message) => message.type === "init");
+    if (initIndex < 0) return;
+    initializing = true;
+    const [init] = queued.splice(initIndex, 1);
+    try {
+      store = new UsageStore(init.options);
+      store.eventCostMemo = createEventCostMemo({
+        maxBytes: EVENT_COST_MEMO_MAX_BYTES,
+        hardMaxBytes: EVENT_COST_MEMO_HARD_MAX_BYTES,
+      });
+      restoreExecutorLightState(store, init.state);
+      await store.open();
+      storeStatus = init.state?.status ?? null;
+      lastCheckpoint = init.state?.lastCheckpoint ?? null;
+      initialized = true;
+      await send({ type: "ready" });
+      const batch = queued.splice(0);
+      for (const message of batch) void executeMessage(message);
+    } catch (error) {
+      try {
+        await send({
+          type: "fatal",
+          error: {
+            message: error?.message ?? String(error),
+            code: error?.code ?? "EXECUTOR_ERROR",
+          },
+        });
+      } catch {
+        // Parent disconnected while starting.
+      }
+      await shutdown();
+    }
+  };
+
+  childProcess.on("message", (message) => {
+    if (!initialized) {
+      queued.push(message);
+      void initialize();
+      return;
+    }
+    void executeMessage(message);
   });
-  parentPort.postMessage({ type: "ready" });
+  childProcess.once("disconnect", () => {
+    void shutdown({ waitForActive: true });
+  });
+  childProcess.once("SIGTERM", () => {
+    void shutdown({ waitForActive: true });
+  });
+  childProcess.once("SIGINT", () => {
+    void shutdown({ waitForActive: true });
+  });
+}
+
+if (process.env[EXECUTOR_CHILD_ENV] === EXECUTOR_CHILD_MARKER) {
+  void runExecutorProcess();
 }
 
 // ---------------------------------------------------------------------------
@@ -692,9 +846,15 @@ if (!isMainThread && parentPort) {
  */
 export function createUsageExecutor(
   options = {},
-  { requestTimeoutMs = REQUEST_TIMEOUT_MS, pricing = getPricingCatalog } = {},
+  {
+    requestTimeoutMs = REQUEST_TIMEOUT_MS,
+    idleTimeoutMs = options.executorIdleTimeoutMs ?? IDLE_TIMEOUT_MS,
+    pricing = getPricingCatalog,
+  } = {},
 ) {
-  const workerOptions = { workerData: { options: executorOptions(options) } };
+  const forwardedOptions = executorOptions(options);
+  const idleDelayMs =
+    Number.isFinite(idleTimeoutMs) && idleTimeoutMs >= 0 ? Math.floor(idleTimeoutMs) : IDLE_TIMEOUT_MS;
   const emptyState = () => ({
     status: null,
     metadata: null,
@@ -707,9 +867,16 @@ export function createUsageExecutor(
     perfTimingRevision: "",
     lastCheckpoint: null,
   });
+  /** @type {import("node:child_process").ChildProcess | null} */
   let worker = null;
   let exitResolve = null;
   let exitPromise = Promise.resolve();
+  let idleTimer = null;
+  let idleRetiring = false;
+  let terminating = false;
+  let expectedExit = false;
+  let restartPending = false;
+  let childFatalError = null;
   let nextId = 1;
   const pending = new Map();
   /** 用户已显式 `close()` ⇒ **永久**不可用（不再重启）。 */
@@ -722,6 +889,9 @@ export function createUsageExecutor(
   let restarts = 0;
   let state = emptyState();
 
+  const unavailableError = (message = "usage executor is not available") =>
+    executorError(new Error(message), "EXECUTOR_UNAVAILABLE");
+
   const rejectAll = (error) => {
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
@@ -730,25 +900,137 @@ export function createUsageExecutor(
     pending.clear();
   };
 
+  const clearIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+
+  const stateSnapshot = () =>
+    toWire({
+      ...state,
+      serviceTierEvidence:
+        state.serviceTierEvidence === null ? null : serviceTierEvidenceSnapshot(state.serviceTierEvidence),
+    });
+
+  const restoreState = (snapshot = {}) => {
+    const record = snapshot?.state && typeof snapshot.state === "object" ? snapshot.state : snapshot;
+    if (!record || typeof record !== "object") return;
+    const restored = restoreServiceTierEvidenceRecord(structuredClone(record));
+    state = {
+      ...emptyState(),
+      ...restored,
+      homes: restored.homes ?? null,
+      warnings: [...(restored.warnings ?? [])],
+      serviceTierEvidence: restored.serviceTierEvidence ?? null,
+      quotaSourceEvidenceSnapshot: restored.quotaSourceEvidenceSnapshot ?? null,
+    };
+  };
+
+  const lightStateForChild = () => stateSnapshot();
+
+  const terminateChild = (target) => {
+    if (worker !== target) return exitPromise;
+    clearIdleTimer();
+    if (!terminating) {
+      terminating = true;
+      idleRetiring = false;
+      expectedExit = false;
+      try {
+        target.kill("SIGKILL");
+      } catch {
+        // The exit event below remains the source of truth.
+      }
+    }
+    return exitPromise;
+  };
+
+  const scheduleIdle = () => {
+    clearIdleTimer();
+    if (closed || closing || !worker || !ready || pending.size > 0 || terminating || idleRetiring) return;
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      const target = worker;
+      if (closed || closing || !target || !ready || pending.size > 0 || terminating || idleRetiring) {
+        return;
+      }
+      idleRetiring = true;
+      expectedExit = false;
+      try {
+        target.send({ type: "idleClose" }, (error) => {
+          if (!error || worker !== target) return;
+          expectedExit = false;
+          void terminateChild(target);
+        });
+      } catch {
+        expectedExit = false;
+        void terminateChild(target);
+      }
+    }, idleDelayMs);
+    idleTimer.unref?.();
+  };
+
   /**
-   * 拉起执行器线程（首次与**崩溃重启**共用）。重启时读侧快照归零：崩溃不得留下
-   * 半发布/陈旧可见状态；发布本身也是单条 `state` 消息 ⇒ 已发布的一定是完整快照。
+   * 拉起执行器进程（首次、空闲恢复与崩溃重启共用）。空闲退出保留已发布状态；
+   * 真实崩溃在 exit 时清空状态，下一个请求只做一次就地恢复。
    */
   function spawn() {
+    if (worker) return worker;
     ready = false;
-    state = emptyState();
+    idleRetiring = false;
+    terminating = false;
+    expectedExit = false;
+    childFatalError = null;
     exitPromise = new Promise((resolve) => {
       exitResolve = resolve;
     });
-    const created = new Worker(new URL("./usage-executor.js", import.meta.url), workerOptions);
-    created.on("message", (message) => {
+    const created = fork(EXECUTOR_FILE, [], {
+      env: { ...process.env, [EXECUTOR_CHILD_ENV]: EXECUTOR_CHILD_MARKER },
+      execArgv: [...process.execArgv, ...EXECUTOR_EXEC_ARGV],
+      serialization: "advanced",
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
+    });
+    worker = created;
+    let finalized = false;
+    const finalize = () => {
+      if (finalized || worker !== created) return;
+      finalized = true;
+      worker = null;
+      ready = false;
+      clearIdleTimer();
+      const preserveState = expectedExit || closing || closed;
+      idleRetiring = false;
+      terminating = false;
+      expectedExit = false;
+      exitResolve?.();
+      exitResolve = null;
+      rejectAll(childFatalError ?? executorError(new Error("usage executor exited"), "EXECUTOR_EXITED"));
+      if (!preserveState) {
+        state = emptyState();
+        restartPending = true;
+      }
+    };
+    created.on("message", (rawMessage) => {
       if (worker !== created) return;
+      const message = /** @type {any} */ (rawMessage);
       if (message.type === "state") {
         state = { ...state, ...restoreServiceTierEvidenceRecord(message.state) };
         return;
       }
       if (message.type === "ready") {
         ready = true;
+        scheduleIdle();
+        return;
+      }
+      if (message.type === "idle-exit") {
+        idleRetiring = true;
+        expectedExit = true;
+        return;
+      }
+      if (message.type === "fatal") {
+        childFatalError = executorError(message.error, message.error?.code);
+        rejectAll(childFatalError);
+        void terminateChild(created);
         return;
       }
       if (message.type === "response") {
@@ -759,63 +1041,114 @@ export function createUsageExecutor(
         if (message.ok) {
           entry.resolve(entry.type === "snapshot" ? restoreServiceTierEvidenceRecord(message.result) : message.result);
         } else entry.reject(executorError(message.error, message.error?.code));
+        scheduleIdle();
       }
     });
     created.on("error", (error) => {
       if (worker !== created) return;
-      // `error` 后必然跟一个 `exit`：在途请求统一在 exit 处按可重试错误结算。
-      rejectAll(executorError(error, "EXECUTOR_EXITED"));
+      childFatalError = executorError(error, "EXECUTOR_EXITED");
+      rejectAll(childFatalError);
+      void terminateChild(created);
     });
-    created.on("exit", () => {
-      if (worker !== created) return;
-      worker = null;
-      ready = false;
-      exitResolve?.();
-      exitResolve = null;
-      rejectAll(executorError(new Error("usage executor exited"), "EXECUTOR_EXITED"));
-      if (!closed) {
-        // **硬崩溃**（不是用户 close）⇒ 清空可见状态，等**下一个请求**就地重启。
-        state = emptyState();
-      }
-    });
-    worker = created;
+    created.once("exit", finalize);
+    created.once("close", finalize);
+    created.send(
+      {
+        type: "init",
+        options: forwardedOptions,
+        state: lightStateForChild(),
+      },
+      (error) => {
+        if (!error || worker !== created) return;
+        childFatalError = executorError(error, "EXECUTOR_EXITED");
+        rejectAll(childFatalError);
+        void terminateChild(created);
+      },
+    );
     return created;
   }
 
-  spawn();
+  const killOnParentExit = () => {
+    try {
+      worker?.kill("SIGKILL");
+    } catch {
+      // Best-effort on process shutdown; the child also exits on IPC disconnect.
+    }
+  };
+  process.once("exit", killOnParentExit);
 
-  const request = (type, payload = {}, { allowClosing = false } = {}) =>
-    new Promise((resolve, reject) => {
-      if (closed || (closing && !allowClosing)) {
-        reject(executorError(new Error("usage executor is not available"), "EXECUTOR_UNAVAILABLE"));
-        return;
-      }
-      if (!worker) {
-        // **最小崩溃重启**：崩溃后的**下一个请求**就地拉起新执行器（一次尝试，不做无限重试）。
+  const ensureChild = async ({ allowClosing = false, allowSpawn = true } = {}) => {
+    if (closed || (closing && !allowClosing)) throw unavailableError();
+    if (worker && (terminating || idleRetiring)) await exitPromise;
+    if (closed || (closing && !allowClosing)) throw unavailableError();
+    if (!worker) {
+      if (!allowSpawn) throw unavailableError();
+      if (restartPending) {
         restarts += 1;
-        spawn();
+        restartPending = false;
       }
-      const target = worker;
+      try {
+        spawn();
+      } catch (error) {
+        restartPending = true;
+        state = emptyState();
+        throw executorError(error, "EXECUTOR_UNAVAILABLE");
+      }
+    }
+    return worker;
+  };
+
+  const request = async (
+    type,
+    payload = {},
+    { allowClosing = false, allowSpawn = true, timeoutMs = requestTimeoutMs } = {},
+  ) => {
+    if (closed || (closing && !allowClosing)) throw unavailableError();
+    clearIdleTimer();
+    const target = await ensureChild({ allowClosing, allowSpawn });
+    return new Promise((resolve, reject) => {
       const id = nextId;
       nextId += 1;
       const timer = setTimeout(() => {
-        pending.delete(id);
+        if (!pending.delete(id)) return;
         reject(executorError(new Error(`usage executor request timed out: ${type}`), "EXECUTOR_TIMEOUT"));
-      }, requestTimeoutMs);
+        void terminateChild(target);
+      }, timeoutMs);
       timer.unref?.();
       pending.set(id, { resolve, reject, timer, type });
       try {
-        target.postMessage({ ...toTransferable({ type, id, ...payload }) });
+        target.send({ ...toTransferable({ type, id, ...payload }) }, (error) => {
+          if (!error || !pending.has(id)) return;
+          const entry = pending.get(id);
+          pending.delete(id);
+          clearTimeout(entry.timer);
+          entry.reject(executorError(error, "EXECUTOR_UNAVAILABLE"));
+          void terminateChild(target);
+        });
       } catch (error) {
         pending.delete(id);
         clearTimeout(timer);
         reject(executorError(error, "EXECUTOR_UNAVAILABLE"));
+        void terminateChild(target);
       }
     });
+  };
 
   return {
     // —— 阻塞工作（消息） ——
-    open: (payload = {}) => request("open", payload),
+    open: (payload = {}) => {
+      const frozen = payload.frozen;
+      if (frozen?.serviceTierEvidence && typeof frozen.serviceTierEvidence.resolve === "function") {
+        return request("open", {
+          ...payload,
+          frozen: {
+            ...frozen,
+            serviceTierEvidence: serviceTierEvidenceSnapshot(frozen.serviceTierEvidence),
+          },
+        });
+      }
+      return request("open", payload);
+    },
     sync: (payload = {}) => request("sync", { options: payload.options }),
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
@@ -842,44 +1175,51 @@ export function createUsageExecutor(
       // 幂等：多次 `close()` 共享同一个 promise；`close()` 之后**永不**重启。
       if (closePromise) return closePromise;
       closing = true;
+      clearIdleTimer();
       closePromise = (async () => {
-        const target = worker;
-        let closedCleanly = false;
-        if (target) {
-          const done = request("close", {}, { allowClosing: true }).then(
-            () => {
-              closedCleanly = true;
-            },
+        if (worker && !terminating) {
+          await request("close", {}, { allowClosing: true, allowSpawn: false, timeoutMs: CLOSE_TIMEOUT_MS }).catch(
             () => {},
           );
-          await Promise.race([done, new Promise((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS))]);
-          // 关闭期间崩溃 / 超时 ⇒ 强制终止（**仍要落定**，绝不让 `close()` 挂死）。
-          if (!closedCleanly && worker === target) {
-            try {
-              await target.terminate();
-            } catch {
-              /* 已退出 */
-            }
+        }
+        if (worker) {
+          const target = worker;
+          const exited = await Promise.race([
+            exitPromise.then(() => true),
+            new Promise((resolve) => {
+              const timer = setTimeout(() => resolve(false), CLOSE_TIMEOUT_MS);
+              timer.unref?.();
+            }),
+          ]);
+          if (!exited && worker === target) {
+            await terminateChild(target);
+            await Promise.race([
+              exitPromise,
+              new Promise((resolve) => {
+                const timer = setTimeout(resolve, CLOSE_TIMEOUT_MS);
+                timer.unref?.();
+              }),
+            ]);
           }
         }
-        // 等执行器真正退出：数据库连接释放后调用方才能安全删除库文件（Windows EBUSY）。
-        await Promise.race([exitPromise, new Promise((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS))]);
         closed = true;
+        ready = false;
+        process.removeListener("exit", killOnParentExit);
         rejectAll(executorError(new Error("usage executor closed"), "EXECUTOR_CLOSED"));
       })();
       return closePromise;
     },
+    restoreState,
+    stateSnapshot,
     /**
-     * **仅故障注入/诊断**：强制终止当前执行器线程（模拟硬崩溃，例如外部 kill 或线程内致命错误）。
+     * **仅故障注入/诊断**：强制终止当前执行器进程（模拟硬崩溃，例如外部 kill 或进程内致命错误）。
      * 产品路径不需要它；它让"崩溃→在途可重试→下一个请求恢复"可被确定性测试。
      */
-    crashWorkerForTest: () => {
+    crashWorkerForTest: async () => {
       const target = worker;
-      if (!target) return Promise.resolve(false);
-      return target.terminate().then(
-        () => true,
-        () => true,
-      );
+      if (!target) return false;
+      await terminateChild(target);
+      return true;
     },
     // —— 读侧快照（主线程就地应答；不碰库） ——
     get status() {
@@ -912,9 +1252,12 @@ export function createUsageExecutor(
     get ready() {
       return ready;
     },
-    /** 执行器线程是否**活着**（崩溃后未重启 ⇒ false；`close()` 后 ⇒ false）。 */
+    /** 执行器进程是否**活着**（空闲退出或崩溃后未重启 ⇒ false；`close()` 后 ⇒ false）。 */
     get alive() {
-      return Boolean(worker) && !closed;
+      return Boolean(worker) && !closed && worker.exitCode === null && worker.signalCode === null;
+    },
+    get pid() {
+      return worker?.pid ?? null;
     },
     /** 崩溃就地重启次数（0 = 未发生过硬崩溃）。 */
     get restarts() {
@@ -922,7 +1265,7 @@ export function createUsageExecutor(
     },
     metadata: () => state.metadata,
     get state() {
-      return state;
+      return stateSnapshot();
     },
   };
 }

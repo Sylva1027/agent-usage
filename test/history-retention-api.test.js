@@ -5,12 +5,24 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { renderPerfCoverageHtml } from "../public/perf-ui.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+
+function installExecutorPreload(root, fileName, source) {
+  const preloadFile = path.join(root, fileName);
+  writeFileSync(preloadFile, source);
+  const previousNodeOptions = process.env.NODE_OPTIONS;
+  process.env.NODE_OPTIONS = `${previousNodeOptions ?? ""} --import=${pathToFileURL(preloadFile).href}`.trim();
+  return () => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = previousNodeOptions;
+  };
+}
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -420,9 +432,36 @@ test("HTTP snapshot keeps catalog A pricing after live pricing changes to B", as
     pricingRefreshSchedulerEnabled: false,
   };
   const originalCatalog = getPricingCatalog();
-  const originalSummarize = UsageStore.prototype.summarize;
+  const markerFile = path.join(root, "force-snapshot-summarize-failure");
+  const usageStoreUrl = new URL("../src/usage-store.js", import.meta.url).href;
+  const liveDatabaseFile = path.resolve(options.databaseFile);
+  let restoreExecutorPreload;
   let server;
   try {
+    restoreExecutorPreload = installExecutorPreload(
+      root,
+      "snapshot-summarize-failure.mjs",
+      `import { existsSync } from "node:fs";
+import path from "node:path";
+import { UsageStore } from ${JSON.stringify(usageStoreUrl)};
+
+if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "function") {
+  const markerFile = ${JSON.stringify(markerFile)};
+  const liveDatabaseFile = ${JSON.stringify(liveDatabaseFile)};
+  const shouldFail = (store) =>
+    existsSync(markerFile) &&
+    typeof store.databaseFile === "string" &&
+    path.resolve(store.databaseFile) !== liveDatabaseFile;
+  for (const method of ["summarizeInReadTransaction", "summarizeHistoryReport"]) {
+    const original = UsageStore.prototype[method];
+    UsageStore.prototype[method] = function (...args) {
+      if (shouldFail(this)) throw new Error("forced snapshot summarize failure");
+      return Reflect.apply(original, this, args);
+    };
+  }
+}
+`,
+    );
     writeTierRollout(codexHome);
     writeTierEvidence(codexHome, { id: 1, tier: "priority" });
     server = createUsageServer({ ...options, heapSizeLimitBytes: 4 * 1024 * 1024 * 1024 });
@@ -500,15 +539,13 @@ test("HTTP snapshot keeps catalog A pricing after live pricing changes to B", as
     let failedStatus;
     let catalogAfterFailure;
     let liveDuringFailure;
-    UsageStore.prototype.summarize = () => {
-      throw new Error("forced snapshot summarize failure");
-    };
     try {
+      writeFileSync(markerFile, "fail frozen summaries");
       liveDuringFailure = snapshotCost((await getSummary(baseUrl)).summary);
       failedStatus = (await fetch(`${baseUrl}/api/summary?preset=all&snapshot=${frozen.snapshotId}`)).status;
       catalogAfterFailure = getPricingCatalog();
     } finally {
-      UsageStore.prototype.summarize = originalSummarize;
+      await rm(markerFile, { force: true });
     }
     const recoveredResponse = await fetch(`${baseUrl}/api/summary?preset=all&snapshot=${frozen.snapshotId}`);
     const recovered = await recoveredResponse.json();
@@ -529,10 +566,13 @@ test("HTTP snapshot keeps catalog A pricing after live pricing changes to B", as
       },
     );
   } finally {
-    UsageStore.prototype.summarize = originalSummarize;
-    setPricingCatalog(originalCatalog);
-    if (server) await server.close();
-    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    try {
+      if (server) await server.close();
+    } finally {
+      restoreExecutorPreload?.();
+      setPricingCatalog(originalCatalog);
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
   }
 });
 

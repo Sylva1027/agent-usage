@@ -256,10 +256,9 @@ test("period executor publication gate runs in a child with NODE_OPTIONS", { ski
   writeFileSync(
     preloadFile,
     `import { existsSync, writeFileSync } from "node:fs";
-import { isMainThread } from "node:worker_threads";
 import { UsageStore } from ${JSON.stringify(usageStoreUrl)};
 
-if (!isMainThread) {
+if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "function") {
   const gateReadyFile = process.env.HISTORY_PERIOD_EXECUTOR_GATE_READY;
   const gateReleaseFile = process.env.HISTORY_PERIOD_EXECUTOR_GATE_RELEASE;
   if (!gateReadyFile || !gateReleaseFile) throw new Error("missing executor gate environment");

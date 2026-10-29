@@ -937,12 +937,16 @@ test("UI geometry uses the production app and isolated source fixtures", async (
         });
         assertMainGeometry(await geometry(page));
         assertStableFrames(await geometry(page), normal, "long content");
-        const overflow = await page.locator("#totalTokens").evaluate((node) => ({
-          clipped: node.scrollWidth > node.clientWidth,
-          fontSize: getComputedStyle(node).fontSize,
-          whiteSpace: getComputedStyle(node).whiteSpace,
-          textOverflow: getComputedStyle(node).textOverflow,
-        }));
+        const overflow = await page.locator("#totalTokens").evaluate((node) => {
+          // A pending chart redraw can replace the probe between browser calls.
+          node.textContent = "123,456,789,012,345,678.90";
+          return {
+            clipped: node.scrollWidth > node.clientWidth,
+            fontSize: getComputedStyle(node).fontSize,
+            whiteSpace: getComputedStyle(node).whiteSpace,
+            textOverflow: getComputedStyle(node).textOverflow,
+          };
+        });
         assert.deepEqual(overflow, { clipped: true, fontSize: "24px", whiteSpace: "nowrap", textOverflow: "ellipsis" });
         await page.locator("#skinToggle").click();
         await page.locator('.skin-card[data-skin-id="deepseek"]').click();

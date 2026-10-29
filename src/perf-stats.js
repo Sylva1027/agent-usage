@@ -1526,7 +1526,32 @@ function perfTsInRange(tsMs, bounds) {
  * @returns {PerfSelection}
  */
 export function selectPerfSamples(samples, options = {}) {
-  if (!Array.isArray(samples)) throw new TypeError("selectPerfSamples expects an array of PerfSample");
+  return selectPerfSamplesFrom(samples, options, false);
+}
+
+/**
+ * Store-produced hot summaries mark their iterable as unique by `sampleKey`
+ * (the SQLite primary key). The marker is a global symbol so the usage-store
+ * patch and this kernel can agree without adding a public API or changing cold
+ * arrays. The marker deliberately says nothing about ordering.
+ */
+const PERF_UNIQUE_ITERABLE = Symbol.for("codex-usage.perf.unique-iterable.v1");
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isPerfSampleIterable(value) {
+  return value !== null && typeof value === "object" && typeof value[Symbol.iterator] === "function";
+}
+
+/**
+ * Parse and validate the selection options shared by the array, generic
+ * iterable and sorted-stream paths.
+ * @param {PerfSelectOptions | null | undefined} options
+ * @returns {{excludedSet: Set<string>, bounds: {startMs: number | null, endMs: number | null, windowEndExclusiveMs: number | null}}}
+ */
+function perfSelectionContext(options) {
   const opts = options ?? {};
   if (opts !== null && typeof opts !== "object") throw new TypeError("selectPerfSamples options must be an object");
 
@@ -1546,64 +1571,96 @@ export function selectPerfSamples(samples, options = {}) {
   const startMs = range === null ? null : perfRangeBoundMs(range.startMs);
   const endMs = range === null ? null : perfRangeBoundMs(range.endMs);
   const windowEndExclusiveMs = range === null ? null : perfRangeBoundMs(range.windowEndExclusiveMs);
-  const bounds = { startMs, endMs, windowEndExclusiveMs };
+  return { excludedSet, bounds: { startMs, endMs, windowEndExclusiveMs } };
+}
 
-  /** @type {Map<string, PerfSample[]>} */
-  const byKey = new Map();
-  /** @type {PerfSample[]} */
-  const keyless = [];
-  for (const entry of samples) {
-    if (entry === null || typeof entry !== "object") continue;
-    if (typeof entry.sampleKey !== "string") {
-      keyless.push(entry);
-      continue;
-    }
-    const group = byKey.get(entry.sampleKey);
-    if (group !== undefined) group.push(entry);
-    else byKey.set(entry.sampleKey, [entry]);
+/**
+ * Resolve one already-collected `sampleKey` group with the frozen duplicate and
+ * conflict rules.
+ * @param {PerfSample[]} members
+ * @param {{startMs: number | null, endMs: number | null, windowEndExclusiveMs: number | null}} bounds
+ * @returns {PerfSample}
+ */
+function resolvePerfSampleGroup(members, bounds) {
+  // A v4 DSH remeasurement replaces the old phase for this response, not its history.
+  const currentDsh = members.filter(
+    (row) => row.sourceKind === "dsh" && row.methodVersion === PERF_METHOD_VERSION && hasGenerationPerfSemantics(row),
+  );
+  const group = currentDsh.length > 0 ? members.filter((row) => row.methodVersion !== "tps-v3") : members;
+  if (group.length === 1) return group[0];
+  const first = perfConflictSignature(group[0]);
+  const consistent = group.every((row) => perfConflictSignature(row) === first);
+  if (consistent) {
+    // Identical evidence folds once. Prefer the current method version so a stale
+    // v1 duplicate cannot hide an admitted v2 row, then merge every diagnostic.
+    const representative = group.find((row) => row.methodVersion === PERF_METHOD_VERSION) ?? group[0];
+    return { ...representative, ...perfMergedDiagnosticEvidence(group) };
   }
-  /** @type {PerfSample[]} */
-  const deduped = [...keyless];
-  for (const members of byKey.values()) {
-    // A v4 DSH remeasurement replaces the old phase for this response, not its history.
-    const currentDsh = members.filter(
-      (row) => row.sourceKind === "dsh" && row.methodVersion === PERF_METHOD_VERSION && hasGenerationPerfSemantics(row),
-    );
-    const group = currentDsh.length > 0 ? members.filter((row) => row.methodVersion !== "tps-v3") : members;
-    if (group.length === 1) {
-      deduped.push(group[0]);
-      continue;
-    }
-    const first = perfConflictSignature(group[0]);
-    const consistent = group.every((row) => perfConflictSignature(row) === first);
-    if (consistent) {
-      // Identical evidence folds once. Prefer the current method version so a stale
-      // v1 duplicate cannot hide an admitted v2 row, then merge every diagnostic.
-      const representative = group.find((row) => row.methodVersion === PERF_METHOD_VERSION) ?? group[0];
-      deduped.push({ ...representative, ...perfMergedDiagnosticEvidence(group) });
-      continue;
-    }
-    deduped.push(perfResolveConflictGroup(group, bounds));
+  return perfResolveConflictGroup(group, bounds);
+}
+
+/**
+ * Public selection remains array-only; summarizePerf uses the same implementation
+ * with a one-shot iterable when its input came directly from the SQLite reader.
+ * @param {PerfSample[] | Iterable<PerfSample>} samples
+ * @param {PerfSelectOptions | null | undefined} options
+ * @param {boolean} allowIterable
+ * @returns {PerfSelection}
+ */
+function selectPerfSamplesFrom(samples, options = {}, allowIterable) {
+  if (!Array.isArray(samples) && !(allowIterable && isPerfSampleIterable(samples))) {
+    throw new TypeError("selectPerfSamples expects an array of PerfSample");
   }
+  const opts = options ?? {};
+  const { excludedSet, bounds } = perfSelectionContext(opts);
 
   /** @type {PerfSelection} */
   const selection = { eligible: [], unplaced: [], excluded: [], outOfRange: [], unsupportedSources: [] };
-  for (const sample of deduped) {
+  const classify = (sample) => {
     // M1.1-返工2 invariant: sampleKey[1] === groupKey[1] === homeId, so one field decides.
     if (excludedSet.has(sample.homeId)) {
       selection.excluded.push(sample);
-      continue;
+      return;
     }
     if (typeof sample.tsMs !== "number") {
       selection.unplaced.push(sample);
-      continue;
+      return;
     }
     const ts = sample.tsMs;
     if (!perfTsInRange(ts, bounds)) {
       selection.outOfRange.push(sample);
-      continue;
+      return;
     }
     selection.eligible.push(sample);
+  };
+
+  // `perf_samples.sample_key` is the PRIMARY KEY, and the store's placed and
+  // unplaced queries are mutually exclusive. Its marked hot iterable therefore
+  // cannot contain duplicate sampleKey rows and can bypass the per-key Map that
+  // would otherwise allocate one singleton array for nearly every row.
+  // Public arrays and unmarked iterables keep the complete dedup/conflict path.
+  if (!Array.isArray(samples) && samples[PERF_UNIQUE_ITERABLE] === true) {
+    for (const entry of samples) {
+      if (entry === null || typeof entry !== "object") continue;
+      classify(entry);
+    }
+  } else {
+    /** @type {Map<string, PerfSample[]>} */
+    const byKey = new Map();
+    for (const entry of samples) {
+      if (entry === null || typeof entry !== "object") continue;
+      if (typeof entry.sampleKey !== "string") {
+        classify(entry);
+        continue;
+      }
+      const group = byKey.get(entry.sampleKey);
+      if (group !== undefined) group.push(entry);
+      else byKey.set(entry.sampleKey, [entry]);
+    }
+    for (const members of byKey.values()) {
+      classify(resolvePerfSampleGroup(members, bounds));
+    }
+    byKey.clear();
   }
 
   for (const entry of opts.knownSources ?? []) {
@@ -2199,7 +2256,7 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
  * - display order is the **unrounded** `p50` descending, ties broken by the
  *   canonical group key in code-unit order, so the order never depends on locale
  *   or input order (plan §17.3: "显示排序用未舍入 p50，稳定同值排序用规范 key").
- * @param {PerfSample[]} samples
+ * @param {PerfSample[] | Iterable<PerfSample>} samples
  * @param {{ range?: object | null, excludedHomeIds?: string[] | Set<string>, knownSources?: { kind?: unknown, homeId?: unknown }[], meta?: object }} [options]
  * @returns {{ groups: PerfSummaryGroup[], models: PerfModelRow[], coverage: PerfCoverage, codexTimingCoverage: PerfCodexTimingCoverage | null, meta: object }}
  */
@@ -2209,11 +2266,15 @@ export function summarizePerf(samples, options = {}) {
   // drift from the one the coverage contract is written against.
   /** @type {{ kind?: unknown, homeId?: unknown }[]} */
   const knownSources = opts.knownSources ?? [];
-  const selection = selectPerfSamples(samples, {
-    range: opts.range ?? null,
-    excludedHomeIds: opts.excludedHomeIds ?? [],
-    knownSources,
-  });
+  const selection = selectPerfSamplesFrom(
+    samples,
+    {
+      range: opts.range ?? null,
+      excludedHomeIds: opts.excludedHomeIds ?? [],
+      knownSources,
+    },
+    true,
+  );
 
   // Resolve the era cut point **once**, before anything consumes it. The global
   // coverage, every `bySource` bucket and `meta.eraCutoffMs` all receive this exact
@@ -2242,22 +2303,13 @@ export function summarizePerf(samples, options = {}) {
     throw new TypeError("meta.sourceWarnings must be an array of {sourceKind, homeId, code, count}");
   }
 
-  // Build the sampled set once; the old groups and the model projection must agree.
-  /** @type {PerfSample[]} */
-  const sampled = [];
-  for (const sample of selection.eligible) {
-    const flags = perfFlagSetOf(sample);
-    if (sample.status === "in_progress") continue;
-    if (!isPerfSampled(sample, flags)) continue;
-    sampled.push(sample);
-  }
-
-  // Group the `sampled` members by the canonical §17.1 key. `perfGroupKey` is
+  // Group sampled members by the canonical §17.1 key. `perfGroupKey` is
   // reused rather than rebuilt so grouping can never disagree with M1.1/M1.2.
   /** @type {Map<string, PerfSample[]>} */
   const byGroup = new Map();
   let overflowCount = 0;
-  for (const sample of sampled) {
+  for (const sample of selection.eligible) {
+    if (!isPerfSampled(sample, perfFlagSetOf(sample))) continue;
     const key = perfGroupKey(sample);
     if (key === null) continue;
     const group = byGroup.get(key);
@@ -2401,7 +2453,7 @@ export function summarizePerf(samples, options = {}) {
   };
   return {
     groups,
-    models: projectPerfModels(sampled, minSamples, selection.eligible),
+    models: projectPerfModels(selection.eligible, minSamples, selection.eligible),
     coverage,
     codexTimingCoverage,
     meta,

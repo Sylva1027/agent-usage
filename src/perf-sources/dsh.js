@@ -27,7 +27,7 @@
  * assistant/message"的唯一依据；序号在循环内自增（M0.3 曾把自增写在循环外，导致同文件所有帧
  * 共用一个序号、正常完成的 step 永远进不了样本，参见 `handoffs/M0.3-返工.md`）。
  */
-import { DSH_SESSION_FORMAT_VERSION, dshSessionHeader, readDshSessionRows } from "../dsh-usage.js";
+import { DSH_SESSION_FORMAT_VERSION, dshSessionHeader, streamDshSessionRows } from "../dsh-usage.js";
 import { PERF_EPOCH_MS_MIN, normalizePerfSample } from "../perf-stats.js";
 
 /** 冻结码域（实施计划 §3:83）中本 reader 会用到的码。 */
@@ -697,11 +697,25 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
   const homeId = typeof source === "string" ? source.trim() : trimmedText(source?.id);
   /** @type {Map<string, number>} */
   const warningCounts = new Map();
-  const addWarning = (code, count = 1) => {
+  /** @type {Map<string, number>} */
+  const parserWarningCounts = new Map();
+  /** @type {Map<string, number>} */
+  const rowWarningCounts = new Map();
+  const addTo = (counts, code, count = 1) => {
     if (typeof code !== "string" || code === "" || !Number.isSafeInteger(count) || count <= 0) {
       return;
     }
-    warningCounts.set(code, (warningCounts.get(code) ?? 0) + count);
+    counts.set(code, (counts.get(code) ?? 0) + count);
+  };
+  const addParserWarning = (code, count = 1) => addTo(parserWarningCounts, code, count);
+  const addWarning = (code, count = 1) => addTo(rowWarningCounts, code, count);
+  const mergeWarnings = () => {
+    for (const counts of [parserWarningCounts, rowWarningCounts]) {
+      for (const [code, count] of counts) {
+        warningCounts.set(code, (warningCounts.get(code) ?? 0) + count);
+      }
+      counts.clear();
+    }
   };
   const warningList = () =>
     [...warningCounts.entries()].map(([code, count]) => ({ sourceKind: "dsh", homeId, code, count }));
@@ -714,48 +728,8 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     }
   };
 
-  const rows = await readDshSessionRows(filePath, {
-    onWarning: (text) => {
-      const matched = MALFORMED_JSON_PREFIX.exec(typeof text === "string" ? text : "");
-      if (matched) {
-        addWarning(MALFORMED_JSON_CODE, Number(matched[1]));
-      } else {
-        // `readDshSessionRows` 只可能再发出帧级（损坏帧/空帧）告警。
-        addWarning(MALFORMED_FRAME_CODE, 1);
-      }
-    },
-  });
-
-  const header = dshSessionHeader(rows);
-  if (!header || header.id === "") {
-    // 没有会话头就没有稳定身份：**不产出候选**（无 sessionId ⇒ 身份元组不成立），只记编码原因。
-    addWarning(UNKEYABLE_RECORD_CODE, 1);
-    flushWarnings();
-    return { sampleCount: 0, stepEndFrames: 0, warnings: warningList() };
-  }
-  // 版本闸门必须**在投影之前**：非 v4 一律不按 v4 硬解（生产 `streamDshSessionEvents()`
-  // 同口径；此时连帧都不看，因此 `stepEndFrames` 恒为 0）。
-  if (header.version !== null && header.version !== DSH_SESSION_FORMAT_VERSION) {
-    // 与生产 `streamDshSessionEvents()` 同口径：只拒绝**明确的**非 v4 版本。
-    addWarning(UNSUPPORTED_SCHEMA_CODE, 1);
-    flushWarnings();
-    return { sampleCount: 0, stepEndFrames: 0, warnings: warningList() };
-  }
-
-  const session = {
-    homeId,
-    sessionId: header.id,
-    filePath,
-    // `channel` 是 **perf 分组维度**（`perfGroupKey` 第 3 分量，`src/perf-stats.js:364-382`），
-    // 与产品展示层的渠道标签是两回事：口径不一致会把同一来源拆成不同组，因此按裁定 AL-5
-    // 冻结为**小写 kebab-case**（与 `sourceKind` 取值同形；zcode 已是 `zcode`/`zcode-subagent`）。
-    // 旧值 `"DSH"` / `"DSH Subagent"`（含大写与空格）已废弃，不得回退。
-    channel: header.delegationDepth > 0 ? "dsh-subagent" : "dsh",
-    // 裁定 P：名与 kind 分离。delegationDepth > 0 是唯一可证的 subagent 证据；depth=0 一律 unknown。
-    agentKind: header.delegationDepth > 0 ? "subagent" : "unknown",
-    agent: header.agentPreset,
-  };
-
+  let header = null;
+  let session = null;
   const scopeState = { pendingHeader: null, currentHeader: null, active: null };
   /**
    * 分组键用 JSON 元组（**不是**拼接分隔符）：键空间里没有任何字符串拼接，
@@ -776,9 +750,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
   // 帧序**逐帧递增**：每条记录占一个序号（与 M0.3-返工 的判别式同序数口径）。
   let frameIndex = 0;
   let stepEndFrames = 0;
-  for (const row of rows) {
-    const currentFrameIndex = frameIndex;
-    frameIndex += 1;
+  const processRow = (row, currentFrameIndex) => {
     const type = typeof row?.type === "string" ? row.type : "";
     if (type === "request/header" || type === "request/context") {
       const config = row?.data?.header?.config;
@@ -793,14 +765,14 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         scopeState.pendingHeader = header;
         scopeState.currentHeader = header;
       }
-      continue;
+      return;
     }
     if (type === "step/start") {
       const turn = identityInteger(row?.data?.turn);
       const step = identityInteger(row?.data?.step);
       if (turn === null || step === null) {
         addWarning(UNKEYABLE_RECORD_CODE, 1);
-        continue;
+        return;
       }
       const scope = claimScope(scopeState, turn);
       groupFor(turn, step).starts.push({
@@ -810,14 +782,14 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         effort: scope.effort,
         proven: scope.proven,
       });
-      continue;
+      return;
     }
     if (type === "assistant/message") {
       const turn = identityInteger(row?.data?.turn);
       const step = identityInteger(row?.data?.step);
       if (turn === null || step === null) {
         addWarning(UNKEYABLE_RECORD_CODE, 1);
-        continue;
+        return;
       }
       const requestScope = claimScope(scopeState, turn);
       const scope = messageSourceScope(row, turn, requestScope, scopeState.currentHeader) ?? requestScope;
@@ -834,29 +806,85 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         proven: scope.proven,
         frameIndex: currentFrameIndex,
       });
-      continue;
+      return;
     }
     if (type === RETRY_STARTED_TYPE) {
       const turn = identityInteger(row?.data?.turn);
       const step = identityInteger(row?.data?.step);
       if (turn === null || step === null) {
         addWarning(UNKEYABLE_RECORD_CODE, 1);
-        continue;
+        return;
       }
       groupFor(turn, step).retryStarts.push({ time: row?.time, frameIndex: currentFrameIndex });
-      continue;
+      return;
     }
     if (type === STEP_END_TYPE) {
       const turn = identityInteger(row?.data?.turn);
       const step = identityInteger(row?.data?.step);
       if (turn === null || step === null) {
         addWarning(UNKEYABLE_RECORD_CODE, 1);
-        continue;
+        return;
       }
       stepEndFrames += 1;
       groupFor(turn, step).ends.push({ frameIndex: currentFrameIndex });
     }
     // 其余帧：只看了 `type` 判别式，不读 data/time。
+  };
+
+  // 第一遍只建立薄 header 并汇总 parser 诊断；晚到 header 不再把 header
+  // 前的完整 raw row 留在数组中。第二遍从头投影，帧序仍覆盖每一条记录。
+  for await (const row of streamDshSessionRows(filePath, {
+    onWarning: (text) => {
+      const matched = MALFORMED_JSON_PREFIX.exec(typeof text === "string" ? text : "");
+      if (matched) {
+        addParserWarning(MALFORMED_JSON_CODE, Number(matched[1]));
+      } else {
+        // `streamDshSessionRows` 只可能再发出帧级（损坏帧/空帧）告警。
+        addParserWarning(MALFORMED_FRAME_CODE, 1);
+      }
+    },
+  })) {
+    if (header === null && row?.type === "session") {
+      header = dshSessionHeader([row]);
+    }
+  }
+
+  mergeWarnings();
+  if (!header || header.id === "") {
+    // 没有会话头就没有稳定身份：**不产出候选**（无 sessionId ⇒ 身份元组不成立），只记编码原因。
+    addWarning(UNKEYABLE_RECORD_CODE, 1);
+    mergeWarnings();
+    flushWarnings();
+    return { sampleCount: 0, stepEndFrames: 0, warnings: warningList() };
+  }
+  // 版本闸门必须**在投影之前**：非 v4 一律不按 v4 硬解（生产 `streamDshSessionEvents()`
+  // 同口径；此时连帧都不看，因此 `stepEndFrames` 恒为 0）。
+  if (header.version !== null && header.version !== DSH_SESSION_FORMAT_VERSION) {
+    // 与生产 `streamDshSessionEvents()` 同口径：只拒绝**明确的**非 v4 版本。
+    addWarning(UNSUPPORTED_SCHEMA_CODE, 1);
+    mergeWarnings();
+    flushWarnings();
+    return { sampleCount: 0, stepEndFrames: 0, warnings: warningList() };
+  }
+
+  session = {
+    homeId,
+    sessionId: header.id,
+    filePath,
+    // `channel` 是 **perf 分组维度**（`perfGroupKey` 第 3 分量，`src/perf-stats.js:364-382`），
+    // 与产品展示层的渠道标签是两回事：口径不一致会把同一来源拆成不同组；因此按裁定 AL-5
+    // 冻结为**小写 kebab-case**（与 `sourceKind` 取值同形；zcode 已是 `zcode`/`zcode-subagent`）。
+    // 旧值 `"DSH"` / `"DSH Subagent"`（含大写与空格）已废弃，不得回退。
+    channel: header.delegationDepth > 0 ? "dsh-subagent" : "dsh",
+    // 裁定 P：名与 kind 分离。delegationDepth > 0 是唯一可证的 subagent 证据；depth=0 一律 unknown。
+    agentKind: header.delegationDepth > 0 ? "subagent" : "unknown",
+    agent: header.agentPreset,
+  };
+
+  for await (const row of streamDshSessionRows(filePath)) {
+    const currentFrameIndex = frameIndex;
+    frameIndex += 1;
+    processRow(row, currentFrameIndex);
   }
 
   let sampleCount = 0;
@@ -866,6 +894,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     }
   }
 
+  mergeWarnings();
   flushWarnings();
   return { sampleCount, stepEndFrames, warnings: warningList() };
 }
