@@ -1,6 +1,6 @@
 # 看板行为
 
-更新：2026-10-08。auto-review 免费与限额排除规则见下文；模型名单与连续顶部框体见[反馈验收](validation/2026-10-01-dashboard-feedback/README.md)，原九项修正的检查与截图见[本批验收](validation/2026-10-01-dashboard-corrections/README.md)，此前 UI 证据见[2026-09-30 验收](validation/2026-09-30-ui-pricing/README.md)。
+更新：2026-10-30（额度来源、周期边界、趋势与授权恢复）。auto-review 免费与限额排除规则见下文；模型名单与连续顶部框体见[反馈验收](validation/2026-10-01-dashboard-feedback/README.md)，原九项修正的检查与截图见[本批验收](validation/2026-10-01-dashboard-corrections/README.md)，此前 UI 证据见[2026-09-30 验收](validation/2026-09-30-ui-pricing/README.md)。
 
 ## 使用场景与布局基准
 

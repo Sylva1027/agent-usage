@@ -441,7 +441,7 @@ export async function readOfficialCodexQuota(options = {}) {
 
   try {
     await call("initialize", {
-      clientInfo: { name: "codex-usage", title: "Codex Usage", version: "0.7.0" },
+      clientInfo: { name: "codex-usage", title: "Codex Usage", version: "0.8.0" },
       capabilities: { experimentalApi: true },
     });
     child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);

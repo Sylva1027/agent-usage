@@ -4,6 +4,7 @@
 
 ## 使用与接手
 
+- [v0.8.0 发布验收](validation/2026-10-30-release/README.md)与[发布说明](validation/2026-10-30-release/release-notes.md)：本轮性能、7d 恢复及发布资料。
 - [使用与启动](../README.md)与 [English](../README.en.md)：快速开始、看板功能、来源与隐私。
 - [路线图与项目边界](01-roadmap.md)：已交付能力与后续工作的范围。
 - [任务清单](02-tasks.md)：当前规划、尚未验证的边界与维护候选。
