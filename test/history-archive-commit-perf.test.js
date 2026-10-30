@@ -7,10 +7,10 @@ import {
   prepareHistoryArchiveCommit,
   verifyHistoryArchiveCandidate,
 } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+const HISTORICAL_METHOD_VERSION = "tps-v5";
 const HOT_START_MS = Date.parse("2026-10-04T12:00:00.000Z");
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
@@ -111,8 +111,8 @@ test("ZCode perf moves with its archive event commit, rolls back, and replays", 
     );
     assert.deepEqual(
       [...new Set(coldPerf.map((sample) => sample.method_version))],
-      [PERF_METHOD_VERSION],
-      "the fixture must contain only the current method version",
+      [HISTORICAL_METHOD_VERSION],
+      "the fixture must retain its historical native-token method",
     );
     assert.deepEqual(
       plan.perfDeletion.sampleKeys,
@@ -120,7 +120,7 @@ test("ZCode perf moves with its archive event commit, rolls back, and replays", 
       "the plan must name the exact cold perf rows",
     );
     assert.equal(plan.perfDeletion.sourceKind, "zcode");
-    assert.equal(plan.perfDeletion.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(plan.perfDeletion.methodVersion, HISTORICAL_METHOD_VERSION);
     assert.equal((await verifyHistoryArchiveCandidate(candidateFile)).ok, true);
 
     const hotPerfBefore = rows(
@@ -186,7 +186,7 @@ test("ZCode perf moves with its archive event commit, rolls back, and replays", 
             segmentId: committed.segmentId,
             databaseSha256: committed.segmentId,
             sourceKinds: ["zcode"],
-            methodVersions: [PERF_METHOD_VERSION],
+            methodVersions: [HISTORICAL_METHOD_VERSION],
           },
         ],
       },

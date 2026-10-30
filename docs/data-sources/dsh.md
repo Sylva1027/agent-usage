@@ -96,13 +96,13 @@ inconsistent、计价退化为「最低费率估算」、缓存命中率显示�
 只按 `formatVersion === 4` 解析。遇到其它版本**显式跳过并告警**，不按 v4 硬解 ——
 宁可少统计，也不要静默算错。
 
-## 输出吞吐（TPS）
+## 实际输出速度（TPS）
 
-性能 reader 按稳定的 session/turn/step 身份构造 step 候选，输出只取 `assistant/message` 的 `data.usage.outputTokens`；同 step 多条消息若计数或请求上下文冲突，保留冲突诊断，不自行求和。时窗通常从 `step/start` 到对应 assistant message；同一 step 发生重试时，从 message 前最后一条 `llm/retry-started` 起算，避免把失败尝试计入最终响应。只有两端都是可比较的 epoch 毫秒才计算时长。终态必须有文件顺序严格晚于该 step 最后一条 message 的 `step/end`；缺少终态或时长仍保留诊断候选，缺稳定身份只报 warning。一个 turn 有多个 step 时分别计样本，不把整轮当单一请求。明确非 v4 格式拒绝，不将未知字段猜成已验证数据。
+当前 tps-v6 使用本地 Cordis 插件在实际传输接收层采集正文与工具参数，以统一 `o200k_base` 分词计数。支持的安装入口见[本地采集安装](../10-data-sources.md#本地采集安装)。插件按 attempt 记录，只有成功且唯一匹配最终提交 message 的测量才写入会话旁的 companion 文件；session、message、model/provider 均精确匹配。
 
-口径为 `window=step`、`timingKind=request_e2e`、`tokenScope=reported_output_unspecified`；这里的“请求端到端”指日志提供的 step 时窗，不保证覆盖 UI 或网络之外的时间。模型/provider 取对应请求上下文；冲突或含糊上下文标记诊断，不靠最近配置猜测。`delegationDepth > 0` 是唯一明确子代理类别证据；否则代理类别为 `unknown`。长时窗只作为提示，不单独剔除；输出/时长必须满足公共统计内核的正值规则。
+reader 复用会话 v4 的身份、模型与终态证明，按请求消费 companion 中的窗口，单个 step 的重试不会混入其它尝试。缺少 usage.reasoning 不阻塞测量，因为分子来自实际可见输出；原始 usage 保持独立。canonical stream 的正文和推理内容丰富，但旧日志的解析时刻不能替代传输批次，旧 v3/v4 全生成数值不混入当前 v6。
 
-坏帧/坏 JSON 可产生读取诊断，但增量发布不会用文件的可读部分替换完整旧结果：事务回滚保留旧事件、候选与发布指纹，标记 dirty/degraded，修复后重采。实现与回归见 [TPS reader](../../src/perf-sources/dsh.js)、[性能测试](../../test/perf-dsh.test.js)和[索引测试](../../test/perf-store.test.js)。
+无 companion 的请求保留用量和模型身份。缺测不从 step/start、retry-started、assistant/message 时间差回退，不增加 UI 说明。坏帧、坏 JSON 与原有身份冲突继续保留读取诊断和事务回滚。实际 CLI 0.2.1rc2 与 Desktop 内置 0.2.1rc3 的 localhost 闭环已验证，见[本轮验收](../validation/2026-10-30-visible-output-tps/README.md)。
 
 ## 增量索引
 
@@ -118,7 +118,7 @@ DSH 的用量按会话分散在**多个**日志文件里（不像 ZCode 只有�
 
 正常事件构建不提取 `data.message`、`data.content`、`data.stream`、工具参数和结果作为输出字段；`test/dsh-usage.test.js` 有隐私哨兵回归。
 
-全程只读，不写入、不修改 `~/.dsh`。
+用量 reader 只读原始会话。用户启用采集后，安装器备份并更新 `cordis.patch.yml`，插件在 `~/.dsh` 会话旁新增标量观测文件，不修改原始会话或额外保存正文。
 
 ## Node 版本要求
 

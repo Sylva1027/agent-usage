@@ -20,6 +20,7 @@ import {
   PERF_MIN_SAMPLES,
   PERF_NORMALIZE_WARNING_CODES,
   PERF_RESERVED_FLAG_BITS,
+  PERF_TOKEN_SCOPE,
   PerfFlagError,
   assertNoReservedFlagBits,
   assertPerfFlagMaskInTable,
@@ -76,7 +77,7 @@ const okSample = (raw) => {
 };
 
 test("M1.1 constants match the frozen §17.4 table: 18 bit slots, 2/3 reserved, 16 settable names", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v5");
+  assert.equal(PERF_METHOD_VERSION, "tps-v6");
   assert.equal(PERF_MIN_SAMPLES, 20);
   assert.equal(PERF_LONG_WINDOW_MS, 300000);
   assert.equal(PERF_EPOCH_MS_MIN, 1e12);
@@ -317,19 +318,19 @@ test("M1.1-D source kind separates Codex from request-level groups; identical Co
     ...base,
     sourceKind: "codex",
     timingKind: "generation",
-    tokenScope: "non_reasoning_output",
+    tokenScope: PERF_TOKEN_SCOPE,
   };
   const zcode = {
     ...base,
     sourceKind: "zcode",
     timingKind: "generation",
-    tokenScope: "non_reasoning_output",
+    tokenScope: PERF_TOKEN_SCOPE,
   };
   const opencode = {
     ...base,
     sourceKind: "opencode",
     timingKind: "generation",
-    tokenScope: "non_reasoning_output",
+    tokenScope: PERF_TOKEN_SCOPE,
   };
   const keys = [codex, zcode, opencode].map((sample) => perfGroupKey(sample));
   assert.equal(new Set(keys).size, 3);
@@ -343,11 +344,11 @@ test("M1.1-D source kind separates Codex from request-level groups; identical Co
     "p",
     "high",
     "generation",
-    "non_reasoning_output",
+    PERF_TOKEN_SCOPE,
   ]);
   // The source kind still separates Codex from request-level sources. Two Codex
   // samples with identical current v3 semantics intentionally share one group.
-  const lookalike = { ...codex, timingKind: "generation", tokenScope: "non_reasoning_output" };
+  const lookalike = { ...codex, timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE };
   assert.notEqual(perfGroupKey(lookalike), perfGroupKey(zcode));
   assert.equal(perfGroupKey(lookalike), perfGroupKey(codex));
   // home participates; unsupported kinds have no group at all
@@ -362,13 +363,13 @@ test("M1.1-D source kind separates Codex from request-level groups; identical Co
   );
 });
 
-test("M1.1-D normalization supplies v3 defaults while preserving mismatched reader semantics", () => {
+test("M1.1-D normalization supplies v6 defaults while preserving mismatched reader semantics", () => {
   const expected = [
-    ["zcode", "request", "generation", "non_reasoning_output", false],
-    ["dsh", "request", "generation", "non_reasoning_output", false],
-    ["opencode", "request", "generation", "non_reasoning_output", false],
-    ["codex", "request", "generation", "non_reasoning_output", false],
-    ["claude", "request", "generation", "non_reasoning_output", false],
+    ["zcode", "request", "generation", PERF_TOKEN_SCOPE, false],
+    ["dsh", "request", "generation", PERF_TOKEN_SCOPE, false],
+    ["opencode", "request", "generation", PERF_TOKEN_SCOPE, false],
+    ["codex", "request", "generation", PERF_TOKEN_SCOPE, false],
+    ["claude", "request", "generation", PERF_TOKEN_SCOPE, false],
   ];
   for (const [kind, window, timingKind, tokenScope, estimated] of expected) {
     const sample = okSample({

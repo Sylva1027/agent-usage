@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { buildUsageReport, summarizeUsage } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
+import { codexOutputTiming } from "../test-support/perf-fixture.mjs";
 
 const DATE = "2026-10-27T12:00:00.000Z";
 const FILTERS = { preset: "all", now: new Date(DATE), calendarZone: "utc" };
@@ -70,16 +71,33 @@ async function fixture(run) {
         records,
         reviewedOrigins: ["fixture.native-stream.v1"],
       });
-    await run({ root, options, store, importTimings });
+    const writeNative = async (records) => {
+      const file = path.join(options.extraHomes, "sessions", "rollout.jsonl");
+      const rows = (await readFile(file, "utf8")).trim().split("\n").map(JSON.parse);
+      const byResponse = new Map(records.map((record) => [record.responseId, record.generation]));
+      for (const row of rows) {
+        const output = byResponse.get(row.payload?.response_id);
+        if (row.type === "token_usage_record" && output) {
+          row.payload.generation_timing = codexOutputTiming(
+            output.outputTokens - output.startOutputTokens,
+            output.durationMs,
+          );
+        }
+      }
+      await writeRows(file, rows);
+    };
+    await run({ root, options, store, importTimings, writeNative });
   } finally {
     store.close();
     await rm(root, { recursive: true, force: true });
   }
 }
 
-test("explicit evidence samples responses independently and upgrades without changing usage", async () => {
-  await fixture(async ({ options, store, importTimings }) => {
-    importTimings(Array.from({ length: 8 }, (_, i) => timing(`response-${i}`)));
+test("native reference-token evidence samples responses independently and upgrades without changing usage", async () => {
+  await fixture(async ({ options, store, importTimings, writeNative }) => {
+    const initial = Array.from({ length: 8 }, (_, i) => timing(`response-${i}`));
+    importTimings(initial);
+    await writeNative(initial);
     await store.sync();
     let calls = 0;
     const original = store.timelineRange;
@@ -88,7 +106,7 @@ test("explicit evidence samples responses independently and upgrades without cha
       return original.apply(this, args);
     };
     const before = await store.summarize(FILTERS);
-    assert.equal(before.perf.meta.methodVersion, "tps-v5");
+    assert.equal(before.perf.meta.methodVersion, "tps-v6");
     assert.equal(before.perf.models[0].n, 8);
     assert.equal(before.perf.models[0].averageTps, 79);
     assert.equal(before.perf.coverage.eligible, 10);
@@ -110,13 +128,18 @@ test("explicit evidence samples responses independently and upgrades without cha
       }),
     ];
     importTimings(additions);
+    await writeNative(additions);
     await store.sync();
     const after = await store.summarize(FILTERS);
     assert.equal(after.perf.models[0].n, 10);
     assert.equal(after.perf.models[0].averageTps, 790000 / 9800);
     assert.notEqual(after.perf.indexVersion, before.perf.indexVersion);
     assert.deepEqual(after.totals, before.totals);
-    assert.equal(calls, warmCalls);
+    assert.equal(
+      calls,
+      warmCalls + 1,
+      "a changed native source reparses once; historical timing-only caching is covered separately",
+    );
     assert.equal(importTimings(additions).changed, false);
     await store.sync();
     assert.deepEqual((await store.summarize(FILTERS)).perf.models, after.perf.models);

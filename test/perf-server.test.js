@@ -694,6 +694,7 @@ test("★M4.3-g 公开 sourceWarnings 两个字段必须同源（含 generation 
       timing.durationMs = durationMs + 500;
       timing.generation = { ...timing.generation, durationMs };
     }
+    fixture.writeNativeTiming();
     const store = new UsageStore(fixture.serverOptions);
     try {
       await store.sync({ options: fixture.reportOptions });

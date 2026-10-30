@@ -275,7 +275,7 @@ export async function readCodexRollout(filePath) {
  * ⚠️ 任何改变 `readCodexRolloutMetadata()` 返回形状或类型识别的改动（`codex-jsonl.js`）**必须**同时 bump
  * `CODEX_PROJECTION_METHOD_VERSION`，否则复用会把旧形状喂给新消费者。
  */
-export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v6";
+export const CODEX_PROJECTION_METHOD_VERSION = "codex-projection-v7";
 
 /** C3：一个投影缓存实例的默认字节预算（计划 §5 P2b「初始每实例投影缓存预算 64 MiB」）。 */
 export const DEFAULT_CODEX_PROJECTION_CACHE_BYTES = 64 * 1024 * 1024;
@@ -810,7 +810,10 @@ export function buildCodexThreadPerfSamples(homeId, threadId, rollouts, options 
   if (missingTurnIdentityCount > 0) {
     warnings.push({ sourceKind: "codex", homeId, code: "UNKEYABLE_RECORD", count: missingTurnIdentityCount });
   }
-  return { samples, warnings, rolloutFiles };
+  const nativeMeasurements = new Map(
+    built.candidates.map((candidate, index) => [samples[index].sampleKey, candidate.generation]),
+  );
+  return { samples, warnings, rolloutFiles, nativeMeasurements };
 }
 
 // ---------------------------------------------------------------------------

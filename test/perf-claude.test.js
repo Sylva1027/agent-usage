@@ -54,6 +54,7 @@ const RAW_KEYS = [
   "outputTokens",
   "inputTokens",
   "requestCount",
+  "methodVersion",
 ];
 
 async function collect(filePath, source, options = {}) {

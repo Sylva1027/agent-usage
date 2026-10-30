@@ -6,10 +6,10 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+const HISTORICAL_METHOD_VERSION = "tps-v5";
 const HOT_START_MS = Date.parse("2026-10-04T12:00:00.000Z");
 const PERF_COLUMNS = PERF_SAMPLE_FIELDS.map((entry) => entry.column);
 
@@ -72,7 +72,7 @@ test("cold perf candidate is column-for-column faithful to real ZCode source row
       "cold source must retain missing-generation candidates without inventing TPS",
     );
     assert.ok(
-      sourceRows.some((row) => row.method_version === PERF_METHOD_VERSION && row.sample_flags !== 0),
+      sourceRows.some((row) => row.method_version === HISTORICAL_METHOD_VERSION && row.sample_flags !== 0),
       "cold source must include method and non-zero flag evidence",
     );
 

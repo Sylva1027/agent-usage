@@ -443,6 +443,7 @@ export function zcodeRowToRawSample(row, available, context) {
     window: "request",
     timingKind: "generation",
     tokenScope: "non_reasoning_output",
+    methodVersion: "tps-v5",
     status: classification.status,
     terminalVerified: classification.terminalVerified,
     inProgress: classification.inProgress,

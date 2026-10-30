@@ -18,11 +18,43 @@ test("v4 validates and commits v3 Codex request identities with their original n
   try {
     await store.sync();
     await fixture.seedRequestTiming(store);
-    store.database.prepare("UPDATE perf_samples SET method_version = 'tps-v3'").run();
+    store.database
+      .prepare(
+        `UPDATE perf_samples
+         SET method_version = 'tps-v3', token_scope = 'non_reasoning_output'`,
+      )
+      .run();
     store.writeMeta("perf_method_version", "tps-v3");
     const filters = { preset: "all", now: "2026-10-04T13:00:00Z", calendarZone: "utc" };
     const before = await store.summarize(filters);
-    assert.equal(before.perf.models[0].n, 26);
+    assert.deepEqual(before.perf.groups, []);
+    assert.equal(before.perf.coverage.sampled, 0);
+    assert.equal(before.perf.models.length, 1);
+    assert.deepEqual(
+      {
+        sourceKind: before.perf.models[0].sourceKind,
+        model: before.perf.models[0].model,
+        window: before.perf.models[0].window,
+        state: before.perf.models[0].state,
+        n: before.perf.models[0].n,
+        averageTps: before.perf.models[0].averageTps,
+        p10: before.perf.models[0].p10,
+        p90: before.perf.models[0].p90,
+        candidateCount: before.perf.models[0].candidateCount,
+      },
+      {
+        sourceKind: "codex",
+        model: "codex-fixture-model",
+        window: "request",
+        state: "missing_duration",
+        n: 0,
+        averageTps: null,
+        p10: null,
+        p90: null,
+        candidateCount: 26,
+      },
+      "v3 rows remain readable as historical identities without entering current v6 statistics",
+    );
     const backupFile = path.join(fixture.serverOptions.homeDir, "v3-backup.sqlite");
     await createHistoryBackup(store.database, backupFile);
     await verifyHistoryBackup(backupFile);

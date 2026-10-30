@@ -5,10 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+const HISTORICAL_METHOD_VERSION = "tps-v5";
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
 const HOT_START_MS = Date.parse("2026-10-04T12:00:00.000Z");
@@ -82,7 +82,7 @@ test("overlapping hot and cold perf payloads conflict, then recover on the same 
     });
     assert.ok(overlap, "fixture must retain an identical cold sample in both the candidate and live perf");
     assert.equal(overlap.sourceKind, "zcode");
-    assert.equal(overlap.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(overlap.methodVersion, HISTORICAL_METHOD_VERSION);
     assert.equal(overlap.timingKind, "generation");
     assert.equal(overlap.tokenScope, "non_reasoning_output");
     assert.equal(overlap.timingSource, "unknown");
@@ -100,7 +100,7 @@ test("overlapping hot and cold perf payloads conflict, then recover on the same 
             segmentId: registered.segmentId,
             databaseSha256: registered.databaseSha256,
             sourceKinds: ["zcode"],
-            methodVersions: [PERF_METHOD_VERSION],
+            methodVersions: [HISTORICAL_METHOD_VERSION],
           },
         ],
       });

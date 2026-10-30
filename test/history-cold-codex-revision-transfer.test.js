@@ -103,6 +103,9 @@ test("an evicted Codex sample revision survives complete bundle import and reope
     assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
+    const oldSampleRow = {
+      ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
+    };
 
     await createHistoryArchiveCandidate(archived.database, candidateFile, {
       startMs: coldStartMs,
@@ -153,6 +156,7 @@ test("an evicted Codex sample revision survives complete bundle import and reope
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([lateTiming]);
     const archivedTimingImport = archived.importRequestTimingEvidence({
       homeId: codexHomeId(archived, fixture.codexHome),
       records: [lateTiming],
@@ -175,11 +179,31 @@ test("an evicted Codex sample revision survives complete bundle import and reope
     assert.deepEqual(revisedSummary.costEstimate, oracleSummary.costEstimate);
     const revisionMetadata = archived.readMetaRaw(PERF_REVISIONS_KEY);
     assert.equal(typeof revisionMetadata, "string");
-    const revisionFactTables = new Set(JSON.parse(revisionMetadata).revisions.map((entry) => entry.factTable));
+    const revisionRoot = JSON.parse(revisionMetadata);
+    const revisionFactTables = new Set(revisionRoot.revisions.map((entry) => entry.factTable));
     assert.ok(revisionFactTables.has("perf_request_timing_evidence"));
     assert.ok(revisionFactTables.has("perf_samples"));
+    assert.ok(revisionFactTables.has("codex_output_measurements"));
+    const nativeMeasurementRevision = revisionRoot.revisions.find(
+      (entry) =>
+        entry.factTable === "codex_output_measurements" &&
+        entry.added.some((delta) => delta.payload.sample_key === coldSample.sampleKey),
+    );
+    assert.ok(nativeMeasurementRevision, "the late revision must carry scalar native measurement evidence");
+    const nativeMeasurement = nativeMeasurementRevision.added.find(
+      (delta) => delta.payload.sample_key === coldSample.sampleKey,
+    );
+    assert.ok(nativeMeasurement);
+    assert.equal(nativeMeasurement.payload.home_id, oldSampleRow.home_id);
+    assert.equal(nativeMeasurement.payload.source_path, oldSampleRow.source_path);
+    assert.equal(nativeMeasurement.payload.measurement.outputTokens, coldSample.outputTokens);
+    assert.equal(nativeMeasurement.payload.measurement.durationMs, lateTiming.generation.durationMs);
     const recoveryRows = perfRecoveryRows(archived.database);
-    assert.ok(recoveryRows.length > 0, "the late revision must retain recovery facts");
+    assert.deepEqual(
+      recoveryRows,
+      [],
+      "a physically evicted hot sample has no replaced perf fact; typed revisions carry its recovery",
+    );
     assert.equal(fileSha256(candidateFile), candidateDigest);
 
     await publishHistoryArchiveBundle(archived.database, bundleDirectory);

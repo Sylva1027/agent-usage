@@ -11,6 +11,7 @@ import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.
 
 const COLD_END_MS = Date.parse("2026-10-04T12:02:00.000Z");
 const MISSING_TIMING_DEPENDENCY_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_DEPENDENCIES_MISSING";
+const TIMING_MISMATCH_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_MISMATCH";
 const PERF_COLUMNS = PERF_SAMPLE_FIELDS.map((entry) => entry.column);
 
 function manifestPathFor(databaseFile) {
@@ -66,7 +67,7 @@ function linkedTimingGraph(database, sampleKey) {
   };
 }
 
-test("candidate rejects a linked cold Codex sample whose raw timing evidence is gone", async () => {
+test("schema3 candidate tolerates removed external timing evidence but requires native projections", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-linked-evidence-source.sqlite");
   const controlCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-linked-evidence-control.sqlite");
@@ -137,28 +138,22 @@ test("candidate rejects a linked cold Codex sample whose raw timing evidence is 
 
     const isolatedReadOnly = new DatabaseSync(isolatedFile, { readOnly: true });
     try {
-      await assert.rejects(
-        () =>
-          createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
-            startMs: coldStartMs,
-            endMs: COLD_END_MS,
-          }),
-        (error) => {
-          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
-          return true;
-        },
-      );
+      await createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
+        startMs: coldStartMs,
+        endMs: COLD_END_MS,
+      });
+      await verifyHistoryArchiveCandidate(candidateFile);
       assert.deepEqual(
         linkedTimingGraph(isolatedReadOnly, sampleKey),
         unlinkedEvidence,
-        "candidate rejection must not mutate the isolated perf/timing graph",
+        "candidate creation must not mutate the isolated perf/timing graph",
       );
     } finally {
       isolatedReadOnly.close();
     }
 
-    assert.equal(existsSync(candidateFile), false, "candidate creation must not publish a destination database");
-    assert.equal(existsSync(candidateManifest), false, "candidate creation must not publish a destination manifest");
+    assert.equal(existsSync(candidateFile), true, "schema3 must remain archivable without external timing evidence");
+    assert.equal(existsSync(candidateManifest), true, "the schema3 candidate must publish its manifest");
 
     const controlSource = new DatabaseSync(controlCandidateFile, { readOnly: true });
     try {
@@ -169,20 +164,10 @@ test("candidate rejects a linked cold Codex sample whose raw timing evidence is 
     const tampered = new DatabaseSync(tamperedCandidateFile);
     try {
       const candidateGraph = linkedTimingGraph(tampered, sampleKey);
-      assert.ok(candidateGraph.evidence.length > 0, "the normal candidate must contain the linked raw evidence");
-      const responseIds = candidateGraph.links.map((link) => String(link.response_id));
       const deleted = tampered
-        .prepare(
-          `DELETE FROM perf_request_timing_evidence
-           WHERE home_id = ? AND response_id IN (${responseIds.map(() => "?").join(",")})`,
-        )
-        .run(candidateGraph.owner.home_id, ...responseIds);
-      assert.equal(Number(deleted.changes), candidateGraph.evidence.length);
-      assert.equal(
-        linkedTimingGraph(tampered, sampleKey).evidence.length,
-        0,
-        "the repacked candidate must retain no linked raw evidence",
-      );
+        .prepare("DELETE FROM perf_codex_projections WHERE home_id = ? AND path = ? COLLATE NOCASE")
+        .run(candidateGraph.owner.home_id, String(candidateGraph.sample.source_path));
+      assert.equal(Number(deleted.changes), 1, "the repacked candidate must lose its selected native projection");
     } finally {
       tampered.close();
     }
@@ -198,10 +183,97 @@ test("candidate rejects a linked cold Codex sample whose raw timing evidence is 
     await assert.rejects(
       () => verifyHistoryArchiveCandidate(repackedCandidateFile),
       (error) => {
-        assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
+        assert.equal(error?.code, TIMING_MISMATCH_CODE);
         return true;
       },
     );
+  } finally {
+    store.close();
+    fixture.close();
+  }
+});
+
+test("explicit tps-v3 candidates still require external request timing evidence", async () => {
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
+  const controlCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-v3-linked-control.sqlite");
+  const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-v3-linked-source.sqlite");
+  const candidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-v3-linked-candidate.sqlite");
+  const store = new UsageStore(fixture.serverOptions);
+  try {
+    await store.sync({ options: fixture.reportOptions });
+    await fixture.seedRequestTiming(store);
+    const updateLegacySample = store.database.prepare(
+      `UPDATE perf_samples
+       SET method_version = 'tps-v3',
+           token_scope = 'non_reasoning_output',
+           timing_kind = 'generation',
+           timing_source = 'explicit',
+           window = 'request',
+           output_tokens = ?,
+           duration_ms = ?
+       WHERE sample_key = ?`,
+    );
+    for (const row of store.database.prepare("SELECT sample_key FROM perf_samples").all()) {
+      const responseId = JSON.parse(String(row.sample_key))[4];
+      const timing = fixture.timingRecords.find((record) => record.responseId === responseId);
+      assert.ok(timing, "every explicit v3 sample must retain its external timing row");
+      updateLegacySample.run(timing.reportedOutputTokens, timing.generation.durationMs, String(row.sample_key));
+    }
+    assert.deepEqual(
+      store.database
+        .prepare("SELECT DISTINCT method_version FROM perf_samples ORDER BY method_version")
+        .all()
+        .map((row) => String(row.method_version)),
+      ["tps-v3"],
+    );
+
+    const coldStartMs = Number(store.database.prepare("SELECT MIN(timestamp_ms) AS value FROM events").get().value);
+    await createHistoryArchiveCandidate(store.database, controlCandidateFile, {
+      startMs: coldStartMs,
+      endMs: COLD_END_MS,
+    });
+    await verifyHistoryArchiveCandidate(controlCandidateFile);
+
+    const selected = store.database
+      .prepare(
+        `SELECT sample_key, home_id
+         FROM perf_samples
+         WHERE ts_ms >= ? AND ts_ms < ?
+         ORDER BY ts_ms, sample_key
+         LIMIT 1`,
+      )
+      .get(coldStartMs, COLD_END_MS);
+    assert.ok(selected);
+    const [, , , , responseId] = JSON.parse(String(selected.sample_key));
+
+    await backup(store.database, isolatedFile);
+    const isolated = new DatabaseSync(isolatedFile);
+    try {
+      const deleted = isolated
+        .prepare("DELETE FROM perf_request_timing_evidence WHERE home_id = ? AND response_id = ?")
+        .run(String(selected.home_id), responseId);
+      assert.ok(Number(deleted.changes) > 0, "the explicit v3 sample must lose its external timing evidence");
+    } finally {
+      isolated.close();
+    }
+
+    const isolatedReadOnly = new DatabaseSync(isolatedFile, { readOnly: true });
+    try {
+      await assert.rejects(
+        () =>
+          createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
+            startMs: coldStartMs,
+            endMs: COLD_END_MS,
+          }),
+        (error) => {
+          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
+          return true;
+        },
+      );
+    } finally {
+      isolatedReadOnly.close();
+    }
+    assert.equal(existsSync(candidateFile), false, "a v3 candidate without external timing must not be published");
   } finally {
     store.close();
     fixture.close();

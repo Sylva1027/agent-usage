@@ -12,7 +12,13 @@ import {
   verifyHistoryBackup,
   withVerifiedHistoryBackup,
 } from "./history-backup.js";
-import { PERF_SUPPORTED_METHOD_VERSIONS, isGenerationPerfMethod } from "./perf-stats.js";
+import {
+  PERF_METHOD_VERSION,
+  PERF_TOKEN_SCOPE,
+  PERF_SUPPORTED_METHOD_VERSIONS,
+  isGenerationPerfMethod,
+} from "./perf-stats.js";
+import { normalizeMeasuredOutput } from "./perf-output-tokens.js";
 import { generationPerfValues, mergeRequestTimingEvidence } from "./perf-request-timing.js";
 import { lookupRequestTiming, validateStoredEvidence } from "./perf-request-timing-store.js";
 import { foldCodexRolloutMetadata } from "./perf-sources/codex-fold.js";
@@ -718,7 +724,7 @@ export function historyArchivePerfDeletion(database, startMs, endMs, { requireCo
     isGenerationPerfMethod(methodVersion) &&
     row.timing_kind === "generation" &&
     row.window === "request" &&
-    row.token_scope === "non_reasoning_output";
+    row.token_scope === (methodVersion === PERF_METHOD_VERSION ? PERF_TOKEN_SCOPE : "non_reasoning_output");
   const supported =
     sourceKind === "zcode"
       ? rows.every((row) => Number(row.has_dependency) === 0)
@@ -849,6 +855,7 @@ function perfIndexEvidence(database, startMs, endMs) {
 function assertExplicitCodexTimingEvidence(database, startMs, endMs) {
   const samples = codexBoundedExplicitSamples(database, startMs, endMs);
   const legacyThreads = new Map();
+  const foldedByThread = new Map();
   const missing = (sampleKey) =>
     archiveError(
       "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_DEPENDENCIES_MISSING",
@@ -861,6 +868,11 @@ function assertExplicitCodexTimingEvidence(database, startMs, endMs) {
       codexRequestSampleGraph(database, sample, identity.threadId);
     } catch {
       throw missing(sample.sample_key);
+    }
+    if (sample.method_version === PERF_METHOD_VERSION) {
+      const owners = codexRequestSampleGraph(database, sample, identity.threadId);
+      codexTurnRequestFacts(database, sample, identity, owners, foldedByThread);
+      continue;
     }
     if (identity.responseId === undefined) {
       legacyThreads.set(JSON.stringify([identity.homeId, identity.threadId]), identity);
@@ -1178,7 +1190,7 @@ function codexRequestSampleGraph(database, sample, threadId) {
   return owners;
 }
 
-function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByThread) {
+function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByThread, measurements = undefined) {
   const cacheKey = JSON.stringify([identity.homeId, identity.threadId]);
   let folded = foldedByThread.get(cacheKey);
   if (!folded) {
@@ -1246,6 +1258,26 @@ function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByT
     identity.responseId === undefined
       ? turn.requests
       : turn.requests.filter((request) => request.responseId === identity.responseId);
+  if (sample.method_version === PERF_METHOD_VERSION) {
+    const overridden = measurements?.overrides?.has(String(sample.sample_key));
+    const raw = overridden ? measurements.overrides.get(String(sample.sample_key)) : response?.[0]?.nativeGeneration;
+    const measurement = normalizeMeasuredOutput(raw);
+    const withdrawn = overridden && raw === null && sample.timing_source === "unknown";
+    if (
+      sample.token_scope !== PERF_TOKEN_SCOPE ||
+      sample.model !== turn.model ||
+      (withdrawn
+        ? sample.output_tokens !== null || sample.duration_ms !== null
+        : !measurement ||
+          sample.output_tokens !== measurement.outputTokens ||
+          sample.duration_ms !== measurement.durationMs)
+    ) {
+      throw codexRequestTimingMismatch(
+        `bounded Codex sample ${String(sample.sample_key)} output or duration contradicts its native measured output`,
+      );
+    }
+    measurements?.collected?.set(String(sample.sample_key), measurement);
+  }
   if (identity.responseId !== undefined && turnRequests.length !== 1) {
     throw codexRequestTimingMismatch(
       `bounded Codex sample ${String(sample.sample_key)} has no unique native response request`,
@@ -1284,6 +1316,22 @@ function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByT
     requestSetComplete: true,
     requests,
   };
+}
+
+export function readCodexNativeMeasurements(database, samples) {
+  const collected = new Map();
+  const foldedByThread = new Map();
+  for (const sample of samples) {
+    if (sample.source_kind !== "codex" || sample.method_version !== PERF_METHOD_VERSION) continue;
+    if (sample.timing_source !== "explicit") {
+      collected.set(String(sample.sample_key), null);
+      continue;
+    }
+    const identity = parseCodexRequestSampleKey(sample);
+    const owners = codexRequestSampleGraph(database, sample, identity.threadId);
+    codexTurnRequestFacts(database, sample, identity, owners, foldedByThread, { collected });
+  }
+  return collected;
 }
 
 function normalizeCodexRequestEvidence(evidence, startMs, endMs) {
@@ -1383,6 +1431,7 @@ function normalizeCodexRequestEvidence(evidence, startMs, endMs) {
 
 export function validateCodexRequestEvidence(database, evidence, startMs, endMs, effective = undefined) {
   const normalized = normalizeCodexRequestEvidence(evidence, startMs, endMs);
+  const foldedByThread = new Map();
   const samples = effective
     ? effectiveCodexRequestSamples(effective.samples, normalized.turns)
     : codexBoundedExplicitSamples(database, startMs, endMs);
@@ -1412,12 +1461,22 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
         ? turn.requests.length !== 1 ||
           sample.timing_kind !== "generation" ||
           sample.window !== "request" ||
-          sample.token_scope !== "non_reasoning_output"
+          sample.token_scope !==
+            (sample.method_version === PERF_METHOD_VERSION ? PERF_TOKEN_SCOPE : "non_reasoning_output")
         : sample.timing_kind !== "request_e2e")
     ) {
       throw codexRequestTimingMismatch(`Codex request facts disagree with bounded sample ${turn.sampleKey}`);
     }
-    codexRequestSampleGraph(database, sample, identity.threadId);
+    const owners = codexRequestSampleGraph(database, sample, identity.threadId);
+    if (sample.method_version === PERF_METHOD_VERSION) {
+      const nativeFacts = codexTurnRequestFacts(database, sample, identity, owners, foldedByThread, {
+        overrides: effective?.nativeMeasurements,
+      });
+      if (JSON.stringify(nativeFacts.requests) !== JSON.stringify(turn.requests)) {
+        throw codexRequestTimingMismatch(`Codex request facts disagree with native usage for ${turn.sampleKey}`);
+      }
+      continue;
+    }
 
     const lookup = (query) =>
       effective
@@ -1495,6 +1554,22 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
         );
       }
     }
+  }
+  // Late native measurements may make an existing, previously untimed request measurable.
+  const originalSampleKeys = new Set(normalized.turns.map((turn) => turn.sampleKey));
+  for (const sample of effective?.samples ?? []) {
+    if (
+      sample.source_kind !== "codex" ||
+      sample.method_version !== PERF_METHOD_VERSION ||
+      sample.timing_source !== "explicit" ||
+      originalSampleKeys.has(sample.sample_key)
+    )
+      continue;
+    const identity = parseCodexRequestSampleKey(sample);
+    const owners = codexRequestSampleGraph(database, sample, identity.threadId);
+    codexTurnRequestFacts(database, sample, identity, owners, foldedByThread, {
+      overrides: effective.nativeMeasurements,
+    });
   }
   return normalized;
 }

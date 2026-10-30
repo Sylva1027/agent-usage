@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 
 import { inspectDshAssistantGeneration, streamDshPerfSamples } from "../src/perf-sources/dsh.js";
-import { PERF_METHOD_VERSION, perfFlagNamesOf } from "../src/perf-stats.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE, perfFlagNamesOf } from "../src/perf-stats.js";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const READER_FILE = path.join(REPO_ROOT, "src", "perf-sources", "dsh.js");
@@ -232,7 +232,7 @@ function flagsOf(sample) {
   return perfFlagNamesOf(sample.sampleFlags);
 }
 
-test("official providers keep all_generated_output scope and receive diagnostics without publishing generation TPS", async () => {
+test("official providers keep diagnostics under the unified output scope without publishing generation TPS", async () => {
   const accountStream = successfulStream(
     [
       reasoningChunks(T0 + 1_100, ["reason"], []),
@@ -271,7 +271,7 @@ test("official providers keep all_generated_output scope and receive diagnostics
     assert.equal(account.modelProvider, "deepseek-account");
     assert.equal(account.reasoningEffort, "max");
     assert.equal(account.methodVersion, PERF_METHOD_VERSION);
-    assert.equal(account.tokenScope, "all_generated_output");
+    assert.equal(account.tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(account.outputTokens, null);
     assert.equal(account.durationMs, null);
     assert.equal(account.windowStartMs, T0 + 1_100);
@@ -282,7 +282,7 @@ test("official providers keep all_generated_output scope and receive diagnostics
 
     const official = samplesByKey.get(sampleKeyOf(2, 1));
     assert.equal(official.modelProvider, "deepseek-official");
-    assert.equal(official.tokenScope, "all_generated_output");
+    assert.equal(official.tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(official.outputTokens, null);
     assert.equal(official.durationMs, null);
     assert.equal(official.windowStartMs, T0 + 2_100);
@@ -352,7 +352,7 @@ test("a completed message stream remains visible without step/end but does not p
   }
 });
 
-test("future explicit reasoning detail cannot switch an official provider to another scope or create a TPS sample", async () => {
+test("future explicit reasoning detail keeps the unified scope and cannot create a TPS sample", async () => {
   const stream = successfulStream(
     [reasoningChunks(T0 + 1_100, ["reason"], []), textChunks(T0 + 1_150, ["answer"], [])],
     10,
@@ -369,7 +369,7 @@ test("future explicit reasoning detail cannot switch an official provider to ano
   try {
     const { samples } = await readLog(file);
     assert.equal(samples.length, 1, "one response must produce one sample");
-    assert.equal(samples[0].tokenScope, "all_generated_output");
+    assert.equal(samples[0].tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(samples[0].outputTokens, null);
     assert.equal(samples[0].durationMs, null);
     assert.equal(samples[0].timingSource, "unknown");
@@ -380,7 +380,7 @@ test("future explicit reasoning detail cannot switch an official provider to ano
   }
 });
 
-test("non-official providers keep the non-reasoning scope and never derive a generation sample", async () => {
+test("non-official providers keep diagnostics under the unified output scope and never derive a generation sample", async () => {
   const knownStream = successfulStream(
     [
       reasoningChunks(T0 + 1_100, ["reason"], []),
@@ -426,14 +426,14 @@ test("non-official providers keep the non-reasoning scope and never derive a gen
     const { samples } = await readLog(file);
     const samplesByKey = byKey(samples);
     const known = samplesByKey.get(sampleKeyOf(1, 1));
-    assert.equal(known.tokenScope, "non_reasoning_output");
+    assert.equal(known.tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(known.outputTokens, null);
     assert.equal(known.durationMs, null);
     assert.equal(known.windowStartMs, T0 + 1_150);
     assert.equal(known.windowEndMs, T0 + 1_200);
 
     const missing = samplesByKey.get(sampleKeyOf(1, 2));
-    assert.equal(missing.tokenScope, "non_reasoning_output");
+    assert.equal(missing.tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(missing.outputTokens, null, "missing reasoning detail is not replaced by total output");
     assert.equal(missing.durationMs, null);
     assert.equal(missing.windowStartMs, T0 + 2_200);
@@ -528,7 +528,7 @@ test("normalized official candidates preserve usage diagnostics while every cand
     const rawByKey = new Map(rawSamples.map((raw) => [JSON.stringify(raw.identity), raw]));
 
     const mismatch = samplesByKey.get(sampleKeyOf(1, 1));
-    assert.equal(mismatch.tokenScope, "all_generated_output");
+    assert.equal(mismatch.tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(mismatch.outputTokens, null);
     assert.equal(mismatch.durationMs, null);
     assert.equal(mismatch.status, "completed");

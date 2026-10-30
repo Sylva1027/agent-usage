@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createRepositoryResolver } from "./repository-identity.js";
+import { outputObservationFile } from "./perf-output-observations.js";
 import { readRolloutLines, plainRolloutPath } from "./codex-rollout.js";
 import {
   createCostEstimateAccumulator,
@@ -2355,12 +2356,21 @@ function perfContentFingerprint(kind, filePath) {
     }
     const digest = createHash("sha256");
     const readerKind = canonicalPerfKind(kind);
-    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:native-generation-v1`);
+    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:visible-output-v1`);
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],
       [walPath, walSize],
     ];
+    if (readerKind === "dsh" || readerKind === "workbuddy") {
+      const observationPath = outputObservationFile(filePath, readerKind);
+      const observation = statSync(observationPath, { throwIfNoEntry: false });
+      if (observation) {
+        size += observation.size;
+        mtimeMs = Math.max(mtimeMs, observation.mtimeMs);
+        contentParts.push([observationPath, observation.size]);
+      }
+    }
     for (const [file, fileSize] of contentParts) {
       if (fileSize <= 0) continue;
       const headLength = Math.min(fileSize, PERF_CONTENT_PROBE_BYTES);

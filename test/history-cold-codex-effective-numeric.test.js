@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { createHistoryArchiveCandidate } from "../src/history-archive.js";
+import { createHistoryArchiveCandidate, readCodexNativeMeasurements } from "../src/history-archive.js";
 import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
@@ -86,13 +86,18 @@ function timingEvidence(database, homeId, responseId) {
     .map((row) => ({ ...row }));
 }
 
-function sampleRevision(root, sampleKey) {
+function factRevision(root, factTable, sampleKey) {
   const matches = root.revisions.filter(
     (entry) =>
-      entry.factTable === "perf_samples" && entry.added.some((delta) => String(delta.payload.sample_key) === sampleKey),
+      entry.factTable === factTable &&
+      [...entry.removed, ...entry.added].some((delta) => String(delta.payload.sample_key) === sampleKey),
   );
-  assert.equal(matches.length, 1, "the late timing revision must add exactly one typed payload for the sample");
+  assert.equal(matches.length, 1, `the late timing revision must contain exactly one ${factTable} entry`);
   return matches[0];
+}
+
+function sampleRevision(root, sampleKey) {
+  return factRevision(root, "perf_samples", sampleKey);
 }
 
 test("an effective typed Codex perf revision cannot contradict unchanged native timing", async () => {
@@ -122,6 +127,22 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     assert.equal(typeof responseId, "string");
     const baseTiming = fixture.timingRecords.find((record) => record.responseId === responseId);
     assert.ok(baseTiming, "the selected cold sample must have native timing evidence");
+    const coldSampleRow = {
+      ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
+    };
+    const siblingSampleKey = String(
+      archived.database
+        .prepare(
+          `SELECT sample_key
+           FROM perf_samples
+           WHERE home_id = ? AND source_path = ? AND sample_key <> ?
+           ORDER BY sample_key
+           LIMIT 1`,
+        )
+        .get(coldSampleRow.home_id, coldSampleRow.source_path, coldSampleRow.sample_key).sample_key,
+    );
+    assert.notEqual(siblingSampleKey, coldSample.sampleKey);
+    assert.notEqual(JSON.parse(siblingSampleKey)[4], responseId);
 
     await createHistoryArchiveCandidate(archived.database, candidateFile, {
       startMs: coldStartMs,
@@ -130,8 +151,13 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     const candidateDigest = fileSha256(candidateFile);
     const candidateDatabase = new DatabaseSync(candidateFile, { readOnly: true });
     let requestFacts;
+    let candidateNativeMeasurements;
     try {
       requestFacts = codexRequestFacts(candidateDatabase);
+      candidateNativeMeasurements = readCodexNativeMeasurements(
+        candidateDatabase,
+        candidateDatabase.prepare("SELECT * FROM perf_samples ORDER BY sample_key").all(),
+      );
     } finally {
       candidateDatabase.close();
     }
@@ -167,6 +193,7 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([lateTiming]);
     archived.importRequestTimingEvidence({
       homeId: codexHomeId(archived, fixture.codexHome),
       records: [lateTiming],
@@ -194,10 +221,21 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     assert.equal(typeof revisionMetadata, "string");
     const revisionRoot = JSON.parse(String(revisionMetadata));
     const revision = sampleRevision(revisionRoot, String(coldSample.sampleKey));
+    const nativeMeasurementRevision = factRevision(
+      revisionRoot,
+      "codex_output_measurements",
+      String(coldSample.sampleKey),
+    );
     const originalAdded = revision.added.find(
       (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
     );
     assert.ok(originalAdded, "the selected sample must have one effective typed payload");
+    const originalNativeMeasurement = nativeMeasurementRevision.added.find(
+      (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
+    );
+    assert.ok(originalNativeMeasurement, "the selected sample must have one scalar native measurement payload");
+    const siblingCandidateMeasurement = candidateNativeMeasurements.get(siblingSampleKey);
+    assert.ok(siblingCandidateMeasurement, "the sibling response must have candidate native measurement evidence");
     const originalHotSample = {
       ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
@@ -260,6 +298,82 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     } finally {
       writeSampleAndRevision(archived.database, originalHotSample, revisionRoot);
     }
+
+    const assertRevisionRejected = async (candidateRoot, message, messagePattern) => {
+      writeSampleAndRevision(archived.database, originalHotSample, candidateRoot);
+      try {
+        await assert.rejects(
+          archived.summarizeHistory(FILTERS),
+          (error) => error.code === "HISTORY_ARCHIVE_REVISION_INVALID" && messagePattern.test(String(error.message)),
+          message,
+        );
+      } finally {
+        writeSampleAndRevision(archived.database, originalHotSample, revisionRoot);
+      }
+    };
+
+    const missingNativeRoot = structuredClone(revisionRoot);
+    missingNativeRoot.revisions = missingNativeRoot.revisions.filter(
+      (entry) => entry.factTable !== "codex_output_measurements",
+    );
+    await assertRevisionRejected(
+      missingNativeRoot,
+      "removing the scalar native measurement revision must reject the effective sample",
+      /native|measurement|contradict/i,
+    );
+
+    const damagedWindowRoot = structuredClone(revisionRoot);
+    const damagedNativeRevision = factRevision(
+      damagedWindowRoot,
+      "codex_output_measurements",
+      String(coldSample.sampleKey),
+    );
+    const damagedNativeMeasurement = damagedNativeRevision.added.find(
+      (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
+    );
+    assert.ok(damagedNativeMeasurement);
+    damagedNativeMeasurement.payload.measurement.windows[0].endMs =
+      damagedNativeMeasurement.payload.measurement.windows[0].startMs;
+    await assertRevisionRejected(
+      damagedWindowRoot,
+      "a damaged native measurement window must reject",
+      /measurement|scalar|window|native/i,
+    );
+
+    const crossResponseRoot = structuredClone(revisionRoot);
+    const crossResponseNativeRevision = factRevision(
+      crossResponseRoot,
+      "codex_output_measurements",
+      String(coldSample.sampleKey),
+    );
+    const crossResponseAdded = crossResponseNativeRevision.added.find(
+      (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
+    );
+    assert.ok(crossResponseAdded);
+    crossResponseNativeRevision.removed = [
+      {
+        payload: {
+          sample_key: siblingSampleKey,
+          source_path: coldSampleRow.source_path,
+          home_id: coldSampleRow.home_id,
+          measurement: structuredClone(siblingCandidateMeasurement),
+        },
+        count: 1,
+      },
+    ];
+    crossResponseAdded.payload.sample_key = siblingSampleKey;
+    await assertRevisionRejected(
+      crossResponseRoot,
+      "a native measurement moved to a sibling response identity must reject",
+      /native|measurement|sample|contradict/i,
+    );
+
+    assert.deepEqual(
+      timingEvidence(archived.database, String(originalAdded.payload.home_id), responseId),
+      originalTimingEvidence,
+      "the native measurement counterexamples must not rewrite external timing evidence",
+    );
+    assert.equal(fileSha256(candidateFile), candidateDigest);
 
     const restored = await archived.summarizeHistory(FILTERS);
     assert.deepEqual(

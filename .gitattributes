@@ -1,6 +1,8 @@
 * text=auto eol=lf
 # Preserve raw bytes of hash-bound validation fixtures and records.
 /docs/validation/** -text
+# Preserve the hash-bound producer diff, including blank context-line prefixes.
+/scripts/patches/codex-native-generation-timing.patch -text -whitespace
 
 # Source archives: GitHub builds them from the tag with these rules applied.
 # Validation screenshots and logs are dated evidence for this repository, not

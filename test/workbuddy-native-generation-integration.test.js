@@ -11,6 +11,7 @@ import {
   publishHistoryArchiveImport,
 } from "../src/history-archive.js";
 import { createHistoryBackup, verifyHistoryBackup } from "../src/history-backup.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../src/perf-stats.js";
 import { buildUsageReport, summarizeUsage } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
 
@@ -262,7 +263,7 @@ test("a failed native timing publication retries its session even when timing fi
   });
 });
 
-test("retired v3/v4 rows stay historical, v5 missing candidates replace them, and backup/archive retain usage", async () => {
+test("historical v3/v4/v5 rows stay historical, current missing candidates replace them, and backup/archive retain usage", async () => {
   await fixture(async ({ root, home, files, log, options }) => {
     await writeFile(log, end("a") + end("b"));
     const store = new UsageStore(options);
@@ -271,31 +272,34 @@ test("retired v3/v4 rows stay historical, v5 missing candidates replace them, an
       const initial = await store.summarize(FILTERS);
       assertUnmeasuredPerf(initial.perf, 2);
 
-      const assertRetiredRowsStayUnmeasured = async (methodVersion) => {
+      const assertHistoricalRowsStayUnmeasured = async (methodVersion, tokenScope) => {
         store.database
           .prepare(
             `UPDATE perf_samples
-             SET method_version = ?, output_tokens = 2, duration_ms = 20,
+             SET method_version = ?, token_scope = ?, output_tokens = 2, duration_ms = 20,
                  timing_source = 'explicit', sample_flags = 0
              WHERE source_kind = 'workbuddy'`,
           )
-          .run(methodVersion);
+          .run(methodVersion, tokenScope);
         store.writeMeta("perf_method_version", methodVersion);
         const retired = await store.summarize(FILTERS);
-        assert.equal(retired.perf.meta.methodVersion, "tps-v5");
+        assert.equal(retired.perf.meta.methodVersion, PERF_METHOD_VERSION);
         assertUnmeasuredPerf(retired.perf, 2);
         assert.deepEqual(retired.totals, initial.totals);
         assert.deepEqual(
           store.database
-            .prepare("SELECT DISTINCT method_version FROM perf_samples")
+            .prepare("SELECT method_version, token_scope FROM perf_samples ORDER BY method_version")
             .all()
-            .map((row) => row.method_version),
-          [methodVersion],
+            .map((row) => ({ ...row })),
+          [
+            { method_version: methodVersion, token_scope: tokenScope },
+            { method_version: methodVersion, token_scope: tokenScope },
+          ],
           "历史行保留在库内",
         );
       };
 
-      await assertRetiredRowsStayUnmeasured("tps-v3");
+      await assertHistoricalRowsStayUnmeasured("tps-v3", "non_reasoning_output");
       await rm(log);
       await store.sync();
       let current = await store.summarize(FILTERS);
@@ -305,18 +309,25 @@ test("retired v3/v4 rows stay historical, v5 missing candidates replace them, an
           .prepare("SELECT DISTINCT method_version FROM perf_samples")
           .all()
           .map((row) => row.method_version),
-        ["tps-v5"],
-        "source refresh replaces retired v3 rows",
+        [PERF_METHOD_VERSION],
+        "source refresh replaces historical v3 rows",
       );
 
-      await assertRetiredRowsStayUnmeasured("tps-v4");
+      await assertHistoricalRowsStayUnmeasured("tps-v4", "non_reasoning_output");
       await writeFile(log, end("a") + end("b"));
       await store.sync();
       current = await store.summarize(FILTERS);
       assertUnmeasuredPerf(current.perf, 2);
+
+      await assertHistoricalRowsStayUnmeasured("tps-v5", "non_reasoning_output");
+      await rm(log);
+      await store.sync();
+      current = await store.summarize(FILTERS);
+      assertUnmeasuredPerf(current.perf, 2);
+
       const rows = store.database
         .prepare(
-          `SELECT sample_key, source_path, home_id, model, method_version,
+          `SELECT sample_key, source_path, home_id, model, method_version, token_scope,
                   output_tokens, duration_ms, timing_source
            FROM perf_samples
            WHERE source_kind = 'workbuddy'
@@ -327,7 +338,8 @@ test("retired v3/v4 rows stay historical, v5 missing candidates replace them, an
       assert.equal(rows.length, 2);
       for (const row of rows) {
         const identity = JSON.parse(row.sample_key);
-        assert.equal(row.method_version, "tps-v5");
+        assert.equal(row.method_version, PERF_METHOD_VERSION);
+        assert.equal(row.token_scope, PERF_TOKEN_SCOPE);
         assert.equal(row.output_tokens, null);
         assert.equal(row.duration_ms, null);
         assert.equal(row.timing_source, "unknown");
@@ -339,20 +351,20 @@ test("retired v3/v4 rows stay historical, v5 missing candidates replace them, an
       assert.deepEqual(current.totals, initial.totals);
       assert.deepEqual(current.costEstimate, initial.costEstimate);
 
-      const backupFile = path.join(root, "v5-missing.sqlite");
+      const backupFile = path.join(root, "current-missing.sqlite");
       await createHistoryBackup(store.database, backupFile);
       await verifyHistoryBackup(backupFile);
-      const candidateFile = path.join(root, "cold-v5.sqlite");
+      const candidateFile = path.join(root, "cold-current.sqlite");
       const timestamp = Date.parse(DATE);
       await createHistoryArchiveCandidate(store.database, candidateFile, {
         startMs: timestamp - 1,
         endMs: timestamp + 1,
       });
       const plan = await prepareHistoryArchiveCommit(store.database, candidateFile);
-      assert.equal(plan.perfDeletion, undefined, "无输出/时长的 v5 候选不能进入可删除的计速样本集");
+      assert.equal(plan.perfDeletion, undefined, "无输出/时长的当前候选不能进入可删除的计速样本集");
       const committed = await store.commitHistoryArchiveEvents(plan);
       assert.equal(committed.deletedPerfSampleCount, 0);
-      const bundle = path.join(root, "v5-bundle");
+      const bundle = path.join(root, "current-bundle");
       const destination = path.join(root, "transferred");
       await publishHistoryArchiveBundle(store.database, bundle);
       await publishHistoryArchiveImport(bundle, destination);

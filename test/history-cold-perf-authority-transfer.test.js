@@ -12,10 +12,10 @@ import {
   publishHistoryArchiveBundle,
   publishHistoryArchiveImport,
 } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+const HISTORICAL_METHOD_VERSION = "tps-v5";
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
 const PERF_COMPONENT_KEYS = [
@@ -133,12 +133,12 @@ test("explicit ZCode perf authority survives complete bundle import after source
     );
     assert.ok(coldSample, "fixture must expose a cold ZCode candidate with missing generation timing");
     assert.equal(coldSample.sourceKind, "zcode");
-    assert.equal(coldSample.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(coldSample.methodVersion, HISTORICAL_METHOD_VERSION);
     assert.equal(coldSample.timingKind, "generation");
     assert.equal(coldSample.tokenScope, "non_reasoning_output");
     assert.equal(coldSample.timingSource, "unknown");
     assert.deepEqual([...new Set(coldSamples.map((sample) => sample.sourceKind))], ["zcode"]);
-    assert.deepEqual([...new Set(coldSamples.map((sample) => sample.methodVersion))], [PERF_METHOD_VERSION]);
+    assert.deepEqual([...new Set(coldSamples.map((sample) => sample.methodVersion))], [HISTORICAL_METHOD_VERSION]);
 
     archived.database.exec("BEGIN IMMEDIATE");
     try {
@@ -153,7 +153,7 @@ test("explicit ZCode perf authority survives complete bundle import after source
             segmentId: registered.segmentId,
             databaseSha256: registered.databaseSha256,
             sourceKinds: ["zcode"],
-            methodVersions: [PERF_METHOD_VERSION],
+            methodVersions: [HISTORICAL_METHOD_VERSION],
           },
         ],
       });

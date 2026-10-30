@@ -31,5 +31,8 @@
     "@biomejs/biome": "2.5.14",
     "@types/node": "22.20.4",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "tiktoken": "1.0.22"
   }
 }

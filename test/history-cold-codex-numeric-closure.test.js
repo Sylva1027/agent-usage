@@ -6,9 +6,6 @@ import test from "node:test";
 
 import { createHistoryBackup, verifyHistoryBackup } from "../src/history-backup.js";
 import { createHistoryArchiveCandidate, verifyHistoryArchiveCandidate } from "../src/history-archive.js";
-import { generationPerfValues } from "../src/perf-request-timing.js";
-import { lookupRequestTiming } from "../src/perf-request-timing-store.js";
-import { resolveCodexRequestTiming } from "../src/perf-sources/codex-request-timing.js";
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -43,7 +40,7 @@ function nativeRequests(database, homeId, threadId, turnId, responseId) {
   );
 }
 
-function mutateNativeRequestOutput(database, homeId, responseId) {
+function writeNativeRequestOutput(database, homeId, responseId, outputTokens) {
   const projections = database
     .prepare("SELECT path, projection FROM perf_codex_projections WHERE home_id = ? ORDER BY path")
     .all(homeId);
@@ -54,7 +51,7 @@ function mutateNativeRequestOutput(database, homeId, responseId) {
       (record) => record?.kind === "token_usage_record" && record.responseId === responseId,
     );
     if (!request) continue;
-    request.outputTokens = Number(request.outputTokens) + 1;
+    request.outputTokens = outputTokens;
     update.run(JSON.stringify(projection), String(row.path));
     return;
   }
@@ -141,39 +138,28 @@ function nativeSnapshot(database, sampleKey, homeId, threadId, turnId, responseI
 }
 
 function recomputeNativeTiming(snapshot) {
-  const evidenceByResponse = new Map(snapshot.evidence.map((row) => [String(row.response_id), row]));
-  assert.equal(evidenceByResponse.size, snapshot.responses.length);
-  const sampleKey = JSON.parse(snapshot.sample.sample_key);
-  const turn = {
-    threadId: sampleKey[2],
-    turnId: sampleKey[3],
-    model: String(snapshot.sample.model),
+  assert.equal(snapshot.requests.length, 1, "the selected schema3 response must have one native request record");
+  const generation = snapshot.requests[0].nativeGeneration;
+  assert.equal(Number.isSafeInteger(generation?.outputTokens), true);
+  assert.equal(Number.isSafeInteger(generation?.durationMs), true);
+  return {
+    outputTokens: generation.outputTokens,
+    durationMs: generation.durationMs,
   };
-  return resolveCodexRequestTiming(String(snapshot.sample.home_id), turn, snapshot.requests[0], (query) => {
-    const evidence = evidenceByResponse.get(String(query.responseId));
-    if (!evidence) {
-      return { state: "missing", durationMs: null, reportedOutputTokens: null, requestedModel: "" };
-    }
-    assert.equal(evidence.status, "completed");
-    return {
-      state: "available",
-      durationMs: evidence.duration_ms,
-      reportedOutputTokens: evidence.reported_output_tokens,
-      requestedModel: evidence.requested_model,
-      generation: evidence.generation_json === null ? null : JSON.parse(String(evidence.generation_json)),
-    };
-  });
 }
 
-test("candidate enforces bounded Codex request facts without depending on projection control state", async () => {
+test("candidate enforces native projections and bounded Codex request facts", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-source.sqlite");
   const controlCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-control.sqlite");
   const candidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-candidate.sqlite");
   const repackWorkingFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-repack-working.sqlite");
   const repackedCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-repacked.sqlite");
-  const legacyWorkingFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-legacy-working.sqlite");
-  const legacyCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-legacy.sqlite");
+  const requestFactWorkingFile = path.join(
+    fixture.serverOptions.homeDir,
+    "cold-codex-numeric-request-fact-working.sqlite",
+  );
+  const requestFactCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-request-fact.sqlite");
   const candidateManifest = manifestPathFor(candidateFile);
   const store = new UsageStore(fixture.serverOptions);
   try {
@@ -209,10 +195,9 @@ test("candidate enforces bounded Codex request facts without depending on projec
     assert.equal(typeof responseId, "string");
     const original = nativeSnapshot(store.database, sampleKey, homeId, threadId, turnId, responseId);
     assert.equal(original.requests.length, original.sample.request_count);
-    const nativeTiming = recomputeNativeTiming(original);
-    assert.equal(nativeTiming.state, "available");
-    assert.equal(nativeTiming.reportedOutputTokens, original.requests[0].outputTokens);
-    assert.deepEqual(generationPerfValues(nativeTiming.generation), {
+    const nativeMeasurement = recomputeNativeTiming(original);
+    assert.equal(original.requests[0].outputTokens, original.sample.output_tokens);
+    assert.deepEqual(nativeMeasurement, {
       outputTokens: Number(original.sample.output_tokens),
       durationMs: Number(original.sample.duration_ms),
     });
@@ -253,6 +238,17 @@ test("candidate enforces bounded Codex request facts without depending on projec
         },
         "the persisted facts must be the minimal native request ledger",
       );
+      assert.equal(
+        Number(
+          controlSource
+            .prepare(
+              "SELECT COUNT(*) AS count FROM perf_codex_projections WHERE home_id = ? AND path = ? COLLATE NOCASE",
+            )
+            .get(homeId, String(original.sample.source_path)).count,
+        ),
+        1,
+        "the candidate must retain the selected native projection",
+      );
       await backup(controlSource, repackWorkingFile);
     } finally {
       controlSource.close();
@@ -260,12 +256,10 @@ test("candidate enforces bounded Codex request facts without depending on projec
 
     const repackWorking = new DatabaseSync(repackWorkingFile);
     try {
-      const projectionCount = Number(
-        repackWorking.prepare("SELECT COUNT(*) AS count FROM perf_codex_projections").get().count,
-      );
-      assert.ok(projectionCount > 0);
-      const deleted = repackWorking.prepare("DELETE FROM perf_codex_projections").run();
-      assert.equal(Number(deleted.changes), projectionCount);
+      const deleted = repackWorking
+        .prepare("DELETE FROM perf_codex_projections WHERE home_id = ? AND path = ? COLLATE NOCASE")
+        .run(homeId, String(original.sample.source_path));
+      assert.equal(Number(deleted.changes), 1, "the counterexample must remove only the selected native projection");
     } finally {
       repackWorking.close();
     }
@@ -277,58 +271,47 @@ test("candidate enforces bounded Codex request facts without depending on projec
       repackSource.close();
     }
     const outer = await verifyHistoryBackup(repackedCandidateFile);
-    assert.equal(outer.ok, true, "the projection-free candidate must retain a valid outer backup checksum");
-    await verifyHistoryArchiveCandidate(repackedCandidateFile);
+    assert.equal(outer.ok, true, "the projection-loss candidate must retain a valid outer backup checksum");
+    await assert.rejects(
+      () => verifyHistoryArchiveCandidate(repackedCandidateFile),
+      (error) => {
+        assert.equal(error?.code, TIMING_MISMATCH_CODE);
+        return true;
+      },
+    );
 
-    const transferred = new DatabaseSync(repackedCandidateFile, { readOnly: true });
+    const requestFactSource = new DatabaseSync(controlCandidateFile, { readOnly: true });
     try {
-      assert.equal(
-        Number(transferred.prepare("SELECT COUNT(*) AS count FROM perf_codex_projections").get().count),
-        0,
-        "the transferred candidate must contain no projection control rows",
-      );
-      const transferredTurn = requestFacts.turns.find((turn) => turn.sampleKey === sampleKey);
-      assert.ok(transferredTurn);
-      assert.deepEqual(
-        resolveCodexRequestTiming(
-          transferredTurn.homeId,
-          {
-            threadId: transferredTurn.threadId,
-            turnId: transferredTurn.turnId,
-            model: transferredTurn.model,
-          },
-          transferredTurn.requests[0],
-          (query) => lookupRequestTiming(transferred, query),
-        ),
-        nativeTiming,
-        "the projection-free candidate must recompute from stored facts and native timing evidence",
-      );
+      await backup(requestFactSource, requestFactWorkingFile);
     } finally {
-      transferred.close();
+      requestFactSource.close();
     }
-
-    const legacySource = new DatabaseSync(controlCandidateFile, { readOnly: true });
+    const requestFactWorking = new DatabaseSync(requestFactWorkingFile);
     try {
-      await backup(legacySource, legacyWorkingFile);
+      const mutatedFacts = structuredClone(requestFacts);
+      const mutatedTurn = mutatedFacts.turns.find((turn) => turn.sampleKey === sampleKey);
+      assert.ok(mutatedTurn);
+      mutatedTurn.requests[0].outputTokens += 1;
+      const updated = requestFactWorking
+        .prepare("UPDATE store_meta SET value = ? WHERE key = ?")
+        .run(JSON.stringify(mutatedFacts), `history_archive_${"codex_requests"}_v1`);
+      assert.equal(Number(updated.changes), 1);
     } finally {
-      legacySource.close();
+      requestFactWorking.close();
     }
-    const legacyWorking = new DatabaseSync(legacyWorkingFile);
+    const requestFactSourceForRepack = new DatabaseSync(requestFactWorkingFile, { readOnly: true });
     try {
-      const removed = legacyWorking
-        .prepare("DELETE FROM store_meta WHERE key = ?")
-        .run(`history_archive_${"codex_requests"}_v1`);
-      assert.equal(Number(removed.changes), 1);
+      await createHistoryBackup(requestFactSourceForRepack, requestFactCandidateFile);
     } finally {
-      legacyWorking.close();
+      requestFactSourceForRepack.close();
     }
-    const legacySourceForRepack = new DatabaseSync(legacyWorkingFile, { readOnly: true });
-    try {
-      await createHistoryBackup(legacySourceForRepack, legacyCandidateFile);
-    } finally {
-      legacySourceForRepack.close();
-    }
-    await verifyHistoryArchiveCandidate(legacyCandidateFile);
+    await assert.rejects(
+      () => verifyHistoryArchiveCandidate(requestFactCandidateFile),
+      (error) => {
+        assert.equal(error?.code, TIMING_MISMATCH_CODE);
+        return true;
+      },
+    );
 
     await backup(store.database, isolatedFile);
     const isolated = new DatabaseSync(isolatedFile);
@@ -345,7 +328,7 @@ test("candidate enforces bounded Codex request facts without depending on projec
         original,
         "the numeric mutation must leave every native timing fact unchanged",
       );
-      assert.deepEqual(recomputeNativeTiming(mutated), nativeTiming);
+      assert.deepEqual(recomputeNativeTiming(mutated), nativeMeasurement);
     } finally {
       isolated.close();
     }
@@ -414,20 +397,63 @@ test("candidate enforces bounded Codex request facts without depending on projec
       "a sample whose net output disagrees with generation evidence must not publish a candidate",
     );
 
-    const rawMismatchFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-raw-source.sqlite");
-    const rawCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-raw-candidate.sqlite");
-    await backup(store.database, rawMismatchFile);
-    const rawMismatch = new DatabaseSync(rawMismatchFile);
+    const rawUsageFile = path.join(fixture.serverOptions.homeDir, "cold-codex-numeric-raw-usage-source.sqlite");
+    const rawUsageCandidateFile = path.join(
+      fixture.serverOptions.homeDir,
+      "cold-codex-numeric-raw-usage-candidate.sqlite",
+    );
+    const rawOutputTokens = Number(original.requests[0].outputTokens) + 1;
+    await backup(store.database, rawUsageFile);
+    const rawUsage = new DatabaseSync(rawUsageFile);
     try {
-      mutateNativeRequestOutput(rawMismatch, homeId, responseId);
+      writeNativeRequestOutput(rawUsage, homeId, responseId, rawOutputTokens);
     } finally {
-      rawMismatch.close();
+      rawUsage.close();
     }
-    const rawMismatchReadOnly = new DatabaseSync(rawMismatchFile, { readOnly: true });
+    const rawUsageReadOnly = new DatabaseSync(rawUsageFile, { readOnly: true });
+    try {
+      await createHistoryArchiveCandidate(rawUsageReadOnly, rawUsageCandidateFile, {
+        startMs: coldStartMs,
+        endMs: COLD_END_MS,
+      });
+    } finally {
+      rawUsageReadOnly.close();
+    }
+    await verifyHistoryArchiveCandidate(rawUsageCandidateFile);
+    const rawUsageCandidate = new DatabaseSync(rawUsageCandidateFile, { readOnly: true });
+    try {
+      const stored = rawUsageCandidate
+        .prepare("SELECT value FROM store_meta WHERE key = ?")
+        .get(`history_archive_${"codex_requests"}_v1`);
+      const storedTurn = JSON.parse(String(stored.value)).turns.find((turn) => turn.sampleKey === sampleKey);
+      assert.equal(storedTurn.requests[0].outputTokens, rawOutputTokens);
+      const candidateSnapshot = nativeSnapshot(rawUsageCandidate, sampleKey, homeId, threadId, turnId, responseId);
+      assert.equal(candidateSnapshot.sample.output_tokens, original.sample.output_tokens);
+      assert.deepEqual(recomputeNativeTiming(candidateSnapshot), nativeMeasurement);
+    } finally {
+      rawUsageCandidate.close();
+    }
+
+    const invalidRawUsageFile = path.join(
+      fixture.serverOptions.homeDir,
+      "cold-codex-numeric-invalid-raw-usage-source.sqlite",
+    );
+    const invalidRawUsageCandidateFile = path.join(
+      fixture.serverOptions.homeDir,
+      "cold-codex-numeric-invalid-raw-usage-candidate.sqlite",
+    );
+    await backup(store.database, invalidRawUsageFile);
+    const invalidRawUsage = new DatabaseSync(invalidRawUsageFile);
+    try {
+      writeNativeRequestOutput(invalidRawUsage, homeId, responseId, -1);
+    } finally {
+      invalidRawUsage.close();
+    }
+    const invalidRawUsageReadOnly = new DatabaseSync(invalidRawUsageFile, { readOnly: true });
     try {
       await assert.rejects(
         () =>
-          createHistoryArchiveCandidate(rawMismatchReadOnly, rawCandidateFile, {
+          createHistoryArchiveCandidate(invalidRawUsageReadOnly, invalidRawUsageCandidateFile, {
             startMs: coldStartMs,
             endMs: COLD_END_MS,
           }),
@@ -437,12 +463,12 @@ test("candidate enforces bounded Codex request facts without depending on projec
         },
       );
     } finally {
-      rawMismatchReadOnly.close();
+      invalidRawUsageReadOnly.close();
     }
     assert.equal(
-      existsSync(rawCandidateFile),
+      existsSync(invalidRawUsageCandidateFile),
       false,
-      "raw request output must reconcile with reportedOutputTokens before a candidate is published",
+      "an invalid raw usage value must not publish a candidate",
     );
   } finally {
     store.close();

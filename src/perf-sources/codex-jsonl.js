@@ -9,6 +9,7 @@
  */
 import { readRolloutLines } from "../codex-rollout.js";
 import path from "node:path";
+import { normalizeMeasuredOutput } from "../perf-output-tokens.js";
 
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
 
@@ -73,6 +74,25 @@ function safeNonNegativeInteger(value) {
 
 function nonNegativeFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function projectNativeGeneration(value) {
+  if (!isRecord(value) || value.schema_version !== 3 || value.clock !== "transport_receive") return null;
+  const rawWindows = Array.isArray(value.windows) ? value.windows : [];
+  return normalizeMeasuredOutput({
+    tokenizer: value.tokenizer,
+    outputTokens: value.output_tokens,
+    durationMs: value.observed_duration_ms,
+    windows: rawWindows.map((window) =>
+      isRecord(window)
+        ? {
+            startMs: window.start_ms,
+            endMs: window.end_ms,
+            outputTokens: window.output_tokens,
+          }
+        : null,
+    ),
+  });
 }
 
 function fieldType(value, present) {
@@ -313,7 +333,8 @@ export async function readCodexRolloutMetadata(filePath) {
       }
       const usage = isRecord(payload.usage) ? payload.usage : null;
       const turnTokenUsage = isRecord(payload.turn_token_usage) ? payload.turn_token_usage : null;
-      // Native v1/v2 clocks lack exact token offsets for their receive window.
+      const nativeGeneration = projectNativeGeneration(payload.generation_timing);
+      // Schema 3 is the only native contract with final visible-output token windows.
       records.push(
         projectedRecord(
           "token_usage_record",
@@ -326,6 +347,7 @@ export async function readCodexRolloutMetadata(filePath) {
             outputTokens: safeNonNegativeInteger(usage?.output_tokens),
             reasoningOutputTokens: safeNonNegativeInteger(usage?.reasoning_output_tokens),
             reasoningOutputTokensKnown: safeNonNegativeInteger(usage?.reasoning_output_tokens) !== null,
+            ...(nativeGeneration === null ? {} : { nativeGeneration }),
             turnOutputTokens: safeNonNegativeInteger(turnTokenUsage?.output_tokens),
             timestamp: text(row.timestamp),
           },

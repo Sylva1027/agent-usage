@@ -294,7 +294,7 @@ test("M7 archive moves, transactional rollback, retry, and dependency loss prese
     assert.equal(
       store.database.prepare("SELECT output_tokens FROM perf_samples WHERE sample_key LIKE '%\"response-1-1\"%'").get()
         .output_tokens,
-      null,
+      150,
     );
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM perf_sample_sources").get().count, 78);
 
@@ -426,7 +426,7 @@ test("M7 a new rollout whose thread publish fails leaves indexVersion on the old
 });
 
 test("M7 a partial multi-home publish versions only the successfully committed Codex homes", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
   const secondHome = path.join(fixture.reportOptions.homeDir, "codex-fixture-second");
   for (const file of fixture.rolloutFiles) {
     const copy = path.join(secondHome, path.relative(fixture.codexHome, file));
@@ -830,6 +830,11 @@ test("M8.2 C: store publishes only the child ledger and revision 1 rebuilds unch
     },
   ];
   mkdirSync(path.dirname(childPath), { recursive: true });
+  for (const row of childRows) {
+    if (row.type === "token_usage_record" && row.payload.thread_id === "Child-store") {
+      row.payload.generation_timing = fixture.generationTiming(40, 400);
+    }
+  }
   writeFileSync(childPath, `${childRows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
 
   try {

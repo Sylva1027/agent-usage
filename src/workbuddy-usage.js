@@ -369,7 +369,7 @@ function readHead(filePath) {
  *
  * 纯目录结构不够：`~/.workbuddy-ai` 同时满足 `claudeHomeLooksUsable`（`projects/<slug>/*.jsonl`）与
  * `codexHomeLooksUsable`（`sessions/`），必须靠**内容**区分。判据是 `projects/<slug>/*.jsonl` 的
- * 前 64 KiB 里出现 `"type":"session-meta"` 或 `"type":"function_call"`，最多探测 3 个文件。
+ * 前 64 KiB 的原生记录标记区分，最多探测 3 个文件。
  * @param {string} homePath
  * @returns {Promise<boolean>}
  */
@@ -388,7 +388,12 @@ export async function workbuddyHomeLooksUsable(homePath) {
       } catch {
         head = "";
       }
-      if (head.includes('"type":"session-meta"') || head.includes('"type":"function_call"')) return true;
+      if (
+        head.includes('"type":"session-meta"') ||
+        head.includes('"type":"function_call"') ||
+        head.includes('"__codebuddyLocal"')
+      )
+        return true;
       if (probed >= HOME_PROBE_FILE_LIMIT) return false;
     }
   }

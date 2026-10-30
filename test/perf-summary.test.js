@@ -12,6 +12,7 @@ import {
   PERF_METHOD_VERSION,
   PERF_MIN_SAMPLES,
   PERF_SOURCE_WARNING_CODES,
+  PERF_TOKEN_SCOPE,
 } from "../src/perf-stats.js";
 
 /**
@@ -47,10 +48,10 @@ function sample(overrides = {}) {
     model: "m1",
     modelProvider: "",
     reasoningEffort: "",
-    // Every current v3 source uses the same request-level generation semantics.
+    // Every current v6 source uses the same request-level generation semantics.
     window: "request",
     timingKind: "generation",
-    tokenScope: "non_reasoning_output",
+    tokenScope: PERF_TOKEN_SCOPE,
     durationMs: 2_000,
     outputTokens: 1_000,
     ...overrides,
@@ -324,7 +325,7 @@ test("M1.3-5 mixed current dimensions split into separate groups, each aggregate
   const providers = summary.groups.filter((group) => group.modelProvider === "prov-a");
   assert.equal(providers.length, 1);
   assert.equal(summary.groups.filter((group) => group.channel === "worker").length, 1);
-  assert.ok(summary.groups.every((group) => group.tokenScope === "non_reasoning_output"));
+  assert.ok(summary.groups.every((group) => group.tokenScope === PERF_TOKEN_SCOPE));
   // sourceKind and homeId both participate
   assert.equal(summary.groups.filter((group) => group.sourceKind === "dsh").length, 1);
   assert.equal(summary.groups.filter((group) => group.homeId === "h2").length, 1);
@@ -939,17 +940,24 @@ test("M1.3-20 reachability ledger: every 0, null and error branch has a trigger"
 // ---------------------------------------------------------------------------
 
 /**
- * Build a current Codex sample. Historical method fixtures switch back to the
- * legacy source semantics so they remain readable without becoming current samples.
+ * Build a current Codex sample. v1/v2 fixtures switch back to legacy E2E semantics;
+ * explicit v3-v5 fixtures retain their historical generation semantics.
  */
 function codexSample(overrides = {}) {
-  const historical = overrides.methodVersion !== undefined && overrides.methodVersion !== PERF_METHOD_VERSION;
+  const methodVersion = overrides.methodVersion;
+  const legacy = methodVersion !== undefined && methodVersion !== PERF_METHOD_VERSION;
+  const historicalGeneration = methodVersion === "tps-v3" || methodVersion === "tps-v4" || methodVersion === "tps-v5";
   return sample({
     sourceKind: "codex",
-    window: historical ? "turn" : "request",
-    timingKind: historical ? "request_e2e" : "generation",
+    window: legacy && !historicalGeneration ? "turn" : "request",
+    timingKind: legacy && !historicalGeneration ? "request_e2e" : "generation",
     timingSource: "explicit",
-    tokenScope: historical ? "reported_output_includes_reasoning" : "non_reasoning_output",
+    tokenScope:
+      legacy && !historicalGeneration
+        ? "reported_output_includes_reasoning"
+        : historicalGeneration
+          ? "non_reasoning_output"
+          : PERF_TOKEN_SCOPE,
     ...overrides,
   });
 }

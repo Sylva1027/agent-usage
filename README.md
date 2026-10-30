@@ -15,10 +15,13 @@ Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode、Claude Code �
 ```bash
 git clone https://github.com/Sylva1027/codex-usage.git
 cd codex-usage
+npm ci --omit=dev
 node src/cli.js run
 ```
 
-打开 [http://127.0.0.1:3765/](http://127.0.0.1:3765/)。服务默认只监听 `127.0.0.1`；在终端按 `Ctrl+C` 停止。无需安装 npm 依赖。在 Windows PowerShell 中，直接使用上述 `node` 命令即可避开 `npm.ps1` 执行策略限制。
+打开 [http://127.0.0.1:3765/](http://127.0.0.1:3765/)。服务默认只监听 `127.0.0.1`；在终端按 `Ctrl+C` 停止。Release 的 ZIP/TAR.GZ 已附带本地分词依赖，解压后可直接运行 `node src/cli.js run`；Git clone 和 GitHub 自动生成的源码包须先执行 `npm ci --omit=dev`。在 Windows PowerShell 7 中可用 `npm.cmd` 避开 `npm.ps1` 执行策略限制。
+
+模型速度使用统一分词的实际正文和工具参数输出，按接收批次计时。Codex 需采用完整采集并排包，DSH 安装本地 Cordis 插件，WorkBuddy CLI 通过采集启动器运行；安装步骤与已支持范围见[本地速度采集](docs/10-data-sources.md#本地采集安装)。
 
 ## 看板功能
 
@@ -26,7 +29,7 @@ node src/cli.js run
 - **最近范围：** “上一个5h”和“上一个7d”按本机记录的同类真实额度周期统计：起点为原定 reset 减去对应窗口时长，终点取原定 reset 与可信提前替换起点中的较早者；计划 reset 后到下一轮之间的空档不计入上一轮。“上个月”是上一个完整自然月；“今年”从本年 1 月 1 日统计至今。
 - **Codex 限额：** `5h / week` 在当前 5 小时与每周限额窗口之间切换。这两个限额范围以及“上一个5h”“上一个7d”只统计 Codex 来源；普通的今日、本周、本月等范围仍统计所有已选来源。窗口边界默认取自本机 Codex 限额观察值。当前5小时图按半小时、当前每周图按连续24小时显示；上一个5h只画有用量的半小时，最后一段截止到该轮有效终点；上一个7d只画有用量的日历日期。后台保留完整起止时间和时长。没有可靠记录时不会推测边界。未选中 Codex 数据来源时，限额按钮及对应的最近范围选项会置灰。
 - **用量与费用：** 查看 Total Input、Cache Hit、Cache Miss、Output、Reasoning Tokens、Cache Hit Rate 等指标；按渠道、模型和 Git 仓库比较用量，搜索并排序明细。用量表中的模型名统一小写显示，原始模型标识仍用于聚合和计价；模型速度区保留原名。缓存命中输入与未命中输入分开计价。普通范围将子代理和执行渠道合并到 Codex/ZCode/DSH/OpenCode/Claude/WorkBuddy；Codex 专属限额范围保留细分渠道。仓库列表优先展示本地 Git 仓库，再按所选周期排序。
-- **模型速度：** 独立区域按平均输出速度从快到慢排列，模型原名与推理强度分开显示，并区分 Codex / DSH / OpenCode / ZCode / WorkBuddy / Claude。选择一行查看平均速度、样本数与 p10–p90 区间；沿用现有时间范围、来源编辑和冻结快照。生成 TPS 需要相互匹配的 token 计数与计时窗口。现有 Codex、DSH、WorkBuddy 原生窗口缺少匹配的 token 边界，用量照常统计，速度显示 `—`。
+- **模型速度：** 独立区域按平均输出速度从快到慢排列，模型原名与推理强度分开显示，并区分 Codex / DSH / OpenCode / ZCode / WorkBuddy / Claude。选择一行查看平均速度、样本数与 p10–p90 区间；沿用现有时间范围、来源编辑和冻结快照。tps-v6 使用本地统一分词与匹配的传输窗口；Codex、DSH 和 WorkBuddy CLI 安装采集后显示新请求的实际输出速度。缺少观测的旧请求仍保留用量。
 - **纪录与对比：** 适用的时间范围会标出新高，并与可比较的上一周期对照。“全部”没有上一周期，也不会显示 New Record 标记。
 - **来源与刷新：** 自动发现本机 Codex、ZCode、DSH、OpenCode、Claude Code 和 WorkBuddy 数据，也可导入其他 Codex / ZCode / DSH 目录、OpenCode 数据目录、Claude Code home、WorkBuddy home，或包含 `.codex-usage/usage.jsonl` 的项目目录。在“编辑”中选择参与统计的来源。通过“扫描目录”添加来源。页面默认每 60 秒检查新记录，检查中在开关旁显示加载圈；失败后下次检查会重试，错误详情在原刷新框内切换查看。暂停自动刷新后，切换范围仍使用冻结的数据快照。
 - **语言与外观：** 主题按钮旁的“文/A”可切换简体中文与英文。首次打开采用浏览器首选语言，手动选择会被记住；另有深色和浅色主题。衣服图标打开“界面风格”（英文 Waifu），目前开放 ChatGPT、Claude、GLM、Gemini、DeepSeek、Kimi、Qwen、Grok、Muse、Mimo 十款皮肤及简洁模式，采用更新的整页配色。浅深缩略图同时预览，桌面五列两行，选中以泛光圆点表示；角色显示和透明度可调整，偏好会被记住。
@@ -37,7 +40,7 @@ node src/cli.js run
 
 5h/7d 及上一额度周期结合本机认证、路由和模型名筛选，排除明确的 API、外部模型及可识别的 credits 补量阶段；普通日期范围保留全部已选来源。历史证据不足时使用模型规则兜底，详细口径见[看板说明](docs/12-dashboard.md)。
 
-Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `~/.zcode/cli/db/db.sqlite`；DSH（DeepSeek Harness）来自 `~/.dsh/sessions`；OpenCode 来自数据目录（如 `~/.local/share/opencode`）下的 `opencode*.db`；Claude Code 来自 `~/.claude/projects` 下的会话转录（含 `subagents`，按 `message.id` 去重）；WorkBuddy 来自 `~/.workbuddy-ai/projects` 下的会话记录（按 `providerData.messageId` 去重，`model=default-model` 的 Auto 记录整体排除），响应时长取自同目录 `traces/<pid>` 下的 `generation` span。未记录、也未通过项目日志导入的请求不会出现在统计中。
+Codex 用量来自 `~/.codex` 等 home 下的会话日志；ZCode 默认来自 `~/.zcode/cli/db/db.sqlite`；DSH（DeepSeek Harness）来自 `~/.dsh/sessions`；OpenCode 来自数据目录（如 `~/.local/share/opencode`）下的 `opencode*.db`；Claude Code 来自 `~/.claude/projects` 下的会话转录（含 `subagents`，按 `message.id` 去重）；WorkBuddy 来自 `~/.workbuddy-ai/projects` 下的会话记录（按 `providerData.messageId` 去重，`model=default-model` 的 Auto 记录整体排除），历史调用时长保留自同目录 `traces/<pid>` 下的 `generation` span，当前速度使用本地采集观测。未记录、也未通过项目日志导入的请求不会出现在统计中。
 
 Codex 限额默认只读取本机记录。只有本机 `~/.codex-usage/codex-quota.json` 明确设置 `recoveryEnabled: true`，且请求的当前窗口为 `missing` 或 `waiting` 时，才会通过官方 Codex app-server 只读补齐；有效边界不查询，已确认不提供 5h 窗口时不反复查询，失败后冷却 5 分钟。补齐边界保存在本机并进入 SQLite；用量统计不上传，不依赖 Magpie，不保存 token、邮箱或原始账户 ID，也没有常驻 UI。
 

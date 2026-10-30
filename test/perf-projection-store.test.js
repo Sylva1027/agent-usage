@@ -26,6 +26,7 @@ import {
 } from "../src/usage-store.js";
 import { createCodexProjectionCache } from "../src/perf-sources/codex-thread.js";
 import { readCodexRolloutMetadata } from "../src/perf-sources/codex-jsonl.js";
+import { codexOutputTiming } from "../test-support/perf-fixture.mjs";
 
 const TABLE = CODEX_PROJECTION_STORE_TABLE;
 
@@ -144,6 +145,7 @@ function codexRollout(threadId, turnId, { ordinalBase = 0, outputTokens = 500, s
         turn_id: turnId,
         response_id: `resp-${threadId}`,
         usage: { output_tokens: outputTokens },
+        generation_timing: codexOutputTiming(outputTokens, 1500),
       },
     },
     {

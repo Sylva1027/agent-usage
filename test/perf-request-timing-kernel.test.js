@@ -166,6 +166,7 @@ test("one exact response preserves raw totals and exposes net generation values"
     outputTokens: 70,
     durationMs: 400,
     requestCount: 1,
+    methodVersion: "tps-v3",
   });
   assert.ok(normalized.sample, normalized.warningCode);
   assert.equal(normalized.sample.window, "request");
@@ -173,11 +174,11 @@ test("one exact response preserves raw totals and exposes net generation values"
   assert.equal(normalized.sample.tokenScope, "non_reasoning_output");
 
   const summary = summarizePerf([normalized.sample], { meta: { minSamples: 1 } });
-  assert.equal(summary.coverage.sampled, 1);
-  assert.equal(summary.groups[0].n, 1);
-  assert.equal(summary.groups[0].sums.outputTokens, 70);
-  assert.equal(summary.groups[0].sums.durationMs, 400);
-  assert.equal(summary.groups[0].tps.pooled, 175);
+  assert.equal(normalized.sample.outputTokens, 70);
+  assert.equal(normalized.sample.durationMs, 400);
+  assert.equal(summary.coverage.sampled, 0);
+  assert.deepEqual(summary.groups, []);
+  assert.equal(summary.models[0].averageTps, null);
 });
 
 test("a missing request timing leaves the whole turn without a denominator", () => {
@@ -474,7 +475,7 @@ test("the six-turn A fixture remains readable as explicit historical v2 E2E evid
   assert.deepEqual(summary.models, [], "legacy E2E evidence must never become a current v3 speed");
 });
 
-test("genuine v3 request windows use N-B and D for current pooled and nearest-rank statistics", () => {
+test("historical v3 request windows retain N-B and D without mixing native units into reference-token statistics", () => {
   const specs = [
     ["response-v3-1", 30, 20, 10, 1_000, 1_500, "first_last_output"],
     ["response-v3-2", 50, 40, 10, 1_000, 1_700, "explicit"],
@@ -529,6 +530,7 @@ test("genuine v3 request windows use N-B and D for current pooled and nearest-ra
       outputTokens: perfValues.outputTokens,
       durationMs: perfValues.durationMs,
       requestCount: 1,
+      methodVersion: "tps-v3",
     });
     assert.ok(normalized.sample, normalized.warningCode);
     assert.equal(normalized.sample.window, "request");
@@ -538,21 +540,21 @@ test("genuine v3 request windows use N-B and D for current pooled and nearest-ra
   }
 
   const summary = summarizePerf(samples, { meta: { minSamples: 1 } });
-  assert.equal(summary.coverage.sampled, 6);
-  assert.equal(summary.groups.length, 1);
+  assert.equal(
+    samples.reduce((sum, sample) => sum + sample.outputTokens, 0),
+    360,
+  );
+  assert.equal(
+    samples.reduce((sum, sample) => sum + sample.durationMs, 0),
+    6000,
+  );
+  assert.equal(summary.coverage.sampled, 0);
+  assert.equal(summary.groups.length, 0);
   assert.equal(summary.models.length, 1);
-  const group = summary.groups[0];
   const model = summary.models[0];
-  assert.equal(group.n, 6);
-  assert.equal(group.sums.outputTokens, 360, "(10 + 30 + 50 + 70 + 90 + 110)");
-  assert.equal(group.sums.durationMs, 6_000);
-  assert.equal(group.tps.pooled, 60);
-  assert.equal(group.tps.p10, 10);
-  assert.equal(group.tps.p90, 110);
-  assert.equal(model.n, 6);
-  assert.equal(model.averageTps, 60);
-  assert.equal(model.p10, 10);
-  assert.equal(model.p90, 110);
+  assert.equal(model.n, 0);
+  assert.equal(model.candidateCount, 6);
+  assert.deepEqual([model.averageTps, model.p10, model.p90], [null, null, null]);
 });
 
 test("fixture request failures never publish a partial denominator or fall back to item spans", async () => {

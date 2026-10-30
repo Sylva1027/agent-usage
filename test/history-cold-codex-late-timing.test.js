@@ -142,6 +142,7 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([lateTiming]);
     const archivedHomeId = codexHomeId(archived, fixture.codexHome);
     const oracleHomeId = codexHomeId(oracle, fixture.codexHome);
     const archivedTimingImport = archived.importRequestTimingEvidence({
@@ -274,6 +275,7 @@ test("a late native Codex timing revision revises the authorized cold perf sampl
       durationMs: baseTiming.durationMs + 750,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 750 },
     };
+    fixture.writeNativeTiming([secondLateTiming]);
     const secondTimingImport = archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [secondLateTiming],

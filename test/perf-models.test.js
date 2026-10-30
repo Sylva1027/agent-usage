@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PERF_METHOD_VERSION, normalizePerfSample, summarizePerf } from "../src/perf-stats.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE, normalizePerfSample, summarizePerf } from "../src/perf-stats.js";
 
 const T = 1_760_000_000_000;
 const RANGE = { startMs: T - 1_000, endMs: T + 10_000 };
 
 const SEMANTICS = {
-  zcode: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
-  dsh: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
-  opencode: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
-  codex: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
-  workbuddy: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
-  claude: { window: "request", timingKind: "generation", tokenScope: "non_reasoning_output" },
+  zcode: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
+  dsh: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
+  opencode: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
+  codex: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
+  workbuddy: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
+  claude: { window: "request", timingKind: "generation", tokenScope: PERF_TOKEN_SCOPE },
 };
 
 const LEGACY_SEMANTICS = {
@@ -27,10 +27,23 @@ const LEGACY_SEMANTICS = {
 function rawSample(overrides = {}) {
   const sourceKind = overrides.sourceKind ?? "zcode";
   const { identity = "row", ...rest } = overrides;
+  const methodVersion = overrides.methodVersion ?? PERF_METHOD_VERSION;
+  const historicalGeneration = methodVersion === "tps-v3" || methodVersion === "tps-v4" || methodVersion === "tps-v5";
+  const allGeneration =
+    historicalGeneration &&
+    sourceKind === "dsh" &&
+    (methodVersion === "tps-v4" || methodVersion === "tps-v5") &&
+    ["deepseek-account", "deepseek-official"].includes(overrides.modelProvider);
   const semantics =
-    overrides.methodVersion === undefined || overrides.methodVersion === PERF_METHOD_VERSION
+    methodVersion === PERF_METHOD_VERSION
       ? SEMANTICS[sourceKind]
-      : LEGACY_SEMANTICS[sourceKind];
+      : historicalGeneration
+        ? {
+            window: "request",
+            timingKind: "generation",
+            tokenScope: allGeneration ? "all_generated_output" : "non_reasoning_output",
+          }
+        : LEGACY_SEMANTICS[sourceKind];
   return normalizePerfSample({
     sourceKind,
     homeId: "home-a",
@@ -177,6 +190,170 @@ test("missing-duration model rows are retained for every current source", () => 
     perf.models
       .filter((row) => row.state === "missing_duration")
       .every((row) => row.window === "request" && row.rankState === "unverified"),
+  );
+});
+
+test("historical v3-v5 generation identities stay visible without contributing current rates", () => {
+  const rows = [];
+  for (const methodVersion of ["tps-v3", "tps-v4", "tps-v5"]) {
+    for (const sourceKind of ["claude", "zcode", "dsh", "opencode", "workbuddy", "codex"]) {
+      rows.push(
+        sample({
+          identity: `${sourceKind}-${methodVersion}`,
+          sourceKind,
+          model: `${sourceKind}-${methodVersion}`,
+          methodVersion,
+          outputTokens: 278,
+          durationMs: 6,
+        }),
+      );
+    }
+  }
+
+  const perf = summarizePerf(rows, { range: RANGE });
+  assert.deepEqual(perf.groups, []);
+  assert.equal(perf.coverage.sampled, 0);
+  assert.equal(perf.coverage.droppedByReason.historical_method, rows.length);
+  assert.equal(perf.models.length, rows.length);
+  assert.ok(
+    perf.models.every(
+      (row) =>
+        row.state === "missing_duration" &&
+        row.rankState === "unverified" &&
+        row.window === "request" &&
+        row.n === 0 &&
+        row.averageTps === null &&
+        row.p10 === null &&
+        row.p90 === null &&
+        row.candidateCount === 1,
+    ),
+  );
+});
+
+test("historical identity visibility preserves filters, current precedence, and measured-model deduplication", () => {
+  const currentMeasured = sample({
+    identity: "shared-current",
+    sourceKind: "claude",
+    model: "shared-measured",
+  });
+  const historicalSameModel = sample({
+    identity: "shared-history",
+    sourceKind: "claude",
+    model: "shared-measured",
+    methodVersion: "tps-v5",
+    outputTokens: 999,
+    durationMs: 1,
+  });
+  const currentIdentity = sample({
+    identity: "same-identity",
+    sourceKind: "opencode",
+    model: "current-wins",
+    durationMs: null,
+  });
+  const historicalSameIdentity = sample({
+    identity: "same-identity",
+    sourceKind: "opencode",
+    model: "historical-loses",
+    methodVersion: "tps-v5",
+    outputTokens: 999,
+    durationMs: 1,
+  });
+  const includedHistory = sample({
+    identity: "included-history",
+    sourceKind: "zcode",
+    model: "included-history",
+    methodVersion: "tps-v5",
+    outputTokens: 278,
+    durationMs: 6,
+  });
+  const excludedHome = sample({
+    identity: "excluded-history",
+    sourceKind: "zcode",
+    model: "excluded-history",
+    methodVersion: "tps-v5",
+    homeId: "excluded",
+  });
+  const outOfRange = sample({
+    identity: "outside-history",
+    sourceKind: "zcode",
+    model: "outside-history",
+    methodVersion: "tps-v5",
+    tsMs: RANGE.endMs + 1,
+  });
+  const unplaced = sample({
+    identity: "unplaced-history",
+    sourceKind: "zcode",
+    model: "unplaced-history",
+    methodVersion: "tps-v5",
+    tsMs: null,
+  });
+  const mismatch = rawSample({
+    identity: "mismatch-history",
+    sourceKind: "zcode",
+    model: "mismatch-history",
+    methodVersion: "tps-v5",
+    window: "turn",
+  }).sample;
+  const estimate = sample({
+    identity: "estimate-history",
+    sourceKind: "zcode",
+    model: "estimate-history",
+    methodVersion: "tps-v1",
+    methodEstimate: true,
+  });
+  const v2Estimate = sample({
+    identity: "v2-estimate-history",
+    sourceKind: "zcode",
+    model: "v2-estimate-history",
+    methodVersion: "tps-v2",
+    methodEstimate: true,
+  });
+  const ambiguous = sample({
+    identity: "ambiguous-history",
+    sourceKind: "zcode",
+    model: "ambiguous-history",
+    methodVersion: "tps-v5",
+    modelAmbiguous: true,
+  });
+
+  const perf = summarizePerf(
+    [
+      currentMeasured,
+      historicalSameModel,
+      currentIdentity,
+      historicalSameIdentity,
+      includedHistory,
+      excludedHome,
+      outOfRange,
+      unplaced,
+      mismatch,
+      estimate,
+      v2Estimate,
+      ambiguous,
+    ],
+    { range: RANGE, excludedHomeIds: ["excluded"] },
+  );
+  assert.equal(perf.coverage.sampled, 1);
+  assert.deepEqual(
+    perf.models.map((row) => [row.model, row.state, row.n, row.averageTps, row.candidateCount ?? null]),
+    [
+      ["shared-measured", "ok", 1, 100, null],
+      ["current-wins", "missing_duration", 0, null, 1],
+      ["included-history", "missing_duration", 0, null, 1],
+    ],
+  );
+  assert.equal(
+    perf.models.some((row) =>
+      [
+        "historical-loses",
+        "excluded-history",
+        "outside-history",
+        "estimate-history",
+        "v2-estimate-history",
+        "ambiguous-history",
+      ].includes(row.model),
+    ),
+    false,
   );
 });
 
@@ -780,7 +957,7 @@ test("D1 shape and empty cases: exactly fifteen fields, no row for n=0 or an emp
   assert.equal(one.models[0].lastSampleAtMs, T);
 });
 
-test("B2 unified ranking is source-independent for current v3 generation samples", () => {
+test("B2 unified ranking is source-independent for current v6 generation samples", () => {
   const rows = [
     sample({ identity: "codex-v3", sourceKind: "codex", model: "codex-v3" }),
     sample({
@@ -839,7 +1016,7 @@ test("B2 unified ranking is source-independent for current v3 generation samples
   assert.equal(groupOf("opencode").n, 1);
 });
 
-test("B2 duplicate folding prefers the current v3 representative over stale v1", () => {
+test("B2 duplicate folding prefers the current v6 representative over stale v1", () => {
   const current = sample({
     identity: "same-turn",
     sourceKind: "codex",
@@ -847,7 +1024,7 @@ test("B2 duplicate folding prefers the current v3 representative over stale v1",
     methodVersion: PERF_METHOD_VERSION,
   });
   // The same stored row may remain readable as v1 after the method label changes.
-  // Its already-recorded v3 semantics must stay byte-for-byte comparable for folding.
+  // Its already-recorded current semantics must stay byte-for-byte comparable for folding.
   const v1 = { ...current, methodVersion: "tps-v1" };
 
   const forward = summarizePerf([v1, current], { range: RANGE, meta: { minSamples: 1 } });

@@ -8,7 +8,6 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import {
   DEDUPE,
@@ -115,7 +114,7 @@ test("S1：首次 sync 自动回填 —— 无指纹 ⇒ 提取，样本数等�
           assert.equal(sample.timing_kind, "generation");
           assert.equal(sample.timing_source, "unknown");
           assert.equal(sample.token_scope, "non_reasoning_output");
-          assert.equal(sample.method_version, PERF_METHOD_VERSION);
+          assert.equal(sample.method_version, "tps-v5");
         }
       } finally {
         store.close();

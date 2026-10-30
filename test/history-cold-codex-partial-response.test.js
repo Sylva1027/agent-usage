@@ -9,8 +9,6 @@ import { createHistoryArchiveCandidate, verifyHistoryArchiveCandidate } from "..
 import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
-const COLD_END_MS = Date.parse("2026-10-04T12:02:00.000Z");
-const MISSING_TIMING_DEPENDENCY_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_DEPENDENCIES_MISSING";
 const PERF_COLUMNS = PERF_SAMPLE_FIELDS.map((entry) => entry.column);
 
 function manifestPathFor(databaseFile) {
@@ -129,12 +127,16 @@ function generatingResponses(database, homeId, threadId, turnId) {
   return [...responses].sort();
 }
 
-test("v3 candidate selects the exact response and ignores a missing sibling evidence row", async () => {
+test("schema3 candidate selects the exact response and ignores missing external timing rows", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-source.sqlite");
   const controlCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-control.sqlite");
   const candidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-candidate.sqlite");
   const candidateManifest = manifestPathFor(candidateFile);
+  const missingTargetCandidateFile = path.join(
+    fixture.serverOptions.homeDir,
+    "cold-codex-partial-response-target-missing-candidate.sqlite",
+  );
   const tamperedCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-tampered.sqlite");
   const repackedCandidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-repacked.sqlite");
   const store = new UsageStore(fixture.serverOptions);
@@ -263,21 +265,19 @@ test("v3 candidate selects the exact response and ignores a missing sibling evid
     }
     const missingTargetReadOnly = new DatabaseSync(missingTargetFile, { readOnly: true });
     try {
-      await assert.rejects(
-        () =>
-          createHistoryArchiveCandidate(
-            missingTargetReadOnly,
-            path.join(fixture.serverOptions.homeDir, "cold-codex-partial-response-target-candidate.sqlite"),
-            { startMs: coldStartMs, endMs },
-          ),
-        (error) => {
-          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
-          return true;
-        },
-      );
+      await createHistoryArchiveCandidate(missingTargetReadOnly, missingTargetCandidateFile, {
+        startMs: coldStartMs,
+        endMs,
+      });
+      await verifyHistoryArchiveCandidate(missingTargetCandidateFile);
     } finally {
       missingTargetReadOnly.close();
     }
+    assert.equal(
+      existsSync(missingTargetCandidateFile),
+      true,
+      "schema3 must remain archivable when the selected response has no external timing row",
+    );
 
     const controlSource = new DatabaseSync(controlCandidateFile, { readOnly: true });
     try {
@@ -287,12 +287,10 @@ test("v3 candidate selects the exact response and ignores a missing sibling evid
     }
     const tampered = new DatabaseSync(tamperedCandidateFile);
     try {
-      const candidateEvidence = sourceGraph(tampered, sampleKey, homeId, responseId).selectedEvidenceCount;
-      assert.equal(candidateEvidence, original.selectedEvidenceCount);
       const deleted = tampered
-        .prepare("DELETE FROM perf_request_timing_evidence WHERE home_id = ? AND response_id = ?")
-        .run(homeId, responseId);
-      assert.equal(Number(deleted.changes), candidateEvidence);
+        .prepare("DELETE FROM perf_codex_projections WHERE home_id = ? AND path = ? COLLATE NOCASE")
+        .run(homeId, String(original.sample.source_path));
+      assert.equal(Number(deleted.changes), 1);
     } finally {
       tampered.close();
     }
@@ -308,7 +306,7 @@ test("v3 candidate selects the exact response and ignores a missing sibling evid
     await assert.rejects(
       () => verifyHistoryArchiveCandidate(repackedCandidateFile),
       (error) => {
-        assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
+        assert.equal(error?.code, "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_MISMATCH");
         return true;
       },
     );

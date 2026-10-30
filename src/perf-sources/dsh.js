@@ -30,6 +30,7 @@
  */
 import { DSH_SESSION_FORMAT_VERSION, dshSessionHeader, streamDshSessionRows } from "../dsh-usage.js";
 import { PERF_EPOCH_MS_MIN, normalizePerfSample } from "../perf-stats.js";
+import { readOutputObservations } from "../perf-output-observations.js";
 
 /** 冻结码域（实施计划 §3:83）中本 reader 会用到的码。 */
 const MALFORMED_FRAME_CODE = "MALFORMED_FRAME";
@@ -103,6 +104,7 @@ function startKey(entry) {
 
 function messageKey(entry) {
   return [
+    valueTag(entry.messageId),
     valueTag(entry.time),
     valueTag(entry.output),
     valueTag(entry.reasoning),
@@ -580,7 +582,7 @@ function projectDshPerfRow(row) {
           identityInteger(turn) !== null && identityInteger(step) !== null ? inspectDshAssistantGeneration(data) : null,
         message:
           source && typeof source === "object" && !Array.isArray(source)
-            ? { source: { model: source.model, provider: source.provider } }
+            ? { id: data.message.id, source: { model: source.model, provider: source.provider } }
             : undefined,
       },
     };
@@ -594,7 +596,7 @@ function projectDshPerfRow(row) {
 /**
  * 输出一条规范候选。返回 `true` 表示已通过 `normalizePerfSample()` 并交给 `onSample`。
  * @param {any} group
- * @param {{ homeId: string, sessionId: string, filePath: string, channel: string, agentKind: string, agent: string }} session
+ * @param {{ homeId: string, sessionId: string, filePath: string, channel: string, agentKind: string, agent: string, lookupOutput: Function }} session
  * @param {(sample: any) => Promise<void> | void} onSample
  * @param {(code: string, count?: number) => void} addWarning
  * @returns {Promise<boolean>}
@@ -641,16 +643,18 @@ async function emitGroup(group, session, onSample, addWarning) {
   const effortConflict = effortValues.size > 1;
   const generationConflict = recordConflict || modelAmbiguous || effortConflict;
 
-  // Step/retry duration and stream receive boundaries are diagnostics only. They do not
-  // prove the generation interval, so no sample numerator or denominator is admitted.
+  // Original callback clocks stay diagnostic; the companion uses transport batches.
   const startTime = start ? finiteNumber(start.time) : null;
   const messageTime = finiteNumber(message.time);
   const unitsComparable = isEpochMsUnit(startTime) && isEpochMsUnit(messageTime);
   const reportedDurationMs =
     start && unitsComparable && startTime !== null && messageTime !== null ? messageTime - startTime : null;
   const officialAllGeneration = DSH_ALL_GENERATION_PROVIDERS.has(scope?.provider ?? "");
-  const generationOutputTokens = null;
-  const generationDurationMs = null;
+  const measured = generationConflict
+    ? null
+    : session.lookupOutput(session.sessionId, message.messageId, scope?.model ?? "", scope?.provider ?? "");
+  const generationOutputTokens = measured?.outputTokens ?? null;
+  const generationDurationMs = measured?.durationMs ?? null;
   const generationWindowStartMs = generationConflict
     ? null
     : officialAllGeneration
@@ -697,11 +701,11 @@ async function emitGroup(group, session, onSample, addWarning) {
     modelAmbiguous,
     window: "request",
     timingKind: "generation",
-    tokenScope: officialAllGeneration ? "all_generated_output" : "non_reasoning_output",
-    timingSource: "unknown",
+    tokenScope: "visible_output_o200k_base",
+    timingSource: measured ? "explicit" : "unknown",
     tsMs: message.time,
-    windowStartMs: generationWindowStartMs,
-    windowEndMs: generationWindowEndMs,
+    windowStartMs: measured ? null : generationWindowStartMs,
+    windowEndMs: measured ? null : generationWindowEndMs,
     durationMs: generationDurationMs,
     outputTokens: generationOutputTokens,
     status,
@@ -842,6 +846,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
       const generation = row?.data?.generation;
       groupFor(turn, step).messages.push({
         time: row?.time,
+        messageId: row?.data?.message?.id,
         output: generation.reportedOutputTokens,
         reasoning: generation.reportedReasoningTokens,
         generation,
@@ -926,6 +931,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     // 裁定 P：名与 kind 分离。delegationDepth > 0 是唯一可证的 subagent 证据；depth=0 一律 unknown。
     agentKind: header.delegationDepth > 0 ? "subagent" : "unknown",
     agent: header.agentPreset,
+    lookupOutput: await readOutputObservations(filePath, "dsh"),
   };
 
   for await (const row of streamDshSessionRows(filePath, { projectRow: projectDshPerfRow })) {

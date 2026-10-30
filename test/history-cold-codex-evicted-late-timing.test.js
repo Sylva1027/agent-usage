@@ -141,6 +141,7 @@ test("a late Codex timing revision follows a physically evicted cold sample", as
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([lateTiming]);
     const archivedTimingImport = archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [lateTiming],

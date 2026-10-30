@@ -1,0 +1,148 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  PERF_METHOD_VERSION,
+  PERF_SUPPORTED_METHOD_VERSIONS,
+  PERF_TOKEN_SCOPE,
+  isGenerationPerfMethod,
+  normalizePerfSample,
+  summarizePerf,
+} from "../src/perf-stats.js";
+
+const MS = 1_793_376_000_000;
+
+function raw(overrides = {}) {
+  return {
+    sourceKind: "zcode",
+    homeId: "home",
+    identity: ["request-1"],
+    model: "model-a",
+    agentKind: "unknown",
+    status: "completed",
+    tsMs: MS,
+    window: "request",
+    timingKind: "generation",
+    tokenScope: PERF_TOKEN_SCOPE,
+    durationMs: 1_000,
+    outputTokens: 100,
+    ...overrides,
+  };
+}
+
+function normalized(value) {
+  const result = normalizePerfSample(value);
+  assert.notEqual(result.sample, null);
+  return result.sample;
+}
+
+test("tps-v6 keeps v1-v5 readable and recognizes v3-v6 as generation methods", () => {
+  assert.equal(PERF_METHOD_VERSION, "tps-v6");
+  assert.deepEqual(PERF_SUPPORTED_METHOD_VERSIONS, ["tps-v1", "tps-v2", "tps-v3", "tps-v4", "tps-v5", "tps-v6"]);
+  for (const version of ["tps-v3", "tps-v4", "tps-v5", "tps-v6"]) {
+    assert.equal(isGenerationPerfMethod(version), true, version);
+  }
+  for (const version of ["tps-v1", "tps-v2", "tps-v7", "", null]) {
+    assert.equal(isGenerationPerfMethod(version), false, String(version));
+  }
+});
+
+test("only current v6 samples with the unified scope contribute displayed statistics", () => {
+  const current = normalized(raw());
+  assert.equal(current.methodVersion, "tps-v6");
+  assert.equal(current.tokenScope, PERF_TOKEN_SCOPE);
+
+  const summary = summarizePerf([current]);
+  assert.equal(summary.groups.length, 1);
+  assert.equal(summary.groups[0].n, 1);
+  assert.equal(summary.groups[0].tokenScope, PERF_TOKEN_SCOPE);
+  assert.equal(summary.models[0].averageTps, 100);
+});
+
+test("explicit v6 with a legacy scope keeps v6 and reports a semantics mismatch", () => {
+  const result = normalizePerfSample(
+    raw({
+      methodVersion: "tps-v6",
+      timingKind: "request_e2e",
+      tokenScope: "reported_output_unspecified",
+    }),
+  );
+  assert.notEqual(result.sample, null);
+  assert.equal(result.sample.methodVersion, "tps-v6");
+  assert.equal(result.sample.tokenScope, "reported_output_unspecified");
+  assert.equal(result.sample.outputTokens, 100);
+  assert.ok(result.warnings.includes("SOURCE_SEMANTICS_MISMATCH"));
+
+  const oldSummary = summarizePerf([result.sample]);
+  assert.equal(oldSummary.groups.length, 0);
+  assert.equal(oldSummary.models.length, 0);
+});
+
+test("historical v5 generation samples remain readable but are excluded from current v6 statistics", () => {
+  const result = normalizePerfSample(
+    raw({
+      methodVersion: "tps-v5",
+      timingKind: "generation",
+      tokenScope: "non_reasoning_output",
+    }),
+  );
+  assert.notEqual(result.sample, null);
+  assert.equal(result.warnings.includes("SOURCE_SEMANTICS_MISMATCH"), false);
+  const historical = result.sample;
+
+  assert.equal(historical.methodVersion, "tps-v5");
+  assert.equal(historical.window, "request");
+  assert.equal(historical.timingKind, "generation");
+  assert.equal(historical.tokenScope, "non_reasoning_output");
+  assert.equal(historical.outputTokens, 100);
+  assert.equal(historical.durationMs, 1_000);
+
+  const summary = summarizePerf([historical]);
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].state, "missing_duration");
+  assert.deepEqual([summary.models[0].averageTps, summary.models[0].p10, summary.models[0].p90], [null, null, null]);
+});
+
+test("historical v5 DSH provider scope remains readable without being relabeled", () => {
+  const result = normalizePerfSample(
+    raw({
+      sourceKind: "dsh",
+      modelProvider: "deepseek-account",
+      methodVersion: "tps-v5",
+      tokenScope: "all_generated_output",
+    }),
+  );
+  assert.notEqual(result.sample, null);
+  assert.equal(result.warnings.includes("SOURCE_SEMANTICS_MISMATCH"), false);
+  const historical = result.sample;
+
+  assert.equal(historical.methodVersion, "tps-v5");
+  assert.equal(historical.tokenScope, "all_generated_output");
+  const summary = summarizePerf([historical]);
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].state, "missing_duration");
+  assert.deepEqual([summary.models[0].averageTps, summary.models[0].p10, summary.models[0].p90], [null, null, null]);
+});
+
+test("missing v6 measurement retains a model row without zero-filled values", () => {
+  const missing = normalized(
+    raw({
+      sourceKind: "codex",
+      identity: ["thread", "turn", "response"],
+      outputTokens: null,
+      durationMs: null,
+    }),
+  );
+  const summary = summarizePerf([missing]);
+
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].state, "missing_duration");
+  assert.equal(summary.models[0].candidateCount, 1);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].averageTps, null);
+});

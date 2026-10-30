@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 
 import { streamDshPerfSamples } from "../src/perf-sources/dsh.js";
-import { PERF_FLAGS, PERF_METHOD_VERSION, perfFlagNamesOf } from "../src/perf-stats.js";
+import { PERF_FLAGS, PERF_METHOD_VERSION, PERF_TOKEN_SCOPE, perfFlagNamesOf } from "../src/perf-stats.js";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const READER_FILE = path.join(REPO_ROOT, "src", "perf-sources", "dsh.js");
@@ -239,7 +239,7 @@ function identityKey(turn, step) {
 function assertMissingGeneration(sample) {
   assert.equal(sample.window, "request");
   assert.equal(sample.timingKind, "generation");
-  assert.equal(sample.tokenScope, "non_reasoning_output");
+  assert.equal(sample.tokenScope, PERF_TOKEN_SCOPE);
   assert.equal(sample.timingSource, "unknown");
   assert.equal(sample.windowStartMs, null);
   assert.equal(sample.windowEndMs, null);
@@ -1270,7 +1270,7 @@ test("同一成功 message 的 usage 与接收边界只作诊断：首批宽度�
     assert.equal(sample.timingSource, "unknown");
     assert.equal(sample.window, "request");
     assert.equal(sample.timingKind, "generation");
-    assert.equal(sample.tokenScope, "non_reasoning_output");
+    assert.equal(sample.tokenScope, PERF_TOKEN_SCOPE);
     assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
     assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
     assert.equal(rawSamples[0].reportedOutputTokens, 12);

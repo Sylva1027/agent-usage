@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../src/perf-stats.js";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 
 const SESSION_A = "21201ca7-ac0f-4672-9745-084a3dfeb70d";
@@ -100,8 +101,8 @@ function assertMissingGenerationCandidates(store, expectedCount) {
     assert.equal(sample.request_count, 1);
     assert.equal(sample.window, "request");
     assert.equal(sample.timing_kind, "generation");
-    assert.equal(sample.token_scope, "non_reasoning_output");
-    assert.equal(sample.method_version, "tps-v5");
+    assert.equal(sample.token_scope, PERF_TOKEN_SCOPE);
+    assert.equal(sample.method_version, PERF_METHOD_VERSION);
     assert.equal(sample.diagnostic_reason, "output_missing");
     const identity = JSON.parse(sample.sample_key);
     assert.equal(identity.length, 3);

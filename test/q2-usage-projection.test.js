@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -646,16 +646,13 @@ async function withNativeStore(run) {
 function assertLateTiming(before, after) {
   const perf = after.summary.perf;
   const model = perf.models.find((entry) => entry.model === LATE_TIMING.requestedModel);
-  assert.equal(model.n, 1);
-  for (const field of ["averageTps", "p10", "p90"]) assert.equal(model[field], 34.25, field);
-  const group = perf.groups.find((entry) => entry.model === LATE_TIMING.requestedModel);
-  assert.deepEqual(group.tps, { p10: 34.25, p50: 34.25, p90: 34.25, pooled: 34.25 });
-  assert.deepEqual(group.durationMs, { p50: 4000, p90: 4000 });
-  assert.deepEqual(group.sums, { outputTokens: 137, durationMs: 4000 });
-  assert.equal(perf.coverage.sampled, before.summary.perf.coverage.sampled + 1);
+  assert.equal(model.n, 0, "legacy external timing is retained without becoming reference-token speed");
+  for (const field of ["averageTps", "p10", "p90"]) assert.equal(model[field], null, field);
+  assert.deepEqual(perf.groups, before.summary.perf.groups);
+  assert.equal(perf.coverage.sampled, before.summary.perf.coverage.sampled);
   assert.equal(
     perf.codexTimingCoverage.sampledOutputTokens,
-    before.summary.perf.codexTimingCoverage.sampledOutputTokens + 137,
+    before.summary.perf.codexTimingCoverage.sampledOutputTokens,
   );
   assert.notEqual(perf.indexVersion, before.summary.perf.indexVersion);
 }

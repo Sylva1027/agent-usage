@@ -468,7 +468,7 @@ test("★M4.1-e 内存版本必须由与 M3 同源的内容指纹构造（与 st
     //    内存版本就不会等于这个期望值 ⇒ 本用例转红。
     const homeAggregate = createHash("sha256").update(`${homeA.dbFile}\t${canonical}\n`).digest("hex");
     const expected = createHash("sha256")
-      .update(`method\ttps-v5\n${homeA.id}\tzcode\t${homeAggregate}\n`)
+      .update(`method\ttps-v6\n${homeA.id}\tzcode\t${homeAggregate}\n`)
       .digest("hex");
     assert.equal(memoryVersion, expected, "内存版本必须由【与 M3 相同的逐文件内容指纹】构造 —— 镜像一旦漂移即转红");
   } finally {

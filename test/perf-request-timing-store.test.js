@@ -1122,23 +1122,22 @@ test("C1 · import folds native projections, queues only the affected thread, an
     });
     assert.deepEqual(store.requestTimingDirtyThreads(homeId), []);
     assert.equal(
-      Number(
-        store.database
-          .prepare("SELECT duration_ms FROM perf_samples WHERE home_id = ? AND source_path = ?")
-          .get(homeId, pathA).duration_ms,
-      ),
-      1_000,
+      store.database
+        .prepare("SELECT duration_ms FROM perf_samples WHERE home_id = ? AND source_path = ?")
+        .get(homeId, pathA).duration_ms,
+      null,
     );
+    assert.equal(store.lookupRequestTiming({ homeId, responseId: "response-a" }).generation.durationMs, 1000);
     assert.equal(JSON.parse(store.readMeta("perf_file_fingerprints"))[pathB], fingerprintsBefore[pathB]);
     assert.notEqual(store.readMeta("perf_index_version"), versionBefore);
     assert.deepEqual(eventSnapshot(), before, "timing import and perf rebuild must not rewrite usage or cost");
     assert.equal(sampleDuration(store, homeId, "thread-b"), null);
     const perfAfter = store.summarize({ preset: "all" }).perf;
-    assert.equal(perfAfter.coverage.sampled, 1);
-    assert.equal(perfAfter.groups.length, 1);
+    assert.equal(perfAfter.coverage.sampled, 0);
+    assert.equal(perfAfter.groups.length, 0);
     assert.equal(perfAfter.models.length, 1);
-    assert.equal(perfAfter.models[0].n, 1);
-    assert.equal(perfAfter.models[0].averageTps, 100);
+    assert.equal(perfAfter.models[0].n, 0);
+    assert.equal(perfAfter.models[0].averageTps, null);
 
     const publishedVersion = store.readMeta("perf_index_version");
     assert.equal(store.readMeta("perf_request_timing_published_revision"), "1");
@@ -1227,8 +1226,8 @@ test("C1 · a successful home publishes timing while another home fails, survive
     await store.sync();
     const publishedVersion = store.readMeta("perf_index_version");
     const publishedSeq = timingPublicationSeq(store);
-    assert.equal(sampleDuration(store, fixture.mainHomeId, "thread-a"), 1_000);
-    assert.equal(sampleDuration(store, fixture.otherHomeId, "thread-b"), 1_000);
+    assert.equal(sampleDuration(store, fixture.mainHomeId, "thread-a"), null);
+    assert.equal(sampleDuration(store, fixture.otherHomeId, "thread-b"), null);
 
     importTiming(fixture.mainHomeId, "response-a", 2_000);
     importTiming(fixture.otherHomeId, "response-b", 2_000);
@@ -1246,7 +1245,7 @@ test("C1 · a successful home publishes timing while another home fails, survive
     assert.deepEqual(store.requestTimingDirtyThreads(fixture.mainHomeId), []);
     assert.deepEqual(store.requestTimingDirtyThreads(fixture.otherHomeId), ["thread-b"]);
     assert.equal(sampleDuration(store, fixture.mainHomeId, "thread-a"), null);
-    assert.equal(sampleDuration(store, fixture.otherHomeId, "thread-b"), 1_000);
+    assert.equal(sampleDuration(store, fixture.otherHomeId, "thread-b"), null);
     assert.equal(timingPublicationSeq(store), publishedSeq + 1);
     assert.notEqual(store.readMeta("perf_index_version"), publishedVersion);
 
@@ -1314,7 +1313,7 @@ test("C1 · the second home can publish timing while the first home remains dirt
     await store.sync();
     assert.deepEqual(store.requestTimingDirtyThreads(fixture.mainHomeId), ["thread-a"]);
     assert.deepEqual(store.requestTimingDirtyThreads(fixture.otherHomeId), []);
-    assert.equal(sampleDuration(store, fixture.mainHomeId, "thread-a"), 1_000);
+    assert.equal(sampleDuration(store, fixture.mainHomeId, "thread-a"), null);
     assert.equal(sampleDuration(store, fixture.otherHomeId, "thread-b"), null);
     assert.equal(timingPublicationSeq(store), publishedSeq + 1);
     assert.notEqual(store.readMeta("perf_index_version"), publishedVersion);

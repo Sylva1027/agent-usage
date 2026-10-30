@@ -162,6 +162,7 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([lateTiming]);
     const archivedHomeId = codexHomeId(archived, fixture.codexHome);
     const oracleHomeId = codexHomeId(oracle, fixture.codexHome);
     archived.importRequestTimingEvidence({
@@ -181,22 +182,32 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
     const oracleNewSampleRow = {
       ...oracle.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
-    const sourceIdentity = {
-      ...archived.database
-        .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-        .get(String(oldSampleRow.source_path)),
-    };
-    const lateEvidence = {
-      ...oracle.database
-        .prepare(
-          `SELECT * FROM perf_request_timing_evidence
-           WHERE home_id = ? AND response_id = ? AND duration_ms = ?
-           ORDER BY variant_key
-           LIMIT 1`,
-        )
-        .get(oracleHomeId, responseId, lateTiming.durationMs),
-    };
-    assert.equal(lateEvidence.response_id, responseId);
+    const syncedRevisionValue = archived.readMetaRaw(PERF_REVISIONS_KEY);
+    assert.equal(typeof syncedRevisionValue, "string");
+    const revision = JSON.parse(syncedRevisionValue);
+    const sampleRevision = revision.revisions.find(
+      (entry) =>
+        entry.factTable === "perf_samples" &&
+        entry.added.some((delta) => delta.payload.sample_key === oldSampleRow.sample_key),
+    );
+    const nativeMeasurementRevision = revision.revisions.find(
+      (entry) =>
+        entry.factTable === "codex_output_measurements" &&
+        entry.added.some((delta) => delta.payload.sample_key === oldSampleRow.sample_key),
+    );
+    const timingRevision = revision.revisions.find((entry) => entry.factTable === "perf_request_timing_evidence");
+    assert.ok(sampleRevision, "sync must generate the effective perf sample revision");
+    assert.ok(nativeMeasurementRevision, "sync must generate the scalar native measurement revision");
+    assert.ok(timingRevision, "sync must retain the external timing evidence revision");
+    const nativeMeasurement = nativeMeasurementRevision.added.find(
+      (delta) => delta.payload.sample_key === oldSampleRow.sample_key,
+    );
+    assert.ok(nativeMeasurement);
+    assert.equal(nativeMeasurement.payload.home_id, oldSampleRow.home_id);
+    assert.equal(nativeMeasurement.payload.source_path, oldSampleRow.source_path);
+    assert.equal(nativeMeasurement.payload.measurement.outputTokens, oldSampleRow.output_tokens);
+    assert.equal(nativeMeasurement.payload.measurement.durationMs, lateTiming.generation.durationMs);
+    const sourceIdentity = { ...sampleRevision.sourceIdentity };
 
     archived.database.prepare("DELETE FROM store_meta WHERE key = ?").run(PERF_REVISIONS_KEY);
 
@@ -205,28 +216,6 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       (error) => error.code === "HISTORY_ARCHIVE_PERF_SAMPLE_CONFLICT",
       "without an overlay the immutable cold sample must still conflict with the recomputed hot sample",
     );
-
-    const revision = {
-      formatVersion: 1,
-      revisions: [
-        {
-          segmentId: registered.segmentId,
-          databaseSha256: registered.databaseSha256,
-          factTable: "perf_samples",
-          sourceIdentity,
-          removed: [{ payload: oldSampleRow, count: 1 }],
-          added: [{ payload: oracleNewSampleRow, count: 1 }],
-        },
-        {
-          segmentId: registered.segmentId,
-          databaseSha256: registered.databaseSha256,
-          factTable: "perf_request_timing_evidence",
-          sourceIdentity,
-          removed: [],
-          added: [{ payload: lateEvidence, count: 1 }],
-        },
-      ],
-    };
 
     archived.database.exec("BEGIN IMMEDIATE");
     try {
@@ -275,7 +264,7 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
 
     const removedOnlyRevision = {
       formatVersion: 1,
-      revisions: [{ ...revision.revisions[0], added: [] }],
+      revisions: revision.revisions.map((entry) => (entry === sampleRevision ? { ...entry, added: [] } : entry)),
     };
     archived.database.exec("BEGIN IMMEDIATE");
     try {
@@ -294,9 +283,13 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
     );
 
     const duplicateRemovalRevision = structuredClone(revision);
-    duplicateRemovalRevision.revisions[0].removed.push(
-      structuredClone(duplicateRemovalRevision.revisions[0].removed[0]),
+    const duplicateSampleRevision = duplicateRemovalRevision.revisions.find(
+      (entry) =>
+        entry.factTable === "perf_samples" &&
+        entry.added.some((delta) => delta.payload.sample_key === oldSampleRow.sample_key),
     );
+    assert.ok(duplicateSampleRevision);
+    duplicateSampleRevision.removed.push(structuredClone(duplicateSampleRevision.removed[0]));
     archived.database.exec("BEGIN IMMEDIATE");
     try {
       replacePerfSample(archived.database, oldSampleRow);
@@ -312,20 +305,14 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       "repeated removed deltas must consume immutable candidate rows cumulatively",
     );
 
-    const missingEvidenceRevision = {
+    const missingNativeMeasurementRevision = {
       formatVersion: 1,
-      revisions: [
-        {
-          ...revision.revisions[1],
-          removed: originalLinkedEvidence.map((payload) => ({ payload, count: 1 })),
-          added: [],
-        },
-      ],
+      revisions: revision.revisions.filter((entry) => entry.factTable !== "codex_output_measurements"),
     };
     archived.database.exec("BEGIN IMMEDIATE");
     try {
       replacePerfSample(archived.database, oldSampleRow);
-      writeMeta(archived.database, PERF_REVISIONS_KEY, missingEvidenceRevision);
+      writeMeta(archived.database, PERF_REVISIONS_KEY, missingNativeMeasurementRevision);
       archived.database.exec("COMMIT");
     } catch (error) {
       archived.database.exec("ROLLBACK");
@@ -336,8 +323,8 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
       (error) =>
         error.code === "HISTORY_ARCHIVE_REVISION_INVALID" &&
         error.message.includes(String(oldSampleRow.sample_key)) &&
-        error.message.includes("without native request-timing evidence"),
-      "an effective explicit Codex sample must retain linked native timing evidence",
+        /native|measurement|contradict/i.test(error.message),
+      "an effective v6 Codex sample must retain its scalar native measurement revision",
     );
 
     const invalidSourceIdentity = { ...sourceIdentity, home_label: "wrong-home-label" };
@@ -353,7 +340,13 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
     );
 
     const excessiveRemoval = structuredClone(revision);
-    excessiveRemoval.revisions[0].removed[0].count = 2;
+    const excessiveSampleRevision = excessiveRemoval.revisions.find(
+      (entry) =>
+        entry.factTable === "perf_samples" &&
+        entry.added.some((delta) => delta.payload.sample_key === oldSampleRow.sample_key),
+    );
+    assert.ok(excessiveSampleRevision);
+    excessiveSampleRevision.removed[0].count = 2;
     writeMeta(archived.database, PERF_REVISIONS_KEY, excessiveRemoval);
     await assert.rejects(
       archived.summarizeHistory(FILTERS),

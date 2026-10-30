@@ -1,7 +1,8 @@
 /** Build Codex performance candidates from response-level generation ledgers. */
 
 import { generationPerfValues } from "../perf-request-timing.js";
-import { PERF_METHOD_VERSION } from "../perf-stats.js";
+import { normalizeMeasuredOutput } from "../perf-output-tokens.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../perf-stats.js";
 import { resolveCodexRequestTiming, resolveCodexTurnRequestTiming } from "./codex-request-timing.js";
 
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
@@ -41,7 +42,7 @@ function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
-function generationValues(generation, reportedOutputTokens, reportedDurationMs) {
+function legacyGenerationValues(generation, reportedOutputTokens, reportedDurationMs) {
   if (!isRecord(generation)) return null;
   try {
     if (positiveInteger(generation.outputTokens) && generation.outputTokens > reportedOutputTokens) return null;
@@ -54,16 +55,15 @@ function generationValues(generation, reportedOutputTokens, reportedDurationMs) 
     }
     const values = generationPerfValues(generation);
     if (!isRecord(values) || !positiveInteger(values.outputTokens) || !positiveInteger(values.durationMs)) return null;
-    return values;
+    return { generation, values };
   } catch {
     return null;
   }
 }
 
-function selectGeneration(lookupGeneration, reportedOutputTokens, reportedDurationMs) {
-  const lookup = generationValues(lookupGeneration, reportedOutputTokens, reportedDurationMs);
-  if (lookup) return { generation: lookupGeneration, values: lookup };
-  return null;
+function nativeGenerationValues(generation) {
+  const values = normalizeMeasuredOutput(generation);
+  return values === null ? null : { generation: values, values };
 }
 
 /**
@@ -144,16 +144,17 @@ function buildResponseCandidate(homeId, turn, response, options = {}) {
   );
   if (response.conflict === true) flags.add("RECORD_CONFLICT");
 
+  const native = response.conflict === true ? null : nativeGenerationValues(response.nativeGeneration);
   const timing = resolveCodexRequestTiming(homeId, turn, response, options.lookupRequestTiming);
-  if (timing.state === "conflict") flags.add("RECORD_CONFLICT");
-  if (timing.state === "invalid") flags.add("TIME_INVALID");
+  if (!native && timing.state === "conflict") flags.add("RECORD_CONFLICT");
+  if (!native && timing.state === "invalid") flags.add("TIME_INVALID");
 
   const conflict = response.conflict === true || timing.state === "conflict";
-  const selected = conflict
-    ? null
-    : (selectGeneration(response.nativeGeneration, response.outputTokens, null) ??
-      selectGeneration(timing.generation, timing.reportedOutputTokens, timing.durationMs));
-  if (!selected) flags.add("MISSING_DURATION");
+  const legacy =
+    conflict || native !== null
+      ? null
+      : legacyGenerationValues(timing.generation, timing.reportedOutputTokens, timing.durationMs);
+  if (!native) flags.add("MISSING_DURATION");
 
   const events = Array.isArray(response.events) ? response.events : [];
   const timedItemCount = events.filter(
@@ -181,15 +182,15 @@ function buildResponseCandidate(homeId, turn, response, options = {}) {
     modelEvidence: turn.modelEvidence === "turn_context" ? "turn_context" : "",
     window: "request",
     timingKind: "generation",
-    timingSource: selected ? "explicit" : "unknown",
-    tokenScope: "non_reasoning_output",
+    timingSource: native ? "explicit" : "unknown",
+    tokenScope: PERF_TOKEN_SCOPE,
     status: "completed",
     terminalVerified: true,
     tsMs: response.timestampMs,
     windowStartMs: null,
     windowEndMs: null,
-    durationMs: selected?.values.durationMs ?? null,
-    outputTokens: selected?.values.outputTokens ?? null,
+    durationMs: native?.values.durationMs ?? null,
+    outputTokens: native?.values.outputTokens ?? null,
     inputTokens: null,
     requestCount: 1,
     itemCount: events.length,
@@ -200,7 +201,8 @@ function buildResponseCandidate(homeId, turn, response, options = {}) {
     reportedDurationMs: timing.durationMs,
     reasoningOutputTokens: response.reasoningOutputTokens,
     reasoningOutputTokensKnown: response.reasoningOutputTokensKnown === true,
-    generation: selected?.generation ?? null,
+    generation: native?.generation ?? null,
+    legacyGeneration: legacy?.generation ?? null,
   };
 }
 

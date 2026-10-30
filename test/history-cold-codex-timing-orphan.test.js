@@ -10,7 +10,7 @@ import { PERF_SAMPLE_FIELDS, UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 const COLD_END_MS = Date.parse("2026-10-04T12:02:00.000Z");
-const MISSING_TIMING_DEPENDENCY_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_DEPENDENCIES_MISSING";
+const TIMING_MISMATCH_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_MISMATCH";
 const PERF_COLUMNS = PERF_SAMPLE_FIELDS.map((entry) => entry.column);
 
 function manifestPathFor(databaseFile) {
@@ -85,7 +85,7 @@ function dependencySnapshot(database, sampleKey) {
   };
 }
 
-test("candidate rejects a cold explicit timing sample whose native owner links are gone", async () => {
+test("schema3 candidate tolerates missing external timing links but rejects a missing native projection", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const isolatedFile = path.join(fixture.serverOptions.homeDir, "cold-codex-timing-orphan-source.sqlite");
   const candidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-timing-orphan-candidate.sqlite");
@@ -151,28 +151,22 @@ test("candidate rejects a cold explicit timing sample whose native owner links a
 
     const isolatedReadOnly = new DatabaseSync(isolatedFile, { readOnly: true });
     try {
-      await assert.rejects(
-        () =>
-          createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
-            startMs: coldStartMs,
-            endMs: COLD_END_MS,
-          }),
-        (error) => {
-          assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
-          return true;
-        },
-      );
+      await createHistoryArchiveCandidate(isolatedReadOnly, candidateFile, {
+        startMs: coldStartMs,
+        endMs: COLD_END_MS,
+      });
+      await verifyHistoryArchiveCandidate(candidateFile);
       assert.deepEqual(
         dependencySnapshot(isolatedReadOnly, sampleKey),
         orphaned,
-        "candidate rejection must not mutate the isolated perf graph",
+        "candidate creation must not mutate the isolated perf graph",
       );
     } finally {
       isolatedReadOnly.close();
     }
 
-    assert.equal(existsSync(candidateFile), false, "candidate creation must not publish a destination database");
-    assert.equal(existsSync(candidateManifest), false, "candidate creation must not publish a destination manifest");
+    assert.equal(existsSync(candidateFile), true, "schema3 must remain archivable without external timing links");
+    assert.equal(existsSync(candidateManifest), true, "the schema3 candidate must publish its manifest");
 
     await createHistoryArchiveCandidate(store.database, nativeCandidateFile, {
       startMs: coldStartMs,
@@ -189,9 +183,9 @@ test("candidate rejects a cold explicit timing sample whose native owner links a
     const tampered = new DatabaseSync(tamperedFile);
     try {
       const deleted = tampered
-        .prepare("DELETE FROM perf_request_timing_threads WHERE home_id = ? AND thread_id = ?")
-        .run(original.owner.home_id, original.owner.thread_id);
-      assert.equal(Number(deleted.changes), original.timingLinkCount);
+        .prepare("DELETE FROM perf_codex_projections WHERE home_id = ? AND path = ? COLLATE NOCASE")
+        .run(original.owner.home_id, String(original.sample.source_path));
+      assert.equal(Number(deleted.changes), 1, "the tampered candidate must lose its native projection");
     } finally {
       tampered.close();
     }
@@ -207,10 +201,10 @@ test("candidate rejects a cold explicit timing sample whose native owner links a
     await assert.rejects(
       verifyHistoryArchiveCandidate(repackedFile),
       (error) => {
-        assert.equal(error?.code, MISSING_TIMING_DEPENDENCY_CODE);
+        assert.equal(error?.code, TIMING_MISMATCH_CODE);
         return true;
       },
-      `verification accepted the native timing orphan for ${original.owner.home_id}/${original.owner.thread_id}`,
+      `verification accepted the missing native projection for ${original.owner.home_id}/${original.owner.thread_id}`,
     );
   } finally {
     store.close();

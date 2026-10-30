@@ -481,6 +481,7 @@ function countMalformedAssistantRows(database) {
 
 /**
  * @typedef {object} OpencodeRawPerfSample
+ * @property {string} methodVersion
  * @property {string} sourceKind
  * @property {string} homeId
  * @property {string} sourcePath
@@ -625,6 +626,7 @@ export async function streamOpencodePerfSamples(dbFile, source, onSample, option
         timingKind: "generation",
         timingSource: "unknown",
         tokenScope: "non_reasoning_output",
+        methodVersion: "tps-v5",
         status: terminal.status,
         terminalVerified: terminal.terminalVerified,
         // 本来源没有取消/进行中的证据：绝不伪造（§2-F、§6.3）。

@@ -5,10 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
+const HISTORICAL_METHOD_VERSION = "tps-v5";
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
 const SEGMENT_BOUNDARY_MS = Date.parse("2026-10-04T12:00:00.000Z");
@@ -97,8 +97,8 @@ test("summarizeHistory fails wholly when a later authorized perf segment disappe
     assert.ok(rankedSample, "fixture must expose a ranked-model candidate with missing generation timing");
     assert.equal(smallSample.sourceKind, "zcode");
     assert.equal(rankedSample.sourceKind, "zcode");
-    assert.equal(smallSample.methodVersion, PERF_METHOD_VERSION);
-    assert.equal(rankedSample.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(smallSample.methodVersion, HISTORICAL_METHOD_VERSION);
+    assert.equal(rankedSample.methodVersion, HISTORICAL_METHOD_VERSION);
     for (const sample of [smallSample, rankedSample]) {
       assert.equal(sample.timingKind, "generation");
       assert.equal(sample.tokenScope, "non_reasoning_output");
@@ -114,7 +114,7 @@ test("summarizeHistory fails wholly when a later authorized perf segment disappe
       segmentId: segment.segmentId,
       databaseSha256: segment.databaseSha256,
       sourceKinds: ["zcode"],
-      methodVersions: [PERF_METHOD_VERSION],
+      methodVersions: [HISTORICAL_METHOD_VERSION],
     }));
     archived.database.exec("BEGIN IMMEDIATE");
     try {

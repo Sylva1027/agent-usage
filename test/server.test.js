@@ -555,7 +555,7 @@ test("server reports status changes and refreshes cached usage reports", async (
 });
 
 test("local Magpie ledgers never affect native HTTP publication or frozen snapshots", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
   const options = {
     ...fixture.serverOptions,
     lookupRequestTiming: () => ({
@@ -647,13 +647,14 @@ test("local Magpie ledgers never affect native HTTP publication or frozen snapsh
 });
 
 test("explicit fixture timing evidence stays pending until another worker publishes it", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
+  fixture.writeNativeTiming(fixture.timingRecords.slice(0, 1));
   const store = new UsageStore(fixture.serverOptions);
   const first = createUsageServer(fixture.serverOptions);
   const second = createUsageServer(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
-    // This fixture models an explicit upstream timing import; it does not assert that native stream capture exists.
+    // Scalar native observations coexist with the historical timing evidence import.
     await fixture.seedRequestTiming(store, fixture.timingRecords.slice(0, 1));
     await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
     const firstBase = `http://127.0.0.1:${first.address().port}`;
@@ -679,6 +680,7 @@ test("explicit fixture timing evidence stays pending until another worker publis
       reviewedOrigins: ["fixture@1"],
     });
     assert.equal(imported.changed, true);
+    fixture.writeNativeTiming(fixture.timingRecords.slice(1));
 
     const pendingStatus = await get(firstBase, `status?since=${initial.fingerprint}`);
     assert.equal(pendingStatus.changed, true);

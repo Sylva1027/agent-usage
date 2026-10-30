@@ -15,13 +15,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import {
-  normalizePerfSample,
-  PERF_METHOD_VERSION,
-  perfFlagNamesOf,
-  perfGroupKey,
-  perfSampleKey,
-} from "../src/perf-stats.js";
+import { normalizePerfSample, perfFlagNamesOf, perfGroupKey, perfSampleKey } from "../src/perf-stats.js";
 import {
   buildOpencodeMalformedCountSql,
   buildOpencodePerfSql,
@@ -1325,7 +1319,7 @@ test("raw 候选与 v3 内核输入契约自洽：零警告，语义三件套与
     assert.equal(sample.durationMs, null);
     assert.equal(sample.status, "completed");
     assert.equal(sample.timingSource, "unknown");
-    assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
+    assert.equal(sample.methodVersion, "tps-v5");
     assert.deepEqual(flagNamesOf(sample), ["MISSING_DURATION"]);
   } finally {
     workspace.cleanup();

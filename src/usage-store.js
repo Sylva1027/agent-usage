@@ -5,6 +5,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
+import { outputObservationFile } from "./perf-output-observations.js";
+import { normalizeMeasuredOutput } from "./perf-output-tokens.js";
 
 import {
   COMPARISON_PERIOD_KEYS,
@@ -157,7 +159,11 @@ const HISTORY_ARCHIVE_PERF_COMPONENT_META_KEYS = Object.freeze([
   "history_archive_perf_index_v1",
   "history_archive_perf_timing_v1",
 ]);
-const HISTORY_ARCHIVE_PERF_REVISION_TABLES = Object.freeze(["perf_samples", "perf_request_timing_evidence"]);
+const HISTORY_ARCHIVE_PERF_REVISION_TABLES = Object.freeze([
+  "perf_samples",
+  "perf_request_timing_evidence",
+  "codex_output_measurements",
+]);
 const HISTORY_ARCHIVE_TIMING_EVIDENCE_COLUMNS = Object.freeze([
   "home_id",
   "evidence_origin",
@@ -1900,6 +1906,36 @@ function historyArchiveTimingVariantKey(payload) {
 }
 
 function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, segment) {
+  if (factTable === "codex_output_measurements") {
+    let key;
+    try {
+      key = JSON.parse(payload.sample_key);
+    } catch {
+      key = null;
+    }
+    const measurement = normalizeMeasuredOutput(payload.measurement);
+    if (
+      !hasExactObjectKeys(payload, ["sample_key", "source_path", "home_id", "measurement"]) ||
+      canonicalPerfSourceKind(sourceIdentity.kind) !== "codex" ||
+      payload.source_path !== sourceIdentity.path ||
+      payload.home_id !== sourceIdentity.home_id ||
+      !Array.isArray(key) ||
+      key.length !== 5 ||
+      key[0] !== "codex" ||
+      key[1] !== payload.home_id ||
+      key.some((part) => typeof part !== "string" || part === "") ||
+      (payload.measurement !== null &&
+        (!measurement ||
+          !hasExactObjectKeys(payload.measurement, ["tokenizer", "outputTokens", "durationMs", "windows"]) ||
+          payload.measurement.windows.some(
+            (window) => !hasExactObjectKeys(window, ["startMs", "endMs", "outputTokens"]),
+          )))
+    )
+      throw historyArchiveRevisionError(
+        "archive native output measurement has invalid scalar evidence or source binding",
+      );
+    return { sample_key: payload.sample_key, source_path: payload.source_path, home_id: payload.home_id, measurement };
+  }
   if (factTable === "perf_samples") {
     if (!hasExactObjectKeys(payload, PERF_SAMPLE_COLUMNS)) {
       throw historyArchiveRevisionError("archive perf revision payload must contain exactly the perf_samples columns");
@@ -2150,6 +2186,7 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
   const required = samples.filter(
     (sample) =>
       sample.source_kind === "codex" &&
+      sample.method_version !== PERF_METHOD_VERSION &&
       sample.status === "completed" &&
       ["request_e2e", "generation"].includes(sample.timing_kind) &&
       sample.timing_source === "explicit",
@@ -2180,7 +2217,11 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
   }
 }
 
-function applyHistoryArchivePerfRevisions(database, segment, samples, revisions = []) {
+function historyArchiveNativeMeasurementRow(sample, measurement) {
+  return { sample_key: sample.sample_key, source_path: sample.source_path, home_id: sample.home_id, measurement };
+}
+
+function applyHistoryArchivePerfRevisions(database, segment, samples, revisions = [], nativeMeasurements = new Map()) {
   const timingColumns = historyArchiveTimingEvidenceColumns(database);
   if (revisions.length === 0) {
     return { samples: samples.map(decodePerfSample), revisionsBySampleKey: new Map() };
@@ -2188,7 +2229,10 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
 
   let effectiveSamples = samples;
   let effectiveTimingEvidence;
-  const originalSampleKeys = new Set(samples.map((sample) => String(sample.sample_key)));
+  let nativeRows = samples
+    .filter((sample) => nativeMeasurements.has(String(sample.sample_key)))
+    .map((sample) => historyArchiveNativeMeasurementRow(sample, nativeMeasurements.get(String(sample.sample_key))));
+  const originalSamplesByKey = new Map(samples.map((sample) => [String(sample.sample_key), sample]));
   const revisionsBySampleKey = new Map();
   for (const revision of revisions) {
     const storedIdentity = database
@@ -2214,7 +2258,7 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
         }
       }
       for (const added of revision.added) {
-        if (!originalSampleKeys.has(String(added.payload.sample_key))) {
+        if (!originalSamplesByKey.has(String(added.payload.sample_key))) {
           throw historyArchiveRevisionError(
             "archive perf revisions cannot add a sample without an existing dependency graph",
           );
@@ -2225,6 +2269,26 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
         revision,
         (row) => String(row.sample_key),
         "perf sample",
+      );
+      continue;
+    }
+
+    if (revision.factTable === "codex_output_measurements") {
+      for (const delta of [...revision.removed, ...revision.added]) {
+        const sample = originalSamplesByKey.get(delta.payload.sample_key);
+        if (
+          sample?.source_kind !== "codex" ||
+          sample.home_id !== delta.payload.home_id ||
+          sample.source_path !== delta.payload.source_path
+        ) {
+          throw historyArchiveRevisionError("archive native measurement has no matching immutable sample owner");
+        }
+      }
+      nativeRows = applyHistoryArchivePerfRevisionDeltas(
+        nativeRows,
+        revision,
+        (row) => row.sample_key,
+        "native measurement",
       );
       continue;
     }
@@ -2273,6 +2337,7 @@ function applyHistoryArchivePerfRevisions(database, segment, samples, revisions 
     samples: effectiveSamples.map(decodePerfSample),
     rawSamples: effectiveSamples,
     timingEvidence: effectiveTimingEvidence,
+    nativeMeasurements: new Map(nativeRows.map((row) => [row.sample_key, row.measurement])),
     revisionsBySampleKey,
   };
 }
@@ -2292,7 +2357,7 @@ function historyArchivePerfRevisionInputVersion(database) {
   };
 }
 
-function historyArchivePerfRevisionChangesForSamples(database, candidatesBySampleKey, sampleKeys) {
+function historyArchivePerfRevisionChangesForSamples(database, candidatesBySampleKey, sampleKeys, nativeMeasurements) {
   const changes = new Map();
   const selectSample = database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?");
   const selectSource = database.prepare(
@@ -2340,6 +2405,31 @@ function historyArchivePerfRevisionChangesForSamples(database, candidatesBySampl
     if (historyArchivePerfSamplePayloadKey(currentSample) !== historyArchivePerfSamplePayloadKey(candidate.sample)) {
       addDelta(sampleRevision, "removed", encodePerfSample(candidate.sample), "perf_samples");
       addDelta(sampleRevision, "added", { ...current }, "perf_samples");
+    }
+
+    if (current.method_version === PERF_METHOD_VERSION || candidate.sample.methodVersion === PERF_METHOD_VERSION) {
+      const nativeRevision = revisionFor(candidate, "codex_output_measurements");
+      const previous = candidate.nativeMeasurement;
+      const next = nativeMeasurements.get(String(sampleKey));
+      if (
+        JSON.stringify(previous ?? null) !== JSON.stringify(next ?? null) ||
+        (previous === undefined) !== (next === undefined)
+      ) {
+        if (previous !== undefined)
+          addDelta(
+            nativeRevision,
+            "removed",
+            historyArchiveNativeMeasurementRow(encodePerfSample(candidate.sample), previous),
+            "codex_output_measurements",
+          );
+        if (next !== undefined)
+          addDelta(
+            nativeRevision,
+            "added",
+            historyArchiveNativeMeasurementRow(current, next),
+            "codex_output_measurements",
+          );
+      }
     }
 
     const timingRevision = revisionFor(candidate, "perf_request_timing_evidence");
@@ -3137,13 +3227,21 @@ function enabledPerfSourceStat(kind, filePath) {
     // 内容摘要：首尾各 64KiB（SQLite 头 + 追加/改写的尾部页都能覆盖）。
     const digest = createHash("sha256");
     const readerKind = canonicalizeKind(kind);
-    if (readerKind === "dsh") digest.update("dsh:all-generation-v2");
-    if (readerKind === "workbuddy") digest.update("workbuddy:native-generation-v1");
+    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:visible-output-v1`);
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],
       [walPath, walSize],
     ];
+    if (readerKind === "dsh" || readerKind === "workbuddy") {
+      const observationPath = outputObservationFile(filePath, readerKind);
+      const observation = statSync(observationPath, { throwIfNoEntry: false });
+      if (observation) {
+        size += observation.size;
+        mtimeMs = Math.max(mtimeMs, observation.mtimeMs);
+        contentParts.push([observationPath, observation.size]);
+      }
+    }
     for (const [file, fileSize] of contentParts) {
       if (fileSize <= 0) continue;
       const headLength = Math.min(fileSize, CONTENT_PROBE_BYTES);
@@ -6057,6 +6155,7 @@ export class UsageStore {
       verifyHistoryArchiveCandidate,
       HISTORY_ARCHIVE_CODEX_REQUESTS_META_KEY,
       validateCodexRequestEvidence,
+      readCodexNativeMeasurements,
     } = await import("./history-archive.js");
     const verified = await verifyHistoryArchiveCandidate(String(record.database_path));
     assertHistoryArchiveRecordMatches(record, verified);
@@ -6108,8 +6207,16 @@ export class UsageStore {
       const rows = database
         .prepare(`${PERF_SAMPLE_SELECT_SQL} WHERE ts_ms >= ? AND ts_ms < ? ORDER BY sample_key`)
         .all(Number(record.start_ms), Number(record.end_ms));
-      const effective = applyHistoryArchivePerfRevisions(database, record, rows, revisions);
-      if (sourceKind === "codex" && revisions.length > 0) {
+      const nativeMeasurements =
+        includeSourceIdentityForSampleKeys.length > 0 ||
+        revisions.some((revision) => revision.factTable === "codex_output_measurements")
+          ? readCodexNativeMeasurements(database, rows)
+          : new Map();
+      const effective = applyHistoryArchivePerfRevisions(database, record, rows, revisions, nativeMeasurements);
+      if (
+        revisions.length > 0 &&
+        (sourceKind === "codex" || effective.rawSamples.some((sample) => sample.source_kind === "codex"))
+      ) {
         const requestFactsRow = database
           .prepare("SELECT value FROM store_meta WHERE key = ?")
           .get(HISTORY_ARCHIVE_CODEX_REQUESTS_META_KEY);
@@ -6132,6 +6239,7 @@ export class UsageStore {
           validateCodexRequestEvidence(database, requestFacts, Number(record.start_ms), Number(record.end_ms), {
             samples: effective.rawSamples,
             timingEvidence: effective.timingEvidence,
+            nativeMeasurements: effective.nativeMeasurements,
           });
         } catch (error) {
           throw historyArchiveRevisionError(
@@ -6171,7 +6279,12 @@ export class UsageStore {
           sourceIdentityBySampleKey.set(normalizedSampleKey, { ...sourceIdentity });
         }
       }
-      return { ...effective, timingEvidenceBySampleKey, sourceIdentityBySampleKey };
+      return {
+        ...effective,
+        timingEvidenceBySampleKey,
+        sourceIdentityBySampleKey,
+        originalNativeMeasurements: nativeMeasurements,
+      };
     } finally {
       try {
         if (began) database.exec("ROLLBACK");
@@ -6219,6 +6332,7 @@ export class UsageStore {
           sample,
           sourceIdentity: cold.sourceIdentityBySampleKey.get(sampleKey),
           timingEvidence: cold.timingEvidenceBySampleKey.get(sampleKey) || [],
+          nativeMeasurement: cold.originalNativeMeasurements.get(sampleKey),
         });
       }
     }
@@ -8756,6 +8870,7 @@ export class UsageStore {
             threadId: thread.threadId,
             rolloutFiles,
             samples: built.samples,
+            nativeMeasurements: built.nativeMeasurements,
             warnings: built.warnings,
             fingerprints: Object.fromEntries(
               rollouts.map((rollout) => [rollout.filePath, window.after.fileFingerprints[rollout.filePath]]),
@@ -9308,7 +9423,12 @@ export class UsageStore {
         previousPerfSampleSourcesByPath.clear();
         writeHistoryArchivePerfRevisionChanges(
           this.database,
-          historyArchivePerfRevisionChangesForSamples(this.database, perfRevisionCandidates, replacedSampleKeys),
+          historyArchivePerfRevisionChangesForSamples(
+            this.database,
+            perfRevisionCandidates,
+            replacedSampleKeys,
+            new Map(stagedThreadsToReplace.flatMap((staged) => [...staged.nativeMeasurements])),
+          ),
         );
 
         for (const sourcePath of deletedCodexPaths) {

@@ -224,6 +224,7 @@ export async function streamClaudePerfSamples(filePath, source, onSample, option
       timingKind: "generation",
       timingSource: performance === null ? "unknown" : "explicit",
       tokenScope: "non_reasoning_output",
+      methodVersion: "tps-v5",
       status: entry.hasStop ? "completed" : "unverified",
       tsMs: entry.lastTs,
       windowStartMs: null,

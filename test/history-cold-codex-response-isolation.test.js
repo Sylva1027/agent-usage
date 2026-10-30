@@ -12,6 +12,7 @@ const TURN_25_END_MS = Date.parse("2026-10-04T12:05:00.000Z");
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
 const PERF_REVISIONS_KEY = "history_archive_perf_revisions";
+const TIMING_MISMATCH_CODE = "HISTORY_ARCHIVE_CANDIDATE_PERF_TIMING_MISMATCH";
 const FILTERS = { preset: "all", now: "2026-10-04T13:00:00.000Z", calendarZone: "utc" };
 
 function writeMeta(database, key, value) {
@@ -136,9 +137,17 @@ function addSiblingConflicts(database, homeId, turnId, siblingResponseId) {
     );
 }
 
-test("v3 archive validation isolates sibling conflicts and missing sibling timing", async () => {
+test("schema3 archive validation rejects target conflicts and isolates sibling conflicts and timing", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const sourceFile = path.join(fixture.serverOptions.homeDir, "cold-codex-response-isolation-source.sqlite");
+  const targetConflictSourceFile = path.join(
+    fixture.serverOptions.homeDir,
+    "cold-codex-response-isolation-target-conflict-source.sqlite",
+  );
+  const targetConflictCandidateFile = path.join(
+    fixture.serverOptions.homeDir,
+    "cold-codex-response-isolation-target-conflict-candidate.sqlite",
+  );
   const candidateFile = path.join(fixture.serverOptions.homeDir, "cold-codex-response-isolation-candidate.sqlite");
   const missingSiblingCandidateFile = path.join(
     fixture.serverOptions.homeDir,
@@ -174,6 +183,30 @@ test("v3 archive validation isolates sibling conflicts and missing sibling timin
     const siblingResponseId = "response-25-2";
     assert.equal(threadId.length > 0, true);
     assert.equal(responseId, "response-25-1");
+
+    await backup(store.database, targetConflictSourceFile);
+    const targetConflict = new DatabaseSync(targetConflictSourceFile);
+    try {
+      addSiblingConflicts(targetConflict, homeId, turnId, responseId);
+    } finally {
+      targetConflict.close();
+    }
+    const targetConflictReadOnly = new DatabaseSync(targetConflictSourceFile, { readOnly: true });
+    try {
+      await assert.rejects(
+        () =>
+          createHistoryArchiveCandidate(targetConflictReadOnly, targetConflictCandidateFile, {
+            startMs: coldStartMs,
+            endMs: Number(selected.ts_ms) + 1,
+          }),
+        (error) => {
+          assert.equal(error?.code, TIMING_MISMATCH_CODE);
+          return true;
+        },
+      );
+    } finally {
+      targetConflictReadOnly.close();
+    }
 
     await backup(store.database, sourceFile);
     const isolated = new DatabaseSync(sourceFile);
@@ -344,21 +377,24 @@ test("v3 archive validation isolates sibling conflicts and missing sibling timin
       const revisedSample = archived.database
         .prepare("SELECT duration_ms FROM perf_samples WHERE sample_key = ?")
         .get(selected.sample_key);
-      assert.equal(Number(revisedSample.duration_ms), Number(lateTiming.generation.durationMs));
+      assert.equal(
+        Number(revisedSample.duration_ms),
+        Number(baseTiming.generation.durationMs),
+        "external timing must not replace the schema3 native generation duration",
+      );
 
       const revisionMetadata = archived.database
         .prepare("SELECT value FROM store_meta WHERE key = ?")
         .get(PERF_REVISIONS_KEY)?.value;
-      assert.equal(typeof revisionMetadata, "string");
-      const revisionRoot = JSON.parse(String(revisionMetadata));
-      assert.ok(
-        revisionRoot.revisions.some(
-          (revision) =>
-            revision.factTable === "perf_samples" &&
-            revision.added.some((delta) => String(delta.payload.sample_key) === String(selected.sample_key)),
-        ),
-        "the target-only late timing must create an effective sample revision",
-      );
+      const targetRevision =
+        revisionMetadata === undefined
+          ? undefined
+          : JSON.parse(String(revisionMetadata)).revisions.find(
+              (revision) =>
+                revision.factTable === "perf_samples" &&
+                revision.added.some((delta) => String(delta.payload.sample_key) === String(selected.sample_key)),
+            );
+      assert.equal(targetRevision, undefined, "external timing must not create a schema3 sample revision");
 
       const summary = await archived.summarizeHistory(FILTERS);
       assert.ok(

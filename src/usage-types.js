@@ -164,10 +164,12 @@
  * @property {string} reasoningEffort
  * @property {string} modelEvidence
  * @property {string} window `request` | `step` | `message` | `turn`
- * @property {string} timingKind `generation` (v3), or historical `request_e2e` (Codex v2 sums complete request durations
+ * @property {string} timingKind `generation` (v3-v6), or historical `request_e2e` (Codex v2 sums complete request durations
  *   within one turn) | `item_span_estimate` (historical diagnostic only)
  * @property {string} timingSource `explicit` | `timestamp_fallback` | `mixed` | `unknown`
- * @property {string} tokenScope `non_reasoning_output` (v3), or historical `reported_output_includes_reasoning` | `visible_plus_reasoning` | `reported_output_unspecified`
+ * @property {string} tokenScope `PERF_TOKEN_SCOPE` for current v6, or historical
+ *   `non_reasoning_output` | `all_generated_output` | `reported_output_includes_reasoning` |
+ *   `visible_plus_reasoning` | `reported_output_unspecified`
  * @property {string} status `completed` | `failed` | `cancelled` | `in_progress` | `unverified`
  * @property {number | null} tsMs
  * @property {number | null} windowStartMs
@@ -314,7 +316,7 @@
  * accepts only the eight codes frozen by plan §3:83; ruling Q keeps the M1
  * normalization warning codes out of this shape.
  * @typedef {object} PerfSummaryMeta
- * @property {string} methodVersion Defaults to `tps-v5`. Retired native windows and E2E methods
+ * @property {string} methodVersion Defaults to `tps-v6`. Retired native windows and E2E methods
  *   remain readable as historical evidence; compatible generation samples retain their version.
  * @property {"rebuilding" | "ready" | "degraded"} state
  * @property {string | null} indexVersion Fingerprint of the published sources.

@@ -11,7 +11,7 @@ import {
   createCodexPublishFilter,
   rankedCodexHomeIds,
 } from "../src/perf-sources/codex-thread.js";
-import { normalizePerfSample, selectPerfSamples, summarizePerf } from "../src/perf-stats.js";
+import { PERF_TOKEN_SCOPE, normalizePerfSample, selectPerfSamples, summarizePerf } from "../src/perf-stats.js";
 import { UsageStore, createPersistentCodexProjectionCache } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
@@ -34,7 +34,7 @@ function sample(overrides = {}) {
     reasoningEffort: "",
     window: "request",
     timingKind: "generation",
-    tokenScope: "non_reasoning_output",
+    tokenScope: PERF_TOKEN_SCOPE,
     durationMs: 2_000,
     outputTokens: 1_000,
     ...overrides,

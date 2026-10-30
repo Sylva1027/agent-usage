@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   PERF_METHOD_VERSION,
   PERF_SOURCE_KINDS,
+  PERF_TOKEN_SCOPE,
   canonicalPerfSourceKind,
   normalizePerfSample,
 } from "../src/perf-stats.js";
@@ -60,7 +61,7 @@ async function withSessionFile(rows, fn) {
   }
 }
 
-test("规范 kind 与 v5 来源语义", () => {
+test("规范 kind 与当前统一来源语义", () => {
   assert.equal(canonicalPerfSourceKind("workbuddy"), "workbuddy");
   assert.deepEqual([...PERF_SOURCE_KINDS], ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
@@ -79,7 +80,7 @@ test("规范 kind 与 v5 来源语义", () => {
   assert.ok(sample);
   assert.equal(sample.window, "request");
   assert.equal(sample.timingKind, "generation");
-  assert.equal(sample.tokenScope, "non_reasoning_output");
+  assert.equal(sample.tokenScope, PERF_TOKEN_SCOPE);
   assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
   assert.equal(sample.sampleKey, JSON.stringify(["workbuddy", "home-1", "msg-1"]));
 });
@@ -121,7 +122,7 @@ test("trace generation duration 与整批 output counter 只保留诊断，不�
     assert.equal(samples[0].timingSource, "unknown");
     assert.equal(samples[0].window, "request");
     assert.equal(samples[0].timingKind, "generation");
-    assert.equal(samples[0].tokenScope, "non_reasoning_output");
+    assert.equal(samples[0].tokenScope, PERF_TOKEN_SCOPE);
     assert.equal(result.stats.candidates, 1);
     assert.equal(result.stats.skippedNoDuration, 0);
     assert.equal(result.stats.missingGenerationDuration, 1);

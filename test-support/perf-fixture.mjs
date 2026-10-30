@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -490,8 +499,17 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
   }
 }
 
+export const codexOutputTiming = (outputTokens, durationMs) => ({
+  schema_version: 3,
+  tokenizer: "o200k_base",
+  clock: "transport_receive",
+  output_tokens: outputTokens,
+  observed_duration_ms: durationMs,
+  windows: [{ start_ms: 500, end_ms: 500 + durationMs, output_tokens: outputTokens }],
+});
+
 /** Fixed Codex-only fixture: each 25-turn thread is spread over three rollouts. */
-export function createPerfCodexIntegrationFixture() {
+export function createPerfCodexIntegrationFixture({ nativeTiming = true } = {}) {
   const tempParent = realpathSync(tmpdir());
   const root = mkdtempSync(path.join(tempParent, "perf-codex-integration-"));
   const rootReal = realpathSync(root);
@@ -517,6 +535,7 @@ export function createPerfCodexIntegrationFixture() {
     timingByThreadResponse.set(timingKey(threadId, record.responseId), record);
     return record;
   };
+  const generationTiming = codexOutputTiming;
   for (const rolloutRows of rows) {
     rolloutRows.push({ type: "session_meta", payload: { id: threadId, source: "vscode" } });
   }
@@ -532,6 +551,7 @@ export function createPerfCodexIntegrationFixture() {
     for (const [requestIndex, outputTokens] of requestOutputs.entries()) {
       cumulativeOutput += outputTokens;
       const responseId = `response-${turn}-${requestIndex + 1}`;
+      const generationDurationMs = turn === 25 ? 200000 : 1000;
       rows[requestRollout].push({
         type: "token_usage_record",
         timestamp: new Date(base + turn * 10000 + 2500 + requestIndex * 1000).toISOString(),
@@ -541,9 +561,9 @@ export function createPerfCodexIntegrationFixture() {
           response_id: responseId,
           usage: { output_tokens: outputTokens, reasoning_output_tokens: 0 },
           turn_token_usage: { output_tokens: cumulativeOutput },
+          ...(nativeTiming ? { generation_timing: generationTiming(outputTokens, generationDurationMs) } : {}),
         },
       });
-      const generationDurationMs = turn === 25 ? 200000 : 1000;
       const timing = {
         schemaVersion: 2,
         evidenceOrigin: "fixture@1",
@@ -642,12 +662,34 @@ export function createPerfCodexIntegrationFixture() {
       });
       await store.sync({ options: reportOptions });
     };
+    const writeNativeTiming = (records = timingRecords) => {
+      const byResponse = new Map(records.map((record) => [record.responseId, record.generation]));
+      for (let index = 0; index < rows.length; index++) {
+        const file = path.join(codexHome, "sessions", "fixture", threadId, `rollout-${index + 1}.jsonl`);
+        let changed = false;
+        const actual = readFileSync(file, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        for (const row of actual) {
+          const measured = byResponse.get(row.payload?.response_id);
+          if (row.type !== "token_usage_record" || !measured) continue;
+          const next = generationTiming(measured.outputTokens, measured.durationMs);
+          if (JSON.stringify(row.payload.generation_timing) === JSON.stringify(next)) continue;
+          row.payload.generation_timing = next;
+          changed = true;
+        }
+        if (changed) writeFileSync(file, `${actual.map((row) => JSON.stringify(row)).join("\n")}\n`);
+      }
+    };
     return {
       reportOptions,
       timingRecords,
       registerThreadTiming,
       addRequestTiming,
       seedRequestTiming,
+      writeNativeTiming,
+      generationTiming,
       codexHome,
       serverOptions: {
         ...reportOptions,
@@ -658,7 +700,7 @@ export function createPerfCodexIntegrationFixture() {
         model: "codex-fixture-model",
         agentKind: "unknown",
         timingKind: "generation",
-        tokenScope: "non_reasoning_output",
+        tokenScope: "visible_output_o200k_base",
         n: 26,
         rank: 1,
         tps: { p10: 100, p50: 110, p90: 121, pooled: (2800 * 1000) / 424000 },

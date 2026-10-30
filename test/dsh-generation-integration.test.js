@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 import { renderPerfModelsHtml } from "../public/perf-ui.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../src/perf-stats.js";
 import { createUsageServer } from "../src/server.js";
 import { buildUsageReport, summarizeUsage } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
@@ -66,7 +67,7 @@ async function fixture(run) {
 
 function assertMissingGenerationSpeed(perf) {
   assertNoPublishedSpeed(perf);
-  assert.equal(perf.meta.methodVersion, "tps-v5");
+  assert.equal(perf.meta.methodVersion, PERF_METHOD_VERSION);
   assert.equal(perf.models.length, 1);
   assert.equal(perf.models[0].averageTps, null);
   assert.equal(perf.models[0].n, 0);
@@ -108,8 +109,8 @@ test("DSH usage and missing-duration diagnostics reach memory, SQLite, API and f
          FROM perf_samples`,
       )
       .get();
-    assert.equal(native.method_version, "tps-v5");
-    assert.equal(native.token_scope, "all_generated_output");
+    assert.equal(native.method_version, PERF_METHOD_VERSION);
+    assert.equal(native.token_scope, PERF_TOKEN_SCOPE);
     assert.equal(native.output_tokens, null);
     assert.equal(native.duration_ms, null);
     const usageEvent = store.database.prepare("SELECT total, output FROM events").get();
@@ -139,6 +140,7 @@ test("DSH usage and missing-duration diagnostics reach memory, SQLite, API and f
       assert.match(html, /deepseek-flash/);
       assert.doesNotMatch(html, />\s*100(?:\.0+)?\s*</);
       assert.doesNotMatch(html, /all_generated_output|reasoning|Magpie|警告|覆盖率/);
+      assert.equal(html.includes(PERF_TOKEN_SCOPE), false);
       const response = await fetch(`${base}/api/summary?preset=all&snapshot=${frozen.snapshotId}`);
       assert.deepEqual((await response.json()).summary.perf, frozen.summary.perf);
     } finally {

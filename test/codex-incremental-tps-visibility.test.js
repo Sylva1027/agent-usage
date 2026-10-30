@@ -7,17 +7,20 @@ import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.
 const FILTERS = { preset: "all", now: new Date("2026-10-04T13:00:00.000Z"), calendarZone: "utc" };
 
 async function withStore(run) {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync();
     const homeId = String(store.homes.find((home) => home.path === fixture.codexHome).id);
-    const importRecords = (records) =>
-      store.importRequestTimingEvidence({
+    const importRecords = (records) => {
+      const result = store.importRequestTimingEvidence({
         homeId,
         records,
         reviewedOrigins: [...new Set(records.map((row) => row.evidenceOrigin))],
       });
+      fixture.writeNativeTiming(records);
+      return result;
+    };
     await run({ fixture, store, importRecords });
   } finally {
     store.close();
@@ -33,7 +36,7 @@ function stableSummary(store) {
   return summary;
 }
 
-test("Codex explicit timing arrival publishes only measured requests and preserves native usage", async () => {
+test("Codex native timing arrival publishes only measured requests and preserves native usage", async () => {
   await withStore(async ({ fixture, store, importRecords }) => {
     const before = stableSummary(store);
     assert.equal(before.perf.coverage.eligible, fixture.expected.n);

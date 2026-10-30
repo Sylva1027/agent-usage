@@ -86,17 +86,17 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     for (const body of [usage, dashboard, summary, full, frozen]) {
       const perf = body.summary.perf;
       assert.equal(perf.state, "ready");
-      assert.equal(perf.meta.methodVersion, "tps-v5");
+      assert.equal(perf.meta.methodVersion, "tps-v6");
       assert.equal(perf.groups.length, 1);
       assert.equal(perf.groups[0].sourceKind, "codex");
       assert.equal(perf.groups[0].timingKind, "generation");
-      assert.equal(perf.groups[0].tokenScope, "non_reasoning_output");
+      assert.equal(perf.groups[0].tokenScope, fixture.expected.tokenScope);
       assert.equal(perf.groups[0].agentKind, "unknown");
       assert.equal(perf.groups[0].n, fixture.expected.n);
       assert.deepEqual(perf.groups[0].tps, fixture.expected.tps);
       assertCodexModel(perf, fixture, "Codex API entry");
       const timing = perf.codexTimingCoverage;
-      assert.equal(timing.methodVersion, "tps-v5");
+      assert.equal(timing.methodVersion, "tps-v6");
       assert.equal(timing.counts.eligible, 26);
       assert.equal(timing.counts.sampled, 26);
       assert.equal(timing.recordedOutputTokens, 2800);
@@ -136,7 +136,7 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     const frozenTiming = frozen.summary.perf.codexTimingCoverage;
     const livePath = fixture.rolloutFiles[0];
     const liveBefore = readFileSync(livePath, "utf8");
-    writeFileSync(livePath, liveBefore.replaceAll('"output_tokens":100', '"output_tokens":150'));
+    writeFileSync(livePath, liveBefore.replace('"observed_duration_ms":1000', '"observed_duration_ms":1001'));
     const live = await get("summary", "preset=all");
     assert.notEqual(live.summary.perf.indexVersion, frozen.summary.perf.indexVersion);
     assert.notDeepEqual(live.summary.perf.groups[0].tps, frozen.summary.perf.groups[0].tps);
@@ -155,7 +155,8 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
 });
 
 test("Codex API keeps measured responses when another request in the same turn lacks timing", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
+  fixture.writeNativeTiming(fixture.timingRecords.filter((record) => record.responseId !== "response-25-2"));
   const store = new UsageStore(fixture.serverOptions);
   let server;
   try {
@@ -177,7 +178,7 @@ test("Codex API keeps measured responses when another request in the same turn l
     const baseUrl = await listen(server);
     const body = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
     const perf = body.summary.perf;
-    assert.equal(perf.meta.methodVersion, "tps-v5");
+    assert.equal(perf.meta.methodVersion, "tps-v6");
     assert.equal(perf.groups[0].n, 25);
     assert.equal(perf.models[0].n, 25);
     assert.equal(perf.models[0].rank, 1);
@@ -204,7 +205,7 @@ test("Codex API keeps measured responses when another request in the same turn l
 });
 
 test("Codex API explains current-method candidates when no request timing is available", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
   const store = new UsageStore(fixture.serverOptions);
   let server;
   try {
@@ -349,7 +350,7 @@ test("C2 · 端到端 API：坏 rollout 的告警跨多轮不累加、读数 = �
 });
 
 test("L1 published perf revision changes the shared status/usage fingerprint and preserves frozen reads", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
   const store = new UsageStore(fixture.serverOptions);
   let server;
   try {
@@ -386,6 +387,7 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
       reviewedOrigins: ["fixture@1"],
     });
     assert.equal(imported.changed, true);
+    fixture.writeNativeTiming(initialTimingRecords);
     const pendingStatus = await getJson(baseUrl, "status", `since=${initial.fingerprint}`);
     assert.equal(pendingStatus.changed, true);
     assert.notEqual(pendingStatus.fingerprint, initial.fingerprint);
@@ -417,6 +419,7 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
       reviewedOrigins: ["fixture@1"],
     });
     assert.equal(externalImport.changed, true);
+    fixture.writeNativeTiming(fixture.timingRecords.filter((record) => record.responseId.startsWith("response-25-")));
     await store.sync({ options: fixture.reportOptions });
 
     // Only status may observe the external store.sync; an already-open page does not fetch usage first.
@@ -424,7 +427,7 @@ test("L1 published perf revision changes the shared status/usage fingerprint and
     assert.equal(externalStatus.changed, true);
     assert.notEqual(externalStatus.fingerprint, live.fingerprint);
 
-    const externalLive = await getJson(baseUrl, "usage", "preset=all&skipCheck=1");
+    const externalLive = await getJson(baseUrl, "usage", "preset=all");
     const externalSummary = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
     assert.equal(externalLive.fingerprint, externalStatus.fingerprint);
     assert.equal(externalSummary.fingerprint, externalStatus.fingerprint);

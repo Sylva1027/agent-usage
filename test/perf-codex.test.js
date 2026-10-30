@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  PERF_METHOD_VERSION,
+  PERF_TOKEN_SCOPE,
   computePerfCoverage,
   normalizePerfSample,
   perfFlagNamesOf,
@@ -564,7 +566,7 @@ test("T2 folds response items onto the following usage row and enriches replay c
   );
 });
 
-test("T2 emits one v3 candidate per response and only samples exact gateway generation", () => {
+test("T2 emits one v6 missing candidate per response while legacy explicit timing remains diagnostic", () => {
   const baseMs = 1_800_000_000_000;
   const result = folded(
     "home-A",
@@ -601,16 +603,21 @@ test("T2 emits one v3 candidate per response and only samples exact gateway gene
   assert.equal(queries[1].reasoningOutputTokens, 0);
   assert.equal(built.candidates.length, 2);
   const [sampled, missing] = built.candidates;
-  assert.equal(sampled.outputTokens, 14);
-  assert.equal(sampled.durationMs, 200);
+  assert.equal(sampled.outputTokens, null);
+  assert.equal(sampled.durationMs, null);
   assert.equal(sampled.requestCount, 1);
   assert.equal(sampled.reportedOutputTokens, 20);
   assert.equal(sampled.window, "request");
   assert.equal(sampled.timingKind, "generation");
-  assert.equal(sampled.tokenScope, "non_reasoning_output");
-  assert.equal(sampled.methodVersion, "tps-v5");
+  assert.equal(sampled.timingSource, "unknown");
+  assert.equal(sampled.tokenScope, PERF_TOKEN_SCOPE);
+  assert.equal(sampled.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(sampled.generation, null);
+  assert.deepEqual(sampled.legacyGeneration, generationTiming(15, 200, 1));
+  assert.ok(sampled.sampleFlags.includes("MISSING_DURATION"));
   assert.equal(missing.outputTokens, null);
   assert.equal(missing.durationMs, null);
+  assert.equal(missing.legacyGeneration, null);
   assert.equal(missing.requestCount, 1);
   assert.equal(missing.model, "Model-A");
   assert.ok(missing.sampleFlags.includes("MISSING_DURATION"));
@@ -624,7 +631,7 @@ test("T2 emits one v3 candidate per response and only samples exact gateway gene
   assert.equal(samples[1].tsMs, baseMs + 2_000);
 });
 
-test("T2 isolates response, cumulative-turn, and native item conflicts from request generation samples", () => {
+test("T2 isolates conflicts while retaining old explicit generation as non-v6 evidence", () => {
   const baseMs = 1_800_000_000_000;
   const result = folded(
     "home-A",
@@ -692,29 +699,33 @@ test("T2 isolates response, cumulative-turn, and native item conflicts from requ
     false,
     "the cumulative snapshot does not become a per-response conflict",
   );
-  assert.equal(cumulative.outputTokens, 34);
-  assert.equal(cumulative.durationMs, 200);
-  assert.equal(cumulative.timingSource, "explicit");
+  assert.equal(cumulative.outputTokens, null);
+  assert.equal(cumulative.durationMs, null);
+  assert.equal(cumulative.timingSource, "unknown");
+  assert.equal(cumulative.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(cumulative.tokenScope, PERF_TOKEN_SCOPE);
   assert.equal(cumulative.sampleFlags.includes("RECORD_CONFLICT"), false);
-  assert.equal(cumulative.sampleFlags.includes("MISSING_DURATION"), false);
-  assert.equal(cumulative.generation.outputTokens, 35);
+  assert.equal(cumulative.sampleFlags.includes("MISSING_DURATION"), true);
+  assert.equal(cumulative.generation, null);
+  assert.deepEqual(cumulative.legacyGeneration, generationTiming(35, 200, 1));
   assert.ok(
     result.turns[0].flags.includes("RECORD_CONFLICT"),
     "the conflicting cumulative snapshot remains visible in turn diagnostics",
   );
 
   const valid = byResponse.get("Response-Valid");
-  assert.equal(valid.outputTokens, 39);
-  assert.equal(valid.durationMs, 200);
-  assert.equal(valid.timingSource, "explicit");
+  assert.equal(valid.outputTokens, null);
+  assert.equal(valid.durationMs, null);
+  assert.equal(valid.timingSource, "unknown");
   assert.equal(valid.sampleFlags.includes("RECORD_CONFLICT"), false);
-  assert.equal(valid.sampleFlags.includes("MISSING_DURATION"), false);
+  assert.equal(valid.sampleFlags.includes("MISSING_DURATION"), true);
   assert.equal(
     result.turns[0].recordConflictCount,
     4,
     "raw request, native item, cumulative snapshot, and turn-total conflicts remain visible as diagnostics",
   );
-  assert.equal(valid.generation.outputTokens, 40);
+  assert.equal(valid.generation, null);
+  assert.deepEqual(valid.legacyGeneration, generationTiming(40, 200, 1));
 
   const ambiguous = folded(
     "home-A",
@@ -863,7 +874,7 @@ test("T2 keeps global response ownership conflicts and reads both legacy and v3 
     }),
     "Thread-A",
   );
-  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v6");
+  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v7");
 });
 
 test("M6.1 resolves no-thread records only from one file's unique session_meta and keeps same turn IDs in separate threads", async (t) => {
@@ -2257,7 +2268,7 @@ test("M8.2 C: the four observed paginated child shapes prove one child owner", a
   assert.equal(nonzeroRead.projection.ownershipProof.boundaryOrdinal, 42);
 });
 
-test("T2 forwards exact request generation through the thread builder", () => {
+test("T2 keeps legacy explicit generation readable through the v6 thread builder", () => {
   const placedAt = Date.parse("2026-10-01T00:00:03.000Z");
   const records = [
     projected("turn_context", { threadId: "Thread-A", turnId: "Turn-A", model: "Model-A", effort: "high" }),
@@ -2278,22 +2289,23 @@ test("T2 forwards exact request generation through the thread builder", () => {
     }),
   ];
   let lookupQuery;
+  const lookupRequestTiming = (query) => {
+    lookupQuery = query;
+    return {
+      state: "available",
+      durationMs: 400,
+      reportedOutputTokens: 40,
+      requestedModel: "Model-A",
+      generation: generationTiming(40, 200, 1),
+    };
+  };
+  const rawSample = buildResponseCandidates("home-A", folded("home-A", ...records), [], { lookupRequestTiming })
+    .candidates[0];
   const built = buildCodexThreadPerfSamples(
     "home-A",
     "Thread-A",
     [{ filePath: "sessions/a.jsonl", threadId: "Thread-A", projection: { records } }],
-    {
-      lookupRequestTiming: (query) => {
-        lookupQuery = query;
-        return {
-          state: "available",
-          durationMs: 400,
-          reportedOutputTokens: 40,
-          requestedModel: "Model-A",
-          generation: generationTiming(40, 200, 1),
-        };
-      },
-    },
+    { lookupRequestTiming },
   );
 
   assert.deepEqual(lookupQuery, {
@@ -2309,19 +2321,29 @@ test("T2 forwards exact request generation through the thread builder", () => {
   const [sample] = built.samples;
   assert.equal(sample.sampleKey, '["codex","home-A","Thread-A","Turn-A","Response-A"]');
   assert.equal(sample.tsMs, placedAt);
-  assert.equal(sample.durationMs, 200);
-  assert.equal(sample.outputTokens, 39);
+  assert.equal(sample.durationMs, null);
+  assert.equal(sample.outputTokens, null);
   assert.equal(sample.requestCount, 1);
-  assert.equal(sample.timingSource, "explicit");
-  assert.equal(sample.methodVersion, "tps-v5");
+  assert.equal(sample.timingSource, "unknown");
+  assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(sample.tokenScope, PERF_TOKEN_SCOPE);
+  assert.deepEqual(rawSample.legacyGeneration, generationTiming(40, 200, 1));
+  assert.ok(perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION"));
 });
 
-test("T2 full chain builds one v3 generation sample per fixture response", async () => {
+test("T2 full chain retains every legacy generation without admitting it to v6", async () => {
   const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
   const projection = sixTurnProjection(fixture);
   const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
     lookupRequestTiming: projection.lookupRequestTiming,
   });
+  const [rollout] = projection.rollouts;
+  const rawCandidates = buildCodexResponseCandidates(
+    projection.homeId,
+    foldCodexRolloutMetadata(projection.homeId, [rollout.projection]),
+    [rollout.filePath],
+    { lookupRequestTiming: projection.lookupRequestTiming },
+  ).candidates;
   const fixtureRequests = fixture.turns.flatMap((fixtureTurn) =>
     fixtureTurn.requests.map((fixtureRequest) => ({
       ...fixtureRequest,
@@ -2343,13 +2365,26 @@ test("T2 full chain builds one v3 generation sample per fixture response", async
   );
   assert.deepEqual(
     built.samples.map((sample) => sample.durationMs),
-    fixtureRequests.map(sixTurnGenerationDuration),
+    fixtureRequests.map(() => null),
   );
   assert.ok(built.samples.every((sample) => sample.requestCount === 1));
   assert.deepEqual(
     built.samples.map((sample) => sample.outputTokens),
-    fixtureRequests.map((fixtureRequest) => fixtureRequest.outputTokens - 1),
+    fixtureRequests.map(() => null),
   );
+  assert.deepEqual(
+    rawCandidates.map((candidate) => ({
+      outputTokens: candidate.legacyGeneration?.outputTokens,
+      durationMs: candidate.legacyGeneration?.durationMs,
+      startOutputTokens: candidate.legacyGeneration?.startOutputTokens,
+    })),
+    fixtureRequests.map((fixtureRequest) => ({
+      outputTokens: fixtureRequest.outputTokens,
+      durationMs: sixTurnGenerationDuration(fixtureRequest),
+      startOutputTokens: 1,
+    })),
+  );
+  assert.ok(rawCandidates.every((candidate) => candidate.generation === null));
   assert.ok(
     built.samples.every(
       (sample) =>
@@ -2357,10 +2392,10 @@ test("T2 full chain builds one v3 generation sample per fixture response", async
         sample.windowEndMs === null &&
         sample.window === "request" &&
         sample.timingKind === "generation" &&
-        sample.tokenScope === "non_reasoning_output" &&
-        sample.methodVersion === "tps-v5" &&
-        sample.timingSource === "explicit" &&
-        !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
+        sample.tokenScope === PERF_TOKEN_SCOPE &&
+        sample.methodVersion === PERF_METHOD_VERSION &&
+        sample.timingSource === "unknown" &&
+        perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
         !perfFlagNamesOf(sample.sampleFlags).includes("METHOD_ESTIMATE"),
     ),
   );
@@ -2369,29 +2404,16 @@ test("T2 full chain builds one v3 generation sample per fixture response", async
     built.samples.reduce((sum, sample) => sum + sample.requestCount, 0),
     fixtureRequests.length,
   );
-  const expectedDurationMs = fixtureRequests.reduce((sum, request) => sum + sixTurnGenerationDuration(request), 0);
-  const expectedOutputTokens = fixtureRequests.reduce((sum, request) => sum + request.outputTokens - 1, 0);
-  assert.equal(
-    built.samples.reduce((sum, sample) => sum + sample.durationMs, 0),
-    expectedDurationMs,
-  );
-  assert.equal(
-    built.samples.reduce((sum, sample) => sum + sample.outputTokens, 0),
-    expectedOutputTokens,
-  );
-
   const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
-  assert.equal(summary.coverage.sampled, fixtureRequests.length);
-  assert.equal(summary.groups.length, 1);
-  assert.equal(summary.groups[0].n, fixtureRequests.length);
-  assert.equal(summary.groups[0].sums.durationMs, expectedDurationMs);
-  assert.equal(summary.groups[0].sums.outputTokens, expectedOutputTokens);
-  assert.equal(summary.groups[0].tps.pooled, (expectedOutputTokens * 1_000) / expectedDurationMs);
-  assert.equal(summary.groups[0].rank, 1);
-  assert.equal(summary.models[0].rank, 1);
+  assert.equal(summary.coverage.sampled, 0);
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].candidateCount, fixtureRequests.length);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].averageTps, null);
 });
 
-test("T2 full chain keeps only the response with missing generation unsampled", async () => {
+test("T2 full chain keeps v6 unmeasured while missing and legacy generations remain distinguishable", async () => {
   const fixture = JSON.parse(await readFile(SIX_TURN_FIXTURE_URL, "utf8"));
   const affectedTurn = fixture.turns[3];
   const missingResponseId = affectedTurn.requests[0].id;
@@ -2399,6 +2421,13 @@ test("T2 full chain keeps only the response with missing generation unsampled", 
   const built = buildCodexThreadPerfSamples(projection.homeId, projection.threadId, projection.rollouts, {
     lookupRequestTiming: projection.lookupRequestTiming,
   });
+  const [rollout] = projection.rollouts;
+  const rawCandidates = buildCodexResponseCandidates(
+    projection.homeId,
+    foldCodexRolloutMetadata(projection.homeId, [rollout.projection]),
+    [rollout.filePath],
+    { lookupRequestTiming: projection.lookupRequestTiming },
+  ).candidates;
   const fixtureRequests = fixture.turns.flatMap((fixtureTurn) =>
     fixtureTurn.requests.map((fixtureRequest) => ({
       ...fixtureRequest,
@@ -2429,34 +2458,49 @@ test("T2 full chain keeps only the response with missing generation unsampled", 
   assert.equal(perfFlagNamesOf(affected.sampleFlags).includes("OVERLAPPING_ITEM_SPAN"), false);
 
   const complete = built.samples.filter((sample) => sample.sampleKey !== affectedKey);
+  const completeCandidates = rawCandidates.filter((candidate) => {
+    return (
+      JSON.stringify(candidate.identity) !== JSON.stringify(["thread-six-turn", affectedTurn.id, missingResponseId])
+    );
+  });
   assert.equal(complete.length, fixtureRequests.length - 1);
   const completeRequests = fixtureRequests.filter((request) => request.id !== missingResponseId);
   assert.deepEqual(
     complete.map((sample) => sample.durationMs),
-    completeRequests.map(sixTurnGenerationDuration),
+    completeRequests.map(() => null),
+  );
+  assert.deepEqual(
+    complete.map((sample) => sample.outputTokens),
+    completeRequests.map(() => null),
+  );
+  assert.deepEqual(
+    completeCandidates.map((candidate) => ({
+      outputTokens: candidate.legacyGeneration?.outputTokens,
+      durationMs: candidate.legacyGeneration?.durationMs,
+    })),
+    completeRequests.map((request) => ({
+      outputTokens: request.outputTokens,
+      durationMs: sixTurnGenerationDuration(request),
+    })),
   );
   assert.ok(
     complete.every(
       (sample) =>
-        !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
+        perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
         sample.windowStartMs === null &&
         sample.windowEndMs === null,
     ),
   );
   const summary = summarizePerf(built.samples, { meta: { minSamples: 1 } });
-  const missingRequest = affectedTurn.requests[0];
-  const expectedDurationMs =
-    fixtureRequests.reduce((sum, request) => sum + sixTurnGenerationDuration(request), 0) -
-    sixTurnGenerationDuration(missingRequest);
-  const expectedOutputTokens =
-    fixtureRequests.reduce((sum, request) => sum + request.outputTokens - 1, 0) - (missingRequest.outputTokens - 1);
-  assert.equal(summary.coverage.sampled, fixtureRequests.length - 1);
-  assert.equal(summary.groups[0].n, fixtureRequests.length - 1);
-  assert.equal(summary.groups[0].sums.durationMs, expectedDurationMs);
-  assert.equal(summary.groups[0].tps.pooled, (expectedOutputTokens * 1_000) / expectedDurationMs);
+  assert.equal(summary.coverage.sampled, 0);
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].candidateCount, fixtureRequests.length);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].averageTps, null);
 });
 
-test("M8.2 C: proven child segmentation preserves stats and excludes parent request/item/terminal evidence before fold", async (t) => {
+test("M8.2 C: child segmentation excludes parent evidence while retaining legacy generation outside v6", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "m82-child-prefix-fold-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const boundary = 7;
@@ -2585,14 +2629,24 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
     plan.threads.map((thread) => thread.threadId),
     ["Child"],
   );
+  const lookupRequestTiming = ({ model, outputTokens }) => ({
+    state: "available",
+    durationMs: 400,
+    reportedOutputTokens: outputTokens,
+    requestedModel: model,
+    generation: generationTiming(40, 200, 1),
+  });
+  const rawCandidate = buildCodexResponseCandidates(
+    "home-child-prefix",
+    foldCodexRolloutMetadata(
+      "home-child-prefix",
+      plan.threads[0].rollouts.map((rollout) => rollout.projection),
+    ),
+    [file],
+    { lookupRequestTiming },
+  ).candidates[0];
   const built = buildCodexThreadPerfSamples("home-child-prefix", "Child", plan.threads[0].rollouts, {
-    lookupRequestTiming: ({ model, outputTokens }) => ({
-      state: "available",
-      durationMs: 400,
-      reportedOutputTokens: outputTokens,
-      requestedModel: model,
-      generation: generationTiming(40, 200, 1),
-    }),
+    lookupRequestTiming,
   });
   assert.deepEqual(built.warnings, []);
   assert.deepEqual(built.rolloutFiles, [file]);
@@ -2601,13 +2655,19 @@ test("M8.2 C: proven child segmentation preserves stats and excludes parent requ
   assert.equal(sample.sampleKey, '["codex","home-child-prefix","Child","Turn-Shared","Response-Shared"]');
   assert.equal(sample.model, "Child-model");
   assert.equal(sample.reasoningEffort, "high");
-  assert.equal(sample.outputTokens, 39);
+  assert.equal(sample.outputTokens, null);
   assert.equal(sample.requestCount, 1);
   assert.equal(sample.itemCount, 1);
-  assert.equal(sample.durationMs, 200);
+  assert.equal(sample.durationMs, null);
+  assert.deepEqual(rawCandidate.legacyGeneration, generationTiming(40, 200, 1));
+  assert.equal(sample.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(sample.tokenScope, PERF_TOKEN_SCOPE);
   const summary = summarizePerf(built.samples);
-  assert.equal(summary.groups.length, 1, JSON.stringify({ sample, summary }));
-  assert.equal(summary.groups[0].tps.pooled, 195);
+  assert.equal(summary.groups.length, 0, JSON.stringify({ sample, summary }));
+  assert.equal(summary.models.length, 1);
+  assert.equal(summary.models[0].candidateCount, 1);
+  assert.equal(summary.models[0].n, 0);
+  assert.equal(summary.models[0].averageTps, null);
 });
 
 test("M8.2 C: paginated child proof rejects incomplete ordinals, invalid bounds, malformed rows and identity conflicts", async (t) => {

@@ -6,11 +6,13 @@ import test from "node:test";
 import { readCodexRolloutMetadata } from "../src/perf-sources/codex-jsonl.js";
 import { foldCodexRolloutMetadata } from "../src/perf-sources/codex-fold.js";
 import { buildCodexResponseCandidates } from "../src/perf-sources/codex-candidates.js";
+import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../src/perf-stats.js";
 import { buildUsageReport, summarizeUsage } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
 
 const DATE = "2026-10-29T02:00:00.000Z";
 const FILTERS = { preset: "all", now: new Date(DATE), calendarZone: "utc" };
+const TOKENIZER = "o200k_base";
 const nativeGeneration = {
   schema_version: 2,
   first_output_ms: 125,
@@ -21,6 +23,14 @@ const nativeGeneration = {
   first_output_read_id: 1,
   last_output_read_id: 2,
 };
+const schema3Generation = (outputTokens = 200, durationMs = 200) => ({
+  schema_version: 3,
+  tokenizer: TOKENIZER,
+  clock: "transport_receive",
+  output_tokens: outputTokens,
+  observed_duration_ms: durationMs,
+  windows: [{ start_ms: 100, end_ms: 100 + durationMs, output_tokens: outputTokens }],
+});
 const row = (id, generation = nativeGeneration, usage = {}) => ({
   type: "token_usage_record",
   timestamp: DATE,
@@ -37,23 +47,6 @@ const headers = [
   { type: "turn_context", payload: { thread_id: "thread", turn_id: "turn", model: "model-a", effort: "high" } },
 ];
 const lines = (rows) => `${rows.map((value) => JSON.stringify(value)).join("\n")}\n`;
-const timing = (responseId, overrides = {}) => ({
-  schemaVersion: 2,
-  evidenceOrigin: "fixture.provider-duration.v1",
-  responseId,
-  requestedModel: "model-a",
-  reportedOutputTokens: 3,
-  durationMs: 2000,
-  status: "completed",
-  completedAtMs: null,
-  generation: {
-    outputTokens: 2,
-    durationMs: 1000,
-    startOutputTokens: 0,
-    timingKind: "explicit",
-  },
-  ...overrides,
-});
 
 function storeOptions(root, home) {
   return {
@@ -64,14 +57,6 @@ function storeOptions(root, home) {
     databaseFile: path.join(root, "usage.sqlite"),
     extraHomes: home,
   };
-}
-
-function importTimings(store, homeId, records) {
-  return store.importRequestTimingEvidence({
-    homeId,
-    records,
-    reviewedOrigins: ["fixture.provider-duration.v1"],
-  });
 }
 
 function assertUntimedCandidate(value, reportedOutputTokens = 3, reasoningOutputTokens = 1) {
@@ -85,12 +70,15 @@ function assertUntimedCandidate(value, reportedOutputTokens = 3, reasoningOutput
   assert.equal(value.reasoningOutputTokensKnown, true);
   assert.equal(value.model, "model-a");
   assert.equal(value.reasoningEffort, "high");
+  assert.equal(value.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(value.tokenScope, PERF_TOKEN_SCOPE);
   assert.ok(value.sampleFlags.includes("MISSING_DURATION"));
 }
 
 function assertNoPublishedTps(summary, candidateCount = 1) {
-  assert.equal(summary.perf.meta.methodVersion, "tps-v5");
-  assert.equal(summary.perf.models.length, 1);
+  assert.equal(summary.perf.meta.methodVersion, PERF_METHOD_VERSION);
+  assert.equal(summary.perf.models.length, candidateCount === 0 ? 0 : 1);
+  if (candidateCount === 0) return;
   assert.equal(summary.perf.models[0].candidateCount, candidateCount);
   assert.equal(summary.perf.models[0].n, 0);
   assert.equal(summary.perf.models[0].averageTps, null);
@@ -220,12 +208,20 @@ test("persisted v4 278/6ms and late schema2 appends remain unmeasurable without 
         "UPDATE perf_samples SET method_version = 'tps-v4', output_tokens = 278, duration_ms = 6, sample_flags = 0, diagnostic_reason = '';",
       );
       store.writeMeta("perf_method_version", "tps-v4");
+      assert.deepEqual(
+        store.database
+          .prepare("SELECT method_version, output_tokens, duration_ms FROM perf_samples")
+          .all()
+          .map((row) => ({ ...row })),
+        [{ method_version: "tps-v4", output_tokens: 278, duration_ms: 6 }],
+        "the historical v4 evidence remains readable with its numeric values",
+      );
       const stale = await store.summarize(FILTERS);
-      assertNoPublishedTps(stale);
+      assertNoPublishedTps(stale, 0);
 
       await store.sync();
       const rebuilt = await store.summarize(FILTERS);
-      assertNoPublishedTps(rebuilt);
+      assertNoPublishedTps(rebuilt, 0);
       assert.deepEqual(rebuilt.totals, before.totals);
 
       await appendFile(
@@ -291,37 +287,24 @@ test("untrusted clock duplicates do not conflict usage, while real usage conflic
   });
 });
 
-test("schema2 stays untimed across store reuse and late append while explicit evidence remains usable", async () => {
+test("schema3 stays measurable across SQLite reuse, late append, and reopen", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    await writeFile(file, lines([...headers, row("first", null), row("late", null)]));
+    const measured = schema3Generation();
+    await writeFile(file, lines([...headers, row("first", measured), row("late", measured)]));
     const store = new UsageStore(options);
     try {
       await store.sync();
       const initial = await store.summarize(FILTERS);
-      assertNoPublishedTps(initial, 2);
-      const homeId = store.homes.find((item) => item.path === home).id;
+      assert.equal(initial.perf.models[0].n, 2);
+      assert.equal(initial.perf.models[0].averageTps, 1000);
 
-      assert.equal(importTimings(store, homeId, [timing("first")]).changed, true);
+      await appendFile(file, lines([row("late", measured), row("first", measured)]));
       await store.sync();
-      const oneTimed = await store.summarize(FILTERS);
-      assert.equal(oneTimed.perf.models[0].n, 1);
-      assert.equal(oneTimed.perf.models[0].averageTps, 2);
-      assert.deepEqual(oneTimed.totals, initial.totals);
-
-      await appendFile(file, lines([row("late"), row("first")]));
-      await store.sync();
-      const lateSchema2 = await store.summarize(FILTERS);
-      assert.equal(lateSchema2.perf.models[0].n, 1);
-      assert.equal(lateSchema2.perf.models[0].averageTps, 2);
-      assert.deepEqual(lateSchema2.totals, initial.totals);
-
-      assert.equal(importTimings(store, homeId, [timing("late")]).changed, true);
-      await store.sync();
-      const after = await store.summarize(FILTERS);
-      assert.equal(after.perf.models[0].n, 2);
-      assert.equal(after.perf.models[0].averageTps, 2);
-      assert.deepEqual(after.totals, initial.totals);
+      const lateAppend = await store.summarize(FILTERS);
+      assert.equal(lateAppend.perf.models[0].n, 2);
+      assert.equal(lateAppend.perf.models[0].averageTps, 1000);
+      assert.deepEqual(lateAppend.totals, initial.totals);
 
       const memory = summarizeUsage(
         await buildUsageReport({
@@ -330,9 +313,9 @@ test("schema2 stays untimed across store reuse and late append while explicit ev
         }),
         FILTERS,
       );
-      assert.deepEqual(memory.perf.models, after.perf.models);
+      assert.deepEqual(memory.perf.models, lateAppend.perf.models);
       await store.sync();
-      assert.deepEqual((await store.summarize(FILTERS)).perf.models, after.perf.models);
+      assert.deepEqual((await store.summarize(FILTERS)).perf.models, lateAppend.perf.models);
     } finally {
       store.close();
     }
@@ -342,7 +325,7 @@ test("schema2 stays untimed across store reuse and late append while explicit ev
       await reopened.sync();
       const afterReopen = await reopened.summarize(FILTERS);
       assert.equal(afterReopen.perf.models[0].n, 2);
-      assert.equal(afterReopen.perf.models[0].averageTps, 2);
+      assert.equal(afterReopen.perf.models[0].averageTps, 1000);
     } finally {
       reopened.close();
     }
@@ -350,19 +333,17 @@ test("schema2 stays untimed across store reuse and late append while explicit ev
   });
 });
 
-test("source drift retains published explicit timing while fresh memory reads stay isolated", async () => {
+test("source drift retains the published v6 measurement while fresh memory reads stay isolated", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    await writeFile(file, lines([...headers, row("completed", null), row("untimed", null)]));
+    await writeFile(file, lines([...headers, row("completed", schema3Generation()), row("untimed", null)]));
     const store = new UsageStore(options);
     try {
       await store.sync();
       const homeId = store.homes.find((item) => item.path === home).id;
-      assert.equal(importTimings(store, homeId, [timing("completed")]).changed, true);
-      await store.sync();
       const before = await store.summarize(FILTERS);
       assert.equal(before.perf.models[0].n, 1);
-      assert.equal(before.perf.models[0].averageTps, 2);
+      assert.equal(before.perf.models[0].averageTps, 1000);
 
       const warnings = [{ sourceKind: "codex", homeId, code: "LIVE_SOURCE_CHANGED", count: 1 }];
       const policy = JSON.stringify({ revision: 2, partialHomes: [{ homeId, blockedThreadIds: ["thread"] }] });
@@ -372,7 +353,7 @@ test("source drift retains published explicit timing while fresh memory reads st
       store.writeMeta("perf_source_warnings", JSON.stringify(warnings));
       const during = await store.summarize(FILTERS);
       assert.equal(during.perf.models[0].n, 1);
-      assert.equal(during.perf.models[0].averageTps, 2);
+      assert.equal(during.perf.models[0].averageTps, 1000);
       assert.deepEqual(during.totals, before.totals);
 
       const report = await buildUsageReport({

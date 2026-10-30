@@ -160,6 +160,7 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
       durationMs: baseTiming.durationMs + 500,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 500 },
     };
+    fixture.writeNativeTiming([firstTiming]);
     archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [firstTiming],
@@ -189,6 +190,7 @@ test("a revision metadata failure rolls back the whole Codex publication and ret
       durationMs: baseTiming.durationMs + 750,
       generation: { ...baseTiming.generation, durationMs: baseTiming.generation.durationMs + 750 },
     };
+    fixture.writeNativeTiming([secondTiming]);
     const secondTimingImport = archived.importRequestTimingEvidence({
       homeId: archivedHomeId,
       records: [secondTiming],

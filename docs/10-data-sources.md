@@ -1,6 +1,6 @@
 # 数据来源与统计口径
 
-更新：2026-10-29（生成 TPS v4）。本文维护共同规则；各来源的字段映射分别见下方专题。
+更新：2026-10-30（实际输出 TPS v6）。本文维护共同规则；各来源的字段映射分别见下方专题。
 
 ## 来源与导入
 
@@ -14,7 +14,7 @@
 
 看板导入的是 home、数据目录或项目目录，不直接导入单个数据库文件。显式导入目录先按 ZCode、DSH、OpenCode、Claude Code 的具体结构判定，再检查 Codex 和项目日志，避免同名 `sessions` 目录误判（`~/.claude/sessions/` 与 Codex 的 `sessions/` 同名，Claude 必须先判）。
 
-WorkBuddy 的判定必须排在 Claude Code 之前：两者都是 `projects/<cwd-slug>/<sessionId>.jsonl` 结构，只能按内容区分。探测只看最多 3 个会话文件的前 64 KiB，出现 `"type":"session-meta"` 或 `"type":"function_call"` 即判为 `workbuddy-home`；目录形状相同但内容不符时仍按 Claude Code 判定。
+WorkBuddy 的判定必须排在 Claude Code 之前：两者都是 `projects/<cwd-slug>/<sessionId>.jsonl` 结构，只能按内容区分。探测只看最多 3 个会话文件的前 64 KiB，出现 `"type":"session-meta"`、`"type":"function_call"` 或实际 CLI 的 `__codebuddyLocal` 标记即判为 `workbuddy-home`；目录形状相同但内容不符时仍按 Claude Code 判定。
 
 追加来源分别使用 `CODEX_USAGE_ZCODE_HOMES`、`CODEX_USAGE_DSH_HOMES`、`CODEX_USAGE_OPENCODE_HOMES`、`CODEX_USAGE_CLAUDE_HOMES`、`CODEX_USAGE_WORKBUDDY_HOMES`；多个路径使用系统分隔符（Windows `;`，macOS/Linux `:`）。设置 `CODEX_USAGE_ZCODE=0`、`CODEX_USAGE_DSH=0`、`CODEX_USAGE_OPENCODE=0`、`CODEX_USAGE_CLAUDE=0`、`CODEX_USAGE_WORKBUDDY=0` 可关闭对应的自动发现；显式导入是独立路径，不能把这些开关当成禁止导入策略。`CODEX_USAGE_IMPORT_DIRS` 可提供额外导入目录。
 
@@ -30,19 +30,45 @@ DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都�
 
 ## 模型生成速度（TPS）
 
-当前工作树方法为 `tps-v4`，统一使用 `window=request`、`timingKind=generation`。一次已完成模型响应作为一个样本，速度为 `(N−B) * 1000 / D`：B 是计时起点已经输出的 token 数，D 是对应生成耗时。常规首 token 边界取 B=1；覆盖全部生成的明确阶段耗时取 B=0。Codex 等已核验路径使用 `non_reasoning_output`，N 为非推理输出（含正文、代码和工具参数）；DSH 官方 `deepseek-account` / `deepseek-official` 固定使用 `all_generated_output`，N 为同一成功响应最终 output，D 覆盖 reasoning、正文及实际工具参数增量。不猜缺失的 reasoning 拆分。原始 output、reasoning、请求 E2E 保留，用量、费用和限额口径不变。范围契约见[本地接入方案](plans/2026-10-29-local-generation-adoption-plan.md)。
+当前方法为 `tps-v6`，`window=request`、`timingKind=generation`。各渠道统一使用本机 `o200k_base` 分词器统计实际正文、拒绝文本、函数参数和自定义工具输入；不包含 reasoning、协议字段、工具名称和工具执行。服务商的原生 token 用量仍供用量、费用与限额统计，不能替代这里的参考 token。
 
-性能来源限定为各工具已经保存在本机的原生记录，运行链路不读取 Magpie 数据，也不要求中继或修改路由。Codex 补丁版已提供完整并排包及 CLI/Desktop 启动器，官方普通安装不会自动采用它；当前 Desktop 保持运行，实际采用尚未验收。DSH 可直接从现有 canonical stream 恢复全部生成，真实 reader 的 881 个官方候选中 870 个有效、8 个无正窗口、3 个身份冲突。WorkBuddy 已恢复已核验的纯正文子集；Claude、ZCode、OpenCode 的剩余 producer 缺口见[原生采集计划](plans/2026-10-28-native-generation-timing-plan.md)。缺计时只排除该请求，不把请求、step、item 或 trace span 总耗时回退成生成速度；模型候选和用量保留，速度沿用 `—`。旧 v1/v2 保留版本供恢复，不混入当前速度；同语义 v3 生成样本保留原版本并继续可读、可统计和归档恢复。
+每条完整输出 lane 只编码一次，按最终 UTF-8 token 结束位置分配到生成窗口。传输接收层记录批次时间，起点那一批的全部字节排除；同一接收批次的多个解析事件不产生新间隔。单请求 TPS 为测得 token 总数乘 1000，除以生成窗口毫秒区间的并集。并行 lane 不重复计算时间，思考和工具执行把可见输出划分为不同阶段。只有一个批次时保留用量，没有可测速度；不使用固定减 1、倍率、速度上限或 E2E 回退。
 
-[深入采集计划](plans/2026-10-28-native-generation-timing-plan.md)已固定实际 producer 边界：Codex 现有 OTel 不含完整摘要，OpenCode 的 ephemeral/合批事件不能靠持久化开关恢复；WorkBuddy 的 `qua.end` 正文间隔只作待验证子集，ZCode 两条已知 adapter 可用 output-reasoning。默认接入仍为原生本地摘要到各自 reader，不建设中继依赖或通用遥测平台。
+Codex 原生 schema 3、DSH Cordis 插件、WorkBuddy CLI HTTP 接收钩子提供这一观测。采集与保存均在本机，不读取 Magpie 遥测，不改模型路由或认证。DSH usage 没有 reasoning 明细也能直接测量实际可见输出。WorkBuddy Desktop，以及 Claude、OpenCode、ZCode 尚未接入统一分词采集；旧日志不能补出的接收边界不回算。
 
-`summary.perf.models` 按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合同一有效请求集合，同 provider 合并 home、渠道与主/子代理；空 provider 保持未知。同一来源/provider 在当前方法中固定一个已审核范围，DSH 官方 v4 会替代同响应的 v3 非推理投影，不混合两种范围。平均速度为有效分子之和除以生成耗时之和，p10/p90 是同集逐请求 TPS 的最近秩，n 是请求数。一个有效样本即可显示数值；既有排名门槛仍为 20，统一非推理排名不接收全部生成范围，DSH 行仍显示数值、区间和样本数，rank 为 null。没有有效样本的模型行保留空值，不填 0 或借旧 E2E。页面沿用现有表格、样本数和区间，不新增说明、警告、徽标或详情区块。实施及普通安装边界见[本地接入方案](plans/2026-10-29-local-generation-adoption-plan.md)，[前轮验收](validation/2026-10-28-generation-tps/README.md)保持历史版本归属。
+`summary.perf.models` 按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合，同 provider 合并 home、渠道与主/子代理，空 provider 保持未知。平均速度为有效请求的 token 总和除以时间总和；p10/p90 是同批逐请求 TPS 的最近秩，n 为请求数。一个有效请求即可显示数值，表格直接按平均 TPS 降序排列，缺测模型置后。数值、样本数和区间条沿用既有 UI。
 
-`summary.perf.codexTimingCoverage` 保留当前方法的同范围内部诊断，沿用来源排除及健康发布过滤。counts 记录候选、采样、互斥丢因、pending 和 unplaced；输出计数使用性能投影字段，不代替原始用量总数。没有适用 Codex 来源为 null，已配置但范围无候选为零计数；rebuilding/uninitialized 不发布假覆盖。全历史 unplaced 不纳入当前范围分母。
+v1 至 v5 保持历史方法归属，不混入 v6 数值。旧 generation 行保留模型身份；缺少新测量时保留用量和费用。计时晚到、导入导出、冻结、缓存和冷归档均绑定方法版本。Codex 冷修订同时保存按 sample/source/home 绑定的标量测量，恢复时核对原始请求身份和窗口，不把可变热库当作冷归档证据。
 
-coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplaced`，可定位候选满足 `eligible = sampled + dropped + pending`。计时晚到或升级只重算受影响请求和性能分组；Q2 静态用量缓存继续复用，Q3 同步 reader 从自身快照读取性能数据。请求局部缺失或冲突不连带淘汰其它可测响应；真实身份、归属与发布冲突继续按既有规则处理。
+Q2 静态用量缓存继续复用，Q3 同步 reader 读取自身快照。请求局部缺测不淘汰其它有效请求；来源改写、身份冲突和归属发布规则继续生效。内部 coverage 与来源诊断不新增到 UI。验收与部署状态见[本地实际输出速度采集](validation/2026-10-30-visible-output-tps/README.md)。
 
-默认及 dashboard 用量响应、`/api/summary` 和 `detail=full` 的 `summary.perf` 携带性能聚合与公开状态。内部 `perfSamples/perfMeta`、sampleKey 与物理来源路径不序列化到公开 report；full 提供的是原有用量明细，并非 TPS 候选明细。冻结查询绑定当时索引，后续同步不会改变已冻结的统计；full 走 live 内存路径，不能与 freeze/snapshot 组合，明确返回 `SNAPSHOT_FULL_DETAIL_UNSUPPORTED`。来源变化或事务失败时保留旧数据用于恢复，并按发布 policy 排除失败线程，不能让旧样本继续排名。公开 `indexVersion` 反映已发布统计及告警的变化。具体验收与残留见[最终审核包](validation/2026-10-04-perf-metrics/20261004T035100/final-audit.md)。
+### 本地采集安装
+
+先将 Agent Usage release 解压到固定目录。发布的 ZIP/TAR.GZ 包含 tiktoken；从 Git clone 或 GitHub 自动源码包安装时，先执行 `npm ci --omit=dev`（Windows PowerShell 7 使用 `npm.cmd`）。采集器运行后新增的标量观测随正常同步进入看板。
+
+**Codex（Windows）**：下载同一 release 中的完整 Codex 采集包并解压；保留整个目录，不只复制 codex.exe。先正常退出 Desktop，再从 Agent Usage 目录运行：
+
+```powershell
+pwsh -NoProfile -File scripts/start-codex-generation.ps1 desktop -PackageRoot 'C:\Tools\codex-generation'
+```
+
+将示例路径换成包含 `codex-generation-manifest.json`、`bin`、`codex-resources` 和 `codex-path` 的实际目录。启动器校验完整包及实际子进程引擎；不会覆盖官方安装或全局 CLI。命令行使用 `cli -PackageRoot <目录> -- <正常 Codex 参数>`。启动器仅对本次启动设置引擎路径，之后仍通过该启动器进入；不会自动关闭正在运行的 Desktop。
+
+**DSH**：在 Agent Usage 固定目录运行以下命令，然后正常启动 DSH。已有 Cordis patch 会备份并保留，重复执行只更新本插件条目。
+
+```bash
+node scripts/install-dsh-output-capture.mjs
+```
+
+非默认 home 可传 `--home <DSH home>`。插件在会话文件旁保存 `.generation-timing.jsonl`，以提交的本地 message ID、session、model/provider 精确关联，不额外保存正文。
+
+**WorkBuddy CLI（Windows）**：将 `-CliEntry` 替换为实际安装目录中的 `resources/app.asar.unpacked/cli/dist/codebuddy-lite-wb.mjs`，通过以下入口运行正常 CLI 参数：
+
+```powershell
+pwsh -NoProfile -File scripts/start-workbuddy-output-capture.ps1 -CliEntry 'C:\Tools\WorkBuddyAI\resources\app.asar.unpacked\cli\dist\codebuddy-lite-wb.mjs' -- <正常 CLI 参数>
+```
+
+可用 `-CaptureHome` 指定实际 WorkBuddy home；默认 `~/.workbuddy-ai`。观测按会话保存于 `generation-timing/<session哈希>.jsonl`。该入口覆盖 CLI 的 Node HTTP 流，当前要求未压缩传输；WorkBuddy Desktop 仍待接入。
 
 ## 统计范围与限额
 
@@ -64,7 +90,7 @@ coverage 分开表达 `eligible`、`sampled`、`dropped`、`pending` 和 `unplac
 
 WorkBuddy 的计时是独立输入：普通 `sync` 每轮对每个启用 home 预扫 trace，复用未变化文件的进程内指纹，把新 distinct duration 写入 home-scoped observation 表，并定位受影响会话重建。预扫发生在 `replaceFile` 事务之外，不把 `await` 拉进写事务。trace 集合与已解析计时参与 memory/store 性能版本及读取稳定性检查；删除 trace 不遗忘已知时长或冲突。
 
-当前代码 `STORE_SCHEMA_VERSION` 为 22。11→19 依次建立性能样本、Codex 依赖/投影、Claude 和 WorkBuddy、请求计时及 home-scoped duration observation；19→20 保存重解析替换的用量事实，20→21 建立冷归档目录，21→22 扩展生成计时约束和证据并标记来源重解析。旧行和依赖保留，不把 v1/v2 数值改名为 v3。新增证据随导入导出、备份及冷归档恢复保留，旧十列计时清单仍可读；无需手动删除索引。本机正式服务上次[切换记录](validation/2026-10-27-performance-production-cutover/README.md)为 `852034b` / schema21 / tps-v2，本轮源码尚未部署。
+当前 `STORE_SCHEMA_VERSION` 为 23，Codex 投影版本为 v7，摘要缓存版本为 5。升级保留旧行和依赖，通过正常重解析接入新测量；无需手动删除索引。正式看板已采用 tps-v6，固定历史用量、费用及 UI 资源核对通过，见[本轮部署验收](validation/2026-10-30-visible-output-tps/README.md)。
 
 ## 读取与数据边界
 

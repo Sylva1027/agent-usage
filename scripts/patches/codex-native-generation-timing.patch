@@ -1,0 +1,4442 @@
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index f2b0fba..8bdd43a 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -265,7 +265,7 @@ version = "1.1.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
+ dependencies = [
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -276,7 +276,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
+ dependencies = [
+  "anstyle",
+  "once_cell_polyfill",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -287,7 +287,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
+ 
+ [[package]]
+ name = "app_test_support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1423,13 +1423,13 @@ dependencies = [
+ 
+ [[package]]
+ name = "bstr"
+-version = "1.12.1"
++version = "1.13.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
++checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+ dependencies = [
+  "memchr",
+  "regex-automata",
+- "serde",
++ "serde_core",
+ ]
+ 
+ [[package]]
+@@ -1888,7 +1888,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -1900,7 +1900,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-graph-store"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-state",
+@@ -1915,7 +1915,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-identity"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1935,7 +1935,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-message-board-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -1958,7 +1958,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-message-board-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-extension-api",
+  "codex-message-board",
+@@ -1972,7 +1972,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-roles"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-config",
+  "codex-file-system",
+@@ -1985,7 +1985,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-analytics"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-app-server-protocol",
+  "codex-git-utils",
+@@ -2008,7 +2008,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ansi-escape"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "ansi-to-tui",
+  "pretty_assertions",
+@@ -2019,7 +2019,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-api"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "assert_matches",
+@@ -2044,6 +2044,7 @@ dependencies = [
+  "serde_json",
+  "tempfile",
+  "thiserror 2.0.18",
++ "tiktoken-rs",
+  "tokio",
+  "tokio-test",
+  "tokio-tungstenite",
+@@ -2057,7 +2058,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2175,7 +2176,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-app-server",
+  "codex-app-server-protocol",
+@@ -2202,7 +2203,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-daemon"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "blake3",
+@@ -2232,7 +2233,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol-noop-macros",
+@@ -2266,11 +2267,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol-noop-macros"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ 
+ [[package]]
+ name = "codex-app-server-test-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2292,7 +2293,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-transport"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "axum",
+  "base64 0.22.1",
+@@ -2335,7 +2336,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-apply-patch"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2355,7 +2356,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-arg0"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-apply-patch",
+@@ -2378,7 +2379,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-async-utils"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "rand 0.9.3",
+@@ -2388,7 +2389,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-attachment-store"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "serde",
+@@ -2398,7 +2399,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-aws-auth"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "aws-config",
+  "aws-credential-types",
+@@ -2424,7 +2425,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-api",
+@@ -2444,7 +2445,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-openapi-models"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "serde",
+  "serde_json",
+@@ -2453,7 +2454,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-build-info"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-install-context",
+  "pretty_assertions",
+@@ -2466,7 +2467,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-bwrap"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "cc",
+  "libc",
+@@ -2475,7 +2476,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-chatgpt"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2497,7 +2498,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cli"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2602,7 +2603,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-http-client",
+  "eventsource-stream",
+@@ -2616,7 +2617,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "async-stream",
+@@ -2640,7 +2641,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-config"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -2668,7 +2669,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2701,7 +2702,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2716,7 +2717,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-mock-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "chrono",
+  "codex-cloud-tasks-client",
+@@ -2725,7 +2726,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-http-client",
+@@ -2749,7 +2750,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-host"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2778,7 +2779,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-protocol"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "glob",
+@@ -2796,7 +2797,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-runtime"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-code-mode-protocol",
+@@ -2814,11 +2815,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-collaboration-mode-templates"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ 
+ [[package]]
+ name = "codex-config"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -2871,7 +2872,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-config-schema"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2880,7 +2881,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2902,7 +2903,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-connectors",
+  "codex-core-plugins",
+@@ -2916,7 +2917,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-context-fragments"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-protocol-test-support",
+@@ -2927,7 +2928,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3073,7 +3074,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-api"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-analytics",
+  "codex-app-server-protocol",
+@@ -3096,7 +3097,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugin-common"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "semver",
+@@ -3107,7 +3108,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugins"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3164,7 +3165,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-diagnostics"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -3172,7 +3173,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-direct-tool-timing"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-critical-path",
+  "pretty_assertions",
+@@ -3180,7 +3181,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -3233,7 +3234,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3305,7 +3306,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-protocol"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-file-system",
+@@ -3323,7 +3324,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-test-support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-exec-server",
+@@ -3338,7 +3339,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-execpolicy"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3356,7 +3357,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-experimental-api-macros"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -3365,7 +3366,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-api"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-api",
+  "codex-config",
+@@ -3388,7 +3389,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-items"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "pretty_assertions",
+@@ -3400,7 +3401,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-external-agent-migration"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "chrono",
+  "codex-analytics",
+@@ -3431,7 +3432,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-features"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-network-proxy",
+  "codex-protocol",
+@@ -3445,7 +3446,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-feedback"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -3473,7 +3474,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-search"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3489,7 +3490,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-system"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "bytes",
+  "codex-protocol",
+@@ -3503,7 +3504,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-watcher"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "notify",
+  "pretty_assertions",
+@@ -3514,7 +3515,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-attribution"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-backend-client",
+  "codex-extension-api",
+@@ -3527,7 +3528,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-utils"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3555,7 +3556,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-goal-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3580,7 +3581,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-context"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-context-fragments",
+  "codex-history",
+@@ -3593,7 +3594,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-reviewer"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-analytics",
+@@ -3618,7 +3619,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-v2"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-analytics",
+@@ -3657,7 +3658,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-v3"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-message-board",
+  "codex-protocol",
+@@ -3666,7 +3667,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-history"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-protocol",
+@@ -3678,7 +3679,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-history-notes-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-analytics",
+  "codex-client",
+@@ -3704,7 +3705,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-home"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-extension-api",
+  "codex-utils-absolute-path",
+@@ -3716,7 +3717,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-hooks"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "async-channel",
+@@ -3745,7 +3746,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-http-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "bytes",
+  "codex-utils-cargo-bin",
+@@ -3785,7 +3786,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-image-generation-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3817,7 +3818,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-install-context"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "codex-utils-home-dir",
+@@ -3830,7 +3831,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-keyring-store"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "keyring",
+  "pretty_assertions",
+@@ -3841,7 +3842,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-linux-sandbox"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "clap",
+  "codex-core",
+@@ -3870,7 +3871,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-lmstudio"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-core",
+  "codex-http-client",
+@@ -3884,7 +3885,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-login"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3930,7 +3931,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3974,7 +3975,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4007,7 +4008,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -4029,7 +4030,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-read"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -4039,7 +4040,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-write"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4076,7 +4077,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mermaid"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "insta",
+  "pretty_assertions",
+@@ -4085,7 +4086,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-message-board"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "caseless",
+@@ -4108,7 +4109,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-message-history"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-config",
+  "memchr",
+@@ -4122,7 +4123,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -4156,7 +4157,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider-info"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-client",
+  "codex-http-client",
+@@ -4174,7 +4175,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-models-manager"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "chrono",
+  "codex-http-client",
+@@ -4193,7 +4194,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-multi-env-copy-file"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-config",
+@@ -4219,7 +4220,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mxc-sandbox"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-network-proxy",
+@@ -4240,7 +4241,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-network-proxy"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "aws-credential-types",
+@@ -4291,7 +4292,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ollama"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "assert_matches",
+  "async-stream",
+@@ -4311,7 +4312,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "bytes",
+  "chrono",
+@@ -4348,7 +4349,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel-trace-websocket"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4359,7 +4360,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-plugin"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-config",
+  "codex-core-plugin-common",
+@@ -4374,7 +4375,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-process-hardening"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -4382,7 +4383,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-prompts"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-collaboration-mode-templates",
+@@ -4400,7 +4401,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-protocol"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chardetng",
+@@ -4446,14 +4447,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-protocol-test-support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+ ]
+ 
+ [[package]]
+ name = "codex-queue-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -4474,7 +4475,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-realtime-webrtc"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-build-info",
+@@ -4493,7 +4494,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-response-debug-context"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -4504,7 +4505,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-responses-api-proxy"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -4528,7 +4529,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rmcp-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4579,7 +4580,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4612,7 +4613,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout-trace"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-code-mode",
+@@ -4629,7 +4630,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-runtime-agent-instance"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-agent-identity",
+@@ -4655,7 +4656,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-sandboxing"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-mxc-sandbox",
+@@ -4683,7 +4684,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-secrets"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "age",
+  "anyhow",
+@@ -4704,7 +4705,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-command"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4727,7 +4728,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -4744,7 +4745,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "assert_matches",
+  "blake3",
+@@ -4784,7 +4785,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-state"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4812,7 +4813,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-stdio-to-uds"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-uds",
+@@ -4824,7 +4825,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tcp-tunnel"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -4845,7 +4846,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-terminal-detection"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "tracing",
+@@ -4853,7 +4854,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-test-binary-support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-arg0",
+  "tempfile",
+@@ -4861,7 +4862,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-manager-sample"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4872,7 +4873,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-store"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "chrono",
+  "codex-app-server-protocol",
+@@ -4903,7 +4904,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tools"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "bitflags 2.13.1",
+  "codex-attachment-store",
+@@ -4929,7 +4930,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tui"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -5057,7 +5058,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-uds"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "async-io",
+  "libc",
+@@ -5071,7 +5072,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-user-verification"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "block2",
+@@ -5092,7 +5093,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-absolute-path"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "dirs",
+  "dunce",
+@@ -5106,14 +5107,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-approval-presets"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-audio"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-protocol",
+@@ -5127,7 +5128,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cache"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "lru",
+  "sha1 0.10.6",
+@@ -5136,7 +5137,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cargo-bin"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "assert_cmd",
+  "runfiles",
+@@ -5145,7 +5146,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cli"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "clap",
+  "codex-protocol",
+@@ -5157,22 +5158,22 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-critical-path"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-elapsed"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ 
+ [[package]]
+ name = "codex-utils-fuzzy-match"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ 
+ [[package]]
+ name = "codex-utils-git-discovery"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-git-utils",
+  "codex-utils-absolute-path",
+@@ -5185,7 +5186,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-home-dir"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dirs",
+@@ -5195,7 +5196,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-image"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-cache",
+@@ -5209,7 +5210,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-json-to-toml"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+@@ -5218,7 +5219,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-oss"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-core",
+  "codex-lmstudio",
+@@ -5228,7 +5229,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-output-truncation"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -5238,7 +5239,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dunce",
+@@ -5249,7 +5250,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path-uri"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-absolute-path",
+@@ -5265,7 +5266,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-plugins"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-exec-server",
+  "codex-exec-server-protocol",
+@@ -5279,7 +5280,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-process"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "tokio",
+@@ -5287,7 +5288,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-pty"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-utils-cargo-bin",
+@@ -5306,7 +5307,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-readiness"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "assert_matches",
+  "thiserror 2.0.18",
+@@ -5316,7 +5317,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-redacted-string"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "schemars 0.8.22",
+  "serde",
+@@ -5324,14 +5325,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-rustls-provider"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "rustls",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-sandbox-summary"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-absolute-path",
+@@ -5341,7 +5342,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-sleep-inhibitor"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "core-foundation 0.9.4",
+  "libc",
+@@ -5351,14 +5352,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-stream-parser"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-string"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "regex-lite",
+@@ -5368,14 +5369,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-template"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-v8-poc"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "pretty_assertions",
+  "v8",
+@@ -5383,7 +5384,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-voice-host"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-install-context",
+@@ -5410,7 +5411,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-web-search-extension"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-api",
+  "codex-core",
+@@ -5432,7 +5433,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-auth"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -5451,7 +5452,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-client"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-http-client",
+  "codex-utils-rustls-provider",
+@@ -5467,7 +5468,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -5497,7 +5498,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox-service"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-cloud-config",
+@@ -5515,14 +5516,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox-test-support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "dirs",
+ ]
+ 
+ [[package]]
+ name = "codex-workload-identity"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "codex-http-client",
+  "pretty_assertions",
+@@ -5537,7 +5538,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-worktree"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "codex-git-utils",
+@@ -5790,7 +5791,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "core_test_support"
+-version = "0.0.0"
++version = "0.165.0-alpha.1.2"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -6718,7 +6719,7 @@ dependencies = [
+  "libc",
+  "option-ext",
+  "redox_users 0.5.2",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -7075,7 +7076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+ dependencies = [
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -7172,6 +7173,17 @@ dependencies = [
+  "regex-syntax",
+ ]
+ 
++[[package]]
++name = "fancy-regex"
++version = "0.19.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
++dependencies = [
++ "bit-set 0.8.0",
++ "regex-automata",
++ "regex-syntax",
++]
++
+ [[package]]
+ name = "fast-srgb8"
+ version = "1.0.0"
+@@ -7227,7 +7239,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
+ dependencies = [
+  "cfg-if",
+  "rustix 1.1.4",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -7727,7 +7739,7 @@ dependencies = [
+  "gobject-sys",
+  "libc",
+  "system-deps",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -9151,7 +9163,7 @@ dependencies = [
+  "js-sys",
+  "log",
+  "wasm-bindgen",
+- "windows-core 0.58.0",
++ "windows-core 0.62.2",
+ ]
+ 
+ [[package]]
+@@ -9604,7 +9616,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+ dependencies = [
+  "hermit-abi",
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -10585,7 +10597,7 @@ version = "0.50.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+ dependencies = [
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -11315,7 +11327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+ dependencies = [
+  "libc",
+- "windows-sys 0.48.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -12251,7 +12263,7 @@ dependencies = [
+  "libc",
+  "log",
+  "socket2 0.6.3",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -12927,9 +12939,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "regex"
+-version = "1.12.3"
++version = "1.13.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
++checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+ dependencies = [
+  "aho-corasick",
+  "memchr",
+@@ -12939,9 +12951,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "regex-automata"
+-version = "0.4.13"
++version = "0.4.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
++checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+ dependencies = [
+  "aho-corasick",
+  "memchr",
+@@ -12956,9 +12968,9 @@ checksum = "8d942b98df5e658f56f20d592c7f868833fe38115e65c33003d8cd224b0155da"
+ 
+ [[package]]
+ name = "regex-syntax"
+-version = "0.8.8"
++version = "0.8.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
++checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+ 
+ [[package]]
+ name = "rend"
+@@ -13551,7 +13563,7 @@ dependencies = [
+  "errno",
+  "libc",
+  "linux-raw-sys 0.4.15",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -13564,7 +13576,7 @@ dependencies = [
+  "errno",
+  "libc",
+  "linux-raw-sys 0.12.1",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -13623,7 +13635,7 @@ dependencies = [
+  "security-framework 3.5.1",
+  "security-framework-sys",
+  "webpki-root-certs",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -14435,7 +14447,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+ dependencies = [
+  "libc",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15265,7 +15277,7 @@ dependencies = [
+  "getrandom 0.4.2",
+  "once_cell",
+  "rustix 1.1.4",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15321,7 +15333,7 @@ dependencies = [
+  "parking_lot",
+  "rustix 1.1.4",
+  "signal-hook",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15571,6 +15583,20 @@ dependencies = [
+  "zune-jpeg 0.4.21",
+ ]
+ 
++[[package]]
++name = "tiktoken-rs"
++version = "0.12.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2aeff724640cfe13037336ddf35befdffd2909cbdb65cf041cc8a4cf8c584cfa"
++dependencies = [
++ "anyhow",
++ "base64 0.22.1",
++ "bstr",
++ "fancy-regex 0.19.2",
++ "regex",
++ "rustc-hash",
++]
++
+ [[package]]
+ name = "tikv-jemalloc-sys"
+ version = "0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8"
+@@ -17079,7 +17105,7 @@ version = "0.1.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+ dependencies = [
+- "windows-sys 0.48.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 300a3f9..9c82142 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -518,6 +518,7 @@ tempfile = "3.23.0"
+ test-log = "0.2.19"
+ textwrap = "0.16.2"
+ thiserror = "2.0.17"
++tiktoken-rs = "0.12.1"
+ tikv-jemallocator = "=0.7.0"
+ time = "0.3.47"
+ tiny_http = "0.12"
+diff --git a/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst b/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst
+index 8020c41657da3719319605126dbc39a0ea3d3d5d..c3ee89aa89a4305a37d25828320f5a54d8118323 100644
+GIT binary patch
+delta 13341
+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
+
+delta 13186
+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
+
+diff --git a/codex-rs/codex-api/Cargo.toml b/codex-rs/codex-api/Cargo.toml
+index 82bec69..7da434d 100644
+--- a/codex-rs/codex-api/Cargo.toml
++++ b/codex-rs/codex-api/Cargo.toml
+@@ -20,6 +20,7 @@ schemars = { workspace = true }
+ serde = { workspace = true, features = ["derive"] }
+ serde_json = { workspace = true, features = ["raw_value"] }
+ thiserror = { workspace = true }
++tiktoken-rs = { workspace = true }
+ tokio = { workspace = true, features = ["fs", "macros", "net", "rt", "sync", "time"] }
+ tokio-tungstenite = { workspace = true }
+ tungstenite = { workspace = true }
+diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
+index 1abc89c..cadbd78 100644
+--- a/codex-rs/codex-api/src/common.rs
++++ b/codex-rs/codex-api/src/common.rs
+@@ -4,6 +4,7 @@ use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
+ use codex_protocol::config_types::Verbosity as VerbosityConfig;
+ use codex_protocol::models::ResponseItem;
+ use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
++use codex_protocol::protocol::GenerationTiming;
+ use codex_protocol::protocol::ModelVerification;
+ use codex_protocol::protocol::RateLimitSnapshot;
+ use codex_protocol::protocol::TokenUsage;
+@@ -101,6 +102,7 @@ pub enum ResponseEvent {
+         response_id: String,
+         token_usage: Option<TokenUsage>,
+         usage_metadata: Option<ResponseUsageMetadata>,
++        generation_timing: Option<GenerationTiming>,
+         /// Did the model affirmatively end its turn? Some providers do not set this,
+         /// so we rely on fallback logic when this is `None`.
+         end_turn: Option<bool>,
+@@ -131,6 +133,17 @@ pub enum ResponseEvent {
+     ModelsEtag(String),
+ }
+ 
++impl ResponseEvent {
++    pub(crate) fn set_generation_timing(&mut self, timing: Option<GenerationTiming>) {
++        if let Self::Completed {
++            generation_timing, ..
++        } = self
++        {
++            *generation_timing = timing;
++        }
++    }
++}
++
+ #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+ pub struct SafetyBuffering {
+     pub use_cases: Vec<String>,
+diff --git a/codex-rs/codex-api/src/endpoint/responses.rs b/codex-rs/codex-api/src/endpoint/responses.rs
+index 9c41a80..4e62178 100644
+--- a/codex-rs/codex-api/src/endpoint/responses.rs
++++ b/codex-rs/codex-api/src/endpoint/responses.rs
+@@ -21,6 +21,7 @@ use http::Method;
+ use serde_json::Value;
+ use std::sync::Arc;
+ use std::sync::OnceLock;
++use tokio::time::Instant;
+ use tracing::instrument;
+ 
+ pub struct ResponsesClient<T: HttpTransport> {
+@@ -132,6 +133,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
+             Compression::Zstd => RequestCompression::Zstd,
+         };
+ 
++        let request_started_at = Instant::now();
+         let stream_response = self
+             .session
+             .stream_encoded_json_with(
+@@ -151,6 +153,7 @@ impl<T: HttpTransport> ResponsesClient<T> {
+ 
+         Ok(spawn_response_stream(
+             stream_response,
++            request_started_at,
+             self.session.provider().stream_idle_timeout,
+             self.sse_telemetry.clone(),
+             turn_state,
+diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+index c59683d..2e52549 100644
+--- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
++++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+@@ -6,6 +6,9 @@ use crate::common::ResponsesWsRequest;
+ use crate::common::SafetyBufferingTreatment;
+ use crate::common::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
+ use crate::error::ApiError;
++use crate::generation_timing::ResponseGenerationTimer;
++use crate::generation_timing::TransportReadClock;
++use crate::generation_timing::TransportReadStamp;
+ use crate::provider::Provider;
+ use crate::rate_limits::parse_rate_limit_event;
+ use crate::responses_headers::json_headers_to_http_headers;
+@@ -20,15 +23,17 @@ use codex_websocket_client::WebSocketConnection;
+ use codex_websocket_client::WebSocketConnector;
+ use futures::FutureExt;
+ use futures::SinkExt;
+-use futures::StreamExt;
++use futures::Stream;
+ use http::HeaderMap;
+ use http::StatusCode;
+ use serde::Deserialize;
+ use serde_json::Value;
+ use serde_json::map::Map as JsonMap;
+ use std::future::Future;
++use std::pin::Pin;
+ use std::sync::Arc;
+ use std::sync::OnceLock;
++use std::task::Poll;
+ use std::time::Duration;
+ use tokio::sync::Mutex;
+ use tokio::sync::mpsc;
+@@ -51,10 +56,15 @@ use url::Url;
+ 
+ struct WsStream {
+     tx_command: mpsc::Sender<WsCommand>,
+-    rx_message: mpsc::UnboundedReceiver<Result<Message, WsError>>,
++    rx_message: mpsc::UnboundedReceiver<Result<ReceivedWsMessage, WsError>>,
+     pump_task: tokio::task::JoinHandle<()>,
+ }
+ 
++struct ReceivedWsMessage {
++    message: Message,
++    read_stamp: Option<TransportReadStamp>,
++}
++
+ enum WsCommand {
+     Send {
+         message: Message,
+@@ -65,10 +75,12 @@ enum WsCommand {
+ impl WsStream {
+     fn new(inner: WebSocketConnection) -> Self {
+         let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(32);
+-        let (tx_message, rx_message) = mpsc::unbounded_channel::<Result<Message, WsError>>();
++        let (tx_message, rx_message) =
++            mpsc::unbounded_channel::<Result<ReceivedWsMessage, WsError>>();
+ 
+         let pump_task = tokio::spawn(async move {
+             let mut inner = inner;
++            let mut read_clock = TransportReadClock::default();
+             loop {
+                 tokio::select! {
+                     command = rx_command.recv() => {
+@@ -86,7 +98,7 @@ impl WsStream {
+                             }
+                         }
+                     }
+-                    message = inner.next() => {
++                    message = next_ws_message(&mut inner, &mut read_clock) => {
+                         let Some(message) = message else {
+                             break;
+                         };
+@@ -103,7 +115,11 @@ impl WsStream {
+                             | Message::Close(_)
+                             | Message::Frame(_))) => {
+                                 let is_close = matches!(message, Message::Close(_));
+-                                if tx_message.send(Ok(message)).is_err() {
++                                let received = ReceivedWsMessage {
++                                    message,
++                                    read_stamp: read_clock.current_stamp(),
++                                };
++                                if tx_message.send(Ok(received)).is_err() {
+                                     break;
+                                 }
+                                 if is_close {
+@@ -148,11 +164,27 @@ impl WsStream {
+             .await
+     }
+ 
+-    async fn next(&mut self) -> Option<Result<Message, WsError>> {
++    async fn next(&mut self) -> Option<Result<ReceivedWsMessage, WsError>> {
+         self.rx_message.recv().await
+     }
+ }
+ 
++async fn next_ws_message(
++    inner: &mut WebSocketConnection,
++    read_clock: &mut TransportReadClock,
++) -> Option<Result<Message, WsError>> {
++    futures::future::poll_fn(|cx| {
++        let poll = Pin::new(&mut *inner).poll_next(cx);
++        match &poll {
++            Poll::Pending => read_clock.record_pending(),
++            Poll::Ready(Some(Ok(_))) => read_clock.record_ready_data(),
++            Poll::Ready(Some(Err(_)) | None) => {}
++        }
++        poll
++    })
++    .await
++}
++
+ impl Drop for WsStream {
+     fn drop(&mut self) {
+         self.pump_task.abort();
+@@ -483,6 +515,7 @@ impl ResponsesWebsocketClient {
+             .flatten()
+             .transpose()
+             .map_err(map_ws_stream_error)?
++            .map(|received| received.message)
+             .and_then(immediate_close_from_message);
+ 
+         Ok(ResponsesWebsocketProbe {
+@@ -726,6 +759,8 @@ async fn run_websocket_response_stream(
+         // No request reached the backend, so this socket is still reusable.
+         return Ok(());
+     }
++    let mut generation_timer =
++        ResponseGenerationTimer::new(Instant::now(), !timing_log_context.warmup);
+     send_websocket_request(
+         ws_stream,
+         request_text,
+@@ -765,10 +800,15 @@ async fn run_websocket_response_stream(
+             }
+         };
+         if let Some(t) = telemetry.as_ref() {
+-            t.on_ws_event(&response, poll_start.elapsed());
++            let telemetry_response: Result<Option<Result<Message, WsError>>, ApiError> =
++                match &response {
++                    Ok(Some(Ok(received))) => Ok(Some(Ok(received.message.clone()))),
++                    Ok(Some(Err(_)) | None) | Err(_) => Ok(None),
++                };
++            t.on_ws_event(&telemetry_response, poll_start.elapsed());
+         }
+-        let message = match response {
+-            Ok(Some(Ok(msg))) => msg,
++        let (message, read_stamp) = match response {
++            Ok(Some(Ok(received))) => (received.message, received.read_stamp),
+             Ok(Some(Err(err))) => {
+                 return Err(map_ws_stream_error(err));
+             }
+@@ -798,6 +838,10 @@ async fn run_websocket_response_stream(
+                         continue;
+                     }
+                 };
++                if let Some(read_stamp) = read_stamp {
++                    generation_timer.observe_read_at(&event, read_stamp);
++                }
++                let completion_timing = generation_timer.finish_at(&event);
+                 if matches!(interruption, Some(ResponseInterrupt::Cancel { .. }))
+                     && matches!(
+                         event.kind(),
+@@ -863,7 +907,11 @@ async fn run_websocket_response_stream(
+                 }
+                 let model = event.response_model();
+                 // Preserve terminal usage before any accompanying notification can block.
+-                let event = match process_responses_event(event) {
++                let mut event = process_responses_event(event);
++                if let Ok(Some(event)) = &mut event {
++                    event.set_generation_timing(completion_timing);
++                }
++                let event = match event {
+                     Ok(Some(event @ ResponseEvent::Completed { .. })) => {
+                         *completion = Some(event);
+                         Ok(None)
+@@ -1418,4 +1466,164 @@ mod tests {
+             }
+         );
+     }
++
++    #[tokio::test(start_paused = true)]
++    async fn websocket_path_carries_raw_generation_timing() {
++        let fixture: Value = serde_json::from_str(include_str!(
++            "../../tests/fixtures/native_generation_timing_stream.json"
++        ))
++        .expect("parse generation timing stream fixture");
++        let messages = fixture["events"]
++            .as_array()
++            .expect("fixture events")
++            .iter()
++            .map(ToString::to_string)
++            .collect::<Vec<_>>();
++        let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(1);
++        let (tx_message, rx_message) =
++            mpsc::unbounded_channel::<Result<ReceivedWsMessage, WsError>>();
++        let pump_task = tokio::spawn(async move {
++            let Some(WsCommand::Send { tx_result, .. }) = rx_command.recv().await else {
++                return;
++            };
++            let _ = tx_result.send(Ok(()));
++            for (index, message) in messages.into_iter().enumerate() {
++                tokio::time::sleep(Duration::from_millis(10)).await;
++                let read_stamp = TransportReadStamp {
++                    read_id: index as u64 + 1,
++                    received_at: Instant::now(),
++                };
++                tx_message
++                    .send(Ok(ReceivedWsMessage {
++                        message: Message::Text(message.into()),
++                        read_stamp: Some(read_stamp),
++                    }))
++                    .expect("queue websocket event");
++            }
++        });
++        let mut ws_stream = WsStream {
++            tx_command,
++            rx_message,
++            pump_task,
++        };
++
++        let (tx_event, mut rx_event) = mpsc::channel(16);
++        let timing_log_context = ResponsesWebsocketTimingLogContext {
++            model: "gpt-test".to_string(),
++            session_id: None,
++            thread_id: None,
++            turn_id: None,
++            traceparent: None,
++            previous_response_id: None,
++            request_start_ms: None,
++            warmup: false,
++            connection_reused: true,
++        };
++        let mut completion = None;
++        run_websocket_response_stream(
++            &mut ws_stream,
++            tx_event,
++            "{}".to_string(),
++            Duration::from_secs(1),
++            /*telemetry*/ None,
++            /*turn_state*/ None,
++            &timing_log_context,
++            std::future::pending::<ResponseInterrupt>(),
++            &mut completion,
++        )
++        .await
++        .expect("run websocket response stream");
++
++        let mut timing = None;
++        while let Some(event) = rx_event.recv().await {
++            if let Ok(ResponseEvent::Completed {
++                generation_timing, ..
++            }) = event
++            {
++                timing = generation_timing;
++            }
++        }
++        let timing = timing.expect("expected websocket generation timing");
++        assert_eq!(
++            serde_json::to_value(timing).expect("serialize timing"),
++            fixture["generation_timing"]
++        );
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn queued_websocket_messages_in_one_receive_batch_have_no_timing_window() {
++        let fixture: Value = serde_json::from_str(include_str!(
++            "../../tests/fixtures/native_generation_timing_stream.json"
++        ))
++        .expect("parse generation timing stream fixture");
++        let messages = fixture["events"]
++            .as_array()
++            .expect("fixture events")
++            .iter()
++            .map(ToString::to_string)
++            .collect::<Vec<_>>();
++        let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(1);
++        let (tx_message, rx_message) =
++            mpsc::unbounded_channel::<Result<ReceivedWsMessage, WsError>>();
++        let pump_task = tokio::spawn(async move {
++            let Some(WsCommand::Send { tx_result, .. }) = rx_command.recv().await else {
++                return;
++            };
++            let _ = tx_result.send(Ok(()));
++            let read_stamp = TransportReadStamp {
++                read_id: 17,
++                received_at: Instant::now(),
++            };
++            for message in messages {
++                tx_message
++                    .send(Ok(ReceivedWsMessage {
++                        message: Message::Text(message.into()),
++                        read_stamp: Some(read_stamp),
++                    }))
++                    .expect("queue websocket event");
++            }
++        });
++        let mut ws_stream = WsStream {
++            tx_command,
++            rx_message,
++            pump_task,
++        };
++        let (tx_event, mut rx_event) = mpsc::channel(16);
++        let timing_log_context = ResponsesWebsocketTimingLogContext {
++            model: "gpt-test".to_string(),
++            session_id: None,
++            thread_id: None,
++            turn_id: None,
++            traceparent: None,
++            previous_response_id: None,
++            request_start_ms: None,
++            warmup: false,
++            connection_reused: true,
++        };
++        let mut completion = None;
++        run_websocket_response_stream(
++            &mut ws_stream,
++            tx_event,
++            "{}".to_string(),
++            Duration::from_secs(1),
++            /*telemetry*/ None,
++            /*turn_state*/ None,
++            &timing_log_context,
++            std::future::pending::<ResponseInterrupt>(),
++            &mut completion,
++        )
++        .await
++        .expect("run websocket response stream");
++
++        let mut timing = None;
++        while let Some(event) = rx_event.recv().await {
++            if let Ok(ResponseEvent::Completed {
++                generation_timing, ..
++            }) = event
++            {
++                timing = generation_timing;
++            }
++        }
++        assert_eq!(timing, None);
++    }
+ }
+diff --git a/codex-rs/codex-api/src/generation_timing.rs b/codex-rs/codex-api/src/generation_timing.rs
+new file mode 100644
+index 0000000..6b18b6b
+--- /dev/null
++++ b/codex-rs/codex-api/src/generation_timing.rs
+@@ -0,0 +1,809 @@
++use crate::sse::ResponsesStreamEvent;
++use codex_protocol::protocol::GENERATION_TIMING_SCHEMA_VERSION;
++use codex_protocol::protocol::GenerationTiming;
++use codex_protocol::protocol::GenerationTimingWindow;
++use std::collections::HashMap;
++use std::time::Duration;
++use tiktoken_rs::o200k_base_singleton;
++use tokio::time::Instant;
++
++const OUTPUT_TOKENIZER: &str = "o200k_base";
++const OUTPUT_CLOCK: &str = "transport_receive";
++
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub(crate) struct TransportReadStamp {
++    pub(crate) read_id: u64,
++    pub(crate) received_at: Instant,
++}
++
++#[derive(Debug, Default)]
++pub(crate) struct TransportReadClock {
++    next_read_id: u64,
++    current: Option<TransportReadStamp>,
++    continues_current_read: bool,
++}
++
++impl TransportReadClock {
++    /// Mark data received by a Ready poll. Consecutive Ready polls with no
++    /// intervening Pending belong to the same transport receive batch.
++    pub(crate) fn record_ready_data(&mut self) {
++        if self.continues_current_read {
++            return;
++        }
++        self.next_read_id = self
++            .next_read_id
++            .checked_add(1)
++            .expect("transport read id overflow");
++        self.current = Some(TransportReadStamp {
++            read_id: self.next_read_id,
++            received_at: Instant::now(),
++        });
++        self.continues_current_read = true;
++    }
++
++    pub(crate) fn record_pending(&mut self) {
++        self.continues_current_read = false;
++    }
++
++    pub(crate) fn current_stamp(&self) -> Option<TransportReadStamp> {
++        self.current
++    }
++}
++
++#[derive(Clone, Debug, Eq, Hash, PartialEq)]
++struct LaneKey {
++    item_id: String,
++    content_index: Option<i64>,
++    output_type: String,
++}
++
++#[derive(Debug)]
++struct PhaseWindow {
++    phase: u64,
++    first_read_id: u64,
++    last_read_id: u64,
++    start_bytes: usize,
++    end_bytes: usize,
++    start_at: Instant,
++    end_at: Instant,
++}
++
++#[derive(Debug, Default)]
++struct OutputLane {
++    text: String,
++    windows: Vec<PhaseWindow>,
++}
++
++pub(crate) struct ResponseGenerationTimer {
++    request_started_at: Instant,
++    enabled: bool,
++    lanes: HashMap<LaneKey, OutputLane>,
++    phase: u64,
++    phase_break_pending: bool,
++    visible_output_seen: bool,
++    attempt_invalid: bool,
++    created_response_id: Option<String>,
++    created_response_id_conflict: bool,
++}
++
++impl ResponseGenerationTimer {
++    pub(crate) fn new(request_started_at: Instant, enabled: bool) -> Self {
++        Self {
++            request_started_at,
++            enabled,
++            lanes: HashMap::new(),
++            phase: 0,
++            phase_break_pending: false,
++            visible_output_seen: false,
++            attempt_invalid: false,
++            created_response_id: None,
++            created_response_id_conflict: false,
++        }
++    }
++
++    pub(crate) fn observe_read_at(
++        &mut self,
++        event: &ResponsesStreamEvent,
++        read_stamp: TransportReadStamp,
++    ) {
++        if !self.enabled {
++            return;
++        }
++
++        let kind = event.kind();
++        if kind == "response.created"
++            && let Some(response_id) = event
++                .response_value()
++                .and_then(|response| response.get("id"))
++                .and_then(serde_json::Value::as_str)
++                .filter(|response_id| !response_id.is_empty())
++        {
++            if self
++                .created_response_id
++                .as_deref()
++                .is_some_and(|created_response_id| created_response_id != response_id)
++            {
++                self.created_response_id_conflict = true;
++            } else {
++                self.created_response_id = Some(response_id.to_string());
++            }
++        }
++        if is_terminal_failure(kind) {
++            self.attempt_invalid = true;
++        }
++        if self.visible_output_seen && is_phase_boundary(kind, event) {
++            self.phase_break_pending = true;
++        }
++
++        let Some((item_id, content_index, delta)) = output_delta(event) else {
++            return;
++        };
++        if self.phase_break_pending {
++            self.phase = self.phase.saturating_add(1);
++            self.phase_break_pending = false;
++        }
++        self.visible_output_seen = true;
++        let lane = LaneKey {
++            item_id: item_id.to_string(),
++            content_index,
++            output_type: kind.to_string(),
++        };
++        self.record_delta(lane, self.phase, delta, read_stamp);
++    }
++
++    fn record_delta(
++        &mut self,
++        lane_key: LaneKey,
++        phase: u64,
++        delta: &str,
++        read_stamp: TransportReadStamp,
++    ) {
++        let lane = self.lanes.entry(lane_key).or_default();
++        lane.text.push_str(delta);
++        let end_bytes = lane.text.len();
++        if let Some(window) = lane
++            .windows
++            .last_mut()
++            .filter(|window| window.phase == phase)
++        {
++            if read_stamp.read_id == window.first_read_id {
++                window.start_bytes = end_bytes;
++            }
++            window.last_read_id = read_stamp.read_id;
++            window.end_bytes = end_bytes;
++            window.end_at = read_stamp.received_at;
++        } else {
++            lane.windows.push(PhaseWindow {
++                phase,
++                first_read_id: read_stamp.read_id,
++                last_read_id: read_stamp.read_id,
++                start_bytes: end_bytes,
++                end_bytes,
++                start_at: read_stamp.received_at,
++                end_at: read_stamp.received_at,
++            });
++        }
++    }
++
++    pub(crate) fn finish_at(&self, event: &ResponsesStreamEvent) -> Option<GenerationTiming> {
++        if !self.enabled
++            || self.attempt_invalid
++            || self.created_response_id_conflict
++            || event.kind() != "response.completed"
++        {
++            return None;
++        }
++
++        let completed_response_id = event
++            .response_value()?
++            .get("id")
++            .and_then(serde_json::Value::as_str)
++            .filter(|response_id| !response_id.is_empty())?;
++        if self
++            .created_response_id
++            .as_deref()
++            .is_some_and(|created_response_id| created_response_id != completed_response_id)
++        {
++            return None;
++        }
++
++        let mut windows = Vec::new();
++        for lane in self.lanes.values() {
++            if lane.windows.is_empty() {
++                continue;
++            }
++            let token_ends = token_end_bytes(&lane.text)?;
++            let mut previous_end_bytes = 0_usize;
++            let mut previous_end_ms = None;
++            for phase_window in &lane.windows {
++                let start_ms = duration_ms(
++                    phase_window
++                        .start_at
++                        .saturating_duration_since(self.request_started_at),
++                );
++                let end_ms = duration_ms(
++                    phase_window
++                        .end_at
++                        .saturating_duration_since(self.request_started_at),
++                );
++                if phase_window.start_bytes < previous_end_bytes
++                    || phase_window.start_bytes > phase_window.end_bytes
++                    || phase_window.end_bytes > lane.text.len()
++                    || start_ms > end_ms
++                    || previous_end_ms.is_some_and(|previous_end_ms| start_ms < previous_end_ms)
++                {
++                    return None;
++                }
++                previous_end_bytes = phase_window.end_bytes;
++                previous_end_ms = Some(end_ms);
++                if phase_window.first_read_id == phase_window.last_read_id
++                    || phase_window.start_bytes == phase_window.end_bytes
++                    || start_ms == end_ms
++                {
++                    continue;
++                }
++                let output_tokens = count_token_ends(
++                    &token_ends,
++                    phase_window.start_bytes,
++                    phase_window.end_bytes,
++                )?;
++                if output_tokens == 0 {
++                    continue;
++                }
++                windows.push(GenerationTimingWindow {
++                    start_ms,
++                    end_ms,
++                    output_tokens,
++                });
++            }
++        }
++        windows.sort_by_key(|window| (window.start_ms, window.end_ms, window.output_tokens));
++        if windows.is_empty() {
++            return None;
++        }
++
++        let output_tokens = windows.iter().try_fold(0_u64, |total, window| {
++            total.checked_add(window.output_tokens)
++        })?;
++        let observed_duration_ms = union_duration_ms(&windows)?;
++        Some(GenerationTiming {
++            schema_version: GENERATION_TIMING_SCHEMA_VERSION,
++            first_output_ms: None,
++            last_output_ms: None,
++            observed_duration_ms: Some(observed_duration_ms),
++            output_tokens: Some(i64::try_from(output_tokens).ok()?),
++            start_output_tokens: None,
++            first_output_read_id: None,
++            last_output_read_id: None,
++            tokenizer: Some(OUTPUT_TOKENIZER.to_string()),
++            clock: Some(OUTPUT_CLOCK.to_string()),
++            windows: Some(windows),
++        })
++    }
++}
++
++fn output_delta(event: &ResponsesStreamEvent) -> Option<(&str, Option<i64>, &str)> {
++    if !matches!(
++        event.kind(),
++        "response.output_text.delta"
++            | "response.refusal.delta"
++            | "response.function_call_arguments.delta"
++            | "response.custom_tool_call_input.delta"
++    ) {
++        return None;
++    }
++    let item_id = event.item_id_value()?;
++    let delta = event.delta_value().filter(|delta| !delta.is_empty())?;
++    Some((item_id, event.content_index_value(), delta))
++}
++
++fn is_terminal_failure(kind: &str) -> bool {
++    matches!(kind, "response.failed" | "response.incomplete" | "error")
++}
++
++fn is_phase_boundary(kind: &str, event: &ResponsesStreamEvent) -> bool {
++    is_reasoning_boundary(kind, event) || is_server_tool_boundary(kind, event)
++}
++
++fn is_reasoning_boundary(kind: &str, event: &ResponsesStreamEvent) -> bool {
++    kind.starts_with("response.reasoning")
++        || (matches!(
++            kind,
++            "response.output_item.added" | "response.output_item.done"
++        ) && event.item_type() == Some("reasoning"))
++}
++
++fn is_server_tool_boundary(kind: &str, event: &ResponsesStreamEvent) -> bool {
++    const SERVER_TOOL_KINDS: &[&str] = &[
++        "web_search_call",
++        "file_search_call",
++        "code_interpreter_call",
++        "image_generation_call",
++        "mcp_call",
++        "local_shell_call",
++        "tool_search_call",
++    ];
++    const SERVER_TOOL_EVENT_PREFIXES: &[&str] = &[
++        "response.web_search_call.",
++        "response.file_search_call.",
++        "response.code_interpreter_call.",
++        "response.image_generation_call.",
++        "response.mcp_call.",
++        "response.mcp_call_arguments.",
++        "response.local_shell_call.",
++        "response.tool_search_call.",
++    ];
++
++    SERVER_TOOL_EVENT_PREFIXES
++        .iter()
++        .any(|prefix| kind.starts_with(prefix))
++        || (matches!(
++            kind,
++            "response.output_item.added" | "response.output_item.done"
++        ) && event
++            .item_type()
++            .is_some_and(|item_type| SERVER_TOOL_KINDS.contains(&item_type)))
++}
++
++fn token_end_bytes(text: &str) -> Option<Vec<usize>> {
++    let tokenizer = o200k_base_singleton();
++    let mut token_end_bytes = 0_usize;
++    let mut token_ends = Vec::new();
++    for token in tokenizer.encode_ordinary(text) {
++        token_end_bytes =
++            token_end_bytes.checked_add(tokenizer.decode_bytes(&[token]).ok()?.len())?;
++        token_ends.push(token_end_bytes);
++    }
++    (token_end_bytes == text.len()).then_some(token_ends)
++}
++
++fn count_token_ends(token_ends: &[usize], start_bytes: usize, end_bytes: usize) -> Option<u64> {
++    let first_after_start = token_ends.partition_point(|token_end| *token_end <= start_bytes);
++    let first_after_end = token_ends.partition_point(|token_end| *token_end <= end_bytes);
++    u64::try_from(first_after_end.saturating_sub(first_after_start)).ok()
++}
++
++fn union_duration_ms(windows: &[GenerationTimingWindow]) -> Option<u64> {
++    let mut duration_ms = 0_u64;
++    let mut covered_until = 0_u64;
++    for window in windows {
++        duration_ms = duration_ms.checked_add(
++            window
++                .end_ms
++                .saturating_sub(window.start_ms.max(covered_until)),
++        )?;
++        covered_until = covered_until.max(window.end_ms);
++    }
++    Some(duration_ms)
++}
++
++fn duration_ms(duration: Duration) -> u64 {
++    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use pretty_assertions::assert_eq;
++    use serde_json::json;
++
++    fn event(value: serde_json::Value) -> ResponsesStreamEvent {
++        serde_json::from_value(value).expect("deserialize Responses event")
++    }
++
++    fn output_text(item_id: &str, content_index: i64, text: &str) -> serde_json::Value {
++        json!({
++            "type": "response.output_text.delta",
++            "item_id": item_id,
++            "content_index": content_index,
++            "delta": text
++        })
++    }
++
++    fn completed(response_id: &str) -> serde_json::Value {
++        json!({
++            "type": "response.completed",
++            "response": {"id": response_id}
++        })
++    }
++
++    fn observe(
++        timer: &mut ResponseGenerationTimer,
++        start: Instant,
++        value: serde_json::Value,
++        read_id: u64,
++        at_ms: u64,
++    ) {
++        timer.observe_read_at(
++            &event(value),
++            TransportReadStamp {
++                read_id,
++                received_at: start + Duration::from_millis(at_ms),
++            },
++        );
++    }
++
++    fn windows(timing: &GenerationTiming) -> &[GenerationTimingWindow] {
++        timing
++            .windows
++            .as_deref()
++            .expect("schema3 generation windows")
++    }
++
++    #[test]
++    fn first_900_and_later_200_real_tokens_use_the_full_batch_boundary() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        let first_batch = " hello".repeat(900);
++        let later_batch = " hello".repeat(200);
++        assert_eq!(
++            o200k_base_singleton().encode_ordinary(&first_batch).len(),
++            900
++        );
++        assert_eq!(
++            o200k_base_singleton()
++                .encode_ordinary(&format!("{first_batch}{later_batch}"))
++                .len(),
++            1_100
++        );
++
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &first_batch),
++            1,
++            100,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &later_batch),
++            2,
++            309,
++        );
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(
++            serde_json::to_value(&timing).expect("serialize timing"),
++            json!({
++                "schema_version": 3,
++                "tokenizer": "o200k_base",
++                "clock": "transport_receive",
++                "output_tokens": 200,
++                "observed_duration_ms": 209,
++                "windows": [{
++                    "start_ms": 100,
++                    "end_ms": 309,
++                    "output_tokens": 200
++                }]
++            })
++        );
++    }
++
++    #[test]
++    fn deltas_in_one_transport_batch_are_unmeasurable() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(&mut timer, start, output_text("item-1", 0, "hello"), 7, 10);
++        observe(&mut timer, start, output_text("item-1", 0, " world"), 7, 20);
++
++        assert_eq!(timer.finish_at(&event(completed("resp-1"))), None);
++    }
++
++    #[test]
++    fn multiple_deltas_in_the_same_batch_share_one_boundary() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        for delta in [" hello", " hello", " hello"] {
++            observe(&mut timer, start, output_text("item-1", 0, delta), 1, 10);
++        }
++        for delta in [" world", " world"] {
++            observe(&mut timer, start, output_text("item-1", 0, delta), 2, 30);
++        }
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(2));
++        assert_eq!(windows(&timing)[0].output_tokens, 2);
++    }
++
++    #[test]
++    fn one_utf8_token_crossing_delta_boundaries_counts_at_its_final_byte() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(&mut timer, start, output_text("item-1", 0, "你"), 1, 10);
++        observe(&mut timer, start, output_text("item-1", 0, "好"), 2, 20);
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(1));
++    }
++
++    #[test]
++    fn item_and_tool_names_are_not_output_lanes() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.output_item.added",
++                "item": {
++                    "type": "function_call",
++                    "name": "very_expensive_tool_name"
++                }
++            }),
++            1,
++            5,
++        );
++        observe(&mut timer, start, output_text("item-1", 0, "he"), 2, 10);
++        observe(&mut timer, start, output_text("item-1", 0, "llo"), 3, 20);
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(1));
++    }
++
++    #[test]
++    fn independent_overlapping_lanes_sum_tokens_and_union_duration() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            output_text("item-a", 0, &" hello".repeat(2)),
++            1,
++            10,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-a", 0, &" world".repeat(3)),
++            2,
++            30,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-b", 0, &" hello".repeat(4)),
++            3,
++            20,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-b", 0, &" world".repeat(5)),
++            4,
++            40,
++        );
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(8));
++        assert_eq!(
++            union_duration_ms(windows(&timing)).expect("duration union"),
++            30
++        );
++    }
++
++    #[test]
++    fn reasoning_and_server_tools_split_phases_without_timing_the_gaps() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &" hello".repeat(2)),
++            1,
++            10,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &" world".repeat(2)),
++            2,
++            20,
++        );
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.reasoning_text.delta",
++                "item_id": "reasoning-1",
++                "content_index": 0,
++                "delta": "thinking"
++            }),
++            3,
++            30,
++        );
++        observe(&mut timer, start, output_text("item-1", 0, " hello"), 4, 50);
++        observe(&mut timer, start, output_text("item-1", 0, " world"), 5, 60);
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.output_item.added",
++                "item": {"type": "web_search_call"}
++            }),
++            6,
++            65,
++        );
++        observe(&mut timer, start, output_text("item-1", 0, " hello"), 7, 70);
++        observe(&mut timer, start, output_text("item-1", 0, " world"), 8, 80);
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(4));
++        assert_eq!(
++            windows(&timing)
++                .iter()
++                .map(|window| (window.start_ms, window.end_ms, window.output_tokens))
++                .collect::<Vec<_>>(),
++            vec![(10, 20, 2), (50, 60, 1), (70, 80, 1)]
++        );
++        assert_eq!(
++            union_duration_ms(windows(&timing)).expect("duration union"),
++            30
++        );
++    }
++
++    #[test]
++    fn full_lane_encoding_counts_cross_phase_merge_and_excludes_the_gap() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        assert_eq!(o200k_base_singleton().encode_ordinary("he").len(), 1);
++        assert_eq!(o200k_base_singleton().encode_ordinary("ll").len(), 1);
++        assert_eq!(o200k_base_singleton().encode_ordinary("hell").len(), 1);
++
++        observe(&mut timer, start, output_text("item-1", 0, "h"), 1, 10);
++        observe(&mut timer, start, output_text("item-1", 0, "e"), 2, 20);
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.reasoning_text.delta",
++                "item_id": "reasoning-1",
++                "content_index": 0,
++                "delta": "thinking"
++            }),
++            3,
++            30,
++        );
++        observe(&mut timer, start, output_text("item-1", 0, "l"), 4, 50);
++        observe(&mut timer, start, output_text("item-1", 0, "l"), 5, 60);
++
++        let lane = timer.lanes.values().next().expect("single output lane");
++        assert_eq!(lane.text, "hell");
++        assert_eq!(
++            lane.windows
++                .iter()
++                .map(|window| (
++                    window.start_bytes,
++                    window.end_bytes,
++                    duration_ms(
++                        window
++                            .start_at
++                            .saturating_duration_since(timer.request_started_at)
++                    ),
++                    duration_ms(
++                        window
++                            .end_at
++                            .saturating_duration_since(timer.request_started_at)
++                    ),
++                ))
++                .collect::<Vec<_>>(),
++            vec![(1, 2, 10, 20), (3, 4, 50, 60)]
++        );
++
++        let timing = timer
++            .finish_at(&event(completed("resp-1")))
++            .expect("expected schema3 timing");
++        assert_eq!(timing.output_tokens, Some(1));
++        assert_eq!(
++            windows(&timing)
++                .iter()
++                .map(|window| (window.start_ms, window.end_ms, window.output_tokens))
++                .collect::<Vec<_>>(),
++            vec![(50, 60, 1)]
++        );
++        assert_eq!(
++            union_duration_ms(windows(&timing)).expect("duration union"),
++            10
++        );
++    }
++
++    #[test]
++    fn failed_attempt_does_not_mix_with_a_retry() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(&mut timer, start, output_text("item-1", 0, "he"), 1, 10);
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.failed",
++                "response": {"id": "resp-old"}
++            }),
++            2,
++            20,
++        );
++        observe(
++            &mut timer,
++            start,
++            json!({
++                "type": "response.created",
++                "response": {"id": "resp-retry"}
++            }),
++            3,
++            30,
++        );
++        observe(&mut timer, start, output_text("item-1", 0, "llo"), 4, 40);
++
++        assert_eq!(timer.finish_at(&event(completed("resp-retry"))), None);
++    }
++
++    #[test]
++    fn schema1_and_schema2_remain_readable_and_round_trip() {
++        let legacy = [
++            json!({
++                "schema_version": 1,
++                "first_output_ms": 10,
++                "last_output_ms": 20,
++                "observed_duration_ms": 10,
++                "output_tokens": 4,
++                "start_output_tokens": 1
++            }),
++            json!({
++                "schema_version": 2,
++                "first_output_ms": 10,
++                "last_output_ms": 20,
++                "observed_duration_ms": 10,
++                "output_tokens": 4,
++                "start_output_tokens": 1,
++                "first_output_read_id": 3,
++                "last_output_read_id": 4
++            }),
++        ];
++
++        for value in legacy {
++            let timing: GenerationTiming =
++                serde_json::from_value(value.clone()).expect("legacy generation timing");
++            assert_eq!(
++                serde_json::to_value(timing).expect("serialize legacy timing"),
++                value
++            );
++        }
++    }
++
++    #[test]
++    fn prewarm_does_not_sample() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, false);
++        observe(&mut timer, start, output_text("item-1", 0, "he"), 1, 10);
++        observe(&mut timer, start, output_text("item-1", 0, "llo"), 2, 20);
++
++        assert_eq!(timer.finish_at(&event(completed("resp-1"))), None);
++    }
++
++    #[test]
++    fn consecutive_ready_polls_share_a_batch_until_pending() {
++        let mut clock = TransportReadClock::default();
++        clock.record_ready_data();
++        let first = clock.current_stamp().expect("first read");
++        clock.record_ready_data();
++        let continuous = clock.current_stamp().expect("continued read");
++        assert_eq!(continuous.read_id, first.read_id);
++
++        clock.record_pending();
++        clock.record_ready_data();
++        let after_pending = clock.current_stamp().expect("read after pending");
++        assert!(after_pending.read_id > first.read_id);
++    }
++}
+diff --git a/codex-rs/codex-api/src/lib.rs b/codex-rs/codex-api/src/lib.rs
+index 9075210..41e5cdc 100644
+--- a/codex-rs/codex-api/src/lib.rs
++++ b/codex-rs/codex-api/src/lib.rs
+@@ -4,6 +4,7 @@ pub(crate) mod common;
+ pub(crate) mod endpoint;
+ pub(crate) mod error;
+ pub(crate) mod files;
++pub(crate) mod generation_timing;
+ pub(crate) mod images;
+ pub(crate) mod provider;
+ pub(crate) mod rate_limits;
+diff --git a/codex-rs/codex-api/src/sse/responses.rs b/codex-rs/codex-api/src/sse/responses.rs
+index 7f076a1..f776916 100644
+--- a/codex-rs/codex-api/src/sse/responses.rs
++++ b/codex-rs/codex-api/src/sse/responses.rs
+@@ -5,11 +5,15 @@ use crate::common::SafetyBuffering;
+ use crate::common::SafetyBufferingTreatment;
+ use crate::error::ApiError;
+ use crate::error::parse_terminal_provider_error;
++use crate::generation_timing::ResponseGenerationTimer;
++use crate::generation_timing::TransportReadClock;
+ use crate::rate_limits::parse_all_rate_limits;
+ use crate::safety_buffering::treatment_from_headers;
+ use crate::telemetry::SseTelemetry;
++use bytes::Bytes;
+ use codex_client::ByteStream;
+ use codex_client::StreamResponse;
++use codex_client::TransportError;
+ use codex_protocol::ResponseUsageMetadata;
+ use codex_protocol::error::ResponseIncompleteError;
+ use codex_protocol::models::ResponseItem;
+@@ -17,11 +21,15 @@ use codex_protocol::protocol::ModelVerification;
+ use codex_protocol::protocol::TokenUsage;
+ use codex_protocol::protocol::TurnModerationMetadataEvent;
+ use eventsource_stream::Eventsource;
++use futures::Stream;
+ use futures::StreamExt;
+ use serde::Deserialize;
+ use serde_json::Value;
+ use std::sync::Arc;
++use std::sync::Mutex;
+ use std::sync::OnceLock;
++use std::task::Context;
++use std::task::Poll;
+ use std::time::Duration;
+ use tokio::sync::mpsc;
+ use tokio::time::Instant;
+@@ -35,8 +43,43 @@ const OPENAI_MODEL_HEADER: &str = "openai-model";
+ const REQUEST_ID_HEADER: &str = "x-request-id";
+ const TRUSTED_ACCESS_FOR_CYBER_VERIFICATION: &str = "trusted_access_for_cyber";
+ 
++struct TransportBatchedStream {
++    inner: ByteStream,
++    read_clock: Arc<Mutex<TransportReadClock>>,
++}
++
++impl TransportBatchedStream {
++    fn new(inner: ByteStream, read_clock: Arc<Mutex<TransportReadClock>>) -> Self {
++        Self { inner, read_clock }
++    }
++}
++
++impl Stream for TransportBatchedStream {
++    type Item = Result<Bytes, TransportError>;
++
++    fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
++        let this = self.get_mut();
++        let poll = this.inner.as_mut().poll_next(cx);
++        match &poll {
++            Poll::Pending => this
++                .read_clock
++                .lock()
++                .expect("transport read clock poisoned")
++                .record_pending(),
++            Poll::Ready(Some(Ok(_))) => this
++                .read_clock
++                .lock()
++                .expect("transport read clock poisoned")
++                .record_ready_data(),
++            Poll::Ready(Some(Err(_)) | None) => {}
++        }
++        poll
++    }
++}
++
+ pub fn spawn_response_stream(
+     stream_response: StreamResponse,
++    request_started_at: Instant,
+     idle_timeout: Duration,
+     telemetry: Option<Arc<dyn SseTelemetry>>,
+     turn_state: Option<Arc<OnceLock<String>>>,
+@@ -90,6 +133,7 @@ pub fn spawn_response_stream(
+         process_sse_with_treatment(
+             stream_response.bytes,
+             tx_event,
++            request_started_at,
+             idle_timeout,
+             telemetry,
+             safety_buffering_treatment,
+@@ -187,6 +231,36 @@ impl ResponsesStreamEvent {
+         &self.kind
+     }
+ 
++    pub(crate) fn response_value(&self) -> Option<&Value> {
++        self.response.as_ref()
++    }
++
++    pub(crate) fn delta_value(&self) -> Option<&str> {
++        self.delta.as_deref()
++    }
++
++    pub(crate) fn item_id_value(&self) -> Option<&str> {
++        self.item_id
++            .as_deref()
++            .filter(|item_id| !item_id.is_empty())
++            .or_else(|| {
++                self.call_id
++                    .as_deref()
++                    .filter(|call_id| !call_id.is_empty())
++            })
++    }
++
++    pub(crate) fn content_index_value(&self) -> Option<i64> {
++        self.content_index
++    }
++
++    pub(crate) fn item_type(&self) -> Option<&str> {
++        self.item
++            .as_ref()
++            .and_then(|item| item.get("type"))
++            .and_then(Value::as_str)
++    }
++
+     /// Returns the effective model reported by the server, if present.
+     ///
+     /// Precedence:
+@@ -466,6 +540,7 @@ pub fn process_responses_event(
+                             response_id: resp.id,
+                             token_usage: resp.usage.map(Into::into),
+                             usage_metadata: resp.usage_metadata,
++                            generation_timing: None,
+                             end_turn: if interrupted {
+                                 Some(false)
+                             } else {
+@@ -533,6 +608,7 @@ pub async fn process_sse(
+     process_sse_with_treatment(
+         stream,
+         tx_event,
++        Instant::now(),
+         idle_timeout,
+         telemetry,
+         SafetyBufferingTreatment::default(),
+@@ -543,13 +619,16 @@ pub async fn process_sse(
+ async fn process_sse_with_treatment(
+     stream: ByteStream,
+     tx_event: mpsc::Sender<Result<ResponseEvent, ApiError>>,
++    request_started_at: Instant,
+     idle_timeout: Duration,
+     telemetry: Option<Arc<dyn SseTelemetry>>,
+     safety_buffering_treatment: SafetyBufferingTreatment,
+ ) {
+-    let mut stream = stream.eventsource();
++    let read_clock = Arc::new(Mutex::new(TransportReadClock::default()));
++    let mut stream = TransportBatchedStream::new(stream, Arc::clone(&read_clock)).eventsource();
+     let mut response_error: Option<ApiError> = None;
+     let mut last_server_model: Option<String> = None;
++    let mut generation_timer = ResponseGenerationTimer::new(request_started_at, true);
+ 
+     loop {
+         let start = Instant::now();
+@@ -591,7 +670,7 @@ async fn process_sse_with_treatment(
+ 
+         trace!("SSE event: {}", &sse.data);
+ 
+-        let event: ResponsesStreamEvent = match serde_json::from_str(&sse.data) {
++        let event: ResponsesStreamEvent = match serde_json::from_str(sse.data.as_str()) {
+             Ok(event) => event,
+             Err(e) => {
+                 debug!(
+@@ -604,6 +683,14 @@ async fn process_sse_with_treatment(
+                 continue;
+             }
+         };
++        let read_stamp = read_clock
++            .lock()
++            .expect("transport read clock poisoned")
++            .current_stamp();
++        if let Some(read_stamp) = read_stamp {
++            generation_timer.observe_read_at(&event, read_stamp);
++        }
++        let completion_timing = generation_timer.finish_at(&event);
+         let model_verifications = event.model_verifications();
+         let turn_moderation_metadata = event.turn_moderation_metadata();
+         let safety_buffering = event.safety_buffering(&safety_buffering_treatment);
+@@ -645,7 +732,11 @@ async fn process_sse_with_treatment(
+             return;
+         }
+ 
+-        match process_responses_event(event) {
++        let mut event = process_responses_event(event);
++        if let Ok(Some(event)) = &mut event {
++            event.set_generation_timing(completion_timing);
++        }
++        match event {
+             Ok(Some(event)) => {
+                 let is_completed = matches!(event, ResponseEvent::Completed { .. });
+                 if tx_event.send(Ok(event)).await.is_err() {
+@@ -855,11 +946,13 @@ mod tests {
+                 response_id,
+                 token_usage,
+                 usage_metadata,
++                generation_timing,
+                 end_turn,
+             }) => {
+                 assert_eq!(response_id, "resp1");
+                 assert!(token_usage.is_none());
+                 assert!(usage_metadata.is_none());
++                assert!(generation_timing.is_none());
+                 assert!(end_turn.is_none());
+             }
+             other => panic!("unexpected third event: {other:?}"),
+@@ -1053,17 +1146,130 @@ mod tests {
+                 response_id,
+                 token_usage,
+                 usage_metadata,
++                generation_timing,
+                 end_turn,
+             }) => {
+                 assert_eq!(response_id, "resp1");
+                 assert!(token_usage.is_none());
+                 assert!(usage_metadata.is_none());
++                assert!(generation_timing.is_none());
+                 assert!(end_turn.is_none());
+             }
+             other => panic!("unexpected event: {other:?}"),
+         }
+     }
+ 
++    #[tokio::test(start_paused = true)]
++    async fn completed_carries_raw_generation_timing() {
++        let fixture: Value = serde_json::from_str(include_str!(
++            "../../tests/fixtures/native_generation_timing_stream.json"
++        ))
++        .expect("parse generation timing stream fixture");
++        for named in [false, true] {
++            let frames = fixture["events"]
++                .as_array()
++                .expect("fixture events")
++                .iter()
++                .map(|event| {
++                    let kind = event["type"].as_str().expect("fixture event type");
++                    if named {
++                        format!("event: {kind}\ndata: {event}\n\n")
++                    } else {
++                        format!("data: {event}\n\n")
++                    }
++                })
++                .collect::<Vec<_>>();
++            let stream = futures::stream::unfold(frames.into_iter(), |mut frames| async move {
++                tokio::time::sleep(Duration::from_millis(10)).await;
++                let frame = frames.next()?;
++                Some((Ok::<Bytes, TransportError>(Bytes::from(frame)), frames))
++            })
++            .boxed();
++            let (tx, mut rx) = mpsc::channel::<Result<ResponseEvent, ApiError>>(8);
++            tokio::spawn(process_sse(
++                stream,
++                tx,
++                idle_timeout(),
++                /*telemetry*/ None,
++            ));
++
++            let mut events = Vec::new();
++            while let Some(event) = rx.recv().await {
++                events.push(event.expect("SSE event"));
++            }
++
++            let timing = events
++                .into_iter()
++                .find_map(|event| match event {
++                    ResponseEvent::Completed {
++                        generation_timing, ..
++                    } => generation_timing,
++                    _ => None,
++                })
++                .unwrap_or_else(|| panic!("expected generation timing (named={named})"));
++            assert_eq!(
++                serde_json::to_value(timing).expect("serialize timing"),
++                fixture["generation_timing"],
++                "generation timing mismatch (named={named})"
++            );
++        }
++    }
++
++    #[tokio::test]
++    async fn continuous_ready_transport_reads_never_create_generation_timing() {
++        let payloads = [
++            json!({"type": "response.created", "response": {"id": "resp-batch"}}),
++            json!({"type": "response.output_text.delta", "delta": "a"}),
++            json!({"type": "response.function_call_arguments.delta", "delta": "b"}),
++            json!({
++                "type": "response.completed",
++                "response": {
++                    "id": "resp-batch",
++                    "usage": {
++                        "input_tokens": 1,
++                        "input_tokens_details": {"cached_tokens": 0},
++                        "output_tokens": 4,
++                        "output_tokens_details": {"reasoning_tokens": 1},
++                        "total_tokens": 5
++                    }
++                }
++            }),
++        ];
++        let frames = payloads
++            .iter()
++            .map(|event| Bytes::from(format!("data: {event}\n\n")))
++            .collect::<Vec<_>>();
++        let all_frames = Bytes::from(
++            frames
++                .iter()
++                .flat_map(|frame| frame.iter().copied())
++                .collect::<Vec<_>>(),
++        );
++
++        for chunks in [vec![all_frames], frames] {
++            let stream =
++                futures::stream::iter(chunks.into_iter().map(Ok::<Bytes, TransportError>)).boxed();
++            let (tx, mut rx) = mpsc::channel::<Result<ResponseEvent, ApiError>>(8);
++            tokio::spawn(process_sse(
++                stream,
++                tx,
++                idle_timeout(),
++                /*telemetry*/ None,
++            ));
++
++            let mut completion_timing = None;
++            while let Some(event) = rx.recv().await {
++                if let ResponseEvent::Completed {
++                    generation_timing, ..
++                } = event.expect("SSE event")
++                {
++                    completion_timing = generation_timing;
++                }
++            }
++            assert_eq!(completion_timing, None);
++        }
++    }
++
+     #[tokio::test(start_paused = true)]
+     async fn rate_limit_error_preserves_retry_delay() {
+         let raw_error = r#"{"type":"response.failed","sequence_number":3,"response":{"id":"resp_689bcf18d7f08194bf3440ba62fe05d803fee0cdac429894","object":"response","created_at":1755041560,"status":"failed","background":false,"error":{"code":"rate_limit_exceeded","message":"Rate limit reached for gpt-5.1 in organization org-AAA on tokens per min (TPM): Limit 30000, Used 22999, Requested 12528. Please try again in 11.054s. Visit https://platform.openai.com/account/rate-limits to learn more."}, "usage":null,"user":null,"metadata":{}}}"#;
+@@ -1546,6 +1752,7 @@ mod tests {
+ 
+         let mut stream = spawn_response_stream(
+             stream_response,
++            Instant::now(),
+             idle_timeout(),
+             /*telemetry*/ None,
+             /*turn_state*/ None,
+@@ -1586,6 +1793,7 @@ mod tests {
+ 
+         let mut stream = spawn_response_stream(
+             stream_response,
++            Instant::now(),
+             idle_timeout(),
+             /*telemetry*/ None,
+             /*turn_state*/ None,
+@@ -1630,6 +1838,7 @@ mod tests {
+                 response_id,
+                 token_usage: None,
+                 usage_metadata: None,
++                generation_timing: None,
+                 end_turn: None,
+             } if response_id == "resp-1"
+         );
+@@ -1671,6 +1880,7 @@ mod tests {
+                 response_id,
+                 token_usage: None,
+                 usage_metadata: None,
++                generation_timing: None,
+                 end_turn: None,
+             } if response_id == "resp-1"
+         );
+@@ -1707,6 +1917,7 @@ mod tests {
+                 response_id,
+                 token_usage: None,
+                 usage_metadata: None,
++                generation_timing: None,
+                 end_turn: None,
+             } if response_id == "resp-1"
+         );
+@@ -1743,6 +1954,7 @@ mod tests {
+                 response_id,
+                 token_usage: None,
+                 usage_metadata: None,
++                generation_timing: None,
+                 end_turn: None,
+             } if response_id == "resp-1"
+         );
+diff --git a/codex-rs/codex-api/src/sse/responses_error_tests.rs b/codex-rs/codex-api/src/sse/responses_error_tests.rs
+index 1f0cccb..63646d5 100644
+--- a/codex-rs/codex-api/src/sse/responses_error_tests.rs
++++ b/codex-rs/codex-api/src/sse/responses_error_tests.rs
+@@ -15,6 +15,7 @@ use http::StatusCode;
+ use pretty_assertions::assert_eq;
+ use serde_json::json;
+ use std::time::Duration;
++use tokio::time::Instant;
+ 
+ /// Flex failures remain terminal even with retry headers and a later completed event.
+ #[tokio::test(start_paused = true)]
+@@ -39,6 +40,7 @@ async fn flex_failure_with_retry_header_ends_stream_immediately() {
+                 headers: HeaderMap::new(),
+                 bytes: Box::pin(bytes),
+             },
++            Instant::now(),
+             Duration::from_secs(60),
+             /*telemetry*/ None,
+             /*turn_state*/ None,
+diff --git a/codex-rs/codex-api/tests/fixtures/native_generation_timing_rollout.jsonl b/codex-rs/codex-api/tests/fixtures/native_generation_timing_rollout.jsonl
+new file mode 100644
+index 0000000..ffb49d3
+--- /dev/null
++++ b/codex-rs/codex-api/tests/fixtures/native_generation_timing_rollout.jsonl
+@@ -0,0 +1 @@
++{"timestamp":"2026-10-29T02:03:04.567Z","type":"token_usage_record","payload":{"thread_id":"01920000-0000-7000-8000-000000000001","turn_id":"01920000-0000-7000-8000-000000000003","session_id":"01920000-0000-7000-8000-000000000002","root_turn_id":"01920000-0000-7000-8000-000000000004","response_id":"resp_exact","usage":{"input_tokens":12,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":2,"total_tokens":20},"turn_token_usage":{"input_tokens":12,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":2,"total_tokens":20},"thread_token_usage":{"input_tokens":12,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":2,"total_tokens":20},"generation_timing":{"schema_version":2,"first_output_ms":125,"last_output_ms":145,"observed_duration_ms":20,"output_tokens":6,"start_output_tokens":1,"first_output_read_id":3,"last_output_read_id":6}}}
+diff --git a/codex-rs/codex-api/tests/fixtures/native_generation_timing_stream.json b/codex-rs/codex-api/tests/fixtures/native_generation_timing_stream.json
+new file mode 100644
+index 0000000..5ae095f
+--- /dev/null
++++ b/codex-rs/codex-api/tests/fixtures/native_generation_timing_stream.json
+@@ -0,0 +1,57 @@
++{
++  "events": [
++    {
++      "type": "response.created",
++      "response": {
++        "id": "resp_exact"
++      }
++    },
++    {
++      "type": "response.reasoning_text.delta",
++      "delta": "thinking"
++    },
++    {
++      "type": "response.output_text.delta",
++      "item_id": "item-text",
++      "content_index": 0,
++      "delta": "hello"
++    },
++    {
++      "type": "response.output_text.delta",
++      "item_id": "item-text",
++      "content_index": 0,
++      "delta": " world"
++    },
++    {
++      "type": "response.completed",
++      "response": {
++        "id": "resp_exact",
++        "usage": {
++          "input_tokens": 12,
++          "input_tokens_details": {
++            "cached_tokens": 0
++          },
++          "output_tokens": 8,
++          "output_tokens_details": {
++            "reasoning_tokens": 2
++          },
++          "total_tokens": 20
++        }
++      }
++    }
++  ],
++  "generation_timing": {
++    "schema_version": 3,
++    "tokenizer": "o200k_base",
++    "clock": "transport_receive",
++    "output_tokens": 1,
++    "observed_duration_ms": 10,
++    "windows": [
++      {
++        "start_ms": 30,
++        "end_ms": 40,
++        "output_tokens": 1
++      }
++    ]
++  }
++}
+diff --git a/codex-rs/codex-api/tests/sse_end_to_end.rs b/codex-rs/codex-api/tests/sse_end_to_end.rs
+index bf72eda..f189f4e 100644
+--- a/codex-rs/codex-api/tests/sse_end_to_end.rs
++++ b/codex-rs/codex-api/tests/sse_end_to_end.rs
+@@ -171,6 +171,7 @@ async fn responses_stream_parses_items_and_completed_end_to_end() -> Result<()>
+             response_id,
+             token_usage,
+             usage_metadata,
++            generation_timing,
+             end_turn,
+         } => {
+             assert_eq!(response_id, "resp1");
+@@ -192,6 +193,7 @@ async fn responses_stream_parses_items_and_completed_end_to_end() -> Result<()>
+                     .and_then(serde_json::Number::as_f64),
+                 Some(2.5)
+             );
++            assert!(generation_timing.is_none());
+             assert!(end_turn.is_none());
+         }
+         other => panic!("unexpected third event: {other:?}"),
+diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
+index 5902723..a2e3f3e 100644
+--- a/codex-rs/core/src/agent/control_tests.rs
++++ b/codex-rs/core/src/agent/control_tests.rs
+@@ -2690,6 +2690,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
+         usage: parent_usage.clone(),
+         turn_token_usage: parent_usage.clone(),
+         thread_token_usage: parent_usage,
++        generation_timing: None,
+     };
+     let parent_spawn_call_id = "spawn-call-token-usage".to_string();
+     parent_thread
+@@ -2751,6 +2752,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
+             "child-response",
+             Some(&child_usage),
+             /*usage_metadata*/ None,
++            /*generation_timing*/ None,
+         )
+         .await;
+     child_thread
+@@ -2814,6 +2816,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
+             usage: child_usage.clone(),
+             turn_token_usage: child_usage.clone(),
+             thread_token_usage: child_usage,
++            generation_timing: None,
+         })
+     );
+ }
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 99550cb..f9c57f9 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -2619,6 +2619,7 @@ where
+                     response_id,
+                     token_usage,
+                     usage_metadata,
++                    generation_timing,
+                     end_turn,
+                 }) => {
+                     feedback_tags!(last_model_response_id = &response_id);
+@@ -2642,6 +2643,7 @@ where
+                             response_id,
+                             token_usage,
+                             usage_metadata,
++                            generation_timing,
+                             end_turn,
+                         }))
+                         .await
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index 3e83bce..3533785 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -1685,6 +1685,7 @@ async fn response_stream_records_last_model_feedback_ids() {
+             response_id: "resp-123".to_string(),
+             token_usage: None,
+             usage_metadata: None,
++            generation_timing: None,
+             end_turn: Some(true),
+         }),
+     ]);
+@@ -2203,6 +2204,7 @@ async fn intercepted_output_reaches_trace_and_websocket_bookkeeping() -> anyhow:
+             response_id: "response".into(),
+             token_usage: None,
+             usage_metadata: None,
++            generation_timing: None,
+             end_turn: None,
+         }))
+         .await?;
+diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
+index 163e7d5..21398db 100644
+--- a/codex-rs/core/src/compact.rs
++++ b/codex-rs/core/src/compact.rs
+@@ -867,6 +867,7 @@ async fn drain_to_completed(
+                 response_id,
+                 token_usage,
+                 usage_metadata,
++                generation_timing,
+                 ..
+             }) => {
+                 if !matches!(phase, CompactionPhase::PostTurn) {
+@@ -890,6 +891,7 @@ async fn drain_to_completed(
+                     &response_id,
+                     token_usage.as_ref(),
+                     usage_metadata.as_ref(),
++                    generation_timing,
+                 )
+                 .await;
+                 sess.update_token_usage_info(turn_context, token_usage.as_ref())
+diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
+index bacf8c3..b04ad7e 100644
+--- a/codex-rs/core/src/compact_remote_v2.rs
++++ b/codex-rs/core/src/compact_remote_v2.rs
+@@ -429,6 +429,7 @@ async fn collect_compaction_output(
+                 response_id,
+                 token_usage,
+                 usage_metadata,
++                generation_timing,
+                 ..
+             } => {
+                 match request_kind {
+@@ -443,6 +444,7 @@ async fn collect_compaction_output(
+                             &response_id,
+                             token_usage.as_ref(),
+                             usage_metadata.as_ref(),
++                            generation_timing,
+                         )
+                         .await;
+                     }
+@@ -1304,6 +1306,7 @@ mod tests {
+                     amount: Some("0.125".to_string()),
+                     metadata: Some(serde_json::json!({ "extra": { "label": "example" } })),
+                 }),
++                generation_timing: None,
+                 end_turn: Some(true),
+             }),
+         ]);
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index aba4971..c05e002 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -382,6 +382,7 @@ use codex_protocol::protocol::DeprecationNoticeEvent;
+ use codex_protocol::protocol::Event;
+ use codex_protocol::protocol::EventMsg;
+ use codex_protocol::protocol::ExecApprovalRequestEvent;
++use codex_protocol::protocol::GenerationTiming;
+ use codex_protocol::protocol::ModelRerouteEvent;
+ use codex_protocol::protocol::ModelRerouteReason;
+ use codex_protocol::protocol::ModelVerification;
+@@ -5149,6 +5150,7 @@ impl Session {
+                 turn_context,
+                 response_id,
+                 incomplete.token_usage.as_ref(),
++                None,
+             )
+             .await;
+         }
+@@ -5186,6 +5188,7 @@ impl Session {
+         response_id: &str,
+         usage: Option<&TokenUsage>,
+         usage_metadata: Option<&ResponseUsageMetadata>,
++        generation_timing: Option<GenerationTiming>,
+     ) {
+         self.send_event(
+             turn_context,
+@@ -5196,7 +5199,7 @@ impl Session {
+             }),
+         )
+         .await;
+-        self.record_response_token_usage(turn_context, response_id, usage)
++        self.record_response_token_usage(turn_context, response_id, usage, generation_timing)
+             .await;
+     }
+ 
+@@ -5205,6 +5208,7 @@ impl Session {
+         turn_context: &TurnContext,
+         response_id: &str,
+         usage: Option<&TokenUsage>,
++        generation_timing: Option<GenerationTiming>,
+     ) {
+         let Some(usage) = usage else {
+             return;
+@@ -5219,6 +5223,7 @@ impl Session {
+                 .unwrap_or_else(|| turn_context.sub_id.clone()),
+             response_id.to_string(),
+             usage,
++            generation_timing,
+         );
+         self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
+             .await;
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 182e03e..fcd4e12 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -3442,6 +3442,7 @@ fn latest_token_usage_record_stops_at_compaction_checkpoint() {
+         usage: TokenUsage::default(),
+         turn_token_usage: TokenUsage::default(),
+         thread_token_usage: TokenUsage::default(),
++        generation_timing: None,
+     };
+     let checkpoint = |latest_token_usage_record| {
+         RolloutItem::Compacted(Box::new(CompactedItem {
+@@ -4079,6 +4080,7 @@ async fn start_new_context_window_persists_checkpoint_state() {
+         usage: TokenUsage::default(),
+         turn_token_usage: TokenUsage::default(),
+         thread_token_usage: TokenUsage::default(),
++        generation_timing: None,
+     };
+     session.state.lock().await.latest_token_usage_record = Some(token_usage_record.clone());
+     let step_context = session
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 65cbd64..ef1b398 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -3195,6 +3195,7 @@ async fn try_run_sampling_request(
+                 response_id,
+                 token_usage,
+                 usage_metadata,
++                generation_timing,
+                 end_turn,
+             } => {
+                 response_completed = true;
+@@ -3221,6 +3222,7 @@ async fn try_run_sampling_request(
+                     &response_id,
+                     token_usage.as_ref(),
+                     usage_metadata.as_ref(),
++                    generation_timing,
+                 )
+                 .await;
+                 let budget_result = sess
+diff --git a/codex-rs/core/src/state/session.rs b/codex-rs/core/src/state/session.rs
+index d122db2..dc0da6c 100644
+--- a/codex-rs/core/src/state/session.rs
++++ b/codex-rs/core/src/state/session.rs
+@@ -22,6 +22,7 @@ use codex_history::ResponseItemEnvelope;
+ use codex_history::TurnAttribution;
+ use codex_protocol::SessionId;
+ use codex_protocol::ThreadId;
++use codex_protocol::protocol::GenerationTiming;
+ use codex_protocol::protocol::RateLimitSnapshot;
+ use codex_protocol::protocol::TokenUsage;
+ use codex_protocol::protocol::TokenUsageInfo;
+@@ -233,6 +234,7 @@ impl SessionState {
+         root_turn_id: String,
+         response_id: String,
+         usage: &TokenUsage,
++        generation_timing: Option<GenerationTiming>,
+     ) -> TokenUsageRecord {
+         let mut turn_token_usage = self
+             .latest_token_usage_record
+@@ -258,6 +260,7 @@ impl SessionState {
+             usage: usage.clone(),
+             turn_token_usage,
+             thread_token_usage,
++            generation_timing,
+         };
+         self.latest_token_usage_record = Some(record.clone());
+         record
+diff --git a/codex-rs/core/src/state/session_tests.rs b/codex-rs/core/src/state/session_tests.rs
+index 5d3defe..c92a232 100644
+--- a/codex-rs/core/src/state/session_tests.rs
++++ b/codex-rs/core/src/state/session_tests.rs
+@@ -4,6 +4,7 @@ use crate::state::AutoCompactWindowSnapshot;
+ use codex_protocol::SessionId;
+ use codex_protocol::ThreadId;
+ use codex_protocol::protocol::CreditsSnapshot;
++use codex_protocol::protocol::GenerationTiming;
+ use codex_protocol::protocol::RateLimitWindow;
+ use codex_protocol::protocol::SpendControlLimitSnapshot;
+ use codex_protocol::protocol::TokenUsage;
+@@ -18,6 +19,19 @@ async fn record_token_usage_continues_restored_totals() {
+         total_tokens,
+         ..TokenUsage::default()
+     };
++    let generation_timing = GenerationTiming {
++        schema_version: 2,
++        first_output_ms: Some(125),
++        last_output_ms: Some(145),
++        observed_duration_ms: Some(20),
++        output_tokens: Some(6),
++        start_output_tokens: Some(1),
++        first_output_read_id: Some(3),
++        last_output_read_id: Some(6),
++        tokenizer: None,
++        clock: None,
++        windows: None,
++    };
+     let mut restored = SessionState::new(make_session_configuration_for_tests().await);
+     restored.latest_token_usage_record = Some(TokenUsageRecord {
+         thread_id,
+@@ -28,6 +42,7 @@ async fn record_token_usage_continues_restored_totals() {
+         usage: usage(30),
+         turn_token_usage: usage(30),
+         thread_token_usage: usage(230),
++        generation_timing: None,
+     });
+     let after_resume = restored.record_token_usage(
+         thread_id,
+@@ -36,6 +51,7 @@ async fn record_token_usage_continues_restored_totals() {
+         "root-turn".to_string(),
+         "response-d".to_string(),
+         &usage(20),
++        Some(generation_timing.clone()),
+     );
+     assert_eq!(
+         after_resume,
+@@ -48,6 +64,7 @@ async fn record_token_usage_continues_restored_totals() {
+             usage: usage(20),
+             turn_token_usage: usage(50),
+             thread_token_usage: usage(250),
++            generation_timing: Some(generation_timing),
+         }
+     );
+ }
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 2ac7fe1..d5a2769 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -2421,6 +2421,72 @@ pub struct TokenUsageRecord {
+     pub usage: TokenUsage,
+     pub turn_token_usage: TokenUsage,
+     pub thread_token_usage: TokenUsage,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub generation_timing: Option<GenerationTiming>,
++}
++
++pub const GENERATION_TIMING_SCHEMA_VERSION: u8 = 3;
++
++/// Native output timing for one successful response attempt.
++#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
++pub struct GenerationTiming {
++    pub schema_version: u8,
++    /// Tokenizer used for schema 3 local output counting.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub tokenizer: Option<String>,
++    /// Schema 3 clock provenance.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub clock: Option<String>,
++    /// Schema 3 is the local tokenizer total. Legacy schemas retain the
++    /// provider-reported non-reasoning count when available.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number", optional)]
++    pub output_tokens: Option<i64>,
++    /// Legacy schema 1/2 receive duration, or the schema 3 union of windows.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number")]
++    #[ts(optional)]
++    pub observed_duration_ms: Option<u64>,
++    /// Schema 3 lane/phase windows. The reader unions their durations and
++    /// sums their tokenizer counts.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub windows: Option<Vec<GenerationTimingWindow>>,
++    /// Legacy schema 1/2 receive window start.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number")]
++    #[ts(optional)]
++    pub first_output_ms: Option<u64>,
++    /// Legacy schema 1/2 receive window end.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number")]
++    #[ts(optional)]
++    pub last_output_ms: Option<u64>,
++    /// Legacy schema 1/2 fixed first-batch offset.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number")]
++    #[ts(optional)]
++    pub start_output_tokens: Option<i64>,
++    /// Transport receive batch containing the first output delta. Schema 1
++    /// records omit this field and remain readable as legacy evidence.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number", optional)]
++    pub first_output_read_id: Option<u64>,
++    /// Transport receive batch containing the last output delta. A timing
++    /// sample is usable only when this id is greater than the first id.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(type = "number", optional)]
++    pub last_output_read_id: Option<u64>,
++}
++
++#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
++pub struct GenerationTimingWindow {
++    #[ts(type = "number")]
++    pub start_ms: u64,
++    #[ts(type = "number")]
++    pub end_ms: u64,
++    #[ts(type = "number")]
++    pub output_tokens: u64,
+ }
+ 
+ #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+diff --git a/codex-rs/rollout/src/tests.rs b/codex-rs/rollout/src/tests.rs
+index 4db5a84..f8ac7ae 100644
+--- a/codex-rs/rollout/src/tests.rs
++++ b/codex-rs/rollout/src/tests.rs
+@@ -38,6 +38,7 @@ use codex_protocol::ThreadId;
+ use codex_protocol::models::ContentItem;
+ use codex_protocol::models::ResponseItem;
+ use codex_protocol::protocol::EventMsg;
++use codex_protocol::protocol::GenerationTiming;
+ use codex_protocol::protocol::SessionMeta;
+ use codex_protocol::protocol::SessionMetaLine;
+ use codex_protocol::protocol::SessionSource;
+@@ -74,6 +75,39 @@ fn rollout_line_decoder_preserves_canonical_json_compatibility() -> Result<()> {
+     Ok(())
+ }
+ 
++#[test]
++fn native_generation_timing_token_usage_record_round_trips_through_rollout() -> Result<()> {
++    let encoded =
++        include_str!("../../codex-api/tests/fixtures/native_generation_timing_rollout.jsonl")
++            .trim();
++    let decoded = crate::parse_rollout_line(encoded)?;
++    let RolloutItem::TokenUsageRecord(record) = &decoded.item else {
++        panic!("expected token usage record");
++    };
++    assert_eq!(
++        record.generation_timing,
++        Some(GenerationTiming {
++            schema_version: 2,
++            first_output_ms: Some(125),
++            last_output_ms: Some(145),
++            observed_duration_ms: Some(20),
++            output_tokens: Some(6),
++            start_output_tokens: Some(1),
++            first_output_read_id: Some(3),
++            last_output_read_id: Some(6),
++            tokenizer: None,
++            clock: None,
++            windows: None,
++        })
++    );
++    assert_eq!(
++        serde_json::to_value(decoded)?,
++        serde_json::from_str::<serde_json::Value>(encoded)?
++    );
++
++    Ok(())
++}
++
+ #[test]
+ fn rollout_line_decoder_preserves_terminal_records_with_unknown_errors() -> Result<()> {
+     let expected = serde_json::json!({
