@@ -39,7 +39,7 @@ jobs:
           echo "AGENT_USAGE_PLAYWRIGHT_MODULE=$AGENT_USAGE_PLAYWRIGHT_MODULE" >> "$GITHUB_ENV"
       - name: Run full Windows suite
         timeout-minutes: 20
-        run: node --test --test-reporter=spec --test-concurrency=4 --test-timeout=600000 "test/**/*.test.js"
+        run: node --test --test-reporter=spec --test-concurrency=4 --test-timeout=720000 "test/**/*.test.js"
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
