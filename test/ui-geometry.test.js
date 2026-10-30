@@ -473,12 +473,13 @@ async function verifyImportAndSkin(page, fixture) {
   const source = page.locator("#sourcePicker input[data-source-id]").first();
   assert.equal(await source.isChecked(), true);
   const sourceId = await source.getAttribute("data-source-id");
-  const excludeRequest = page.waitForRequest(
-    (request) =>
-      request.url().includes("/api/usage?") && new URL(request.url()).searchParams.get("exclude")?.includes(sourceId),
+  const excludeRequest = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/usage?") && new URL(response.url()).searchParams.get("exclude")?.includes(sourceId),
   );
   await source.uncheck();
   await excludeRequest;
+  await page.locator("#autoRefreshSpinner.is-loading").waitFor({ state: "hidden" });
   assert.ok(
     await page.evaluate((id) => JSON.parse(localStorage.getItem("codexUsageExcludedHomes")).includes(id), sourceId),
   );
@@ -492,7 +493,7 @@ async function verifyImportAndSkin(page, fixture) {
   await page.waitForFunction((path) => document.querySelector("#importPath").value === path, fixture.pickedPath);
   assert.equal(await page.locator("#importMessage").evaluate((node) => node.classList.contains("error")), false);
   await page.locator("#submitImportButton").press("Tab");
-  await page.waitForFunction(() => document.activeElement?.matches("#sourcePicker input"));
+  await page.waitForFunction(() => document.activeElement?.matches("#sourcePicker input"), null, { timeout: 5_000 });
   assert.equal(
     await page.evaluate(() => document.activeElement?.matches("#sourcePicker input")),
     true,
