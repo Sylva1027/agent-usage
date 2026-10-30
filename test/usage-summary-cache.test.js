@@ -8,6 +8,33 @@ import { createUsageServer } from "../src/server.js";
 import { getPricingCatalog } from "../src/pricing.js";
 import { refreshSummaryClock, summaryCacheKey, UsageSummaryCache } from "../src/usage-summary-cache.js";
 
+test("concurrent cache opens share one connection and close releases it", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const cache = new UsageSummaryCache(fixture.serverOptions);
+  const connections = new Set();
+  let database = null;
+  Object.defineProperty(cache, "database", {
+    get: () => database,
+    set: (value) => {
+      if (value) connections.add(value);
+      database = value;
+    },
+  });
+  try {
+    await Promise.all(Array.from({ length: 8 }, () => cache.open()));
+    assert.equal(connections.size, 1, "concurrent clients must not leak overwritten SQLite connections");
+    cache.close();
+    for (const connection of connections) assert.throws(() => connection.prepare("SELECT 1"));
+  } finally {
+    for (const connection of connections) {
+      try {
+        connection.close();
+      } catch {}
+    }
+    fixture.close();
+  }
+});
+
 test("cached aggregates update trend, quota flags and model activity with the clock", () => {
   const payload = {
     summary: {

@@ -486,6 +486,7 @@ async function verifyImportAndSkin(page, fixture) {
   );
   await source.check();
   await includeRequest;
+  await page.locator("#autoRefreshSpinner.is-loading").waitFor({ state: "hidden" });
   await page.locator("#pickImportDirectoryButton").click();
   await page.waitForFunction((path) => document.querySelector("#importPath").value === path, fixture.pickedPath);
   assert.equal(await page.locator("#importMessage").evaluate((node) => node.classList.contains("error")), false);

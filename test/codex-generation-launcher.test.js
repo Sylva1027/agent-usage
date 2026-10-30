@@ -671,7 +671,7 @@ describe("Codex generation package and launcher", { concurrency: false }, () => 
     const cliExecutable = path.join(cliDirectory, "codex.exe");
     const cliEvidence = path.join(cliDirectory, "cli evidence.json");
     await copyFile(fakeExecutable, cliExecutable);
-    const unrelatedCli = spawn(cliExecutable, ["engine", cliEvidence, "8000"], {
+    const unrelatedCli = spawn(cliExecutable, ["engine", cliEvidence, "60000"], {
       env: cleanEnvironment(),
       stdio: "ignore",
       windowsHide: true,

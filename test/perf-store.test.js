@@ -3929,25 +3929,31 @@ function rewriteS2RolloutSameMetadata(file, token) {
 
 /**
  * 在**逐文件判据之前、读取后窗口成立之后**注入一次原地改写。
- * 注入点 = 循环里 `SELECT DISTINCT session_id FROM events WHERE source_path = ?`
- * （它对目标文件执行，且**早于**同一文件的 `perfFileNeedsRefresh` 判据）。
+ * 注入点 = 循环里无条件读取目标文件 `source_files` 元数据
+ * （先注入，再让后续判据返回本轮已成立的读取后窗口摘要）。
  */
 function injectBeforeDecision(store, targetFile, action) {
   const state = { injected: false, calls: 0 };
   const realPrepare = store.database.prepare.bind(store.database);
   store.database.prepare = (sql) => {
     const stmt = realPrepare(sql);
-    if (!String(sql).includes("SELECT DISTINCT session_id FROM events WHERE source_path = ?")) return stmt;
-    const realAll = stmt.all.bind(stmt);
-    stmt.all = (...args) => {
-      if (String(args[0]) === targetFile) {
+    if (
+      !String(sql).includes(
+        "SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+      )
+    ) {
+      return stmt;
+    }
+    const realGet = stmt.get.bind(stmt);
+    stmt.get = (filePath) => {
+      if (String(filePath) === targetFile) {
         state.calls += 1;
         if (!state.injected) {
           state.injected = true;
           action();
         }
       }
-      return realAll(...args);
+      return realGet(filePath);
     };
     return stmt;
   };

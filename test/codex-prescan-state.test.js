@@ -53,11 +53,17 @@ function beforeFileDecision(t, store, action) {
   const prepare = store.database.prepare.bind(store.database);
   t.mock.method(store.database, "prepare", (sql) => {
     const statement = prepare(sql);
-    if (sql !== "SELECT DISTINCT session_id FROM events WHERE source_path = ?") return statement;
-    const all = statement.all.bind(statement);
-    statement.all = (filePath) => {
+    if (
+      !String(sql).includes(
+        "SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+      )
+    ) {
+      return statement;
+    }
+    const get = statement.get.bind(statement);
+    statement.get = (filePath) => {
       action(filePath);
-      return all(filePath);
+      return get(filePath);
     };
     return statement;
   });

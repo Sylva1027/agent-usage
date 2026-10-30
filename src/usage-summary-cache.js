@@ -102,6 +102,7 @@ export class UsageSummaryCache {
   async open() {
     if (this.database) return;
     await mkdir(path.dirname(this.file), { recursive: true });
+    if (this.database) return;
     this.database = new DatabaseSync(this.file);
     this.database.exec(`
       PRAGMA journal_mode = WAL;
