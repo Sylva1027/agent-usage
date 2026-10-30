@@ -2746,10 +2746,10 @@ index c59683d..c1b2d3d 100644
  }
 diff --git a/codex-rs/codex-api/src/generation_timing.rs b/codex-rs/codex-api/src/generation_timing.rs
 new file mode 100644
-index 0000000..7f7ec8c
+index 0000000..04a06e0
 --- /dev/null
 +++ b/codex-rs/codex-api/src/generation_timing.rs
-@@ -0,0 +1,809 @@
+@@ -0,0 +1,908 @@
 +use crate::sse::ResponsesStreamEvent;
 +use codex_protocol::protocol::GENERATION_TIMING_SCHEMA_VERSION;
 +use codex_protocol::protocol::GenerationTiming;
@@ -2893,6 +2893,20 @@ index 0000000..7f7ec8c
 +        if self.phase_break_pending {
 +            self.phase = self.phase.saturating_add(1);
 +            self.phase_break_pending = false;
++        }
++        for lane in self.lanes.values_mut() {
++            if let Some(window) = lane
++                .windows
++                .last_mut()
++                .filter(|window| window.phase == self.phase)
++            {
++                if window.first_read_id == read_stamp.read_id {
++                    window.start_at = window.start_at.max(read_stamp.received_at);
++                }
++                if window.last_read_id == read_stamp.read_id {
++                    window.end_at = window.end_at.max(read_stamp.received_at);
++                }
++            }
 +        }
 +        self.visible_output_seen = true;
 +        let lane = LaneKey {
@@ -3235,6 +3249,91 @@ index 0000000..7f7ec8c
 +    }
 +
 +    #[test]
++    fn first_batch_ends_when_its_final_piece_arrives() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &" hello".repeat(450)),
++            1,
++            100,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &" hello".repeat(450)),
++            1,
++            140,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("item-1", 0, &" hello".repeat(200)),
++            3,
++            340,
++        );
++        let timing = timer.finish_at(&event(completed("resp-1"))).unwrap();
++        assert_eq!(timing.output_tokens, Some(200));
++        assert_eq!(timing.observed_duration_ms, Some(200));
++        assert_eq!(timing.windows.unwrap()[0].start_ms, 140);
++    }
++
++    #[test]
++    fn split_batch_updates_an_earlier_lane_before_the_next_batch() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            output_text("a", 0, &" hello".repeat(450)),
++            1,
++            100,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("b", 0, &" hello".repeat(450)),
++            1,
++            140,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("a", 0, &" hello".repeat(200)),
++            3,
++            340,
++        );
++        let timing = timer.finish_at(&event(completed("resp-1"))).unwrap();
++        assert_eq!(timing.output_tokens, Some(200));
++        assert_eq!(timing.observed_duration_ms, Some(200));
++    }
++
++    #[test]
++    fn terminal_bytes_in_the_same_batch_do_not_extend_output_time() {
++        let start = Instant::now();
++        let mut timer = ResponseGenerationTimer::new(start, true);
++        observe(
++            &mut timer,
++            start,
++            output_text("a", 0, &" hello".repeat(900)),
++            1,
++            100,
++        );
++        observe(
++            &mut timer,
++            start,
++            output_text("a", 0, &" hello".repeat(200)),
++            2,
++            240,
++        );
++        observe(&mut timer, start, completed("resp-1"), 2, 900);
++        let timing = timer.finish_at(&event(completed("resp-1"))).unwrap();
++        assert_eq!(timing.output_tokens, Some(200));
++        assert_eq!(timing.observed_duration_ms, Some(140));
++    }
++
++    #[test]
 +    fn deltas_in_one_transport_batch_are_unmeasurable() {
 +        let start = Instant::now();
 +        let mut timer = ResponseGenerationTimer::new(start, true);
@@ -3572,7 +3671,7 @@ index 9075210..41e5cdc 100644
  pub(crate) mod provider;
  pub(crate) mod rate_limits;
 diff --git a/codex-rs/codex-api/src/sse/responses.rs b/codex-rs/codex-api/src/sse/responses.rs
-index 7f076a1..503629d 100644
+index 7f076a1..6879da4 100644
 --- a/codex-rs/codex-api/src/sse/responses.rs
 +++ b/codex-rs/codex-api/src/sse/responses.rs
 @@ -5,11 +5,17 @@ use crate::common::SafetyBuffering;
@@ -3884,7 +3983,7 @@ index 7f076a1..503629d 100644
              Ok(Some(event)) => {
                  let is_completed = matches!(event, ResponseEvent::Completed { .. });
                  if tx_event.send(Ok(event)).await.is_err() {
-@@ -697,6 +900,283 @@ mod tests {
+@@ -697,6 +900,362 @@ mod tests {
      use tokio_test::io::Builder as IoBuilder;
      use tokio_util::io::ReaderStream;
  
@@ -4091,6 +4190,85 @@ index 7f076a1..503629d 100644
 +        assert_eq!(observed.lock().unwrap().len(), 1);
 +    }
 +
++    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++    async fn split_first_http_chunk_excludes_all_900_tokens() {
++        use codex_client::{HttpClientBuilder, HttpTransport, Request, ReqwestTransport};
++        use tokio::io::{AsyncReadExt, AsyncWriteExt};
++
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let delta = |text: &str| {
++            format!(
++                "data: {}\n\n",
++                json!({
++                    "type":"response.output_text.delta", "item_id":"out", "content_index":0, "delta":text
++                })
++            )
++        };
++        let first = delta("中").repeat(900);
++        let second = delta(&"中".repeat(200));
++        let server = tokio::spawn(async move {
++            let (mut socket, _) = listener.accept().await.unwrap();
++            let mut request = [0; 4096];
++            socket.read(&mut request).await.unwrap();
++            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n", first.len()).as_bytes()).await.unwrap();
++            let (head, tail) = first.as_bytes().split_at(first.len() / 2);
++            socket.write_all(head).await.unwrap();
++            tokio::time::sleep(Duration::from_millis(40)).await;
++            socket.write_all(tail).await.unwrap();
++            socket.write_all(b"\r\n").await.unwrap();
++            tokio::time::sleep(Duration::from_millis(140)).await;
++            socket
++                .write_all(format!("{:x}\r\n{second}\r\n", second.len()).as_bytes())
++                .await
++                .unwrap();
++            let completed =
++                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"split-http\"}}\n\n";
++            socket
++                .write_all(format!("{:x}\r\n{completed}\r\n0\r\n\r\n", completed.len()).as_bytes())
++                .await
++                .unwrap();
++        });
++        let started = Instant::now();
++        let transport =
++            ReqwestTransport::from_http_client(HttpClientBuilder::new().build_direct().unwrap());
++        let response = transport
++            .stream(Request::new(
++                http::Method::GET,
++                format!("http://{address}/"),
++            ))
++            .await
++            .unwrap();
++        let (tx, mut rx) = mpsc::channel(1);
++        let reader = tokio::spawn(process_sse_with_treatment(
++            response.bytes,
++            tx,
++            started,
++            Duration::from_secs(5),
++            None,
++            SafetyBufferingTreatment::default(),
++            response.receive_clock,
++        ));
++        let mut timing = None;
++        while let Some(event) = rx.recv().await {
++            if let ResponseEvent::Completed {
++                generation_timing, ..
++            } = event.unwrap()
++            {
++                timing = generation_timing;
++            }
++        }
++        reader.await.unwrap();
++        server.await.unwrap();
++        let timing = timing.expect("second HTTP chunk remains measurable");
++        assert_eq!(timing.output_tokens, Some(200));
++        let duration = timing.observed_duration_ms.unwrap();
++        assert!(
++            (100..300).contains(&duration),
++            "unexpected interval: {duration}"
++        );
++    }
++
 +    #[tokio::test]
 +    async fn delayed_sse_consumer_does_not_retime_received_output() {
 +        use codex_client::{HttpClientBuilder, HttpTransport, Request, ReqwestTransport};
@@ -4168,7 +4346,7 @@ index 7f076a1..503629d 100644
      async fn collect_events(chunks: &[&[u8]]) -> Vec<Result<ResponseEvent, ApiError>> {
          let mut builder = IoBuilder::new();
          for chunk in chunks {
-@@ -855,11 +1335,13 @@ mod tests {
+@@ -855,11 +1414,13 @@ mod tests {
                  response_id,
                  token_usage,
                  usage_metadata,
@@ -4182,7 +4360,7 @@ index 7f076a1..503629d 100644
                  assert!(end_turn.is_none());
              }
              other => panic!("unexpected third event: {other:?}"),
-@@ -1053,17 +1535,130 @@ mod tests {
+@@ -1053,17 +1614,130 @@ mod tests {
                  response_id,
                  token_usage,
                  usage_metadata,
@@ -4313,7 +4491,7 @@ index 7f076a1..503629d 100644
      #[tokio::test(start_paused = true)]
      async fn rate_limit_error_preserves_retry_delay() {
          let raw_error = r#"{"type":"response.failed","sequence_number":3,"response":{"id":"resp_689bcf18d7f08194bf3440ba62fe05d803fee0cdac429894","object":"response","created_at":1755041560,"status":"failed","background":false,"error":{"code":"rate_limit_exceeded","message":"Rate limit reached for gpt-5.1 in organization org-AAA on tokens per min (TPM): Limit 30000, Used 22999, Requested 12528. Please try again in 11.054s. Visit https://platform.openai.com/account/rate-limits to learn more."}, "usage":null,"user":null,"metadata":{}}}"#;
-@@ -1539,6 +2134,7 @@ mod tests {
+@@ -1539,6 +2213,7 @@ mod tests {
          );
          let bytes = stream::iter(Vec::<Result<Bytes, TransportError>>::new());
          let stream_response = StreamResponse {
@@ -4321,7 +4499,7 @@ index 7f076a1..503629d 100644
              status: StatusCode::OK,
              headers,
              bytes: Box::pin(bytes),
-@@ -1546,6 +2142,7 @@ mod tests {
+@@ -1546,6 +2221,7 @@ mod tests {
  
          let mut stream = spawn_response_stream(
              stream_response,
@@ -4329,7 +4507,7 @@ index 7f076a1..503629d 100644
              idle_timeout(),
              /*telemetry*/ None,
              /*turn_state*/ None,
-@@ -1579,6 +2176,7 @@ mod tests {
+@@ -1579,6 +2255,7 @@ mod tests {
          let sse = format!("event: response.completed\ndata: {completed}\n\n");
          let bytes = stream::iter(vec![Ok(Bytes::from(sse))]);
          let stream_response = StreamResponse {
@@ -4337,7 +4515,7 @@ index 7f076a1..503629d 100644
              status: StatusCode::OK,
              headers,
              bytes: Box::pin(bytes),
-@@ -1586,6 +2184,7 @@ mod tests {
+@@ -1586,6 +2263,7 @@ mod tests {
  
          let mut stream = spawn_response_stream(
              stream_response,
@@ -4345,7 +4523,7 @@ index 7f076a1..503629d 100644
              idle_timeout(),
              /*telemetry*/ None,
              /*turn_state*/ None,
-@@ -1630,6 +2229,7 @@ mod tests {
+@@ -1630,6 +2308,7 @@ mod tests {
                  response_id,
                  token_usage: None,
                  usage_metadata: None,
@@ -4353,7 +4531,7 @@ index 7f076a1..503629d 100644
                  end_turn: None,
              } if response_id == "resp-1"
          );
-@@ -1671,6 +2271,7 @@ mod tests {
+@@ -1671,6 +2350,7 @@ mod tests {
                  response_id,
                  token_usage: None,
                  usage_metadata: None,
@@ -4361,7 +4539,7 @@ index 7f076a1..503629d 100644
                  end_turn: None,
              } if response_id == "resp-1"
          );
-@@ -1707,6 +2308,7 @@ mod tests {
+@@ -1707,6 +2387,7 @@ mod tests {
                  response_id,
                  token_usage: None,
                  usage_metadata: None,
@@ -4369,7 +4547,7 @@ index 7f076a1..503629d 100644
                  end_turn: None,
              } if response_id == "resp-1"
          );
-@@ -1743,6 +2345,7 @@ mod tests {
+@@ -1743,6 +2424,7 @@ mod tests {
                  response_id,
                  token_usage: None,
                  usage_metadata: None,
@@ -7805,10 +7983,10 @@ index 0000000..3bcd132
 +}
 diff --git a/codex-rs/tps-vendor/h2-0.4.19/src/codec/framed_read.rs b/codex-rs/tps-vendor/h2-0.4.19/src/codec/framed_read.rs
 new file mode 100644
-index 0000000..131d17e
+index 0000000..6ee80cc
 --- /dev/null
 +++ b/codex-rs/tps-vendor/h2-0.4.19/src/codec/framed_read.rs
-@@ -0,0 +1,710 @@
+@@ -0,0 +1,846 @@
 +use crate::frame::{self, Frame, Kind, Reason};
 +use crate::frame::{
 +    DEFAULT_MAX_FRAME_SIZE, DEFAULT_SETTINGS_HEADER_TABLE_SIZE, MAX_MAX_FRAME_SIZE,
@@ -8285,21 +8463,48 @@ index 0000000..131d17e
 +    }
 +
 +    fn take_receive_stamp(&mut self, mut len: usize) -> Option<ReceiveStamp> {
++        if len == 0 {
++            return None;
++        }
++
++        let mut first_batch_id = None;
++        let mut last_receive = None;
++        let mut crossed_batch_ids = Vec::new();
 +        while len > 0 {
 +            let buffered = self.buffered_reads.front_mut()?;
++            if first_batch_id.is_none() {
++                first_batch_id = Some(buffered.stamp.0);
++            }
++            if !crossed_batch_ids.contains(&buffered.stamp.0) {
++                crossed_batch_ids.push(buffered.stamp.0);
++            }
 +            if len < buffered.len {
 +                buffered.len -= len;
-+                return Some(buffered.stamp);
++                last_receive = Some(buffered.stamp.1);
++                break;
 +            }
 +
 +            len -= buffered.len;
 +            let buffered = self.buffered_reads.pop_front().expect("front checked");
++            last_receive = Some(buffered.stamp.1);
 +            if len == 0 {
-+                return Some(buffered.stamp);
++                break;
 +            }
 +        }
 +
-+        None
++        let first_batch_id = first_batch_id?;
++        for buffered in &mut self.buffered_reads {
++            if crossed_batch_ids.contains(&buffered.stamp.0) {
++                buffered.stamp.0 = first_batch_id;
++            }
++        }
++        if let Some(current_batch) = self.current_batch.as_mut() {
++            if crossed_batch_ids.contains(&current_batch.0) {
++                current_batch.0 = first_batch_id;
++            }
++        }
++
++        Some((first_batch_id, last_receive?))
 +    }
 +}
 +
@@ -8413,6 +8618,7 @@ index 0000000..131d17e
 +
 +    use std::sync::Arc;
 +    use std::task::Wake;
++    use std::time::Duration;
 +
 +    #[derive(Debug)]
 +    enum ReadStep {
@@ -8487,6 +8693,10 @@ index 0000000..131d17e
 +        }
 +    }
 +
++    fn test_stamp(batch_id: u64, offset_ms: u64) -> ReceiveStamp {
++        (batch_id, Instant::now() + Duration::from_millis(offset_ms))
++    }
++
 +    #[test]
 +    fn buffered_frames_share_receive_stamp() {
 +        let mut wire = data_frame(1, b"a");
@@ -8517,6 +8727,110 @@ index 0000000..131d17e
 +
 +        assert_ne!(first.0, second.0);
 +        assert!(second.1 >= first.1);
++    }
++
++    #[test]
++    fn frame_spanning_io_pending_merges_following_frame_batch() {
++        let frame_a = data_frame(1, b"aaaa");
++        let frame_b = data_frame(3, b"b");
++        let frame_c = data_frame(5, b"c");
++        let split = 5;
++        let mut second_read = frame_a[split..].to_vec();
++        second_read.extend_from_slice(&frame_b);
++        let mut framed = FramedRead::new(ScriptedRead::new([
++            ReadStep::Bytes(frame_a[..split].to_vec()),
++            ReadStep::Pending,
++            ReadStep::Bytes(second_read),
++            ReadStep::Pending,
++            ReadStep::Bytes(frame_c),
++        ]));
++        let waker = std::task::Waker::from(Arc::new(NoopWake));
++        let mut cx = Context::from_waker(&waker);
++
++        assert!(Pin::new(&mut framed).poll_next(&mut cx).is_pending());
++        let first = next_data_stamp(&mut framed, &mut cx).expect("frame A stamp");
++        let second = next_data_stamp(&mut framed, &mut cx).expect("frame B stamp");
++
++        assert_eq!(first.0, second.0);
++        assert_eq!(first.1, second.1);
++        assert!(Pin::new(&mut framed).poll_next(&mut cx).is_pending());
++        let third = next_data_stamp(&mut framed, &mut cx).expect("frame C stamp");
++
++        assert_ne!(third.0, first.0);
++        assert!(third.1 >= first.1);
++    }
++
++    #[test]
++    fn take_merges_only_batches_crossed_by_the_frame() {
++        let batch1 = test_stamp(1, 0);
++        let batch2 = test_stamp(2, 10);
++        let batch3 = test_stamp(3, 20);
++        let batch4 = test_stamp(4, 30);
++        let mut received = ReceivedIo::new(());
++        received.buffered_reads.push_back(BufferedRead {
++            len: 2,
++            stamp: batch1,
++        });
++        received.buffered_reads.push_back(BufferedRead {
++            len: 3,
++            stamp: batch2,
++        });
++        received.buffered_reads.push_back(BufferedRead {
++            len: 4,
++            stamp: batch3,
++        });
++        received.buffered_reads.push_back(BufferedRead {
++            len: 5,
++            stamp: batch4,
++        });
++        received.current_batch = Some(batch4);
++
++        assert_eq!(
++            received.take_receive_stamp(2 + 3 + 2),
++            Some((batch1.0, batch3.1))
++        );
++        assert_eq!(received.buffered_reads.len(), 2);
++        assert_eq!(received.buffered_reads[0].len, 2);
++        assert_eq!(received.buffered_reads[0].stamp, (batch1.0, batch3.1));
++        assert_eq!(received.buffered_reads[1].stamp, batch4);
++        assert_eq!(received.current_batch, Some(batch4));
++    }
++
++    #[test]
++    fn exact_segment_boundary_does_not_merge_the_next_batch() {
++        let batch1 = test_stamp(1, 0);
++        let batch2 = test_stamp(2, 10);
++        let mut received = ReceivedIo::new(());
++        received.buffered_reads.push_back(BufferedRead {
++            len: 2,
++            stamp: batch1,
++        });
++        received.buffered_reads.push_back(BufferedRead {
++            len: 3,
++            stamp: batch2,
++        });
++        received.current_batch = Some(batch2);
++
++        assert_eq!(received.take_receive_stamp(2), Some((batch1.0, batch1.1)));
++        assert_eq!(received.buffered_reads.len(), 1);
++        assert_eq!(received.buffered_reads[0].stamp, batch2);
++        assert_eq!(received.current_batch, Some(batch2));
++    }
++
++    #[test]
++    fn empty_take_does_not_merge_batches() {
++        let batch1 = test_stamp(1, 0);
++        let batch2 = test_stamp(2, 10);
++        let mut received = ReceivedIo::new(());
++        received.buffered_reads.push_back(BufferedRead {
++            len: 2,
++            stamp: batch1,
++        });
++        received.current_batch = Some(batch2);
++
++        assert_eq!(received.take_receive_stamp(0), None);
++        assert_eq!(received.buffered_reads[0].stamp, batch1);
++        assert_eq!(received.current_batch, Some(batch2));
 +    }
 +}
 diff --git a/codex-rs/tps-vendor/h2-0.4.19/src/codec/framed_write.rs b/codex-rs/tps-vendor/h2-0.4.19/src/codec/framed_write.rs
@@ -38448,10 +38762,10 @@ index 0000000..322ea94
 +*/
 diff --git a/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/conn.rs b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/conn.rs
 new file mode 100644
-index 0000000..33385d7
+index 0000000..51a97b5
 --- /dev/null
 +++ b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/conn.rs
-@@ -0,0 +1,1473 @@
+@@ -0,0 +1,1502 @@
 +use std::fmt;
 +#[cfg(feature = "server")]
 +use std::future::Future;
@@ -39900,6 +40214,35 @@ index 0000000..33385d7
 +
 +    #[cfg(feature = "server")]
 +    #[test]
++    fn split_http_chunk_keeps_batch_through_its_last_read() {
++        let (io, mut handle) = tokio_test::io::Builder::new().build_with_handle();
++        let mut conn = Conn::<_, Bytes, ServerTransaction>::new(Compat::new(io));
++        handle.read(b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\na\r\nhello");
++        ready(poll_head(&mut conn)).unwrap().unwrap();
++        tokio_test::task::spawn(()).enter(|cx, _| {
++            let (first, first_stamp) = ready(conn.poll_read_body(cx)).unwrap().unwrap();
++            assert_eq!(first.into_data().unwrap(), "hello");
++            let first_stamp = first_stamp.unwrap();
++            assert!(conn.poll_read_body(cx).is_pending());
++            handle.read(b"world\r\n5\r\nagain\r\n");
++            let (tail, tail_stamp) = ready(conn.poll_read_body(cx)).unwrap().unwrap();
++            assert_eq!(tail.into_data().unwrap(), "world");
++            let tail_stamp = tail_stamp.unwrap();
++            assert_eq!(tail_stamp.0, first_stamp.0);
++            assert!(tail_stamp.1 >= first_stamp.1);
++            let (same_read, same_stamp) = ready(conn.poll_read_body(cx)).unwrap().unwrap();
++            assert_eq!(same_read.into_data().unwrap(), "again");
++            assert_eq!(same_stamp, Some(tail_stamp));
++            assert!(conn.poll_read_body(cx).is_pending());
++            handle.read(b"5\r\nlater\r\n0\r\n\r\n");
++            let (later, later_stamp) = ready(conn.poll_read_body(cx)).unwrap().unwrap();
++            assert_eq!(later.into_data().unwrap(), "later");
++            assert_ne!(later_stamp.unwrap().0, first_stamp.0);
++        });
++    }
++
++    #[cfg(feature = "server")]
++    #[test]
 +    fn closed_conn_cannot_read_or_write() {
 +        let io = tokio_test::io::Builder::new().build();
 +        let mut conn = Conn::<_, Bytes, ServerTransaction>::new(Compat::new(io));
@@ -39927,10 +40270,10 @@ index 0000000..33385d7
 +}
 diff --git a/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/decode.rs b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/decode.rs
 new file mode 100644
-index 0000000..bdfdf79
+index 0000000..c3f70ea
 --- /dev/null
 +++ b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/decode.rs
-@@ -0,0 +1,1287 @@
+@@ -0,0 +1,1298 @@
 +use std::error::Error as StdError;
 +use std::fmt;
 +use std::io;
@@ -39940,6 +40283,8 @@ index 0000000..bdfdf79
 +use futures_core::ready;
 +use http::{HeaderMap, HeaderName, HeaderValue};
 +use http_body::Frame;
++
++use crate::body::ReceiveStamp;
 +
 +use super::io::MemRead;
 +use super::role::DEFAULT_MAX_HEADERS;
@@ -39964,6 +40309,7 @@ index 0000000..bdfdf79
 +#[derive(Clone, PartialEq)]
 +pub(crate) struct Decoder {
 +    kind: Kind,
++    chunk_receive_stamp: Option<ReceiveStamp>,
 +}
 +
 +#[derive(Debug, Clone, PartialEq)]
@@ -40022,6 +40368,7 @@ index 0000000..bdfdf79
 +    pub(crate) fn length(x: u64) -> Decoder {
 +        Decoder {
 +            kind: Kind::Length(x),
++            chunk_receive_stamp: None,
 +        }
 +    }
 +
@@ -40030,6 +40377,7 @@ index 0000000..bdfdf79
 +        h1_max_header_size: Option<usize>,
 +    ) -> Decoder {
 +        Decoder {
++            chunk_receive_stamp: None,
 +            kind: Kind::Chunked {
 +                state: ChunkedState::new(),
 +                chunk_len: 0,
@@ -40045,6 +40393,7 @@ index 0000000..bdfdf79
 +    pub(crate) fn eof() -> Decoder {
 +        Decoder {
 +            kind: Kind::Eof(false),
++            chunk_receive_stamp: None,
 +        }
 +    }
 +
@@ -40113,6 +40462,9 @@ index 0000000..bdfdf79
 +                let h1_max_headers = h1_max_headers.unwrap_or(DEFAULT_MAX_HEADERS);
 +                let h1_max_header_size = h1_max_header_size.unwrap_or(TRAILER_LIMIT);
 +                loop {
++                    if *state == ChunkedState::Start {
++                        self.chunk_receive_stamp = None;
++                    }
 +                    let mut buf = None;
 +                    // advances the chunked state
 +                    *state = ready!(state.step(
@@ -40128,6 +40480,8 @@ index 0000000..bdfdf79
 +                            max_headers_bytes: h1_max_header_size,
 +                        }
 +                    ))?;
++                    // One HTTP chunk may be delivered by several separate socket reads.
++                    body.bind_receive_batch(&mut self.chunk_receive_stamp);
 +                    if *state == ChunkedState::End {
 +                        trace!("end of chunked");
 +
@@ -42807,10 +43161,10 @@ index 0000000..a1eebaf
 +}
 diff --git a/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/io.rs b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/io.rs
 new file mode 100644
-index 0000000..e3caa0d
+index 0000000..19be812
 --- /dev/null
 +++ b/codex-rs/tps-vendor/hyper-1.11.1/src/proto/h1/io.rs
-@@ -0,0 +1,1036 @@
+@@ -0,0 +1,1049 @@
 +use std::cmp;
 +use std::fmt;
 +use std::future::Future;
@@ -43180,6 +43534,8 @@ index 0000000..e3caa0d
 +// TODO: This trait is old... at least rename to PollBytes or something...
 +pub(crate) trait MemRead {
 +    fn read_mem(&mut self, cx: &mut Context<'_>, len: usize) -> Poll<io::Result<Bytes>>;
++
++    fn bind_receive_batch(&mut self, _batch: &mut Option<ReceiveStamp>) {}
 +}
 +
 +impl<T, B> MemRead for Buffered<T, B>
@@ -43194,6 +43550,17 @@ index 0000000..e3caa0d
 +        } else {
 +            let n = ready!(self.poll_read_from_io(cx))?;
 +            Poll::Ready(Ok(self.read_buf.split_to(::std::cmp::min(len, n)).freeze()))
++        }
++    }
++
++    fn bind_receive_batch(&mut self, batch: &mut Option<ReceiveStamp>) {
++        if let Some((id, _)) = *batch {
++            if let Some((_, received_at)) = self.receive_stamp {
++                self.receive_stamp = Some((id, received_at));
++            }
++        }
++        if self.receive_stamp.is_some() {
++            *batch = self.receive_stamp;
 +        }
 +    }
 +}

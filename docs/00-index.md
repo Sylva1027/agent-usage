@@ -2,7 +2,7 @@
 
 更新：2026-10-31（接收时钟修正）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
-见[接收时钟修复与验收](validation/2026-10-31-receive-clock-tps/README.md)。v6 后续自然请求暴露了缓冲数据被误拆为多批的问题；Codex HTTP/1、HTTP/2 接收时间传递及 DSH fetch 合批已修正，当前源码为 v7/schema 4。API、完整 Node 回归及真实索引副本兼容检查通过，新 release 正在构建；尚未进行本轮切换或再次重启 Desktop，GitHub release 待实际采用验证后替换。保留 RANGE/SYNC，不增加 UI 内容；历史阶段见[上一轮记录](validation/2026-10-30-visible-output-tps/README.md)。
+见[接收时钟修复与验收](validation/2026-10-31-receive-clock-tps/README.md)。v6 后续自然请求暴露了缓冲数据被误拆为多批的问题；Codex HTTP/1、HTTP/2 接收时间传递及 DSH fetch 合批已修正，当前源码为 v7/schema 4。API、完整 Node 回归及真实索引副本兼容检查通过；首个 release 实际验收发现帧内分段接收仍会影响首批扣除，修正已通过 API 238 项、HTTP/1 121 项和 HTTP/2 核心 63 项测试，正在重建；尚未进行本轮切换或再次重启 Desktop，GitHub release 待实际采用验证后替换。保留 RANGE/SYNC，不增加 UI 内容；历史阶段见[上一轮记录](validation/2026-10-30-visible-output-tps/README.md)。
 
 ## 使用与接手
 
