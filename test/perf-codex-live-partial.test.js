@@ -132,15 +132,14 @@ function blockedThreads(store, homeId) {
 }
 
 function injectBeforeCodexPublication(store, action) {
-  const state = { injected: false, codexQueries: 0 };
+  const state = { injected: false };
   const realPrepare = store.database.prepare.bind(store.database);
   store.database.prepare = (sql) => {
     const statement = realPrepare(sql);
     if (!String(sql).includes("SELECT DISTINCT session_id FROM events WHERE source_path = ?")) return statement;
     const realAll = statement.all.bind(statement);
     statement.all = (...args) => {
-      state.codexQueries += 1;
-      if (state.codexQueries === 2) {
+      if (!state.injected) {
         state.injected = true;
         action();
       }

@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { closeSync, openSync, readSync, statSync } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Worker, parentPort, workerData } from "node:worker_threads";
 
 import { createRepositoryResolver } from "./repository-identity.js";
 import { readRolloutLines, plainRolloutPath } from "./codex-rollout.js";
@@ -2398,7 +2397,7 @@ function perfContentFingerprint(kind, filePath) {
  * @param {boolean} [capturePrefixEvidence]
  * @returns {{ fingerprint: string, complete: boolean, fileFingerprints: Record<string, string>, filePrefixEvidence?: Record<string, { size: number, digest: string }> }}
  */
-function perfHomeContentFingerprint(home, files, dependency = null, capturePrefixEvidence = false) {
+export function perfHomeContentFingerprint(home, files, dependency = null, capturePrefixEvidence = false) {
   const hash = createHash("sha256");
   let complete = dependency?.complete ?? true;
   /** @type {Record<string, string>} */
@@ -2406,14 +2405,16 @@ function perfHomeContentFingerprint(home, files, dependency = null, capturePrefi
   /** @type {Record<string, { size: number, digest: string }>} */
   const filePrefixEvidence = {};
   for (const filePath of [...files].sort()) {
-    const fingerprint = perfContentFingerprint(home?.kind, filePath);
+    const captureCodex =
+      capturePrefixEvidence && canonicalPerfKind(home?.kind) === "codex" && isPerfSourceEnabled(home?.kind);
+    const combined = captureCodex ? perfCodexContentFingerprintAndPrefix(filePath) : null;
+    const fingerprint = captureCodex ? (combined?.fingerprint ?? null) : perfContentFingerprint(home?.kind, filePath);
     if (fingerprint === null) complete = false;
     else fileFingerprints[filePath] = fingerprint;
     hash.update(`${filePath}\t${fingerprint ?? "!"}\n`);
-    if (capturePrefixEvidence && canonicalPerfKind(home?.kind) === "codex" && fingerprint !== null) {
-      const prefix = perfFilePrefixEvidence(filePath);
-      if (prefix === null) complete = false;
-      else filePrefixEvidence[filePath] = prefix;
+    if (captureCodex) {
+      if (combined?.prefix == null) complete = false;
+      else filePrefixEvidence[filePath] = combined.prefix;
     }
   }
   if (dependency !== null) hash.update(`dependency\t${dependency.fingerprint}\n`);
@@ -2426,81 +2427,187 @@ function perfHomeContentFingerprint(home, files, dependency = null, capturePrefi
 }
 
 /**
- * Hash the complete pre-append prefix. This evidence is deliberately not part
- * of the persisted fingerprint and is only captured for Codex planning.
+ * Hash the complete pre-append prefix and its stable head/tail probe in one
+ * sequential read. The prefix digest is evidence only and never persisted.
  *
  * @param {string} filePath
- * @returns {{ size: number, digest: string } | null}
+ * @returns {{ fingerprint: string | null, prefix: { size: number, digest: string } | null }}
  */
-function perfFilePrefixEvidence(filePath) {
+function perfCodexContentFingerprintAndPrefix(filePath) {
   try {
-    const size = statSync(filePath).size;
-    const hash = createHash("sha256");
-    const handle = openSync(filePath, "r");
-    try {
-      const buffer = Buffer.alloc(PERF_CONTENT_PROBE_BYTES);
-      let offset = 0;
-      while (offset < size) {
-        const length = Math.min(buffer.length, size - offset);
-        const read = readSync(handle, buffer, 0, length, offset);
-        if (read <= 0) return null;
-        hash.update(buffer.subarray(0, read));
-        offset += read;
-      }
-    } finally {
-      closeSync(handle);
+    const main = statSync(filePath);
+    let size = main.size;
+    let mtimeMs = main.mtimeMs;
+    const walPath = `${filePath}-wal`;
+    const wal = statSync(walPath, { throwIfNoEntry: false });
+    const walSize = wal === undefined ? 0 : wal.size;
+    if (wal !== undefined) {
+      size += wal.size;
+      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
     }
-    return { size, digest: hash.digest("hex") };
+
+    const probeHash = createHash("sha256");
+    const prefixHash = createHash("sha256");
+    const mainSize = main.size;
+    {
+      const handle = openSync(filePath, "r");
+      try {
+        const buffer = Buffer.alloc(PERF_CONTENT_PROBE_BYTES);
+        const tailLength = mainSize > PERF_CONTENT_PROBE_BYTES ? PERF_CONTENT_PROBE_BYTES : 0;
+        const tail = tailLength === 0 ? null : Buffer.alloc(tailLength);
+        const tailStart = mainSize - tailLength;
+        let offset = 0;
+        while (offset < mainSize) {
+          const length = Math.min(buffer.length, mainSize - offset);
+          const read = readSync(handle, buffer, 0, length, offset);
+          if (read <= 0) return null;
+          const bytes = buffer.subarray(0, read);
+          prefixHash.update(bytes);
+          if (offset < PERF_CONTENT_PROBE_BYTES) {
+            probeHash.update(bytes.subarray(0, Math.min(read, PERF_CONTENT_PROBE_BYTES - offset)));
+          }
+          if (tail !== null && offset + read > tailStart) {
+            const sourceOffset = Math.max(0, tailStart - offset);
+            const targetOffset = Math.max(0, offset - tailStart);
+            bytes.copy(tail, targetOffset, sourceOffset);
+          }
+          offset += read;
+        }
+        if (tail !== null) probeHash.update(tail);
+      } finally {
+        closeSync(handle);
+      }
+    }
+    if (walSize > 0) addPerfContentProbe(probeHash, walPath, walSize);
+    return {
+      fingerprint: `${size}:${mtimeMs}:${probeHash.digest("hex").slice(0, 32)}`,
+      prefix: { size: mainSize, digest: prefixHash.digest("hex") },
+    };
   } catch {
-    return null;
+    return { fingerprint: perfContentFingerprint("codex", filePath), prefix: null };
   }
 }
 
-/** @param {any} home @param {string[]} files */
-async function codexPlanningFingerprint(home, files) {
-  // Only the serialized store sync opts in; concurrent full reports stay synchronous.
-  if (!home.parallelPrefix) return perfHomeContentFingerprint(home, files, null, true);
-  // Small homes keep the synchronous path; worker startup costs more than their hash work.
-  let entries;
+function addPerfContentProbe(digest, filePath, fileSize) {
+  if (fileSize <= 0) return;
+  const handle = openSync(filePath, "r");
   try {
-    entries = files.map((file) => ({ file, size: statSync(file).size }));
+    const headLength = Math.min(fileSize, PERF_CONTENT_PROBE_BYTES);
+    const buffer = Buffer.alloc(headLength);
+    const read = readSync(handle, buffer, 0, headLength, 0);
+    digest.update(buffer.subarray(0, read));
+    if (fileSize > PERF_CONTENT_PROBE_BYTES) {
+      const tailLength = Math.min(fileSize, PERF_CONTENT_PROBE_BYTES);
+      const tailBuffer = Buffer.alloc(tailLength);
+      const tailRead = readSync(handle, tailBuffer, 0, tailLength, fileSize - tailLength);
+      digest.update(tailBuffer.subarray(0, tailRead));
+    }
+  } finally {
+    closeSync(handle);
+  }
+}
+
+const PERF_PREFIX_READER_COUNT = 2;
+const PERF_PREFIX_READ_BYTES = 1024 * 1024;
+
+/**
+ * Async counterpart of the one-pass Codex fingerprint/prefix reader.
+ *
+ * @param {string} filePath
+ * @param {Buffer} buffer
+ * @returns {Promise<{ fingerprint: string | null, prefix: { size: number, digest: string } | null }>}
+ */
+async function perfCodexContentFingerprintAndPrefixAsync(filePath, buffer) {
+  let handle = null;
+  try {
+    const main = statSync(filePath);
+    let size = main.size;
+    let mtimeMs = main.mtimeMs;
+    const walPath = `${filePath}-wal`;
+    const wal = statSync(walPath, { throwIfNoEntry: false });
+    const walSize = wal === undefined ? 0 : wal.size;
+    if (wal !== undefined) {
+      size += wal.size;
+      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
+    }
+
+    const probeHash = createHash("sha256");
+    const prefixHash = createHash("sha256");
+    const mainSize = main.size;
+    {
+      handle = await open(filePath, "r");
+      const tailLength = mainSize > PERF_CONTENT_PROBE_BYTES ? PERF_CONTENT_PROBE_BYTES : 0;
+      const tail = tailLength === 0 ? null : Buffer.alloc(tailLength);
+      const tailStart = mainSize - tailLength;
+      let offset = 0;
+      while (offset < mainSize) {
+        const length = Math.min(buffer.length, mainSize - offset);
+        const { bytesRead } = await handle.read(buffer, 0, length, offset);
+        if (bytesRead <= 0) return null;
+        const bytes = buffer.subarray(0, bytesRead);
+        prefixHash.update(bytes);
+        if (offset < PERF_CONTENT_PROBE_BYTES) {
+          probeHash.update(bytes.subarray(0, Math.min(bytesRead, PERF_CONTENT_PROBE_BYTES - offset)));
+        }
+        if (tail !== null && offset + bytesRead > tailStart) {
+          const sourceOffset = Math.max(0, tailStart - offset);
+          const targetOffset = Math.max(0, offset - tailStart);
+          bytes.copy(tail, targetOffset, sourceOffset);
+        }
+        offset += bytesRead;
+      }
+      if (tail !== null) probeHash.update(tail);
+    }
+    if (walSize > 0) addPerfContentProbe(probeHash, walPath, walSize);
+    return {
+      fingerprint: `${size}:${mtimeMs}:${probeHash.digest("hex").slice(0, 32)}`,
+      prefix: { size: mainSize, digest: prefixHash.digest("hex") },
+    };
   } catch {
-    return perfHomeContentFingerprint(home, files, null, true);
+    return { fingerprint: perfContentFingerprint("codex", filePath), prefix: null };
+  } finally {
+    await handle?.close().catch(() => {});
   }
-  if (files.length < 2 || entries.reduce((sum, entry) => sum + entry.size, 0) < 256 * 1024 * 1024) {
-    return perfHomeContentFingerprint(home, files, null, true);
+}
+
+async function perfCodexPrefixShard(home, files, buffer) {
+  /** @type {Record<string, string>} */
+  const fileFingerprints = {};
+  /** @type {Record<string, { size: number, digest: string }>} */
+  const filePrefixEvidence = {};
+  let complete = true;
+  for (const filePath of files) {
+    const combined = isPerfSourceEnabled(home?.kind)
+      ? await perfCodexContentFingerprintAndPrefixAsync(filePath, buffer)
+      : null;
+    const fingerprint = combined?.fingerprint ?? null;
+    if (fingerprint === null) complete = false;
+    else fileFingerprints[filePath] = fingerprint;
+    if (canonicalPerfKind(home?.kind) === "codex") {
+      if (combined?.prefix == null) complete = false;
+      else filePrefixEvidence[filePath] = combined.prefix;
+    }
   }
-  const shards = [
-    { bytes: 0, files: [] },
-    { bytes: 0, files: [] },
-  ];
+  return { complete, fileFingerprints, filePrefixEvidence };
+}
+
+/** @param {any} home @param {string[]} files */
+export async function codexPlanningFingerprintAsync(home, files) {
+  const shards = Array.from({ length: PERF_PREFIX_READER_COUNT }, () => ({ bytes: 0, files: [] }));
+  const entries = files.map((file) => {
+    try {
+      return { file, size: statSync(file).size };
+    } catch {
+      return { file, size: 0 };
+    }
+  });
   for (const entry of entries.sort((left, right) => right.size - left.size)) {
     const shard = shards[0].bytes <= shards[1].bytes ? shards[0] : shards[1];
     shard.files.push(entry.file);
     shard.bytes += entry.size;
   }
   const windows = await Promise.allSettled(
-    shards.map(
-      ({ files: shard }) =>
-        new Promise((resolve, reject) => {
-          const worker = new Worker(new URL(import.meta.url), {
-            workerData: { task: "codex-prefix-window", files: shard, kind: home.kind },
-            resourceLimits: { maxOldGenerationSizeMb: 128 },
-          });
-          let result;
-          let failure;
-          worker.once("message", (value) => {
-            result = value;
-          });
-          worker.once("error", (error) => {
-            failure = error;
-          });
-          worker.once("exit", (code) => {
-            if (failure || code !== 0 || !result) reject(failure ?? new Error("Codex prefix worker failed"));
-            else resolve(result);
-          });
-        }),
-    ),
+    shards.map(({ files: shard }) => perfCodexPrefixShard(home, shard, Buffer.alloc(PERF_PREFIX_READ_BYTES))),
   );
   const failure = windows.find((window) => window.status === "rejected");
   if (failure?.status === "rejected") throw failure.reason;
@@ -2520,8 +2627,21 @@ async function codexPlanningFingerprint(home, files) {
   return { fingerprint: hash.digest("hex"), complete, fileFingerprints, filePrefixEvidence };
 }
 
-if (workerData?.task === "codex-prefix-window" && parentPort) {
-  parentPort.postMessage(perfHomeContentFingerprint({ kind: workerData.kind }, workerData.files, null, true));
+/** @param {any} home @param {string[]} files */
+async function codexPlanningFingerprint(home, files) {
+  // Only the serialized store sync opts in; concurrent full reports stay synchronous.
+  if (!home.parallelPrefix) return perfHomeContentFingerprint(home, files, null, true);
+  // Small homes keep the synchronous path; async setup costs more than their hash work.
+  let entries;
+  try {
+    entries = files.map((file) => ({ file, size: statSync(file).size }));
+  } catch {
+    return perfHomeContentFingerprint(home, files, null, true);
+  }
+  if (files.length < 2 || entries.reduce((sum, entry) => sum + entry.size, 0) < 256 * 1024 * 1024) {
+    return perfHomeContentFingerprint(home, files, null, true);
+  }
+  return codexPlanningFingerprintAsync(home, files);
 }
 
 /**

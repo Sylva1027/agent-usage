@@ -2261,6 +2261,37 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
  * @returns {{ groups: PerfSummaryGroup[], models: PerfModelRow[], coverage: PerfCoverage, codexTimingCoverage: PerfCodexTimingCoverage | null, meta: object }}
  */
 export function summarizePerf(samples, options = {}) {
+  if (!Array.isArray(samples) && samples?.[PERF_UNIQUE_ITERABLE] === true) {
+    const original = samples;
+    samples = Object.assign(
+      (function* () {
+        // Validated unique rows retain only the fields consumed by aggregation.
+        for (const sample of original)
+          yield/** @type {PerfSample} */ ({
+            sampleKey: sample.sampleKey,
+            sourceKind: sample.sourceKind,
+            homeId: sample.homeId,
+            channel: sample.channel,
+            agentKind: sample.agentKind,
+            agent: sample.agent,
+            model: sample.model,
+            modelProvider: sample.modelProvider,
+            reasoningEffort: sample.reasoningEffort,
+            timingKind: sample.timingKind,
+            tokenScope: sample.tokenScope,
+            window: sample.window,
+            tsMs: sample.tsMs,
+            outputTokens: sample.outputTokens,
+            durationMs: sample.durationMs,
+            sampleFlags: sample.sampleFlags,
+            status: sample.status,
+            methodVersion: sample.methodVersion,
+          });
+      })(),
+      { [PERF_UNIQUE_ITERABLE]: true },
+    );
+  }
+
   const opts = options ?? {};
   // Reuse M1.2 filtering/dedup verbatim — a second coverage implementation would
   // drift from the one the coverage contract is written against.

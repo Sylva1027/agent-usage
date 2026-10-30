@@ -2136,22 +2136,28 @@ function c1RecordCount(store) {
 
 /**
  * 在**读取后窗口成立之后、逐文件判据之前**注入一次原地改写。
- * 注入点 = 逐文件循环里对目标文件执行的 `SELECT DISTINCT session_id FROM events WHERE source_path = ?`
- * （它晚于 codex 规划窗口、早于发布前复核）。
+ * 注入点 = 逐文件循环读取 `source_files` 的 `get()` 调用（它晚于 codex 规划窗口、
+ * 早于 size/mtime/内容刷新判据和发布前复核）。
  */
 function injectC1BeforeDecision(store, targetFile, action) {
   const state = { injected: false };
   const realPrepare = store.database.prepare.bind(store.database);
   store.database.prepare = (sql) => {
     const stmt = realPrepare(sql);
-    if (!String(sql).includes("SELECT DISTINCT session_id FROM events WHERE source_path = ?")) return stmt;
-    const realAll = stmt.all.bind(stmt);
-    stmt.all = (...args) => {
+    if (
+      !String(sql).includes(
+        "SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+      )
+    ) {
+      return stmt;
+    }
+    const realGet = stmt.get.bind(stmt);
+    stmt.get = (...args) => {
       if (String(args[0]) === targetFile && !state.injected) {
         state.injected = true;
         action();
       }
-      return realAll(...args);
+      return realGet(...args);
     };
     return stmt;
   };

@@ -538,6 +538,64 @@ function messageSourceScope(row, turn, requestScope, currentHeader) {
 }
 
 /**
+ * Collapse a parsed row before it crosses the async-generator boundary. The successful message's
+ * stream is inspected immediately; its text/args payload is not retained by the TPS groups.
+ * @param {any} row
+ */
+function projectDshPerfRow(row) {
+  const type = typeof row?.type === "string" ? row.type : "";
+  const data = row?.data;
+  if (type === "request/header" || type === "request/context") {
+    const config = data?.header?.config;
+    return {
+      type,
+      data: {
+        header: {
+          config:
+            config && typeof config === "object"
+              ? {
+                  model: config.model,
+                  provider: config.provider,
+                  reasoningEffort: config.reasoningEffort,
+                }
+              : null,
+        },
+      },
+    };
+  }
+  if (type === "step/start" || type === RETRY_STARTED_TYPE) {
+    return {
+      type,
+      time: row?.time,
+      data: { turn: data?.turn, step: data?.step },
+    };
+  }
+  if (type === "assistant/message") {
+    const turn = data?.turn;
+    const step = data?.step;
+    const source = data?.message?.source;
+    return {
+      type,
+      time: row?.time,
+      data: {
+        turn,
+        step,
+        generation:
+          identityInteger(turn) !== null && identityInteger(step) !== null ? inspectDshAssistantGeneration(data) : null,
+        message:
+          source && typeof source === "object" && !Array.isArray(source)
+            ? { source: { model: source.model, provider: source.provider } }
+            : undefined,
+      },
+    };
+  }
+  if (STEP_END_TYPE === type) {
+    return { type, data: { turn: data?.turn, step: data?.step } };
+  }
+  return { type };
+}
+
+/**
  * 输出一条规范候选。返回 `true` 表示已通过 `normalizePerfSample()` 并交给 `onSample`。
  * @param {any} group
  * @param {{ homeId: string, sessionId: string, filePath: string, channel: string, agentKind: string, agent: string }} session
@@ -793,7 +851,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
       }
       const requestScope = claimScope(scopeState, turn);
       const scope = messageSourceScope(row, turn, requestScope, scopeState.currentHeader) ?? requestScope;
-      const generation = inspectDshAssistantGeneration(row?.data);
+      const generation = row?.data?.generation;
       groupFor(turn, step).messages.push({
         time: row?.time,
         output: generation.reportedOutputTokens,
@@ -843,6 +901,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
         addParserWarning(MALFORMED_FRAME_CODE, 1);
       }
     },
+    projectRow: (row) => (row?.type === "session" ? row : null),
   })) {
     if (header === null && row?.type === "session") {
       header = dshSessionHeader([row]);
@@ -881,7 +940,7 @@ export async function streamDshPerfSamples(filePath, source, onSample, { onWarni
     agent: header.agentPreset,
   };
 
-  for await (const row of streamDshSessionRows(filePath)) {
+  for await (const row of streamDshSessionRows(filePath, { projectRow: projectDshPerfRow })) {
     const currentFrameIndex = frameIndex;
     frameIndex += 1;
     processRow(row, currentFrameIndex);

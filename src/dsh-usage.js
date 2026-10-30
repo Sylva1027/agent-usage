@@ -148,9 +148,12 @@ function dshFrameOffsets(buffer) {
  * 用「魔数位置」作为帧边界：实测样本中每个魔数位置都是真实帧起点，
  * 但实现仍按「能否解压」容错，坏帧只记警告、不中断整个文件。
  * @param {string} filePath
- * @param {{ onWarning?: (warning: string) => void }} [options]
+ * @param {{
+ *   onWarning?: (warning: string) => void,
+ *   projectRow?: (row: any) => any | null
+ * }} [options] `projectRow` is the internal hot-path projection; omitting it preserves the public full-row stream.
  */
-export async function* streamDshSessionRows(filePath, { onWarning } = {}) {
+export async function* streamDshSessionRows(filePath, { onWarning, projectRow } = {}) {
   const buffer = await readFile(filePath);
   const offsets = dshFrameOffsets(buffer);
   let successfulFrames = 0;
@@ -179,17 +182,43 @@ export async function* streamDshSessionRows(filePath, { onWarning } = {}) {
     // 与冻结实现逐帧 `Buffer.toString("utf8")` 后 join 的语义一致：若写入方把
     // UTF-8 码点拆到两个 zstd 帧，两帧各自产生 replacement character，而不是
     // 在本内存优化中悄悄把它拼回原码点。
-    const lines = `${pending}${decompressed.toString("utf8")}`.split("\n");
-    pending = lines.pop() ?? "";
-    for (const line of lines) {
+    let text = `${pending}${decompressed.toString("utf8")}`;
+    pending = "";
+    decompressed = null;
+    let lineStart = 0;
+    let line;
+    let row;
+    const projectedRows = projectRow ? [] : null;
+    for (let newline = text.indexOf("\n"); newline !== -1; newline = text.indexOf("\n", lineStart)) {
+      line = text.slice(lineStart, newline);
+      lineStart = newline + 1;
       if (!line.trim()) {
         continue;
       }
       try {
-        yield JSON.parse(line);
+        row = JSON.parse(line);
       } catch {
         // 写入中断可能留下半行：仍然跳过（用量事件行为不变），只把**行数**单独计数。
         malformedLines += 1;
+        continue;
+      }
+      if (projectRow) {
+        const projected = projectRow(row);
+        if (projected !== null) {
+          projectedRows.push(projected);
+        }
+      } else {
+        yield row;
+      }
+    }
+    pending = text.slice(lineStart);
+    if (projectedRows) {
+      row = undefined;
+      line = undefined;
+      text = "";
+      decompressed = null;
+      for (const projected of projectedRows) {
+        yield projected;
       }
     }
   }
@@ -203,10 +232,23 @@ export async function* streamDshSessionRows(filePath, { onWarning } = {}) {
   }
 
   if (pending.trim()) {
+    let row;
     try {
-      yield JSON.parse(pending);
+      row = JSON.parse(pending);
     } catch {
       malformedLines += 1;
+    }
+    if (row !== undefined) {
+      pending = "";
+      if (projectRow) {
+        const projected = projectRow(row);
+        row = undefined;
+        if (projected !== null) {
+          yield projected;
+        }
+      } else {
+        yield row;
+      }
     }
   }
   if (malformedLines) {
@@ -237,9 +279,7 @@ export async function readDshSessionRows(filePath, options = {}) {
   return rows;
 }
 
-/** 解析会话头；缺失时返回 null（调用方据此跳过该文件）。 */
-export function dshSessionHeader(rows = []) {
-  const row = rows.find((entry) => entry?.type === "session");
+function dshSessionHeaderFromRow(row) {
   if (!row) {
     return null;
   }
@@ -252,6 +292,11 @@ export function dshSessionHeader(rows = []) {
     createdAtMs: numeric(row.createdAt),
     agentPreset: String(row.agentPreset || "").trim(),
   };
+}
+
+/** 解析会话头；缺失时返回 null（调用方据此跳过该文件）。 */
+export function dshSessionHeader(rows = []) {
+  return dshSessionHeaderFromRow(rows.find((entry) => entry?.type === "session"));
 }
 
 /**
@@ -283,6 +328,48 @@ export function dshUsageFromRaw(raw) {
   return { usage, detailMask, cacheWriteTokens, cacheWriteKnown: true, requestInputTokens: input };
 }
 
+function projectDshSessionHeaderRow(row) {
+  return row?.type === "session"
+    ? {
+        type: "session",
+        header: dshSessionHeaderFromRow(row),
+      }
+    : null;
+}
+
+/** Keep only fields consumed by usage events; message content and stream never cross the yield boundary. */
+function projectDshUsageRow(row) {
+  const type = row?.type;
+  const data = row?.data;
+  if (type === "request/header" || type === "request/context") {
+    const config = data?.header?.config;
+    return {
+      type,
+      data: {
+        header: { config: { model: config?.model, provider: config?.provider } },
+        model: data?.model,
+        provider: data?.provider,
+      },
+    };
+  }
+  if (type === "session/title") {
+    return { type, data: { title: data?.title } };
+  }
+  if (type === "assistant/message") {
+    return {
+      type,
+      time: row?.time,
+      seq: row?.seq,
+      data: {
+        usage: data?.usage,
+        turn: data?.turn,
+        step: data?.step,
+      },
+    };
+  }
+  return null;
+}
+
 /**
  * 两遍扫描一个会话日志，产出标准化用量事件。
  * 第一遍只保存薄 header 与 parser 告警；第二遍从头投影全部行。这样既不在
@@ -302,9 +389,10 @@ export async function streamDshSessionEvents(filePath, source, onEvent, options 
 
   for await (const row of streamDshSessionRows(filePath, {
     onWarning: (warning) => parserWarnings.push(warning),
+    projectRow: projectDshSessionHeaderRow,
   })) {
-    if (header === null && row?.type === "session") {
-      header = dshSessionHeader([row]);
+    if (header === null) {
+      header = row.header;
     }
   }
 
@@ -395,7 +483,7 @@ export async function streamDshSessionEvents(filePath, source, onEvent, options 
     });
   };
 
-  for await (const row of streamDshSessionRows(filePath)) {
+  for await (const row of streamDshSessionRows(filePath, { projectRow: projectDshUsageRow })) {
     await processRow(row);
   }
 }

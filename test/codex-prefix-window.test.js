@@ -15,28 +15,16 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { Worker } from "node:worker_threads";
 
 import { createCodexProjectionCache } from "../src/perf-sources/codex-thread.js";
-import { planStableCodexHome, proveCodexLiveAppend } from "../src/usage-core.js";
+import { codexPlanningFingerprintAsync, planStableCodexHome, proveCodexLiveAppend } from "../src/usage-core.js";
 import { createUsageExecutor } from "../src/usage-executor.js";
 
-function capture(files) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("../src/usage-core.js", import.meta.url), {
-      workerData: { task: "codex-prefix-window", kind: "codex", files },
-      resourceLimits: { maxOldGenerationSizeMb: 128 },
-    });
-    let result;
-    worker.once("message", (value) => {
-      result = value;
-    });
-    worker.once("error", reject);
-    worker.once("exit", (code) => (code === 0 && result ? resolve(result) : reject(new Error(`exit ${code}`))));
-  });
+async function capture(files) {
+  return codexPlanningFingerprintAsync({ kind: "codex" }, files);
 }
 
-test("prefix worker hashes raw bytes, reports unreadable inputs and exits before returning", async () => {
+test("planning prefix hashes raw bytes and reports unreadable inputs", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "codex-prefix-"));
   try {
     const files = [path.join(root, "one.jsonl"), path.join(root, "empty.jsonl")];
@@ -133,7 +121,7 @@ test("large parallel planning preserves live isolation, quiet recovery, raw rewr
     }
     assert.ok(
       files.reduce((bytes, file) => bytes + statSync(file).size, 0) >= 256 * 1024 * 1024,
-      "fixture must enter the two-worker prefix branch",
+      "fixture must enter the two-reader async prefix branch",
     );
     const executor = createUsageExecutor({
       homeDir: root,

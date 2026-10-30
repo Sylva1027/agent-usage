@@ -1039,15 +1039,16 @@ function publishedUsageHomesFromDatabase(database) {
 }
 
 function quotaObservationsFromDatabase(database, attachedHot = false) {
-  return database
-    .prepare(`
+  return Array.from(
+    database
+      .prepare(`
       SELECT source_path, line_number, role, observed_at_ms, limit_id, limit_name,
         plan_type, window_minutes, resets_at_ms, used_percent
       FROM ${attachedHot ? "history_hot." : ""}rate_limit_observations INDEXED BY rate_limit_window_lookup_idx
       ORDER BY limit_id ASC, window_minutes ASC, observed_at_ms DESC
     `)
-    .all()
-    .map((row) => ({
+      .iterate(),
+    (row) => ({
       sourcePath: row.source_path,
       lineNumber: Number(row.line_number),
       role: row.role,
@@ -1058,7 +1059,8 @@ function quotaObservationsFromDatabase(database, attachedHot = false) {
       windowMinutes: Number(row.window_minutes),
       resetsAtMs: Number(row.resets_at_ms),
       usedPercent: row.used_percent === null ? null : Number(row.used_percent),
-    }));
+    }),
+  );
 }
 
 function publishedUsageSessionsFromEvents(events, homes) {
@@ -3291,7 +3293,7 @@ function codexHomeContentSignature(kind, filePaths) {
  *   ① **归属**：`threadId` 必须**已经发布过**（`perf_rollout_threads` / 已发布候选的归属）。
  *      新线程、身份重归属（同一物理文件改挂到另一个 threadId）、跨 home 迁移 ⇒ 未发布过 ⇒ 必建。
  *   ② **依赖集合**：当前**完整** rollout 路径集（含归档片段在内的全部物理 rollout）必须与已发布的
- *      逐字相同 —— 新增 / 删除 / 重命名 / 归档迁移都会让集合不同 ⇒ 必建。
+ *      逐字相同；上一轮成功发布已确认缺失、当前仍缺失的旧依赖可保留，不重复复建。
  *   ③ **内容**：每个 rollout 的**本轮读取后**指纹必须与**已提交**指纹（产生当前候选的那一次发布）
  *      逐字相同。已提交指纹只在"该线程被发布"时写入（`replaceFile` 对 codex **不写**指纹）⇒
  *      `undefined` 即"从未发布过" ⇒ 必建。
@@ -3305,6 +3307,7 @@ function codexHomeContentSignature(kind, filePaths) {
  * @param {Record<string, string>} afterFingerprints 本轮**读取后**稳定窗口的逐文件指纹
  * @param {Record<string, string>} publishedFingerprints 已提交的逐文件指纹
  * @param {Set<string>} dirtyTimingThreadIds timing evidence changed but not republished
+ * @param {Set<string>} acknowledgedMissingPaths Missing dependencies acknowledged by a successful publication.
  * @returns {boolean} `true` = 必须重新构建（`false` = 可原样复用已发布候选）
  */
 function codexThreadNeedsBuild(
@@ -3314,12 +3317,18 @@ function codexThreadNeedsBuild(
   afterFingerprints,
   publishedFingerprints,
   dirtyTimingThreadIds,
+  acknowledgedMissingPaths,
 ) {
   if (dirtyTimingThreadIds instanceof Set && dirtyTimingThreadIds.has(thread.threadId)) return true;
   if (!(oldThreadIds instanceof Set) || !oldThreadIds.has(thread.threadId)) return true;
   const oldPaths = oldPathsByThread instanceof Map ? oldPathsByThread.get(thread.threadId) : undefined;
   // 有归属却取不到路径集 ⇒ 不可判定 ⇒ 重算（绝不假设"没变"）。
-  if (!(oldPaths instanceof Set) || oldPaths.size !== thread.rolloutFiles.length) return true;
+  if (!(oldPaths instanceof Set)) return true;
+  if (oldPaths.size !== thread.rolloutFiles.length) {
+    let missingCount = 0;
+    for (const filePath of oldPaths) if (acknowledgedMissingPaths?.has(filePath)) missingCount++;
+    if (oldPaths.size - missingCount !== thread.rolloutFiles.length) return true;
+  }
   for (const filePath of thread.rolloutFiles) {
     if (!oldPaths.has(filePath)) return true;
     const after = afterFingerprints?.[filePath];
@@ -8276,6 +8285,12 @@ export class UsageStore {
     const currentCodexPaths = new Set(codexFiles.map((file) => file.filePath));
     const publishedCodexFingerprints = this.publishedFileFingerprintsForRead();
     const publishedCodexWarnings = this.publishedFileWarningsForRead();
+    // Missing dependencies already acknowledged by a successful publication stay in history.
+    const acknowledgedMissingSources =
+      this.readMetaRaw("perf_state") === PERF_STATE_READY &&
+      this.readMetaRaw("perf_method_version") === PERF_METHOD_VERSION
+        ? decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META))
+        : [];
     const oldCodexRows = this.database
       .prepare("SELECT path, kind, home_id, home_label, home_path, size, mtime_ms FROM source_files")
       .all()
@@ -8313,7 +8328,7 @@ export class UsageStore {
     const codexHomesWithUnkeyableOldSamples = new Set();
     for (const row of this.database
       .prepare("SELECT sample_key, home_id FROM perf_samples WHERE source_kind = 'codex'")
-      .all()) {
+      .iterate()) {
       const homeId = String(row.home_id ?? "");
       const sampleKey = String(row.sample_key ?? "");
       const threadId = codexSampleThreadId({ sourceKind: "codex", homeId, sampleKey });
@@ -8659,6 +8674,17 @@ export class UsageStore {
         const stageOldPathsByThread = codexOldThreadPathsByHome.get(homeId) || new Map();
         const stagedThreads = [];
         const retainedThreadIds = [];
+        const acknowledgedMissingPaths = new Set(
+          (policyNeedsUpgrade ? [] : acknowledgedMissingSources)
+            .filter(
+              (source) =>
+                source.homeId === homeId &&
+                canonicalizeKind(source.kind) === "codex" &&
+                !currentCodexPaths.has(source.path) &&
+                !replacementTargetByOldPath.has(source.path),
+            )
+            .map((source) => source.path),
+        );
         const liveThreadIds = new Set(window.liveChangedThreadIds ?? []);
         for (const thread of window.plan.threads) {
           const rolloutFiles = thread.rollouts.map((rollout) => rollout.filePath).sort();
@@ -8671,6 +8697,7 @@ export class UsageStore {
               window.after.fileFingerprints,
               publishedCodexFingerprints,
               dirtyTimingThreadIds,
+              acknowledgedMissingPaths,
             )
           ) {
             retainedThreadIds.push(thread.threadId);
@@ -8794,12 +8821,13 @@ export class UsageStore {
       const existing = this.database
         .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
         .get(file.filePath);
-      const previousSessions = existing
-        ? this.database
-            .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
-            .all(file.filePath)
-            .map((row) => row.session_id)
-        : [];
+      const previousSessions =
+        existing && changedSessions.size > 0
+          ? this.database
+              .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
+              .all(file.filePath)
+              .map((row) => row.session_id)
+          : [];
       const earlierFileChanged = previousSessions.some((sessionId) => changedSessions.has(sessionId));
       let needsRefresh = true;
       if (
@@ -9255,13 +9283,15 @@ export class UsageStore {
               factTable,
               source,
               previousRows,
-              currentRows: selectCurrent.all(sourcePath),
+              currentRows: selectCurrent.iterate(sourcePath),
               methodVersion: PERF_METHOD_VERSION,
             });
           }
         };
         saveReplacedPerfFacts("perf_samples", previousPerfSamplesByPath, currentPerfSamplesForPath);
+        previousPerfSamplesByPath.clear();
         saveReplacedPerfFacts("perf_sample_sources", previousPerfSampleSourcesByPath, currentPerfSampleSourcesForPath);
+        previousPerfSampleSourcesByPath.clear();
         writeHistoryArchivePerfRevisionChanges(
           this.database,
           historyArchivePerfRevisionChangesForSamples(this.database, perfRevisionCandidates, replacedSampleKeys),
@@ -10860,16 +10890,17 @@ export class UsageStore {
       `excluded-homes\u0000${canonicalExcludedHomes}`,
     ].join("\u0001");
     const memoized = cacheable && this.recordChampionCache?.key === memoKey ? this.recordChampionCache.champions : null;
-    // W4-b1 / D1：全历史扫描的逐行计价也走同一个事件计价 memo（整段包成**一轮**：轮内放宽到
-    // 192 MiB，轮末收敛回 64 MiB），并注入给 `buildRecordChampions` —— 注入而非改源码形状，
-    // 共享门禁的锚点因此**零变更**。
+    // Price the full-history scan through one request-local model dictionary.
+    // This keeps the estimator and unknown-value semantics unchanged while
+    // avoiding per-row model normalization and event-memo key construction.
     const champions =
       memoized ??
-      this.withEventCostMemoRound(() =>
-        this.buildRecordChampions(zone, where, scope.params, usdToCnyRate, (event) =>
-          this.eventCostMemo.estimate(event),
-        ),
-      );
+      (() => {
+        const eventPricing = createEventPricing();
+        return this.buildRecordChampions(zone, where, scope.params, usdToCnyRate, (event) =>
+          eventPricing.estimate(event),
+        );
+      })();
     if (cacheable && memoized === null) this.recordChampionCache = { key: memoKey, champions };
     return this.recordsWithinRange(champions, range, zone);
   }
@@ -11515,7 +11546,8 @@ export class UsageStore {
   summarizeInReadTransactionCore(filters = {}, { includeDetails = true } = {}, pricingModels) {
     const excludeHomes = filters.excludeHomes || [];
     const asOf = filters.now ? new Date(filters.now) : new Date();
-    const quota = selectQuotaWindows(this.quotaObservations(), asOf);
+    const quotaObservations = this.quotaObservations();
+    const quota = selectQuotaWindows(quotaObservations, asOf);
     const bounds = this.eventBounds(excludeHomes);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {
@@ -11559,9 +11591,7 @@ export class UsageStore {
     }
     const aggregate = this.aggregateRange(range, scopeExclusions);
     const totals = usageFromRow(aggregate);
-    const previousRange = quotaPreset
-      ? previousQuotaRange(range, quota, this.quotaObservations())
-      : previousUsageRange(range);
+    const previousRange = quotaPreset ? previousQuotaRange(range, quota, quotaObservations) : previousUsageRange(range);
     const previousAggregate = previousRange ? this.aggregateRange(previousRange, scopeExclusions) : null;
     const comparison = usageComparisonFromAggregates({
       range,
@@ -11686,7 +11716,7 @@ export class UsageStore {
         range.preset === "all"
           ? {}
           : quotaPreset
-            ? quotaRecordsForRange(range, quota, this.quotaObservations(), (window) => {
+            ? quotaRecordsForRange(range, quota, quotaObservations, (window) => {
                 const row = window === range ? aggregate : this.aggregateRange(window, scopeExclusions);
                 const cost = window === range ? costEstimate : this.costEstimateRange(window, scopeExclusions);
                 return {
