@@ -4,7 +4,7 @@
 
 ## 环境与启动
 
-项目使用 Node ESM，`package.json` 与锁文件要求 Node `>=23.8`。运行看板只依赖 Node 内置模块及本仓库文件；开发检查需要安装 devDependencies。
+项目使用 Node ESM，`package.json` 与锁文件要求 Node `>=23.8`。本地输出采集另依赖锁定版本 `tiktoken@1.0.22`，汇总 reader 延迟加载分词器；release ZIP/TAR.GZ 已附带运行依赖，源码安装执行 `npm ci --omit=dev`。开发检查执行 `npm ci` 安装全部依赖。
 
 ```powershell
 node --version
@@ -93,7 +93,7 @@ npm.cmd test      # 全部测试，本机约 10–15 分钟
 
 `npm.cmd test` 就是 `node --test "test/**/*.test.js"`：Node 会为每个测试文件起独立进程并行跑，一个文件失败不影响其他文件，最后打印 `tests / pass / fail / skipped` 汇总。任何 `fail` 都让退出码非 0。
 
-只有 `node_modules` 里的 `typescript` 是测试真正 import 的依赖，其余测试只用 Node 内置模块；不装依赖也能跑大部分文件，但 `test/skin-palette-review-production.test.js` 和 `...-isolated.integration.test.js` 在导入阶段就会失败（`import ts from "typescript"`）。
+测试依赖包括配色检查使用的 `typescript` 和实际输出采集使用的 `tiktoken`。完整检查前执行 `npm ci`；Windows PowerShell 7 使用 `npm.cmd ci` 可避开脚本执行策略限制。
 
 #### 只跑关心的部分
 
