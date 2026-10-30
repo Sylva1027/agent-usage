@@ -48,6 +48,7 @@ import {
   quotaSourceEvidenceFromSnapshot,
 } from "./quota-source-evidence.js";
 import { quotaSourceResolver } from "./quota-usage-source.js";
+import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 import { isQuotaUsage } from "../public/quota-usage.js";
 import { HistoryQuoteInputs } from "./history-quote-inputs.js";
 import { buildModelActivity, canonicalModelName } from "../public/pricing-models.js";
@@ -1039,7 +1040,7 @@ function publishedUsageHomesFromDatabase(database) {
 }
 
 function quotaObservationsFromDatabase(database, attachedHot = false) {
-  return Array.from(
+  const rows = Array.from(
     database
       .prepare(`
       SELECT source_path, line_number, role, observed_at_ms, limit_id, limit_name,
@@ -1061,6 +1062,12 @@ function quotaObservationsFromDatabase(database, attachedHot = false) {
       usedPercent: row.used_percent === null ? null : Number(row.used_percent),
     }),
   );
+  const saved = database
+    .prepare(
+      `SELECT value FROM ${attachedHot ? "history_hot." : ""}store_meta WHERE key = 'official_quota_observations'`,
+    )
+    .get()?.value;
+  return saved ? rows.concat(JSON.parse(String(saved))) : rows;
 }
 
 function publishedUsageSessionsFromEvents(events, homes) {
@@ -7931,7 +7938,14 @@ export class UsageStore {
     const syncOptions = options || this.options;
     this.options = syncOptions;
     const homes = await discoverUsageSources(syncOptions);
-
+    const quotaObservations = readCodexQuotaObservations({ ...syncOptions, homes });
+    if (quotaObservations.length) {
+      const saved = JSON.stringify(quotaObservations);
+      if (this.readMetaRaw("official_quota_observations") !== saved) {
+        this.writeMeta("official_quota_observations", saved);
+        this.commitStoreRevision("quota");
+      }
+    }
     const { files, warnings, failedHomes = [] } = await this.usageFiles(homes);
     const status = await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes });
     const knownFiles = new Set(files.map((file) => file.filePath));

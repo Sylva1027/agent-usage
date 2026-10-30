@@ -188,3 +188,29 @@ test("new future facts expire cached results at the correct instant", async () =
     fixture.close();
   }
 });
+
+test("recovered quota metadata expires summaries at reset without a rollout row", async () => {
+  const fixture = createPerfCodexIntegrationFixture();
+  const store = new UsageStore(fixture.serverOptions);
+  const cache = new UsageSummaryCache(fixture.serverOptions);
+  try {
+    await store.sync({ options: fixture.serverOptions });
+    const now = new Date("2026-10-04T12:00:00Z");
+    const filters = { preset: "all", now, bucket: "day", calendarZone: "utc" };
+    const payload = await store.dashboardHistory(filters, { includeDetails: false });
+    payload.summary.quota.windows.quota_week = {
+      state: "available",
+      observedAt: now.toISOString(),
+      windowEndExclusive: "2026-10-04T12:00:05Z",
+    };
+    const source = await cache.readSourceState();
+    const key = summaryCacheKey(filters, false, getPricingCatalog());
+    await cache.publish(key, payload, {}, source, now);
+    assert(await cache.get(key, source, new Date("2026-10-04T12:00:04.999Z")));
+    assert.equal(await cache.get(key, source, new Date("2026-10-04T12:00:05Z")), null);
+  } finally {
+    cache.close();
+    store.close();
+    fixture.close();
+  }
+});

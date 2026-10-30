@@ -14,6 +14,7 @@ import {
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 import { workbuddyTraceFiles } from "./workbuddy-usage.js";
+import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Bump when payload formulas or executor snapshot semantics change.
@@ -146,6 +147,9 @@ export class UsageSummaryCache {
     }
     const input = createHash("sha256").update(`summary-v${SUMMARY_CACHE_VERSION}\0`).update(usage.fingerprint);
     const routing = createHash("sha256").update(usage.fingerprint);
+    const quotaInput = JSON.stringify(readCodexQuotaObservations({ ...options, homes }));
+    input.update("\0quota\0").update(quotaInput);
+    routing.update("\0quota\0").update(quotaInput);
     const priceFiles = new Set([pricingFile(options), automaticPricingFile(options)]);
     for (const file of [...files].sort()) {
       let observation;
@@ -274,7 +278,11 @@ export class UsageSummaryCache {
     )`)
       .get(...Array(5).fill(now.getTime())).boundary;
     const day = calendarPresetRange("today", now, payload.summary.range.calendarZone);
-    const validUntil = Math.min(day.end.getTime() + 1, next === null ? Infinity : Number(next));
+    const quotaResets = Object.values(payload.summary.quota?.windows || {})
+      .filter((window) => window.state === "available")
+      .map((window) => Date.parse(window.windowEndExclusive))
+      .filter((time) => Number.isFinite(time) && time >= now.getTime());
+    const validUntil = Math.min(day.end.getTime() + 1, next === null ? Infinity : Number(next), ...quotaResets);
     this.database.exec("BEGIN IMMEDIATE");
     try {
       if (this.readState.get().signature !== source.signature) this.database.exec("DELETE FROM summaries");

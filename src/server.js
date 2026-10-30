@@ -21,6 +21,7 @@ import {
 } from "./usage-core.js";
 import { createUsageExecutor } from "./usage-executor.js";
 import { UsageSummaryCache, publishedSummarySource, summaryCacheKey } from "./usage-summary-cache.js";
+import { recoverCodexQuota } from "./codex-quota-cache.js";
 import { loadHistoryArchiveImport } from "./history-archive.js";
 import { serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 import { buildUsagePricingCoverage } from "../public/pricing-models.js";
@@ -705,8 +706,9 @@ export function createUsageServer(options = {}) {
     }
   }
 
-  const server = createServer(async (request, response) => {
+  const server = createServer(async function handleRequest(request, response, recoveryAttempted = false) {
     const url = new URL(request.url || "/", "http://127.0.0.1");
+    let createdSnapshot = null;
 
     try {
       await pricingReady;
@@ -1160,7 +1162,10 @@ export function createUsageServer(options = {}) {
         }
 
         // 拒绝全文组合后再分配名额，避免失败请求创建不可用快照并淘汰旧快照。
-        if (!frozen && requestedFreeze) frozen = await createSnapshot({ check });
+        if (!frozen && requestedFreeze) {
+          frozen = await createSnapshot({ check });
+          createdSnapshot = frozen;
+        }
 
         // 默认聚合入口与 `/api/summary` 共用同一套冻结选择：冻结时 summary、metadata、quota、
         // periodComparison 与 `asOf` **全部**绑定该冻结 store（不能只冻结 perf、其余字段走 live）。
@@ -1244,6 +1249,31 @@ export function createUsageServer(options = {}) {
 
       await serveStatic(url.pathname, response);
     } catch (error) {
+      if (
+        !recoveryAttempted &&
+        !importContext &&
+        !url.searchParams.has("snapshot") &&
+        usageStore.homes?.some((home) => home.kind === "main") &&
+        ["/api/usage", "/api/summary"].includes(url.pathname) &&
+        error.code === "QUOTA_WINDOW_UNAVAILABLE" &&
+        isQuotaPreset(url.searchParams.get("preset"))
+      ) {
+        let recovered = false;
+        try {
+          recovered = await recoverCodexQuota(error.quota, url.searchParams.get("preset"), options);
+          if (recovered) await loadUsageStore();
+        } catch {
+          recovered = false;
+          // Keep the original unavailable response when the official read fails.
+        }
+        if (recovered) {
+          if (createdSnapshot) {
+            snapshots.delete(createdSnapshot.id);
+            await removeSnapshotArtifacts(createdSnapshot, await snapshotDirectoryPromise);
+          }
+          return handleRequest(request, response, true);
+        }
+      }
       const statusCode =
         error.statusCode ||
         (error.code === "QUOTA_WINDOW_UNAVAILABLE" ? 409 : error.code === "INVALID_PRESET" ? 400 : 500);

@@ -17,6 +17,7 @@ import {
 import { loadServiceTierEvidence } from "./service-tier-evidence.js";
 import { loadQuotaSourceEvidence } from "./quota-source-evidence.js";
 import { quotaSourceResolver } from "./quota-usage-source.js";
+import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 import { createQuotaSourceTracker, isQuotaUsage } from "../public/quota-usage.js";
 import { canonicalModelName } from "../public/pricing-models.js";
 import {
@@ -3779,6 +3780,7 @@ export async function buildUsageReport(options = {}) {
     }
   }
 
+  rateLimitObservations.push(...readCodexQuotaObservations({ ...options, homes }));
   const tierEvidence = loadServiceTierEvidence(homes);
   const quotaEvidence = loadQuotaSourceEvidence(homes, options.quotaSourceEvidenceSnapshot);
   const resolveQuotaSource = quotaSourceResolver([...events, ...quotaSourceObservations], quotaEvidence);
@@ -3937,6 +3939,7 @@ export async function buildUsageIndex(options = {}) {
     }
   }
 
+  rateLimitObservations.push(...readCodexQuotaObservations({ ...options, homes }));
   const tierEvidence = loadServiceTierEvidence(homes);
   const quotaEvidence = loadQuotaSourceEvidence(homes, options.quotaSourceEvidenceSnapshot);
   const resolveQuotaSource = quotaSourceResolver(

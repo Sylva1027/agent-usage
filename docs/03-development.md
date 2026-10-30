@@ -32,6 +32,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `src/server.js`：本地 HTTP API、导入、索引刷新、自动价格发现调度。
 - `src/usage-core.js`：来源发现与分类、标准事件、内存报告、时间与周期统计。
 - `src/usage-store.js`：SQLite 增量索引、迁移、查询、元数据与限额聚合。
+- `src/codex-quota-cache.js`：本地额度快照与单机授权后的缺窗只读恢复；默认关闭联网补齐。
 - `src/usage-executor.js`：**唯一**持有 `DatabaseSync` 的 worker 执行器（2026-10-10 引入）；主线程只从它发布的读侧快照应答轻量端点。
 - `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`、`src/claude-code-usage.js`、`src/workbuddy-usage.js`：各来源适配器。
 - `src/repository-identity.js`、`src/service-tier-evidence.js`：仓库身份和服务档位证据。
@@ -48,6 +49,8 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 重活（`sync`、`summarize`、`periodComparison`）由 `src/usage-executor.js` 启动独立计算进程执行，空闲 200 ms 后关闭索引连接并退出。HTTP 服务保存轻量状态，`src/usage-summary-cache.js` 将汇总写入索引旁的 `.summaries.sqlite`；主服务只对索引做短只读查询，检查已发布版本。来源及统计边界未变时，刷新和服务重启均可复用汇总，无需启动计算进程。冻结快照沿用独立数据库和相同计算入口。
 
 2026-10-30 正式接入的 Node 优化：DSH 在异步交接前只保留统计与性能必需字段；Codex 前缀完整校验与头尾探针合并读取，大 home 使用同一计算器内的有界异步 reader；SQLite 样本迭代消费，及时释放旧集合。只有成功发布时已经确认缺失且仍然缺失的历史依赖可以复用候选；新增缺失、返回、内容或归属改变仍重建。完整哈希及发布稳定性检查保留。历史冠军计价复用请求内模型字典，额度观测每个读事务只读取一次。真实输入与现场测量见[性能验收](validation/2026-10-30-node-performance/README.md)。
+
+额度恢复由 `src/server.js` 在当前 5h/7d 缺窗响应后按单机授权触发，官方凭据交客户端管理；默认不调用。规范观测同时用于内存报告、Store 元数据和冻结结果，`src/usage-summary-cache.js` 把其内容纳入签名并在真实 reset 失效，重试时间不使统计缓存失效。缺窗不数学续期，已有有效窗口不查询。行为与验证见[看板说明](12-dashboard.md)及[7d 验收](validation/2026-10-30-quota-recovery/README.md)。
 
 - **内存预算**：后台 `gateway` / `restart` 的默认父服务参数仍为 `--max-old-space-size=512`，计算进程单独限制为 old-space 224 MiB、semi-space 4 MiB，计价 memo 为 8/16 MiB。它们都是堆或缓存预算，不能当作总内存上限；验收统计同一时刻服务与活跃计算进程的工作集、私有提交之和。性能投影按需加载，性能样本与 DSH 行流式消费，批量写样本复用 prepared statement。整合实测与限制见[验收记录](validation/2026-10-29-local-summary-adoption/README.md)。
 - **并发合并**：`src/server.js` 的 `loadUsageStore()` 用 `syncPromise` 把并发重请求合并成一次同步（"两轮并发只允许发出一次 `sync` 消息"由 `test/w1-executor.test.js` 的计数断言把守）。
