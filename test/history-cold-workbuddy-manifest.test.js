@@ -168,6 +168,7 @@ test("cold WorkBuddy native duration observations are covered by archive verific
       binding.homeId,
       MESSAGE_ID,
     ]);
+    assert.equal(sourceBefore.perfSamples[0].output_tokens, null);
     assert.equal(sourceBefore.perfSamples[0].duration_ms, null);
     assert.equal(sourceBefore.perfSamples[0].timing_kind, "generation");
     assert.equal(sourceBefore.perfSamples[0].timing_source, "unknown");

@@ -4,9 +4,9 @@
 // - **复用** `streamWorkbuddySessionEvents` 拿事件，不重新解析会话文件 —— 事件里带的 `messageId`
 //   就是 trace span 的关联键（该字段只服务本 reader，不进库、不进 API）。
 // - trace 的 `generation` span duration 是完整调用时长，不能冒充首/末有效输出之间的生成时长。
-// - `qua.end` 的正文间隔只有同时通过当前日志、会话与 trace 三侧标量证明时才成为生成时长；
-//   未闭合的候选仍产出，`durationMs = null`，绝不跳过模型行。
-// - 原始 output 含 reasoning；只有 reasoning known 位存在时才映射为非推理 output。
+// - `qua.end` 的首/末正文窗口没有首批 token offset，不能与整批 output counter 配对；
+//   三侧证明只保留为诊断，不能让候选进入 TPS。
+// - 原始 output 含 reasoning；候选仍保留原始 output/reasoning 与 trace duration 诊断。
 import { streamWorkbuddySessionEvents } from "../workbuddy-usage.js";
 import { USAGE_DETAIL_MASK } from "../../public/usage-fields.js";
 
@@ -82,21 +82,14 @@ export async function streamWorkbuddyPerfSamples(filePath, source, onSample, opt
       seen.add(messageId);
       const duration = lookup === null ? null : lookup(messageId);
       const textTiming = lookupTextTiming === null ? null : lookupTextTiming(messageId);
-      const explicitTextTiming = textTimingMatchesSession(textTiming, event.nativeProof, event);
+      const textTimingProof = textTimingMatchesSession(textTiming, event.nativeProof, event);
       const reportedDurationMs = Number(duration?.durationMs);
-      const outputKnown = (event.detailMask & USAGE_DETAIL_MASK.output) !== 0;
       const reasoningKnown = (event.detailMask & USAGE_DETAIL_MASK.reasoning) !== 0;
-      const nonReasoningOutputTokens =
-        outputKnown && reasoningKnown ? event.usage.output - event.usage.reasoning : null;
-      const windowOutputTokens =
-        explicitTextTiming && Number.isSafeInteger(nonReasoningOutputTokens)
-          ? nonReasoningOutputTokens - 1
-          : nonReasoningOutputTokens;
       stats.candidates += 1;
-      if (explicitTextTiming) {
+      stats.missingGenerationDuration += 1;
+      if (textTimingProof) {
         stats.textTimingSamples += 1;
       } else {
-        stats.missingGenerationDuration += 1;
         stats.missingTextTiming += 1;
       }
       onSample({
@@ -111,12 +104,12 @@ export async function streamWorkbuddyPerfSamples(filePath, source, onSample, opt
         window: "request",
         timingKind: "generation",
         tokenScope: "non_reasoning_output",
-        outputTokens: windowOutputTokens,
+        outputTokens: null,
         inputTokens: event.usage.input,
-        durationMs: explicitTextTiming ? textTiming.durationMs : null,
+        durationMs: null,
         status: "completed",
         requestCount: 1,
-        timingSource: explicitTextTiming ? "explicit" : "unknown",
+        timingSource: "unknown",
         reportedOutputTokens: event.usage.output,
         reportedReasoningTokens: reasoningKnown ? event.usage.reasoning : null,
         reportedDurationMs:

@@ -122,13 +122,21 @@ async function fixture(run) {
   }
 }
 
+function assertUnmeasuredPerf(perf, candidateCount) {
+  assert.equal(perf.coverage.sampled, 0);
+  assert.equal(perf.models.length, 1);
+  assert.equal(perf.models[0].candidateCount, candidateCount);
+  assert.equal(perf.models[0].n, 0);
+  assert.equal(perf.models[0].averageTps, null);
+}
+
 test("trace changes revoke only the WorkBuddy response whose native timing proof changes", async () => {
   await fixture(async ({ files, log, traceFile, options }) => {
     await writeFile(log, end("a") + end("b"));
     const store = new UsageStore(options);
     try {
       await store.sync();
-      assert.equal((await store.summarize(FILTERS)).perf.models[0].n, 2);
+      assertUnmeasuredPerf((await store.summarize(FILTERS)).perf, 2);
       const originalTrace = await readFile(traceFile, "utf8");
       const replaced = [];
       const replaceFile = store.replaceFile.bind(store);
@@ -147,25 +155,25 @@ test("trace changes revoke only the WorkBuddy response whose native timing proof
       );
       await store.sync();
       assert.deepEqual(replaced, [files.a]);
-      assert.equal((await store.summarize(FILTERS)).perf.models[0].n, 1);
+      assertUnmeasuredPerf((await store.summarize(FILTERS)).perf, 2);
       replaced.length = 0;
       await writeFile(traceFile, originalTrace);
       await store.sync();
       assert.deepEqual(replaced, [files.a]);
-      assert.equal((await store.summarize(FILTERS)).perf.models[0].n, 2);
+      assertUnmeasuredPerf((await store.summarize(FILTERS)).perf, 2);
     } finally {
       store.close();
     }
   });
 });
 
-test("native WorkBuddy timing arrives without transcript changes, refreshes only its session and survives restart", async () => {
+test("native WorkBuddy text proof arrives without transcript changes, refreshes only its session and survives restart", async () => {
   await fixture(async ({ files, log, options }) => {
     const store = new UsageStore(options);
     try {
       await store.sync();
       const before = await store.summarize(FILTERS);
-      assert.equal(before.perf.models[0].n, 0);
+      assertUnmeasuredPerf(before.perf, 2);
       const replaced = [];
       const replaceFile = store.replaceFile.bind(store);
       store.replaceFile = async (file, ...args) => {
@@ -182,8 +190,7 @@ test("native WorkBuddy timing arrives without transcript changes, refreshes only
       await store.sync();
       const after = await store.summarize(FILTERS);
       assert.deepEqual(replaced, [files.a]);
-      assert.equal(after.perf.models[0].n, 1);
-      assert.equal(after.perf.models[0].averageTps, 50);
+      assertUnmeasuredPerf(after.perf, 2);
       assert.deepEqual(after.totals, before.totals);
       assert.notEqual(after.perf.meta.indexVersion, before.perf.meta.indexVersion);
       assert.deepEqual(summarizeUsage(await buildUsageReport(options), FILTERS).perf.models, after.perf.models);
@@ -195,29 +202,34 @@ test("native WorkBuddy timing arrives without transcript changes, refreshes only
       await appendFile(log, end("a", 30));
       await store.sync();
       assert.deepEqual(replaced, [files.a]);
-      assert.equal((await store.summarize(FILTERS)).perf.models[0].n, 0);
+      assertUnmeasuredPerf((await store.summarize(FILTERS)).perf, 2);
+      replaced.length = 0;
       await writeFile(log, end("a"));
       await store.sync();
-      assert.equal((await store.summarize(FILTERS)).perf.models[0].n, 1);
+      assert.deepEqual(replaced, [files.a]);
+      assertUnmeasuredPerf((await store.summarize(FILTERS)).perf, 2);
     } finally {
       store.close();
     }
     const reopened = new UsageStore(options);
     try {
       await reopened.sync();
-      assert.equal((await reopened.summarize(FILTERS)).perf.models[0].averageTps, 50);
+      const beforeRestartTimingChanges = await reopened.summarize(FILTERS);
+      assertUnmeasuredPerf(beforeRestartTimingChanges.perf, 2);
       await rm(log);
       await reopened.sync();
-      assert.equal((await reopened.summarize(FILTERS)).perf.models[0].n, 1);
+      assertUnmeasuredPerf((await reopened.summarize(FILTERS)).perf, 2);
       await appendFile(files.a, jsonl([{ type: "checkpoint" }]));
       await reopened.sync();
-      assert.equal((await reopened.summarize(FILTERS)).perf.models[0].n, 1);
+      assertUnmeasuredPerf((await reopened.summarize(FILTERS)).perf, 2);
       const changed = (await readFile(files.a, "utf8")).trim().split("\n").map(JSON.parse);
       changed[1].providerData.usage.outputTokens = 3;
       changed[1].providerData.usage.totalTokens = 13;
       await writeFile(files.a, jsonl(changed));
       await reopened.sync();
-      assert.equal((await reopened.summarize(FILTERS)).perf.models[0].n, 0);
+      const afterUsageChange = await reopened.summarize(FILTERS);
+      assertUnmeasuredPerf(afterUsageChange.perf, 2);
+      assert.notDeepEqual(afterUsageChange.totals, beforeRestartTimingChanges.totals);
     } finally {
       reopened.close();
     }
@@ -242,8 +254,7 @@ test("a failed native timing publication retries its session even when timing fi
       await store.sync();
       await store.sync();
       const result = await store.summarize(FILTERS);
-      assert.equal(result.perf.models[0].n, 1);
-      assert.equal(result.perf.models[0].averageTps, 50);
+      assertUnmeasuredPerf(result.perf, 2);
       assert.deepEqual(summarizeUsage(await buildUsageReport(options), FILTERS).perf.models, result.perf.models);
     } finally {
       store.close();
@@ -251,46 +262,97 @@ test("a failed native timing publication retries its session even when timing fi
   });
 });
 
-test("v3 WorkBuddy generation survives v4 refresh, rotated logs, backup and source-free archive transfer", async () => {
-  await fixture(async ({ root, home, log, options }) => {
+test("retired v3/v4 rows stay historical, v5 missing candidates replace them, and backup/archive retain usage", async () => {
+  await fixture(async ({ root, home, files, log, options }) => {
     await writeFile(log, end("a") + end("b"));
     const store = new UsageStore(options);
     try {
       await store.sync();
-      store.database.prepare("UPDATE perf_samples SET method_version = 'tps-v3'").run();
-      store.writeMeta("perf_method_version", "tps-v3");
-      const oldFingerprints = JSON.parse(store.readMeta("perf_file_fingerprints"));
-      store.writeMeta(
-        "perf_file_fingerprints",
-        JSON.stringify(Object.fromEntries(Object.keys(oldFingerprints).map((file) => [file, "v3-fingerprint"]))),
-      );
+      const initial = await store.summarize(FILTERS);
+      assertUnmeasuredPerf(initial.perf, 2);
+
+      const assertRetiredRowsStayUnmeasured = async (methodVersion) => {
+        store.database
+          .prepare(
+            `UPDATE perf_samples
+             SET method_version = ?, output_tokens = 2, duration_ms = 20,
+                 timing_source = 'explicit', sample_flags = 0
+             WHERE source_kind = 'workbuddy'`,
+          )
+          .run(methodVersion);
+        store.writeMeta("perf_method_version", methodVersion);
+        const retired = await store.summarize(FILTERS);
+        assert.equal(retired.perf.meta.methodVersion, "tps-v5");
+        assertUnmeasuredPerf(retired.perf, 2);
+        assert.deepEqual(retired.totals, initial.totals);
+        assert.deepEqual(
+          store.database
+            .prepare("SELECT DISTINCT method_version FROM perf_samples")
+            .all()
+            .map((row) => row.method_version),
+          [methodVersion],
+          "历史行保留在库内",
+        );
+      };
+
+      await assertRetiredRowsStayUnmeasured("tps-v3");
       await rm(log);
       await store.sync();
-      const upgraded = await store.summarize(FILTERS);
-      assert.equal(upgraded.perf.meta.methodVersion, "tps-v4");
-      assert.equal(upgraded.perf.models[0].n, 2);
-      assert.equal(upgraded.perf.models[0].averageTps, 50);
+      let current = await store.summarize(FILTERS);
+      assertUnmeasuredPerf(current.perf, 2);
       assert.deepEqual(
         store.database
           .prepare("SELECT DISTINCT method_version FROM perf_samples")
           .all()
           .map((row) => row.method_version),
-        ["tps-v3"],
+        ["tps-v5"],
+        "source refresh replaces retired v3 rows",
       );
-      const backupFile = path.join(root, "v3-under-v4.sqlite");
+
+      await assertRetiredRowsStayUnmeasured("tps-v4");
+      await writeFile(log, end("a") + end("b"));
+      await store.sync();
+      current = await store.summarize(FILTERS);
+      assertUnmeasuredPerf(current.perf, 2);
+      const rows = store.database
+        .prepare(
+          `SELECT sample_key, source_path, home_id, model, method_version,
+                  output_tokens, duration_ms, timing_source
+           FROM perf_samples
+           WHERE source_kind = 'workbuddy'
+           ORDER BY sample_key`,
+        )
+        .all()
+        .map((row) => ({ ...row }));
+      assert.equal(rows.length, 2);
+      for (const row of rows) {
+        const identity = JSON.parse(row.sample_key);
+        assert.equal(row.method_version, "tps-v5");
+        assert.equal(row.output_tokens, null);
+        assert.equal(row.duration_ms, null);
+        assert.equal(row.timing_source, "unknown");
+        assert.equal(row.model, "deepseek-v4.1-flash");
+        assert.equal(row.source_path, files[identity[2]]);
+        assert.equal(identity[0], "workbuddy");
+        assert.equal(identity[1], row.home_id);
+      }
+      assert.deepEqual(current.totals, initial.totals);
+      assert.deepEqual(current.costEstimate, initial.costEstimate);
+
+      const backupFile = path.join(root, "v5-missing.sqlite");
       await createHistoryBackup(store.database, backupFile);
       await verifyHistoryBackup(backupFile);
-      const candidateFile = path.join(root, "cold-v3.sqlite");
+      const candidateFile = path.join(root, "cold-v5.sqlite");
       const timestamp = Date.parse(DATE);
       await createHistoryArchiveCandidate(store.database, candidateFile, {
         startMs: timestamp - 1,
         endMs: timestamp + 1,
       });
       const plan = await prepareHistoryArchiveCommit(store.database, candidateFile);
-      assert.equal(plan.perfDeletion.sourceKind, "workbuddy");
+      assert.equal(plan.perfDeletion, undefined, "无输出/时长的 v5 候选不能进入可删除的计速样本集");
       const committed = await store.commitHistoryArchiveEvents(plan);
-      assert.equal(committed.deletedPerfSampleCount, 2);
-      const bundle = path.join(root, "v3-bundle");
+      assert.equal(committed.deletedPerfSampleCount, 0);
+      const bundle = path.join(root, "v5-bundle");
       const destination = path.join(root, "transferred");
       await publishHistoryArchiveBundle(store.database, bundle);
       await publishHistoryArchiveImport(bundle, destination);
@@ -307,9 +369,9 @@ test("v3 WorkBuddy generation survives v4 refresh, rotated logs, backup and sour
       try {
         await restored.open();
         const result = await restored.summarizeHistory(FILTERS);
-        assert.equal(result.perf.models[0].n, 2);
-        assert.equal(result.perf.models[0].averageTps, 50);
-        assert.deepEqual(result.totals, upgraded.totals);
+        assertUnmeasuredPerf(result.perf, 2);
+        assert.deepEqual(result.totals, initial.totals);
+        assert.deepEqual(result.costEstimate, initial.costEstimate);
       } finally {
         restored.close();
       }

@@ -60,7 +60,7 @@ async function withSessionFile(rows, fn) {
   }
 }
 
-test("规范 kind 与 v3 来源语义", () => {
+test("规范 kind 与 v5 来源语义", () => {
   assert.equal(canonicalPerfSourceKind("workbuddy"), "workbuddy");
   assert.deepEqual([...PERF_SOURCE_KINDS], ["zcode", "dsh", "opencode", "codex", "workbuddy", "claude"]);
 
@@ -102,7 +102,7 @@ test("自定义 timingSource / methodVersion 仍按既有规则告警", () => {
   assert.ok(result.warnings.includes("UNRECOGNIZED_METHOD_VERSION"));
 });
 
-test("trace generation span duration 只保留为诊断，不进入生成 TPS", async () => {
+test("trace generation duration 与整批 output counter 只保留诊断，不进入生成 TPS", async () => {
   await withSessionFile([usageRecord()], async (file) => {
     const samples = [];
     const result = await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample), {
@@ -112,7 +112,7 @@ test("trace generation span duration 只保留为诊断，不进入生成 TPS", 
     assert.equal(samples.length, 1);
     assert.equal(samples[0].sampleKey, undefined);
     assert.equal(samples[0].messageId, "msg-1");
-    assert.equal(samples[0].outputTokens, 190, "原始 output 200 含 reasoning 10");
+    assert.equal(samples[0].outputTokens, null, "没有首批 token offset，整批 output 不能作为窗口分子");
     assert.equal(samples[0].reportedOutputTokens, 200);
     assert.equal(samples[0].reportedReasoningTokens, 10);
     assert.equal(samples[0].inputTokens, 1000);
@@ -151,12 +151,13 @@ test("同一 messageId 只产一个候选", async () => {
   });
 });
 
-test("outputTokens 真 0 仍产候选", async () => {
+test("原始 output 真 0 仍产候选，但可测 output 仍未知", async () => {
   await withSessionFile([usageRecord({ outputTokens: 0, reasoningTokens: 0 })], async (file) => {
     const samples = [];
     await streamWorkbuddyPerfSamples(file, HOME, (sample) => samples.push(sample));
     assert.equal(samples.length, 1);
-    assert.equal(samples[0].outputTokens, 0);
+    assert.equal(samples[0].outputTokens, null);
+    assert.equal(samples[0].reportedOutputTokens, 0);
     assert.equal(samples[0].durationMs, null);
   });
 });
@@ -204,7 +205,7 @@ test("注册与透传：workbuddy 已启用，lookup 仍到达 reader 但旧 spa
     assert.equal(samples.length, 1);
     assert.equal(samples[0].sampleKey, JSON.stringify(["workbuddy", HOME.id, "msg-1"]));
     assert.equal(samples[0].methodVersion, PERF_METHOD_VERSION);
-    assert.equal(samples[0].outputTokens, 190);
+    assert.equal(samples[0].outputTokens, null);
     assert.equal(samples[0].durationMs, null);
     assert.equal(samples[0].reportedDurationMs, undefined, "normalize 出口不保留私有诊断字段");
   });

@@ -64,31 +64,57 @@ async function fixture(run) {
   }
 }
 
-function assertSpeed(perf) {
-  assert.equal(perf.meta.methodVersion, "tps-v4");
+function assertMissingGenerationSpeed(perf) {
+  assertNoPublishedSpeed(perf);
+  assert.equal(perf.meta.methodVersion, "tps-v5");
   assert.equal(perf.models.length, 1);
-  assert.equal(perf.models[0].averageTps, 100);
-  assert.equal(perf.models[0].n, 1);
-  assert.equal(perf.models[0].p10, 100);
-  assert.equal(perf.models[0].p90, 100);
+  assert.equal(perf.models[0].averageTps, null);
+  assert.equal(perf.models[0].n, 0);
+  assert.equal(perf.models[0].p10, null);
+  assert.equal(perf.models[0].p90, null);
+  assert.equal(perf.models[0].state, "missing_duration");
   assert.equal(perf.models[0].rank, null);
-  assert.equal(perf.groups[0].tokenScope, "all_generated_output");
-  assert.equal(perf.coverage.sampled, 1);
+  assert.equal(perf.models[0].candidateCount, 1);
+  assert.deepEqual(perf.groups, []);
+  assert.equal(perf.coverage.eligible, 1);
+  assert.equal(perf.coverage.positiveOutput, 0);
+  assert.equal(perf.coverage.sampled, 0);
+  assert.equal(perf.coverage.dropped, 1);
+  assert.equal(perf.coverage.byFlag.MISSING_OUTPUT, 1);
+  assert.equal(perf.coverage.byFlag.MISSING_DURATION, 1);
 }
 
-test("DSH full generation reaches memory, SQLite, API and frozen snapshots before step/end", async () => {
+function assertNoPublishedSpeed(perf) {
+  assert.ok(perf.models.every((model) => model.averageTps === null && model.n === 0));
+  assert.deepEqual(perf.groups, []);
+  assert.equal(perf.coverage.sampled, 0);
+}
+
+test("DSH usage and missing-duration diagnostics reach memory, SQLite, API and frozen snapshots before step/end", async () => {
   await fixture(async ({ file, options, store }) => {
     const bytes = await readFile(file);
     await store.sync();
     const indexed = await store.summarize(FILTERS);
     const memory = summarizeUsage(await buildUsageReport(options), FILTERS);
-    assertSpeed(indexed.perf);
-    assertSpeed(memory.perf);
+    assertMissingGenerationSpeed(indexed.perf);
+    assertMissingGenerationSpeed(memory.perf);
     assert.deepEqual(memory.perf.models, indexed.perf.models);
     assert.deepEqual(memory.perf.groups, indexed.perf.groups);
-    const native = store.database.prepare("SELECT output_tokens, duration_ms FROM perf_samples").get();
-    assert.equal(native.output_tokens, 100);
-    assert.equal(native.duration_ms, 1_000);
+    assert.deepEqual(memory.totals, indexed.totals);
+    assert.equal(indexed.totals.total, 121);
+    const native = store.database
+      .prepare(
+        `SELECT method_version, token_scope, output_tokens, duration_ms
+         FROM perf_samples`,
+      )
+      .get();
+    assert.equal(native.method_version, "tps-v5");
+    assert.equal(native.token_scope, "all_generated_output");
+    assert.equal(native.output_tokens, null);
+    assert.equal(native.duration_ms, null);
+    const usageEvent = store.database.prepare("SELECT total, output FROM events").get();
+    assert.equal(usageEvent.total, 121);
+    assert.equal(usageEvent.output, 101);
     store.close();
     const server = createUsageServer(options);
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -104,13 +130,14 @@ test("DSH full generation reaches memory, SQLite, API and frozen snapshots befor
         const response = await fetch(`${base}/api/${route}`);
         assert.equal(response.status, 200);
         const body = await response.json();
-        assertSpeed(body.summary.perf);
+        assertMissingGenerationSpeed(body.summary.perf);
         assert.deepEqual(body.summary.perf.models, indexed.perf.models);
         assert.doesNotMatch(JSON.stringify(body.summary.perf), /sampleKey|sourcePath|reasoning-chunks/);
         if (body.snapshotId) frozen = body;
       }
       const html = renderPerfModelsHtml(indexed.perf, { calendarZone: "utc" });
-      assert.match(html, /100/);
+      assert.match(html, /deepseek-flash/);
+      assert.doesNotMatch(html, />\s*100(?:\.0+)?\s*</);
       assert.doesNotMatch(html, /all_generated_output|reasoning|Magpie|警告|覆盖率/);
       const response = await fetch(`${base}/api/summary?preset=all&snapshot=${frozen.snapshotId}`);
       assert.deepEqual((await response.json()).summary.perf, frozen.summary.perf);
@@ -121,7 +148,7 @@ test("DSH full generation reaches memory, SQLite, API and frozen snapshots befor
   });
 });
 
-test("unchanged DSH files upgrade once from v3; a failed replacement retains its old fingerprint for retry", async () => {
+test("retired DSH v3/v4 rows preserve usage in replaced-fact backups but never restore TPS", async () => {
   await fixture(async ({ file, store }) => {
     await store.sync();
     const bytes = await readFile(file);
@@ -130,13 +157,20 @@ test("unchanged DSH files upgrade once from v3; a failed replacement retains its
     const oldFingerprint = `${info.size}:${info.mtimeMs}:${oldDigest}`;
     const readFingerprints = () =>
       JSON.parse(store.database.prepare("SELECT value FROM store_meta WHERE key='perf_file_fingerprints'").get().value);
-    store.database
-      .prepare("UPDATE store_meta SET value=? WHERE key='perf_file_fingerprints'")
-      .run(JSON.stringify({ [file]: oldFingerprint }));
-    store.database.prepare("UPDATE store_meta SET value='tps-v3' WHERE key='perf_method_version'").run();
-    store.database.exec(
-      "UPDATE perf_samples SET method_version='tps-v3', token_scope='non_reasoning_output', output_tokens=NULL, duration_ms=NULL",
-    );
+    const seedRetiredSample = (methodVersion, tokenScope) => {
+      store.database
+        .prepare("UPDATE store_meta SET value=? WHERE key='perf_file_fingerprints'")
+        .run(JSON.stringify({ [file]: oldFingerprint }));
+      store.database
+        .prepare(
+          `UPDATE perf_samples
+           SET method_version=?, token_scope=?, output_tokens=100, duration_ms=1000, sample_flags=0
+           WHERE source_kind='dsh'`,
+        )
+        .run(methodVersion, tokenScope);
+      store.database.prepare("UPDATE store_meta SET value=? WHERE key='perf_method_version'").run(methodVersion);
+    };
+    seedRetiredSample("tps-v3", "non_reasoning_output");
     store.close();
     await store.open();
     let replacements = 0;
@@ -151,13 +185,47 @@ test("unchanged DSH files upgrade once from v3; a failed replacement retains its
     await store.sync();
     assert.equal(replacements, 1);
     assert.equal(readFingerprints()[file], oldFingerprint);
+    const retainedV3 = store.database
+      .prepare("SELECT method_version, output_tokens, duration_ms FROM perf_samples WHERE source_kind='dsh'")
+      .get();
+    assert.deepEqual(
+      { ...retainedV3 },
+      {
+        method_version: "tps-v3",
+        output_tokens: 100,
+        duration_ms: 1_000,
+      },
+    );
+    assertNoPublishedSpeed((await store.summarize(FILTERS)).perf);
     store.database.exec("DROP TRIGGER dsh_v4_fail");
     await store.sync();
     assert.equal(replacements, 2);
     assert.notEqual(readFingerprints()[file], oldFingerprint);
-    assertSpeed((await store.summarize(FILTERS)).perf);
+    assertMissingGenerationSpeed((await store.summarize(FILTERS)).perf);
+
+    seedRetiredSample("tps-v4", "all_generated_output");
     await store.sync();
-    assert.equal(replacements, 2);
+    assert.equal(replacements, 3);
+    assert.notEqual(readFingerprints()[file], oldFingerprint);
+    assertMissingGenerationSpeed((await store.summarize(FILTERS)).perf);
+
+    const replaced = store.database
+      .prepare(
+        `SELECT payload FROM history_replaced_facts
+         WHERE fact_table='perf_samples' AND source_kind='dsh'
+         ORDER BY method_version, payload`,
+      )
+      .all()
+      .map((row) => JSON.parse(row.payload));
+    const retired = new Map(replaced.map((payload) => [payload.method_version, payload]));
+    for (const version of ["tps-v3", "tps-v4"]) {
+      assert.ok(retired.has(version), `${version} row must be retained as recoverable history`);
+      assert.equal(retired.get(version).output_tokens, 100);
+      assert.equal(retired.get(version).duration_ms, 1_000);
+    }
+
+    await store.sync();
+    assert.equal(replacements, 3);
     assert.deepEqual(await readFile(file), bytes);
   });
 });

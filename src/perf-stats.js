@@ -14,12 +14,18 @@
  * Persistent method version (plan §4). An unrecognized version is never silently
  * rewritten: normalization keeps the supplied value and reports a warning.
  */
-export const PERF_METHOD_VERSION = "tps-v4";
-export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze(["tps-v1", "tps-v2", "tps-v3", PERF_METHOD_VERSION]);
+export const PERF_METHOD_VERSION = "tps-v5";
+export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze([
+  "tps-v1",
+  "tps-v2",
+  "tps-v3",
+  "tps-v4",
+  PERF_METHOD_VERSION,
+]);
 
-/** v3 and v4 share response identities and the non-reasoning generation contract. */
+/** Generation methods retain response identities; admission checks their window contract. */
 export function isGenerationPerfMethod(version) {
-  return version === "tps-v3" || version === PERF_METHOD_VERSION;
+  return version === "tps-v3" || version === "tps-v4" || version === PERF_METHOD_VERSION;
 }
 
 /** Groups with fewer samples are shown but not ranked (plan §17.6). */
@@ -143,15 +149,24 @@ const DSH_ALL_GENERATION_SEMANTICS = Object.freeze({
 });
 
 function generationSourceSemantics(sourceKind, modelProvider, methodVersion = PERF_METHOD_VERSION) {
-  return methodVersion === PERF_METHOD_VERSION &&
+  return (methodVersion === "tps-v4" || methodVersion === PERF_METHOD_VERSION) &&
     sourceKind === "dsh" &&
     DSH_ALL_GENERATION_PROVIDERS.has(modelProvider)
     ? DSH_ALL_GENERATION_SEMANTICS
     : PERF_SOURCE_SEMANTICS[sourceKind];
 }
 
+function isRetiredGenerationSample(sample) {
+  return (
+    (sample.sourceKind === "codex" && sample.methodVersion === "tps-v4") ||
+    ((sample.sourceKind === "dsh" || sample.sourceKind === "workbuddy") &&
+      (sample.methodVersion === "tps-v3" || sample.methodVersion === "tps-v4"))
+  );
+}
+
 function hasGenerationPerfSemantics(sample) {
-  const semantics = generationSourceSemantics(sample.sourceKind, sample.modelProvider);
+  if (isRetiredGenerationSample(sample)) return false;
+  const semantics = generationSourceSemantics(sample.sourceKind, sample.modelProvider, sample.methodVersion);
   return (
     isGenerationPerfMethod(sample.methodVersion) &&
     semantics !== undefined &&
@@ -1144,7 +1159,7 @@ export function perfDroppedByReason(sample) {
     }
   }
   if (isPerfSampled(sample, flags)) return null;
-  if (!isGenerationPerfMethod(sample.methodVersion)) return "historical_method";
+  if (!isGenerationPerfMethod(sample.methodVersion) || isRetiredGenerationSample(sample)) return "historical_method";
   if (!hasGenerationPerfSemantics(sample)) return "source_semantics_mismatch";
   throw new Error(`perf sample ${sample.sampleKey} is dropped but carries none of the §17.5:278 reason flags`);
 }
@@ -1582,11 +1597,9 @@ function perfSelectionContext(options) {
  * @returns {PerfSample}
  */
 function resolvePerfSampleGroup(members, bounds) {
-  // A v4 DSH remeasurement replaces the old phase for this response, not its history.
-  const currentDsh = members.filter(
-    (row) => row.sourceKind === "dsh" && row.methodVersion === PERF_METHOD_VERSION && hasGenerationPerfSemantics(row),
-  );
-  const group = currentDsh.length > 0 ? members.filter((row) => row.methodVersion !== "tps-v3") : members;
+  // Re-reading a response replaces retired windows without conflicting with their raw history.
+  const current = members.some((row) => row.methodVersion === PERF_METHOD_VERSION);
+  const group = current ? members.filter((row) => !isRetiredGenerationSample(row)) : members;
   if (group.length === 1) return group[0];
   const first = perfConflictSignature(group[0]);
   const consistent = group.every((row) => perfConflictSignature(row) === first);
@@ -2032,7 +2045,10 @@ function computeCodexTimingCoverage(selection, knownSources, excludedHomeIds, er
   }
   if (!applicable) return null;
 
-  const currentCodex = (sample) => sample?.sourceKind === "codex" && isGenerationPerfMethod(sample.methodVersion);
+  const currentCodex = (sample) =>
+    sample?.sourceKind === "codex" &&
+    isGenerationPerfMethod(sample.methodVersion) &&
+    !isRetiredGenerationSample(sample);
   const eligible = selection.eligible.filter(currentCodex);
   const unplaced = selection.unplaced.filter(currentCodex);
   let recordedOutputTokens = 0;
@@ -2174,9 +2190,10 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
   /** @type {Map<string, PerfModelRow>} */
   const missing = new Map();
   for (const sample of candidates) {
-    if (!hasGenerationPerfSemantics(sample)) continue;
+    const retiredWindow = isRetiredGenerationSample(sample);
+    if (!hasGenerationPerfSemantics(sample) && !retiredWindow) continue;
     if (typeof sample.tsMs !== "number") continue;
-    if (sample.durationMs !== null && sample.durationMs > 0) continue;
+    if (!retiredWindow && sample.durationMs !== null && sample.durationMs > 0) continue;
     const model = trimmedString(sample.model);
     const flags = perfFlagSetOf(sample);
     if (model === "" || flags.has("MODEL_AMBIGUOUS") || flags.has("METHOD_ESTIMATE")) continue;

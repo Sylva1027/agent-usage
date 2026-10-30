@@ -407,6 +407,7 @@ test("静态访问证明：只读成功 message 的生成 usage/stream；步骤�
   assert.ok(source.includes('record.type === "text-chunks"'));
   assert.ok(source.includes('record.type === "tool-call-chunks"'));
   assert.ok(source.includes('value !== ""'), "空串边界判据必须保留，不能 trim");
+  assert.equal(source.includes("FIRST_OUTPUT_TOKEN_COUNT"), false, "不得再把首批固定写成 1 token");
   assert.equal(source.includes("reasoningSequences"), false, "reasoning 穿插只保留 scalar phase 状态");
   // 步骤结束帧分支：只允许 data 的 turn/step + 帧序，不得出现时间读取
   const branchStart = source.indexOf("if (type === STEP_END_TYPE)");
@@ -1239,7 +1240,7 @@ test("source 允许只给 homeId 字符串；onWarning 省略时不报错", asyn
 
 // ---------------------------------------------------------------- 成功 message 的 N/D 直连
 
-test("同一成功 message 的 known reasoning 与 packed stream：N=8、B=1、D=末边界-首边界", async () => {
+test("同一成功 message 的 usage 与接收边界只作诊断：首批宽度未知，不产生成 TPS", async () => {
   const stream = [
     reasoningChunks(T0 + 800, [STREAM_SENTINEL], []),
     textChunks(T0 + 1000, ["", "a", " "], [20, 80]),
@@ -1262,14 +1263,16 @@ test("同一成功 message 的 known reasoning 与 packed stream：N=8、B=1、D
     const { samples, rawSamples } = await readLogWithRaw(file);
     assert.equal(samples.length, 1);
     const [sample] = samples;
-    assert.equal(sample.outputTokens, 7, "N=12-4=8；首输出已含 B=1，分子为 7");
-    assert.equal(sample.durationMs, 210);
+    assert.equal(sample.outputTokens, null);
+    assert.equal(sample.durationMs, null);
     assert.equal(sample.windowStartMs, T0 + 1020);
     assert.equal(sample.windowEndMs, T0 + 1230);
-    assert.equal(sample.timingSource, "explicit");
+    assert.equal(sample.timingSource, "unknown");
     assert.equal(sample.window, "request");
     assert.equal(sample.timingKind, "generation");
     assert.equal(sample.tokenScope, "non_reasoning_output");
+    assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+    assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
     assert.equal(rawSamples[0].reportedOutputTokens, 12);
     assert.equal(rawSamples[0].reportedReasoningTokens, 4);
     assert.equal(JSON.stringify(rawSamples).includes(STREAM_SENTINEL), false);
@@ -1279,7 +1282,7 @@ test("同一成功 message 的 known reasoning 与 packed stream：N=8、B=1、D
   }
 });
 
-test("已识别 stream 记录的多余 metadata 不影响 N/D；未知输出事件语义不猜测", async () => {
+test("已识别 stream 记录的多余 metadata 只保留 usage/接收诊断；未知输出事件不产生样本", async () => {
   const { dir, file } = writeLog([
     [sessionRow()],
     [
@@ -1342,19 +1345,23 @@ test("已识别 stream 记录的多余 metadata 不影响 N/D；未知输出事�
     ],
   ]);
   try {
-    const { samples } = await readLog(file);
+    const { samples, rawSamples } = await readLogWithRaw(file);
     const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
     const metadata = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
-    assert.equal(metadata.outputTokens, 7);
+    assert.equal(metadata.outputTokens, null);
     assert.equal(metadata.windowStartMs, T0 + 1020);
     assert.equal(metadata.windowEndMs, T0 + 1110);
-    assert.equal(metadata.durationMs, 90);
-    assert.equal(metadata.timingSource, "explicit");
+    assert.equal(metadata.durationMs, null);
+    assert.equal(metadata.timingSource, "unknown");
+    const metadataRaw = rawByIdentity(rawSamples).get(identityKey(1, 1));
+    assert.equal(metadataRaw.reportedOutputTokens, 10);
+    assert.equal(metadataRaw.reportedReasoningTokens, 2);
 
     for (const step of [2, 3]) {
       const unknownEvent = byKey.get(sampleKeyOf(SESSION_ID, 1, step));
-      assert.equal(unknownEvent.outputTokens, 7, "未知 stream 事件不得污染已知 N");
+      assert.equal(unknownEvent.outputTokens, null);
       assert.equal(unknownEvent.durationMs, null, "未知事件语义不得被猜成可计时输出");
+      assert.ok(flagsOf(unknownEvent).includes("MISSING_OUTPUT"));
       assert.ok(flagsOf(unknownEvent).includes("MISSING_DURATION"));
     }
   } finally {
@@ -1395,19 +1402,23 @@ test("reasoning 缺/null/非整数/负数/超 output 均为 unknown；known 0 �
     const { samples, rawSamples } = await readLogWithRaw(file);
     const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
     const rawByKey = rawByIdentity(rawSamples);
-    for (let index = 0; index < cases.length - 1; index += 1) {
+    for (let index = 0; index < cases.length; index += 1) {
       const step = index + 1;
       const sample = byKey.get(sampleKeyOf(SESSION_ID, 1, step));
-      assert.equal(sample.outputTokens, null, `${cases[index][0]} reasoning 必须保持 unknown`);
-      assert.equal(sample.durationMs, 10, "D 仍可由同一 message 的 stream 独立成立");
+      assert.equal(sample.outputTokens, null, `${cases[index][0]} 原始 reasoning 状态只保留为诊断`);
+      assert.equal(sample.durationMs, null);
       assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+      assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
     }
     const zeroStep = cases.length;
     const zero = byKey.get(sampleKeyOf(SESSION_ID, 1, zeroStep));
-    assert.equal(zero.outputTokens, 7, "known reasoning=0 ⇒ N=8，B=1 后为 7");
+    assert.equal(zero.outputTokens, null);
+    assert.equal(zero.durationMs, null);
     assert.equal(rawByKey.get(identityKey(1, zeroStep)).reportedReasoningTokens, 0);
     for (const [step, stream] of streams) {
-      assert.equal(rawByKey.get(identityKey(1, step)).durationMs, 10);
+      const raw = rawByKey.get(identityKey(1, step));
+      assert.equal(raw.durationMs, null);
+      assert.equal(raw.windowEndMs - raw.windowStartMs, 10, "接收边界只保留为诊断差值");
       assert.ok(stream.length > 0);
     }
   } finally {
@@ -1415,7 +1426,7 @@ test("reasoning 缺/null/非整数/负数/超 output 均为 unknown；known 0 �
   }
 });
 
-test("N-B<=0 不把 0/负分子写成样本：N=1 与 N=0 都保持 MISSING_OUTPUT", async () => {
+test("N-B 算术不再制造样本：真实 0 输出与已知小分子都保持缺失并保留原始计数", async () => {
   const stream1 = [textChunks(T0 + 1000, ["a", "b"], [10])];
   const stream2 = [textChunks(T0 + 2000, ["a", "b"], [10])];
   const { dir, file } = writeLog([
@@ -1448,8 +1459,9 @@ test("N-B<=0 不把 0/负分子写成样本：N=1 与 N=0 都保持 MISSING_OUTP
     assert.equal(samples.length, 2);
     for (const sample of samples) {
       assert.equal(sample.outputTokens, null);
-      assert.equal(sample.durationMs, 10);
+      assert.equal(sample.durationMs, null);
       assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+      assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
       assert.ok(!flagsOf(sample).includes("OUTPUT_ZERO"));
     }
   } finally {
@@ -1500,16 +1512,16 @@ test("空串不设边界，真实空白设边界；tool name 元数据与空 arg
     const whitespaceText = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
     assert.equal(whitespaceText.windowStartMs, T0 + 1005);
     assert.equal(whitespaceText.windowEndMs, T0 + 1010);
-    assert.equal(whitespaceText.durationMs, 5);
+    assert.equal(whitespaceText.durationMs, null);
 
     const nameMetadata = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
     assert.equal(nameMetadata.windowStartMs, T0 + 1020, "tool name 不能成为更早边界");
     assert.equal(nameMetadata.windowEndMs, T0 + 1030);
-    assert.equal(nameMetadata.durationMs, 10);
+    assert.equal(nameMetadata.durationMs, null);
 
     const whitespaceTool = byKey.get(sampleKeyOf(SESSION_ID, 1, 3));
     assert.equal(whitespaceTool.windowEndMs, T0 + 1100, "空白 args 有效，随后空 args 无效");
-    assert.equal(whitespaceTool.durationMs, 60);
+    assert.equal(whitespaceTool.durationMs, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1541,7 +1553,8 @@ test("多个 packed run 按各自 time0+累计 dt 重建，usage/finish chunk �
     assert.equal(samples.length, 1);
     assert.equal(samples[0].windowStartMs, T0 + 1010);
     assert.equal(samples[0].windowEndMs, T0 + 1400);
-    assert.equal(samples[0].durationMs, 390);
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(samples[0].outputTokens, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1581,7 +1594,7 @@ test("reasoning 完全位于正文前/后可排除；穿插在两个有效输出
     const { samples } = await readLog(file);
     const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
     const separated = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
-    assert.equal(separated.durationMs, 20);
+    assert.equal(separated.durationMs, null);
     assert.equal(separated.windowStartMs, T0 + 1000);
     assert.equal(separated.windowEndMs, T0 + 1020);
 
@@ -1645,11 +1658,12 @@ test("失败 assistant/attempt 与另一条 message 的 stream 不得补成功 m
     ],
   ]);
   try {
-    const { samples } = await readLog(repaired.file);
+    const { samples, rawSamples } = await readLogWithRaw(repaired.file);
     const byKey = new Map(samples.map((sample) => [sample.sampleKey, sample]));
     const failedIgnored = byKey.get(sampleKeyOf(SESSION_ID, 1, 1));
     assert.equal(failedIgnored.durationMs, null);
-    assert.equal(failedIgnored.outputTokens, 7, "失败 attempt 不影响成功 message 的 N");
+    assert.equal(failedIgnored.outputTokens, null);
+    assert.equal(rawByIdentity(rawSamples).get(identityKey(1, 1)).reportedOutputTokens, 10);
     const noCrossJoin = byKey.get(sampleKeyOf(SESSION_ID, 1, 2));
     assert.equal(noCrossJoin.durationMs, null, "首条成功 message 只有一个边界");
     assert.ok(flagsOf(noCrossJoin).includes("RECORD_CONFLICT"));
@@ -1699,7 +1713,9 @@ test("packed dt 长度/索引/回退时间非法时 D unknown；step 时长仍�
     const { samples, rawSamples } = await readLogWithRaw(file);
     for (const sample of samples) {
       assert.equal(sample.durationMs, null);
-      assert.equal(sample.outputTokens, 7, "非法 D 不污染同一 message 的 known N");
+      assert.equal(sample.outputTokens, null);
+      assert.ok(flagsOf(sample).includes("MISSING_OUTPUT"));
+      assert.ok(flagsOf(sample).includes("MISSING_DURATION"));
     }
     for (const raw of rawSamples) {
       assert.ok(raw.reportedDurationMs > 0, "step 差值只留在诊断字段");

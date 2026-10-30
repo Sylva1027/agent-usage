@@ -11485,7 +11485,7 @@ export class UsageStore {
       excludedHomeIds: perfExclusions,
       knownSources: perfCarrier.knownSources,
       meta: {
-        methodVersion: perfState.methodVersion,
+        methodVersion: PERF_METHOD_VERSION,
         state: perfState.state,
         indexVersion: perfState.indexVersion ?? null,
         indexedAt: perfState.indexedAt ?? null,
@@ -11496,7 +11496,7 @@ export class UsageStore {
     return {
       state: perfState.state,
       ready: perfState.state === PERF_STATE_READY,
-      methodVersion: perfState.methodVersion,
+      methodVersion: PERF_METHOD_VERSION,
       indexVersion: perfState.indexVersion,
       indexedAt: perfState.indexedAt,
       degradedHomeIds: perfState.degradedHomeIds,

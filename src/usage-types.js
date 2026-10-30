@@ -314,8 +314,8 @@
  * accepts only the eight codes frozen by plan §3:83; ruling Q keeps the M1
  * normalization warning codes out of this shape.
  * @typedef {object} PerfSummaryMeta
- * @property {string} methodVersion Defaults to `tps-v4`. Historical `tps-v1` / `tps-v2` / `tps-v3`
- *   samples remain diagnostic and are never rank-admitted.
+ * @property {string} methodVersion Defaults to `tps-v5`. Retired native windows and E2E methods
+ *   remain readable as historical evidence; compatible generation samples retain their version.
  * @property {"rebuilding" | "ready" | "degraded"} state
  * @property {string | null} indexVersion Fingerprint of the published sources.
  * @property {string | null} indexedAt Build timestamp; may legitimately differ between

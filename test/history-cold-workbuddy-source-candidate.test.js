@@ -123,6 +123,7 @@ test("cold WorkBuddy duration observations survive in an archive candidate", asy
       );
     }
     assert.equal(sourceBefore.perfSamples.length, 1, "conflicting durations must retain one attributable model row");
+    assert.equal(sourceBefore.perfSamples[0].output_tokens, null);
     assert.equal(sourceBefore.perfSamples[0].duration_ms, null);
     assert.equal(sourceBefore.perfSamples[0].timing_kind, "generation");
     assert.equal(sourceBefore.perfSamples[0].timing_source, "unknown");

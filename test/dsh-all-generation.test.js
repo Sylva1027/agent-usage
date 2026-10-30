@@ -232,7 +232,7 @@ function flagsOf(sample) {
   return perfFlagNamesOf(sample.sampleFlags);
 }
 
-test("official providers use all_generated_output with N-1 and one full reasoning/text/tool window", async () => {
+test("official providers keep all_generated_output scope and receive diagnostics without publishing generation TPS", async () => {
   const accountStream = successfulStream(
     [
       reasoningChunks(T0 + 1_100, ["reason"], []),
@@ -272,26 +272,29 @@ test("official providers use all_generated_output with N-1 and one full reasonin
     assert.equal(account.reasoningEffort, "max");
     assert.equal(account.methodVersion, PERF_METHOD_VERSION);
     assert.equal(account.tokenScope, "all_generated_output");
-    assert.equal(account.outputTokens, 11);
-    assert.equal(account.durationMs, 100);
+    assert.equal(account.outputTokens, null);
+    assert.equal(account.durationMs, null);
     assert.equal(account.windowStartMs, T0 + 1_100);
     assert.equal(account.windowEndMs, T0 + 1_200);
-    assert.equal(account.timingSource, "explicit");
+    assert.equal(account.timingSource, "unknown");
+    assert.ok(flagsOf(account).includes("MISSING_OUTPUT"));
+    assert.ok(flagsOf(account).includes("MISSING_DURATION"));
 
     const official = samplesByKey.get(sampleKeyOf(2, 1));
     assert.equal(official.modelProvider, "deepseek-official");
     assert.equal(official.tokenScope, "all_generated_output");
-    assert.equal(official.outputTokens, 7);
-    assert.equal(official.durationMs, 60);
+    assert.equal(official.outputTokens, null);
+    assert.equal(official.durationMs, null);
     assert.equal(official.windowStartMs, T0 + 2_100);
     assert.equal(official.windowEndMs, T0 + 2_160);
+    assert.equal(official.timingSource, "unknown");
     assert.equal(official.status, "completed");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("a completed message stream samples without step/end or tool completion", async () => {
+test("a completed message stream remains visible without step/end but does not publish TPS", async () => {
   const records = [reasoningChunks(T0 + 1_100, ["reason"], []), textChunks(T0 + 1_150, ["answer"], [])];
   const { dir, file } = writeLog([
     [sessionRow()],
@@ -324,12 +327,14 @@ test("a completed message stream samples without step/end or tool completion", a
   try {
     const { samples, warnings } = await readLog(file);
     assert.deepEqual(warnings, []);
-    assert.equal(samples.length, 2, "two completed model responses remain independently sampleable");
+    assert.equal(samples.length, 2, "two completed model responses remain independently visible candidates");
     const samplesByKey = byKey(samples);
     const account = samplesByKey.get(sampleKeyOf(1, 1));
     assert.equal(account.status, "completed", "stream finish completes the model response without step/end");
-    assert.equal(account.outputTokens, 9);
-    assert.equal(account.durationMs, 50);
+    assert.equal(account.outputTokens, null);
+    assert.equal(account.durationMs, null);
+    assert.equal(account.windowStartMs, T0 + 1_100);
+    assert.equal(account.windowEndMs, T0 + 1_150);
     assert.equal(account.modelEvidence, "message_source");
 
     const official = samplesByKey.get(sampleKeyOf(2, 1));
@@ -340,14 +345,14 @@ test("a completed message stream samples without step/end or tool completion", a
       "max",
       "latest header effort remains the fixed scope across a headerless turn",
     );
-    assert.equal(official.outputTokens, 7);
-    assert.equal(official.durationMs, 50);
+    assert.equal(official.outputTokens, null);
+    assert.equal(official.durationMs, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("future explicit reasoning detail cannot switch an official provider to another scope or duplicate it", async () => {
+test("future explicit reasoning detail cannot switch an official provider to another scope or create a TPS sample", async () => {
   const stream = successfulStream(
     [reasoningChunks(T0 + 1_100, ["reason"], []), textChunks(T0 + 1_150, ["answer"], [])],
     10,
@@ -365,14 +370,17 @@ test("future explicit reasoning detail cannot switch an official provider to ano
     const { samples } = await readLog(file);
     assert.equal(samples.length, 1, "one response must produce one sample");
     assert.equal(samples[0].tokenScope, "all_generated_output");
-    assert.equal(samples[0].outputTokens, 9, "official N stays total output minus B=1");
-    assert.equal(samples[0].durationMs, 50);
+    assert.equal(samples[0].outputTokens, null);
+    assert.equal(samples[0].durationMs, null);
+    assert.equal(samples[0].timingSource, "unknown");
+    assert.ok(flagsOf(samples[0]).includes("MISSING_OUTPUT"));
+    assert.ok(flagsOf(samples[0]).includes("MISSING_DURATION"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("non-official providers keep the explicit non-reasoning path and never guess total output", async () => {
+test("non-official providers keep the non-reasoning scope and never derive a generation sample", async () => {
   const knownStream = successfulStream(
     [
       reasoningChunks(T0 + 1_100, ["reason"], []),
@@ -419,13 +427,17 @@ test("non-official providers keep the explicit non-reasoning path and never gues
     const samplesByKey = byKey(samples);
     const known = samplesByKey.get(sampleKeyOf(1, 1));
     assert.equal(known.tokenScope, "non_reasoning_output");
-    assert.equal(known.outputTokens, 7, "known split: 12-4-1");
-    assert.equal(known.durationMs, 50, "known split uses the text/tool non-reasoning window");
+    assert.equal(known.outputTokens, null);
+    assert.equal(known.durationMs, null);
+    assert.equal(known.windowStartMs, T0 + 1_150);
+    assert.equal(known.windowEndMs, T0 + 1_200);
 
     const missing = samplesByKey.get(sampleKeyOf(1, 2));
     assert.equal(missing.tokenScope, "non_reasoning_output");
     assert.equal(missing.outputTokens, null, "missing reasoning detail is not replaced by total output");
-    assert.equal(missing.durationMs, 100);
+    assert.equal(missing.durationMs, null);
+    assert.equal(missing.windowStartMs, T0 + 2_200);
+    assert.equal(missing.windowEndMs, T0 + 2_300);
     assert.ok(flagsOf(missing).includes("MISSING_OUTPUT"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -441,7 +453,8 @@ test("official success requires one parity usage and a successful final finish",
   assert.equal(success.streamValid, true);
   assert.equal(success.successful, true);
   assert.equal(success.usageParity, true);
-  assert.equal(success.allGenerationSampleOutputTokens, 9);
+  assert.equal(success.outputTokens, 10);
+  assert.equal(success.allGenerationSampleOutputTokens, null);
   assert.equal(success.allGenerationDurationMs, 50);
 
   const mismatch = inspectDshAssistantGeneration({
@@ -470,7 +483,7 @@ test("official success requires one parity usage and a successful final finish",
   assert.equal(duplicateUsage.successful, false);
 });
 
-test("normalized official candidates preserve usage diagnostics but omit N/D on mismatch or missing usage", async () => {
+test("normalized official candidates preserve usage diagnostics while every candidate omits generation N/D", async () => {
   const records = [reasoningChunks(T0 + 1_100, ["reason"], []), textChunks(T0 + 1_150, ["answer"], [])];
   const { dir, file } = writeLog([
     [sessionRow()],
@@ -537,9 +550,11 @@ test("normalized official candidates preserve usage diagnostics but omit N/D on 
     assert.equal(missingRaw.usageParity, false);
 
     const maxTokens = samplesByKey.get(sampleKeyOf(1, 3));
-    assert.equal(maxTokens.outputTokens, 5);
-    assert.equal(maxTokens.durationMs, 50);
+    assert.equal(maxTokens.outputTokens, null);
+    assert.equal(maxTokens.durationMs, null);
     assert.equal(maxTokens.status, "completed");
+    assert.ok(flagsOf(maxTokens).includes("MISSING_OUTPUT"));
+    assert.ok(flagsOf(maxTokens).includes("MISSING_DURATION"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -616,7 +631,7 @@ test("every packed member and ordinary chunk participates in monotonic safe-inte
   }
 });
 
-test("tool metadata is not a boundary, whitespace is real output, and one delta cannot form D", () => {
+test("receive boundaries are diagnostics: tool metadata cannot anchor generation and a wide first batch cannot supply an offset", () => {
   const metadata = inspectDshAssistantGeneration({
     usage: { outputTokens: 6 },
     stream: successfulStream(
@@ -637,6 +652,21 @@ test("tool metadata is not a boundary, whitespace is real output, and one delta 
   assert.equal(metadata.allGenerationWindowStartMs, T0 + 1_150);
   assert.equal(metadata.allGenerationWindowEndMs, T0 + 1_170);
   assert.equal(metadata.allGenerationDurationMs, 20);
+  assert.equal(metadata.allGenerationSampleOutputTokens, null);
+
+  const wideFirstBatch = inspectDshAssistantGeneration({
+    usage: { outputTokens: 10 },
+    stream: successfulStream([textChunks(T0 + 1_200, ["several tokens in one batch", "later"], [70])], 10),
+  });
+  assert.equal(wideFirstBatch.successful, true);
+  assert.equal(wideFirstBatch.allGenerationWindowStartMs, T0 + 1_200);
+  assert.equal(wideFirstBatch.allGenerationWindowEndMs, T0 + 1_270);
+  assert.equal(wideFirstBatch.allGenerationDurationMs, 70);
+  assert.equal(
+    wideFirstBatch.allGenerationSampleOutputTokens,
+    null,
+    "delta count is not a token offset, so a multi-token first receive batch cannot become a TPS sample",
+  );
 
   const oneDelta = inspectDshAssistantGeneration({
     usage: { outputTokens: 4 },

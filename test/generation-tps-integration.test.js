@@ -88,7 +88,7 @@ test("explicit evidence samples responses independently and upgrades without cha
       return original.apply(this, args);
     };
     const before = await store.summarize(FILTERS);
-    assert.equal(before.perf.meta.methodVersion, "tps-v4");
+    assert.equal(before.perf.meta.methodVersion, "tps-v5");
     assert.equal(before.perf.models[0].n, 8);
     assert.equal(before.perf.models[0].averageTps, 79);
     assert.equal(before.perf.coverage.eligible, 10);

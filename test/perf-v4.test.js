@@ -27,7 +27,7 @@ function sample(overrides = {}) {
   return result;
 }
 
-test("v4 displays complete DSH generation while ranking only the non-reasoning phase", () => {
+test("explicit provider generation preserves the declared DSH token scope", () => {
   const dsh = sample({
     sourceKind: "dsh",
     modelProvider: "deepseek-account",
@@ -36,7 +36,7 @@ test("v4 displays complete DSH generation while ranking only the non-reasoning p
   });
   assert.deepEqual(dsh.warnings, []);
   const result = summarizePerf([sample().sample, dsh.sample], { meta: { minSamples: 1 } });
-  assert.equal(result.meta.methodVersion, "tps-v4");
+  assert.equal(result.meta.methodVersion, "tps-v5");
   assert.equal(result.coverage.sampled, 2);
   const total = result.models.find((row) => row.sourceKind === "dsh");
   assert.equal(total.averageTps, 199);
@@ -57,7 +57,7 @@ test("an unreviewed provider cannot claim DSH all-generation semantics", () => {
 });
 
 test("v3 generation remains readable and measurable without changing the stored method", () => {
-  for (const sourceKind of ["codex", "workbuddy", "opencode", "zcode", "claude"]) {
+  for (const sourceKind of ["codex", "opencode", "zcode", "claude"]) {
     const old = sample({ sourceKind, methodVersion: "tps-v3" });
     assert.deepEqual(old.warnings, []);
     const result = summarizePerf([old.sample], { meta: { minSamples: 1 } });
@@ -66,6 +66,81 @@ test("v3 generation remains readable and measurable without changing the stored 
     assert.equal(old.sample.methodVersion, "tps-v3");
     assert.equal(result.meta.methodVersion, PERF_METHOD_VERSION);
     assert.equal(summarizePerf([old.sample, sample({ sourceKind }).sample]).models[0].n, 1);
+  }
+});
+
+test("retired native windows retain model identity and never conflict with a current replacement", () => {
+  for (const [sourceKind, methodVersion] of [
+    ["codex", "tps-v4"],
+    ["workbuddy", "tps-v3"],
+    ["workbuddy", "tps-v4"],
+    ["dsh", "tps-v3"],
+    ["dsh", "tps-v4"],
+  ]) {
+    const scope =
+      sourceKind === "dsh" ? { modelProvider: "deepseek-official", tokenScope: "all_generated_output" } : {};
+    const old = sample({
+      sourceKind,
+      methodVersion,
+      outputTokens: 278,
+      durationMs: 6,
+      ...(methodVersion === "tps-v4" ? scope : {}),
+    });
+    assert.deepEqual(old.warnings, []);
+    const legacy = summarizePerf([old.sample]);
+    assert.equal(legacy.coverage.sampled, 0);
+    assert.equal(legacy.models[0].averageTps, null);
+    assert.equal(legacy.models[0].state, "missing_duration");
+    assert.equal(legacy.models[0].candidateCount, 1);
+    for (const replacement of [
+      sample({ sourceKind, ...scope }),
+      sample({ sourceKind, ...scope, outputTokens: null, durationMs: null }),
+    ]) {
+      for (const rows of [
+        [old.sample, replacement.sample],
+        [replacement.sample, old.sample],
+      ]) {
+        const result = summarizePerf(rows);
+        const measured = replacement.sample.durationMs !== null;
+        assert.equal(result.models[0].averageTps, measured ? 99 : null);
+        assert.equal(result.models[0].n, measured ? 1 : 0);
+        assert.equal(result.coverage.sampled, measured ? 1 : 0);
+      }
+    }
+    assert.equal(old.sample.methodVersion, methodVersion);
+  }
+});
+
+test("retired Codex windows do not inflate current timing coverage", () => {
+  const old = sample({
+    sourceKind: "codex",
+    methodVersion: "tps-v4",
+    identity: ["session", "old"],
+    outputTokens: 278,
+    durationMs: 6,
+  });
+  const current = sample({ sourceKind: "codex", identity: ["session", "current"] });
+  const options = { knownSources: [{ kind: "codex", homeId: "local" }] };
+  const retired = summarizePerf([old.sample], options).codexTimingCoverage;
+  assert.equal(retired.counts.eligible, 0);
+  assert.equal(retired.recordedOutputTokens, 0);
+  const mixed = summarizePerf([old.sample, current.sample], options).codexTimingCoverage;
+  assert.equal(mixed.counts.eligible, 1);
+  assert.equal(mixed.recordedOutputTokens, 99);
+  assert.equal(mixed.sampledOutputTokens, 99);
+});
+
+test("v4 generation from other sources retains its measured scope", () => {
+  for (const sourceKind of ["opencode", "zcode", "claude"]) {
+    const old = sample({
+      sourceKind,
+      methodVersion: "tps-v4",
+    });
+    assert.deepEqual(old.warnings, []);
+    const result = summarizePerf([old.sample]);
+    assert.equal(result.models[0].averageTps, 99);
+    assert.equal(result.models[0].n, 1);
+    assert.equal(old.sample.methodVersion, "tps-v4");
   }
 });
 

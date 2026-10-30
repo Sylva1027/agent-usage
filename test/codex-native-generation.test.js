@@ -11,22 +11,24 @@ import { UsageStore } from "../src/usage-store.js";
 
 const DATE = "2026-10-29T02:00:00.000Z";
 const FILTERS = { preset: "all", now: new Date(DATE), calendarZone: "utc" };
-const native = {
-  schema_version: 1,
+const nativeGeneration = {
+  schema_version: 2,
   first_output_ms: 125,
   last_output_ms: 145,
   observed_duration_ms: 20,
   output_tokens: 2,
   start_output_tokens: 1,
+  first_output_read_id: 1,
+  last_output_read_id: 2,
 };
-const row = (id, generation = native) => ({
+const row = (id, generation = nativeGeneration, usage = {}) => ({
   type: "token_usage_record",
   timestamp: DATE,
   payload: {
     thread_id: "thread",
     turn_id: "turn",
     response_id: id,
-    usage: { output_tokens: 3, reasoning_output_tokens: 1 },
+    usage: { output_tokens: 3, reasoning_output_tokens: 1, ...usage },
     generation_timing: generation,
   },
 });
@@ -35,6 +37,65 @@ const headers = [
   { type: "turn_context", payload: { thread_id: "thread", turn_id: "turn", model: "model-a", effort: "high" } },
 ];
 const lines = (rows) => `${rows.map((value) => JSON.stringify(value)).join("\n")}\n`;
+const timing = (responseId, overrides = {}) => ({
+  schemaVersion: 2,
+  evidenceOrigin: "fixture.provider-duration.v1",
+  responseId,
+  requestedModel: "model-a",
+  reportedOutputTokens: 3,
+  durationMs: 2000,
+  status: "completed",
+  completedAtMs: null,
+  generation: {
+    outputTokens: 2,
+    durationMs: 1000,
+    startOutputTokens: 0,
+    timingKind: "explicit",
+  },
+  ...overrides,
+});
+
+function storeOptions(root, home) {
+  return {
+    homeDir: root,
+    env: {},
+    automaticDiscoveryEnabled: false,
+    importDirs: [],
+    databaseFile: path.join(root, "usage.sqlite"),
+    extraHomes: home,
+  };
+}
+
+function importTimings(store, homeId, records) {
+  return store.importRequestTimingEvidence({
+    homeId,
+    records,
+    reviewedOrigins: ["fixture.provider-duration.v1"],
+  });
+}
+
+function assertUntimedCandidate(value, reportedOutputTokens = 3, reasoningOutputTokens = 1) {
+  assert.equal(value.outputTokens, null);
+  assert.equal(value.durationMs, null);
+  assert.equal(value.reportedDurationMs, null);
+  assert.equal(value.timingSource, "unknown");
+  assert.equal(value.generation, null);
+  assert.equal(value.reportedOutputTokens, reportedOutputTokens);
+  assert.equal(value.reasoningOutputTokens, reasoningOutputTokens);
+  assert.equal(value.reasoningOutputTokensKnown, true);
+  assert.equal(value.model, "model-a");
+  assert.equal(value.reasoningEffort, "high");
+  assert.ok(value.sampleFlags.includes("MISSING_DURATION"));
+}
+
+function assertNoPublishedTps(summary, candidateCount = 1) {
+  assert.equal(summary.perf.meta.methodVersion, "tps-v5");
+  assert.equal(summary.perf.models.length, 1);
+  assert.equal(summary.perf.models[0].candidateCount, candidateCount);
+  assert.equal(summary.perf.models[0].n, 0);
+  assert.equal(summary.perf.models[0].averageTps, null);
+}
+
 async function fixture(run) {
   const root = await mkdtemp(path.join(tmpdir(), "native-generation-"));
   const home = path.join(root, "codex");
@@ -46,103 +107,242 @@ async function fixture(run) {
     await rm(root, { recursive: true, force: true });
   }
 }
+
 async function candidates(file) {
   const projected = await readCodexRolloutMetadata(file);
   const folded = foldCodexRolloutMetadata("home", [projected]);
   return { projected, values: buildCodexResponseCandidates("home", folded, [file]).candidates };
 }
 
-test("native summary produces generation speed without a timing lookup or complete turn", async () => {
+test("schema 1 and 2 clocks never create TPS while raw usage and model identity remain", async () => {
   await fixture(async ({ file }) => {
-    const source = row("native");
-    source.payload.generation_timing = { ...native, body: "BODY_MUST_NOT_LEAK" };
-    await writeFile(file, lines([...headers, source, row("missing", null)]));
+    const schema1 = { ...nativeGeneration, schema_version: 1 };
+    delete schema1.first_output_read_id;
+    delete schema1.last_output_read_id;
+    const cases = [
+      { id: "schema1-20ms", generation: schema1, outputTokens: 3, reasoningOutputTokens: 1 },
+      {
+        id: "schema2-20ms",
+        generation: { ...nativeGeneration, body: "BODY_MUST_NOT_LEAK" },
+        outputTokens: 3,
+        reasoningOutputTokens: 1,
+      },
+      {
+        id: "schema2-1ms",
+        generation: { ...nativeGeneration, last_output_ms: 126, observed_duration_ms: 1 },
+        outputTokens: 3,
+        reasoningOutputTokens: 1,
+      },
+      {
+        id: "schema2-10s",
+        generation: { ...nativeGeneration, last_output_ms: 10_125, observed_duration_ms: 10_000 },
+        outputTokens: 3,
+        reasoningOutputTokens: 1,
+      },
+      {
+        id: "schema2-first-batch-900-total-1100",
+        generation: {
+          ...nativeGeneration,
+          first_output_ms: 125,
+          last_output_ms: 334,
+          observed_duration_ms: 209,
+          output_tokens: 1100,
+          start_output_tokens: 900,
+        },
+        outputTokens: 1100,
+        reasoningOutputTokens: 0,
+      },
+    ];
+    await writeFile(
+      file,
+      lines([
+        ...headers,
+        ...cases.map(({ id, generation, outputTokens, reasoningOutputTokens }) =>
+          row(id, generation, {
+            output_tokens: outputTokens,
+            reasoning_output_tokens: reasoningOutputTokens,
+          }),
+        ),
+        row("missing", null),
+      ]),
+    );
     const { projected, values } = await candidates(file);
     assert.equal(JSON.stringify(projected).includes("BODY_MUST_NOT_LEAK"), false);
-    assert.equal(values.length, 2);
-    assert.equal(values[0].outputTokens, 1);
-    assert.equal(values[0].durationMs, 20);
-    assert.equal(values[0].reportedDurationMs, null);
-    assert.equal(values[0].generation.timingKind, "first_last_output");
-    assert.equal(values[1].durationMs, null);
+    assert.equal(values.length, cases.length + 1);
+    for (const expected of cases) {
+      assertUntimedCandidate(
+        values.find((value) => value.responseId === expected.id),
+        expected.outputTokens,
+        expected.reasoningOutputTokens,
+      );
+    }
+    assertUntimedCandidate(values.find((value) => value.responseId === "missing"));
   });
 });
 
-test("invalid native boundaries and unknown counts preserve usage but produce no speed", async () => {
-  await fixture(async ({ file }) => {
-    const variations = [
-      { ...native, schema_version: 2 },
-      { ...native, observed_duration_ms: 21 },
-      { ...native, first_output_ms: 145 },
-      { ...native, last_output_ms: 120 },
-      { ...native, output_tokens: 3 },
-      { ...native, start_output_tokens: 0 },
-      { ...native, first_output_ms: 1.1 },
-      { ...native, observed_duration_ms: 0 },
-    ];
-    const unknown = row("unknown");
-    delete unknown.payload.usage.reasoning_output_tokens;
-    await writeFile(file, lines([...headers, ...variations.map((value, i) => row(`invalid-${i}`, value)), unknown]));
-    const { values } = await candidates(file);
-    assert.equal(values.length, variations.length + 1);
-    assert.ok(values.every((value) => value.durationMs === null && value.reportedOutputTokens === 3));
+test("persisted v4 278/6ms and late schema2 appends remain unmeasurable without changing usage", async () => {
+  await fixture(async ({ root, home, file }) => {
+    const oldTiming = {
+      schema_version: 1,
+      first_output_ms: 8358,
+      last_output_ms: 8364,
+      observed_duration_ms: 6,
+      output_tokens: 279,
+      start_output_tokens: 1,
+    };
+    const oldRow = row("old-clock", oldTiming, { output_tokens: 280, reasoning_output_tokens: 1 });
+    const usage = {
+      type: "event_msg",
+      timestamp: DATE,
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 100,
+            cached_input_tokens: 0,
+            output_tokens: 280,
+            reasoning_output_tokens: 1,
+            total_tokens: 380,
+          },
+        },
+      },
+    };
+    await writeFile(file, lines([...headers, oldRow, usage]));
+    const options = storeOptions(root, home);
+    const store = new UsageStore(options);
+    try {
+      await store.sync();
+      const before = await store.summarize(FILTERS);
+      assert.equal(before.totals.total, 380);
+      assertNoPublishedTps(before);
+
+      store.database.exec(
+        "UPDATE perf_samples SET method_version = 'tps-v4', output_tokens = 278, duration_ms = 6, sample_flags = 0, diagnostic_reason = '';",
+      );
+      store.writeMeta("perf_method_version", "tps-v4");
+      const stale = await store.summarize(FILTERS);
+      assertNoPublishedTps(stale);
+
+      await store.sync();
+      const rebuilt = await store.summarize(FILTERS);
+      assertNoPublishedTps(rebuilt);
+      assert.deepEqual(rebuilt.totals, before.totals);
+
+      await appendFile(
+        file,
+        lines([
+          row(
+            "old-clock",
+            {
+              ...nativeGeneration,
+              first_output_ms: 125,
+              last_output_ms: 1125,
+              observed_duration_ms: 1000,
+              output_tokens: 279,
+              start_output_tokens: 1,
+            },
+            { output_tokens: 280, reasoning_output_tokens: 1 },
+          ),
+        ]),
+      );
+      await store.sync();
+      const lateAppend = await store.summarize(FILTERS);
+      assertNoPublishedTps(lateAppend);
+      assert.deepEqual(lateAppend.totals, before.totals);
+    } finally {
+      store.close();
+    }
   });
 });
 
-test("duplicate summaries fold, conflicting windows affect only their response", async () => {
+test("untrusted clock duplicates do not conflict usage, while real usage conflicts stay isolated", async () => {
   await fixture(async ({ file }) => {
     await writeFile(
       file,
       lines([
         ...headers,
-        row("good"),
-        row("good"),
-        row("bad"),
-        row("bad", { ...native, last_output_ms: 155, observed_duration_ms: 30 }),
+        row("clock-only", nativeGeneration),
+        row("clock-only", {
+          ...nativeGeneration,
+          schema_version: 1,
+          last_output_ms: 10_125,
+          observed_duration_ms: 10_000,
+        }),
+        row("usage-conflict", nativeGeneration),
+        row("usage-conflict", nativeGeneration, { output_tokens: 4 }),
       ]),
     );
     const { values } = await candidates(file);
     assert.equal(values.length, 2);
-    assert.equal(values[0].durationMs, 20);
-    assert.equal(values[1].durationMs, null);
-    assert.ok(values[1].sampleFlags.includes("RECORD_CONFLICT"));
+
+    const clocks = values.find((value) => value.responseId === "clock-only");
+    assertUntimedCandidate(clocks);
+    assert.equal(clocks.sampleFlags.includes("RECORD_CONFLICT"), false);
+
+    const conflict = values.find((value) => value.responseId === "usage-conflict");
+    assert.equal(conflict.outputTokens, null);
+    assert.equal(conflict.durationMs, null);
+    assert.equal(conflict.reportedOutputTokens, null);
+    assert.equal(conflict.reasoningOutputTokens, 1);
+    assert.equal(conflict.model, "model-a");
+    assert.equal(conflict.reasoningEffort, "high");
+    assert.equal(conflict.generation, null);
+    assert.ok(conflict.sampleFlags.includes("RECORD_CONFLICT"));
   });
 });
 
-test("native evidence survives store reuse, late append and memory/store comparison", async () => {
+test("schema2 stays untimed across store reuse and late append while explicit evidence remains usable", async () => {
   await fixture(async ({ root, home, file }) => {
-    const options = {
-      homeDir: root,
-      env: {},
-      automaticDiscoveryEnabled: false,
-      importDirs: [],
-      databaseFile: path.join(root, "usage.sqlite"),
-      extraHomes: home,
-    };
-    await writeFile(file, lines([...headers, row("first"), row("late", null)]));
+    const options = storeOptions(root, home);
+    await writeFile(file, lines([...headers, row("first", null), row("late", null)]));
     const store = new UsageStore(options);
     try {
       await store.sync();
-      const before = await store.summarize(FILTERS);
-      assert.equal(before.perf.models[0].n, 1);
-      assert.equal(before.perf.models[0].averageTps, 50);
+      const initial = await store.summarize(FILTERS);
+      assertNoPublishedTps(initial, 2);
+      const homeId = store.homes.find((item) => item.path === home).id;
+
+      assert.equal(importTimings(store, homeId, [timing("first")]).changed, true);
+      await store.sync();
+      const oneTimed = await store.summarize(FILTERS);
+      assert.equal(oneTimed.perf.models[0].n, 1);
+      assert.equal(oneTimed.perf.models[0].averageTps, 2);
+      assert.deepEqual(oneTimed.totals, initial.totals);
+
       await appendFile(file, lines([row("late"), row("first")]));
+      await store.sync();
+      const lateSchema2 = await store.summarize(FILTERS);
+      assert.equal(lateSchema2.perf.models[0].n, 1);
+      assert.equal(lateSchema2.perf.models[0].averageTps, 2);
+      assert.deepEqual(lateSchema2.totals, initial.totals);
+
+      assert.equal(importTimings(store, homeId, [timing("late")]).changed, true);
       await store.sync();
       const after = await store.summarize(FILTERS);
       assert.equal(after.perf.models[0].n, 2);
-      assert.equal(after.perf.models[0].averageTps, 50);
-      assert.deepEqual(after.totals, before.totals);
-      const memory = summarizeUsage(await buildUsageReport(options), FILTERS);
+      assert.equal(after.perf.models[0].averageTps, 2);
+      assert.deepEqual(after.totals, initial.totals);
+
+      const memory = summarizeUsage(
+        await buildUsageReport({
+          ...options,
+          lookupRequestTiming: (query) => store.lookupRequestTiming(query),
+        }),
+        FILTERS,
+      );
       assert.deepEqual(memory.perf.models, after.perf.models);
       await store.sync();
       assert.deepEqual((await store.summarize(FILTERS)).perf.models, after.perf.models);
     } finally {
       store.close();
     }
+
     const reopened = new UsageStore(options);
     try {
       await reopened.sync();
-      assert.equal((await reopened.summarize(FILTERS)).perf.models[0].n, 2);
+      const afterReopen = await reopened.summarize(FILTERS);
+      assert.equal(afterReopen.perf.models[0].n, 2);
+      assert.equal(afterReopen.perf.models[0].averageTps, 2);
     } finally {
       reopened.close();
     }
@@ -150,22 +350,20 @@ test("native evidence survives store reuse, late append and memory/store compari
   });
 });
 
-test("source drift retains published generation TPS while fresh memory reads stay isolated", async () => {
+test("source drift retains published explicit timing while fresh memory reads stay isolated", async () => {
   await fixture(async ({ root, home, file }) => {
-    const options = {
-      homeDir: root,
-      env: {},
-      automaticDiscoveryEnabled: false,
-      importDirs: [],
-      databaseFile: path.join(root, "usage.sqlite"),
-      extraHomes: home,
-    };
-    await writeFile(file, lines([...headers, row("completed"), row("untimed", null)]));
+    const options = storeOptions(root, home);
+    await writeFile(file, lines([...headers, row("completed", null), row("untimed", null)]));
     const store = new UsageStore(options);
     try {
       await store.sync();
+      const homeId = store.homes.find((item) => item.path === home).id;
+      assert.equal(importTimings(store, homeId, [timing("completed")]).changed, true);
+      await store.sync();
       const before = await store.summarize(FILTERS);
-      const homeId = before.perf.groups[0].homeId;
+      assert.equal(before.perf.models[0].n, 1);
+      assert.equal(before.perf.models[0].averageTps, 2);
+
       const warnings = [{ sourceKind: "codex", homeId, code: "LIVE_SOURCE_CHANGED", count: 1 }];
       const policy = JSON.stringify({ revision: 2, partialHomes: [{ homeId, blockedThreadIds: ["thread"] }] });
       store.writeMeta("perf_state", "degraded");
@@ -174,10 +372,13 @@ test("source drift retains published generation TPS while fresh memory reads sta
       store.writeMeta("perf_source_warnings", JSON.stringify(warnings));
       const during = await store.summarize(FILTERS);
       assert.equal(during.perf.models[0].n, 1);
-      assert.equal(during.perf.models[0].averageTps, 50);
+      assert.equal(during.perf.models[0].averageTps, 2);
       assert.deepEqual(during.totals, before.totals);
 
-      const report = await buildUsageReport(options);
+      const report = await buildUsageReport({
+        ...options,
+        lookupRequestTiming: (query) => store.lookupRequestTiming(query),
+      });
       assert.deepEqual(summarizeUsage(report, FILTERS).perf.models, during.perf.models);
       Object.assign(report.perfMeta, {
         state: "degraded",

@@ -608,7 +608,7 @@ test("T2 emits one v3 candidate per response and only samples exact gateway gene
   assert.equal(sampled.window, "request");
   assert.equal(sampled.timingKind, "generation");
   assert.equal(sampled.tokenScope, "non_reasoning_output");
-  assert.equal(sampled.methodVersion, "tps-v4");
+  assert.equal(sampled.methodVersion, "tps-v5");
   assert.equal(missing.outputTokens, null);
   assert.equal(missing.durationMs, null);
   assert.equal(missing.requestCount, 1);
@@ -863,7 +863,7 @@ test("T2 keeps global response ownership conflicts and reads both legacy and v3 
     }),
     "Thread-A",
   );
-  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v5");
+  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v6");
 });
 
 test("M6.1 resolves no-thread records only from one file's unique session_meta and keeps same turn IDs in separate threads", async (t) => {
@@ -2313,7 +2313,7 @@ test("T2 forwards exact request generation through the thread builder", () => {
   assert.equal(sample.outputTokens, 39);
   assert.equal(sample.requestCount, 1);
   assert.equal(sample.timingSource, "explicit");
-  assert.equal(sample.methodVersion, "tps-v4");
+  assert.equal(sample.methodVersion, "tps-v5");
 });
 
 test("T2 full chain builds one v3 generation sample per fixture response", async () => {
@@ -2358,7 +2358,7 @@ test("T2 full chain builds one v3 generation sample per fixture response", async
         sample.window === "request" &&
         sample.timingKind === "generation" &&
         sample.tokenScope === "non_reasoning_output" &&
-        sample.methodVersion === "tps-v4" &&
+        sample.methodVersion === "tps-v5" &&
         sample.timingSource === "explicit" &&
         !perfFlagNamesOf(sample.sampleFlags).includes("MISSING_DURATION") &&
         !perfFlagNamesOf(sample.sampleFlags).includes("METHOD_ESTIMATE"),

@@ -95,13 +95,14 @@ function assertMissingGenerationCandidates(store, expectedCount) {
   assert.equal(samples.length, expectedCount);
   for (const sample of samples) {
     assert.equal(sample.duration_ms, null, "trace E2E 时长不得进入生成 TPS");
-    assert.equal(sample.output_tokens, 190, "原始 output 200 含 reasoning 10");
+    assert.equal(sample.output_tokens, null, "整批 output 没有首批 token offset");
+    assert.equal(sample.input_tokens, 1000);
     assert.equal(sample.request_count, 1);
     assert.equal(sample.window, "request");
     assert.equal(sample.timing_kind, "generation");
     assert.equal(sample.token_scope, "non_reasoning_output");
-    assert.equal(sample.method_version, "tps-v4");
-    assert.equal(sample.diagnostic_reason, "duration_missing");
+    assert.equal(sample.method_version, "tps-v5");
+    assert.equal(sample.diagnostic_reason, "output_missing");
     const identity = JSON.parse(sample.sample_key);
     assert.equal(identity.length, 3);
     assert.deepEqual(identity.slice(0, 2), ["workbuddy", sample.home_id]);
@@ -185,7 +186,7 @@ test("S1：目录不可读 ⇒ 进 failedHomes 且不抛", async () => {
   });
 });
 
-test("S2：全新库直接 v22 且旧时长表与 observation 表都存在", async () => {
+test("S2：全新库直接 v23 且旧时长表与 observation 表都存在", async () => {
   await withWorkspace(async ({ options, storeFile }) => {
     const store = await openStore(options.homeDir, storeFile);
     try {
@@ -200,7 +201,7 @@ test("S2：全新库直接 v22 且旧时长表与 observation 表都存在", asy
   });
 });
 
-test("S2：v16 真库升级到 v22，重复打开幂等", async () => {
+test("S2：v16 真库升级到 v23，重复打开幂等", async () => {
   await withWorkspace(async ({ options, storeFile }) => {
     const store = await openStore(options.homeDir, storeFile);
     store.close();

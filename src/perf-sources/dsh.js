@@ -2,8 +2,9 @@
  * DSH（DeepSeek Harness）生成 TPS 候选 reader（只读）。
  *
  * 读一个物理会话日志（`session.v4.jsonl.zstd`，多帧拼接），按稳定的
- * `(sessionId,turn,step)` 输出可归属模型的候选。只有成功 message 自身的 usage 与 stream
- * 同时闭合时才提供生成 N/D；任一未知都保留候选但不出 TPS。解压、坏帧告警与 v4 守护复用
+ * `(sessionId,turn,step)` 输出可归属模型的候选。成功 message 自身的 usage 与 stream
+ * 可证明用量闭合、状态与接收时钟；DSH 未提供精确的生成 token offset 和生成时段，因此
+ * 当前候选不提供生成 N/D，也不从首末接收批次推导 TPS。解压、坏帧告警与 v4 守护复用
  * `readDshSessionRows()`。
  *
  * 投影**只访问**：
@@ -51,7 +52,6 @@ const MALFORMED_JSON_PREFIX = /^MALFORMED_JSON:(\d+)\b/;
 /** 步骤结束帧的判别式字面量（裁定 G：只据它做归属与帧序判定，不读其载荷）。 */
 const STEP_END_TYPE = "step/end";
 const RETRY_STARTED_TYPE = "llm/retry-started";
-const FIRST_OUTPUT_TOKEN_COUNT = 1;
 const SUCCESS_FINISH_KINDS = new Set(["stop", "tool-calls", "max-tokens"]);
 const GENERATION_BLOCK_TYPES = new Set(["reasoning", "text", "tool-call"]);
 const DSH_ALL_GENERATION_PROVIDERS = new Set(["deepseek-account", "deepseek-official"]);
@@ -140,10 +140,9 @@ export function inspectDshAssistantGeneration(data) {
       ? reportedReasoningTokens
       : null;
   const nonReasoningTokens = outputTokens !== null && reasoningTokens !== null ? outputTokens - reasoningTokens : null;
-  const sampleOutputTokens =
-    nonReasoningTokens !== null && nonReasoningTokens - FIRST_OUTPUT_TOKEN_COUNT > 0
-      ? nonReasoningTokens - FIRST_OUTPUT_TOKEN_COUNT
-      : null;
+  // The stream has receive timestamps but no token offset at its first received batch.
+  // Consequently there is no exact generation numerator even when usage is fully known.
+  const sampleOutputTokens = null;
 
   const emptyTiming = (state) => ({
     state,
@@ -427,10 +426,7 @@ export function inspectDshAssistantGeneration(data) {
     nonReasoningTiming = emptyTiming("no_output");
   }
 
-  const allGenerationSampleOutputTokens =
-    successful && outputTokens !== null && outputTokens - FIRST_OUTPUT_TOKEN_COUNT > 0
-      ? outputTokens - FIRST_OUTPUT_TOKEN_COUNT
-      : null;
+  const allGenerationSampleOutputTokens = null;
   if (!successful) {
     allGenerationTiming = emptyTiming(
       allGenerationTiming.state === "invalid_stream" ? "invalid_stream" : "not_successful",
@@ -645,24 +641,16 @@ async function emitGroup(group, session, onSample, addWarning) {
   const effortConflict = effortValues.size > 1;
   const generationConflict = recordConflict || modelAmbiguous || effortConflict;
 
-  // Step/retry duration is diagnostics only. Generation D comes from the selected
-  // message's own stream; usage and stream are never joined across messages.
+  // Step/retry duration and stream receive boundaries are diagnostics only. They do not
+  // prove the generation interval, so no sample numerator or denominator is admitted.
   const startTime = start ? finiteNumber(start.time) : null;
   const messageTime = finiteNumber(message.time);
   const unitsComparable = isEpochMsUnit(startTime) && isEpochMsUnit(messageTime);
   const reportedDurationMs =
     start && unitsComparable && startTime !== null && messageTime !== null ? messageTime - startTime : null;
   const officialAllGeneration = DSH_ALL_GENERATION_PROVIDERS.has(scope?.provider ?? "");
-  const generationOutputTokens = generationConflict
-    ? null
-    : officialAllGeneration
-      ? message.generation.allGenerationSampleOutputTokens
-      : message.generation.sampleOutputTokens;
-  const generationDurationMs = generationConflict
-    ? null
-    : officialAllGeneration
-      ? message.generation.allGenerationDurationMs
-      : message.generation.durationMs;
+  const generationOutputTokens = null;
+  const generationDurationMs = null;
   const generationWindowStartMs = generationConflict
     ? null
     : officialAllGeneration
@@ -710,7 +698,7 @@ async function emitGroup(group, session, onSample, addWarning) {
     window: "request",
     timingKind: "generation",
     tokenScope: officialAllGeneration ? "all_generated_output" : "non_reasoning_output",
-    timingSource: generationDurationMs !== null ? "explicit" : "unknown",
+    timingSource: "unknown",
     tsMs: message.time,
     windowStartMs: generationWindowStartMs,
     windowEndMs: generationWindowEndMs,

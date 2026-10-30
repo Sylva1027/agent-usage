@@ -9,7 +9,6 @@
  */
 import { readRolloutLines } from "../codex-rollout.js";
 import path from "node:path";
-import { normalizeGenerationTiming } from "../perf-request-timing.js";
 
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
 
@@ -74,33 +73,6 @@ function safeNonNegativeInteger(value) {
 
 function nonNegativeFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
-}
-
-function nativeGenerationTiming(raw, outputTokens, reasoningTokens) {
-  if (!isRecord(raw) || raw.schema_version !== 1) return null;
-  const first = safeNonNegativeInteger(raw.first_output_ms);
-  const last = safeNonNegativeInteger(raw.last_output_ms);
-  if (
-    first === null ||
-    last === null ||
-    last <= first ||
-    raw.observed_duration_ms !== last - first ||
-    raw.start_output_tokens !== 1 ||
-    outputTokens === null ||
-    reasoningTokens === null ||
-    raw.output_tokens !== outputTokens - reasoningTokens
-  )
-    return null;
-  try {
-    return normalizeGenerationTiming({
-      outputTokens: raw.output_tokens,
-      durationMs: raw.observed_duration_ms,
-      startOutputTokens: raw.start_output_tokens,
-      timingKind: "first_last_output",
-    });
-  } catch {
-    return null;
-  }
 }
 
 function fieldType(value, present) {
@@ -341,11 +313,7 @@ export async function readCodexRolloutMetadata(filePath) {
       }
       const usage = isRecord(payload.usage) ? payload.usage : null;
       const turnTokenUsage = isRecord(payload.turn_token_usage) ? payload.turn_token_usage : null;
-      const generation = nativeGenerationTiming(
-        payload.generation_timing,
-        safeNonNegativeInteger(usage?.output_tokens),
-        safeNonNegativeInteger(usage?.reasoning_output_tokens),
-      );
+      // Native v1/v2 clocks lack exact token offsets for their receive window.
       records.push(
         projectedRecord(
           "token_usage_record",
@@ -358,7 +326,6 @@ export async function readCodexRolloutMetadata(filePath) {
             outputTokens: safeNonNegativeInteger(usage?.output_tokens),
             reasoningOutputTokens: safeNonNegativeInteger(usage?.reasoning_output_tokens),
             reasoningOutputTokensKnown: safeNonNegativeInteger(usage?.reasoning_output_tokens) !== null,
-            ...(generation === null ? {} : { nativeGeneration: generation }),
             turnOutputTokens: safeNonNegativeInteger(turnTokenUsage?.output_tokens),
             timestamp: text(row.timestamp),
           },

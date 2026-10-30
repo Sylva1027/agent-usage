@@ -229,7 +229,7 @@ test("log snapshot is bounded to dated logs, skips sandbox, and fingerprints cha
   }
 });
 
-test("three-side scalar closure publishes text D and keeps trace E2E diagnostic separate", async () => {
+test("three-side scalar closure retains text proof diagnostics without admitting TPS", async () => {
   await withHome(async ({ home, sessionFile, logFile }) => {
     const event = await collectSessionProof(sessionFile);
     assert.equal(event.nativeProof.textOnly, true);
@@ -265,13 +265,15 @@ test("three-side scalar closure publishes text D and keeps trace E2E diagnostic 
       },
     );
     assert.equal(samples.length, 1);
-    assert.equal(samples[0].outputTokens, 99, "first/last text window uses N-1");
-    assert.equal(samples[0].durationMs, 500, "text_total_cost_ms is D");
+    assert.equal(samples[0].outputTokens, null, "整批 output 没有首批 token offset");
+    assert.equal(samples[0].durationMs, null, "首/末正文窗口不能与整批 counter 配对");
+    assert.equal(samples[0].reportedOutputTokens, 120);
+    assert.equal(samples[0].reportedReasoningTokens, 20);
     assert.equal(samples[0].reportedDurationMs, 15455, "generation duration stays E2E diagnostic");
-    assert.equal(samples[0].timingSource, "explicit");
+    assert.equal(samples[0].timingSource, "unknown");
     assert.equal(result.stats.textTimingSamples, 1);
     assert.equal(result.stats.missingTextTiming, 0);
-    assert.equal(result.stats.missingGenerationDuration, 0);
+    assert.equal(result.stats.missingGenerationDuration, 1);
   });
 });
 
@@ -284,8 +286,10 @@ test("session output mismatch leaves the candidate without text D", async () => 
       await streamWorkbuddyPerfSamples(sessionFile, { id: "home", path: home }, (sample) => samples.push(sample), {
         lookupTextTiming,
       });
+      assert.equal(samples[0].outputTokens, null);
       assert.equal(samples[0].durationMs, null);
       assert.equal(samples[0].timingSource, "unknown");
+      assert.equal(samples[0].reportedOutputTokens, 121);
     },
     { session: { outputTokens: 121 } },
   );
@@ -321,13 +325,15 @@ test("end/trace output mismatch, reasoning overlap, and duplicate non-equivalent
   });
 });
 
-test("two text tokens over 20ms use one inter-token interval for 50 TPS despite model aliases", async () => {
+test("two batches totaling 1100 tokens over 209ms remain unmeasurable despite model aliases", async () => {
   await withHome(
     async ({ home, sessionFile, logFile }) => {
       const textSpans = await workbuddyTextTimingSpans(logFile);
       const generationSpans = await workbuddyGenerationSpans(home);
       const lookupTextTiming = createWorkbuddyTextTimingLookup(textSpans, generationSpans);
-      assert.equal(lookupTextTiming(MESSAGE_ID)?.durationMs, 20);
+      const textTiming = lookupTextTiming(MESSAGE_ID);
+      assert.equal(textTiming?.durationMs, 209);
+      assert.equal(textTiming?.nonReasoningTokens, 1100);
       const event = await collectSessionProof(sessionFile);
       assert.equal(event.nativeProof.textOnly, true);
       assert.equal(event.nativeProof.reasoningBeforeText, true);
@@ -340,24 +346,28 @@ test("two text tokens over 20ms use one inter-token interval for 50 TPS despite 
           lookupTextTiming,
         },
       );
-      assert.equal(samples[0].outputTokens, 1);
-      assert.equal(samples[0].durationMs, 20);
-      assert.equal((samples[0].outputTokens * 1000) / samples[0].durationMs, 50);
-      assert.equal(result.stats.missingGenerationDuration, 0);
+      assert.equal(samples[0].messageId, MESSAGE_ID);
+      assert.equal(samples[0].model, "session-alias");
+      assert.equal(samples[0].outputTokens, null, "不得用 1100−1 作为首批 token offset");
+      assert.equal(samples[0].durationMs, null);
+      assert.equal(samples[0].timingSource, "unknown");
+      assert.equal(samples[0].reportedOutputTokens, 1100);
+      assert.equal(result.stats.textTimingSamples, 1);
+      assert.equal(result.stats.missingGenerationDuration, 1);
     },
     {
-      session: { outputTokens: 2, reasoningTokens: 0, model: "session-alias" },
-      trace: { outputTokens: 2, reasoningTokens: 0, model: "trace-resolved" },
+      session: { outputTokens: 1100, reasoningTokens: 0, model: "session-alias" },
+      trace: { outputTokens: 1100, reasoningTokens: 0, model: "trace-resolved" },
       end: {
         model: "request-resolved",
-        completion_tokens: 2,
+        completion_tokens: 1100,
         text_first_cost_ms: 5,
-        text_total_cost_ms: 20,
+        text_total_cost_ms: 209,
         think_first_cost_ms: 0,
         think_total_cost_ms: 0,
-        text_content_chars: 2,
-        text_content_bytes: 2,
-        text_total_tokens: 2,
+        text_content_chars: 1100,
+        text_content_bytes: 1100,
+        text_total_tokens: 1100,
         think_content_chars: 0,
         think_content_bytes: 0,
         think_total_tokens: 0,
@@ -366,7 +376,7 @@ test("two text tokens over 20ms use one inter-token interval for 50 TPS despite 
   );
 });
 
-test("generation descendant tool spans block text D", async () => {
+test("generation descendant tool spans block the diagnostic text proof", async () => {
   await withHome(
     async ({ home, logFile }) => {
       const textSpans = await workbuddyTextTimingSpans(logFile);

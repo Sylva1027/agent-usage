@@ -4868,7 +4868,7 @@ export function summarizeUsage(report, filters = {}) {
       excludedHomeIds: perfExclusions,
       knownSources: perfMeta.knownSources ?? [],
       meta: {
-        methodVersion: perfMeta.methodVersion,
+        methodVersion: PERF_METHOD_VERSION,
         state: perfMeta.state,
         indexVersion: perfMeta.indexVersion ?? null,
         indexedAt: perfMeta.indexedAt ?? null,
@@ -4878,7 +4878,7 @@ export function summarizeUsage(report, filters = {}) {
     summary.perf = {
       state: perfMeta.state ?? "ready",
       ready: perfMeta.ready ?? perfMeta.state === "ready",
-      methodVersion: perfMeta.methodVersion ?? PERF_METHOD_VERSION,
+      methodVersion: PERF_METHOD_VERSION,
       indexVersion: perfMeta.indexVersion ?? null,
       indexedAt: perfMeta.indexedAt ?? null,
       degradedHomeIds: degraded,

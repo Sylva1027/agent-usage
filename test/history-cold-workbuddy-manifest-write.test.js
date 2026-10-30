@@ -226,6 +226,7 @@ test("candidate seals referenced WorkBuddy observations and rejects drift", asyn
       .map((row) => ({ ...row }));
     assert.equal(perfSamples.length, 1, "the conflicting observations must retain one attributable model row");
     assert.deepEqual(JSON.parse(String(perfSamples[0].sample_key)), ["workbuddy", String(event.home_id), MESSAGE_ID]);
+    assert.equal(perfSamples[0].output_tokens, null);
     assert.equal(perfSamples[0].duration_ms, null);
     assert.equal(perfSamples[0].timing_kind, "generation");
     assert.equal(perfSamples[0].timing_source, "unknown");
