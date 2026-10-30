@@ -77,7 +77,7 @@ const okSample = (raw) => {
 };
 
 test("M1.1 constants match the frozen §17.4 table: 18 bit slots, 2/3 reserved, 16 settable names", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v6");
+  assert.equal(PERF_METHOD_VERSION, "tps-v7");
   assert.equal(PERF_MIN_SAMPLES, 20);
   assert.equal(PERF_LONG_WINDOW_MS, 300000);
   assert.equal(PERF_EPOCH_MS_MIN, 1e12);

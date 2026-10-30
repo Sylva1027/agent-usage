@@ -23,8 +23,8 @@ const nativeGeneration = {
   first_output_read_id: 1,
   last_output_read_id: 2,
 };
-const schema3Generation = (outputTokens = 200, durationMs = 200) => ({
-  schema_version: 3,
+const schema4Generation = (outputTokens = 200, durationMs = 200) => ({
+  schema_version: 4,
   tokenizer: TOKENIZER,
   clock: "transport_receive",
   output_tokens: outputTokens,
@@ -287,10 +287,10 @@ test("untrusted clock duplicates do not conflict usage, while real usage conflic
   });
 });
 
-test("schema3 stays measurable across SQLite reuse, late append, and reopen", async () => {
+test("schema4 stays measurable across SQLite reuse, late append, and reopen", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    const measured = schema3Generation();
+    const measured = schema4Generation();
     await writeFile(file, lines([...headers, row("first", measured), row("late", measured)]));
     const store = new UsageStore(options);
     try {
@@ -336,7 +336,7 @@ test("schema3 stays measurable across SQLite reuse, late append, and reopen", as
 test("source drift retains the published v6 measurement while fresh memory reads stay isolated", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    await writeFile(file, lines([...headers, row("completed", schema3Generation()), row("untimed", null)]));
+    await writeFile(file, lines([...headers, row("completed", schema4Generation()), row("untimed", null)]));
     const store = new UsageStore(options);
     try {
       await store.sync();

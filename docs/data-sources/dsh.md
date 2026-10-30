@@ -98,11 +98,11 @@ inconsistent、计价退化为「最低费率估算」、缓存命中率显示�
 
 ## 实际输出速度（TPS）
 
-当前 tps-v6 使用本地 Cordis 插件在实际传输接收层采集正文与工具参数，以统一 `o200k_base` 分词计数。支持的安装入口见[本地采集安装](../10-data-sources.md#本地采集安装)。插件按 attempt 记录，只有成功且唯一匹配最终提交 message 的测量才写入会话旁的 companion 文件；session、message、model/provider 均精确匹配。
+当前 tps-v7 使用本地 Cordis 插件在实际传输接收层采集正文与工具参数，以统一 `o200k_base` 分词计数。支持的安装入口见[本地采集安装](../10-data-sources.md#本地采集安装)。插件按 attempt 记录，只有成功且唯一匹配最终提交 message 的测量才写入会话旁的 companion 文件；session、message、model/provider 均精确匹配。
 
-reader 复用会话 v4 的身份、模型与终态证明，按请求消费 companion 中的窗口，单个 step 的重试不会混入其它尝试。缺少 usage.reasoning 不阻塞测量，因为分子来自实际可见输出；原始 usage 保持独立。canonical stream 的正文和推理内容丰富，但旧日志的解析时刻不能替代传输批次，旧 v3/v4 全生成数值不混入当前 v6。
+reader 复用会话 v4 的身份、模型与终态证明，按请求消费 schema 2 companion 中的窗口，单个 step 的重试不会混入其它尝试。缺少 usage.reasoning 不阻塞测量，因为分子来自实际可见输出；原始 usage 保持独立。canonical stream 的正文和推理内容丰富，但旧日志的解析时刻不能替代传输批次，旧版本的全生成数值及 schema 1 时钟不混入当前 v7。
 
-无 companion 的请求保留用量和模型身份。缺测不从 step/start、retry-started、assistant/message 时间差回退，不增加 UI 说明。坏帧、坏 JSON 与原有身份冲突继续保留读取诊断和事务回滚。实际 CLI 0.2.1rc2 与 Desktop 内置 0.2.1rc3 的 localhost 闭环已验证，见[本轮验收](../validation/2026-10-30-visible-output-tps/README.md)。
+无 companion 的请求保留用量和模型身份。缺测不从 step/start、retry-started、assistant/message 时间差回退，不增加 UI 说明。坏帧、坏 JSON 与原有身份冲突继续保留读取诊断和事务回滚。实际 CLI 0.2.1rc2 与 Desktop 内置 0.2.1rc3 的 localhost 闭环已验证，见[本轮验收](../validation/2026-10-31-receive-clock-tps/README.md)。
 
 ## 增量索引
 

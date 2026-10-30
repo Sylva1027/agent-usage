@@ -82,6 +82,34 @@ function requestBody(port, headers, requestPath = "/") {
   });
 }
 
+function requestBodyBytes(port, headers, requestPath = "/") {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        path: requestPath,
+        headers,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const bodyBytes = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+          resolve({
+            body: Buffer.concat(chunks, bodyBytes),
+            bodyBytes,
+          });
+        });
+        response.on("error", reject);
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 async function withInstalledCapture(options, run) {
   const descriptor = Object.getOwnPropertyDescriptor(prototype, "push");
   const dispose = installHttpCapture(options);
@@ -104,7 +132,7 @@ test("900-token first batch and 200-token terminal batch count only the tail", a
     async (_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
       response.write(first);
-      await delay(25);
+      await delay(150);
       response.end(second);
     },
     async (port) => {
@@ -135,6 +163,43 @@ test("900-token first batch and 200-token terminal batch count only the tail", a
   );
 
   assert.equal(callbackCount, 1);
+});
+
+test("real localhost IncomingMessage keeps one corked 1100-delta Chat batch unmeasured", async () => {
+  const delta = sseEvent(chatChunk({ content: "中" }));
+  const deltas = Array.from({ length: 1_100 }, () => delta);
+  const expectedBody = Buffer.from(deltas.join("") + sseEvent("[DONE]"), "utf8");
+  let callbackCount = 0;
+
+  await withServer(
+    (_request, response) => {
+      response.cork();
+      response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+      for (const event of deltas) response.write(event);
+      response.write(sseEvent("[DONE]"));
+      response.uncork();
+      response.end();
+    },
+    async (port) => {
+      await withInstalledCapture(
+        {
+          onMeasurement: () => {
+            callbackCount += 1;
+          },
+        },
+        async () => {
+          const received = await requestBodyBytes(port, {
+            "X-Conversation-ID": "session-local-batch",
+            "X-Conversation-Message-ID": "message-local-batch",
+          });
+          await delay(10);
+          assert.equal(received.bodyBytes, expectedBody.byteLength);
+          assert.ok(received.body.equals(expectedBody), "raw response body differs");
+          assert.equal(callbackCount, 0, "one transport batch must not produce measurement");
+        },
+      );
+    },
+  );
 });
 
 test("capture context uses local request IDs while the result retains wire identity", async () => {

@@ -17,8 +17,8 @@ const headers = [
   { type: "turn_context", payload: { thread_id: "thread", turn_id: "turn", model: "model-a", effort: "high" } },
 ];
 
-const schema3 = {
-  schema_version: 3,
+const schema4 = {
+  schema_version: 4,
   tokenizer: TOKENIZER,
   clock: "transport_receive",
   output_tokens: 200,
@@ -63,21 +63,22 @@ async function readCandidates(file, options = {}) {
   return { projection, candidates: built.candidates };
 }
 
-test("schema3 maps canonical transport windows without comparing standard tokens to usage", async () => {
+test("schema4 maps canonical transport windows without comparing standard tokens to usage", async () => {
   await fixture(async (file) => {
     await writeFile(
       file,
       lines([
         ...headers,
-        row("native", { ...schema3, body: "BODY_MUST_NOT_LEAK" }),
+        row("native", { ...schema4, body: "BODY_MUST_NOT_LEAK" }),
         row("missing", undefined),
-        row("schema1", { ...schema3, schema_version: 1 }),
-        row("schema2", { ...schema3, schema_version: 2 }),
+        row("schema1", { ...schema4, schema_version: 1 }),
+        row("schema2", { ...schema4, schema_version: 2 }),
+        row("schema3", { ...schema4, schema_version: 3 }),
       ]),
     );
 
     const { projection, candidates } = await readCandidates(file);
-    assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v7");
+    assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v8");
     assert.equal(JSON.stringify(projection).includes("BODY_MUST_NOT_LEAK"), false);
     assert.equal(JSON.stringify(candidates).includes("BODY_MUST_NOT_LEAK"), false);
 
@@ -103,7 +104,7 @@ test("schema3 maps canonical transport windows without comparing standard tokens
     assert.equal(summary.groups[0].sums.outputTokens, 200);
     assert.equal(summary.groups[0].sums.durationMs, 200);
 
-    for (const responseId of ["missing", "schema1", "schema2"]) {
+    for (const responseId of ["missing", "schema1", "schema2", "schema3"]) {
       const candidate = candidates.find((value) => value.responseId === responseId);
       assert.equal(candidate.outputTokens, null, responseId);
       assert.equal(candidate.durationMs, null, responseId);
@@ -151,7 +152,7 @@ test("legacy explicit timing remains readable but is not promoted to the v6 meas
 
 test("conflicting historical billing timing cannot invalidate a native reference-token measurement", async () => {
   await fixture(async (file) => {
-    await writeFile(file, lines([...headers, row("native", schema3)]));
+    await writeFile(file, lines([...headers, row("native", schema4)]));
     for (const state of ["conflict", "invalid"]) {
       const { candidates } = await readCandidates(file, {
         lookupRequestTiming: () => ({ state, durationMs: null, reportedOutputTokens: null, requestedModel: "" }),

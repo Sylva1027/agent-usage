@@ -23,14 +23,16 @@ function text(value) {
 
 /** Keep only request identity and scalar measurements in the local companion file. */
 export function normalizeOutputObservation(raw) {
-  if (raw?.schemaVersion !== 1 || !["dsh", "workbuddy"].includes(raw.sourceKind)) return null;
+  if (!raw || !["dsh", "workbuddy"].includes(raw.sourceKind)) return null;
+  const schemaVersion = raw.sourceKind === "dsh" ? 2 : 1;
+  if (raw.schemaVersion !== schemaVersion) return null;
   const messageId = text(raw.messageId);
   const sessionId = text(raw.sessionId) ?? "";
   const model = text(raw.model);
   const measurement = normalizeMeasuredOutput(raw.measurement);
   if (!messageId || !sessionId || !model || !measurement || raw.clock !== "transport_receive") return null;
   return {
-    schemaVersion: 1,
+    schemaVersion,
     sourceKind: raw.sourceKind,
     sessionId,
     messageId,

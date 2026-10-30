@@ -85,7 +85,7 @@ function installSchema3Measurements(fixture) {
       const outputTokens = Number(row.payload.usage.output_tokens);
       const durationMs = responseId.startsWith("response-25-") ? 200_000 : 1_000;
       row.payload.generation_timing = {
-        schema_version: 3,
+        schema_version: 4,
         tokenizer: TOKENIZER,
         clock: "transport_receive",
         output_tokens: outputTokens,
@@ -123,7 +123,7 @@ function insertHistoricalV5Sample(database, sampleKey, hotTsMs) {
   return row;
 }
 
-test("schema3 Codex perf authority restores a measured cold sample without mixing historical v5", async () => {
+test("schema4 Codex perf authority restores a measured cold sample without mixing historical v5", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const homeDir = fixture.serverOptions.homeDir;
   const options = {
@@ -154,7 +154,7 @@ test("schema3 Codex perf authority restores a measured cold sample without mixin
          ORDER BY sample_key LIMIT 1`,
       )
       .get(PERF_METHOD_VERSION);
-    assert.ok(persisted, "schema3 must persist at least one measured v6 sample");
+    assert.ok(persisted, "schema4 must persist at least one measured v6 sample");
     assert.deepEqual(
       { ...persisted },
       {
@@ -183,10 +183,10 @@ test("schema3 Codex perf authority restores a measured cold sample without mixin
 
     const [, keyHomeId, , turnId, responseId] = JSON.parse(coldSample.sampleKey);
     assert.equal(keyHomeId, coldSample.homeId);
-    assert.equal(typeof responseId, "string", "the schema3 cold Codex sample key must retain its response identity");
+    assert.equal(typeof responseId, "string", "the schema4 cold Codex sample key must retain its response identity");
     assert.equal(typeof turnId, "string");
     const measurement = measurements.get(responseId);
-    assert.ok(measurement, "the selected cold sample must have schema3 evidence");
+    assert.ok(measurement, "the selected cold sample must have schema4 evidence");
     assert.equal(coldSample.outputTokens, measurement.outputTokens);
     assert.equal(coldSample.durationMs, measurement.durationMs);
 

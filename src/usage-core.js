@@ -2356,7 +2356,7 @@ function perfContentFingerprint(kind, filePath) {
     }
     const digest = createHash("sha256");
     const readerKind = canonicalPerfKind(kind);
-    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:visible-output-v1`);
+    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:${PERF_METHOD_VERSION}`);
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],

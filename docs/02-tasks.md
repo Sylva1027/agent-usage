@@ -1,10 +1,10 @@
 # 任务清单
 
-更新：2026-10-30（统一分词的实际输出速度）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
+更新：2026-10-31（接收时钟修正）。本页维护当前状态与未完成边界；长期行为见专题，实施过程和旧清单见归档。仅有对应证据时标记完成，不因文档归档或代码存在宣称已验收。
 
 ## 当前：实际输出速度采集
 
-见[本轮验收](validation/2026-10-30-visible-output-tps/README.md)。Codex、DSH、WorkBuddy CLI 的统一分词采集、v6 内存/SQLite/历史恢复与缓存已实现，全仓 3,559 通过、0 失败、25 跳过。新 Codex release 八条传输闭环通过，已并排安装；看板已切至固定包 `f8a844e4fe4b`，DSH 插件已安装并保留原配置备份。Desktop 已采用新引擎；10 个自然请求的原生记录、内存、SQLite 与 API 一致性及窗口/平均值/分位数复算通过。WorkBuddy Desktop 及 Claude/OpenCode/ZCode 的统一采集尚未接入，旧日志缺少的批次边界不回算、不按倍率补值。保留 RANGE/SYNC，产品 UI 无新增内容。
+见[接收时钟修复与验收](validation/2026-10-31-receive-clock-tps/README.md)。v6 后续自然请求暴露了缓冲数据被误拆为多批的问题；Codex HTTP/1、HTTP/2 接收时间传递及 DSH fetch 合批已修正，当前源码为 v7/schema 4。API、完整 Node 回归及真实索引副本兼容检查通过，新 release 正在构建；尚未进行本轮切换或再次重启 Desktop，GitHub release 待实际采用验证后替换。保留 RANGE/SYNC，不增加 UI 内容；历史阶段见[上一轮记录](validation/2026-10-30-visible-output-tps/README.md)。
 
 ## 当前：7d 边界恢复
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import http from "node:http";
 import test from "node:test";
 
 import { installFetchCapture } from "../src/perf-fetch-capture.js";
@@ -27,6 +28,31 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+async function withLocalServer(handler, run) {
+  const server = http.createServer((request, response) => {
+    Promise.resolve(handler(request, response)).catch((error) => response.destroy(error));
+  });
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(0, "127.0.0.1");
+  });
+  try {
+    return await run(server.address().port);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 async function withTimeout(promise, timeoutMs = 1_000) {
@@ -144,6 +170,80 @@ test("multiple already-ready chunks share one raw receive stamp", async () => {
       assert.equal(await wrapped.text(), firstChunk + secondChunk);
       await new Promise((resolve) => setImmediate(resolve));
       assert.equal(measured, false);
+    },
+  );
+});
+
+test("real localhost fetch keeps one corked 1100-delta Chat batch unmeasured", async () => {
+  const delta = sseEvent(chatChunk({ content: "中" }));
+  const deltas = Array.from({ length: 1_100 }, () => delta);
+  const expectedBody = Buffer.from(deltas.join("") + sseEvent("[DONE]"), "utf8");
+  let measured = false;
+
+  await withLocalServer(
+    (_request, response) => {
+      response.cork();
+      response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+      for (const event of deltas) response.write(event);
+      response.write(sseEvent("[DONE]"));
+      response.uncork();
+      response.end();
+    },
+    async (port) => {
+      await withInstalledCapture(
+        globalThis.fetch,
+        {
+          getContext: () => ({ attempt: "fetch-local-batch" }),
+          onMeasurement: () => {
+            measured = true;
+          },
+        },
+        async () => {
+          const response = await globalThis.fetch(`http://127.0.0.1:${port}/stream`, { method: "POST" });
+          const received = Buffer.from(await response.arrayBuffer());
+          await new Promise((resolve) => setImmediate(resolve));
+          assert.ok(received.equals(expectedBody), "raw response body differs");
+          assert.equal(measured, false, "one transport batch must not produce measurement");
+        },
+      );
+    },
+  );
+});
+
+test("real localhost fetch measures only the 200-delta tail with a 150 ms batch gap", async () => {
+  const first = Array.from({ length: 900 }, () => sseEvent(chatChunk({ content: "中" })));
+  const second = Array.from({ length: 200 }, () => sseEvent(chatChunk({ content: "中" })));
+  const expectedBody = Buffer.from(first.join("") + second.join("") + sseEvent("[DONE]"), "utf8");
+  const measured = deferred();
+
+  await withLocalServer(
+    async (_request, response) => {
+      response.cork();
+      response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+      for (const event of first) response.write(event);
+      response.uncork();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      response.cork();
+      for (const event of second) response.write(event);
+      response.write(sseEvent("[DONE]"));
+      response.uncork();
+      response.end();
+    },
+    async (port) => {
+      await withInstalledCapture(
+        globalThis.fetch,
+        {
+          getContext: () => ({ attempt: "fetch-delayed-tail" }),
+          onMeasurement: (_context, result) => measured.resolve(result),
+        },
+        async () => {
+          const response = await globalThis.fetch(`http://127.0.0.1:${port}/stream`, { method: "POST" });
+          const result = await withTimeout(measured.promise, 3_000);
+          const received = Buffer.from(await response.arrayBuffer());
+          assert.equal(result.measurement.outputTokens, 200);
+          assert.ok(received.equals(expectedBody), "raw response body differs");
+        },
+      );
     },
   );
 });

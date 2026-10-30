@@ -1,8 +1,8 @@
 # Agent Usage 文档入口
 
-更新：2026-10-30（统一分词的实际输出速度）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-10-31（接收时钟修正）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
-[本地实际输出速度采集验收](validation/2026-10-30-visible-output-tps/README.md)：用户确认统一分词口径后，Codex schema 3、DSH 和 WorkBuddy CLI 的接收批次及实际输出计数已接入 v6。全仓 3,559 通过、0 失败、25 跳过，Codex 新 release 八条实际传输验证通过。看板已采用固定包 `f8a844e4fe4b`，历史用量、费用和 UI 资源保持一致；DSH 插件已安装，Desktop 已采用新引擎，10 个自然请求已通过原生记录、内存、SQLite 和 API 一致性核对。以下 v5 撤销数值为前一阶段状态。
+见[接收时钟修复与验收](validation/2026-10-31-receive-clock-tps/README.md)。v6 后续自然请求暴露了缓冲数据被误拆为多批的问题；Codex HTTP/1、HTTP/2 接收时间传递及 DSH fetch 合批已修正，当前源码为 v7/schema 4。API、完整 Node 回归及真实索引副本兼容检查通过，新 release 正在构建；尚未进行本轮切换或再次重启 Desktop，GitHub release 待实际采用验证后替换。保留 RANGE/SYNC，不增加 UI 内容；历史阶段见[上一轮记录](validation/2026-10-30-visible-output-tps/README.md)。
 
 ## 使用与接手
 

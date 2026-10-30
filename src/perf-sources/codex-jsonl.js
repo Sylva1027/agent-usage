@@ -77,7 +77,7 @@ function nonNegativeFiniteNumber(value) {
 }
 
 function projectNativeGeneration(value) {
-  if (!isRecord(value) || value.schema_version !== 3 || value.clock !== "transport_receive") return null;
+  if (!isRecord(value) || value.schema_version !== 4 || value.clock !== "transport_receive") return null;
   const rawWindows = Array.isArray(value.windows) ? value.windows : [];
   return normalizeMeasuredOutput({
     tokenizer: value.tokenizer,

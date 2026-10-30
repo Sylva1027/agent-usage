@@ -55,7 +55,7 @@ function installSchema3Measurements(fixture) {
       const outputTokens = Number(row.payload.usage.output_tokens);
       const durationMs = responseId.startsWith("response-25-") ? 200_000 : 1_000;
       row.payload.generation_timing = {
-        schema_version: 3,
+        schema_version: 4,
         tokenizer: TOKENIZER,
         clock: "transport_receive",
         output_tokens: outputTokens,
@@ -197,7 +197,7 @@ test("historical v5 perf authority stays self-contained in an HTTP snapshot afte
   }
 });
 
-test("Codex schema3 v6 perf stays self-contained in a frozen HTTP snapshot after cold candidates move", async () => {
+test("Codex schema4 v6 perf stays self-contained in a frozen HTTP snapshot after cold candidates move", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const homeDir = fixture.serverOptions.homeDir;
   const archivedFile = path.join(homeDir, "codex-cold-perf-freeze-api-archived.sqlite");
@@ -222,7 +222,7 @@ test("Codex schema3 v6 perf stays self-contained in a frozen HTTP snapshot after
     const coldSample = archived
       .perfCandidatesForRange({ startMs: coldStartMs, endMs: CODEX_HOT_START_MS - 1 })
       .find((sample) => sample.status === "completed" && sample.outputTokens > 0 && sample.durationMs > 0);
-    assert.ok(coldSample, "fixture must expose a measured cold schema3 sample");
+    assert.ok(coldSample, "fixture must expose a measured cold schema4 sample");
     assert.equal(coldSample.sourceKind, "codex");
     assert.equal(coldSample.methodVersion, PERF_METHOD_VERSION);
     assert.equal(coldSample.tokenScope, PERF_TOKEN_SCOPE);
@@ -254,7 +254,7 @@ test("Codex schema3 v6 perf stays self-contained in a frozen HTTP snapshot after
       const deleted = archived.database
         .prepare("DELETE FROM perf_samples WHERE sample_key = ?")
         .run(coldSample.sampleKey);
-      assert.equal(Number(deleted.changes), 1, "test must evict one cold schema3 sample");
+      assert.equal(Number(deleted.changes), 1, "test must evict one cold schema4 sample");
       archived.database.exec("COMMIT");
     } catch (error) {
       archived.database.exec("ROLLBACK");
@@ -277,7 +277,7 @@ test("Codex schema3 v6 perf stays self-contained in a frozen HTTP snapshot after
     assert.deepEqual(
       stablePerfEvidence(frozen.summary.perf),
       oraclePerf,
-      "HTTP snapshot must include the complete schema3 v6 perf carrier",
+      "HTTP snapshot must include the complete schema4 v6 perf carrier",
     );
 
     renameSync(candidateFile, `${candidateFile}.moved`);
@@ -291,7 +291,7 @@ test("Codex schema3 v6 perf stays self-contained in a frozen HTTP snapshot after
     assert.deepEqual(
       stablePerfEvidence(retained.summary.perf),
       oraclePerf,
-      "the frozen snapshot must retain schema3 v6 perf after both candidate files move",
+      "the frozen snapshot must retain schema4 v6 perf after both candidate files move",
     );
   } finally {
     if (server) await server.close();

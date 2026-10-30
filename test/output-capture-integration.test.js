@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -140,7 +141,7 @@ test("DSH transport capture binds committed message and late timing reaches memo
     const indexed = await store.summarize(filters);
     const memory = summarizeUsage(await buildUsageReport(config), filters);
     for (const summary of [indexed, memory]) {
-      assert.equal(summary.perf.methodVersion, "tps-v6");
+      assert.equal(summary.perf.methodVersion, "tps-v7");
       assert.equal(summary.perf.models[0].n, 1);
       assert.equal(summary.perf.models[0].averageTps, 200_000 / raw.measurement.durationMs);
     }
@@ -154,7 +155,7 @@ test("DSH transport capture binds committed message and late timing reaches memo
   }
 });
 
-test("WorkBuddy exact response measurements reach SQLite when only the ledger changes", async () => {
+test("WorkBuddy exact measurements refresh when the ledger or measurement method changes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aligned-workbuddy-"));
   const home = path.join(root, ".workbuddy-ai");
   const file = path.join(home, "projects", "project", "session.jsonl");
@@ -198,6 +199,37 @@ test("WorkBuddy exact response measurements reach SQLite when only the ledger ch
       assert.equal(summary.perf.models[0].n, 1);
       assert.equal(summary.perf.models[0].averageTps, 1000);
     }
+    store.database.prepare("UPDATE perf_samples SET method_version='tps-v6' WHERE source_kind='workbuddy'").run();
+    store.database.prepare("UPDATE store_meta SET value='tps-v6' WHERE key='perf_method_version'").run();
+    const fingerprints = store.readPublishedFileFingerprints();
+    const oldDigest = createHash("sha256")
+      .update("workbuddy:visible-output-v1")
+      .update(await readFile(file))
+      .update(await readFile(outputObservationFile(file, "workbuddy")))
+      .digest("hex")
+      .slice(0, 32);
+    fingerprints[file] = fingerprints[file].replace(/[^:]+$/, oldDigest);
+    store.database
+      .prepare("UPDATE store_meta SET value=? WHERE key='perf_file_fingerprints'")
+      .run(JSON.stringify(fingerprints));
+    store.close();
+    await store.open();
+    store.database.exec(
+      "CREATE TRIGGER upgrade_fail BEFORE INSERT ON perf_samples WHEN NEW.source_kind='workbuddy' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END",
+    );
+    await store.sync();
+    assert.equal(
+      store.readPublishedFileFingerprints()[file],
+      fingerprints[file],
+      "failed upgrade must retain retry evidence",
+    );
+    store.database.exec("DROP TRIGGER upgrade_fail");
+    await store.sync();
+    const upgraded = await store.summarize(filters);
+    assert.equal(upgraded.perf.methodVersion, "tps-v7");
+    assert.equal(upgraded.perf.models[0].n, 1, "unchanged valid capture must be re-read after a method upgrade");
+    assert.equal(upgraded.perf.models[0].averageTps, 1000);
+    assert.deepEqual(upgraded.totals, indexed.totals);
   } finally {
     store.close();
     await rm(root, { recursive: true, force: true });

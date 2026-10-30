@@ -13,10 +13,10 @@ import {
   withVerifiedHistoryBackup,
 } from "./history-backup.js";
 import {
-  PERF_METHOD_VERSION,
   PERF_TOKEN_SCOPE,
   PERF_SUPPORTED_METHOD_VERSIONS,
   isGenerationPerfMethod,
+  isMeasuredOutputPerfMethod,
 } from "./perf-stats.js";
 import { normalizeMeasuredOutput } from "./perf-output-tokens.js";
 import { generationPerfValues, mergeRequestTimingEvidence } from "./perf-request-timing.js";
@@ -724,7 +724,7 @@ export function historyArchivePerfDeletion(database, startMs, endMs, { requireCo
     isGenerationPerfMethod(methodVersion) &&
     row.timing_kind === "generation" &&
     row.window === "request" &&
-    row.token_scope === (methodVersion === PERF_METHOD_VERSION ? PERF_TOKEN_SCOPE : "non_reasoning_output");
+    row.token_scope === (isMeasuredOutputPerfMethod(methodVersion) ? PERF_TOKEN_SCOPE : "non_reasoning_output");
   const supported =
     sourceKind === "zcode"
       ? rows.every((row) => Number(row.has_dependency) === 0)
@@ -869,7 +869,7 @@ function assertExplicitCodexTimingEvidence(database, startMs, endMs) {
     } catch {
       throw missing(sample.sample_key);
     }
-    if (sample.method_version === PERF_METHOD_VERSION) {
+    if (isMeasuredOutputPerfMethod(sample.method_version)) {
       const owners = codexRequestSampleGraph(database, sample, identity.threadId);
       codexTurnRequestFacts(database, sample, identity, owners, foldedByThread);
       continue;
@@ -1258,7 +1258,7 @@ function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByT
     identity.responseId === undefined
       ? turn.requests
       : turn.requests.filter((request) => request.responseId === identity.responseId);
-  if (sample.method_version === PERF_METHOD_VERSION) {
+  if (isMeasuredOutputPerfMethod(sample.method_version)) {
     const overridden = measurements?.overrides?.has(String(sample.sample_key));
     const raw = overridden ? measurements.overrides.get(String(sample.sample_key)) : response?.[0]?.nativeGeneration;
     const measurement = normalizeMeasuredOutput(raw);
@@ -1322,7 +1322,7 @@ export function readCodexNativeMeasurements(database, samples) {
   const collected = new Map();
   const foldedByThread = new Map();
   for (const sample of samples) {
-    if (sample.source_kind !== "codex" || sample.method_version !== PERF_METHOD_VERSION) continue;
+    if (sample.source_kind !== "codex" || !isMeasuredOutputPerfMethod(sample.method_version)) continue;
     if (sample.timing_source !== "explicit") {
       collected.set(String(sample.sample_key), null);
       continue;
@@ -1462,13 +1462,13 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
           sample.timing_kind !== "generation" ||
           sample.window !== "request" ||
           sample.token_scope !==
-            (sample.method_version === PERF_METHOD_VERSION ? PERF_TOKEN_SCOPE : "non_reasoning_output")
+            (isMeasuredOutputPerfMethod(sample.method_version) ? PERF_TOKEN_SCOPE : "non_reasoning_output")
         : sample.timing_kind !== "request_e2e")
     ) {
       throw codexRequestTimingMismatch(`Codex request facts disagree with bounded sample ${turn.sampleKey}`);
     }
     const owners = codexRequestSampleGraph(database, sample, identity.threadId);
-    if (sample.method_version === PERF_METHOD_VERSION) {
+    if (isMeasuredOutputPerfMethod(sample.method_version)) {
       const nativeFacts = codexTurnRequestFacts(database, sample, identity, owners, foldedByThread, {
         overrides: effective?.nativeMeasurements,
       });
@@ -1560,7 +1560,7 @@ export function validateCodexRequestEvidence(database, evidence, startMs, endMs,
   for (const sample of effective?.samples ?? []) {
     if (
       sample.source_kind !== "codex" ||
-      sample.method_version !== PERF_METHOD_VERSION ||
+      !isMeasuredOutputPerfMethod(sample.method_version) ||
       sample.timing_source !== "explicit" ||
       originalSampleKeys.has(sample.sample_key)
     )

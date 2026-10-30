@@ -69,7 +69,7 @@ function rolloutContents(codexHome) {
   ].join("\n");
 }
 
-function schema3RolloutContents(codexHome) {
+function schema4RolloutContents(codexHome) {
   return [
     JSON.stringify({
       type: "session_meta",
@@ -77,19 +77,19 @@ function schema3RolloutContents(codexHome) {
     }),
     JSON.stringify({
       type: "turn_context",
-      payload: { thread_id: SESSION_ID, turn_id: "turn-schema3", model: "gpt-6-sol" },
+      payload: { thread_id: SESSION_ID, turn_id: "turn-schema4", model: "gpt-6-sol" },
     }),
     JSON.stringify({
       timestamp: "2026-07-12T02:00:10.000Z",
       type: "token_usage_record",
       payload: {
         thread_id: SESSION_ID,
-        turn_id: "turn-schema3",
-        response_id: "response-schema3",
+        turn_id: "turn-schema4",
+        response_id: "response-schema4",
         usage: { output_tokens: 10, reasoning_output_tokens: 0 },
         turn_token_usage: { output_tokens: 10 },
         generation_timing: {
-          schema_version: 3,
+          schema_version: 4,
           tokenizer: TOKENIZER,
           clock: "transport_receive",
           output_tokens: 42,
@@ -104,7 +104,7 @@ function schema3RolloutContents(codexHome) {
       payload: {
         type: "task_complete",
         thread_id: SESSION_ID,
-        turn_id: "turn-schema3",
+        turn_id: "turn-schema4",
         started_at: Math.floor(START_MS / 1000),
         completed_at: Math.floor(START_MS / 1000) + 1,
         duration_ms: 1_000,
@@ -264,10 +264,10 @@ test("executor rejects an invalid bundle without changing the active store", asy
   }
 });
 
-test("executor imports schema3 Codex v6 perf into an independently readable runtime", async () => {
+test("executor imports schema4 Codex v6 perf into an independently readable runtime", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-archive-import-perf-"));
   const codexHome = path.join(root, "codex-home");
-  const usageFile = path.join(codexHome, "sessions", "2026", "07", "12", "rollout-schema3.jsonl");
+  const usageFile = path.join(codexHome, "sessions", "2026", "07", "12", "rollout-schema4.jsonl");
   const sourceOptions = optionsFor(root, codexHome);
   const databaseFile = path.join(root, "active.sqlite");
   const candidateFile = path.join(root, "candidate.sqlite");
@@ -275,7 +275,7 @@ test("executor imports schema3 Codex v6 perf into an independently readable runt
   const store = new UsageStore({ ...sourceOptions, databaseFile });
   try {
     mkdirSync(path.dirname(usageFile), { recursive: true });
-    writeFileSync(usageFile, `${schema3RolloutContents(codexHome)}\n`);
+    writeFileSync(usageFile, `${schema4RolloutContents(codexHome)}\n`);
     await store.sync({ options: sourceOptions });
     const sample = {
       ...store.database
@@ -286,7 +286,7 @@ test("executor imports schema3 Codex v6 perf into an independently readable runt
         .get(),
     };
     assert.deepEqual(sample, {
-      sample_key: JSON.stringify(["codex", store.homes[0].id, SESSION_ID, "turn-schema3", "response-schema3"]),
+      sample_key: JSON.stringify(["codex", store.homes[0].id, SESSION_ID, "turn-schema4", "response-schema4"]),
       method_version: PERF_METHOD_VERSION,
       token_scope: PERF_TOKEN_SCOPE,
       output_tokens: 42,

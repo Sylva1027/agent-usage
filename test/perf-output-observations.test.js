@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   appendOutputObservation,
+  normalizeOutputObservation,
   outputObservationFile,
   readOutputObservations,
   workbuddyOutputObservationFile,
@@ -24,7 +25,7 @@ test("local output observations bind exact identities, strip bodies and retain c
     const sourceFile = path.join(root, "session.v4.jsonl.zstd");
     const file = outputObservationFile(sourceFile, "dsh");
     const raw = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceKind: "dsh",
       sessionId: "session",
       messageId: "message",
@@ -35,6 +36,7 @@ test("local output observations bind exact identities, strip bodies and retain c
       body: "PRIVATE_BODY",
     };
     assert.equal((await readOutputObservations(sourceFile, "dsh"))("session", "message", "model", "provider"), null);
+    assert.equal(normalizeOutputObservation({ ...raw, schemaVersion: 1 }), null);
     await appendOutputObservation(file, raw);
     await appendOutputObservation(file, raw);
     const lookup = await readOutputObservations(sourceFile, "dsh");

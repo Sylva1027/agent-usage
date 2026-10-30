@@ -94,6 +94,7 @@ import {
   PERF_SOURCE_WARNING_CODES,
   canonicalPerfSourceKind,
   isGenerationPerfMethod,
+  isMeasuredOutputPerfMethod,
 } from "./perf-stats.js";
 import { createHash } from "node:crypto";
 import {
@@ -2186,7 +2187,7 @@ function assertHistoryArchiveEffectiveTimingEvidence(database, samples, evidence
   const required = samples.filter(
     (sample) =>
       sample.source_kind === "codex" &&
-      sample.method_version !== PERF_METHOD_VERSION &&
+      !isMeasuredOutputPerfMethod(sample.method_version) &&
       sample.status === "completed" &&
       ["request_e2e", "generation"].includes(sample.timing_kind) &&
       sample.timing_source === "explicit",
@@ -2407,7 +2408,10 @@ function historyArchivePerfRevisionChangesForSamples(database, candidatesBySampl
       addDelta(sampleRevision, "added", { ...current }, "perf_samples");
     }
 
-    if (current.method_version === PERF_METHOD_VERSION || candidate.sample.methodVersion === PERF_METHOD_VERSION) {
+    if (
+      isMeasuredOutputPerfMethod(current.method_version) ||
+      isMeasuredOutputPerfMethod(candidate.sample.methodVersion)
+    ) {
       const nativeRevision = revisionFor(candidate, "codex_output_measurements");
       const previous = candidate.nativeMeasurement;
       const next = nativeMeasurements.get(String(sampleKey));
@@ -3227,7 +3231,7 @@ function enabledPerfSourceStat(kind, filePath) {
     // 内容摘要：首尾各 64KiB（SQLite 头 + 追加/改写的尾部页都能覆盖）。
     const digest = createHash("sha256");
     const readerKind = canonicalizeKind(kind);
-    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:visible-output-v1`);
+    if (readerKind === "dsh" || readerKind === "workbuddy") digest.update(`${readerKind}:${PERF_METHOD_VERSION}`);
     /** @type {[string, number][]} */
     const contentParts = [
       [filePath, main.size],

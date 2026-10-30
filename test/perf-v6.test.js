@@ -36,20 +36,28 @@ function normalized(value) {
   return result.sample;
 }
 
-test("tps-v6 keeps v1-v5 readable and recognizes v3-v6 as generation methods", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v6");
-  assert.deepEqual(PERF_SUPPORTED_METHOD_VERSIONS, ["tps-v1", "tps-v2", "tps-v3", "tps-v4", "tps-v5", "tps-v6"]);
-  for (const version of ["tps-v3", "tps-v4", "tps-v5", "tps-v6"]) {
+test("tps-v7 keeps v1-v6 readable and recognizes v3-v7 as generation methods", () => {
+  assert.equal(PERF_METHOD_VERSION, "tps-v7");
+  assert.deepEqual(PERF_SUPPORTED_METHOD_VERSIONS, [
+    "tps-v1",
+    "tps-v2",
+    "tps-v3",
+    "tps-v4",
+    "tps-v5",
+    "tps-v6",
+    "tps-v7",
+  ]);
+  for (const version of ["tps-v3", "tps-v4", "tps-v5", "tps-v6", "tps-v7"]) {
     assert.equal(isGenerationPerfMethod(version), true, version);
   }
-  for (const version of ["tps-v1", "tps-v2", "tps-v7", "", null]) {
+  for (const version of ["tps-v1", "tps-v2", "tps-v8", "", null]) {
     assert.equal(isGenerationPerfMethod(version), false, String(version));
   }
 });
 
-test("only current v6 samples with the unified scope contribute displayed statistics", () => {
+test("only current v7 samples with the unified scope contribute displayed statistics", () => {
   const current = normalized(raw());
-  assert.equal(current.methodVersion, "tps-v6");
+  assert.equal(current.methodVersion, "tps-v7");
   assert.equal(current.tokenScope, PERF_TOKEN_SCOPE);
 
   const summary = summarizePerf([current]);
@@ -78,7 +86,7 @@ test("explicit v6 with a legacy scope keeps v6 and reports a semantics mismatch"
   assert.equal(oldSummary.models.length, 0);
 });
 
-test("historical v5 generation samples remain readable but are excluded from current v6 statistics", () => {
+test("historical v5 generation samples remain readable but are excluded from current statistics", () => {
   const result = normalizePerfSample(
     raw({
       methodVersion: "tps-v5",
@@ -103,6 +111,37 @@ test("historical v5 generation samples remain readable but are excluded from cur
   assert.equal(summary.models[0].n, 0);
   assert.equal(summary.models[0].state, "missing_duration");
   assert.deepEqual([summary.models[0].averageTps, summary.models[0].p10, summary.models[0].p90], [null, null, null]);
+});
+
+test("v6 reference-token windows remain historical and cannot inflate current statistics", () => {
+  const historical = normalized(
+    raw({
+      sourceKind: "codex",
+      identity: ["thread", "turn", "response"],
+      methodVersion: "tps-v6",
+      outputTokens: 680,
+      durationMs: 15,
+    }),
+  );
+  assert.equal(historical.methodVersion, "tps-v6");
+  assert.equal(historical.outputTokens, 680);
+  assert.equal(historical.durationMs, 15);
+  const legacySummary = summarizePerf([historical]);
+  assert.equal(legacySummary.models[0].n, 0);
+  assert.equal(legacySummary.models[0].averageTps, null);
+
+  const current = normalized(
+    raw({
+      sourceKind: "codex",
+      identity: ["thread", "turn", "response"],
+      outputTokens: 200,
+      durationMs: 2_000,
+    }),
+  );
+  const mixed = summarizePerf([historical, current]);
+  assert.equal(mixed.models[0].n, 1);
+  assert.equal(mixed.models[0].averageTps, 100);
+  assert.equal(mixed.models[0].p90, 100);
 });
 
 test("historical v5 DSH provider scope remains readable without being relabeled", () => {

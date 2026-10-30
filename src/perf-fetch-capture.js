@@ -34,26 +34,20 @@ function copyResponseMetadata(target, source) {
 }
 
 function beginRead(reader) {
-  let settled = false;
   let elapsedMs = 0;
   const promise = reader.read().then(
     (result) => {
       elapsedMs = performance.now();
-      settled = true;
       return result;
     },
     (error) => {
       elapsedMs = performance.now();
-      settled = true;
       throw error;
     },
   );
   void promise.catch(() => {});
   return {
     promise,
-    get settled() {
-      return settled;
-    },
     get elapsedMs() {
       return elapsedMs;
     },
@@ -236,14 +230,15 @@ function wrapEventStreamResponse(response, context, onMeasurement) {
         if (batch === null) {
           batch = { elapsedMs: pending.elapsedMs, readId: nextReadId };
           nextReadId += 1;
+          // A body reader can yield through microtasks while draining one IO batch.
+          setImmediate(() => {
+            batch = null;
+          });
         }
 
         captureChunk(result.value, batch);
         pending = beginRead(reader);
-        await Promise.resolve();
-        const readyTogether = pending.settled;
         await enqueueCapturedChunk(result.value);
-        if (!readyTogether) batch = null;
       }
     } catch (error) {
       if (canceled) return;

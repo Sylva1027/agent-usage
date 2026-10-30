@@ -1,6 +1,6 @@
 # 数据来源与统计口径
 
-更新：2026-10-30（实际输出 TPS v6）。本文维护共同规则；各来源的字段映射分别见下方专题。
+更新：2026-10-31（接收时钟修正，TPS v7）。本文维护共同规则；各来源的字段映射分别见下方专题。
 
 ## 来源与导入
 
@@ -30,17 +30,17 @@ DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都�
 
 ## 模型生成速度（TPS）
 
-当前方法为 `tps-v6`，`window=request`、`timingKind=generation`。各渠道统一使用本机 `o200k_base` 分词器统计实际正文、拒绝文本、函数参数和自定义工具输入；不包含 reasoning、协议字段、工具名称和工具执行。服务商的原生 token 用量仍供用量、费用与限额统计，不能替代这里的参考 token。
+当前方法为 `tps-v7`，`window=request`、`timingKind=generation`。各渠道统一使用本机 `o200k_base` 分词器统计实际正文、拒绝文本、函数参数和自定义工具输入；不包含 reasoning、协议字段、工具名称和工具执行。服务商的原生 token 用量仍供用量、费用与限额统计，不能替代这里的参考 token。
 
 每条完整输出 lane 只编码一次，按最终 UTF-8 token 结束位置分配到生成窗口。传输接收层记录批次时间，起点那一批的全部字节排除；同一接收批次的多个解析事件不产生新间隔。单请求 TPS 为测得 token 总数乘 1000，除以生成窗口毫秒区间的并集。并行 lane 不重复计算时间，思考和工具执行把可见输出划分为不同阶段。只有一个批次时保留用量，没有可测速度；不使用固定减 1、倍率、速度上限或 E2E 回退。
 
-Codex 原生 schema 3、DSH Cordis 插件、WorkBuddy CLI HTTP 接收钩子提供这一观测。采集与保存均在本机，不读取 Magpie 遥测，不改模型路由或认证。DSH usage 没有 reasoning 明细也能直接测量实际可见输出。WorkBuddy Desktop，以及 Claude、OpenCode、ZCode 尚未接入统一分词采集；旧日志不能补出的接收边界不回算。
+Codex 原生 schema 4、DSH Cordis 插件、WorkBuddy CLI HTTP 接收钩子提供这一观测。采集与保存均在本机，不读取 Magpie 遥测，不改模型路由或认证。DSH usage 没有 reasoning 明细也能直接测量实际可见输出。WorkBuddy Desktop，以及 Claude、OpenCode、ZCode 尚未接入统一分词采集；旧日志不能补出的接收边界不回算。
 
 `summary.perf.models` 按 `[sourceKind, model, reasoningEffort, modelProvider]` 聚合，同 provider 合并 home、渠道与主/子代理，空 provider 保持未知。平均速度为有效请求的 token 总和除以时间总和；p10/p90 是同批逐请求 TPS 的最近秩，n 为请求数。一个有效请求即可显示数值，表格直接按平均 TPS 降序排列，缺测模型置后。数值、样本数和区间条沿用既有 UI。
 
-v1 至 v5 保持历史方法归属，不混入 v6 数值。旧 generation 行保留模型身份；缺少新测量时保留用量和费用。计时晚到、导入导出、冻结、缓存和冷归档均绑定方法版本。Codex 冷修订同时保存按 sample/source/home 绑定的标量测量，恢复时核对原始请求身份和窗口，不把可变热库当作冷归档证据。
+v1 至 v6 保持历史方法归属，不混入 v7 数值。旧 generation 行保留模型身份；缺少新测量时保留用量和费用。计时晚到、导入导出、冻结、缓存和冷归档均绑定方法版本。Codex 冷修订同时保存按 sample/source/home 绑定的标量测量，恢复时核对原始请求身份和窗口，不把可变热库当作冷归档证据。
 
-Q2 静态用量缓存继续复用，Q3 同步 reader 读取自身快照。请求局部缺测不淘汰其它有效请求；来源改写、身份冲突和归属发布规则继续生效。内部 coverage 与来源诊断不新增到 UI。验收与部署状态见[本地实际输出速度采集](validation/2026-10-30-visible-output-tps/README.md)。
+Q2 静态用量缓存继续复用，Q3 同步 reader 读取自身快照。请求局部缺测不淘汰其它有效请求；来源改写、身份冲突和归属发布规则继续生效。内部 coverage 与来源诊断不新增到 UI。验收与部署状态见[本地实际输出速度采集](validation/2026-10-31-receive-clock-tps/README.md)。
 
 ### 本地采集安装
 
@@ -90,7 +90,7 @@ pwsh -NoProfile -File scripts/start-workbuddy-output-capture.ps1 -CliEntry 'C:\T
 
 WorkBuddy 的计时是独立输入：普通 `sync` 每轮对每个启用 home 预扫 trace，复用未变化文件的进程内指纹，把新 distinct duration 写入 home-scoped observation 表，并定位受影响会话重建。预扫发生在 `replaceFile` 事务之外，不把 `await` 拉进写事务。trace 集合与已解析计时参与 memory/store 性能版本及读取稳定性检查；删除 trace 不遗忘已知时长或冲突。
 
-当前 `STORE_SCHEMA_VERSION` 为 23，Codex 投影版本为 v7，摘要缓存版本为 5。升级保留旧行和依赖，通过正常重解析接入新测量；无需手动删除索引。正式看板已采用 tps-v6，固定历史用量、费用及 UI 资源核对通过，见[本轮部署验收](validation/2026-10-30-visible-output-tps/README.md)。
+当前 `STORE_SCHEMA_VERSION` 为 23，Codex 投影版本为 v8，摘要缓存版本为 5。升级保留旧行和依赖，通过正常重解析接入新测量；无需手动删除索引。新运行包已在真实索引副本核对用量和费用一致，正式采用状态见[本轮部署验收](validation/2026-10-31-receive-clock-tps/README.md)。
 
 ## 读取与数据边界
 

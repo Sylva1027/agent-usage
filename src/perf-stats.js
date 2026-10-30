@@ -14,22 +14,28 @@
  * Persistent method version (plan §4). An unrecognized version is never silently
  * rewritten: normalization keeps the supplied value and reports a warning.
  */
-export const PERF_METHOD_VERSION = "tps-v6";
+export const PERF_METHOD_VERSION = "tps-v7";
 export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze([
   "tps-v1",
   "tps-v2",
   "tps-v3",
   "tps-v4",
   "tps-v5",
+  "tps-v6",
   PERF_METHOD_VERSION,
 ]);
 
 /** Generation methods retain response identities; admission checks their window contract. */
 export function isGenerationPerfMethod(version) {
-  return version === "tps-v3" || version === "tps-v4" || version === "tps-v5" || version === PERF_METHOD_VERSION;
+  return version === "tps-v3" || version === "tps-v4" || version === "tps-v5" || isMeasuredOutputPerfMethod(version);
 }
 
-/** Groups with fewer samples are shown but not ranked (plan §17.6). */
+/** These methods retain local reference-token windows, including retired v6 evidence. */
+export function isMeasuredOutputPerfMethod(version) {
+  return version === "tps-v6" || version === PERF_METHOD_VERSION;
+}
+
+/** Existing sample threshold retained for internal sample-state classification. */
 export const PERF_MIN_SAMPLES = 20;
 
 /** `duration_ms` above this value is a hint only; the sample still counts (plan §17.4 bit 4). */
@@ -161,7 +167,7 @@ const DSH_ALL_GENERATION_SEMANTICS = Object.freeze({
 });
 
 function generationSourceSemantics(sourceKind, modelProvider, methodVersion = PERF_METHOD_VERSION) {
-  if (methodVersion === PERF_METHOD_VERSION) return PERF_SOURCE_SEMANTICS[sourceKind];
+  if (isMeasuredOutputPerfMethod(methodVersion)) return PERF_SOURCE_SEMANTICS[sourceKind];
   return (methodVersion === "tps-v4" || methodVersion === "tps-v5") &&
     sourceKind === "dsh" &&
     DSH_ALL_GENERATION_PROVIDERS.has(modelProvider)
@@ -178,7 +184,7 @@ function isRetiredGenerationSample(sample) {
 }
 
 function isHistoricalGenerationPerfMethod(version) {
-  return version === "tps-v3" || version === "tps-v4" || version === "tps-v5";
+  return version === "tps-v3" || version === "tps-v4" || version === "tps-v5" || version === "tps-v6";
 }
 
 function hasExactGenerationPerfSemantics(sample) {
