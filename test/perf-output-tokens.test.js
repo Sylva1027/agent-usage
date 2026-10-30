@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { get_encoding } from "tiktoken";
 
-import { measureOutputWindows, normalizeMeasuredOutput } from "../src/perf-output-tokens.js";
+import { measureOutputWindows, normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "../src/perf-output-tokens.js";
 
 const TOKENIZER = "o200k_base";
 
@@ -202,6 +202,44 @@ test("normalizeMeasuredOutput validates scalar totals and recomputes the duratio
       ...raw,
       windows: [{ startMs: 100, endMs: 100, outputTokens: 3 }],
       durationMs: 0,
+    }),
+    null,
+  );
+});
+
+test("normalizeMeasuredOutput preserves the optional 100ms sampling contract", () => {
+  const raw = {
+    tokenizer: TOKENIZER,
+    outputTokens: 2,
+    durationMs: 200,
+    samplingWindowMs: OUTPUT_TIME_RESOLUTION_MS,
+    windows: [
+      { startMs: 0, endMs: 100, outputTokens: 1 },
+      { startMs: 100, endMs: 200, outputTokens: 1 },
+    ],
+  };
+
+  assert.equal(OUTPUT_TIME_RESOLUTION_MS, 100);
+  assert.deepEqual(normalizeMeasuredOutput(raw), {
+    tokenizer: TOKENIZER,
+    outputTokens: 2,
+    durationMs: 200,
+    windows: [
+      { startMs: 0, endMs: 100, outputTokens: 1 },
+      { startMs: 100, endMs: 200, outputTokens: 1 },
+    ],
+    samplingWindowMs: 100,
+  });
+  assert.equal(normalizeMeasuredOutput({ ...raw, samplingWindowMs: 99 }), null);
+  assert.equal(normalizeMeasuredOutput({ ...raw, samplingWindowMs: 101 }), null);
+  assert.equal(
+    normalizeMeasuredOutput({
+      ...raw,
+      durationMs: 199,
+      windows: [
+        { startMs: 0, endMs: 99, outputTokens: 1 },
+        { startMs: 99, endMs: 200, outputTokens: 1 },
+      ],
     }),
     null,
   );

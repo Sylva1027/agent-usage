@@ -13,6 +13,7 @@ import {
 } from "../src/perf-output-observations.js";
 
 const measurement = {
+  samplingWindowMs: 100,
   tokenizer: "o200k_base",
   outputTokens: 200,
   durationMs: 200,
@@ -25,7 +26,7 @@ test("local output observations bind exact identities, strip bodies and retain c
     const sourceFile = path.join(root, "session.v4.jsonl.zstd");
     const file = outputObservationFile(sourceFile, "dsh");
     const raw = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       sourceKind: "dsh",
       sessionId: "session",
       messageId: "message",
@@ -66,7 +67,7 @@ test("WorkBuddy request headers bind the local session and message despite a wir
     assert.equal(file, workbuddyOutputObservationFile(root, "session"));
     assert.notEqual(file, workbuddyOutputObservationFile(root, "other-session"));
     await appendOutputObservation(file, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceKind: "workbuddy",
       sessionId: "session",
       messageId: "local-message",

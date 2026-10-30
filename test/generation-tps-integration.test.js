@@ -106,7 +106,7 @@ test("native reference-token evidence samples responses independently and upgrad
       return original.apply(this, args);
     };
     const before = await store.summarize(FILTERS);
-    assert.equal(before.perf.meta.methodVersion, "tps-v7");
+    assert.equal(before.perf.meta.methodVersion, "tps-v8");
     assert.equal(before.perf.models[0].n, 8);
     assert.equal(before.perf.models[0].averageTps, 79);
     assert.equal(before.perf.coverage.eligible, 10);

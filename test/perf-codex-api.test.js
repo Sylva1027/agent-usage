@@ -86,7 +86,7 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
     for (const body of [usage, dashboard, summary, full, frozen]) {
       const perf = body.summary.perf;
       assert.equal(perf.state, "ready");
-      assert.equal(perf.meta.methodVersion, "tps-v7");
+      assert.equal(perf.meta.methodVersion, "tps-v8");
       assert.equal(perf.groups.length, 1);
       assert.equal(perf.groups[0].sourceKind, "codex");
       assert.equal(perf.groups[0].timingKind, "generation");
@@ -96,7 +96,7 @@ test("M7 Codex request timing reaches dashboard, summary, full detail, UI labels
       assert.deepEqual(perf.groups[0].tps, fixture.expected.tps);
       assertCodexModel(perf, fixture, "Codex API entry");
       const timing = perf.codexTimingCoverage;
-      assert.equal(timing.methodVersion, "tps-v7");
+      assert.equal(timing.methodVersion, "tps-v8");
       assert.equal(timing.counts.eligible, 26);
       assert.equal(timing.counts.sampled, 26);
       assert.equal(timing.recordedOutputTokens, 2800);
@@ -178,7 +178,7 @@ test("Codex API keeps measured responses when another request in the same turn l
     const baseUrl = await listen(server);
     const body = await getJson(baseUrl, "summary", "preset=all&skipCheck=1");
     const perf = body.summary.perf;
-    assert.equal(perf.meta.methodVersion, "tps-v7");
+    assert.equal(perf.meta.methodVersion, "tps-v8");
     assert.equal(perf.groups[0].n, 25);
     assert.equal(perf.models[0].n, 25);
     assert.equal(perf.models[0].rank, 1);

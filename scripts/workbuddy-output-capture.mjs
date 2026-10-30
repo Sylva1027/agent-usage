@@ -15,7 +15,7 @@ if (home && path.isAbsolute(home)) {
       if (!sessionId || !messageId || !result?.model || !result.measurement) return;
       const outputFile = workbuddyOutputObservationFile(home, sessionId);
       writes = writes.catch(() => {}).then(() => appendOutputObservation(outputFile, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         sourceKind: "workbuddy",
         sessionId,
         messageId,

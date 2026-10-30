@@ -18,7 +18,7 @@ import {
   isGenerationPerfMethod,
   isMeasuredOutputPerfMethod,
 } from "./perf-stats.js";
-import { normalizeMeasuredOutput } from "./perf-output-tokens.js";
+import { normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "./perf-output-tokens.js";
 import { generationPerfValues, mergeRequestTimingEvidence } from "./perf-request-timing.js";
 import { lookupRequestTiming, validateStoredEvidence } from "./perf-request-timing-store.js";
 import { foldCodexRolloutMetadata } from "./perf-sources/codex-fold.js";
@@ -1269,6 +1269,7 @@ function codexTurnRequestFacts(database, sample, identity, ownerPaths, foldedByT
       (withdrawn
         ? sample.output_tokens !== null || sample.duration_ms !== null
         : !measurement ||
+          (sample.method_version === "tps-v8" && measurement.samplingWindowMs !== OUTPUT_TIME_RESOLUTION_MS) ||
           sample.output_tokens !== measurement.outputTokens ||
           sample.duration_ms !== measurement.durationMs)
     ) {

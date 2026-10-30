@@ -1,7 +1,7 @@
 /** Build Codex performance candidates from response-level generation ledgers. */
 
 import { generationPerfValues } from "../perf-request-timing.js";
-import { normalizeMeasuredOutput } from "../perf-output-tokens.js";
+import { normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "../perf-output-tokens.js";
 import { PERF_METHOD_VERSION, PERF_TOKEN_SCOPE } from "../perf-stats.js";
 import { resolveCodexRequestTiming, resolveCodexTurnRequestTiming } from "./codex-request-timing.js";
 
@@ -63,7 +63,9 @@ function legacyGenerationValues(generation, reportedOutputTokens, reportedDurati
 
 function nativeGenerationValues(generation) {
   const values = normalizeMeasuredOutput(generation);
-  return values === null ? null : { generation: values, values };
+  return values === null || values.samplingWindowMs !== OUTPUT_TIME_RESOLUTION_MS
+    ? null
+    : { generation: values, values };
 }
 
 /**

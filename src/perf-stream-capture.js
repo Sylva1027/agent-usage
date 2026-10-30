@@ -3,7 +3,7 @@
  * Completions SSE streams. The parser retains text only until finish().
  */
 
-import { measureOutputWindows } from "./perf-output-tokens.js";
+import { measureOutputWindows, normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "./perf-output-tokens.js";
 
 const ANTHROPIC_EVENT_TYPES = new Set([
   "message_start",
@@ -148,13 +148,18 @@ function chatReasoningMarker(delta) {
  */
 
 /**
+ * @typedef {object} CaptureSegment
+ * @property {number} endU16
+ * @property {number} firstArrivalMs
+ * @property {PushStamp} stamp
+ */
+
+/**
  * @typedef {object} CaptureWindow
  * @property {number} phase
- * @property {number | null} startU16
  * @property {number} endU16
- * @property {string | number} firstReadId
- * @property {PushStamp} firstStamp
- * @property {PushStamp} lastStamp
+ * @property {number} firstVisibleMs
+ * @property {CaptureSegment[]} segments
  */
 
 /**
@@ -172,7 +177,7 @@ function chatReasoningMarker(delta) {
 export function createOutputStreamCapture() {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   /** @type {Map<string, PushStamp>} */
-  const stampsByReadId = new Map();
+  const visibleStampsByPhaseReadId = new Map();
   /** @type {Map<string, CaptureLane>} */
   const lanes = new Map();
   /** @type {Map<number, string>} */
@@ -235,6 +240,14 @@ export function createOutputStreamCapture() {
 
   function addVisibleText(kind, parts, text, stamp) {
     if (failed || text === "") return;
+    const visibleStampKey = `${phase}:${readIdKey(stamp.readId)}`;
+    let visibleStamp = visibleStampsByPhaseReadId.get(visibleStampKey);
+    if (visibleStamp === undefined) {
+      visibleStamp = { elapsedMs: stamp.elapsedMs, readId: stamp.readId };
+      visibleStampsByPhaseReadId.set(visibleStampKey, visibleStamp);
+    } else {
+      visibleStamp.elapsedMs = Math.max(visibleStamp.elapsedMs, stamp.elapsedMs);
+    }
     const key = laneKey(kind, parts);
     let lane = lanes.get(key);
     if (lane === undefined) {
@@ -248,19 +261,24 @@ export function createOutputStreamCapture() {
     if (window === undefined || window.phase !== phase) {
       window = {
         phase,
-        startU16: null,
         endU16: lane.text.length,
-        firstReadId: stamp.readId,
-        firstStamp: stamp,
-        lastStamp: stamp,
+        firstVisibleMs: stamp.elapsedMs,
+        segments: [],
       };
       lane.windows.push(window);
-    } else if (window.startU16 === null && !Object.is(window.firstReadId, stamp.readId)) {
-      window.startU16 = lane.text.length;
     }
     lane.text += text;
     window.endU16 = lane.text.length;
-    window.lastStamp = stamp;
+    const segment = window.segments.at(-1);
+    if (segment !== undefined && segment.stamp === visibleStamp) {
+      segment.endU16 = window.endU16;
+    } else {
+      window.segments.push({
+        endU16: window.endU16,
+        firstArrivalMs: stamp.elapsedMs,
+        stamp: visibleStamp,
+      });
+    }
   }
 
   function stampFor(meta) {
@@ -275,12 +293,7 @@ export function createOutputStreamCapture() {
       fail();
       return null;
     }
-    let stamp = stampsByReadId.get(key);
-    if (stamp === undefined) {
-      stamp = { elapsedMs, readId: /** @type {string | number} */ (readId) };
-      stampsByReadId.set(key, stamp);
-    }
-    return stamp;
+    return { elapsedMs, readId: /** @type {string | number} */ (readId) };
   }
 
   function detectProtocol(type, payload) {
@@ -508,14 +521,35 @@ export function createOutputStreamCapture() {
     const result = [];
     for (const lane of lanes.values()) {
       if (lane.text === "") continue;
+      const windows = [];
+      for (const window of lane.windows) {
+        const cutoffMs = window.firstVisibleMs + OUTPUT_TIME_RESOLUTION_MS;
+        let baselineEndU16 = null;
+        /** @type {PushStamp | null} */
+        let firstStamp = null;
+        for (const segment of window.segments) {
+          if (segment.firstArrivalMs >= cutoffMs) break;
+          baselineEndU16 = segment.endU16;
+          firstStamp = segment.stamp;
+        }
+        if (baselineEndU16 === null || firstStamp === null) continue;
+
+        const lastSegment = window.segments.at(-1);
+        if (lastSegment === undefined) continue;
+        const startMs = firstStamp.elapsedMs;
+        const endMs = lastSegment.stamp.elapsedMs;
+        if (endMs < startMs || endMs - startMs < OUTPUT_TIME_RESOLUTION_MS) continue;
+        windows.push({
+          startBytes: utf8OffsetAtU16(lane.text, baselineEndU16),
+          endBytes: utf8OffsetAtU16(lane.text, window.endU16),
+          startMs,
+          endMs,
+        });
+      }
+      if (windows.length === 0) continue;
       result.push({
         text: lane.text,
-        windows: lane.windows.map((window) => ({
-          startBytes: utf8OffsetAtU16(lane.text, window.startU16 ?? window.endU16),
-          endBytes: utf8OffsetAtU16(lane.text, window.endU16),
-          startMs: window.firstStamp.elapsedMs,
-          endMs: window.lastStamp.elapsedMs,
-        })),
+        windows,
       });
     }
     return result;
@@ -530,7 +564,14 @@ export function createOutputStreamCapture() {
     finished = true;
     let measurement = null;
     try {
-      measurement = measureOutputWindows(measuredLanes());
+      const measured = measureOutputWindows(measuredLanes());
+      measurement =
+        measured === null
+          ? null
+          : normalizeMeasuredOutput({
+              ...measured,
+              samplingWindowMs: OUTPUT_TIME_RESOLUTION_MS,
+            });
     } catch {
       measurement = null;
     }

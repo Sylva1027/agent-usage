@@ -9,7 +9,7 @@
  */
 import { readRolloutLines } from "../codex-rollout.js";
 import path from "node:path";
-import { normalizeMeasuredOutput } from "../perf-output-tokens.js";
+import { normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "../perf-output-tokens.js";
 
 const TARGET_ITEM_TYPES = new Set(["AgentMessage", "Reasoning"]);
 
@@ -77,10 +77,11 @@ function nonNegativeFiniteNumber(value) {
 }
 
 function projectNativeGeneration(value) {
-  if (!isRecord(value) || value.schema_version !== 4 || value.clock !== "transport_receive") return null;
+  if (!isRecord(value) || value.schema_version !== 5 || value.clock !== "transport_receive") return null;
   const rawWindows = Array.isArray(value.windows) ? value.windows : [];
   return normalizeMeasuredOutput({
     tokenizer: value.tokenizer,
+    samplingWindowMs: OUTPUT_TIME_RESOLUTION_MS,
     outputTokens: value.output_tokens,
     durationMs: value.observed_duration_ms,
     windows: rawWindows.map((window) =>

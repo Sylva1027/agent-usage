@@ -53,7 +53,7 @@ export function apply(ctx, config = {}) {
       }
       if (!sourceFile) throw new Error("Committed DSH session file is unavailable");
       await appendOutputObservation(outputObservationFile(sourceFile, "dsh"), {
-        schemaVersion: 2,
+        schemaVersion: 3,
         sourceKind: "dsh",
         sessionId,
         messageId: message.id,

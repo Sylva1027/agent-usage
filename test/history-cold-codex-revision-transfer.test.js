@@ -11,7 +11,9 @@ import {
   loadHistoryArchiveImport,
   publishHistoryArchiveBundle,
   publishHistoryArchiveImport,
+  readCodexNativeMeasurements,
 } from "../src/history-archive.js";
+import { OUTPUT_TIME_RESOLUTION_MS } from "../src/perf-output-tokens.js";
 import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
@@ -106,6 +108,7 @@ test("an evicted Codex sample revision survives complete bundle import and reope
     const oldSampleRow = {
       ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
+    assert.equal(oldSampleRow.method_version, PERF_METHOD_VERSION);
 
     await createHistoryArchiveCandidate(archived.database, candidateFile, {
       startMs: coldStartMs,
@@ -114,11 +117,21 @@ test("an evicted Codex sample revision survives complete bundle import and reope
     const candidateDigest = fileSha256(candidateFile);
     const candidateDatabase = new DatabaseSync(candidateFile, { readOnly: true });
     let candidateRequestFacts;
+    let candidateNativeMeasurement;
     try {
       candidateRequestFacts = codexRequestFacts(candidateDatabase);
+      candidateNativeMeasurement = readCodexNativeMeasurements(
+        candidateDatabase,
+        candidateDatabase.prepare("SELECT * FROM perf_samples ORDER BY sample_key").all(),
+      ).get(String(coldSample.sampleKey));
     } finally {
       candidateDatabase.close();
     }
+    assert.equal(
+      candidateNativeMeasurement.samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "the archive candidate must retain the current 100 ms sampling precision",
+    );
     const registered = await archived.registerHistoryArchiveCandidate(candidateFile);
     archived.database.exec("BEGIN IMMEDIATE");
     try {
@@ -198,6 +211,11 @@ test("an evicted Codex sample revision survives complete bundle import and reope
     assert.equal(nativeMeasurement.payload.source_path, oldSampleRow.source_path);
     assert.equal(nativeMeasurement.payload.measurement.outputTokens, coldSample.outputTokens);
     assert.equal(nativeMeasurement.payload.measurement.durationMs, lateTiming.generation.durationMs);
+    assert.equal(
+      nativeMeasurement.payload.measurement.samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "the late v8 revision must retain the current 100 ms sampling precision",
+    );
     const recoveryRows = perfRecoveryRows(archived.database);
     assert.deepEqual(
       recoveryRows,
@@ -226,6 +244,22 @@ test("an evicted Codex sample revision survives complete bundle import and reope
       databaseFile: loaded.runtimeFile,
     });
     await runtime.open();
+    const importedRevisionRoot = JSON.parse(runtime.readMetaRaw(PERF_REVISIONS_KEY));
+    const importedNativeMeasurementRevision = importedRevisionRoot.revisions.find(
+      (entry) =>
+        entry.factTable === "codex_output_measurements" &&
+        entry.added.some((delta) => delta.payload.sample_key === coldSample.sampleKey),
+    );
+    assert.ok(importedNativeMeasurementRevision);
+    const importedNativeMeasurement = importedNativeMeasurementRevision.added.find(
+      (delta) => delta.payload.sample_key === coldSample.sampleKey,
+    );
+    assert.ok(importedNativeMeasurement);
+    assert.equal(
+      importedNativeMeasurement.payload.measurement.samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "the imported runtime revision must restore the current 100 ms sampling precision",
+    );
     const segment = runtime.database
       .prepare("SELECT database_path, database_sha256 FROM archive_segments WHERE segment_id = ?")
       .get(registered.segmentId);

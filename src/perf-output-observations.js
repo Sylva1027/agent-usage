@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import path from "node:path";
 
-import { normalizeMeasuredOutput } from "./perf-output-tokens.js";
+import { normalizeMeasuredOutput, OUTPUT_TIME_RESOLUTION_MS } from "./perf-output-tokens.js";
 
 export const workbuddyOutputObservationFile = (home, sessionId) =>
   path.join(home, "generation-timing", `${createHash("sha256").update(sessionId).digest("hex")}.jsonl`);
@@ -24,13 +24,21 @@ function text(value) {
 /** Keep only request identity and scalar measurements in the local companion file. */
 export function normalizeOutputObservation(raw) {
   if (!raw || !["dsh", "workbuddy"].includes(raw.sourceKind)) return null;
-  const schemaVersion = raw.sourceKind === "dsh" ? 2 : 1;
+  const schemaVersion = raw.sourceKind === "dsh" ? 3 : 2;
   if (raw.schemaVersion !== schemaVersion) return null;
   const messageId = text(raw.messageId);
   const sessionId = text(raw.sessionId) ?? "";
   const model = text(raw.model);
   const measurement = normalizeMeasuredOutput(raw.measurement);
-  if (!messageId || !sessionId || !model || !measurement || raw.clock !== "transport_receive") return null;
+  if (
+    !messageId ||
+    !sessionId ||
+    !model ||
+    !measurement ||
+    measurement.samplingWindowMs !== OUTPUT_TIME_RESOLUTION_MS ||
+    raw.clock !== "transport_receive"
+  )
+    return null;
   return {
     schemaVersion,
     sourceKind: raw.sourceKind,

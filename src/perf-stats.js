@@ -14,7 +14,7 @@
  * Persistent method version (plan §4). An unrecognized version is never silently
  * rewritten: normalization keeps the supplied value and reports a warning.
  */
-export const PERF_METHOD_VERSION = "tps-v7";
+export const PERF_METHOD_VERSION = "tps-v8";
 export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze([
   "tps-v1",
   "tps-v2",
@@ -22,6 +22,7 @@ export const PERF_SUPPORTED_METHOD_VERSIONS = Object.freeze([
   "tps-v4",
   "tps-v5",
   "tps-v6",
+  "tps-v7",
   PERF_METHOD_VERSION,
 ]);
 
@@ -32,7 +33,7 @@ export function isGenerationPerfMethod(version) {
 
 /** These methods retain local reference-token windows, including retired v6 evidence. */
 export function isMeasuredOutputPerfMethod(version) {
-  return version === "tps-v6" || version === PERF_METHOD_VERSION;
+  return version === "tps-v6" || version === "tps-v7" || version === PERF_METHOD_VERSION;
 }
 
 /** Existing sample threshold retained for internal sample-state classification. */
@@ -184,7 +185,7 @@ function isRetiredGenerationSample(sample) {
 }
 
 function isHistoricalGenerationPerfMethod(version) {
-  return version === "tps-v3" || version === "tps-v4" || version === "tps-v5" || version === "tps-v6";
+  return isGenerationPerfMethod(version) && version !== PERF_METHOD_VERSION;
 }
 
 function hasExactGenerationPerfSemantics(sample) {

@@ -55,6 +55,194 @@ test("a single raw batch with 1100 deltas establishes a boundary but produces no
   assert.equal(JSON.stringify(result).includes("中"), false);
 });
 
+test("the 100ms baseline excludes the first 900 tokens and measures the tail at actual arrival time", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(
+    encoder.encode(
+      sseEvent(responseMetadata()) + Array.from({ length: 382 }, () => sseEvent(responseTextDelta("中"))).join(""),
+    ),
+    { elapsedMs: 0, readId: 1 },
+  );
+  capture.push(encoder.encode(Array.from({ length: 518 }, () => sseEvent(responseTextDelta("中"))).join("")), {
+    elapsedMs: 9,
+    readId: 2,
+  });
+  capture.push(
+    encoder.encode(
+      Array.from({ length: 200 }, () => sseEvent(responseTextDelta("中"))).join("") + sseEvent(responseCompleted()),
+    ),
+    { elapsedMs: 158, readId: 3 },
+  );
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 200,
+      durationMs: 149,
+      windows: [{ startMs: 9, endMs: 158, outputTokens: 200 }],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("output confined to the first 100ms boundary produces no measurement", () => {
+  const buffered = createOutputStreamCapture();
+  buffered.push(
+    encoder.encode(
+      sseEvent(responseMetadata()) + Array.from({ length: 382 }, () => sseEvent(responseTextDelta("中"))).join(""),
+    ),
+    { elapsedMs: 0, readId: 1 },
+  );
+  buffered.push(
+    encoder.encode(
+      Array.from({ length: 718 }, () => sseEvent(responseTextDelta("中"))).join("") + sseEvent(responseCompleted()),
+    ),
+    { elapsedMs: 1, readId: 2 },
+  );
+  assert.deepEqual(buffered.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: null,
+  });
+
+  const boundary = createOutputStreamCapture();
+  boundary.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中"))), {
+    elapsedMs: 0,
+    readId: 1,
+  });
+  boundary.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 99, readId: 2 });
+  boundary.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 100, readId: 3 });
+  boundary.push(encoder.encode(sseEvent(responseCompleted())), { elapsedMs: 100, readId: 3 });
+  assert.deepEqual(boundary.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: null,
+  });
+});
+
+test("an exact 100ms visible arrival belongs to the measured side", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中"))), {
+    elapsedMs: 0,
+    readId: 1,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 99, readId: 2 });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 100, readId: 3 });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中")) + sseEvent(responseCompleted())), {
+    elapsedMs: 200,
+    readId: 4,
+  });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 2,
+      durationMs: 101,
+      windows: [{ startMs: 99, endMs: 200, outputTokens: 2 }],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("a same-read extension remains in the baseline without synthesizing its start time", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中"))), {
+    elapsedMs: 0,
+    readId: 1,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 95, readId: 2 });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 105, readId: 2 });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中"))), { elapsedMs: 210, readId: 3 });
+  capture.push(encoder.encode(sseEvent(responseCompleted())), { elapsedMs: 220, readId: 3 });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 1,
+      durationMs: 105,
+      windows: [{ startMs: 105, endMs: 210, outputTokens: 1 }],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("terminal-only bytes reusing the baseline or final visible read do not change the sample", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(
+    encoder.encode(
+      sseEvent(responseMetadata()) + Array.from({ length: 900 }, () => sseEvent(responseTextDelta("中"))).join(""),
+    ),
+    { elapsedMs: 0, readId: 1 },
+  );
+  capture.push(encoder.encode(Array.from({ length: 200 }, () => sseEvent(responseTextDelta("中"))).join("")), {
+    elapsedMs: 150,
+    readId: 2,
+  });
+  capture.push(
+    encoder.encode(
+      sseEvent({
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "msg-1", type: "message", status: "completed", role: "assistant", content: [] },
+      }),
+    ),
+    { elapsedMs: 900, readId: 1 },
+  );
+  capture.push(encoder.encode(sseEvent(responseCompleted())), { elapsedMs: 900, readId: 2 });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 200,
+      durationMs: 150,
+      windows: [{ startMs: 0, endMs: 150, outputTokens: 200 }],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("steady post-baseline output rates are unchanged at 10, 50, 100, 200, and 600 tokens per second", () => {
+  const cases = [
+    { rate: 10, intervalMs: 100, tokensPerTick: 1, startMs: 0, postTokens: 10 },
+    { rate: 50, intervalMs: 20, tokensPerTick: 1, startMs: 80, postTokens: 46 },
+    { rate: 100, intervalMs: 10, tokensPerTick: 1, startMs: 90, postTokens: 91 },
+    { rate: 200, intervalMs: 5, tokensPerTick: 1, startMs: 95, postTokens: 181 },
+    { rate: 600, intervalMs: 5, tokensPerTick: 3, startMs: 95, postTokens: 543 },
+  ];
+
+  for (const { rate, intervalMs, tokensPerTick, startMs, postTokens } of cases) {
+    const capture = createOutputStreamCapture();
+    let readId = 0;
+    for (let elapsedMs = 0; elapsedMs <= 1_000; elapsedMs += intervalMs) {
+      readId += 1;
+      const delta = Array.from({ length: tokensPerTick }, () => sseEvent(responseTextDelta("中"))).join("");
+      const prefix = elapsedMs === 0 ? sseEvent(responseMetadata()) : "";
+      const suffix = elapsedMs === 1_000 ? sseEvent(responseCompleted()) : "";
+      capture.push(encoder.encode(prefix + delta + suffix), { elapsedMs, readId });
+    }
+
+    assert.deepEqual(
+      capture.finish()?.measurement,
+      {
+        tokenizer: "o200k_base",
+        outputTokens: postTokens,
+        durationMs: 1_000 - startMs,
+        windows: [{ startMs, endMs: 1_000, outputTokens: postTokens }],
+        samplingWindowMs: 100,
+      },
+      `${rate} tokens/s`,
+    );
+  }
+});
+
 test("streaming UTF-8, CRLF, named events, and multiline data count only post-boundary tokens", () => {
   const capture = createOutputStreamCapture();
   capture.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中"))), {
@@ -83,8 +271,8 @@ test("streaming UTF-8, CRLF, named events, and multiline data count only post-bo
   );
   assert.ok(emojiOffset > 0);
 
-  capture.push(bytes.slice(0, emojiOffset + 2), { elapsedMs: 1_010, readId: 2 });
-  capture.push(bytes.slice(emojiOffset + 2), { elapsedMs: 1_010, readId: 2 });
+  capture.push(bytes.slice(0, emojiOffset + 2), { elapsedMs: 1_110, readId: 2 });
+  capture.push(bytes.slice(emojiOffset + 2), { elapsedMs: 1_110, readId: 2 });
 
   assert.deepEqual(capture.finish(), {
     responseId: "resp-1",
@@ -92,8 +280,9 @@ test("streaming UTF-8, CRLF, named events, and multiline data count only post-bo
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 1,
-      durationMs: 10,
-      windows: [{ startMs: 1_000, endMs: 1_010, outputTokens: 1 }],
+      durationMs: 110,
+      windows: [{ startMs: 1_000, endMs: 1_110, outputTokens: 1 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -108,7 +297,7 @@ test("reasoning and server-tool markers start new phases without mixing visible 
     encoder.encode(
       sseEvent(responseTextDelta("中")) + sseEvent({ type: "response.reasoning_text.delta", delta: "think" }),
     ),
-    { elapsedMs: 1_010, readId: 2 },
+    { elapsedMs: 1_110, readId: 2 },
   );
   capture.push(
     encoder.encode(
@@ -118,10 +307,10 @@ test("reasoning and server-tool markers start new phases without mixing visible 
         item: { id: "search-1", type: "web_search_call" },
       }) + sseEvent(responseTextDelta("中")),
     ),
-    { elapsedMs: 1_020, readId: 3 },
+    { elapsedMs: 1_120, readId: 3 },
   );
   capture.push(encoder.encode(sseEvent(responseTextDelta("中")) + sseEvent(responseCompleted())), {
-    elapsedMs: 1_030,
+    elapsedMs: 1_230,
     readId: 4,
   });
 
@@ -131,11 +320,12 @@ test("reasoning and server-tool markers start new phases without mixing visible 
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 2,
-      durationMs: 20,
+      durationMs: 220,
       windows: [
-        { startMs: 1_000, endMs: 1_010, outputTokens: 1 },
-        { startMs: 1_020, endMs: 1_030, outputTokens: 1 },
+        { startMs: 1_000, endMs: 1_110, outputTokens: 1 },
+        { startMs: 1_120, endMs: 1_230, outputTokens: 1 },
       ],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -150,11 +340,11 @@ test("phase windows share one final lane tokenization across a merged word", () 
     encoder.encode(
       sseEvent(responseTextDelta("b")) + sseEvent({ type: "response.reasoning_text.delta", delta: "split" }),
     ),
-    { elapsedMs: 1_010, readId: 2 },
+    { elapsedMs: 1_110, readId: 2 },
   );
-  capture.push(encoder.encode(sseEvent(responseTextDelta("c"))), { elapsedMs: 1_020, readId: 3 });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("c"))), { elapsedMs: 1_120, readId: 3 });
   capture.push(encoder.encode(sseEvent(responseTextDelta("d")) + sseEvent(responseCompleted())), {
-    elapsedMs: 1_030,
+    elapsedMs: 1_230,
     readId: 4,
   });
 
@@ -164,8 +354,9 @@ test("phase windows share one final lane tokenization across a merged word", () 
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 1,
-      durationMs: 10,
-      windows: [{ startMs: 1_020, endMs: 1_030, outputTokens: 1 }],
+      durationMs: 110,
+      windows: [{ startMs: 1_120, endMs: 1_230, outputTokens: 1 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -185,7 +376,7 @@ test("hidden Responses reasoning markers split phases without reasoning text", (
           item: { id: "reasoning-1", type: "reasoning" },
         }),
     ),
-    { elapsedMs: 1_010, readId: 2 },
+    { elapsedMs: 1_110, readId: 2 },
   );
   capture.push(
     encoder.encode(
@@ -200,11 +391,11 @@ test("hidden Responses reasoning markers split phases without reasoning text", (
           item: { id: "reasoning-1", type: "reasoning" },
         }),
     ),
-    { elapsedMs: 1_100, readId: 3 },
+    { elapsedMs: 1_200, readId: 3 },
   );
   capture.push(encoder.encode(sseEvent(responseTextDelta("c"))), { elapsedMs: 1_200, readId: 4 });
   capture.push(encoder.encode(sseEvent(responseTextDelta("d")) + sseEvent(responseCompleted())), {
-    elapsedMs: 1_210,
+    elapsedMs: 1_310,
     readId: 5,
   });
 
@@ -214,8 +405,9 @@ test("hidden Responses reasoning markers split phases without reasoning text", (
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 1,
-      durationMs: 10,
-      windows: [{ startMs: 1_200, endMs: 1_210, outputTokens: 1 }],
+      durationMs: 110,
+      windows: [{ startMs: 1_200, endMs: 1_310, outputTokens: 1 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -230,7 +422,7 @@ test("a UTF-16 boundary inside a surrogate pair maps before the completed charac
   );
   capture.push(encoder.encode(sseEvent(responseTextDelta("\ud83d"))), { elapsedMs: 2_010, readId: 2 });
   capture.push(encoder.encode(sseEvent(responseTextDelta("\udc69")) + sseEvent(responseCompleted())), {
-    elapsedMs: 2_020,
+    elapsedMs: 2_111,
     readId: 3,
   });
 
@@ -240,8 +432,9 @@ test("a UTF-16 boundary inside a surrogate pair maps before the completed charac
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 2,
-      durationMs: 10,
-      windows: [{ startMs: 2_010, endMs: 2_020, outputTokens: 2 }],
+      durationMs: 101,
+      windows: [{ startMs: 2_010, endMs: 2_111, outputTokens: 2 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -262,7 +455,7 @@ test("parallel item lanes remain separate and union overlapping time", () => {
         sseEvent(responseTextDelta("b", "item-b", 1)) +
         sseEvent(responseCompleted()),
     ),
-    { elapsedMs: 1_020, readId: 2 },
+    { elapsedMs: 1_110, readId: 2 },
   );
 
   assert.deepEqual(capture.finish(), {
@@ -271,11 +464,113 @@ test("parallel item lanes remain separate and union overlapping time", () => {
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 2,
-      durationMs: 20,
+      durationMs: 110,
       windows: [
-        { startMs: 1_000, endMs: 1_020, outputTokens: 1 },
-        { startMs: 1_000, endMs: 1_020, outputTokens: 1 },
+        { startMs: 1_000, endMs: 1_110, outputTokens: 1 },
+        { startMs: 1_000, endMs: 1_110, outputTokens: 1 },
       ],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("lane baselines retain independent first-visible anchors", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中", "item-a", 0))), {
+    elapsedMs: 0,
+    readId: 1,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中", "item-b", 1))), {
+    elapsedMs: 50,
+    readId: 2,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中", "item-a", 0))), {
+    elapsedMs: 110,
+    readId: 3,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中", "item-b", 1)) + sseEvent(responseCompleted())), {
+    elapsedMs: 160,
+    readId: 4,
+  });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 2,
+      durationMs: 160,
+      windows: [
+        { startMs: 0, endMs: 110, outputTokens: 1 },
+        { startMs: 50, endMs: 160, outputTokens: 1 },
+      ],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("a visible batch timestamp is shared across lanes and ignores terminal-only bytes", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(
+    encoder.encode(
+      sseEvent(responseMetadata()) +
+        sseEvent(responseTextDelta("中", "item-a", 0)) +
+        sseEvent(responseTextDelta("中", "item-b", 1)),
+    ),
+    { elapsedMs: 0, readId: 1 },
+  );
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中", "item-a", 0))), {
+    elapsedMs: 150,
+    readId: 2,
+  });
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中", "item-b", 1))), {
+    elapsedMs: 160,
+    readId: 2,
+  });
+  capture.push(encoder.encode(sseEvent(responseCompleted())), { elapsedMs: 170, readId: 2 });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 2,
+      durationMs: 160,
+      windows: [
+        { startMs: 0, endMs: 160, outputTokens: 1 },
+        { startMs: 0, endMs: 160, outputTokens: 1 },
+      ],
+      samplingWindowMs: 100,
+    },
+  });
+});
+
+test("later phase output reusing a read id does not stretch the previous phase", () => {
+  const capture = createOutputStreamCapture();
+  capture.push(encoder.encode(sseEvent(responseMetadata()) + sseEvent(responseTextDelta("中"))), {
+    elapsedMs: 0,
+    readId: 1,
+  });
+  capture.push(
+    encoder.encode(
+      sseEvent(responseTextDelta("中")) + sseEvent({ type: "response.reasoning_text.delta", delta: "think" }),
+    ),
+    { elapsedMs: 110, readId: 2 },
+  );
+  capture.push(encoder.encode(sseEvent(responseTextDelta("中")) + sseEvent(responseCompleted())), {
+    elapsedMs: 900,
+    readId: 2,
+  });
+
+  assert.deepEqual(capture.finish(), {
+    responseId: "resp-1",
+    model: "model-1",
+    measurement: {
+      tokenizer: "o200k_base",
+      outputTokens: 1,
+      durationMs: 110,
+      windows: [{ startMs: 0, endMs: 110, outputTokens: 1 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -309,7 +604,7 @@ test("Anthropic text and tool input count while thinking and tool names do not",
         "content_block_delta",
       ),
     ),
-    { elapsedMs: 2_010, readId: 2 },
+    { elapsedMs: 2_110, readId: 2 },
   );
   capture.push(
     encoder.encode(
@@ -342,7 +637,7 @@ test("Anthropic text and tool input count while thinking and tool names do not",
           "content_block_delta",
         ),
     ),
-    { elapsedMs: 2_020, readId: 3 },
+    { elapsedMs: 2_120, readId: 3 },
   );
   capture.push(
     encoder.encode(
@@ -355,7 +650,7 @@ test("Anthropic text and tool input count while thinking and tool names do not",
         "content_block_delta",
       ) + sseEvent({ type: "message_stop" }, "message_stop"),
     ),
-    { elapsedMs: 2_030, readId: 4 },
+    { elapsedMs: 2_230, readId: 4 },
   );
 
   assert.deepEqual(capture.finish(), {
@@ -364,11 +659,12 @@ test("Anthropic text and tool input count while thinking and tool names do not",
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 2,
-      durationMs: 20,
+      durationMs: 220,
       windows: [
-        { startMs: 2_000, endMs: 2_010, outputTokens: 1 },
-        { startMs: 2_020, endMs: 2_030, outputTokens: 1 },
+        { startMs: 2_000, endMs: 2_110, outputTokens: 1 },
+        { startMs: 2_120, endMs: 2_230, outputTokens: 1 },
       ],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -406,7 +702,7 @@ test("hidden Anthropic thinking and signature markers split phases without reaso
           "content_block_start",
         ),
     ),
-    { elapsedMs: 2_010, readId: 2 },
+    { elapsedMs: 2_110, readId: 2 },
   );
   capture.push(
     encoder.encode(
@@ -421,7 +717,7 @@ test("hidden Anthropic thinking and signature markers split phases without reaso
           "content_block_start",
         ),
     ),
-    { elapsedMs: 2_100, readId: 3 },
+    { elapsedMs: 2_200, readId: 3 },
   );
   capture.push(
     encoder.encode(
@@ -439,7 +735,7 @@ test("hidden Anthropic thinking and signature markers split phases without reaso
         "content_block_delta",
       ) + sseEvent({ type: "message_stop" }, "message_stop"),
     ),
-    { elapsedMs: 2_210, readId: 5 },
+    { elapsedMs: 2_310, readId: 5 },
   );
 
   assert.deepEqual(capture.finish(), {
@@ -448,8 +744,9 @@ test("hidden Anthropic thinking and signature markers split phases without reaso
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 1,
-      durationMs: 10,
-      windows: [{ startMs: 2_200, endMs: 2_210, outputTokens: 1 }],
+      durationMs: 110,
+      windows: [{ startMs: 2_200, endMs: 2_310, outputTokens: 1 }],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -479,7 +776,7 @@ test("Chat Completions counts content and tool arguments but not reasoning or to
           }),
         ),
     ),
-    { elapsedMs: 3_010, readId: 2 },
+    { elapsedMs: 3_110, readId: 2 },
   );
   capture.push(
     encoder.encode(
@@ -496,7 +793,7 @@ test("Chat Completions counts content and tool arguments but not reasoning or to
         }) +
         sseEvent("[DONE]"),
     ),
-    { elapsedMs: 3_020, readId: 3 },
+    { elapsedMs: 3_220, readId: 3 },
   );
 
   assert.deepEqual(capture.finish(), {
@@ -505,11 +802,12 @@ test("Chat Completions counts content and tool arguments but not reasoning or to
     measurement: {
       tokenizer: "o200k_base",
       outputTokens: 2,
-      durationMs: 20,
+      durationMs: 220,
       windows: [
-        { startMs: 3_000, endMs: 3_010, outputTokens: 1 },
-        { startMs: 3_010, endMs: 3_020, outputTokens: 1 },
+        { startMs: 3_000, endMs: 3_110, outputTokens: 1 },
+        { startMs: 3_110, endMs: 3_220, outputTokens: 1 },
       ],
+      samplingWindowMs: 100,
     },
   });
 });
@@ -523,10 +821,10 @@ test("Chat reasoning fields split phases when explicitly non-null and ignore nul
   });
 
   const nullOnly = createOutputStreamCapture();
-  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "a" }))), { elapsedMs: 1_000, readId: 1 });
+  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "中" }))), { elapsedMs: 1_000, readId: 1 });
   nullOnly.push(encoder.encode(sseEvent(chunk({ reasoning: null }))), { elapsedMs: 1_100, readId: 2 });
-  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "b" }))), { elapsedMs: 1_200, readId: 3 });
-  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "c" })) + sseEvent("[DONE]")), {
+  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "中" }))), { elapsedMs: 1_200, readId: 3 });
+  nullOnly.push(encoder.encode(sseEvent(chunk({ content: "中" })) + sseEvent("[DONE]")), {
     elapsedMs: 1_210,
     readId: 4,
   });
@@ -535,9 +833,10 @@ test("Chat reasoning fields split phases when explicitly non-null and ignore nul
     model: "chat-model",
     measurement: {
       tokenizer: "o200k_base",
-      outputTokens: 1,
+      outputTokens: 2,
       durationMs: 210,
-      windows: [{ startMs: 1_000, endMs: 1_210, outputTokens: 1 }],
+      windows: [{ startMs: 1_000, endMs: 1_210, outputTokens: 2 }],
+      samplingWindowMs: 100,
     },
   });
 
@@ -545,17 +844,17 @@ test("Chat reasoning fields split phases when explicitly non-null and ignore nul
   for (let index = 0; index < explicitMarkers.length; index += 1) {
     const capture = createOutputStreamCapture();
     const start = 2_000 + index * 1_000;
-    capture.push(encoder.encode(sseEvent(chunk({ content: "a" }))), { elapsedMs: start, readId: 1 });
+    capture.push(encoder.encode(sseEvent(chunk({ content: "中" }))), { elapsedMs: start, readId: 1 });
     capture.push(encoder.encode(sseEvent(chunk(explicitMarkers[index]))), {
       elapsedMs: start + 10,
       readId: 2,
     });
-    capture.push(encoder.encode(sseEvent(chunk({ content: "b" }))), {
+    capture.push(encoder.encode(sseEvent(chunk({ content: "中" }))), {
       elapsedMs: start + 20,
       readId: 3,
     });
-    capture.push(encoder.encode(sseEvent(chunk({ content: "c" })) + sseEvent("[DONE]")), {
-      elapsedMs: start + 30,
+    capture.push(encoder.encode(sseEvent(chunk({ content: "中" })) + sseEvent("[DONE]")), {
+      elapsedMs: start + 121,
       readId: 4,
     });
     assert.deepEqual(capture.finish(), {
@@ -564,8 +863,9 @@ test("Chat reasoning fields split phases when explicitly non-null and ignore nul
       measurement: {
         tokenizer: "o200k_base",
         outputTokens: 1,
-        durationMs: 10,
-        windows: [{ startMs: start + 20, endMs: start + 30, outputTokens: 1 }],
+        durationMs: 101,
+        windows: [{ startMs: start + 20, endMs: start + 121, outputTokens: 1 }],
+        samplingWindowMs: 100,
       },
     });
   }

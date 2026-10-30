@@ -36,8 +36,8 @@ function normalized(value) {
   return result.sample;
 }
 
-test("tps-v7 keeps v1-v6 readable and recognizes v3-v7 as generation methods", () => {
-  assert.equal(PERF_METHOD_VERSION, "tps-v7");
+test("tps-v8 keeps v1-v7 readable and recognizes v3-v8 as generation methods", () => {
+  assert.equal(PERF_METHOD_VERSION, "tps-v8");
   assert.deepEqual(PERF_SUPPORTED_METHOD_VERSIONS, [
     "tps-v1",
     "tps-v2",
@@ -46,18 +46,19 @@ test("tps-v7 keeps v1-v6 readable and recognizes v3-v7 as generation methods", (
     "tps-v5",
     "tps-v6",
     "tps-v7",
+    "tps-v8",
   ]);
-  for (const version of ["tps-v3", "tps-v4", "tps-v5", "tps-v6", "tps-v7"]) {
+  for (const version of ["tps-v3", "tps-v4", "tps-v5", "tps-v6", "tps-v7", "tps-v8"]) {
     assert.equal(isGenerationPerfMethod(version), true, version);
   }
-  for (const version of ["tps-v1", "tps-v2", "tps-v8", "", null]) {
+  for (const version of ["tps-v1", "tps-v2", "tps-v9", "", null]) {
     assert.equal(isGenerationPerfMethod(version), false, String(version));
   }
 });
 
-test("only current v7 samples with the unified scope contribute displayed statistics", () => {
+test("only current v8 samples with the unified scope contribute displayed statistics", () => {
   const current = normalized(raw());
-  assert.equal(current.methodVersion, "tps-v7");
+  assert.equal(current.methodVersion, "tps-v8");
   assert.equal(current.tokenScope, PERF_TOKEN_SCOPE);
 
   const summary = summarizePerf([current]);
@@ -142,6 +143,58 @@ test("v6 reference-token windows remain historical and cannot inflate current st
   assert.equal(mixed.models[0].n, 1);
   assert.equal(mixed.models[0].averageTps, 100);
   assert.equal(mixed.models[0].p90, 100);
+});
+
+test("historical v7 measurements without 100ms precision stay v7 and never contribute current statistics", () => {
+  const result = normalizePerfSample(
+    raw({
+      sourceKind: "codex",
+      identity: ["thread", "turn", "response"],
+      methodVersion: "tps-v7",
+      outputTokens: 680,
+      durationMs: 15,
+    }),
+  );
+  assert.notEqual(result.sample, null);
+  assert.equal(result.warnings.includes("SOURCE_SEMANTICS_MISMATCH"), false);
+
+  const historical = result.sample;
+  assert.equal(historical.methodVersion, "tps-v7");
+  assert.equal(historical.tokenScope, PERF_TOKEN_SCOPE);
+  assert.equal(historical.outputTokens, 680);
+  assert.equal(historical.durationMs, 15);
+
+  const summary = summarizePerf([historical]);
+  assert.equal(summary.groups.length, 0);
+  assert.equal(summary.models.length, 1);
+  assert.deepEqual(
+    {
+      sourceKind: summary.models[0].sourceKind,
+      model: summary.models[0].model,
+      window: summary.models[0].window,
+      state: summary.models[0].state,
+      n: summary.models[0].n,
+      averageTps: summary.models[0].averageTps,
+      p10: summary.models[0].p10,
+      p90: summary.models[0].p90,
+      candidateCount: summary.models[0].candidateCount,
+    },
+    {
+      sourceKind: "codex",
+      model: "model-a",
+      window: "request",
+      state: "missing_duration",
+      n: 0,
+      averageTps: null,
+      p10: null,
+      p90: null,
+      candidateCount: 1,
+    },
+    "historical v7 must retain an identity-only missing-duration model row with zero statistics",
+  );
+  assert.equal(summary.coverage.eligible, 1);
+  assert.equal(summary.coverage.sampled, 0);
+  assert.equal(summary.coverage.droppedByReason.historical_method, 1);
 });
 
 test("historical v5 DSH provider scope remains readable without being relabeled", () => {

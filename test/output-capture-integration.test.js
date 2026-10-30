@@ -17,6 +17,7 @@ const filters = { preset: "all", now: new Date(T + 60_000), calendarZone: "utc" 
 const lines = (rows) => `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const scalar = {
+  samplingWindowMs: 100,
   tokenizer: "o200k_base",
   outputTokens: 200,
   durationMs: 200,
@@ -95,7 +96,7 @@ test("DSH transport capture binds committed message and late timing reaches memo
     send(response, { type: "message_start", message: { id: "wire-id", model: "deepseek-flash" } });
     send(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
     send(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "中".repeat(900) } });
-    await delay(100);
+    await delay(150);
     send(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "中".repeat(200) } });
     send(response, { type: "content_block_stop", index: 0 });
     send(response, { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1100 } });
@@ -141,7 +142,7 @@ test("DSH transport capture binds committed message and late timing reaches memo
     const indexed = await store.summarize(filters);
     const memory = summarizeUsage(await buildUsageReport(config), filters);
     for (const summary of [indexed, memory]) {
-      assert.equal(summary.perf.methodVersion, "tps-v7");
+      assert.equal(summary.perf.methodVersion, "tps-v8");
       assert.equal(summary.perf.models[0].n, 1);
       assert.equal(summary.perf.models[0].averageTps, 200_000 / raw.measurement.durationMs);
     }
@@ -184,7 +185,7 @@ test("WorkBuddy exact measurements refresh when the ledger or measurement method
     await store.sync();
     assert.equal((await store.summarize(filters)).perf.models[0].n, 0);
     await appendOutputObservation(outputObservationFile(file, "workbuddy"), {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceKind: "workbuddy",
       sessionId: "session",
       messageId: "wire-id",
@@ -226,7 +227,7 @@ test("WorkBuddy exact measurements refresh when the ledger or measurement method
     store.database.exec("DROP TRIGGER upgrade_fail");
     await store.sync();
     const upgraded = await store.summarize(filters);
-    assert.equal(upgraded.perf.methodVersion, "tps-v7");
+    assert.equal(upgraded.perf.methodVersion, "tps-v8");
     assert.equal(upgraded.perf.models[0].n, 1, "unchanged valid capture must be re-read after a method upgrade");
     assert.equal(upgraded.perf.models[0].averageTps, 1000);
     assert.deepEqual(upgraded.totals, indexed.totals);

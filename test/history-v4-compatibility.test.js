@@ -13,7 +13,7 @@ import { PERF_TOKEN_SCOPE } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
-for (const historicalMethod of ["tps-v3", "tps-v6"]) {
+for (const historicalMethod of ["tps-v3", "tps-v6", "tps-v7"]) {
   test(`current archive validates historical ${historicalMethod} identities with original evidence`, async () => {
     const fixture = createPerfCodexIntegrationFixture();
     const store = new UsageStore(fixture.serverOptions);
@@ -55,15 +55,15 @@ for (const historicalMethod of ["tps-v3", "tps-v6"]) {
           p90: null,
           candidateCount: 26,
         },
-        `${historicalMethod} stays historical without entering current statistics`,
+        `${historicalMethod} retains its identity-only missing-duration row without entering current statistics`,
       );
-      const backupFile = path.join(fixture.serverOptions.homeDir, "v3-backup.sqlite");
+      const backupFile = path.join(fixture.serverOptions.homeDir, `${historicalMethod}-backup.sqlite`);
       await createHistoryBackup(store.database, backupFile);
       await verifyHistoryBackup(backupFile);
       const bounds = store.database
         .prepare("SELECT MIN(ts_ms) AS start, MAX(ts_ms) + 1 AS end FROM perf_samples")
         .get();
-      const candidateFile = path.join(fixture.serverOptions.homeDir, "v3-candidate.sqlite");
+      const candidateFile = path.join(fixture.serverOptions.homeDir, `${historicalMethod}-candidate.sqlite`);
       await createHistoryArchiveCandidate(store.database, candidateFile, { startMs: bounds.start, endMs: bounds.end });
       await verifyHistoryArchiveCandidate(candidateFile);
       const candidate = new DatabaseSync(candidateFile, { readOnly: true });

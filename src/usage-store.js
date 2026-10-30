@@ -1927,7 +1927,13 @@ function historyArchivePerfRevisionPayload(factTable, payload, sourceIdentity, s
       key.some((part) => typeof part !== "string" || part === "") ||
       (payload.measurement !== null &&
         (!measurement ||
-          !hasExactObjectKeys(payload.measurement, ["tokenizer", "outputTokens", "durationMs", "windows"]) ||
+          !hasExactObjectKeys(payload.measurement, [
+            "tokenizer",
+            "outputTokens",
+            "durationMs",
+            "windows",
+            ...(Object.hasOwn(payload.measurement, "samplingWindowMs") ? ["samplingWindowMs"] : []),
+          ]) ||
           payload.measurement.windows.some(
             (window) => !hasExactObjectKeys(window, ["startMs", "endMs", "outputTokens"]),
           )))

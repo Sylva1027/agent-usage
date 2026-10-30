@@ -874,7 +874,7 @@ test("T2 keeps global response ownership conflicts and reads both legacy and v3 
     }),
     "Thread-A",
   );
-  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v8");
+  assert.equal(CODEX_PROJECTION_METHOD_VERSION, "codex-projection-v9");
 });
 
 test("M6.1 resolves no-thread records only from one file's unique session_meta and keeps same turn IDs in separate threads", async (t) => {

@@ -324,7 +324,7 @@ test("explicit perf revisions apply late timing without trusting an undeclared h
         error.code === "HISTORY_ARCHIVE_REVISION_INVALID" &&
         error.message.includes(String(oldSampleRow.sample_key)) &&
         /native|measurement|contradict/i.test(error.message),
-      "an effective v6 Codex sample must retain its scalar native measurement revision",
+      "an effective v8 Codex sample must retain its scalar native measurement revision",
     );
 
     const invalidSourceIdentity = { ...sourceIdentity, home_label: "wrong-home-label" };

@@ -211,7 +211,7 @@ test("capture context uses local request IDs while the result retains wire ident
     async (_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.write(first);
-      await delay(15);
+      await delay(150);
       response.end(second);
     },
     async (port) => {

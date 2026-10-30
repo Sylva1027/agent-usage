@@ -302,7 +302,7 @@ test("raw pump publishes the 200-token tail before terminal bytes reach a delaye
       const secondChunk =
         Array.from({ length: 200 }, () => sseEvent(chatChunk({ content: "中" }))).join("") + sseEvent("[DONE]");
       controller.enqueue(encoder.encode(firstChunk));
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise((resolve) => setTimeout(resolve, 150));
       controller.enqueue(encoder.encode(secondChunk));
       controller.close();
 

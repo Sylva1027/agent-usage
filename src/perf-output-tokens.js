@@ -8,6 +8,8 @@ import { createRequire } from "node:module";
 const TOKENIZER = "o200k_base";
 const require = createRequire(import.meta.url);
 
+export const OUTPUT_TIME_RESOLUTION_MS = 100;
+
 /** @type {import("tiktoken").Tiktoken | null} */
 let tokenizer = null;
 
@@ -24,6 +26,7 @@ let tokenizer = null;
  * @property {number} outputTokens
  * @property {number} durationMs
  * @property {OutputWindow[]} windows
+ * @property {typeof OUTPUT_TIME_RESOLUTION_MS} [samplingWindowMs]
  */
 
 /** @returns {value is Record<string, unknown>} */
@@ -98,6 +101,8 @@ export function normalizeMeasuredOutput(raw) {
   if (!isNonNegativeSafeInteger(raw.durationMs) || !Array.isArray(raw.windows) || raw.windows.length === 0) {
     return null;
   }
+  const hasSamplingWindow = Object.hasOwn(raw, "samplingWindowMs");
+  if (hasSamplingWindow && raw.samplingWindowMs !== OUTPUT_TIME_RESOLUTION_MS) return null;
 
   /** @type {OutputWindow[]} */
   const windows = [];
@@ -110,6 +115,7 @@ export function normalizeMeasuredOutput(raw) {
       rawWindow.startMs >= rawWindow.endMs ||
       !isNonNegativeSafeInteger(rawWindow.outputTokens) ||
       rawWindow.outputTokens === 0 ||
+      (hasSamplingWindow && rawWindow.endMs - rawWindow.startMs < OUTPUT_TIME_RESOLUTION_MS) ||
       outputTokens > Number.MAX_SAFE_INTEGER - rawWindow.outputTokens
     ) {
       return null;
@@ -131,6 +137,7 @@ export function normalizeMeasuredOutput(raw) {
     outputTokens,
     durationMs,
     windows,
+    ...(hasSamplingWindow ? { samplingWindowMs: OUTPUT_TIME_RESOLUTION_MS } : {}),
   };
 }
 

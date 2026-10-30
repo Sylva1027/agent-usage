@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate, readCodexNativeMeasurements } from "../src/history-archive.js";
+import { OUTPUT_TIME_RESOLUTION_MS } from "../src/perf-output-tokens.js";
 import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
@@ -130,6 +131,7 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     const coldSampleRow = {
       ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
+    assert.equal(coldSampleRow.method_version, PERF_METHOD_VERSION);
     const siblingSampleKey = String(
       archived.database
         .prepare(
@@ -236,6 +238,21 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
     assert.ok(originalNativeMeasurement, "the selected sample must have one scalar native measurement payload");
     const siblingCandidateMeasurement = candidateNativeMeasurements.get(siblingSampleKey);
     assert.ok(siblingCandidateMeasurement, "the sibling response must have candidate native measurement evidence");
+    assert.equal(
+      candidateNativeMeasurements.get(String(coldSample.sampleKey)).samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "the native cold candidate must preserve the current 100 ms sampling precision",
+    );
+    assert.equal(
+      siblingCandidateMeasurement.samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "sibling native candidates must preserve the current 100 ms sampling precision",
+    );
+    assert.equal(
+      originalNativeMeasurement.payload.measurement.samplingWindowMs,
+      OUTPUT_TIME_RESOLUTION_MS,
+      "the native cold revision must carry the current 100 ms sampling precision",
+    );
     const originalHotSample = {
       ...archived.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(coldSample.sampleKey),
     };
@@ -338,6 +355,40 @@ test("an effective typed Codex perf revision cannot contradict unchanged native 
       damagedWindowRoot,
       "a damaged native measurement window must reject",
       /measurement|scalar|window|native/i,
+    );
+
+    const missingPrecisionRoot = structuredClone(revisionRoot);
+    const missingPrecisionNativeRevision = factRevision(
+      missingPrecisionRoot,
+      "codex_output_measurements",
+      String(coldSample.sampleKey),
+    );
+    const missingPrecisionNativeMeasurement = missingPrecisionNativeRevision.added.find(
+      (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
+    );
+    assert.ok(missingPrecisionNativeMeasurement);
+    delete missingPrecisionNativeMeasurement.payload.measurement.samplingWindowMs;
+    await assertRevisionRejected(
+      missingPrecisionRoot,
+      "a current v8 native measurement without 100 ms precision must reject",
+      /native|measurement|precision|window|contradict/i,
+    );
+
+    const wrongPrecisionRoot = structuredClone(revisionRoot);
+    const wrongPrecisionNativeRevision = factRevision(
+      wrongPrecisionRoot,
+      "codex_output_measurements",
+      String(coldSample.sampleKey),
+    );
+    const wrongPrecisionNativeMeasurement = wrongPrecisionNativeRevision.added.find(
+      (delta) => String(delta.payload.sample_key) === String(coldSample.sampleKey),
+    );
+    assert.ok(wrongPrecisionNativeMeasurement);
+    wrongPrecisionNativeMeasurement.payload.measurement.samplingWindowMs = OUTPUT_TIME_RESOLUTION_MS - 1;
+    await assertRevisionRejected(
+      wrongPrecisionRoot,
+      "a current v8 native measurement with noncanonical precision must reject",
+      /native|measurement|precision|window|contradict/i,
     );
 
     const crossResponseRoot = structuredClone(revisionRoot);

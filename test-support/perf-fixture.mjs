@@ -500,7 +500,7 @@ export function createPerfIntegrationFixture({ sources = ["zcode"] } = {}) {
 }
 
 export const codexOutputTiming = (outputTokens, durationMs) => ({
-  schema_version: 4,
+  schema_version: 5,
   tokenizer: "o200k_base",
   clock: "transport_receive",
   output_tokens: outputTokens,

@@ -50,10 +50,10 @@ function stablePerfEvidence(perf) {
 function assertCurrentPerfAuthority(perf, oraclePerf) {
   const current = stablePerfEvidence(perf);
   assert.equal(current.meta.methodVersion, PERF_METHOD_VERSION);
-  assert.deepEqual(current.meta, oraclePerf.meta, "current v6 authority metadata must match the oracle");
+  assert.deepEqual(current.meta, oraclePerf.meta, "current v8 authority metadata must match the oracle");
   assert.deepEqual(current.rankedHomeIds, oraclePerf.rankedHomeIds);
-  assert.deepEqual(current.groups, oraclePerf.groups, "historical v5 must not change current v6 groups");
-  assert.deepEqual(current.models, oraclePerf.models, "historical v5 must not change current v6 model values");
+  assert.deepEqual(current.groups, oraclePerf.groups, "historical v5 must not change current v8 groups");
+  assert.deepEqual(current.models, oraclePerf.models, "historical v5 must not change current v8 model values");
   assert.equal(current.coverage.sampled, oraclePerf.coverage.sampled);
   assert.deepEqual(current.codexTimingCoverage, oraclePerf.codexTimingCoverage);
 }
@@ -72,7 +72,7 @@ function rawPerfRows(database, where, ...params) {
     .map((row) => ({ ...row }));
 }
 
-function installSchema3Measurements(fixture) {
+function installNativeMeasurements(fixture) {
   const measurements = new Map();
   for (const filePath of fixture.rolloutFiles) {
     const rows = readFileSync(filePath, "utf8")
@@ -85,7 +85,7 @@ function installSchema3Measurements(fixture) {
       const outputTokens = Number(row.payload.usage.output_tokens);
       const durationMs = responseId.startsWith("response-25-") ? 200_000 : 1_000;
       row.payload.generation_timing = {
-        schema_version: 4,
+        schema_version: 5,
         tokenizer: TOKENIZER,
         clock: "transport_receive",
         output_tokens: outputTokens,
@@ -123,7 +123,7 @@ function insertHistoricalV5Sample(database, sampleKey, hotTsMs) {
   return row;
 }
 
-test("schema4 Codex perf authority restores a measured cold sample without mixing historical v5", async () => {
+test("schema5 Codex perf authority restores a measured cold sample without mixing historical v5", async () => {
   const fixture = createPerfCodexIntegrationFixture();
   const homeDir = fixture.serverOptions.homeDir;
   const options = {
@@ -133,7 +133,7 @@ test("schema4 Codex perf authority restores a measured cold sample without mixin
   const candidateFile = path.join(homeDir, "cold-codex-perf-authority-candidate.sqlite");
   const store = new UsageStore(options);
   try {
-    const measurements = installSchema3Measurements(fixture);
+    const measurements = installNativeMeasurements(fixture);
     appendFileSync(
       fixture.rolloutFiles[0],
       `${JSON.stringify({
@@ -154,7 +154,7 @@ test("schema4 Codex perf authority restores a measured cold sample without mixin
          ORDER BY sample_key LIMIT 1`,
       )
       .get(PERF_METHOD_VERSION);
-    assert.ok(persisted, "schema4 must persist at least one measured v6 sample");
+    assert.ok(persisted, "schema5 must persist at least one measured v6 sample");
     assert.deepEqual(
       { ...persisted },
       {
@@ -183,10 +183,10 @@ test("schema4 Codex perf authority restores a measured cold sample without mixin
 
     const [, keyHomeId, , turnId, responseId] = JSON.parse(coldSample.sampleKey);
     assert.equal(keyHomeId, coldSample.homeId);
-    assert.equal(typeof responseId, "string", "the schema4 cold Codex sample key must retain its response identity");
+    assert.equal(typeof responseId, "string", "the schema5 cold Codex sample key must retain its response identity");
     assert.equal(typeof turnId, "string");
     const measurement = measurements.get(responseId);
-    assert.ok(measurement, "the selected cold sample must have schema4 evidence");
+    assert.ok(measurement, "the selected cold sample must have schema5 evidence");
     assert.equal(coldSample.outputTokens, measurement.outputTokens);
     assert.equal(coldSample.durationMs, measurement.durationMs);
 

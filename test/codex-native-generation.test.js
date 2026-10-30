@@ -23,8 +23,8 @@ const nativeGeneration = {
   first_output_read_id: 1,
   last_output_read_id: 2,
 };
-const schema4Generation = (outputTokens = 200, durationMs = 200) => ({
-  schema_version: 4,
+const schema5Generation = (outputTokens = 200, durationMs = 200) => ({
+  schema_version: 5,
   tokenizer: TOKENIZER,
   clock: "transport_receive",
   output_tokens: outputTokens,
@@ -287,10 +287,31 @@ test("untrusted clock duplicates do not conflict usage, while real usage conflic
   });
 });
 
-test("schema4 stays measurable across SQLite reuse, late append, and reopen", async () => {
+test("schema4 with plausible speed stays unmeasured while schema5 accepts a 100ms window", async () => {
+  await fixture(async ({ file }) => {
+    const current = schema5Generation(100, 100);
+    const usage = { output_tokens: 100, reasoning_output_tokens: 0 };
+    await writeFile(
+      file,
+      lines([...headers, row("schema4", { ...current, schema_version: 4 }, usage), row("schema5", current, usage)]),
+    );
+
+    const { values } = await candidates(file);
+    const old = values.find((value) => value.responseId === "schema4");
+    assertUntimedCandidate(old, 100, 0);
+
+    const measured = values.find((value) => value.responseId === "schema5");
+    assert.equal(measured.outputTokens, 100);
+    assert.equal(measured.durationMs, 100);
+    assert.equal(measured.generation.samplingWindowMs, 100);
+    assert.deepEqual(measured.generation.windows, [{ startMs: 100, endMs: 200, outputTokens: 100 }]);
+  });
+});
+
+test("schema5 stays measurable across SQLite reuse, late append, and reopen", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    const measured = schema4Generation();
+    const measured = schema5Generation();
     await writeFile(file, lines([...headers, row("first", measured), row("late", measured)]));
     const store = new UsageStore(options);
     try {
@@ -333,10 +354,10 @@ test("schema4 stays measurable across SQLite reuse, late append, and reopen", as
   });
 });
 
-test("source drift retains the published v6 measurement while fresh memory reads stay isolated", async () => {
+test("source drift retains the published v8 measurement while fresh memory reads stay isolated", async () => {
   await fixture(async ({ root, home, file }) => {
     const options = storeOptions(root, home);
-    await writeFile(file, lines([...headers, row("completed", schema4Generation()), row("untimed", null)]));
+    await writeFile(file, lines([...headers, row("completed", schema5Generation()), row("untimed", null)]));
     const store = new UsageStore(options);
     try {
       await store.sync();
