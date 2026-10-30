@@ -1,0 +1,555 @@
+{
+  "sourceCommit": "938bb40948d879ad5e925622bf065a4782f0a955",
+  "method": "tps-v8",
+  "nativeSchemaVersion": 5,
+  "samplingWindowMs": 100,
+  "build": {
+    "exitCode": 0,
+    "startedAt": "2026-10-30T19:37:17.8263386+00:00",
+    "finishedAt": "2026-10-30T20:20:20.7147396+00:00",
+    "engineSha256": "b48f74f85196385d6f3c83800ba5982d468684322f8b60215add8613afb99ba9",
+    "patchSha256": "fb8fc5614d72e54d6191a70284cf0c6c773aff046e09294922b941234850953c",
+    "cargoLockSha256": "221e71ca66feec4b6f22012f3a6aa45a8702cacfb821e33871b8f884fe3be2a6",
+    "profile": {
+      "lto": "thin",
+      "staticCrt": true,
+      "codegenUnits": 4,
+      "optLevel": 3
+    }
+  },
+  "node": {
+    "tests": 3605,
+    "passed": 3580,
+    "failed": 0,
+    "skipped": 25
+  },
+  "ci": {
+    "verifiedAt": "2026-10-30T20:19:58.270Z",
+    "source": "GitHub connector",
+    "runId": 41120037590,
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "938bb40948d879ad5e925622bf065a4782f0a955",
+    "url": "https://github.com/Sylva1027/codex-usage/actions/runs/41120037590",
+    "jobs": [
+      {
+        "id": 124284128459,
+        "name": "test (22)",
+        "status": "completed",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T20:10:29Z"
+      },
+      {
+        "id": 124284127982,
+        "name": "test (24)",
+        "status": "completed",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T20:14:03Z"
+      }
+    ]
+  },
+  "transports": {
+    "passed": true,
+    "h1ws": [
+      {
+        "mode": "exec-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 142,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 569,
+                "endMs": 711,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "exec-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 140,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 565,
+                "endMs": 705,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 152,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 577,
+                "endMs": 729,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 154,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 565,
+                "endMs": 719,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "exec-buffered-sse",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "exec-buffered-ws",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "app-buffered-sse",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "app-buffered-ws",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "exec-large-buffered-sse",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "exec-large-buffered-ws",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "app-large-buffered-sse",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "app-large-buffered-ws",
+        "status": "passed",
+        "samples": 0,
+        "measurements": []
+      },
+      {
+        "mode": "exec-large-streaming-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 149,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 123,
+                "endMs": 272,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "exec-large-streaming-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 142,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 133,
+                "endMs": 275,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-large-streaming-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 149,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 123,
+                "endMs": 272,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-large-streaming-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 141,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 129,
+                "endMs": 270,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "exec-large-split-baseline-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 158,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 137,
+                "endMs": 295,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "exec-large-split-baseline-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 151,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 151,
+                "endMs": 302,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-large-split-baseline-sse",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 165,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 152,
+                "endMs": 317,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "mode": "app-large-split-baseline-ws",
+        "status": "passed",
+        "samples": 1,
+        "measurements": [
+          {
+            "outputTokens": 200,
+            "durationMs": 156,
+            "samplingWindowMs": 100,
+            "windows": [
+              {
+                "startMs": 146,
+                "endMs": 302,
+                "outputTokens": 200
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "h2": [
+      {
+        "mode": "cli-ordinary-two-batch",
+        "status": "passed",
+        "samples": 1,
+        "expectedSamples": 1,
+        "durationEvidence": {
+          "plannedGapMs": 220,
+          "observedFixtureIntervalMs": 220.63780000000008,
+          "observedDurationMs": 221,
+          "nativeWindowUnionDurationMs": 221,
+          "deltaMs": 0.36219999999991614,
+          "toleranceMs": 80,
+          "windowCount": 1
+        }
+      },
+      {
+        "mode": "cli-small-single-buffered",
+        "status": "passed",
+        "samples": 0,
+        "expectedSamples": 0,
+        "durationEvidence": null
+      },
+      {
+        "mode": "cli-large-single-buffered",
+        "status": "passed",
+        "samples": 0,
+        "expectedSamples": 0,
+        "durationEvidence": null
+      },
+      {
+        "mode": "cli-large-two-batch",
+        "status": "passed",
+        "samples": 1,
+        "expectedSamples": 1,
+        "durationEvidence": {
+          "plannedGapMs": 220,
+          "observedFixtureIntervalMs": 233.6096,
+          "observedDurationMs": 234,
+          "nativeWindowUnionDurationMs": 234,
+          "deltaMs": 0.39039999999999964,
+          "toleranceMs": 80,
+          "windowCount": 1
+        }
+      },
+      {
+        "mode": "app-ordinary-two-batch",
+        "status": "passed",
+        "samples": 1,
+        "expectedSamples": 1,
+        "durationEvidence": {
+          "plannedGapMs": 220,
+          "observedFixtureIntervalMs": 233.42919999999992,
+          "observedDurationMs": 234,
+          "nativeWindowUnionDurationMs": 234,
+          "deltaMs": 0.5708000000000766,
+          "toleranceMs": 80,
+          "windowCount": 1
+        }
+      },
+      {
+        "mode": "app-small-single-buffered",
+        "status": "passed",
+        "samples": 0,
+        "expectedSamples": 0,
+        "durationEvidence": null
+      },
+      {
+        "mode": "app-large-single-buffered",
+        "status": "passed",
+        "samples": 0,
+        "expectedSamples": 0,
+        "durationEvidence": null
+      },
+      {
+        "mode": "app-large-two-batch",
+        "status": "passed",
+        "samples": 1,
+        "expectedSamples": 1,
+        "durationEvidence": {
+          "plannedGapMs": 220,
+          "observedFixtureIntervalMs": 220.56320000000005,
+          "observedDurationMs": 208,
+          "nativeWindowUnionDurationMs": 208,
+          "deltaMs": -12.563200000000052,
+          "toleranceMs": 80,
+          "windowCount": 1
+        }
+      }
+    ]
+  },
+  "installedRuntimes": {
+    "dsh": [
+      {
+        "runtime": "native",
+        "version": "0.2.1-rc.2",
+        "mode": "normal",
+        "passed": true,
+        "schemaVersion": 3,
+        "measurement": {
+          "tokenizer": "o200k_base",
+          "outputTokens": 200,
+          "durationMs": 138,
+          "windows": [
+            {
+              "startMs": 1455,
+              "endMs": 1593,
+              "outputTokens": 200
+            }
+          ],
+          "samplingWindowMs": 100
+        },
+        "readerN": 1,
+        "method": "tps-v8"
+      },
+      {
+        "runtime": "native",
+        "version": "0.2.1-rc.2",
+        "mode": "fragmented",
+        "passed": true,
+        "schemaVersion": 3,
+        "measurement": {
+          "tokenizer": "o200k_base",
+          "outputTokens": 200,
+          "durationMs": 138,
+          "windows": [
+            {
+              "startMs": 213,
+              "endMs": 351,
+              "outputTokens": 200
+            }
+          ],
+          "samplingWindowMs": 100
+        },
+        "readerN": 1,
+        "method": "tps-v8"
+      },
+      {
+        "runtime": "native",
+        "version": "0.2.1-rc.2",
+        "mode": "buffered",
+        "passed": true,
+        "schemaVersion": null,
+        "measurement": null,
+        "readerN": 0,
+        "method": "tps-v8"
+      },
+      {
+        "runtime": "desktop",
+        "version": "0.2.1-rc.3",
+        "mode": "normal",
+        "passed": true,
+        "schemaVersion": 3,
+        "measurement": {
+          "tokenizer": "o200k_base",
+          "outputTokens": 200,
+          "durationMs": 149,
+          "windows": [
+            {
+              "startMs": 2597,
+              "endMs": 2746,
+              "outputTokens": 200
+            }
+          ],
+          "samplingWindowMs": 100
+        },
+        "readerN": 1,
+        "method": "tps-v8"
+      },
+      {
+        "runtime": "desktop",
+        "version": "0.2.1-rc.3",
+        "mode": "fragmented",
+        "passed": true,
+        "schemaVersion": 3,
+        "measurement": {
+          "tokenizer": "o200k_base",
+          "outputTokens": 200,
+          "durationMs": 145,
+          "windows": [
+            {
+              "startMs": 330,
+              "endMs": 475,
+              "outputTokens": 200
+            }
+          ],
+          "samplingWindowMs": 100
+        },
+        "readerN": 1,
+        "method": "tps-v8"
+      },
+      {
+        "runtime": "desktop",
+        "version": "0.2.1-rc.3",
+        "mode": "buffered",
+        "passed": true,
+        "schemaVersion": null,
+        "measurement": null,
+        "readerN": 0,
+        "method": "tps-v8"
+      }
+    ],
+    "workbuddy": {
+      "exitCode": 0,
+      "timedOut": false,
+      "requestCount": 1,
+      "measurement": {
+        "tokenizer": "o200k_base",
+        "outputTokens": 200,
+        "durationMs": 188,
+        "windows": [
+          {
+            "startMs": 2423,
+            "endMs": 2611,
+            "outputTokens": 200
+          }
+        ],
+        "samplingWindowMs": 100
+      },
+      "schemaVersion": 2
+    }
+  },
+  "productionAdoption": "pending Desktop coordination",
+  "externalModelProbeRequests": 0
+}

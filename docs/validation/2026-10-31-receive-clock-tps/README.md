@@ -1,6 +1,6 @@
 # 接收时钟修复与验收
 
-2026-10-31。已确认一次应用写入也可能在客户端分成多个真实接收批次。当前源码为 tps-v8 / 原生 schema 5，以 100 ms 的观察精度处理初始传输碎片；Rust 241 项及 Codex 读取、索引回归 156 项通过，优化版引擎正在构建。尚未进行本轮生产切换或再次重启 Desktop，GitHub release 待新包实际采用验证后替换。
+2026-10-31。已确认一次应用写入也可能在客户端分成多个真实接收批次。当前源码为 tps-v8 / 原生 schema 5，以 100 ms 的观察精度处理初始传输碎片。release 引擎 `b48f74f8` 的 28 条实际传输验证全部通过；Node 完整回归及 GitHub Node 22/24 CI 均通过。并排包和本地采集器已安装，Desktop 尚未重启，等待用户协调本次切换；GitHub release 待实际采用和自然请求核验后替换。[可核对的验证摘要](release-checks.json)保留本轮计数、窗口、版本与 hash。
 
 ## 已确认的错误
 
@@ -54,13 +54,16 @@ schema 23、RANGE/SYNC、费用、排序和界面结构保持现有行为。没�
 | Codex 读取、SQLite、历史方法隔离 | 156 项通过 |
 | Hyper 完整 lib | 121 通过、0 失败、6 既有忽略 |
 | H2 核心 lib 与新增字节/帧映射测试 | 63 通过、0 失败、1 既有忽略；382 项 HPACK fixture 测试未包含 |
-| v8 Node 完整回归 | 首轮 3,605 项，3,579 通过、1 个环境失败、25 既有跳过；修正测试目录后重跑中 |
+| v8 Node 完整回归 | 3,605 项，3,580 通过、0 失败、25 既有跳过 |
+| GitHub CI，源码 `938bb40` | Node 22/24 的完整测试、类型、lint、格式检查均通过 |
+| 完整 release 的 HTTP/1 SSE 与 WebSocket | CLI/app-server、普通流、大片段、缓冲回包及首批拆开 9 ms，共 20 条通过 |
+| 完整 release 的 TLS/HTTP2 | CLI/app-server、普通流、大片段及缓冲回包，共 8 条通过 |
 | 随后新增的指纹升级修正 | 相关 74 项通过，覆盖升级失败后重试 |
 | 最终类型及本轮 JS/MJS Biome 检查 | 通过 |
 | 真实索引一致性副本 | 152,697 用量事件，schema 23、quick_check=ok；旧 v6 与新 v8 用量和费用一致 |
 | producer 补丁在原始 commit 的独立 index 中应用 | 通过 |
 
-首轮 v8 完整回归将临时目录设在仓库内，仓库识别把密集表格 fixture 的九个目录合并成一个仓库，导致行数不足。恢复系统临时目录后，同一真实浏览器交互测试通过；没有修改 UI、仓库识别逻辑或降低行数断言。H2 的 crates.io 分发包未包含 HPACK fixture 文件，完整 lib 的 382 个 fixture 测试未完成；没有将它们记作通过。
+首轮 v8 完整回归将临时目录设在仓库内，仓库识别把密集表格 fixture 的九个目录合并成一个仓库，导致行数不足。恢复系统临时目录后，同一真实浏览器交互和完整回归均通过；没有修改 UI、仓库识别逻辑或降低行数断言。H2 的 crates.io 分发包未包含 HPACK fixture 文件，完整 lib 的 382 个 fixture 测试未完成；没有将它们记作通过。
 
 实际 DSH CLI 0.2.1rc2 和 Desktop 内置运行时 0.2.1rc3 均在隔离 home、localhost 服务下验证：
 
@@ -77,6 +80,7 @@ schema 23、RANGE/SYNC、费用、排序和界面结构保持现有行为。没�
 - 上游 commit：`720fec862a608ae1e5878d1eecb04fb93192e93c`。
 - 当前时间窗口 producer patch SHA-256：`fb8fc5614d72e54d6191a70284cf0c6c773aff046e09294922b941234850953c`；159 文件、1,833,255 字节，独立 index 应用检查通过。
 - Cargo.lock SHA-256：`221e71ca66feec4b6f22012f3a6aa45a8702cacfb821e33871b8f884fe3be2a6`。
+- 最终 release 引擎 SHA-256：`b48f74f85196385d6f3c83800ba5982d468684322f8b60215add8613afb99ba9`；构建耗时 43 分 02 秒，exit 0。
 - 当前固定 v8 看板运行包：`50d836dd2cb1`，包含 tiktoken 1.0.22，尚未采用。
 - 构建参数：release、opt-level 3、thin LTO、4 codegen units、静态 CRT、offline/locked。
 
@@ -88,6 +92,10 @@ schema 23、RANGE/SYNC、费用、排序和界面结构保持现有行为。没�
 
 加入实际消息泵及预热后的重复诊断捕获了相同分割边界：服务器一个 `_writev` 的首批 900，在接收端变成 382＋518，间隔约 9 ms，期间原始 AsyncRead 确实返回 Pending。后续 200 保持独立。这证实仅靠底层 Pending 也无法认定服务端正在生成，因而增加上述统一时间精度；没有把这条反例改成通过。
 
-待完成：最终 release 的 20 条 SSE/WebSocket 与 8 条 TLS/HTTP2 验收、安装与正式切换、再次与用户协调 Desktop 重启，以及自然请求的窗口审查。WorkBuddy Desktop 及 Claude/OpenCode/ZCode 的统一采集不在本轮新增范围。
+最终 `b48f74f8` 完整并排包通过 28 条传输验证。首批 900 拆成 382＋518、相隔 9 ms 的四条 SSE/WebSocket 路径均只计后续 200；缓冲回包保持无测量，普通流式路径正常计数。原始账单输出 1,300、reasoning 200 均独立保留。CLI 版本、rg 实际检索、code-mode helper 及全包 hash 检查通过。
+
+已将完整并排包安装到独立版本目录并校验 7 个文件；采集器运行包校验 172 个文件，DSH 原 Cordis 配置备份且其它条目逐字保留。安装未重启 Desktop，也未改变本次进程的引擎选择。
+
+待完成：用户配合的 Desktop 重启、看板正式切换、自然请求的窗口审查及 GitHub release 替换。WorkBuddy Desktop 及 Claude/OpenCode/ZCode 的统一采集不在本轮新增范围。
 
 本地原始证据位于 `.codex-usage/tps-batch-20261030/`，包含构建、失败反例、传输探针、回归和索引副本；私有运行目录不进入 GitHub 发布包。[上一轮记录](../2026-10-30-visible-output-tps/README.md)保留已发生的采用过程与后来发现的缺陷。

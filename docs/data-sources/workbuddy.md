@@ -67,13 +67,13 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ## 实际输出速度（TPS）
 
-当前 tps-v7 读取专用 CLI 启动器保存的本地接收窗口。实际 CLI 使用 Axios/Node HTTP，通过 `IncomingMessage.push` 获取消费者解析之前的接收批次；同一同步批次合并，正文与工具参数按完整 lane 使用 `o200k_base` 编码一次。`X-Conversation-ID` 和 `X-Conversation-Message-ID` 提供本地身份，不能用不同的 wire response ID 猜配。
+当前 tps-v8 读取专用 CLI 启动器保存的本地接收窗口。实际 CLI 使用 Axios/Node HTTP，通过 `IncomingMessage.push` 获取消费者解析之前的接收批次；同一同步批次合并，正文与工具参数按完整 lane 使用 `o200k_base` 编码一次。`X-Conversation-ID` 和 `X-Conversation-Message-ID` 提供本地身份，不能用不同的 wire response ID 猜配。
 
-观测位于 `<home>/generation-timing/<session哈希>.jsonl`，以 session 与本地 message ID 精确关联，并参与 reader 指纹与正常增量刷新。仅保存标量计数、时窗及身份，不复制正文。当前支持未压缩 HTTP 传输；出现背压会保留正常应用行为并撤销该次测量。实际 CLI 2.165.0 的原始会话、内存 reader、SQLite 闭环已核对。
+schema 2 观测遵循共同的 100 ms 基线和实际窗口规则，位于 `<home>/generation-timing/<session哈希>.jsonl`，以 session 与本地 message ID 精确关联，并参与 reader 指纹与正常增量刷新。仅保存标量计数、时窗及身份，不复制正文。当前支持未压缩 HTTP 传输；出现背压会保留正常应用行为并撤销该次测量。实际 CLI 2.165.0 的原始会话、内存 reader、SQLite 闭环已核对。
 
 安装和启动见[本地采集安装](../10-data-sources.md#本地采集安装)。只有经专用启动器发起的新 CLI 请求具备该观测；WorkBuddy Desktop 尚未接入。缺测请求保留用量和模型身份，不从 trace span 或 `qua.end` 回退成新口径速度。Auto 的原有整体排除规则不变。
 
-历史 `workbuddy_generation_duration_observations` 仍按 home/message 保存 trace 的 distinct duration，并保留冲突及恢复语义。generation span 的完整调用时长不等同于当前可见输出的窗口，旧 v1-v6 数值不会混入 v7。原生 output/reasoning 继续用于用量与费用，不参与参考 token 分子。完整验收见[本轮记录](../validation/2026-10-31-receive-clock-tps/README.md)。
+历史 `workbuddy_generation_duration_observations` 仍按 home/message 保存 trace 的 distinct duration，并保留冲突及恢复语义。generation span 的完整调用时长不等同于当前可见输出的窗口，旧 v1-v7 数值不会混入 v8。原生 output/reasoning 继续用于用量与费用，不参与参考 token 分子。完整验收见[本轮记录](../validation/2026-10-31-receive-clock-tps/README.md)。
 
 ## 已知限制
 

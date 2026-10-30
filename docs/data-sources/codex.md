@@ -28,13 +28,13 @@ Codex home kinds 是限额资格的判据。ZCode、DSH、OpenCode 和项目日�
 
 ## 实际输出速度（TPS）
 
-当前 tps-v7 按单次响应采样，从原生 `token_usage_record.generation_timing` schema 4 读取本地统一分词计数与传输接收窗口。普通官方安装不写这些字段，须使用完整采集并排包；[安装步骤](../10-data-sources.md#本地采集安装)涵盖 CLI 和 Windows Desktop，保持原有认证、模型路由与 home。
+当前 tps-v8 按单次响应采样，从原生 `token_usage_record.generation_timing` schema 5 读取本地统一分词计数与传输接收窗口。普通官方安装不写这些字段，须使用完整采集并排包；[安装步骤](../10-data-sources.md#本地采集安装)涵盖 CLI 和 Windows Desktop，保持原有认证、模型路由与 home。
 
-窗口内实际正文和工具参数使用 `o200k_base` 计数，首批全部字节排除，分母为各窗口的时间并集。原始 output/reasoning 继续供用量和费用使用。新计量不读取 Magpie 账本，不从旧请求总耗时、item span 或整轮耗时回退。
+窗口内实际正文和工具参数使用 `o200k_base` 计数，每阶段前 100 ms 的基线全部字节排除，同一原始接收批次保持完整。窗口从基线最后实际到达时刻开始，直到最后可见输出到达，须至少为 100 ms；分母为各窗口的时间并集。原始 output/reasoning 继续供用量和费用使用。新计量不读取 Magpie 账本，不从旧请求总耗时、item span 或整轮耗时回退。
 
-性能 reader 仍按 home/thread 读取完整 rollout 集合并证明 ownership，再构造 response 候选。单条已完成响应可采样，不依赖整轮结束；其它请求缺测不连带淘汰它。旧 v1-v6 保留历史方法与模型身份，不能重标为 v7。有效原生测量不受旧外部计时冲突影响；原生身份或原生测量自相矛盾仍拒绝。
+性能 reader 仍按 home/thread 读取完整 rollout 集合并证明 ownership，再构造 response 候选。单条已完成响应可采样，不依赖整轮结束；其它请求缺测不连带淘汰它。旧 v1-v7 保留历史方法与模型身份，不能重标为 v8。有效原生测量不受旧外部计时冲突影响；原生身份或原生测量自相矛盾仍拒绝。
 
-source 追加、改写与分页 child 的既有发布规则继续适用：可证明的活跃追加只暂缓对应线程，稳定兄弟线程继续发布；改写、路径集变化和未知归属按原 policy 隔离。分页 child 必须有完整父子 header、连续 ordinal 和有效边界，继承父记录在折叠前剔除。投影版本为 v8，正常同步重解析旧缓存，不需删除索引。
+source 追加、改写与分页 child 的既有发布规则继续适用：可证明的活跃追加只暂缓对应线程，稳定兄弟线程继续发布；改写、路径集变化和未知归属按原 policy 隔离。分页 child 必须有完整父子 header、连续 ordinal 和有效边界，继承父记录在折叠前剔除。投影版本为 v9，正常同步重解析旧缓存，不需删除索引。
 
 冷修订保存与 sample/source/home 绑定的原生标量窗口，完整导出、删除原来源、导入和 reopen 后仍能独立核验；缺少 witness 或篡改 token/duration 不通过。新测量仅保存计数、时钟和身份，不复制正文。详细契约和实际二进制验证见[本轮验收](../validation/2026-10-31-receive-clock-tps/README.md)。
 
