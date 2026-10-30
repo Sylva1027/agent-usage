@@ -491,8 +491,8 @@ async function verifyImportAndSkin(page, fixture) {
   await page.locator("#pickImportDirectoryButton").click();
   await page.waitForFunction((path) => document.querySelector("#importPath").value === path, fixture.pickedPath);
   assert.equal(await page.locator("#importMessage").evaluate((node) => node.classList.contains("error")), false);
-  await page.locator("#submitImportButton").focus();
-  await page.keyboard.press("Tab");
+  await page.locator("#submitImportButton").press("Tab");
+  await page.waitForFunction(() => document.activeElement?.matches("#sourcePicker input"));
   assert.equal(
     await page.evaluate(() => document.activeElement?.matches("#sourcePicker input")),
     true,
