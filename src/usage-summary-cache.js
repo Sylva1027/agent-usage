@@ -18,7 +18,7 @@ import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Bump when payload formulas or executor snapshot semantics change.
-const SUMMARY_CACHE_VERSION = 1;
+const SUMMARY_CACHE_VERSION = 3;
 
 /** Recompute clock fields from cached aggregates, using the shared formulas. */
 export function refreshSummaryClock(payload, now) {

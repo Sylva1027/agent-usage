@@ -11393,7 +11393,12 @@ export class UsageStore {
     const perfState = this.perfState();
     const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
     const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
-    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
+    const publicationFilter = createCodexPublishFilter(
+      perfState.degradedHomeIds,
+      partialHomes,
+      publicationPolicy.usable ? perfState.sourceWarnings : [],
+    );
+    const partialHomeIds = new Set(publicationFilter.permittedHomeIds);
     const perfBounds = range === null ? null : perfStatsRangeBounds(range);
     const perfExclusions = [
       ...new Set([...scopeExclusions, ...perfState.degradedHomeIds.filter((homeId) => !partialHomeIds.has(homeId))]),
@@ -11423,8 +11428,12 @@ export class UsageStore {
     const degraded = new Set(perfState.degradedHomeIds);
     const publicationPolicy = decodeCodexPublicationPolicy(perfState.codexPublicationPolicy);
     const partialHomes = publicationPolicy.usable ? publicationPolicy.partialHomes : [];
-    const partialHomeIds = new Set(partialHomes.map((entry) => entry.homeId));
-    const publicationFilter = createCodexPublishFilter(perfState.degradedHomeIds, partialHomes);
+    const publicationFilter = createCodexPublishFilter(
+      perfState.degradedHomeIds,
+      partialHomes,
+      publicationPolicy.usable ? perfState.sourceWarnings : [],
+    );
+    const partialHomeIds = new Set(publicationFilter.permittedHomeIds);
 
     // Convert usage range keys once so the shared summary kernel sees the final carrier range.
     const perfBounds = perfStatsRangeBounds(range);

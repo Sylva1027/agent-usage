@@ -541,7 +541,29 @@ test("D1 rankState: default n=20 is eligible; n=1/17/19 stay unranked; explicit 
   assert.equal(explicit.meta.minSamples, 19);
 });
 
-test("D1 order: eligible rows use unrounded averages, then key order for exact ties", () => {
+test("model display order follows average TPS regardless of sample threshold, with missing values last", () => {
+  const rows = [
+    ...repeated("slow-eligible", 20, 68),
+    ...repeated("fast-small", 1, 360),
+    ...repeated("middle-small", 1, 191),
+    ...repeated("workbuddy-small", 2, 183, { sourceKind: "workbuddy" }),
+    sample({ identity: "missing", sourceKind: "codex", model: "missing", durationMs: null }),
+  ];
+  const perf = summarizePerf(rows, { range: RANGE });
+  assert.deepEqual(
+    perf.models.map((row) => [row.model, row.averageTps, row.rank]),
+    [
+      ["fast-small", 360, null],
+      ["middle-small", 191, null],
+      ["workbuddy-small", 183, null],
+      ["slow-eligible", 68, 1],
+      ["missing", null, null],
+    ],
+  );
+  assert.deepEqual(summarizePerf([...rows].reverse(), { range: RANGE }).models, perf.models);
+});
+
+test("D1 order: rows use unrounded averages, then key order for exact ties", () => {
   const rows = [
     ...repeated("twenty", 20, 40),
     ...repeated("nineteen", 19, 30),

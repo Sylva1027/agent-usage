@@ -149,3 +149,52 @@ test("native evidence survives store reuse, late append and memory/store compari
     assert.ok((await readFile(file, "utf8")).includes("generation_timing"));
   });
 });
+
+test("source drift retains published generation TPS while fresh memory reads stay isolated", async () => {
+  await fixture(async ({ root, home, file }) => {
+    const options = {
+      homeDir: root,
+      env: {},
+      automaticDiscoveryEnabled: false,
+      importDirs: [],
+      databaseFile: path.join(root, "usage.sqlite"),
+      extraHomes: home,
+    };
+    await writeFile(file, lines([...headers, row("completed"), row("untimed", null)]));
+    const store = new UsageStore(options);
+    try {
+      await store.sync();
+      const before = await store.summarize(FILTERS);
+      const homeId = before.perf.groups[0].homeId;
+      const warnings = [{ sourceKind: "codex", homeId, code: "LIVE_SOURCE_CHANGED", count: 1 }];
+      const policy = JSON.stringify({ revision: 2, partialHomes: [{ homeId, blockedThreadIds: ["thread"] }] });
+      store.writeMeta("perf_state", "degraded");
+      store.writeMeta("perf_degraded_home_ids", JSON.stringify([homeId]));
+      store.writeMeta("perf_codex_publication_policy", policy);
+      store.writeMeta("perf_source_warnings", JSON.stringify(warnings));
+      const during = await store.summarize(FILTERS);
+      assert.equal(during.perf.models[0].n, 1);
+      assert.equal(during.perf.models[0].averageTps, 50);
+      assert.deepEqual(during.totals, before.totals);
+
+      const report = await buildUsageReport(options);
+      assert.deepEqual(summarizeUsage(report, FILTERS).perf.models, during.perf.models);
+      Object.assign(report.perfMeta, {
+        state: "degraded",
+        degradedHomeIds: [homeId],
+        codexPublicationPolicy: policy,
+        sourceWarnings: warnings,
+      });
+      assert.equal(summarizeUsage(report, FILTERS).perf.models.length, 0);
+
+      store.writeMeta(
+        "perf_source_warnings",
+        JSON.stringify([...warnings, { sourceKind: "codex", homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 }]),
+      );
+      store.writeMeta("perf_codex_publication_policy", JSON.stringify({ revision: 2, partialHomes: [] }));
+      assert.equal((await store.summarize(FILTERS)).perf.models.length, 0);
+    } finally {
+      store.close();
+    }
+  });
+});

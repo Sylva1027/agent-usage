@@ -2807,10 +2807,10 @@ test("★D5-b 失败 home 的陈旧候选：既不排名也不进可信统计（
       const threadId = JSON.parse(String(firstKey))[2];
       assert.equal(threadId, "fixture-codex-thread", "夹具线程身份（排名过滤按它工作）");
 
-      // ① 标退化 + 封住它**唯一的**线程 ⇒ 陈旧候选不得进入可信统计，也不得排名
+      // ① 硬读取失败 + 封住唯一线程；普通追加已由 native-generation 回归验证保留已发布值。
       store.writePerfState("degraded", {
         degradedHomeIds: [homeId],
-        sourceWarnings: [{ sourceKind: "codex", homeId, code: "LIVE_SOURCE_CHANGED", count: 1 }],
+        sourceWarnings: [{ sourceKind: "codex", homeId, code: "READ_ONLY_OPEN_FAILED", count: 1 }],
       });
       store.writeMeta(
         "perf_codex_publication_policy",

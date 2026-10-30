@@ -8,6 +8,7 @@ import { UsageStore } from "../src/usage-store.js";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
 import { createPerfCodexIntegrationFixture, createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { renderPerfModelDetailHtml } from "../public/perf-ui.js";
 
 /*
  * Offline Noto Sans SC subset pins the mixed-font probes independently of installed Noto fonts.
@@ -765,6 +766,85 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       }
     }
   }
+
+  await t.test("the screenshot TPS distribution renders a wide band with exact tick geometry", async () => {
+    const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", "light");
+    try {
+      const narrow = renderPerfModelDetailHtml(
+        {
+          sourceKind: "workbuddy",
+          model: "deepseek-v4.1-flash-sg",
+          window: "request",
+          state: "ok",
+          averageTps: 183.5,
+          p10: 183.3,
+          p90: 183.8,
+          n: 2,
+        },
+        { locale: "zh-CN" },
+      );
+      const equal = renderPerfModelDetailHtml(
+        {
+          sourceKind: "workbuddy",
+          model: "single-sample",
+          window: "request",
+          state: "ok",
+          averageTps: 100,
+          p10: 100,
+          p90: 100,
+          n: 1,
+        },
+        { locale: "zh-CN" },
+      );
+      const band = await session.page.evaluate(
+        ({ narrowHtml, equalHtml }) => {
+          const panel = document.createElement("div");
+          panel.className = "panel detail-panel perf-model-detail-panel";
+          panel.style.cssText = "position:fixed;left:-10000px;top:0;width:480px;height:244px";
+          document.body.append(panel);
+          const measure = (html) => {
+            panel.innerHTML = html;
+            const track = panel.querySelector(".perf-model-band-track");
+            const fill = panel.querySelector(".perf-model-band-fill");
+            const endpoints = [...panel.querySelectorAll(".perf-model-tick.is-down")];
+            const average = panel.querySelector(".perf-model-tick.is-up");
+            const trackRect = track.getBoundingClientRect();
+            const x = (node) => node.getBoundingClientRect().left - trackRect.left;
+            const fillRect = fill.getBoundingClientRect();
+            return {
+              trackWidth: trackRect.width,
+              fillWidth: fillRect.width,
+              fillCenter: fillRect.left - trackRect.left + fillRect.width / 2,
+              p10: x(endpoints[0]),
+              p90: x(endpoints.at(-1)),
+              average: x(average),
+            };
+          };
+          const result = { narrow: measure(narrowHtml), equalWidth: measure(equalHtml).fillWidth };
+          panel.remove();
+          return result;
+        },
+        { narrowHtml: narrow, equalHtml: equal },
+      );
+      assert.ok(
+        band.narrow.fillWidth > band.narrow.trackWidth / 2,
+        `screenshot band exceeds half the track: ${JSON.stringify(band.narrow)}`,
+      );
+      near(band.narrow.fillCenter, (band.narrow.p10 + band.narrow.p90) / 2, "band midpoint");
+      assert.ok(
+        Math.abs(band.narrow.fillWidth - (band.narrow.p90 - band.narrow.p10)) < 2,
+        "band endpoints allow for the track's inset border",
+      );
+      near(
+        band.narrow.average,
+        band.narrow.p10 + (band.narrow.p90 - band.narrow.p10) * 0.4,
+        "average uses the same coordinate scale",
+      );
+      near(band.equalWidth, 4, "equal band minimum width");
+    } finally {
+      await session.context.close();
+    }
+  });
 
   await t.test("real font splitting preserves mixed text, input and placeholder geometry", async (t) => {
     const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", "light");

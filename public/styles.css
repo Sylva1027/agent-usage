@@ -3719,8 +3719,10 @@ html[lang="en-US"] #presetButtons > .recent-segment {
   position: absolute;
   top: 0;
   height: 100%;
+  min-width: 4px;
   background: color-mix(in srgb, var(--blue) 40%, var(--ceramic-well));
   background-image: none;
+  transform: translateX(-50%);
 }
 
 .perf-model-tick {

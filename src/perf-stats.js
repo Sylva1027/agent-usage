@@ -2216,15 +2216,9 @@ export function projectPerfModels(sampled, minSamples = PERF_MIN_SAMPLES, candid
   models.push(...missing.values());
 
   models.sort((a, b) => {
-    const aMissing = a.state === "missing_duration";
-    const bMissing = b.state === "missing_duration";
+    const aMissing = a.averageTps === null;
+    const bMissing = b.averageTps === null;
     if (aMissing !== bMissing) return aMissing ? 1 : -1;
-    const aOverflow = a.rankState === "overflow";
-    const bOverflow = b.rankState === "overflow";
-    if (aOverflow !== bOverflow) return aOverflow ? 1 : -1;
-    const aEligible = a.rankState === "eligible";
-    const bEligible = b.rankState === "eligible";
-    if (aEligible !== bEligible) return aEligible ? -1 : 1;
     if (a.averageTps !== null && b.averageTps !== null && a.averageTps !== b.averageTps) {
       return b.averageTps - a.averageTps;
     }

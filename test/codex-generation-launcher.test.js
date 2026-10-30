@@ -390,6 +390,7 @@ describe("Codex generation package and launcher", { concurrency: false }, () => 
   });
 
   test("CLI forwards every argument and preserves CODEX_HOME without adding CODEX_CLI_PATH", async () => {
+    const originalCliPath = process.env.CODEX_CLI_PATH;
     const evidenceFile = path.join(temporaryRoot, "cli engine evidence.json");
     const isolatedHome = path.join(temporaryRoot, "isolated Codex Home");
     await mkdir(isolatedHome, { recursive: true });
@@ -416,7 +417,7 @@ describe("Codex generation package and launcher", { concurrency: false }, () => 
     assert.deepEqual(evidence.argv, cliArguments);
     assert.equal(evidence.codexHome, isolatedHome);
     assert.equal(evidence.codexCliPath, null);
-    assert.equal(process.env.CODEX_CLI_PATH, undefined);
+    assert.equal(process.env.CODEX_CLI_PATH, originalCliPath);
   });
 
   test("package discovery handles redirected LOCALAPPDATA and rejects ambiguity", async () => {
@@ -539,6 +540,7 @@ describe("Codex generation package and launcher", { concurrency: false }, () => 
   });
 
   test("Desktop verifies only the new descendant engine path and hash", async () => {
+    const originalCliPath = process.env.CODEX_CLI_PATH;
     const fixture = await createRegisteredDesktopFixture("verified desktop");
     const desktopLauncher = await createDesktopLauncherHarness([fixture.manifestPath]);
     const result = runPwsh([
@@ -567,7 +569,7 @@ describe("Codex generation package and launcher", { concurrency: false }, () => 
     const evidence = JSON.parse(await readFile(fixture.evidenceFile, "utf8"));
     assert.equal(ready.codexCliPath, path.join(packageRoot, "bin", "codex.exe"));
     assert.equal(evidence.codexCliPath, path.join(packageRoot, "bin", "codex.exe"));
-    assert.equal(process.env.CODEX_CLI_PATH, undefined);
+    assert.equal(process.env.CODEX_CLI_PATH, originalCliPath);
   });
 
   test("Desktop running refusal does not launch or stop the existing process", async () => {

@@ -849,8 +849,8 @@ test("model band keeps a mean outside p10-p90 outside the distribution and handl
     n: 20,
   });
   const html = renderPerfModelDetailHtml(outside, { locale: "zh-CN" });
-  assert.match(html, /perf-model-band-fill" style="left: 86\.96%; width: 0\.00%"/);
-  assert.match(html, /perf-model-tick is-up" style="left: 14\.61%"/);
+  assert.match(html, /perf-model-band-fill" style="left: 83\.33%; width: 0\.00%"/);
+  assert.match(html, /perf-model-tick is-up" style="left: 16\.67%"/);
   assert.match(html, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
   assert.match(html, /常见速度区间 100\.0–100\.0 tok\/s/);
   assert.match(html, /p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。/);
@@ -862,23 +862,53 @@ test("model band keeps a mean outside p10-p90 outside the distribution and handl
   assert.match(oneHtml, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
 });
 
+test("narrow and equal model bands keep exact ticks while centering a visible fill", () => {
+  const narrow = model({ averageTps: 183.5, p10: 183.3, p90: 183.8, n: 2 });
+  const html = renderPerfModelDetailHtml(narrow, { locale: "zh-CN" });
+  assert.match(html, /perf-model-tick is-down" style="left: 16\.67%"/);
+  assert.match(html, /perf-model-tick is-down" style="left: 83\.33%"/);
+  assert.match(html, /perf-model-tick is-up" style="left: 43\.33%"/);
+  assert.match(html, /perf-model-band-fill" style="left: 50\.00%; width: 66\.67%"/);
+
+  const equal = model({ averageTps: 100, p10: 100, p90: 100, n: 1 });
+  const equalHtml = renderPerfModelDetailHtml(equal, { locale: "zh-CN" });
+  assert.match(equalHtml, /perf-model-band-fill" style="left: 50\.00%; width: 0\.00%"/);
+
+  const zero = model({ averageTps: 0, p10: 0, p90: 0, n: 1 });
+  const zeroHtml = renderPerfModelDetailHtml(zero, { locale: "zh-CN" });
+  assert.match(zeroHtml, /perf-model-band-fill" style="left: 50\.00%; width: 0\.00%"/);
+
+  const tiny = model({ averageTps: 1.5e-300, p10: 1e-300, p90: 2e-300, n: 2 });
+  const tinyHtml = renderPerfModelDetailHtml(tiny, { locale: "zh-CN" });
+  assert.match(tinyHtml, /perf-model-tick is-down" style="left: 16\.67%"/);
+  assert.match(tinyHtml, /perf-model-tick is-down" style="left: 83\.33%"/);
+  assert.match(tinyHtml, /perf-model-tick is-up" style="left: 50\.00%"/);
+  assert.doesNotMatch(tinyHtml, /NaN|Infinity/);
+
+  const reversed = model({ averageTps: 15, p10: 20, p90: 10, n: 2 });
+  assert.doesNotMatch(renderPerfModelDetailHtml(reversed, { locale: "zh-CN" }), /perf-model-band/);
+
+  const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.perf-model-band-fill \{[\s\S]*?min-width: 4px;[\s\S]*?transform: translateX\(-50%\);/);
+});
+
 test("model band leaves endpoint labels in geometric position and provides a measured fallback row", () => {
   const close = model({ averageTps: 59.1, p10: 58.2, p90: 60, n: 17 });
   const closeHtml = renderPerfModelDetailHtml(close, { locale: "zh-CN" });
   assert.match(closeHtml, /perf-model-close-endpoints" hidden/);
-  assert.match(closeHtml, /perf-model-tick is-down" style="left: 84\.35%"/);
-  assert.match(closeHtml, /perf-model-tick is-down" style="left: 86\.96%"/);
+  assert.match(closeHtml, /perf-model-tick is-down" style="left: 16\.67%"/);
+  assert.match(closeHtml, /perf-model-tick is-down" style="left: 83\.33%"/);
 
   const low = model({ averageTps: 10, p10: 20, p90: 80, n: 20 });
   const lowHtml = renderPerfModelDetailHtml(low, { locale: "zh-CN" });
-  assert.match(lowHtml, /perf-model-tick is-up" style="left: 10\.87%"/);
-  assert.match(lowHtml, /perf-model-tick is-down" style="left: 21\.74%"/);
+  assert.match(lowHtml, /perf-model-tick is-up" style="left: 16\.67%"/);
+  assert.match(lowHtml, /perf-model-tick is-down" style="left: 26\.19%"/);
 
   const high = model({ averageTps: 110, p10: 10, p90: 20, n: 20 });
   const highHtml = renderPerfModelDetailHtml(high, { locale: "zh-CN" });
-  assert.match(highHtml, /perf-model-tick is-up" style="left: 95\.24%"/);
-  assert.match(highHtml, /perf-model-tick is-down" style="left: 8\.66%"/);
-  assert.match(highHtml, /perf-model-tick is-down" style="left: 17\.32%"/);
+  assert.match(highHtml, /perf-model-tick is-up" style="left: 83\.33%"/);
+  assert.match(highHtml, /perf-model-tick is-down" style="left: 16\.67%"/);
+  assert.match(highHtml, /perf-model-tick is-down" style="left: 23\.33%"/);
 });
 
 test("model band measures label boxes and collapses colliding endpoints", () => {

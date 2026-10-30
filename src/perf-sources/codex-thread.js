@@ -901,19 +901,26 @@ export function decodeCodexPublicationPolicy(raw) {
  * Build the shared publish filter.
  *
  * Order matters: first compute whole-home exclusions, then exclude
- * `blockedThreadIds` inside homes that hold partial permission. Only homes in
- * `partialHomes` may keep their good threads in the ranking; every other
- * excluded home follows the existing whole-home exclusion.
+ * `blockedThreadIds` inside homes that hold partial permission. Published facts
+ * may also be retained when the only source warning is live drift.
  *
  * An invalid permission set grants NO partial permission at all, so the homes
  * it mentions stay under whole-home exclusion rather than being let through.
+ * @param {{sourceKind?: string, homeId?: string, code?: string}[]} [sourceWarnings] Only for previously published facts.
  */
-export function createCodexPublishFilter(degradedHomeIds, partialHomes) {
+export function createCodexPublishFilter(degradedHomeIds, partialHomes, sourceWarnings = []) {
   const degraded = new Set((degradedHomeIds ?? []).filter((homeId) => typeof homeId === "string" && homeId !== ""));
   const permitted = new Map();
   const merged = mergeCodexPolicyEntries(partialHomes ?? []);
   if (merged.ok) {
     for (const entry of merged.partialHomes) permitted.set(entry.homeId, new Set(entry.blockedThreadIds));
+    // Source drift defers new indexing; it does not revoke already published response facts.
+    for (const homeId of degraded) {
+      const warnings = sourceWarnings.filter((entry) => entry.sourceKind === "codex" && entry.homeId === homeId);
+      if (warnings.length > 0 && warnings.every((entry) => entry.code === "LIVE_SOURCE_CHANGED")) {
+        permitted.set(homeId, new Set());
+      }
+    }
   }
   const homeAllowed = (homeId) => !degraded.has(homeId) || permitted.has(homeId);
   // An unidentifiable thread inside a permitted home is excluded: we cannot

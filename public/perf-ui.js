@@ -525,14 +525,23 @@ function modelBandGeometry(model) {
   ) {
     return null;
   }
-  const max = Math.max(model.p90 * 1.15, model.averageTps * 1.05, 1);
-  const percentage = (value) => Math.max(0, Math.min(100, (value / max) * 100));
+  if (model.p10 > model.p90) return null;
+  const values = [model.p10, model.p90, model.averageTps].map((value) => Math.max(0, value));
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const spread = high - low;
+  if (!Number.isFinite(spread)) return null;
+  const percentage =
+    spread === 0
+      ? () => 50
+      : (value) => Math.max(0, Math.min(100, (((Math.max(0, value) - low) / spread + 0.25) / 1.5) * 100));
   const p10 = percentage(model.p10);
   const p90 = percentage(model.p90);
   return {
     average: percentage(model.averageTps),
     p10,
     p90,
+    bandLeft: (p10 + p90) / 2,
     same: p10 === p90,
   };
 }
@@ -556,7 +565,7 @@ function renderModelBand(model, locale) {
     : `${bandTickHtml(geometry.p10, model.p10, "10%", "down", locale)}${bandTickHtml(geometry.p90, model.p90, "90%", "down", locale)}<span class="perf-model-close-endpoints" hidden><span>${copy("10%", locale)} <strong>${escapeHtml(p10)}</strong></span><span>${copy("90%", locale)} <strong>${escapeHtml(p90)}</strong></span></span>`;
   return `<div class="perf-model-band">
   <div class="perf-model-plot" role="img" aria-label="${escapeHtml(summary)}" title="${copy("常见速度区间", locale)} ${escapeHtml(p10)}–${escapeHtml(p90)} tok/s · ${copy("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", locale)}">
-    <div class="bar-track perf-model-band-track" aria-hidden="true"><div class="bar-fill perf-model-band-fill" style="left: ${geometry.p10.toFixed(2)}%; width: ${(geometry.p90 - geometry.p10).toFixed(2)}%"></div></div>
+    <div class="bar-track perf-model-band-track" aria-hidden="true"><div class="bar-fill perf-model-band-fill" style="left: ${geometry.bandLeft.toFixed(2)}%; width: ${(geometry.p90 - geometry.p10).toFixed(2)}%"></div></div>
     ${bandTickHtml(geometry.average, model.averageTps, "平均", "up", locale)}
     ${endpoints}
   </div>
