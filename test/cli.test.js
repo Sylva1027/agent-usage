@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
 import { automaticPricingFile } from "../src/pricing-store.js";
+import { readServices, writeServices } from "../src/cli.js";
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -128,6 +129,91 @@ function runCli(args, env = process.env, options = {}) {
     });
   });
 }
+
+async function waitFor(predicate, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
+}
+
+test("service registry writes stay fully readable while replacing the file", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-cli-registry-atomic-"));
+  const stateFile = path.join(root, "services.json");
+  const previous = [{ pid: 1, url: "http://127.0.0.1:1", shutdownToken: "previous" }];
+  const next = Array.from({ length: 2_000 }, (_, index) => ({
+    pid: index + 2,
+    url: `http://127.0.0.1:${index + 2}`,
+    shutdownToken: "x".repeat(1024),
+  }));
+
+  try {
+    await writeServices(stateFile, previous);
+    let writeSettled = false;
+    const write = writeServices(stateFile, next).finally(() => {
+      writeSettled = true;
+    });
+    const reader = waitFor(async () => {
+      const services = await readServices(stateFile);
+      if (services.length === next.length) {
+        assert.equal(services.at(-1).pid, next.at(-1).pid);
+        return true;
+      }
+      assert.deepEqual(services, previous);
+      return writeSettled;
+    });
+    const [writeResult, readerResult] = await Promise.allSettled([write, reader]);
+    if (writeResult.status === "rejected") throw writeResult.reason;
+    if (readerResult.status === "rejected") throw readerResult.reason;
+    assert.equal(readerResult.value, true, "registry reader timed out");
+    assert.deepEqual(await readServices(stateFile), next);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("failed service registry replacement preserves the previous complete file", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-cli-registry-failure-"));
+  const stateFile = path.join(root, "services.json");
+  const previous = [{ pid: 1, url: "http://127.0.0.1:1", shutdownToken: "previous" }];
+
+  try {
+    await writeServices(stateFile, previous);
+    await chmod(stateFile, 0o444);
+    let writeSettled = false;
+    const write = writeServices(stateFile, [{ pid: 2, url: "http://127.0.0.1:2" }]).finally(() => {
+      writeSettled = true;
+    });
+    const reader = waitFor(async () => {
+      assert.deepEqual(await readServices(stateFile), previous);
+      return writeSettled;
+    });
+    const [writeResult, readerResult] = await Promise.allSettled([write, reader]);
+    assert.equal(writeResult.status, "rejected");
+    assert.equal(readerResult.status, "fulfilled");
+    assert.equal(readerResult.value, true, "registry reader timed out");
+    assert.deepEqual(await readServices(stateFile), previous);
+  } finally {
+    await chmod(stateFile, 0o666);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service registry parsing still reports malformed JSON", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "codex-cli-registry-parse-"));
+  const stateFile = path.join(root, "services.json");
+
+  try {
+    await writeFile(stateFile, '{"services":');
+    await assert.rejects(readServices(stateFile), SyntaxError);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("cli run starts a local usage server", async () => {
   const homeDir = await makeFixtureHome();

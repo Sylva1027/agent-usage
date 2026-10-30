@@ -253,7 +253,7 @@ setInterval(() => {}, 1000);
     parent.kill("SIGKILL");
     await new Promise((resolve) => parent.once("exit", resolve));
     await waitFor(() => !processAlive(childPid), 10_000);
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     assert.equal(existsSync(root), false);
   } finally {
     if (parent.exitCode === null && parent.signalCode === null) parent.kill("SIGKILL");

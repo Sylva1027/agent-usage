@@ -2,7 +2,8 @@
 
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -30,6 +31,7 @@ const DEFAULT_GATEWAY_MEMORY_MB = 512;
 const DEFAULT_STATE_FILE = path.join(homedir(), ".codex-usage", "services.json");
 const SERVICE_LOCK_WAIT_MS = 5000;
 const SERVICE_LOCK_STALE_MS = 15000;
+const SERVICE_REPLACE_RETRY_MS = 1000;
 
 const USAGE = `Usage:
   codex-usage summary [--json] [--home-dir <dir>]
@@ -184,8 +186,26 @@ async function readServices(filePath) {
 }
 
 async function writeServices(filePath, services) {
+  const temporary = `${filePath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify({ services }, null, 2));
+  try {
+    await writeFile(temporary, JSON.stringify({ services }, null, 2));
+    const deadline = Date.now() + SERVICE_REPLACE_RETRY_MS;
+    while (true) {
+      try {
+        await rename(temporary, filePath);
+        break;
+      } catch (error) {
+        // Windows briefly blocks replacement while a reader has the target open.
+        if ((error.code !== "EPERM" && error.code !== "EBUSY") || Date.now() >= deadline) {
+          throw error;
+        }
+        await sleep(10);
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 async function withServicesLock(filePath, callback) {
@@ -795,7 +815,11 @@ async function main() {
   process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+export { readServices, writeServices };
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
