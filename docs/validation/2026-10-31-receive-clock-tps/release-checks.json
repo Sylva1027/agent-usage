@@ -551,5 +551,48 @@
     }
   },
   "productionAdoption": "pending Desktop coordination",
-  "externalModelProbeRequests": 0
+  "externalModelProbeRequests": 0,
+  "adoption": {
+    "verified": true,
+    "desktopFinishedAt": "2026-10-31T01:52:46.0348916Z",
+    "engineSha256": "b48f74f85196385d6f3c83800ba5982d468684322f8b60215add8613afb99ba9",
+    "dashboardMethod": "tps-v8",
+    "historyUsageAndCostUnchanged": true,
+    "summaryShapeUnchanged": true,
+    "assetsVerified": [
+      "perf-ui.js",
+      "styles.css"
+    ]
+  },
+  "natural": {
+    "checkedAt": "2026-10-31T02:06:21.546Z",
+    "method": "tps-v8",
+    "requests": 33,
+    "sourceCount": 2,
+    "rawMemorySqliteAndApiAgree": true,
+    "nativeWindowsRecomputed": true,
+    "models": [
+      {
+        "model": "codex-auto-review",
+        "reasoningEffort": "low",
+        "n": 11,
+        "averageTps": 63.576302393588215,
+        "p10": 58.035714285714285,
+        "p90": 72.7802037845706,
+        "minDurationMs": 573,
+        "maximumTps": 73.13432835820896
+      },
+      {
+        "model": "group/deepseek",
+        "reasoningEffort": "max",
+        "n": 22,
+        "averageTps": 222.42141143794976,
+        "p10": 169.01408450704224,
+        "p90": 254.56498388829215,
+        "minDurationMs": 340,
+        "maximumTps": 283.9090143218197
+      }
+    ],
+    "liveAppendBoundary": "Continuously appended rollouts may retain their previous publication until a stable refresh; this snapshot excludes such unpublished requests."
+  }
 }

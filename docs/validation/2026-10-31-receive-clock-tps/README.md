@@ -1,6 +1,6 @@
 # 接收时钟修复与验收
 
-2026-10-31。已确认一次应用写入也可能在客户端分成多个真实接收批次。当前源码为 tps-v8 / 原生 schema 5，以 100 ms 的观察精度处理初始传输碎片。release 引擎 `b48f74f8` 的 28 条实际传输验证全部通过；Node 完整回归及 GitHub Node 22/24 CI 均通过。并排包和本地采集器已安装，Desktop 尚未重启，等待用户协调本次切换；GitHub release 待实际采用和自然请求核验后替换。[可核对的验证摘要](release-checks.json)保留本轮计数、窗口、版本与 hash。
+2026-10-31。已确认一次应用写入也可能在客户端分成多个真实接收批次。当前源码为 tps-v8 / 原生 schema 5，以 100 ms 的观察精度处理初始传输碎片。release 引擎 `b48f74f8` 的 28 条实际传输验证全部通过；Node 完整回归及 GitHub Node 22/24 CI 均通过。经用户协调，Desktop 已重启并采用新引擎，看板已切至 v8；33 条自然请求的原生窗口、reader、SQLite 与 API 数值一致。GitHub v0.8.0 使用核验后的源码和完整并排包替换原资产。[可核对的验证摘要](release-checks.json)保留本轮计数、窗口、版本与 hash。
 
 ## 已确认的错误
 
@@ -81,7 +81,7 @@ schema 23、RANGE/SYNC、费用、排序和界面结构保持现有行为。没�
 - 当前时间窗口 producer patch SHA-256：`fb8fc5614d72e54d6191a70284cf0c6c773aff046e09294922b941234850953c`；159 文件、1,833,255 字节，独立 index 应用检查通过。
 - Cargo.lock SHA-256：`221e71ca66feec4b6f22012f3a6aa45a8702cacfb821e33871b8f884fe3be2a6`。
 - 最终 release 引擎 SHA-256：`b48f74f85196385d6f3c83800ba5982d468684322f8b60215add8613afb99ba9`；构建耗时 43 分 02 秒，exit 0。
-- 当前固定 v8 看板运行包：`50d836dd2cb1`，包含 tiktoken 1.0.22，尚未采用。
+- 当前固定 v8 看板运行包：`50d836dd2cb1`，包含 tiktoken 1.0.22，已正式采用。
 - 构建参数：release、opt-level 3、thin LTO、4 codegen units、静态 CRT、offline/locked。
 
 随后构建的 release `5d5be13d` 在 TLS/HTTP2 的 8 条路径通过；首次 SSE/WebSocket 验证为 14/16，两条大批 SSE 分别计入 518、226 个 token，预期均为 200。追查发现，隔离环境仍会读取 Windows 系统代理；代理重分块后，客户端收到的 HTTP chunk 与测试服务器写出的 chunk 不同。仅核对发送端原始字节不足以证明客户端帧边界。
@@ -94,8 +94,25 @@ schema 23、RANGE/SYNC、费用、排序和界面结构保持现有行为。没�
 
 最终 `b48f74f8` 完整并排包通过 28 条传输验证。首批 900 拆成 382＋518、相隔 9 ms 的四条 SSE/WebSocket 路径均只计后续 200；缓冲回包保持无测量，普通流式路径正常计数。原始账单输出 1,300、reasoning 200 均独立保留。CLI 版本、rg 实际检索、code-mode helper 及全包 hash 检查通过。
 
-已将完整并排包安装到独立版本目录并校验 7 个文件；采集器运行包校验 172 个文件，DSH 原 Cordis 配置备份且其它条目逐字保留。安装未重启 Desktop，也未改变本次进程的引擎选择。
+已将完整并排包安装到独立版本目录并校验 7 个文件；采集器运行包校验 172 个文件，DSH 原 Cordis 配置备份且其它条目逐字保留。安装阶段没有重启 Desktop；随后按用户明确同意的窗口执行切换。
 
-待完成：用户配合的 Desktop 重启、看板正式切换、自然请求的窗口审查及 GitHub release 替换。WorkBuddy Desktop 及 Claude/OpenCode/ZCode 的统一采集不在本轮新增范围。
+## 正式采用与自然请求
+
+2026-10-31 09:49（北京时间），看板以固定运行包 `50d836dd2cb1` 启动，保留 128 MiB V8 heap 与 7 GiB Job 限额。切换前的离线备份包含 153,511 条用量事件，SQLite schema 23、quick_check=ok；固定历史日期的用量、费用、响应形状及页面资源 hash 均核对一致。
+
+09:52，用户配合重启 Desktop，独立程序验证实际 app-server 的路径及 SHA-256 为 `b48f74f8…`，并确认看板进程身份未变。[Desktop 采用结果](desktop-result.md)记录实际进程与完整 hash；没有重新安装服务、建立沙箱账号或修改模型路由。
+
+10:06 的自然请求快照共 33 条，来自两个日志文件。逐条重算原生窗口 token 总和及时间区间并集，再核对 reader、SQLite 和同一发布版本的 API；平均值按总 token / 总时长，P10/P90 按请求速率计算，全部一致。
+
+| 模型 | 请求数 | 平均 tok/s | P10 | P90 | 本批最高 |
+| --- | --- | --- | --- | --- | --- |
+| group/deepseek max | 22 | 222.4 | 169.0 | 254.6 | 283.9 |
+| codex-auto-review low | 11 | 63.6 | 58.0 | 72.8 | 73.1 |
+
+DeepSeek 最快请求为 337 个参考 token / 1,187 ms；最短请求窗口为 340 ms。没有以速度上限筛掉数据，也未将 E2E 乘除系数。以上是本次实际请求的本地统一分词速度，不是供应商原生计费 token 的基准测试。
+
+同时确认一个既有刷新边界：扫描期间持续追加的会话会被一致性保护延后，保留旧发布并安排下一轮重试。当前聊天的新 schema 5 记录直接读取正确，但在上述快照中尚未入库，因此不计入这 33 条，也不宣称活动会话已全部追平。未为本次发布修改 RANGE/SYNC 的一致性规则。
+
+WorkBuddy Desktop 及 Claude/OpenCode/ZCode 的统一采集不在本轮新增范围；DSH 和 WorkBuddy 的本轮运行时验证使用 localhost，尚未将它们的自然请求列入上述正式快照。
 
 本地原始证据位于 `.codex-usage/tps-batch-20261030/`，包含构建、失败反例、传输探针、回归和索引副本；私有运行目录不进入 GitHub 发布包。[上一轮记录](../2026-10-30-visible-output-tps/README.md)保留已发生的采用过程与后来发现的缺陷。
