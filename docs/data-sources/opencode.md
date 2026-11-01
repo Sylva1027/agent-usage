@@ -1,6 +1,6 @@
 # OpenCode 数据源
 
-更新：2026-10-08。本文维护当前支持的 OpenCode v2 消息库；共同规则见[数据来源](../10-data-sources.md)，原方案和评审见[历史归档](../archive/2026-10-01/00-index.md)。
+更新：2026-11-01。本文维护当前支持的 OpenCode v2 消息库；共同规则见[数据来源](../10-data-sources.md)，原方案和评审见[历史归档](../archive/2026-10-01/00-index.md)。
 
 > 探针结论和数量来自 2026-09-30 的样本，不代表未来版本。实现按能力探测的最小列集与会话版本守护读取，不依赖样本中的类型比例或固定聚合差。
 
@@ -94,12 +94,6 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 
 看到差异时先核对相同快照、版本、事件类型和统计口径；样本不足以证明聚合永远不一致，也不能因此排除真正的解析错误。
 
-## 输出吞吐（TPS）
-
-性能 reader 读取 assistant message 的稳定 `id`（投影为 `message_id`）及性能标量；未完成、失败或缺值的记录也保留为诊断候选。`data.finish=stop/tool-calls` 为完成证据，`error` 或明确 error 字段为失败，未知 finish 不猜完成。时长为 `streamed_ms - created_ms`：`streamed` 表示 provider 流结束，`completed` 可能在后续工具执行完成后才写入，不能作为请求时长终点。`streamed` 缺失时保持时长未知，不回退到 `completed`；`completed` 缺失只进入独立诊断。统计/日历时间仍优先 `completed`、其次 `created`，不因时长终点改为 `streamed` 而改变日期归属。输出为 `tokens.output + tokens.reasoning`，任一分量未知就保持未知，任一分量无效也不能被另一项抵消。每条 message 作为统计窗口，`timingKind=request_e2e`、`tokenScope=visible_plus_reasoning`。这不代表每条 message 都与上游一次 provider request 一一对应，故 `requestCount` 保持 null，不伪造请求数。
-
-模型/provider 取消息记录的 `data.model.id` / `providerID`。`data.agent` 只证明名称，不证明类别，故 `agentKind=unknown`；effort/variant 不从当前配置回填。旧的不兼容 session 主版本排除并告警；缺失或无法解析的版本保留警告，不能当作已确认兼容。零/负输出或无效时长仍由公共内核排除。
-
 ### 上下文分级说明
 
 `requestInputTokens` 使用重构的单消息总输入，当前适配器依据公共阈值标记 short/long。历史真库样本全部为 short，不代表未来所有事件；聚合缓存比例不能证明单次请求达到长上下文。
@@ -116,7 +110,7 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 `reasoningEncryptedContent` 等正文字段**不进入任何产出事件、SQLite 索引与日志**。
 `test/opencode-usage.test.js` 里有哨兵字符串回归测试守着这条。
 
-普通用量 reader 优先只读打开数据库；失败时当前实现退回普通打开，可能触发 SQLite 恢复或辅助文件操作。TPS reader 严格只读且只投影白名单标量，打开失败即报告错误，不回退可写连接。应用不主动修改上游业务记录，文件读取边界见[共同说明](../10-data-sources.md#读取与数据边界)。
+普通用量 reader 优先只读打开数据库；失败时当前实现退回普通打开，可能触发 SQLite 恢复或辅助文件操作。应用不主动修改上游业务记录，文件读取边界见[共同说明](../10-data-sources.md#读取与数据边界)。
 
 ## 相关文件
 
@@ -129,4 +123,4 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 | `test/opencode-usage.test.js` | 单元与语义测试 |
 | `test/three-path-parity.test.js` | 内存 / SQLite / 静态快照三路一致 |
 
-TPS 的终态、分量有效性、版本与只读回归见 [reader](../../src/perf-sources/opencode.js)和[性能测试](../../test/perf-opencode.test.js)。
+TPS 及其 OpenCode 插件已退役；封存实现见[研究盒子说明](../archive/2026-11-01-tps-research.md)。

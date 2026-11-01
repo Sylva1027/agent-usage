@@ -46,18 +46,11 @@ test("local quota sources, finite cycles and trends agree across memory, SQLite 
       ["old-week", "gpt-6-sol", "2026-10-02T12:00:00Z", 25],
     ];
     for (const [name, model, time, tokens] of entries) {
-      await writeSession(
-        homeDir,
-        name,
-        model,
-        "/work",
-        [tokenRow(time, tokens, tokens - 10, 0, 10, 0), ...quotaPerfRows(name, time)],
-        {
-          source: "cli",
-          originator: "codex-tui",
-          model_provider: name === "external-provider" ? "azure" : "openai",
-        },
-      );
+      await writeSession(homeDir, name, model, "/work", [tokenRow(time, tokens, tokens - 10, 0, 10, 0)], {
+        source: "cli",
+        originator: "codex-tui",
+        model_provider: name === "external-provider" ? "azure" : "openai",
+      });
     }
     const exhausted = quotaRow("2026-10-08T02:40:00Z", "2026-10-08T06:00:00Z");
     exhausted.payload.rate_limits.primary.used_percent = 100;
@@ -150,7 +143,6 @@ test("local quota sources, finite cycles and trends agree across memory, SQLite 
       const memory = summarizeUsage(report, filters);
       const indexed = store.summarize(filters);
       const compact = summarizeUsageIndex(index, filters);
-      assert.deepEqual(indexed.perf.coverage, memory.perf.coverage);
       setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "" });
       const browser = summarize(snapshot);
       for (const summary of [memory, indexed, compact, browser])
@@ -235,44 +227,6 @@ test("replacing a rollout with its compressed sibling removes obsolete source st
   }
 });
 
-function quotaPerfRows(name, time) {
-  const identity = { thread_id: name, turn_id: `${name}-turn` };
-  const end = Date.parse(time);
-  return [
-    { type: "turn_context", timestamp: time, payload: identity },
-    {
-      type: "token_usage_record",
-      timestamp: time,
-      payload: {
-        ...identity,
-        response_id: `${name}-response`,
-        usage: { output_tokens: 10 },
-        turn_token_usage: { output_tokens: 10 },
-      },
-    },
-    {
-      type: "event_msg",
-      payload: {
-        type: "item_completed",
-        ...identity,
-        started_at_ms: end - 1000,
-        completed_at_ms: end,
-        item: { id: `${name}-item`, type: "AgentMessage" },
-      },
-    },
-    {
-      type: "event_msg",
-      payload: {
-        type: "task_complete",
-        ...identity,
-        started_at: (end - 1000) / 1000,
-        completed_at: end / 1000,
-        duration_ms: 1000,
-      },
-    },
-  ];
-}
-
 test("auto-review stays in activity but is excluded from current and previous quota statistics", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-auto-review-policy-"));
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
@@ -345,7 +299,6 @@ test("auto-review stays in activity but is excluded from current and previous qu
     const report = await buildUsageReport({ homeDir, env: {} });
     const index = await buildUsageIndex({ homes: report.homes });
     const snapshot = pricedReport(report, asOf);
-    assert.equal(report.perfSamples.length, 6, "real performance candidates include reviewer turns");
     assert.equal(report.events.filter((event) => event.model.toLowerCase() === "codex-auto-review").length, 3);
     for (const [preset, recentValue, expectedTotal, expectedSessions] of [
       ["all", "", 6175, 6],
@@ -357,9 +310,6 @@ test("auto-review stays in activity but is excluded from current and previous qu
       const filters = { preset, recentValue, now: asOf, bucket: "day", calendarZone: "utc" };
       const memory = summarizeUsage(report, filters);
       const indexed = store.summarize(filters);
-      assert.equal(memory.perf.coverage.eligible, expectedSessions);
-      assert.equal(indexed.perf.coverage.eligible, expectedSessions);
-      assert.deepEqual(indexed.perf.coverage, memory.perf.coverage);
       const compact = summarizeUsageIndex(index, filters);
       setSummaryFilters({ ...filters, excludedHomes: [], startDate: "", endDate: "" });
       const browser = summarize(snapshot);

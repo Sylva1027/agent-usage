@@ -10,7 +10,7 @@ import { createHistoryArchiveCandidate, prepareHistoryArchiveCommit } from "../s
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { checkpointUsageStore } from "../src/usage-executor.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createUsageIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const filters = { preset: "all", calendarZone: "utc", bucket: "day", now: new Date("2026-02-03T12:00:00Z") };
 const sqlSupported = (() => {
@@ -465,10 +465,10 @@ test("hot writes during verification and pinned publications retain coherent rea
   }
 });
 
-test("event-only SQL history keeps the live ZCode candidate and full coverage without samples", {
+test("event-only SQL history keeps the live ZCode usage candidate", {
   skip: !sqlSupported,
 }, async () => {
-  const fixture = createPerfIntegrationFixture({ sources: ["zcode"] });
+  const fixture = createUsageIntegrationFixture({ sources: ["zcode"] });
   const options = { ...fixture.serverOptions, databaseFile: path.join(fixture.serverOptions.homeDir, "sql.sqlite") };
   const store = new UsageStore(options);
   const segment = path.join(fixture.serverOptions.homeDir, "sql-cold.sqlite");
@@ -482,16 +482,6 @@ test("event-only SQL history keeps the live ZCode candidate and full coverage wi
     store.database.prepare("DELETE FROM events WHERE timestamp_ms>=? AND timestamp_ms<?").run(startMs, endMs);
     const scope = { ...filters, now: new Date("2026-10-05T12:00:00Z") };
     const expected = await components(store, scope);
-    const perf = expected.summary.perf;
-    assert.ok(perf.coverage.eligible > 0);
-    assert.equal(perf.coverage.eligible, perf.coverage.sampled + perf.coverage.dropped + perf.coverage.pending);
-    assert.equal(perf.coverage.sampled, 0);
-    assert.deepEqual(perf.groups, []);
-    const ranked = perf.models.find((model) => model.sourceKind === "zcode" && model.model === "ranked-model");
-    assert.ok(ranked);
-    assert.equal(ranked.state, "missing_duration");
-    assert.equal(ranked.n, 0);
-    assert.equal(ranked.candidateCount, 25);
     equivalent(await store.dashboardHistory(scope), expected);
     equivalent(await store.dashboardHistory(scope), expected);
     assert.ok(store.historySqlDashboardCache, "event-only authority takes the SQL path");

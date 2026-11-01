@@ -1,6 +1,6 @@
 # Claude Code 数据源
 
-更新：2026-10-20（模型身份改为线路模型）。本文维护当前支持的 Claude Code 会话转录（JSONL）；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)。
+更新：2026-11-01。本文维护当前支持的 Claude Code 普通用量会话转录（JSONL）；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)。
 
 > 结构结论来自 2026-10-20 的本机样本（Claude Code 2.1.299：10 个 JSONL、4,191 行、1,565 条 assistant 记录，去重后 608 个唯一 `message.id`；另有 4 个子代理文件、581 条 sidechain 记录）。不代表未来版本。
 
@@ -105,20 +105,6 @@ Claude 的三个输入计数是**并列**的（`input_tokens` 不含缓存），
 
 转录的 `cache_creation` 区分 5 分钟与 1 小时 TTL，但索引不持久化 TTL，费用端按 5 分钟场景估算并带 `cache-write-ttl-unknown-5m-scenario` 提示。本次不扩展 schema。
 
-## 输出吞吐（TPS）
-
-**已提供（2026-10-21）。** Claude 转录没有显式请求时长，但同一 `message.id` 的末行时间戳减请求锚点就是请求端到端时长：`window = "request"`、`timingKind = "request_e2e"`、`timingSource = "timestamp_fallback"`、`tokenScope = "reported_output_includes_reasoning"`。它含请求等待与 TTFT，不是纯解码速度。锚点按**文件顺序**取运行最大值的 `user` / `attachment` 行；文件顺序不保证时间单调，不能先按时间排序再扫。完整规则见 [Claude Code TPS 方案](../plans/2026-10-21-claude-code-tps-plan.md)与[实施计划](../plans/2026-10-21-claude-code-tps-implementation-plan.md)。
-
-三条容易被误解的边界：
-
-1. **只对紧随 prompt/attachment 行的请求计时，同轮续写不采样。** 若一条消息的首行之前已写过 assistant 行，锚点已陈旧，只能落在上一响应写盘的时刻，会把 harness 处理间隙算进请求（本机该例多算 624 ms）；这类消息不产出样本，计入 `skippedNoAnchor`。每条 Claude 样本的锚点都落在真实的 user/attachment 行上。
-2. **TPS 分子比事件路径的 output 总和少 0.0137%（597 token）。** 被剔除的那条同轮续写仍留在事件路径，面板 token 总量仍包含它；采样集内部（本机 3,263 条）两者逐位相等。这 597 token 占事件路径 output 的 0.0137%，不能把「分子必须等于事件输出」当作校验条件。
-3. **已进入统一排名：池化均值可比，p10/p90 不可比。** Claude 与修订后的 Codex v2 同属 `request_e2e`，池化均值（总输出 / 总时长）可以同表排名；但 Claude 是**请求级**分布、Codex 是轮级分布，p10/p90 仍是各自粒度的请求级历史分布，跨来源的分位差不能直接比较。
-
-精度证据（2026-10-21 本机只读核对）：与网关账本按 `message.id` 逐条关联 2,747 条，时长比值 p50 1.008、p99 1.0249、max 1.0416，绝对误差 max 125 ms，池化 154.21 vs 154.96 tok/s（−0.48%）；输出 token 2,747/2,747 精确相等。证据只覆盖约 33 小时、13 个会话、Claude Code 2.1.299 与一条网关路由，不能外推为所有 Claude Code 用户的精度。
-
-来源在 perf 注册表中具名 `Claude`（`canonicalPerfSourceKind("claude")`）；样本键只用 `message.id`，不按会话或时间窗匹配（账本里同一会话的辅助请求没有 `message.id`，因此不会进入统计）。注册前 `classifyPerfSources` 把它放在 `notEnabled` 桶、`kind` 为 `"unsupported"`，界面把两个桶合并显示为「不支持来源」；现在它位于 `enabled`。
-
 ## 增量索引
 
 `UsageStore.usageFiles()` 对 `kind === "claude"` 的 home 展开 `claudeSessionFiles()`，每个 JSONL 各自按 `size + mtime` 判定是否重解析。主转录变化会按会话级联到同会话的子代理文件（C5 的 `earlierFileChanged` 语义），这是预期行为。
@@ -133,7 +119,9 @@ Claude 的三个输入计数是**并列**的（`input_tokens` 不含缓存），
 
 ## 保留期
 
-Claude Code 默认只保留 30 天转录，过期即从磁盘消失。看板索引保留已解析事件，但不能假设可回溯重扫。TPS 样本与转录同寿：文件消失后 `source_files` 行删除，对应 `perf_samples` 级联清除，历史 TPS 无法从已过期文件重建。
+Claude Code 默认只保留 30 天转录，过期即从磁盘消失。看板索引保留已解析事件，但不能假设可回溯重扫。
+
+Claude 的 TPS 候选、计时采集与历史兼容读取已退役；研究实现见[封存说明](../archive/2026-11-01-tps-research.md)。
 
 ## 相关文件
 

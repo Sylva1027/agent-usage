@@ -1651,7 +1651,6 @@ export const DEFAULT_EVENT_COST_MEMO_MAX_ENTRIES = 262_144;
 /**
  * 计费用的**字节估计**：`JSON.stringify(value)` 的 UTF-16 码元长度。
  *
- * 与 C3 `projectionByteEstimate`（`perf-sources/codex-thread.js:307`）**同一口径**，
  * 便于两处预算互相比较；它**不是**常驻堆的字节数（真实堆更大，容量裁定的口径见报告 §容量）。
  */
 function valueByteEstimate(value) {

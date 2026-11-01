@@ -8,10 +8,10 @@
 //   · 执行器 = **唯一**持有 `UsageStore`/`DatabaseSync` 连接者；主线程**不**再打开该库。
 //   · 消息集固定为：`open` / `sync` / `dashboard` / `summarize` / `periodComparison` / `metadata` / `snapshot` /
 //     `backupHistory` / `rebuildHistoryRollups` / `historyArchives` / `historyArchiveDays` / `historyArchiveEventPage` / `historyArchiveEventCommit` / `historyArchiveImport` /
-//     `publishedUsageEvents` / `publishedUsageReport` / `perfPublicationState` / `close`（请求）+
+//     `publishedUsageEvents` / `publishedUsageReport` / `close`（请求）+
 //     `ready` / `response` / `state`（响应/状态发布）。
 //   · 只有 `sync`/`backupHistory`/`snapshot`/`rebuildHistoryRollups`/`historyArchiveDays`/`historyArchiveEventPage`/`historyArchiveImport`/
-//     `historyArchiveEventCommit`/`publishedUsageEvents`/`publishedUsageReport`/`perfPublicationState`/`close`
+//     `historyArchiveEventCommit`/`publishedUsageEvents`/`publishedUsageReport`/`close`
 //     共享一条 worker 内串行尾链；其它读请求仍直接分派，不做全局串行化。
 //   · 状态发布：每次操作**完成**后把不可变读侧快照 post 给主线程（`metadata`/`status`/`homes`/
 //     `warnings`/`serviceTierEvidence`/`checkedAt`）。status 在同步繁忙时读快照，空闲时限时读取发布版本。
@@ -184,18 +184,9 @@ export function checkpointUsageStore(database) {
   return result;
 }
 
-/**
- * @param {{sync: (args: any) => Promise<any>, perfState: () => {sourceWarnings: Array<{sourceKind: string, code: string}>}}} store
- * @param {any} options
- */
+/** @param {{sync: (args: any) => Promise<any>}} store @param {any} options */
 export async function syncUsageStore(store, options) {
-  const status = await store.sync({ options });
-  const warnings = store.perfState().sourceWarnings;
-  // A concurrent append can spoil one window; revalidate once before publishing its failure.
-  if (warnings.length > 0 && warnings.every((w) => w.sourceKind === "codex" && w.code === "LIVE_SOURCE_CHANGED")) {
-    return store.sync({ options });
-  }
-  return status;
+  return store.sync({ options });
 }
 
 function historyArchiveStatusError(code, message) {
@@ -418,15 +409,12 @@ async function runExecutorProcess() {
 
   const postState = ({ includeHomes = false } = {}) => {
     if (!store) return;
-    const perf = store.perfPublicationState();
     void send({
       type: "state",
       state: toWire({
         status: storeStatus,
         metadata: store.metadata(),
         checkedAt: store.checkedAt ?? storeStatus?.checkedAt ?? null,
-        perfIndexVersion: perf.indexVersion,
-        perfTimingRevision: perf.timingRevision,
         lastCheckpoint,
         ...(includeHomes
           ? {
@@ -491,7 +479,7 @@ async function runExecutorProcess() {
                 fingerprint: store.fingerprint,
                 generatedAt: store.generatedAt,
                 checkedAt,
-                missingSources: store.perfState().missingSources,
+                missingSources: store.sourceState().missingSources,
               };
           store.checkedAt = checkedAt;
         } else if (message.imported) {
@@ -504,7 +492,7 @@ async function runExecutorProcess() {
             fingerprint: store.fingerprint,
             generatedAt: store.generatedAt,
             checkedAt: store.checkedAt,
-            missingSources: store.perfState().missingSources,
+            missingSources: store.sourceState().missingSources,
           };
         }
         postState({ includeHomes: true });
@@ -560,10 +548,6 @@ async function runExecutorProcess() {
       }
       case "publishedUsageReport": {
         return store.publishedHistoryUsageReport();
-      }
-      case "perfPublicationState": {
-        await store.open();
-        return store.perfPublicationState();
       }
       case "dashboard": {
         applyPricingCatalog(message.pricing);
@@ -749,7 +733,6 @@ async function runExecutorProcess() {
         message.type === "historyArchiveImport" ||
         message.type === "publishedUsageEvents" ||
         message.type === "publishedUsageReport" ||
-        message.type === "perfPublicationState" ||
         message.type === "close"
           ? await serializeSyncBackup(execute)
           : await execute();
@@ -863,8 +846,6 @@ export function createUsageExecutor(
     serviceTierEvidence: null,
     quotaSourceEvidenceSnapshot: null,
     checkedAt: null,
-    perfIndexVersion: "",
-    perfTimingRevision: "",
     lastCheckpoint: null,
   });
   /** @type {import("node:child_process").ChildProcess | null} */
@@ -1158,7 +1139,6 @@ export function createUsageExecutor(
     metadataFor: (asOf) => request("metadata", { asOf: asOf instanceof Date ? asOf.getTime() : asOf }),
     publishedUsageEvents: () => request("publishedUsageEvents"),
     publishedUsageReport: () => request("publishedUsageReport"),
-    perfPublicationState: () => request("perfPublicationState"),
     snapshot: (payload = {}) => request("snapshot", { ...payload, pricing: pricing() }),
     backupHistory: (databaseFile) => request("backupHistory", { databaseFile, pricing: pricing() }),
     rebuildHistoryRollups: () => request("rebuildHistoryRollups"),
@@ -1227,12 +1207,6 @@ export function createUsageExecutor(
     },
     get checkedAt() {
       return state.checkedAt;
-    },
-    get perfIndexVersion() {
-      return state.perfIndexVersion;
-    },
-    get perfTimingRevision() {
-      return state.perfTimingRevision;
     },
     get lastCheckpoint() {
       return state.lastCheckpoint;

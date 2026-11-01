@@ -18,29 +18,16 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture, createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
-import { DEDUPE, toJsonl, withClaudeFile } from "../test-support/claude-perf-fixture.mjs";
+import { createCodexIntegrationFixture, createUsageIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const NOW = new Date("2026-10-22T00:00:00.000Z");
-
-function countSamples(store, kind) {
-  return Number(store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE source_kind = ?").get(kind).n);
-}
 
 function canonicalRowPayload(row) {
   const { id: _id, ...payload } = row;
   return JSON.stringify(
     Object.fromEntries(Object.entries(payload).sort(([left], [right]) => left.localeCompare(right))),
   );
-}
-
-function samplePayload(store, kind) {
-  return store.database
-    .prepare("SELECT * FROM perf_samples WHERE source_kind = ? ORDER BY sample_key")
-    .all(kind)
-    .map(({ source_path: _sourcePath, ...row }) => row);
 }
 
 function eventCountsByKind(store) {
@@ -61,8 +48,6 @@ function summaryPayload(store) {
   return {
     eventCount: summary.eventCount,
     totals: summary.totals,
-    groups: summary.perf.groups,
-    coverage: summary.perf.coverage,
   };
 }
 
@@ -89,15 +74,13 @@ function collectFiles(root) {
   return files;
 }
 
-test("Codex partial and whole-home loss retains history, dependency ownership, and a stable version", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+test("Codex partial and whole-home loss retains usage history", async () => {
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
-    const samplesBefore = samplePayload(store, "codex");
     const summaryBefore = summaryPayload(store);
-    const initialVersion = store.perfState().indexVersion;
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 23);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 24);
 
     const [movedFrom] = fixture.rolloutFiles;
     const movedTo = movedFrom.replace(`${path.sep}sessions${path.sep}`, `${path.sep}archived_sessions${path.sep}`);
@@ -105,71 +88,32 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     moveFixtureFile(movedFrom, movedTo);
 
     const moved = await store.sync({ options: fixture.reportOptions });
-    const movedVersion = store.perfState().indexVersion;
-    assert.equal(moved.perfState, "ready");
     assert.deepEqual(moved.missingSources, []);
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.equal(
-      store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads WHERE source_path = ?").get(movedFrom).n,
-      0,
-    );
-    assert.equal(
-      store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads WHERE source_path = ?").get(movedTo).n,
-      1,
-    );
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
-    assert.notEqual(movedVersion, initialVersion);
 
     const noOp = await store.sync({ options: fixture.reportOptions });
     assert.equal(noOp.updatedFileCount, 0);
-    assert.equal(store.perfState().indexVersion, movedVersion);
 
     const missingPath = fixture.rolloutFiles[1];
     const missingInfo = statSync(missingPath);
     const missingContents = readFileSync(missingPath);
     rmSync(missingPath);
     const partial = await store.sync({ options: fixture.reportOptions });
-    const partialVersion = store.perfState().indexVersion;
-    assert.equal(partial.perfState, "ready");
     assert.deepEqual(
       partial.missingSources.map((source) => [source.path, source.kind]),
       [[missingPath, "extra"]],
     );
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads").get().n, 3);
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
-    assert.deepEqual(store.summarize({ preset: "today", now: NOW }).perf.missingSources, partial.missingSources);
-    assert.deepEqual(
-      store.summarize({
-        preset: "all",
-        now: NOW,
-        excludeHomes: [partial.missingSources[0].homeId],
-      }).perf.missingSources,
-      [],
-    );
-    assert.notEqual(partialVersion, movedVersion);
 
     const missingSinceMs = partial.missingSources[0].missingSinceMs;
     const missingNoOp = await store.sync({ options: fixture.reportOptions });
     assert.equal(missingNoOp.updatedFileCount, 0);
-    assert.equal(store.perfState().indexVersion, partialVersion);
-    assert.equal(store.perfState().missingSources[0].missingSinceMs, missingSinceMs);
+    assert.equal(store.sourceState().missingSources[0].missingSinceMs, missingSinceMs);
 
     restoreFile(missingPath, missingContents, missingInfo);
     const recovered = await store.sync({ options: fixture.reportOptions });
-    const recoveredVersion = store.perfState().indexVersion;
-    assert.equal(recovered.perfState, "ready");
     assert.deepEqual(recovered.missingSources, []);
-    assert.deepEqual(store.summarize({ preset: "all", now: NOW }).perf.missingSources, []);
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
-    assert.notEqual(recoveredVersion, partialVersion);
 
     const currentFiles = [movedTo, fixture.rolloutFiles[1], fixture.rolloutFiles[2]].sort();
     const backups = new Map(
@@ -180,26 +124,15 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
     );
     rmSync(fixture.codexHome, { recursive: true });
     const homeGone = await store.sync({ options: fixture.reportOptions });
-    assert.equal(homeGone.perfState, "ready");
-    assert.deepEqual(homeGone.degradedHomeIds, []);
     assert.deepEqual(
       homeGone.missingSources.map((source) => source.path),
       currentFiles,
     );
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_rollout_threads").get().n, 3);
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
 
     for (const [filePath, backup] of backups) restoreFile(filePath, backup.contents, backup.info);
     const homeRestored = await store.sync({ options: fixture.reportOptions });
-    assert.equal(homeRestored.perfState, "ready");
     assert.deepEqual(homeRestored.missingSources, []);
-    assert.equal(store.perfState().indexVersion, recoveredVersion);
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
   } finally {
     store.close();
@@ -208,7 +141,7 @@ test("Codex partial and whole-home loss retains history, dependency ownership, a
 });
 
 test("Codex compression transition replaces paths without duplicating facts", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   try {
     const [plainPath] = fixture.rolloutFiles;
@@ -230,7 +163,6 @@ test("Codex compression transition replaces paths without duplicating facts", as
       })}\n`,
     );
     await store.sync({ options: fixture.reportOptions });
-    const samplesBefore = samplePayload(store, "codex");
     const summaryBefore = summaryPayload(store);
     const compressedPath = `${plainPath}.zst`;
     const oldSource = store.database
@@ -253,8 +185,6 @@ test("Codex compression transition replaces paths without duplicating facts", as
     unlinkSync(plainPath);
 
     const converted = await store.sync({ options: fixture.reportOptions });
-    const convertedVersion = store.perfState().indexVersion;
-    assert.equal(converted.perfState, "ready");
     assert.deepEqual(converted.missingSources, []);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(plainPath).n, 0);
     assert.equal(
@@ -326,9 +256,6 @@ test("Codex compression transition replaces paths without duplicating facts", as
     const restoredSecondary = restoredQuotaPayloads.find((payload) => payload.role === "secondary");
     assert.equal(restoredSecondary.source_path, plainPath);
     assert.equal(restoredSecondary.used_percent, null);
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-    assert.deepEqual(samplePayload(store, "codex"), samplesBefore);
     assert.deepEqual(summaryPayload(store), summaryBefore);
 
     const historySnapshot = {
@@ -340,8 +267,7 @@ test("Codex compression transition replaces paths without duplicating facts", as
     };
     const noOp = await store.sync({ options: fixture.reportOptions });
     assert.equal(noOp.updatedFileCount, 0);
-    assert.equal(store.perfState().indexVersion, convertedVersion);
-    assert.deepEqual(store.perfState().missingSources, []);
+    assert.deepEqual(store.sourceState().missingSources, []);
     assert.deepEqual(
       {
         ...store.database
@@ -357,338 +283,37 @@ test("Codex compression transition replaces paths without duplicating facts", as
     fixture.close();
   }
 });
-
-test("Codex partial rollout loss retains old turns while a surviving rollout ingests a new turn", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
-  const store = new UsageStore(fixture.serverOptions);
-  try {
-    await store.sync({ options: fixture.reportOptions });
-    const initialSamples = samplePayload(store, "codex");
-    const initialKeys = new Set(initialSamples.map((sample) => sample.sample_key));
-    const initialSummary = summaryPayload(store);
-
-    const missingPath = fixture.rolloutFiles[1];
-    rmSync(missingPath);
-    const partial = await store.sync({ options: fixture.reportOptions });
-    assert.equal(partial.perfState, "ready");
-    assert.deepEqual(
-      partial.missingSources.map((source) => [source.path, source.kind]),
-      [[missingPath, "extra"]],
-    );
-    assert.deepEqual(samplePayload(store, "codex"), initialSamples);
-    assert.deepEqual(summaryPayload(store), initialSummary);
-
-    const threadId = "fixture-codex-thread";
-    const turnId = "turn-26";
-    const responseId = "response-26-1";
-    const base = Date.parse("2026-10-04T12:00:00.000Z");
-    const startedAtMs = base + 26 * 10000;
-    const activePath = fixture.rolloutFiles[2];
-    appendFileSync(
-      activePath,
-      `${[
-        {
-          type: "turn_context",
-          payload: { thread_id: threadId, turn_id: turnId, model: "codex-fixture-model", effort: "high" },
-        },
-        {
-          type: "token_usage_record",
-          timestamp: new Date(startedAtMs + 2500).toISOString(),
-          payload: {
-            thread_id: threadId,
-            turn_id: turnId,
-            response_id: responseId,
-            usage: { output_tokens: 77 },
-            turn_token_usage: { output_tokens: 77 },
-          },
-        },
-        {
-          type: "event_msg",
-          payload: {
-            type: "item_completed",
-            thread_id: threadId,
-            turn_id: turnId,
-            started_at_ms: startedAtMs,
-            completed_at_ms: startedAtMs + 1234,
-            item: { id: "item-26", type: "AgentMessage" },
-          },
-        },
-        {
-          type: "event_msg",
-          payload: {
-            type: "task_complete",
-            thread_id: threadId,
-            turn_id: turnId,
-            started_at: Math.floor(startedAtMs / 1000),
-            completed_at: Math.floor((startedAtMs + 1234) / 1000),
-            duration_ms: 1234,
-          },
-        },
-      ]
-        .map((row) => JSON.stringify(row))
-        .join("\n")}\n`,
-    );
-    const advanced = await store.sync({ options: fixture.reportOptions });
-    assert.equal(advanced.perfState, "ready");
-    assert.deepEqual(
-      advanced.missingSources.map((source) => [source.path, source.kind]),
-      [[missingPath, "extra"]],
-    );
-
-    const samplesAfter = samplePayload(store, "codex");
-    assert.equal(samplesAfter.length, initialSamples.length + 1);
-    assert.deepEqual(
-      samplesAfter.filter((sample) => initialKeys.has(sample.sample_key)),
-      initialSamples,
-    );
-    const newSample = samplesAfter.find((sample) => !initialKeys.has(sample.sample_key));
-    assert.ok(newSample);
-    assert.equal(
-      newSample.sample_key,
-      JSON.stringify(["codex", initialSamples[0].home_id, threadId, turnId, responseId]),
-    );
-    assert.equal(newSample.model, "codex-fixture-model");
-    assert.equal(newSample.model_evidence, "turn_context");
-    assert.equal(newSample.output_tokens, null, "the surviving rollout adds a candidate without generation evidence");
-    assert.equal(newSample.duration_ms, null);
-    assert.equal(newSample.timing_kind, "generation");
-    assert.equal(newSample.status, "completed");
-    assert.equal(newSample.request_count, 1);
-    assert.equal(newSample.item_count, 0, "a turn item without response ownership is not assigned to the new request");
-    assert.equal(newSample.ts_ms, startedAtMs + 2500);
-    assert.equal(
-      store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples WHERE sample_key = ?").get(newSample.sample_key).n,
-      1,
-    );
-    assert.equal(
-      store.database
-        .prepare("SELECT COUNT(*) AS n FROM perf_sample_sources WHERE sample_key = ?")
-        .get(newSample.sample_key).n,
-      2,
-    );
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 80);
-  } finally {
-    store.close();
-    fixture.close();
-  }
-});
-
-test("Codex thread publication retains replaced samples and dependencies", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
-  const store = new UsageStore(fixture.serverOptions);
-  try {
-    await store.sync({ options: fixture.reportOptions });
-    await fixture.seedRequestTiming(store);
-    store.database.prepare("DELETE FROM history_replaced_facts").run();
-    const threadId = "fixture-codex-thread";
-    const sampleKey = JSON.stringify([
-      "codex",
-      store.database.prepare("SELECT home_id FROM perf_samples LIMIT 1").get().home_id,
-      threadId,
-      "turn-24",
-      "response-24-1",
-    ]);
-    const oldSample = store.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey);
-    assert.equal(oldSample.output_tokens, 123);
-    assert.equal(oldSample.duration_ms, 1000);
-    assert.equal(oldSample.source_path, fixture.rolloutFiles[0]);
-
-    store.database
-      .prepare("UPDATE perf_sample_sources SET role = 'dependency' WHERE sample_key = ? AND source_path = ?")
-      .run(sampleKey, oldSample.source_path);
-    const oldDependencies = store.database
-      .prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ? ORDER BY source_path")
-      .all(sampleKey);
-    const oldSource = store.database
-      .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-      .get(oldSample.source_path);
-    assert.ok(oldSource);
-    assert.equal(oldDependencies.length, 3);
-
-    const rolloutPath = fixture.rolloutFiles[2];
-    const rolloutRows = readFileSync(rolloutPath, "utf8")
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    for (const row of rolloutRows) {
-      if (row.payload?.turn_id !== "turn-24") continue;
-      if (row.type === "token_usage_record") {
-        row.timestamp = new Date(Date.parse(row.timestamp) + 2000).toISOString();
-      }
-    }
-    writeFileSync(rolloutPath, `${rolloutRows.map((row) => JSON.stringify(row)).join("\n")}\n`);
-
-    const changed = await store.sync({ options: fixture.reportOptions });
-    assert.equal(changed.updatedFileCount, 1);
-
-    const liveSample = store.database.prepare("SELECT * FROM perf_samples WHERE sample_key = ?").get(sampleKey);
-    assert.equal(liveSample.output_tokens, 123);
-    assert.equal(liveSample.duration_ms, 1000);
-    assert.equal(liveSample.ts_ms, oldSample.ts_ms + 2000);
-    assert.equal(countSamples(store, "codex"), 26);
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM perf_sample_sources").get().n, 78);
-
-    const replacedFacts = store.database
-      .prepare(
-        `SELECT fact_table, source_kind, home_id, source_home_label, source_home_path,
-                method_version, occurrence_count, payload
-         FROM history_replaced_facts
-         WHERE source_path = ? AND fact_table IN ('perf_samples', 'perf_sample_sources')`,
-      )
-      .all(oldSource.path)
-      .map((row) => ({ ...row }));
-    const sampleFacts = replacedFacts.filter((row) => row.fact_table === "perf_samples");
-    const dependencyFacts = replacedFacts.filter((row) => row.fact_table === "perf_sample_sources");
-    assert.equal(sampleFacts.length, 1);
-    assert.equal(dependencyFacts.length, 1);
-    for (const row of replacedFacts) {
-      assert.equal(row.source_kind, oldSource.kind);
-      assert.equal(row.home_id, oldSource.home_id);
-      assert.equal(row.source_home_label, oldSource.home_label);
-      assert.equal(row.source_home_path, oldSource.home_path);
-      assert.equal(row.method_version, PERF_METHOD_VERSION);
-    }
-    const oldSamplePayload = JSON.parse(sampleFacts[0].payload);
-    assert.deepEqual(canonicalRowPayload(oldSamplePayload), canonicalRowPayload(oldSample));
-    assert.equal(oldSamplePayload.ts_ms, oldSample.ts_ms);
-    assert.equal(oldSamplePayload.duration_ms, 1000);
-    assert.equal(oldSamplePayload.diagnostic_reason_chain, oldSample.diagnostic_reason_chain);
-    const nullField = Object.keys(oldSample).find((field) => oldSample[field] === null);
-    assert.ok(nullField);
-    assert.equal(oldSamplePayload[nullField], null);
-    assert.equal(
-      canonicalRowPayload(JSON.parse(dependencyFacts[0].payload)),
-      canonicalRowPayload(oldDependencies.find((row) => row.source_path === oldSource.path)),
-    );
-
-    const historySnapshot = {
-      ...store.database
-        .prepare(
-          "SELECT COUNT(*) AS rows, COALESCE(SUM(occurrence_count), 0) AS occurrences FROM history_replaced_facts",
-        )
-        .get(),
-    };
-    const noOp = await store.sync({ options: fixture.reportOptions });
-    assert.equal(noOp.updatedFileCount, 0);
-    assert.deepEqual(
-      {
-        ...store.database
-          .prepare(
-            "SELECT COUNT(*) AS rows, COALESCE(SUM(occurrence_count), 0) AS occurrences FROM history_replaced_facts",
-          )
-          .get(),
-      },
-      historySnapshot,
-    );
-  } finally {
-    store.close();
-    fixture.close();
-  }
-});
-
-test("Codex request timing evidence remains unchanged by a real reparse", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
-  const store = new UsageStore(fixture.serverOptions);
-  try {
-    await store.sync({ options: fixture.reportOptions });
-    await fixture.seedRequestTiming(store);
-    const homeId = String(
-      store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(fixture.codexHome)).id,
-    );
-    const threadId = "fixture-codex-thread";
-    const responseId = "response-24-1";
-    const readEvidence = () =>
-      store.database
-        .prepare(
-          `SELECT * FROM perf_request_timing_evidence
-           WHERE home_id = ? AND response_id = ?
-           ORDER BY evidence_origin, variant_key`,
-        )
-        .all(homeId, responseId)
-        .map((row) => ({ ...row }));
-    const readLinks = () =>
-      store.database
-        .prepare(
-          `SELECT * FROM perf_request_timing_threads
-           WHERE home_id = ? AND response_id = ?
-           ORDER BY thread_id`,
-        )
-        .all(homeId, responseId)
-        .map((row) => ({ ...row }));
-    const evidenceBefore = readEvidence();
-    const linksBefore = readLinks();
-    assert.equal(evidenceBefore.length, 1);
-    assert.equal(linksBefore.length, 1);
-
-    const rolloutPath = fixture.rolloutFiles[2];
-    const rolloutRows = readFileSync(rolloutPath, "utf8")
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    for (const row of rolloutRows) {
-      if (row.payload?.turn_id !== "turn-24") continue;
-      if (row.type === "token_usage_record") {
-        row.timestamp = new Date(Date.parse(row.timestamp) + 2000).toISOString();
-      }
-    }
-    writeFileSync(rolloutPath, `${rolloutRows.map((row) => JSON.stringify(row)).join("\n")}\n`);
-
-    const changed = await store.sync({ options: fixture.reportOptions });
-    assert.equal(changed.updatedFileCount, 1);
-    assert.deepEqual(readEvidence(), evidenceBefore);
-    assert.deepEqual(readLinks(), linksBefore);
-    assert.deepEqual(store.lookupRequestTiming({ homeId, threadId, turnId: "turn-24", responseId }), {
-      state: "available",
-      durationMs: 1500,
-      reportedOutputTokens: 123,
-      requestedModel: "codex-fixture-model",
-      generation: {
-        outputTokens: 123,
-        durationMs: 1000,
-        startOutputTokens: 0,
-        timingKind: "explicit",
-      },
-    });
-  } finally {
-    store.close();
-    fixture.close();
-  }
-});
-
-test("WorkBuddy duration observations survive a real source reparse", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "history-retention-workbuddy-"));
-  const workbuddyHome = path.join(root, ".workbuddy-ai");
-  const workbuddyFile = path.join(workbuddyHome, "projects", "fixture", "fixture-session.jsonl");
-  const traceFile = path.join(workbuddyHome, "traces", "fixture", "trace_fixture.jsonl");
-  const usage = (outputTokens) => ({
+test("Claude and WorkBuddy file loss retain ordinary usage", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "history-retention-usage-"));
+  const claudeHome = path.join(root, ".claude");
+  const claudeFile = path.join(claudeHome, "projects", "fixture-project", "session.jsonl");
+  const workbuddyFile = path.join(root, ".workbuddy-ai", "projects", "fixture", "fixture-session.jsonl");
+  const claudeRow = {
+    type: "assistant",
+    timestamp: "2026-10-20T10:00:01.000Z",
+    sessionId: "claude-usage-session",
+    message: {
+      id: "claude-usage-message",
+      model: "deepseek-flash",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 300 },
+    },
+  };
+  const workbuddyRow = {
     timestamp: 1792537466382,
     type: "function_call",
     providerData: {
       messageId: "workbuddy-message",
       model: "deepseek-v4.1-flash",
-      usage: { inputTokens: 1000, outputTokens, totalTokens: 1000 + outputTokens },
+      usage: { inputTokens: 1000, outputTokens: 200, totalTokens: 1200 },
     },
     sessionId: "workbuddy-session",
     cwd: "/work/fixture",
-  });
-  const span = (duration) => ({
-    type: "span_end",
-    span: {
-      traceId: "trace_1",
-      spanId: "span_1",
-      name: "generation",
-      type: "generation",
-      endedAt: "2026-10-21T00:08:56.704Z",
-      duration,
-      status: "ok",
-      toolOutput: JSON.stringify([{ id: "workbuddy-message" }]),
-    },
-  });
+  };
+  mkdirSync(path.dirname(claudeFile), { recursive: true });
   mkdirSync(path.dirname(workbuddyFile), { recursive: true });
-  mkdirSync(path.dirname(traceFile), { recursive: true });
-  writeFileSync(workbuddyFile, toJsonl([usage(200)]));
-  writeFileSync(traceFile, toJsonl([span(900)]));
-  const initialMtimeMs = Math.max(statSync(workbuddyFile).mtimeMs, statSync(traceFile).mtimeMs);
+  writeFileSync(claudeFile, JSON.stringify(claudeRow) + "\n");
+  writeFileSync(workbuddyFile, JSON.stringify(workbuddyRow) + "\n");
 
   const store = new UsageStore({
     homeDir: root,
@@ -698,272 +323,61 @@ test("WorkBuddy duration observations survive a real source reparse", async () =
   const options = { homeDir: root, env: {} };
   try {
     await store.sync({ options });
+    const eventsBefore = eventCountsByKind(store);
     assert.deepEqual(
-      store.database
-        .prepare("SELECT duration_ms FROM workbuddy_generation_duration_observations ORDER BY duration_ms")
-        .all()
-        .map((row) => row.duration_ms),
-      [900],
-    );
-    const initialSample = store.database
-      .prepare("SELECT output_tokens, duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'")
-      .get();
-    assert.ok(initialSample);
-    assert.equal(initialSample.output_tokens, null);
-    assert.equal(initialSample.duration_ms, null);
-
-    writeFileSync(workbuddyFile, toJsonl([usage(201)]));
-    writeFileSync(traceFile, toJsonl([span(850)]));
-    const changedTime = new Date(initialMtimeMs + 2000);
-    utimesSync(workbuddyFile, changedTime, changedTime);
-    utimesSync(traceFile, changedTime, changedTime);
-    const changed = await store.sync({ options });
-    assert.equal(changed.updatedFileCount, 1);
-
-    const source = store.database.prepare("SELECT path, home_id FROM source_files WHERE path = ?").get(workbuddyFile);
-    assert.ok(source);
-    assert.deepEqual(
-      store.database
-        .prepare(
-          `SELECT home_id, message_id, duration_ms
-           FROM workbuddy_generation_duration_observations
-           WHERE home_id = ? AND message_id = ?
-           ORDER BY duration_ms`,
-        )
-        .all(source.home_id, "workbuddy-message")
-        .map((row) => ({ ...row })),
+      eventsBefore.map((row) => [row.kind, row.n]),
       [
-        { home_id: source.home_id, message_id: "workbuddy-message", duration_ms: 850 },
-        { home_id: source.home_id, message_id: "workbuddy-message", duration_ms: 900 },
+        ["claude", 1],
+        ["workbuddy", 1],
       ],
     );
-    const changedSample = store.database
-      .prepare("SELECT output_tokens, duration_ms FROM perf_samples WHERE source_kind = 'workbuddy'")
-      .get();
-    assert.ok(changedSample);
-    assert.equal(changedSample.output_tokens, null);
-    assert.equal(changedSample.duration_ms, null);
-    assert.equal(countSamples(store, "workbuddy"), 1);
+
+    const claudeInfo = statSync(claudeFile);
+    const claudeContents = readFileSync(claudeFile);
+    rmSync(claudeFile);
+    const claudeMissing = await store.sync({ options });
+    assert.deepEqual(
+      claudeMissing.missingSources.map((source) => [source.path, source.kind]),
+      [[claudeFile, "claude"]],
+    );
+    assert.deepEqual(eventCountsByKind(store), eventsBefore);
+
+    const workbuddyInfo = statSync(workbuddyFile);
+    const workbuddyContents = readFileSync(workbuddyFile);
+    rmSync(workbuddyFile);
+    const bothMissing = await store.sync({ options });
+    assert.deepEqual(
+      bothMissing.missingSources.map((source) => [source.path, source.kind]).sort(),
+      [
+        [claudeFile, "claude"],
+        [workbuddyFile, "workbuddy"],
+      ].sort(),
+    );
+    assert.deepEqual(eventCountsByKind(store), eventsBefore);
+
+    restoreFile(claudeFile, claudeContents, claudeInfo);
+    const claudeRestored = await store.sync({ options });
+    assert.deepEqual(
+      claudeRestored.missingSources.map((source) => source.path),
+      [workbuddyFile],
+    );
+    assert.deepEqual(eventCountsByKind(store), eventsBefore);
+
+    restoreFile(workbuddyFile, workbuddyContents, workbuddyInfo);
+    const allRestored = await store.sync({ options });
+    assert.deepEqual(allRestored.missingSources, []);
+    assert.deepEqual(eventCountsByKind(store), eventsBefore);
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true });
   }
 });
-
-test("Claude and WorkBuddy file loss retain usage and samples independently", async () => {
-  await withClaudeFile(
-    DEDUPE.rows,
-    async ({ root, files }) => {
-      const claudeFile = files[0];
-      const workbuddyHome = path.join(root, ".workbuddy-ai");
-      const workbuddyProject = path.join(workbuddyHome, "projects", "fixture");
-      const workbuddyFile = path.join(workbuddyProject, "fixture-session.jsonl");
-      const traceFile = path.join(workbuddyHome, "traces", "fixture", "trace_fixture.jsonl");
-      mkdirSync(workbuddyProject, { recursive: true });
-      mkdirSync(path.dirname(traceFile), { recursive: true });
-      writeFileSync(
-        workbuddyFile,
-        toJsonl([
-          {
-            timestamp: 1792537466382,
-            type: "function_call",
-            providerData: {
-              messageId: "workbuddy-message",
-              model: "deepseek-v4.1-flash",
-              usage: { inputTokens: 1000, outputTokens: 200, totalTokens: 1200 },
-            },
-            sessionId: "workbuddy-session",
-            cwd: "/work/fixture",
-          },
-        ]),
-      );
-      writeFileSync(
-        traceFile,
-        toJsonl([
-          {
-            type: "span_end",
-            span: {
-              traceId: "trace_1",
-              spanId: "span_1",
-              name: "generation",
-              type: "generation",
-              endedAt: "2026-10-21T00:08:56.704Z",
-              duration: 15455,
-              status: "ok",
-              toolOutput: JSON.stringify([{ id: "workbuddy-message" }]),
-            },
-          },
-        ]),
-      );
-
-      const store = new UsageStore({
-        homeDir: root,
-        env: {},
-        databaseFile: path.join(root, "history-retention.sqlite"),
-      });
-      try {
-        const options = { homeDir: root, env: {} };
-        await store.sync({ options });
-        const eventsBefore = eventCountsByKind(store);
-        assert.equal(countSamples(store, "claude"), 1);
-        assert.equal(countSamples(store, "workbuddy"), 1);
-
-        const oldSample = store.database.prepare("SELECT * FROM perf_samples WHERE source_kind = 'claude'").get();
-        const oldSource = store.database
-          .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-          .get(claudeFile);
-        assert.ok(oldSample);
-        assert.ok(oldSource);
-        store.database
-          .prepare(
-            "INSERT INTO perf_sample_sources (sample_key, source_path, role) VALUES (?, ?, 'primary'), (?, ?, 'dependency')",
-          )
-          .run(oldSample.sample_key, claudeFile, oldSample.sample_key, workbuddyFile);
-        const oldDependencies = store.database
-          .prepare("SELECT * FROM perf_sample_sources WHERE sample_key = ? ORDER BY source_path")
-          .all(oldSample.sample_key);
-        assert.equal(oldDependencies.length, 2);
-
-        const changedRows = structuredClone(DEDUPE.rows);
-        const lastAssistant = changedRows.at(-1);
-        lastAssistant.timestamp = new Date(Date.parse(lastAssistant.timestamp) + 5000).toISOString();
-        lastAssistant.message.usage.output_tokens = 300;
-        writeFileSync(claudeFile, toJsonl(changedRows));
-
-        const changed = await store.sync({ options });
-        assert.equal(changed.updatedFileCount, 1);
-        const liveSample = store.database
-          .prepare("SELECT * FROM perf_samples WHERE sample_key = ?")
-          .get(oldSample.sample_key);
-        assert.equal(liveSample.duration_ms, null);
-        assert.equal(liveSample.output_tokens, null);
-        assert.equal(
-          store.database
-            .prepare("SELECT COUNT(*) AS n FROM perf_sample_sources WHERE sample_key = ?")
-            .get(oldSample.sample_key).n,
-          0,
-        );
-
-        const replacedFacts = store.database
-          .prepare(
-            `SELECT fact_table, source_kind, home_id, source_home_label, source_home_path,
-                    method_version, occurrence_count, payload
-             FROM history_replaced_facts
-             WHERE source_path = ? AND fact_table IN ('perf_samples', 'perf_sample_sources')`,
-          )
-          .all(claudeFile)
-          .map((row) => ({ ...row }));
-        const sampleFacts = replacedFacts.filter((row) => row.fact_table === "perf_samples");
-        const dependencyFacts = replacedFacts.filter((row) => row.fact_table === "perf_sample_sources");
-        assert.equal(sampleFacts.length, 1);
-        assert.equal(dependencyFacts.length, 2);
-        for (const row of replacedFacts) {
-          assert.equal(row.source_kind, oldSource.kind);
-          assert.equal(row.home_id, oldSource.home_id);
-          assert.equal(row.source_home_label, oldSource.home_label);
-          assert.equal(row.source_home_path, oldSource.home_path);
-          assert.equal(row.method_version, PERF_METHOD_VERSION);
-        }
-        const oldSamplePayload = JSON.parse(sampleFacts[0].payload);
-        assert.deepEqual(canonicalRowPayload(oldSamplePayload), canonicalRowPayload(oldSample));
-        assert.equal(oldSamplePayload.sample_key, oldSample.sample_key);
-        assert.equal(oldSamplePayload.method_version, oldSample.method_version);
-        assert.equal(oldSamplePayload.diagnostic_reason_chain, oldSample.diagnostic_reason_chain);
-        const nullField = Object.keys(oldSample).find((field) => oldSample[field] === null);
-        assert.ok(nullField);
-        assert.equal(oldSamplePayload[nullField], null);
-        assert.deepEqual(
-          dependencyFacts.map((row) => canonicalRowPayload(JSON.parse(row.payload))).sort(),
-          oldDependencies.map(canonicalRowPayload).sort(),
-        );
-
-        const historySnapshot = {
-          ...store.database
-            .prepare(
-              "SELECT COUNT(*) AS rows, COALESCE(SUM(occurrence_count), 0) AS occurrences FROM history_replaced_facts",
-            )
-            .get(),
-        };
-        const noOp = await store.sync({ options });
-        assert.equal(noOp.updatedFileCount, 0);
-        assert.deepEqual(
-          {
-            ...store.database
-              .prepare(
-                "SELECT COUNT(*) AS rows, COALESCE(SUM(occurrence_count), 0) AS occurrences FROM history_replaced_facts",
-              )
-              .get(),
-          },
-          historySnapshot,
-        );
-
-        const claudeInfo = statSync(claudeFile);
-        const claudeContents = readFileSync(claudeFile);
-        rmSync(claudeFile);
-        const claudeMissing = await store.sync({ options });
-        assert.equal(claudeMissing.perfState, "ready");
-        assert.deepEqual(
-          claudeMissing.missingSources.map((source) => [source.path, source.kind]),
-          [[claudeFile, "claude"]],
-        );
-        assert.equal(countSamples(store, "claude"), 1);
-        assert.equal(countSamples(store, "workbuddy"), 1);
-        assert.deepEqual(eventCountsByKind(store), eventsBefore);
-
-        const workbuddyInfo = statSync(workbuddyFile);
-        const workbuddyContents = readFileSync(workbuddyFile);
-        rmSync(workbuddyFile);
-        const bothMissing = await store.sync({ options });
-        assert.equal(bothMissing.perfState, "ready");
-        assert.deepEqual(
-          bothMissing.missingSources.map((source) => [source.path, source.kind]).sort(),
-          [
-            [claudeFile, "claude"],
-            [workbuddyFile, "workbuddy"],
-          ].sort(),
-        );
-        assert.equal(countSamples(store, "claude"), 1);
-        assert.equal(countSamples(store, "workbuddy"), 1);
-        assert.deepEqual(eventCountsByKind(store), eventsBefore);
-
-        restoreFile(claudeFile, claudeContents, claudeInfo);
-        const claudeRestored = await store.sync({ options });
-        assert.equal(claudeRestored.perfState, "ready");
-        assert.deepEqual(
-          claudeRestored.missingSources.map((source) => source.path),
-          [workbuddyFile],
-        );
-        assert.equal(countSamples(store, "claude"), 1);
-        assert.equal(countSamples(store, "workbuddy"), 1);
-        assert.deepEqual(eventCountsByKind(store), eventsBefore);
-
-        restoreFile(workbuddyFile, workbuddyContents, workbuddyInfo);
-        const allRestored = await store.sync({ options });
-        assert.equal(allRestored.perfState, "ready");
-        assert.deepEqual(allRestored.missingSources, []);
-        assert.equal(countSamples(store, "claude"), 1);
-        assert.equal(countSamples(store, "workbuddy"), 1);
-        assert.deepEqual(eventCountsByKind(store), eventsBefore);
-      } finally {
-        store.close();
-      }
-    },
-    { dirs: [".claude", "projects", "fixture-project"] },
-  );
-});
-
 test("ZCode, DSH, and OpenCode loss does not block new data; unreadable stays distinct from missing", async () => {
-  const fixture = createPerfIntegrationFixture({ sources: ["zcode", "dsh", "opencode"] });
+  const fixture = createUsageIntegrationFixture({ sources: ["zcode", "dsh", "opencode"] });
   const store = new UsageStore(fixture.serverOptions);
   try {
     await store.sync({ options: fixture.reportOptions });
     const eventsBefore = eventCountsByKind(store);
-    const sampleCountsBefore = {
-      zcode: countSamples(store, "zcode"),
-      dsh: countSamples(store, "dsh"),
-      opencode: countSamples(store, "opencode"),
-    };
-    const opencodeSamplesBefore = samplePayload(store, "opencode");
 
     const zcodeHomes = fixture.reportOptions.extraZcodeHomes.split(path.delimiter);
     const removedZcodeHome = zcodeHomes[0];
@@ -981,15 +395,10 @@ test("ZCode, DSH, and OpenCode loss does not block new data; unreadable stays di
 
     const missing = await store.sync({ options: fixture.reportOptions });
     const expectedMissing = [removedZcodeDb, removedDshFile, removedOpencodeDb].sort();
-    assert.equal(missing.perfState, "ready");
-    assert.deepEqual(missing.degradedHomeIds, []);
     assert.deepEqual(
       missing.missingSources.map((source) => source.path),
       expectedMissing,
     );
-    assert.equal(countSamples(store, "zcode"), sampleCountsBefore.zcode);
-    assert.equal(countSamples(store, "dsh"), sampleCountsBefore.dsh);
-    assert.equal(countSamples(store, "opencode"), sampleCountsBefore.opencode);
     assert.deepEqual(eventCountsByKind(store), eventsBefore);
 
     const activeZcodeDb = path.join(zcodeHomes[1], "cli", "db", "db.sqlite");
@@ -1009,14 +418,10 @@ test("ZCode, DSH, and OpenCode loss does not block new data; unreadable stays di
     }
 
     const active = await store.sync({ options: fixture.reportOptions });
-    assert.equal(active.perfState, "ready");
     assert.deepEqual(
       active.missingSources.map((source) => source.path),
       expectedMissing,
     );
-    assert.equal(countSamples(store, "zcode"), sampleCountsBefore.zcode + 1);
-    assert.equal(countSamples(store, "dsh"), sampleCountsBefore.dsh);
-    assert.equal(countSamples(store, "opencode"), sampleCountsBefore.opencode);
     assert.ok(
       eventCountsByKind(store).find((row) => row.kind === "zcode").n >
         eventsBefore.find((row) => row.kind === "zcode").n,
@@ -1024,68 +429,11 @@ test("ZCode, DSH, and OpenCode loss does not block new data; unreadable stays di
 
     writeFileSync(path.join(opencodeHome, "opencode.db"), "not a sqlite database");
     const unreadable = await store.sync({ options: fixture.reportOptions });
-    assert.equal(unreadable.perfState, "degraded");
-    assert.ok(unreadable.degradedHomeIds.length > 0);
     assert.deepEqual(
       unreadable.missingSources.map((source) => source.path),
       expectedMissing,
     );
-    assert.equal(countSamples(store, "opencode"), sampleCountsBefore.opencode);
-    assert.deepEqual(samplePayload(store, "opencode"), opencodeSamplesBefore);
-  } finally {
-    store.close();
-    fixture.close();
-  }
-});
-
-test("A failed replacement does not authorize deleting a previously retained source identity", async () => {
-  const fixture = createPerfIntegrationFixture({ sources: ["zcode", "dsh"] });
-  const store = new UsageStore(fixture.serverOptions);
-  try {
-    await store.sync({ options: fixture.reportOptions });
-    const dshHome = fixture.reportOptions.extraDshHomes;
-    const replacement = collectFiles(dshHome).find((filePath) => filePath.endsWith(".jsonl.zstd"));
-    assert.ok(replacement);
-    const replacementRow = store.database
-      .prepare("SELECT kind, home_id, home_label, home_path, size, mtime_ms FROM source_files WHERE path = ?")
-      .get(replacement);
-    const removedPath = path.join(path.dirname(replacement), "retained-source", "session.v4.jsonl.zstd");
-
-    store.database
-      .prepare(`
-        INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        removedPath,
-        replacementRow.kind,
-        replacementRow.home_id,
-        replacementRow.home_label,
-        replacementRow.home_path,
-        replacementRow.size,
-        replacementRow.mtime_ms,
-        new Date().toISOString(),
-      );
-    const fingerprints = JSON.parse(store.readMeta("perf_file_fingerprints"));
-    fingerprints[removedPath] = fingerprints[replacement];
-    store.writeMeta("perf_file_fingerprints", JSON.stringify(fingerprints));
-    store.database.prepare("UPDATE source_files SET size = -1, mtime_ms = -1 WHERE path = ?").run(replacement);
-
-    const replaceFile = store.replaceFile.bind(store);
-    store.replaceFile = async (file, options) => {
-      if (file.filePath === replacement) throw new Error("injected replacement failure");
-      return replaceFile(file, options);
-    };
-    let failed;
-    try {
-      failed = await store.sync({ options: fixture.reportOptions });
-    } finally {
-      store.replaceFile = replaceFile;
-    }
-
-    assert.equal(failed.perfState, "degraded");
-    assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE path = ?").get(removedPath).n, 1);
-    assert.ok(failed.missingSources.some((source) => source.path === removedPath));
+    assert.ok(store.warnings.length > 0);
   } finally {
     store.close();
     fixture.close();
@@ -1314,7 +662,7 @@ test("Reparse stores one recoverable old event fact for an old10-to-new20 replac
     const migrated = new UsageStore({ ...options, databaseFile });
     try {
       await migrated.open();
-      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 23);
+      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 24);
       assert.equal(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('history_replaced_facts')").get().n,
         12,
@@ -1464,7 +812,6 @@ test("Stable project-log truncation is not silently accepted", async () => {
 
       truncated = await store.sync({ options: { ...options, force: true } });
       assert.equal(truncated.updatedFileCount, 1);
-      assert.equal(truncated.perfState, "ready");
       assert.deepEqual(events(), [{ session_id: "kept-session", total: 10 }]);
 
       const evidence = store.database
@@ -1482,7 +829,6 @@ test("Stable project-log truncation is not silently accepted", async () => {
       writeFileSync(usageFile, `${keptLine}${usageLine("later-session", 30, 2)}`);
       const appended = await store.sync({ options });
       assert.equal(appended.updatedFileCount, 1);
-      assert.equal(appended.perfState, "ready");
       assert.deepEqual(store.warnings, observedWarnings);
       assert.deepEqual(historyCounts(), { rows: 1, occurrences: 1 });
       assert.deepEqual(events(), [
@@ -1492,7 +838,6 @@ test("Stable project-log truncation is not silently accepted", async () => {
 
       const noop = await store.sync({ options });
       assert.equal(noop.updatedFileCount, 0);
-      assert.equal(noop.perfState, "ready");
       assert.deepEqual(store.warnings, observedWarnings);
       assert.deepEqual(historyCounts(), { rows: 1, occurrences: 1 });
     } finally {
@@ -1504,7 +849,6 @@ test("Stable project-log truncation is not silently accepted", async () => {
       await reopened.open();
       const reopenedNoop = await reopened.sync({ options });
       assert.equal(reopenedNoop.updatedFileCount, 0);
-      assert.equal(reopenedNoop.perfState, "ready");
       assert.deepEqual(reopened.warnings, observedWarnings);
       const retained = reopened.database
         .prepare("SELECT occurrence_count, payload FROM history_replaced_facts WHERE source_path = ?")
@@ -1555,7 +899,6 @@ test("Stable malformed project-log replacement preserves the removed payload and
     let warnings;
     let warningsWithBoth;
     let warningsAfterRepair;
-    let perfState;
     let updatedFileCount;
     let reopenedWarnings;
     try {
@@ -1596,7 +939,6 @@ test("Stable malformed project-log replacement preserves the removed payload and
 
       const replaced = await store.sync({ options: { ...options, force: true } });
       updatedFileCount = replaced.updatedFileCount;
-      perfState = replaced.perfState;
       liveEvents = store.database
         .prepare("SELECT session_id, total FROM events WHERE source_path = ? ORDER BY timestamp_ms")
         .all(usageFile)
@@ -1679,7 +1021,6 @@ test("Stable malformed project-log replacement preserves the removed payload and
       [{ occurrence_count: 1, session_id: "dropped-session", total: 20, source_path: usageFile }],
     );
     assert.equal(updatedFileCount, 1);
-    assert.equal(perfState, "ready");
     assert.equal(reopenedWarnings.some(isMalformedWarning), true, JSON.stringify(reopenedWarnings));
     assert.equal(reopenedWarnings.some(isTruncationWarning), true, JSON.stringify(reopenedWarnings));
   } finally {

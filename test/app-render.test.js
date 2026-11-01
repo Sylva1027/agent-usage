@@ -80,7 +80,6 @@ import {
   getChannelColors,
   getModelColors,
   renderTimelineLegendHtml,
-  reconcilePerfModelSelection,
   getRange,
   maxTimelineValue,
   modelPricingInputsChanged,
@@ -117,33 +116,6 @@ import {
 import { state } from "../public/app-state.js";
 import { selectDateRange } from "../public/calendar.js";
 import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
-
-test("perf model selection keeps an existing key and otherwise chooses the first valid row", () => {
-  const rows = [
-    { key: "overflow", state: "overflow", averageTps: null },
-    { key: "first-valid", state: "ok", averageTps: 10 },
-    { key: "second-valid", state: "ok", averageTps: 9 },
-  ];
-  assert.equal(reconcilePerfModelSelection(rows, "second-valid"), "second-valid");
-  assert.equal(reconcilePerfModelSelection(rows, "missing"), "first-valid");
-  assert.equal(reconcilePerfModelSelection([rows[0]], null), "overflow");
-  assert.equal(reconcilePerfModelSelection([], "first-valid"), null);
-  assert.equal(reconcilePerfModelSelection(null, null), null);
-});
-
-test("perf model selection does not guess a provider when the old merged key disappears", () => {
-  const oldKey = JSON.stringify(["codex", "same-model", "high"]);
-  const firstKey = JSON.stringify(["codex", "same-model", "high", "provider-b"]);
-  const secondKey = JSON.stringify(["codex", "same-model", "high", "provider-a"]);
-  const rows = [
-    { key: firstKey, state: "ok", averageTps: 100 },
-    { key: secondKey, state: "ok", averageTps: 90 },
-  ];
-  assert.equal(reconcilePerfModelSelection(rows, oldKey), firstKey);
-  assert.equal(reconcilePerfModelSelection(rows, secondKey), secondKey);
-  assert.equal(reconcilePerfModelSelection([...rows].reverse(), secondKey), secondKey);
-  assert.equal(reconcilePerfModelSelection([], secondKey), null);
-});
 
 // ---------------------------------------------------------------- harness 归组（DSH）
 

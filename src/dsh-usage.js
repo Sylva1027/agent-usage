@@ -143,7 +143,7 @@ function dshFrameOffsets(buffer) {
  *
  * 压缩文件本身仍一次读入（当前样本约 11 MiB）；关键是**不再**把全部解压帧转成字符串后
  * `join().split()`，也不把全部 row 留给调用方。每帧只保留 pending line，并逐行 yield。
- * 这样 usage / perf 两个消费端都可以在单行投影完成后立即释放原 row。
+ * 普通用量读取在单行投影完成后即可释放原 row。
  *
  * 用「魔数位置」作为帧边界：实测样本中每个魔数位置都是真实帧起点，
  * 但实现仍按「能否解压」容错，坏帧只记警告、不中断整个文件。
@@ -252,13 +252,7 @@ export async function* streamDshSessionRows(filePath, { onWarning, projectRow } 
     }
   }
   if (malformedLines) {
-    // ⚠️ 前缀是**妥协通道**：M2.2 reader（`src/perf-sources/dsh.js`）靠锚定前缀
-    // `^MALFORMED_JSON:(\d+)\b` 把它映射为 `{code:MALFORMED_JSON,count}`。之所以只能走字符串：
-    // 告警文本里除了这个数字**没有**别处能拿到坏行数，而 `rows` 的数组形状与「帧告警不含数字」
-    // 的性质都被已冻结的 `scripts/perf-probe-sources/dsh.mjs` 依赖，改成对象式告警或元组
-    // 返回值都会外溢。**技术债**：后续卡若需要该计数，应让本函数返回**结构化计数**或提供
-    // 结构化诊断回调，届时本前缀应删除；在此之前 M3/M4 **不得**依赖字符串解析取数。
-    // 原帧级告警文本保持不变；本行只新增，不改变任何既有调用方的行为。
+    // 保留稳定的告警前缀，便于来源诊断。
     onWarning?.(
       `MALFORMED_JSON:${malformedLines} DSH 会话日志 ${filePath} 有 ${malformedLines} 行 JSON 无法解析被跳过`,
     );

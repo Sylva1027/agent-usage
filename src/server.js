@@ -124,11 +124,7 @@ function requestFilters(url) {
   return { preset, bucket, startDate, endDate, recentValue, excludeHomes, calendarZone };
 }
 
-/**
- * M4.3：把来源排除**同时**作用到公开报告的三段（`events`/`sessions`）与**内部候选载体**
- *（`perfSamples`）。导出以便直接对本函数做定向变异（只看黑盒响应无法区分"这一层过滤"
- * 与"下游 `summarizePerf` 的排除参数"—— 两者对计数等价）。
- */
+/** Exclude selected homes from public usage events and sessions. */
 export function withoutExcludedHomes(report, excludeHomes = []) {
   const excluded = new Set(excludeHomes.map(String));
   if (!excluded.size) {
@@ -138,9 +134,6 @@ export function withoutExcludedHomes(report, excludeHomes = []) {
     ...report,
     events: report.events.filter((event) => !excluded.has(String(event.homeId))),
     sessions: report.sessions.filter((session) => !excluded.has(String(session.homeId))),
-    // M4.3（卡片明文）：来源排除必须**同时**作用于内部 `perfSamples`，否则内存路径
-    //（`detail=full`）与索引路径对同一个 `exclude=` 会算出不同的 `summary.perf`。
-    perfSamples: report.perfSamples?.filter((sample) => !excluded.has(String(sample.homeId))),
   };
 }
 
@@ -243,19 +236,9 @@ async function usageOptions(options = {}) {
   return { ...options, importDirs };
 }
 
-function clientFingerprint(
-  sourceFingerprint,
-  perfIndexVersion = "",
-  pendingTimingRevision = "",
-  pricingVersion = pricingVersionForTimestamp(),
-  asOf = null,
-) {
+function clientFingerprint(sourceFingerprint, pricingVersion = pricingVersionForTimestamp(), asOf = null) {
   return createHash("sha256")
     .update(String(sourceFingerprint ?? ""))
-    .update("\0")
-    .update(String(perfIndexVersion ?? ""))
-    .update("\0")
-    .update(String(pendingTimingRevision ?? ""))
     .update("\0")
     .update(String(pricingVersion ?? ""))
     .update(asOf ? `${asOf.getFullYear()}-${asOf.getMonth()}-${asOf.getDate()}:${asOf.toISOString().slice(0, 10)}` : "")
@@ -692,20 +675,6 @@ export function createUsageServer(options = {}) {
     return syncPromise;
   }
 
-  async function currentPerfPublicationState() {
-    const cached = {
-      indexVersion: usageStore.perfIndexVersion,
-      timingRevision: usageStore.perfTimingRevision,
-    };
-    if (syncPromise) return cached;
-    try {
-      const fresh = await summaryCache.readPublication();
-      return fresh || cached;
-    } catch {
-      return cached;
-    }
-  }
-
   const server = createServer(async function handleRequest(request, response, recoveryAttempted = false) {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     let createdSnapshot = null;
@@ -837,12 +806,9 @@ export function createUsageServer(options = {}) {
               ...currentOptions,
               importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
             });
-        const perf = "publication" in status ? status.publication || {} : await currentPerfPublicationState();
         const since = url.searchParams.get("since") || "";
         const fingerprint = clientFingerprint(
           "routingFingerprint" in status ? status.routingFingerprint : status.fingerprint,
-          perf.indexVersion,
-          perf.timingRevision,
           localPricingCatalog().version,
           new Date(),
         );
@@ -1099,8 +1065,8 @@ export function createUsageServer(options = {}) {
               ...currentUsageOptions,
               quotaSourceEvidenceSnapshot: usageStore.quotaSourceEvidenceSnapshot,
             });
-            fullReport.perfMeta.missingSources = indexedStatus.missingSources ?? [];
-            let usePublishedHistory = fullReport.perfMeta.missingSources.length > 0;
+            const missingSources = indexedStatus.missingSources ?? [];
+            let usePublishedHistory = missingSources.length > 0;
             if (!usePublishedHistory) {
               const archives = await usageStore.historyArchives();
               usePublishedHistory = (archives.authority?.segmentIds?.length ?? 0) > 0;
@@ -1125,17 +1091,8 @@ export function createUsageServer(options = {}) {
             const quota = selectQuotaWindows(fullReport.rateLimitObservations || [], asOf);
             Object.assign(filters, { now: asOf, quota, pricingModels: pricingCatalog.models });
             const summary = summarizeUsage(report, filters);
-            if (fullReport.perfMeta.missingSources.length > 0) {
-              // A live scan cannot reconstruct samples from missing rollouts; use the retained published statistics.
-              summary.perf = (await usageStore.summarize(filters)).perf;
-            }
             return {
-              fingerprint: clientFingerprint(
-                status.fingerprint,
-                summary.perf?.meta?.indexVersion,
-                "",
-                pricingCatalog.version,
-              ),
+              fingerprint: clientFingerprint(status.fingerprint, pricingCatalog.version),
               checkedAt: status.checkedAt,
               metadata: {
                 generatedAt: fullReport.generatedAt,
@@ -1168,7 +1125,7 @@ export function createUsageServer(options = {}) {
         }
 
         // 默认聚合入口与 `/api/summary` 共用同一套冻结选择：冻结时 summary、metadata、quota、
-        // periodComparison 与 `asOf` **全部**绑定该冻结 store（不能只冻结 perf、其余字段走 live）。
+        // periodComparison 与 `asOf` **全部**绑定该冻结 store。
         const usage = frozen?.status || (await loadUsageStore({ check }));
         const store = frozen?.store || usageStore;
         const asOf = frozen?.asOf || new Date();
@@ -1211,8 +1168,6 @@ export function createUsageServer(options = {}) {
           sendJson(response, 200, {
             fingerprint: clientFingerprint(
               source?.routingFingerprint || published.fingerprint,
-              result.summary.perf?.meta?.indexVersion,
-              "",
               responseCatalog.version,
               asOf,
             ),
@@ -1229,13 +1184,7 @@ export function createUsageServer(options = {}) {
         const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
         const { summary, periodComparison } = await store.dashboard(filters, { includeDetails });
         sendJson(response, 200, {
-          fingerprint: clientFingerprint(
-            frozen.fingerprintSource || usage.fingerprint,
-            summary.perf?.meta?.indexVersion,
-            "",
-            pricingCatalog.version,
-            asOf,
-          ),
+          fingerprint: clientFingerprint(frozen.fingerprintSource || usage.fingerprint, pricingCatalog.version, asOf),
           checkedAt: usage.checkedAt,
           snapshotId: frozen.id || requestedSnapshotId || null,
           metadata: frozen.metadata,

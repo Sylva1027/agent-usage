@@ -24,7 +24,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createUsageExecutor } from "../src/usage-executor.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(
@@ -146,7 +146,7 @@ const waitForProcessExit = async (pid, timeoutMs = 5_000) => {
 
 test("W3 · 崩溃①：worker 被强制终止 ⇒ 在途请求以可重试错误结算，不挂死", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-inflight-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   try {
     await executor.sync({ options: { ...options, force: true } }); // 预热：库已建、快照已发布
@@ -174,7 +174,7 @@ test("W3 · 崩溃①：worker 被强制终止 ⇒ 在途请求以可重试错�
 
 test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / 库重开 / 快照不脏）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-recover-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   try {
     await executor.sync({ options: { ...options, force: true } });
@@ -209,7 +209,7 @@ test("W3 · 崩溃②：崩溃后下一个请求就地恢复（新执行器 / �
 
 test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样全部为空或完整）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-publish-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   try {
     await executor.sync({ options: { ...options, force: true } });
@@ -267,7 +267,7 @@ test("W3 · 崩溃③：发布中途崩溃不留半发布可见状态（采样�
 
 test("W3 · 崩溃④：close() 期间崩溃不得让 close() 永不落定，且之后库可立即删除", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-crash-close-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   await executor.sync({ options: { ...options, force: true } });
   const started = performance.now();
@@ -291,7 +291,7 @@ test("W3 · 崩溃④：close() 期间崩溃不得让 close() 永不落定，且
 
 test("W3 · 泄漏①：多次 close() 幂等；close() 后再请求以 EXECUTOR_UNAVAILABLE 结算", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-multiclose-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   try {
     await executor.sync({ options: { ...options, force: true } });
@@ -321,7 +321,7 @@ test("W3 · 泄漏①：多次 close() 幂等；close() 后再请求以 EXECUTOR
 
 test("W3 · 泄漏②：异常路径（执行器内失败）后 close() ⇒ 库文件与临时目录立即可删", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-errorpath-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const { executor, options } = await makeExecutor({ root, fixture });
   await executor.sync({ options: { ...options, force: true } });
   // 故意让执行器内的 backup 失败（目标目录不存在）⇒ 走异常路径。
@@ -345,7 +345,7 @@ test("W3 · 泄漏②：异常路径（执行器内失败）后 close() ⇒ 库�
 
 test("W3 · 泄漏③：反复 create→sync→close 三个循环，存活 executor child 不累积（无孤儿进程）", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-handles-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const cycles = [];
   const priorPids = [];
   for (let cycle = 1; cycle <= 3; cycle += 1) {
@@ -390,7 +390,7 @@ test("W3 · 泄漏③：反复 create→sync→close 三个循环，存活 execu
 
 test("W3 · 泄漏④：外部 kill 子进程（真进程级故障）后库目录可删、无孤儿", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "w3-leak-kill-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   // 报到改用**标记文件**（不用 stdout 管道）：子进程 `stdio: "ignore"` ⇒ 不持有任何继承管道，
   // 即便父进程异常退出，runner 也不会被"子进程持着管道烧 CPU"卡住（W4 挂死根因）。
   const marker = path.join(root, "child-ready.marker");

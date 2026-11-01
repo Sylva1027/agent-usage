@@ -3,7 +3,7 @@ import { copyFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
+import { zstdCompressSync } from "node:zlib";
 
 import { estimateEventCost } from "../src/pricing.js";
 import { USAGE_DETAIL_MASK, USAGE_DETAIL_INCONSISTENT, validateUsageDetails } from "../public/usage-fields.js";
@@ -417,7 +417,7 @@ test("坏 JSON 行被跳过", async () => {
 });
 
 // M2.2：坏行**仍然静默跳过**（用量事件行为不变），只把计数编进一条新增告警。
-// 该前缀是 `src/perf-sources/dsh.js` 把告警映射为 `{code:MALFORMED_JSON,count}` 的锚点，
+// 该前缀是 DSH usage reader 把告警映射为 `{code:MALFORMED_JSON,count}` 的锚点，
 // 因此这里同时锁住「有坏行 → 恰好一条、数字为真实行数」与「无坏行 → 不新增」两侧。
 test("坏行计数编入 onWarning：有坏行时新增一条 MALFORMED_JSON:<count>，合法行照旧解析", async () => {
   const { homeDir } = await makeDshHome({ frames: [[sessionHeader()]] });

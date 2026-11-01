@@ -11,8 +11,7 @@ import { loadHistoryBackupContext, verifyHistoryBackup } from "../src/history-ba
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { serviceTierEvidenceSnapshot } from "../src/service-tier-evidence.js";
 import { createUsageExecutor } from "../src/usage-executor.js";
-import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 function isolatedOptions(root, fixture) {
   return {
@@ -27,16 +26,6 @@ function isolatedOptions(root, fixture) {
 
 async function optionalFile(file) {
   return existsSync(file) ? readFile(file) : null;
-}
-
-async function seedRequestTiming(fixture, options) {
-  const store = new UsageStore(options);
-  try {
-    await store.sync({ options });
-    await fixture.seedRequestTiming(store);
-  } finally {
-    store.close();
-  }
 }
 
 function publishedState(executor) {
@@ -145,12 +134,11 @@ function costEvidence(summary) {
 
 test("executor backupHistory publishes a verified package with an empty tier snapshot", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "history-executor-backup-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const destination = path.join(root, "package", "history.sqlite");
   const executor = createUsageExecutor(options);
   try {
-    await seedRequestTiming(fixture, options);
     await executor.sync({ options: { ...options, force: true } });
     const published = publishedState(executor);
     const sourceFiles = [options.databaseFile, `${options.databaseFile}-wal`];

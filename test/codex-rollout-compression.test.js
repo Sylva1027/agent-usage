@@ -14,12 +14,11 @@ import {
   summarizeUsageIndex,
 } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
-import { readCodexRolloutMetadata } from "../src/perf-sources/codex-jsonl.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 import { createUsageExecutor } from "../src/usage-executor.js";
 
 async function usageFixture() {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   for (const file of fixture.rolloutFiles)
     await writeFile(file, (await readFile(file, "utf8")).replaceAll("codex-fixture-model", "gpt-6-astra"));
   await appendFile(
@@ -86,7 +85,7 @@ test("compressed rollout rejects every intra-frame truncation, garbage, bad chec
   }
 });
 
-test("compressed rollout JSON errors fail both usage and TPS readers instead of dropping lines", async (t) => {
+test("compressed rollout JSON errors fail the usage reader instead of dropping lines", async (t) => {
   const root = await temporary(t),
     file = path.join(root, "rollout.jsonl.zst");
   await writeFile(file, zstdCompressSync(Buffer.from('{"type":"session_meta","payload":{"id":"test"}}\nBROKEN\n')));
@@ -94,7 +93,6 @@ test("compressed rollout JSON errors fail both usage and TPS readers instead of 
     parseSessionFile(file, { id: "test", label: "test", path: root }),
     /Invalid compressed rollout JSON/,
   );
-  await assert.rejects(readCodexRolloutMetadata(file), /Invalid compressed rollout JSON/);
 });
 
 test("legal Unicode separators in JSON stay inside one record in both representations", async (t) => {
@@ -111,7 +109,6 @@ test("legal Unicode separators in JSON stay inside one record in both representa
     b = await parseSessionFile(compressed, home);
   assert.equal(a.events[0].cwd, "a\u2028b\u2029c");
   assert.deepEqual(a.events, b.events);
-  assert.deepEqual((await readCodexRolloutMetadata(plain)).stats, (await readCodexRolloutMetadata(compressed)).stats);
 });
 
 test("discovery selects one physical representation in active and archived directories", async (t) => {
@@ -128,7 +125,7 @@ test("discovery selects one physical representation in active and archived direc
   assert.deepEqual(await discoverSessionFiles(home), [archive, `${file}.zst`].sort());
 });
 
-test("plain/compressed transitions preserve usage, cost, quota and TPS across report, index and store", async () => {
+test("plain/compressed transitions preserve usage, cost and quota across report, index and store", async () => {
   const fixture = await usageFixture();
   const store = new UsageStore(fixture.serverOptions);
   const filters = { preset: "all", now: new Date("2026-10-04T13:00:00Z") };
@@ -146,8 +143,6 @@ test("plain/compressed transitions preserve usage, cost, quota and TPS across re
     const compressed = store.summarize(filters, { includeDetails: false });
     for (const field of ["totals", "models", "costEstimate", "quota"])
       assert.deepEqual(compressed[field], baseline[field], field);
-    assert.deepEqual(compressed.perf.groups, baseline.perf.groups);
-    assert.deepEqual(compressed.perf.coverage, baseline.perf.coverage);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n, fixture.rolloutFiles.length);
     assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
     const report = summarizeUsage(await buildUsageReport(fixture.serverOptions), filters);
@@ -156,7 +151,6 @@ test("plain/compressed transitions preserve usage, cost, quota and TPS across re
     assert.deepEqual(index.totals, baseline.totals);
     assert.deepEqual(report.costEstimate, baseline.costEstimate);
     assert.deepEqual(index.costEstimate, baseline.costEstimate);
-    assert.deepEqual(report.perf.groups, baseline.perf.groups);
     await store.sync();
     assert.deepEqual(store.summarize(filters).totals, baseline.totals);
     for (const [file, bytes] of originals) await writeFile(file, bytes);

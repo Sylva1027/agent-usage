@@ -13,15 +13,13 @@ import {
   publishHistoryArchiveBundle,
   publishHistoryArchiveImport,
 } from "../src/history-archive.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { savePricingFile } from "../src/pricing-store.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "../src/service-tier-evidence.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
-const PERF_AUTHORITY_KEY = "history_archive_perf_authority";
 const CODEX_BASE_MS = Date.parse("2026-10-04T12:00:00.000Z");
 
 const CHILD_SOURCE = `
@@ -74,13 +72,6 @@ function writeMeta(database, key, value) {
     .run(key, JSON.stringify(value));
 }
 
-function stablePerfEvidence(perf) {
-  const evidence = structuredClone(perf);
-  evidence.indexedAt = null;
-  evidence.meta.indexedAt = null;
-  return evidence;
-}
-
 function addRates(catalog, model, increment, fast = false) {
   const rates = catalog.models[model];
   for (const rate of fast ? [rates.fast.short, rates.fast.long] : [rates.short, rates.long]) {
@@ -124,7 +115,7 @@ function seedCodexCostEvents(fixture) {
 }
 
 async function prepareArchivedFixture(root) {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const databaseFile = path.join(root, "archive.sqlite");
   const candidateFile = path.join(root, "candidate.sqlite");
   const bundleDirectory = path.join(root, "bundle");
@@ -137,23 +128,6 @@ async function prepareArchivedFixture(root) {
   try {
     seedCodexCostEvents(fixture);
     await store.sync({ options });
-    await fixture.seedRequestTiming(store);
-    const codexHomeId = String(
-      store.database.prepare("SELECT home_id FROM perf_samples WHERE source_kind = 'codex' LIMIT 1").get().home_id,
-    );
-    const unplacedSampleKey = JSON.stringify([
-      "codex",
-      codexHomeId,
-      "fixture-codex-thread",
-      "turn-25",
-      "response-25-1",
-    ]);
-    assert.equal(
-      store.database.prepare("UPDATE perf_samples SET ts_ms = NULL WHERE sample_key = ?").run(unplacedSampleKey)
-        .changes,
-      1,
-      "seed one real, attributable Codex candidate as unplaced",
-    );
     const threads = store.database
       .prepare(
         `SELECT session_id AS threadId, MIN(timestamp_ms) AS time
@@ -168,65 +142,28 @@ async function prepareArchivedFixture(root) {
     });
     const startMs = Number(store.database.prepare("SELECT MIN(timestamp_ms) AS value FROM events").get().value);
     const endMs = CODEX_BASE_MS + 120_000;
-    assert.ok(startMs < endMs, "fixture must leave hot events and perf outside the archive range");
+    assert.ok(startMs < endMs, "fixture must leave hot events outside the archive range");
     store.serviceTierEvidence = serviceTierEvidence;
     store.homes = store.publishedUsageHomes();
     const sourceSummary = await store.summarizeHistory({ preset: "all" });
-    assert.ok(sourceSummary.perf.coverage.eligible > 0, "unarchived oracle must contain eligible perf records");
-    assert.equal(sourceSummary.perf.coverage.sampled, fixture.expected.n - 1, "placed requests must remain measurable");
-    assert.equal(sourceSummary.perf.coverage.unplaced, 1);
-    assert.equal(
-      sourceSummary.perf.models.find((model) => model.sourceKind === "codex")?.n,
-      fixture.expected.n - 1,
-      "the Codex model row must retain every placed request",
-    );
-    const unplacedBefore = store.unplacedPerfSamples();
-    const hotBefore = store.perfCandidatesForRange({ startMs: endMs, endMs: Number.MAX_SAFE_INTEGER });
-    assert.equal(unplacedBefore.length, 1, "fixture must preserve a real unplaced Codex candidate");
-    assert.equal(unplacedBefore[0].sampleKey, unplacedSampleKey);
-    assert.ok(hotBefore.length > 0, "fixture must preserve positioned hot perf rows outside the archive range");
 
     await createHistoryArchiveCandidate(store.database, candidateFile, {
       startMs,
       endMs,
     });
-    const candidatePerf = store.perfCandidatesForRange({ startMs, endMs: endMs - 1 });
-    assert.ok(
-      candidatePerf.some((sample) => sample.status === "completed" && sample.durationMs > 0 && sample.outputTokens > 0),
-      "candidate must contain a real positive duration/output perf sample",
-    );
     const registered = await store.registerHistoryArchiveCandidate(candidateFile);
     writeMeta(store.database, EVENT_AUTHORITY_KEY, {
       formatVersion: 1,
       segmentIds: [registered.segmentId],
     });
-    writeMeta(store.database, PERF_AUTHORITY_KEY, {
-      formatVersion: 1,
-      segments: [
-        {
-          segmentId: registered.segmentId,
-          databaseSha256: registered.databaseSha256,
-          sourceKinds: ["codex"],
-          methodVersions: [PERF_METHOD_VERSION],
-        },
-      ],
-    });
     store.database.exec("BEGIN IMMEDIATE");
     try {
       store.database.prepare("DELETE FROM events WHERE timestamp_ms >= ? AND timestamp_ms < ?").run(startMs, endMs);
-      store.database.prepare("DELETE FROM perf_samples WHERE ts_ms >= ? AND ts_ms < ?").run(startMs, endMs);
       store.database.exec("COMMIT");
     } catch (error) {
       store.database.exec("ROLLBACK");
       throw error;
     }
-    assert.deepEqual(store.unplacedPerfSamples(), unplacedBefore, "cold-range eviction must keep unplaced perf rows");
-    assert.deepEqual(
-      store.perfCandidatesForRange({ startMs: endMs, endMs: Number.MAX_SAFE_INTEGER }),
-      hotBefore,
-      "cold-range eviction must keep positioned hot perf rows",
-    );
-
     const postStore = new UsageStore(options);
     let postEvictionSummary;
     try {
@@ -239,11 +176,6 @@ async function prepareArchivedFixture(root) {
     }
     assert.deepEqual(postEvictionSummary.totals, sourceSummary.totals);
     assert.deepEqual(postEvictionSummary.costEstimate, sourceSummary.costEstimate);
-    assert.deepEqual(
-      stablePerfEvidence(postEvictionSummary.perf),
-      stablePerfEvidence(sourceSummary.perf),
-      "candidate carrier plus retained hot/unplaced perf must equal the unarchived oracle",
-    );
 
     await publishHistoryArchiveBundle(store.database, bundleDirectory, { serviceTierEvidence });
     const sourcePaths = store.database
@@ -260,8 +192,6 @@ async function prepareArchivedFixture(root) {
       serviceTierEvidence,
       sourcePaths,
       sourceSummary,
-      retainedHotPerfCount: hotBefore.length,
-      retainedUnplacedPerfCount: unplacedBefore.length,
     };
   } catch (error) {
     fixture.close();
@@ -336,7 +266,7 @@ async function fetchSummary(baseUrl) {
   return (await response.json()).summary;
 }
 
-test("an independent process serves the imported frozen cost, tier, totals, and non-empty perf", async (t) => {
+test("an independent process serves the imported frozen cost, tier, and totals", async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-archive-import-new-process-"));
   const importDirectory = path.join(root, "imported");
   const childHome = path.join(root, "child-home");
@@ -359,12 +289,7 @@ test("an independent process serves the imported frozen cost, tier, totals, and 
     const prepared = await prepareArchivedFixture(root);
     fixture = prepared.fixture;
     const sourceSummary = prepared.sourceSummary;
-    t.diagnostic(
-      `retained outside archive: hot perf=${prepared.retainedHotPerfCount} unplaced perf=${prepared.retainedUnplacedPerfCount}`,
-    );
     assert.ok(sourceSummary.totals.total > 0);
-    assert.ok(sourceSummary.perf.coverage.eligible > 0);
-    assert.ok(sourceSummary.perf.coverage.sampled > 0);
     assert.ok(sourceSummary.costEstimate.pricedRecords > 0);
     assert.equal(sourceSummary.costEstimate.priceCheckedAt, "2026-10-22");
     assert.equal(sourceSummary.costEstimate.serviceTierUnknownRecords, 0);
@@ -397,10 +322,7 @@ test("an independent process serves the imported frozen cost, tier, totals, and 
     assert.deepEqual(bSummary.totals, sourceSummary.totals);
     assert.equal(bSummary.costEstimate.priceCheckedAt, "2026-10-23");
     assert.notEqual(bSummary.costEstimate.totalUsd, sourceSummary.costEstimate.totalUsd);
-    t.diagnostic(
-      `perf eligible=${sourceSummary.perf.coverage.eligible} sampled=${sourceSummary.perf.coverage.sampled}; ` +
-        `cost A=${sourceSummary.costEstimate.totalUsd} B=${bSummary.costEstimate.totalUsd}`,
-    );
+    t.diagnostic(`cost A=${sourceSummary.costEstimate.totalUsd} B=${bSummary.costEstimate.totalUsd}`);
 
     const pricingBFile = path.join(root, "pricing-B.json");
     await savePricingFile({ pricingFile: pricingBFile }, catalogB);
@@ -446,10 +368,8 @@ test("an independent process serves the imported frozen cost, tier, totals, and 
     const importedSummary = await fetchSummary(baseUrl);
     assert.deepEqual(importedSummary.totals, sourceSummary.totals);
     assert.deepEqual(importedSummary.costEstimate, sourceSummary.costEstimate);
-    assert.deepEqual(stablePerfEvidence(importedSummary.perf), stablePerfEvidence(sourceSummary.perf));
     assert.equal(importedSummary.costEstimate.priceCheckedAt, "2026-10-22");
     assert.equal(importedSummary.costEstimate.serviceTierUnknownRecords, 0);
-    assert.ok(importedSummary.perf.coverage.sampled > 0);
 
     cleanupEvidence = await stopChild(child);
     child = undefined;

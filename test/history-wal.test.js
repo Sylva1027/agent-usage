@@ -8,7 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { checkpointUsageStore, createUsageExecutor } from "../src/usage-executor.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 function isolatedOptions(root, fixture) {
   return {
@@ -53,7 +53,7 @@ function appendTurn(fixture, turn) {
 
 test("first sync checkpoints without a published reader and exposes the diagnostic", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-wal-first-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const executor = createUsageExecutor(isolatedOptions(root, fixture));
   try {
     await executor.sync({ options: { ...fixture.reportOptions, force: true } });
@@ -73,7 +73,7 @@ test("first sync checkpoints without a published reader and exposes the diagnost
 
 test("three write/checkpoint rounds converge instead of growing WAL monotonically", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-wal-rounds-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const executor = createUsageExecutor(options);
   const sizes = [];
@@ -98,7 +98,7 @@ test("three write/checkpoint rounds converge instead of growing WAL monotonicall
 
 test("an external reader makes TRUNCATE return busy immediately; releasing it recovers", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-wal-reader-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const executor = createUsageExecutor(options);
   let reader;
@@ -136,7 +136,7 @@ test("an external reader makes TRUNCATE return busy immediately; releasing it re
 
 test("dashboard serves the previously published snapshot while a sync is in flight", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-wal-dashboard-"));
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const executor = createUsageExecutor(options);
   try {

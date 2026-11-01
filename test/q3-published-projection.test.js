@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
-import { normalizePerfSample, PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { getPricingCatalog, resetPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { serviceTierEvidenceFromSnapshot } from "../src/service-tier-evidence.js";
 import { checkpointUsageStore } from "../src/usage-executor.js";
@@ -19,7 +18,6 @@ const FILTERS = { preset: "all", bucket: "day", calendarZone: "utc", now: NOW };
 const DETAILS = { includeDetails: true };
 const SOURCE_PATH = "/fixture/q3-usage.sqlite";
 const EVENT_AUTHORITY = "history_archive_event_authority";
-const PERF_AUTHORITY = "history_archive_perf_authority";
 
 function copyContext(reader, source) {
   reader.homes = structuredClone(source.homes);
@@ -94,41 +92,7 @@ function seed(source, root, empty) {
           0,
         );
       }
-      for (const [id, minute, outputTokens, durationMs] of [
-        ["a", 10, 100, 1000],
-        ["b", 20, 300, 2000],
-      ]) {
-        const tsMs = Date.parse(`2026-07-12T02:${minute}:00.000Z`);
-        const normalized = normalizePerfSample({
-          sourceKind: "zcode",
-          identity: [`q3-${id}`],
-          sourcePath: SOURCE_PATH,
-          homeId: "home-a",
-          channel: "zcode",
-          agentKind: "unknown",
-          agent: "",
-          sessionId: `perf-${id}`,
-          turnKey: "",
-          model: "gpt-6-sol",
-          modelProvider: "",
-          reasoningEffort: "",
-          modelEvidence: "",
-          status: "completed",
-          tsMs,
-          windowStartMs: tsMs,
-          windowEndMs: tsMs + durationMs,
-          durationMs,
-          outputTokens,
-          requestCount: 1,
-        });
-        assert.ok(normalized.sample, JSON.stringify(normalized.warnings));
-        source.insertPerfSample(normalized.sample);
-      }
     }
-    source.writePerfState("ready");
-    source.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-    source.writeMeta("perf_index_version", "q3-perf-index");
-    source.writeMeta("perf_indexed_at", NOW);
     source.writeMeta("fingerprint", "q3-baseline");
     source.writeMeta("generated_at", NOW);
     database.exec("COMMIT");
@@ -207,17 +171,12 @@ async function fixture(t, { empty = false } = {}) {
 }
 
 function observe(store) {
-  const counts = { timeline: 0, facts: 0, perf: 0, cost: 0 };
+  const counts = { timeline: 0, facts: 0, cost: 0 };
   const timeline = store.timelineRange;
   store.timelineRange = function (...args) {
     counts.timeline += 1;
     if (!args[2]?.factRows) counts.facts += 1;
     return timeline.apply(this, args);
-  };
-  const perf = store.perfSummaryForRange;
-  store.perfSummaryForRange = function (...args) {
-    counts.perf += 1;
-    return perf.apply(this, args);
   };
   const cost = store.costEventsForRange;
   store.costEventsForRange = function (...args) {
@@ -237,11 +196,10 @@ function changedCatalog() {
   return catalog;
 }
 
-test("Q3 same usage view adopts across unequal connection counters and rebuilds pinned perf", async (t) => {
+test("Q3 same usage view adopts across unequal connection counters", async (t) => {
   const { source, reader, oracle } = await fixture(t);
   const before = await source.summarizeHistory(FILTERS, DETAILS);
   assert.equal(before.totals.total, 300);
-  assert.equal(before.perf.groups[0].sums.outputTokens, 400);
   const sourceSlot = source.summaryProjectionCache;
   const sourceInputs = sourceSlot.quoteInputs;
   assert.ok(sourceInputs?.complete);
@@ -249,26 +207,21 @@ test("Q3 same usage view adopts across unequal connection counters and rebuilds 
   const snapshot = source.captureUsageProjection();
   assert.ok(snapshot);
   source.database.exec("BEGIN IMMEDIATE");
-  source.database.prepare("UPDATE perf_samples SET output_tokens=200 WHERE output_tokens=100").run();
-  source.writeMeta("perf_indexed_at", "2026-07-12T12:01:00.000Z");
+  source.writeMeta("generated_at", "2026-07-12T12:01:00.000Z");
   source.database.exec("COMMIT");
+  source.generatedAt = "2026-07-12T12:01:00.000Z";
   assert.notEqual(totalChanges(source.database), totalChanges(reader.database));
   pin(reader, source);
   pin(oracle, source);
   assert.equal(reader.adoptUsageProjection(snapshot), true);
   assert.notStrictEqual(reader.summaryProjectionCache, sourceSlot);
   assert.equal(reader.summaryProjectionCache.quoteInputs, null);
-  assert.notEqual(reader.summaryProjectionCache.perfKey, sourceSlot.perfKey);
   const counts = observe(reader);
   const actual = await reader.summarizeHistory(FILTERS, DETAILS);
   const expected = await oracle.summarizeHistory(FILTERS, DETAILS);
   assert.deepEqual(actual, expected);
-  assert.equal(actual.perf.groups[0].sums.outputTokens, 500);
-  assert.equal(actual.perf.groups[0].sums.durationMs, 3000);
-  assert.equal(actual.perf.indexedAt, "2026-07-12T12:01:00.000Z");
   assert.equal(counts.timeline, 0, "accepted usage must avoid rebuilding the timeline");
   assert.equal(counts.cost, 0);
-  assert.equal(counts.perf, 1, "the source perf cache must not be adopted");
   assert.strictEqual(source.summaryProjectionCache, sourceSlot);
   assert.strictEqual(source.summaryProjectionCache.quoteInputs, sourceInputs);
   assert.equal(sourceInputs.active, true);
@@ -315,7 +268,6 @@ test("Q3 empty events still pin a real read snapshot and can adopt an empty proj
   assert.deepEqual(actual, before);
   assert.deepEqual(actual, await oracle.summarizeHistory(FILTERS, DETAILS));
   assert.equal(counts.timeline, 0);
-  assert.equal(counts.perf, 1);
   assert.equal(reader.summaryProjectionCache.quoteInputs, null);
 });
 
@@ -371,22 +323,7 @@ test("Q3 external commits with unchanged publication markers reject every unprov
   }
 });
 
-test("Q3 external perf-only commits still reject source certification", async (t) => {
-  const { source, reader, external } = await fixture(t);
-  await source.summarizeHistory(FILTERS, DETAILS);
-  const published = marker(source.database);
-  const snapshot = source.captureUsageProjection();
-  assert.ok(snapshot);
-  external().exec("UPDATE perf_samples SET output_tokens=200 WHERE output_tokens=100");
-  pin(reader, source);
-  assert.deepEqual(marker(source.database), published);
-  assert.equal(reader.adoptUsageProjection(snapshot), false);
-  const actual = await reader.summarizeHistory(FILTERS, DETAILS);
-  assert.equal(actual.totals.total, 300);
-  assert.equal(actual.perf.groups[0].sums.outputTokens, 500);
-});
-
-test("Q3 accepted reader keeps old usage and per-sample perf after source commits", async (t) => {
+test("Q3 accepted reader keeps old usage after source commits", async (t) => {
   const { source, reader } = await fixture(t);
   const before = await source.summarizeHistory(FILTERS, DETAILS);
   const snapshot = source.captureUsageProjection();
@@ -395,27 +332,12 @@ test("Q3 accepted reader keeps old usage and per-sample perf after source commit
   assert.equal(reader.adoptUsageProjection(snapshot), true);
   source.database.exec("BEGIN IMMEDIATE");
   source.database.exec("UPDATE events SET total=total+7,input=input+7 WHERE total=100");
-  source.database.exec(`UPDATE perf_samples
-    SET output_tokens=900,duration_ms=4000,window_end_ms=window_start_ms+4000
-    WHERE output_tokens=100`);
   source.database.exec("COMMIT");
-  source.commitStoreRevision("q3-usage-and-perf");
+  source.commitStoreRevision("q3-usage");
   const pinned = await reader.summarizeHistory(FILTERS, DETAILS);
   assert.deepEqual(pinned, before);
-  const samples = reader.database
-    .prepare("SELECT output_tokens,duration_ms FROM perf_samples ORDER BY output_tokens")
-    .all();
-  assert.deepEqual(
-    samples.map((row) => [row.output_tokens, row.duration_ms]),
-    [
-      [100, 1000],
-      [300, 2000],
-    ],
-  );
   const live = await source.summarizeHistory(FILTERS, DETAILS);
   assert.equal(live.totals.total, 307);
-  assert.equal(live.perf.groups[0].sums.outputTokens, 1200);
-  assert.equal(live.perf.groups[0].sums.durationMs, 6000);
 });
 
 test("Q3 rejects a different physical DB even when databaseFile and markers are made identical", async (t) => {
@@ -737,7 +659,7 @@ test("Q3 advancing now with the same resolved all scope retains static facts", a
   assert.equal(counts.timeline, 0);
 });
 
-test("Q3 actual event/perf authority rejects hot seeding and missing cold files remain errors", async (t) => {
+test("Q3 event authority rejects hot seeding and missing cold files remain errors", async (t) => {
   const { root, source, reader, oracle } = await fixture(t);
   const before = await source.summarizeHistory(FILTERS, DETAILS);
   const snapshot = source.captureUsageProjection();
@@ -751,19 +673,7 @@ test("Q3 actual event/perf authority rejects hot seeding and missing cold files 
   source.database.exec("BEGIN IMMEDIATE");
   try {
     writeAuthority(source.database, EVENT_AUTHORITY, { formatVersion: 1, segmentIds: [registered.segmentId] });
-    writeAuthority(source.database, PERF_AUTHORITY, {
-      formatVersion: 1,
-      segments: [
-        {
-          segmentId: registered.segmentId,
-          databaseSha256: registered.databaseSha256,
-          sourceKinds: ["zcode"],
-          methodVersions: [PERF_METHOD_VERSION],
-        },
-      ],
-    });
     source.database.exec("DELETE FROM events");
-    source.database.exec("DELETE FROM perf_samples");
     source.database.exec("COMMIT");
   } catch (error) {
     source.database.exec("ROLLBACK");
@@ -778,7 +688,6 @@ test("Q3 actual event/perf authority rejects hot seeding and missing cold files 
   assert.equal(actual.eventCount, 2);
   assert.equal(actual.totals.total, 300);
   assert.deepEqual(actual.totals, before.totals);
-  assert.equal(actual.perf.groups[0].sums.outputTokens, 400);
   assert.deepEqual(actual, await oracle.summarizeHistory(FILTERS, DETAILS));
   await rename(segmentFile, `${segmentFile}.missing`);
   try {
@@ -786,18 +695,6 @@ test("Q3 actual event/perf authority rejects hot seeding and missing cold files 
   } finally {
     await rename(`${segmentFile}.missing`, segmentFile);
   }
-});
-
-test("Q3 malformed perf-only authority is never bypassed by an adopted hot slot", async (t) => {
-  const { source, reader } = await fixture(t);
-  await source.summarizeHistory(FILTERS, DETAILS);
-  const snapshot = source.captureUsageProjection();
-  assert.ok(snapshot);
-  writeAuthority(source.database, PERF_AUTHORITY, { formatVersion: 1, segments: [] });
-  assert.equal(source.captureUsageProjection(), null);
-  pin(reader, source);
-  assert.equal(reader.adoptUsageProjection(snapshot), false);
-  await assert.rejects(reader.summarizeHistory(FILTERS, DETAILS), { code: "HISTORY_ARCHIVE_PERF_AUTHORITY_INVALID" });
 });
 
 test("Q3 cold authority committed externally during open/pin rejects the old source guard", async (t) => {
@@ -847,7 +744,7 @@ test("Q3 context changed after building cannot be certified with a freshly rebas
   }
 });
 
-test("Q3 a resolver replacement cannot be certified by refreshing only perf", async (t) => {
+test("Q3 a resolver replacement forces a fresh usage projection", async (t) => {
   const { source, reader, oracle } = await fixture(t);
   await source.summarizeHistory(FILTERS, DETAILS);
   source.serviceTierEvidence = serviceTierEvidenceFromSnapshot({
@@ -855,7 +752,6 @@ test("Q3 a resolver replacement cannot be certified by refreshing only perf", as
     threads: [{ threadId: "q3-session-02", turns: [{ time: 0, tier: "fast" }] }],
   });
   assert.equal(source.captureUsageProjection(), null);
-  source.database.exec("UPDATE perf_samples SET output_tokens=output_tokens+1");
   const counts = observe(source);
   copyContext(oracle, source);
   const rebuilt = await source.summarizeHistory(FILTERS, DETAILS);
@@ -901,11 +797,11 @@ test("Q3 an untracked transaction read cannot become transferable after rollback
   assert.equal(source.captureUsageProjection(), null, "unknown transaction payload must not gain a committed guard");
   const unsafeSlot = source.summaryProjectionCache;
   const counts = observe(source);
-  source.database.exec("UPDATE perf_samples SET output_tokens=output_tokens+1");
+  source.writeMeta("generated_at", "2026-07-12T12:01:00.000Z");
   await source.summarizeHistory(FILTERS, DETAILS);
-  assert.equal(counts.perf, 1, "the new perf payload must actually replace the slot");
+  assert.equal(counts.timeline, 0, "publication-only refresh retains the usage timeline");
   assert.ok(source.summaryProjectionCache !== unsafeSlot);
-  assert.equal(source.captureUsageProjection(), null, "perf refresh cannot certify reused uncommitted facts");
+  assert.equal(source.captureUsageProjection(), null, "publication refresh cannot certify reused uncommitted facts");
   pin(reader, source);
   pin(oracle, source);
   assert.deepEqual(await reader.summarizeHistory(FILTERS, DETAILS), await oracle.summarizeHistory(FILTERS, DETAILS));

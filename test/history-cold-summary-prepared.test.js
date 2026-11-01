@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createUsageIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const HOT_START_MS = Date.parse("2026-10-04T12:00:00.000Z");
 const AUTHORITY_KEY = "history_archive_event_authority";
@@ -16,7 +16,7 @@ function writeAuthority(database, segmentId) {
 }
 
 test("prepared cold summary is synchronous and preserves async summary behavior", async () => {
-  const fixture = createPerfIntegrationFixture({ sources: ["zcode"] });
+  const fixture = createUsageIntegrationFixture({ sources: ["zcode"] });
   const databaseFile = path.join(fixture.serverOptions.homeDir, "prepared-summary.sqlite");
   const candidateFile = path.join(fixture.serverOptions.homeDir, "prepared-cold.sqlite");
   const options = { ...fixture.serverOptions, databaseFile };
@@ -46,12 +46,11 @@ test("prepared cold summary is synchronous and preserves async summary behavior"
       now: "2026-10-04T13:00:00.000Z",
       calendarZone: "utc",
     };
-    const report = await store.publishedHistoryUsageReport({ includePerfCarrier: true });
+    const report = await store.publishedHistoryUsageReport();
     const prepared = store.summarizeHistoryReport(report, filters);
     assert.equal(prepared instanceof Promise, false);
     assert.deepEqual(prepared, await store.summarizeHistory(filters));
     assert.ok(Object.keys(prepared.records).length > 0);
-    assert.ok(prepared.perf.models.length > 0);
 
     const excludedFilters = { ...filters, excludeHomes: [report.homes[0].id] };
     const excluded = store.summarizeHistoryReport(report, excludedFilters);

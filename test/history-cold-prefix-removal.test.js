@@ -167,9 +167,8 @@ test("removing one middle cold event matches the unarchived oracle and retains r
     writeFileSync(usageFile, `${retainedCold}${hot}`);
     invalidateSource(archived, usageFile);
     let syncError;
-    let syncResult;
     try {
-      syncResult = await archived.sync({ options });
+      await archived.sync({ options });
     } catch (error) {
       syncError = error;
     }
@@ -193,7 +192,6 @@ test("removing one middle cold event matches the unarchived oracle and retains r
     const evidence = {
       syncError: syncError ? { code: syncError.code, message: syncError.message } : null,
       warnings: [...archived.warnings],
-      perfState: syncResult?.perfState,
       publishedWarnings,
       actualEventTotals: actualEvents.map((event) => event.total.total),
       oracleEventTotals: oracleEvents.map((event) => event.total.total),
@@ -218,7 +216,6 @@ test("removing one middle cold event matches the unarchived oracle and retains r
     assert.deepEqual(evidence, {
       syncError: null,
       warnings: [`project-log 来源文件缩短（截断）：${usageFile}（丢失 1 条事件）`],
-      perfState: "ready",
       publishedWarnings: [{ code: "PROJECT_LOG_TRUNCATED", count: 1 }],
       actualEventTotals: [100, 30],
       oracleEventTotals: [100, 30],
@@ -243,7 +240,6 @@ test("removing one middle cold event matches the unarchived oracle and retains r
     assert.deepEqual(
       {
         updatedFileCount: forcedReparse.updatedFileCount,
-        perfState: forcedReparse.perfState,
         eventTotals: (await archived.publishedHistoryUsageEvents()).map((event) => event.total.total),
         summaryTotal: (await archived.summarizeHistory(summaryOptions)).totals.total,
         revisionStable: archived.readMetaRaw(REVISION_META) === revisionBeforeForcedReparse,
@@ -252,7 +248,6 @@ test("removing one middle cold event matches the unarchived oracle and retains r
       },
       {
         updatedFileCount: 1,
-        perfState: "ready",
         eventTotals: [100, 30],
         summaryTotal: 130,
         revisionStable: true,
@@ -263,7 +258,6 @@ test("removing one middle cold event matches the unarchived oracle and retains r
 
     const noop = await archived.sync({ options });
     assert.equal(noop.updatedFileCount, 0);
-    assert.equal(noop.perfState, "ready");
     assert.deepEqual(archived.warnings, evidence.warnings);
     assert.deepEqual(
       (archived.readPublishedFileWarnings()[usageFile] || []).map((warning) => warning.code),

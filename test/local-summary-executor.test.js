@@ -79,8 +79,6 @@ test("restored light state survives idle exit and respawn without a sync", async
       serviceTierEvidence: tierSnapshot,
       quotaSourceEvidenceSnapshot: quotaSnapshot,
       checkedAt: status.checkedAt,
-      perfIndexVersion: "index-a",
-      perfTimingRevision: "",
       lastCheckpoint: null,
     });
 

@@ -70,7 +70,6 @@ function tableRows(database, table, orderBy) {
 function historySummaryEvidence(summary) {
   const evidence = structuredClone(summary);
   delete evidence.generatedAt;
-  delete evidence.perf;
   return evidence;
 }
 

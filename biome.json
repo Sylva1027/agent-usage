@@ -12,10 +12,7 @@
       "test/**",
       "scripts/skin-palette/**",
       "test-support/skin-palette-fixture.mjs",
-      "scripts/perf-probe.mjs",
-      "scripts/perf-probe-sources/**",
-      "test-support/perf-fixture.mjs",
-      "test-support/claude-perf-fixture.mjs",
+      "test-support/usage-fixture.mjs",
       "!!docs/validation",
       "!!output"
     ],
@@ -32,10 +29,7 @@
       "test/**",
       "scripts/skin-palette/**",
       "test-support/skin-palette-fixture.mjs",
-      "scripts/perf-probe.mjs",
-      "scripts/perf-probe-sources/**",
-      "test-support/perf-fixture.mjs",
-      "test-support/claude-perf-fixture.mjs",
+      "test-support/usage-fixture.mjs",
       "!public/skin-bootstrap.js"
     ]
   },

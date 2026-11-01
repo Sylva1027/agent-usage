@@ -9,7 +9,7 @@ import { zstdCompressSync } from "node:zlib";
 
 import { createUsageServer as createUsageServerBase, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 import {
   getDefaultPricingCatalog,
   getPricingCatalog,
@@ -29,6 +29,16 @@ import {
 
 function createUsageServer(options = {}) {
   return createUsageServerBase({ pricingRefreshSchedulerEnabled: false, ...options });
+}
+
+async function readSourceState(options) {
+  const store = new UsageStore({ ...options, automaticDiscoveryEnabled: false });
+  try {
+    await store.open();
+    return store.sourceState();
+  } finally {
+    store.close();
+  }
 }
 
 function mimoPricingPage() {
@@ -555,17 +565,8 @@ test("server reports status changes and refreshes cached usage reports", async (
 });
 
 test("local Magpie ledgers never affect native HTTP publication or frozen snapshots", async () => {
-  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
-  const options = {
-    ...fixture.serverOptions,
-    lookupRequestTiming: () => ({
-      state: "missing",
-      durationMs: null,
-      reportedOutputTokens: null,
-      requestedModel: "",
-      generation: null,
-    }),
-  };
+  const fixture = createCodexIntegrationFixture();
+  const options = fixture.serverOptions;
   const ledgerFile = path.join(options.homeDir, ".config", "magpie", "usage.jsonl");
   const server = createUsageServer(options);
   try {
@@ -580,22 +581,18 @@ test("local Magpie ledgers never affect native HTTP publication or frozen snapsh
     const dashboard = await get("usage?preset=all&view=dashboard");
     const full = await get("usage?preset=all&detail=full&skipCheck=1");
     const frozen = await get("usage?preset=all&freeze=1&skipCheck=1");
-    assert.equal(dashboard.summary.perf.models[0].n, 0);
-    assert.equal(full.summary.perf.models[0].n, 0);
     assert.equal(frozen.fingerprint, dashboard.fingerprint);
     assert.equal((await get(`status?since=${dashboard.fingerprint}`)).changed, false);
 
-    const timing = fixture.timingRecords[0];
     const ledgerRecord = {
       agent: "codex",
       provider: "codex",
-      req: `codex/${timing.requestedModel}`,
-      model: timing.requestedModel,
-      response_id: timing.responseId,
+      req: "codex/native-probe",
+      model: "gpt-6-sol",
+      response_id: "local-ledger-only-response",
       status: 200,
-      ms: timing.durationMs,
-      out: timing.reportedOutputTokens,
-      generation: timing.generation,
+      ms: 1234,
+      out: 100,
       ep: "/backend-api/codex/responses",
     };
     const ledgerStates = [
@@ -619,99 +616,17 @@ test("local Magpie ledgers never affect native HTTP publication or frozen snapsh
       const dashboardAfter = await get("usage?preset=all&view=dashboard");
       assert.equal(dashboardAfter.fingerprint, dashboard.fingerprint);
       assert.deepEqual(dashboardAfter.summary.totals, dashboard.summary.totals);
-      assert.deepEqual(dashboardAfter.summary.perf.models, dashboard.summary.perf.models);
 
       const fullAfter = await get("usage?preset=all&detail=full&skipCheck=1");
       assert.equal(fullAfter.fingerprint, full.fingerprint);
       assert.deepEqual(fullAfter.summary.totals, full.summary.totals);
-      assert.deepEqual(fullAfter.summary.perf.models, full.summary.perf.models);
 
       const frozenAfter = await get(`usage?preset=all&snapshot=${frozen.snapshotId}`);
       assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
-      assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
-
-      const evidenceDatabase = new DatabaseSync(options.databaseFile, { readOnly: true });
-      try {
-        assert.equal(
-          Number(evidenceDatabase.prepare("SELECT COUNT(*) AS n FROM perf_request_timing_evidence").get().n),
-          0,
-        );
-      } finally {
-        evidenceDatabase.close();
-      }
+      assert.deepEqual(frozenAfter.summary.totals, frozen.summary.totals);
     }
   } finally {
     await server.close();
-    fixture.close();
-  }
-});
-
-test("explicit fixture timing evidence stays pending until another worker publishes it", async () => {
-  const fixture = createPerfCodexIntegrationFixture({ nativeTiming: false });
-  fixture.writeNativeTiming(fixture.timingRecords.slice(0, 1));
-  const store = new UsageStore(fixture.serverOptions);
-  const first = createUsageServer(fixture.serverOptions);
-  const second = createUsageServer(fixture.serverOptions);
-  try {
-    await store.sync({ options: fixture.reportOptions });
-    // Scalar native observations coexist with the historical timing evidence import.
-    await fixture.seedRequestTiming(store, fixture.timingRecords.slice(0, 1));
-    await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
-    const firstBase = `http://127.0.0.1:${first.address().port}`;
-    await new Promise((resolve) => second.listen(0, "127.0.0.1", resolve));
-    const secondBase = `http://127.0.0.1:${second.address().port}`;
-    const get = async (baseUrl, query) => {
-      const response = await fetch(`${baseUrl}/api/${query}`);
-      const body = await response.json();
-      assert.equal(response.status, 200, JSON.stringify(body));
-      return body;
-    };
-
-    const initial = await get(firstBase, "usage?preset=all&view=dashboard");
-    assert.equal(initial.summary.perf.models[0].n, 1);
-    const frozen = await get(firstBase, "usage?preset=all&freeze=1&skipCheck=1");
-    assert.equal(frozen.fingerprint, initial.fingerprint);
-
-    const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(fixture.codexHome));
-    assert.ok(home, "fixture must discover the Codex home before importing the remaining timing evidence");
-    const imported = store.importRequestTimingEvidence({
-      homeId: String(home.id),
-      records: fixture.timingRecords.slice(1),
-      reviewedOrigins: ["fixture@1"],
-    });
-    assert.equal(imported.changed, true);
-    fixture.writeNativeTiming(fixture.timingRecords.slice(1));
-
-    const pendingStatus = await get(firstBase, `status?since=${initial.fingerprint}`);
-    assert.equal(pendingStatus.changed, true);
-    assert.notEqual(pendingStatus.fingerprint, initial.fingerprint);
-    const stillPublished = await get(firstBase, "usage?preset=all&view=dashboard&skipCheck=1");
-    assert.equal(stillPublished.fingerprint, initial.fingerprint);
-    assert.equal(stillPublished.summary.perf.models[0].n, 1);
-
-    const publishedBySecond = await get(secondBase, "usage?preset=all&view=dashboard");
-    assert.equal(publishedBySecond.summary.perf.models[0].n, fixture.expected.n);
-    assert.equal(publishedBySecond.summary.perf.models[0].averageTps, fixture.expected.tps.pooled);
-
-    const publishedStatus = await get(firstBase, `status?since=${pendingStatus.fingerprint}`);
-    assert.equal(publishedStatus.changed, true);
-    assert.equal(publishedStatus.fingerprint, publishedBySecond.fingerprint);
-    const publishedByFirst = await get(firstBase, "usage?preset=all&view=dashboard");
-    assert.equal(publishedByFirst.fingerprint, publishedBySecond.fingerprint);
-    assert.deepEqual(publishedByFirst.summary.perf.models, publishedBySecond.summary.perf.models);
-
-    const frozenAfter = await get(firstBase, `usage?preset=all&snapshot=${frozen.snapshotId}`);
-    assert.equal(frozenAfter.fingerprint, frozen.fingerprint);
-    assert.equal(frozenAfter.summary.perf.models[0].n, 1);
-    assert.deepEqual(frozenAfter.summary.perf.models, frozen.summary.perf.models);
-
-    const publishedFreeze = await get(firstBase, "usage?preset=all&freeze=1&skipCheck=1");
-    assert.equal(publishedFreeze.fingerprint, publishedBySecond.fingerprint);
-    assert.equal(publishedFreeze.summary.perf.models[0].n, fixture.expected.n);
-  } finally {
-    await first.close();
-    await second.close();
-    store.close();
     fixture.close();
   }
 });
@@ -971,8 +886,9 @@ test("server imports project usage log directories and refreshes usage data", as
 
     assert.equal(deleteResponse.status, 200);
     assert.equal(removed.summary.totals.total, after.summary.totals.total);
+    const removedSourceState = await readSourceState({ homeDir, importStoreFile });
     assert.ok(
-      removed.summary.perf.missingSources.some(
+      removedSourceState.missingSources.some(
         (source) =>
           source.path === path.join(projectRoot, ".codex-usage", "usage.jsonl") && source.kind === "project-log",
       ),
@@ -991,7 +907,7 @@ test("server imports project usage log directories and refreshes usage data", as
     const restored = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     assert.equal(restoredImport.status, 200);
     assert.equal(restored.summary.totals.total, after.summary.totals.total);
-    assert.equal(restored.summary.perf.missingSources.length, 0);
+    assert.deepEqual((await readSourceState({ homeDir, importStoreFile })).missingSources, []);
     assert.equal(
       restored.metadata.homes.some((home) => home.kind === "project-log" && home.path === projectRoot),
       true,
@@ -1083,7 +999,9 @@ test("server imports a DSH home and labels it as DSH", async () => {
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     assert.equal(deleteResponse.status, 200);
     assert.equal(removed.summary.totals.total, after.summary.totals.total);
-    assert.ok(removed.summary.perf.missingSources.length > 0);
+    assert.ok(
+      (await readSourceState({ homeDir, importStoreFile })).missingSources.some((source) => source.kind === "dsh"),
+    );
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "dsh" && home.path === dshRoot),
       false,
@@ -1165,7 +1083,9 @@ test("server imports an OpenCode data dir and labels it as OpenCode", async () =
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     assert.equal(deleteResponse.status, 200);
     assert.equal(removed.summary.totals.total, after.summary.totals.total);
-    assert.ok(removed.summary.perf.missingSources.length > 0);
+    assert.ok(
+      (await readSourceState({ homeDir, importStoreFile })).missingSources.some((source) => source.kind === "opencode"),
+    );
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "opencode" && home.path === ocRoot),
       false,
@@ -1241,7 +1161,9 @@ test("server imports a Claude Code home and labels it as Claude Code", async () 
     const removed = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     assert.equal(deleteResponse.status, 200);
     assert.equal(removed.summary.totals.total, after.summary.totals.total);
-    assert.ok(removed.summary.perf.missingSources.length > 0);
+    assert.ok(
+      (await readSourceState({ homeDir, importStoreFile })).missingSources.some((source) => source.kind === "claude"),
+    );
     assert.equal(
       removed.metadata.homes.some((home) => home.kind === "claude" && home.path === claudeRoot),
       false,

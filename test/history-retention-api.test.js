@@ -7,11 +7,10 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { renderPerfCoverageHtml } from "../public/perf-ui.js";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 function installExecutorPreload(root, fileName, source) {
   const preloadFile = path.join(root, fileName);
@@ -45,10 +44,6 @@ async function getFullSummary(baseUrl, excludeHome = "") {
     assert.fail(`${response.status} ${await response.text()}`);
   }
   return response.json();
-}
-
-function retainedStats(perf) {
-  return { groups: perf.groups, models: perf.models, coverage: perf.coverage };
 }
 
 function projectEvents(events) {
@@ -134,14 +129,37 @@ function snapshotCost(summary) {
   };
 }
 
-test("full and summary independently preserve missing sources while historical stats stay unchanged", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+test("full and summary preserve usage and report missing sources", async () => {
+  const fixture = createCodexIntegrationFixture();
+  appendFileSync(
+    fixture.rolloutFiles[1],
+    `${[
+      { type: "turn_context", payload: { model: "gpt-6-sol" } },
+      {
+        timestamp: "2026-10-04T12:01:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: {
+              total_tokens: 123,
+              input_tokens: 100,
+              cached_input_tokens: 20,
+              output_tokens: 23,
+              reasoning_output_tokens: 5,
+            },
+          },
+        },
+      },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n")}\n`,
+  );
   let server;
   try {
     const store = new UsageStore(fixture.serverOptions);
     try {
       await store.sync({ options: fixture.reportOptions });
-      await fixture.seedRequestTiming(store);
     } finally {
       store.close();
     }
@@ -153,42 +171,72 @@ test("full and summary independently preserve missing sources while historical s
     });
     const baseUrl = await listen(server);
 
-    const initial = (await getSummary(baseUrl)).summary.perf;
-    assert.deepEqual(initial.missingSources, []);
+    const initial = (await getSummary(baseUrl)).summary;
+    const initialUsage = {
+      totals: initial.totals,
+      eventCount: initial.eventCount,
+      sessionCount: initial.sessionCount,
+      costEstimate: snapshotCost(initial),
+    };
+    assert.ok(initialUsage.totals.total > 0);
+    assert.ok(initialUsage.costEstimate.pricedRecords > 0);
 
     const missingPath = fixture.rolloutFiles[1];
     const missingInfo = statSync(missingPath);
     const missingContents = readFileSync(missingPath);
     unlinkSync(missingPath);
 
-    const fullMissing = (await getFullSummary(baseUrl)).summary.perf;
-    const missing = (await getSummary(baseUrl)).summary.perf;
+    const fullMissing = (await getFullSummary(baseUrl)).summary;
+    const missing = (await getSummary(baseUrl)).summary;
     assert.deepEqual(
-      missing.missingSources.map(({ path, kind }) => ({ path, kind })),
-      [{ path: missingPath, kind: "extra" }],
+      {
+        totals: missing.totals,
+        eventCount: missing.eventCount,
+        sessionCount: missing.sessionCount,
+        costEstimate: snapshotCost(missing),
+      },
+      initialUsage,
     );
     assert.deepEqual(
-      fullMissing.missingSources.map(({ path, kind }) => ({ path, kind })),
-      [{ path: missingPath, kind: "extra" }],
+      {
+        totals: fullMissing.totals,
+        eventCount: fullMissing.eventCount,
+        sessionCount: fullMissing.sessionCount,
+        costEstimate: snapshotCost(fullMissing),
+      },
+      initialUsage,
     );
-    assert.deepEqual(retainedStats(fullMissing), retainedStats(initial));
-    assert.deepEqual(retainedStats(missing), retainedStats(initial));
-    assert.match(renderPerfCoverageHtml(missing), /部分来源已缺失，已保留历史数据。/);
-    assert.match(
-      renderPerfCoverageHtml(missing, { locale: "en-US" }),
-      /Some sources are missing\. Historical data is preserved\./,
-    );
+
+    const missingStore = new UsageStore({ ...fixture.serverOptions, databaseFile: fixture.serverOptions.databaseFile });
+    try {
+      await missingStore.sync({ options: fixture.reportOptions });
+      assert.deepEqual(
+        missingStore.sourceState().missingSources.map(({ path: missingSource, kind }) => ({
+          path: missingSource,
+          kind,
+        })),
+        [{ path: missingPath, kind: "extra" }],
+      );
+    } finally {
+      missingStore.close();
+    }
 
     writeFileSync(missingPath, missingContents);
     utimesSync(missingPath, missingInfo.atime, missingInfo.mtime);
-    const fullRestored = (await getFullSummary(baseUrl)).summary.perf;
-    const restored = (await getSummary(baseUrl)).summary.perf;
-    assert.deepEqual(restored.missingSources, []);
-    assert.deepEqual(fullRestored.missingSources, []);
-    assert.deepEqual(retainedStats(fullRestored), retainedStats(initial));
-    assert.deepEqual(retainedStats(restored), retainedStats(initial));
-    assert.doesNotMatch(renderPerfCoverageHtml(restored), /保留历史数据/);
-    assert.doesNotMatch(renderPerfCoverageHtml(restored, { locale: "en-US" }), /Historical data is preserved/);
+    const fullRestored = (await getFullSummary(baseUrl)).summary;
+    const restored = (await getSummary(baseUrl)).summary;
+    assert.deepEqual(restored.totals, initialUsage.totals);
+    assert.deepEqual(fullRestored.totals, initialUsage.totals);
+    const restoredStore = new UsageStore({
+      ...fixture.serverOptions,
+      databaseFile: fixture.serverOptions.databaseFile,
+    });
+    try {
+      await restoredStore.sync({ options: fixture.reportOptions });
+      assert.deepEqual(restoredStore.sourceState().missingSources, []);
+    } finally {
+      restoredStore.close();
+    }
   } finally {
     if (server) await server.close();
     fixture.close();
@@ -196,7 +244,7 @@ test("full and summary independently preserve missing sources while historical s
 });
 
 test("full and summary preserve usage after a project-log source disappears", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const projectRoot = path.join(fixture.serverOptions.homeDir, "usage-project");
   const retainedProjectRoot = path.join(fixture.serverOptions.homeDir, "retained-usage-project");
   const usageFile = path.join(projectRoot, ".codex-usage", "usage.jsonl");
@@ -318,7 +366,7 @@ test("full and summary preserve usage after a project-log source disappears", as
 });
 
 test("full preserves published rate-limit observations after a rollout disappears", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const rolloutPath = fixture.rolloutFiles[1];
   const observedAt = "2026-10-04T12:00:05.000Z";
   const resetsAt = Date.parse("2026-10-04T17:00:05.000Z") / 1000;

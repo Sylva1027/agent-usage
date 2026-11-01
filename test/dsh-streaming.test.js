@@ -6,7 +6,6 @@ import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 
 import { readDshSessionRows, streamDshSessionEvents, streamDshSessionRows } from "../src/dsh-usage.js";
-import { streamDshPerfSamples } from "../src/perf-sources/dsh.js";
 
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const T = Date.parse("2026-10-04T12:00:00.000Z");
@@ -59,14 +58,6 @@ function assistantRow(seq, outputTokens = 20) {
   };
 }
 
-function stepStartRow(seq) {
-  return { type: "step/start", seq, time: T + seq, data: { turn: 1, step: 1 } };
-}
-
-function stepEndRow(seq) {
-  return { type: "step/end", seq, data: { turn: 1, step: 1 } };
-}
-
 function frame(value) {
   return zstdCompressSync(Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8"));
 }
@@ -108,15 +99,6 @@ async function collectEvents(filePath) {
     repositoryResolver: async (cwd) => ({ key: `fixture:${cwd}`, path: cwd, kind: "fixture" }),
   });
   return { events, warnings };
-}
-
-async function collectPerf(filePath) {
-  const samples = [];
-  const warnings = [];
-  const result = await streamDshPerfSamples(filePath, SOURCE, (sample) => samples.push(sample), {
-    onWarning: (warning) => warnings.push(warning),
-  });
-  return { samples, warnings, result };
 }
 
 test("stream and array readers agree across frames, a damaged frame and bad JSON", async (t) => {
@@ -227,27 +209,4 @@ test("cross-frame UTF-8 keeps the per-frame replacement-character semantics", as
   assert.equal(rows.length, 1);
   assert.notEqual(rows[0].agentPreset, "中文预设");
   assert.match(rows[0].agentPreset, /\uFFFD/);
-});
-
-test("perf projection keeps the sample and parser warning counts", async (t) => {
-  const filePath = await fixtureFile(t, [
-    rowsFrame([sessionRow(), requestRow(), stepStartRow(3), assistantRow(4, 3), stepEndRow(5)]),
-    frame('{"type":"broken"\n'),
-    damagedFrame(),
-  ]);
-  const { samples, warnings, result } = await collectPerf(filePath);
-
-  assert.equal(samples.length, 1);
-  assert.equal(result.sampleCount, 1);
-  assert.equal(result.stepEndFrames, 1);
-  assert.equal(samples[0].homeId, SOURCE.id);
-  assert.deepEqual(JSON.parse(samples[0].sampleKey), ["dsh", SOURCE.id, SESSION_ID, 1, 1]);
-  assert.deepEqual(
-    warnings.map((warning) => [warning.code, warning.count]),
-    [
-      ["MALFORMED_FRAME", 1],
-      ["MALFORMED_JSON", 1],
-    ],
-  );
-  assert.deepEqual(result.warnings, warnings);
 });

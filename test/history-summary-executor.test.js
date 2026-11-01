@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
-import { normalizePerfSample, PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { UsageStore } from "../src/usage-store.js";
 
@@ -59,44 +58,13 @@ function seedEvents(database, sourcePath, root) {
   }
 }
 
-function seedPerf(store, sourcePath) {
-  const normalized = normalizePerfSample({
-    sourceKind: "zcode",
-    identity: ["summary-perf"],
-    homeId: "home",
-    sourcePath,
-    channel: "zcode",
-    agentKind: "unknown",
-    agent: "",
-    sessionId: "perf-session",
-    turnKey: "",
-    model: "gpt-6-sol",
-    modelProvider: "",
-    reasoningEffort: "",
-    modelEvidence: "",
-    status: "completed",
-    tsMs: Date.parse("2026-07-14T02:00:00.000Z"),
-    windowStartMs: Date.parse("2026-07-14T02:00:00.000Z"),
-    windowEndMs: Date.parse("2026-07-14T02:00:01.000Z"),
-    durationMs: 1_000,
-    outputTokens: 100,
-    requestCount: 1,
-  });
-  assert.ok(normalized.sample, JSON.stringify(normalized.warnings));
-  store.insertPerfSample(normalized.sample);
-  store.writePerfState("ready");
-  store.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-  store.writeMeta("perf_index_version", "summary-perf-index");
-  store.writeMeta("perf_indexed_at", "2026-07-17T12:00:00.000Z");
-}
-
 function writeAuthority(database, segmentId) {
   database
     .prepare("INSERT INTO store_meta (key, value) VALUES (?, ?)")
     .run(AUTHORITY_KEY, JSON.stringify({ formatVersion: 1, segmentIds: [segmentId] }));
 }
 
-test("executor summary uses cold history while preserving perf and records", async () => {
+test("executor summary uses cold history while preserving records", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-summary-executor-"));
   const sourcePath = path.join(root, "summary-source.jsonl");
   const candidateFile = path.join(root, "candidate.sqlite");
@@ -110,8 +78,6 @@ test("executor summary uses cold history while preserving perf and records", asy
     await oracle.open();
     seedEvents(store.database, sourcePath, root);
     seedEvents(oracle.database, sourcePath, root);
-    seedPerf(store, sourcePath);
-    seedPerf(oracle, sourcePath);
 
     const coldStartMs = Date.parse("2026-07-12T00:00:00.000Z");
     const hotStartMs = Date.parse("2026-07-17T00:00:00.000Z");
@@ -159,9 +125,7 @@ test("executor summary uses cold history while preserving perf and records", asy
     assert.equal(dashboard.metadata.eventCount, 6);
     assert.equal(dashboard.periodComparison.totals.all.total, 130);
     assert.equal(directPeriod.totals.all.total, 130);
-    assert.deepEqual(direct.perf, oracleSummary.perf);
     assert.deepEqual(direct.records, oracleSummary.records);
-    assert.equal(direct.perf.state, "ready");
     assert.ok(Object.keys(direct.records).length > 0);
 
     rmSync(candidateFile);

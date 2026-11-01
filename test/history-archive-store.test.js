@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createHistoryArchiveCandidate, verifyHistoryArchiveCandidate } from "../src/history-archive.js";
-import { normalizePerfSample, PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 
 const ARCHIVE_START_MS = Date.UTC(2026, 0, 2, 3, 4, 5);
@@ -15,22 +14,7 @@ const ARCHIVE_OUTSIDE_MS = ARCHIVE_END_MS;
 const ARCHIVE_READ_END_MS = ARCHIVE_OUTSIDE_MS + 60_000;
 const ARCHIVE_AUTHORITY_META = "history_archive_event_authority";
 
-const FACT_TABLES = Object.freeze([
-  "source_files",
-  "events",
-  "rate_limit_observations",
-  "history_replaced_facts",
-  "perf_samples",
-  "perf_sample_sources",
-  "perf_rollout_threads",
-  "perf_codex_projections",
-  "workbuddy_generation_durations",
-  "workbuddy_generation_duration_observations",
-  "perf_request_timing_meta",
-  "perf_request_timing_evidence",
-  "perf_request_timing_threads",
-  "perf_request_timing_dirty_threads",
-]);
+const FACT_TABLES = Object.freeze(["source_files", "events", "rate_limit_observations", "history_replaced_facts"]);
 
 function newStore(root, databaseFile) {
   return new UsageStore({
@@ -466,41 +450,6 @@ function codexSessionPrefix(codexHome) {
 
 function codexCumulativePrefix(codexHome, timestamp, total) {
   return `${codexSessionPrefix(codexHome)}\n${codexTokenLine(timestamp, total, total)}`;
-}
-
-function makePerfSample(sourcePath, identity, timestampMs, outputTokens) {
-  const normalized = normalizePerfSample({
-    sourceKind: "zcode",
-    identity: [identity],
-    homeId: "home",
-    sourcePath,
-    channel: "zcode",
-    agentKind: "unknown",
-    agent: "",
-    sessionId: "perf-session",
-    turnKey: "",
-    model: "gpt-6-sol",
-    modelProvider: "",
-    reasoningEffort: "",
-    modelEvidence: "",
-    status: "completed",
-    tsMs: timestampMs,
-    windowStartMs: timestampMs,
-    windowEndMs: timestampMs + 1_000,
-    durationMs: 1_000,
-    outputTokens,
-    requestCount: 1,
-  });
-  assert.ok(normalized.sample, JSON.stringify(normalized.warnings));
-  return normalized.sample;
-}
-
-function seedPerfState(store, samples) {
-  for (const sample of samples) store.insertPerfSample(sample);
-  store.writePerfState("ready");
-  store.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-  store.writeMeta("perf_index_version", "perf-index-before");
-  store.writeMeta("perf_indexed_at", "2026-07-20T00:00:00.000Z");
 }
 
 function referenceEventUnion(hotRows, coldRows) {
@@ -1080,8 +1029,7 @@ test("summarizeHistory pins the no-authority marker and hot summary against an e
 
     DatabaseSync.prototype.prepare = function patchedPrepare(sql, ...args) {
       const statement = originalPrepare.call(this, sql, ...args);
-      if (this !== store.database || !String(sql).includes("SELECT 1 FROM store_meta WHERE key IN (?, ?)"))
-        return statement;
+      if (this !== store.database || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
       return {
         get(...params) {
           const result = statement.get(...params);
@@ -1119,7 +1067,6 @@ test("summarizeHistory pins the no-authority marker and hot summary against an e
 
     const coldAfter = await store.summarizeHistory(filters);
     assert.equal(coldAfter.totals.total, 110);
-    assert.equal(coldAfter.perf.state, "uninitialized");
   } finally {
     DatabaseSync.prototype.prepare = originalPrepare;
     writer?.close();
@@ -1202,105 +1149,6 @@ test("summarizeHistory records match an unarchived store for cold champions, exc
         assert.equal(history.records.totalTokens, undefined);
       }
     }
-  } finally {
-    store.close();
-    oracle.close();
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-  }
-});
-
-test("summarizeHistory captures perf with the carrier before cold reads", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "history-archive-store-"));
-  const sourceFile = path.join(root, "record-source.sqlite");
-  const candidateFile = path.join(root, "perf-candidate.sqlite");
-  const liveFile = path.join(root, "archived.sqlite");
-  const sourcePath = path.join(root, "record-source.jsonl");
-  const store = newStore(root, liveFile);
-  const oracle = newStore(root, path.join(root, "oracle.sqlite"));
-  const sourceStore = newStore(root, sourceFile);
-  try {
-    await store.open();
-    await oracle.open();
-    seedArchiveRecordFacts(store.database, root);
-    seedArchiveRecordFacts(oracle.database, root);
-    try {
-      await sourceStore.open();
-      seedArchiveRecordFacts(sourceStore.database, root);
-    } finally {
-      sourceStore.close();
-    }
-    downgradeTo20(sourceFile);
-    await createCandidate(
-      sourceFile,
-      candidateFile,
-      Date.parse("2026-07-12T00:00:00.000Z"),
-      Date.parse("2026-07-20T00:00:00.000Z"),
-    );
-    const registered = await store.registerHistoryArchiveCandidate(candidateFile);
-
-    store.database.exec("BEGIN IMMEDIATE");
-    try {
-      writeArchiveAuthority(store.database, { formatVersion: 1, segmentIds: [registered.segmentId] });
-      store.database.prepare("DELETE FROM events").run();
-      store.database.exec("COMMIT");
-    } catch (error) {
-      store.database.exec("ROLLBACK");
-      throw error;
-    }
-
-    const before = makePerfSample(sourcePath, "before", Date.parse("2026-07-12T02:00:00.000Z"), 100);
-    const outside = makePerfSample(sourcePath, "outside", Date.parse("2026-07-20T02:00:00.000Z"), 200);
-    const after = makePerfSample(sourcePath, "after", Date.parse("2026-07-12T03:00:00.000Z"), 300);
-    seedPerfState(store, [before, outside]);
-    seedPerfState(oracle, [before, outside]);
-    const filters = {
-      preset: "custom",
-      startDate: "2026-07-12",
-      endDate: "2026-07-12",
-      now: "2026-07-20T00:00:00.000Z",
-      calendarZone: "utc",
-    };
-    const expectedBefore = oracle.summarize(filters).perf;
-    assert.equal(expectedBefore.coverage.eligible, 1);
-    assert.equal(expectedBefore.groups[0].n, 1);
-
-    const originalReadSnapshot = store.readHistoryArchiveSnapshot.bind(store);
-    let injected = false;
-    store.readHistoryArchiveSnapshot = async (record) => {
-      if (!injected) {
-        injected = true;
-        const writer = newStore(root, liveFile);
-        await writer.open();
-        try {
-          writer.insertPerfSample(after);
-          writer.writePerfState("ready");
-          writer.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-          writer.writeMeta("perf_index_version", "perf-index-after");
-          writer.writeMeta("perf_indexed_at", "2026-07-20T01:00:00.000Z");
-        } finally {
-          writer.close();
-        }
-      }
-      return originalReadSnapshot(record);
-    };
-
-    const first = await store.summarizeHistory(filters);
-    assert.equal(injected, true);
-    assert.deepEqual(first.perf, expectedBefore);
-
-    oracle.insertPerfSample(after);
-    oracle.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-    oracle.writeMeta("perf_index_version", "perf-index-after");
-    oracle.writeMeta("perf_indexed_at", "2026-07-20T01:00:00.000Z");
-    const expectedWithAfter = oracle.summarize(filters).perf;
-    const second = await store.summarizeHistory(filters);
-
-    assert.deepEqual(second.perf, expectedWithAfter);
-    assert.equal(second.perf.indexVersion, "perf-index-after");
-    assert.equal(second.perf.coverage.eligible, 2);
-    assert.equal(second.perf.groups[0].n, 2);
-    assert.equal(second.perf.groups[0].sums.outputTokens, 400);
-    assert.notDeepEqual(first.perf, second.perf);
   } finally {
     store.close();
     oracle.close();
@@ -1682,10 +1530,6 @@ test("authorized cold plus Codex cumulative delta matches an unarchived source o
         delete historyUsage[deferred];
         delete oracleUsage[deferred];
       }
-      historyUsage.perf.indexedAt = "";
-      oracleUsage.perf.indexedAt = "";
-      historyUsage.perf.meta.indexedAt = "";
-      oracleUsage.perf.meta.indexedAt = "";
       assert.deepEqual(historyUsage, oracleUsage);
       assert.deepEqual(oracleSummary.records, {});
     }

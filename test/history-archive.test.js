@@ -2010,12 +2010,24 @@ test("candidate rejects invalid ranges", async () => {
 });
 
 test("candidate deletion failure preserves source and removes private artifacts", async () => {
+  const sharedTemp = os.tmpdir();
   const root = await mkdtemp(path.join(os.tmpdir(), "history-archive-failure-"));
   const databaseFile = path.join(root, "source.sqlite");
   const destination = path.join(root, "archive-failure.sqlite");
   const store = new UsageStore({ homeDir: root, env: {}, importDirs: [], databaseFile });
+  const originalTempEnvironment = {
+    TMPDIR: process.env.TMPDIR,
+    TMP: process.env.TMP,
+    TEMP: process.env.TEMP,
+  };
+  let unrelatedWorkDirectory;
   try {
     await store.open();
+    const productTemp = path.join(root, "product-temp");
+    await mkdir(productTemp);
+    process.env.TMPDIR = productTemp;
+    process.env.TMP = productTemp;
+    process.env.TEMP = productTemp;
     const startMs = new Date("2026-01-02T03:04:05.000Z").getTime();
     const endMs = startMs + 60_000;
     const sourcePath = path.join(root, "source.jsonl");
@@ -2094,9 +2106,8 @@ test("candidate deletion failure preserves source and removes private artifacts"
         .all()
         .map((row) => ({ ...row })),
     };
-    const workDirectoriesBefore = new Set(
-      readdirSync(os.tmpdir()).filter((name) => name.startsWith("codex-usage-archive-")),
-    );
+    const workDirectoriesBefore = new Set(readdirSync(productTemp));
+    unrelatedWorkDirectory = await mkdtemp(path.join(sharedTemp, "codex-usage-archive-"));
 
     await assert.rejects(
       createHistoryArchiveCandidate(store.database, destination, { startMs, endMs }),
@@ -2106,11 +2117,12 @@ test("candidate deletion failure preserves source and removes private artifacts"
     assert.equal(existsSync(destination), false);
     assert.equal(existsSync(path.join(root, "archive-failure.manifest.json")), false);
     assert.deepEqual(
-      readdirSync(os.tmpdir()).filter(
+      readdirSync(productTemp).filter(
         (name) => name.startsWith("codex-usage-archive-") && !workDirectoriesBefore.has(name),
       ),
       [],
     );
+    assert.equal(existsSync(unrelatedWorkDirectory), true, "unrelated parallel work must be preserved");
     assert.deepEqual(readFileSync(databaseFile), sourceBytes);
     assert.deepEqual(readFileSync(`${databaseFile}-wal`), sourceWalBytes);
     assert.deepEqual(
@@ -2128,7 +2140,12 @@ test("candidate deletion failure preserves source and removes private artifacts"
       facts.recovered,
     );
   } finally {
+    for (const [key, value] of Object.entries(originalTempEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     store.close();
+    if (unrelatedWorkDirectory) await rm(unrelatedWorkDirectory, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

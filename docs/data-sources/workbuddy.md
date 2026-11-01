@@ -1,8 +1,8 @@
 # WorkBuddy 数据源
 
-更新：2026-10-21（首次接入）。本文维护 WorkBuddy 会话转录（JSONL）与 trace（JSONL）的读取规则；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)，施工与验收见[实施计划](../plans/2026-10-21-workbuddy-implementation-plan.md)与[验收目录](../validation/2026-10-21-workbuddy-implementation/README.md)。
+更新：2026-11-01。本文维护 WorkBuddy 普通用量会话转录（JSONL）的读取规则；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)，施工与验收见[实施计划](../plans/2026-10-21-workbuddy-implementation-plan.md)与[验收目录](../validation/2026-10-21-workbuddy-implementation/README.md)。
 
-> 结构结论来自 2026-10-21 的本机样本（4 个会话文件、453 条带 `providerData.usage` 的记录、7 条 Auto、20 个 trace 文件、458 个 `generation` span）。不代表未来版本。
+> 结构结论来自 2026-10-21 的本机样本（4 个会话文件、453 条带 `providerData.usage` 的记录、7 条 Auto）。不代表未来版本。
 
 ## 存储布局
 
@@ -10,7 +10,6 @@
 |---|---|
 | WorkBuddy home | `~/.workbuddy-ai`（默认；可用 `CODEX_USAGE_WORKBUDDY_HOMES` 追加，`CODEX_USAGE_WORKBUDDY=0` 关闭） |
 | 会话转录 | `<home>/projects/<cwd-slug>/<sessionId>.jsonl` |
-| 响应时长（trace） | `<home>/traces/<pid>/trace_*.jsonl` 的 `span_end` 记录 |
 | 显式跳过 | `<sessionId>/tool-results/`（外部化的大工具输出，单文件可达数十 MB）、非 `.jsonl` 文件 |
 | 导入 | 只收**目录**（`workbuddy-home`），不收单个 `.jsonl` 路径 |
 
@@ -63,22 +62,12 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ### Auto 整体排除
 
-`providerData.model === "default-model"` 或 `requestModelName` 归一化后等于 `auto` 的记录**整条丢弃**：Auto 没有确定的线路模型，无法计价，也无法归属 TPS 分母。同一文件里的非 Auto 记录不受影响。这是用户裁决（实施计划 §0），不是实现细节。
-
-## 实际输出速度（TPS）
-
-当前 tps-v8 读取专用 CLI 启动器保存的本地接收窗口。实际 CLI 使用 Axios/Node HTTP，通过 `IncomingMessage.push` 获取消费者解析之前的接收批次；同一同步批次合并，正文与工具参数按完整 lane 使用 `o200k_base` 编码一次。`X-Conversation-ID` 和 `X-Conversation-Message-ID` 提供本地身份，不能用不同的 wire response ID 猜配。
-
-schema 2 观测遵循共同的 100 ms 基线和实际窗口规则，位于 `<home>/generation-timing/<session哈希>.jsonl`，以 session 与本地 message ID 精确关联，并参与 reader 指纹与正常增量刷新。仅保存标量计数、时窗及身份，不复制正文。当前支持未压缩 HTTP 传输；出现背压会保留正常应用行为并撤销该次测量。实际 CLI 2.165.0 的原始会话、内存 reader、SQLite 闭环已核对。
-
-安装和启动见[本地采集安装](../10-data-sources.md#本地采集安装)。只有经专用启动器发起的新 CLI 请求具备该观测；WorkBuddy Desktop 尚未接入。缺测请求保留用量和模型身份，不从 trace span 或 `qua.end` 回退成新口径速度。Auto 的原有整体排除规则不变。
-
-历史 `workbuddy_generation_duration_observations` 仍按 home/message 保存 trace 的 distinct duration，并保留冲突及恢复语义。generation span 的完整调用时长不等同于当前可见输出的窗口，旧 v1-v7 数值不会混入 v8。原生 output/reasoning 继续用于用量与费用，不参与参考 token 分子。完整验收见[本轮记录](../validation/2026-10-31-receive-clock-tps/README.md)。
+`providerData.model === "default-model"` 或 `requestModelName` 归一化后等于 `auto` 的记录**整条丢弃**：Auto 没有确定的线路模型，无法可靠计价。同一文件里的非 Auto 记录不受影响。这是用户裁决（实施计划 §0），不是实现细节。
 
 ## 已知限制
 
-1. **用量去重是文件内的。** 同一份数据复制成两份文件可能重复计入用量；性能候选另按稳定 sampleKey 去重。
-2. **旧值缺 home 归属。** 新 observation 已按 home 隔离；旧表仅按上述单 home 条件兜底，不猜测多 home 的归属。
-3. **当前速度需要新采集观测。** 旧 trace 不能补出接收批次，WorkBuddy Desktop 尚未接入；Auto 继续整体排除。
-4. **`serviceTier` 恒 `unknown`。** WorkBuddy 转录没有 Fast/priority 之类的档位字段。
-5. **会话名不参与统计。** `ai-title` 记录被跳过，`conversationName` 为空。
+1. **用量去重是文件内的。** 同一份数据复制成两份文件可能重复计入用量。
+2. **`serviceTier` 恒 `unknown`。** WorkBuddy 转录没有 Fast/priority 之类的档位字段。
+3. **会话名不参与统计。** `ai-title` 记录被跳过，`conversationName` 为空。
+
+WorkBuddy 的采集启动器、速度观测与 trace 计时读取已退役；研究实现见[封存说明](../archive/2026-11-01-tps-research.md)。

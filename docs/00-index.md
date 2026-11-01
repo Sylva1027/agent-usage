@@ -1,8 +1,10 @@
 # Agent Usage 文档入口
 
-更新：2026-10-31（接收时钟修正）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-11-01（无 TPS 0.8.5 本机切换）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
 
-见[接收时钟修复与验收](validation/2026-10-31-receive-clock-tps/README.md)。真实 socket 核验确认，单次应用写入也会拆成多个接收批次，原先的逐批计时可能产生假高速。当前源码为 v8/schema 5，采用统一 100 ms 观察精度；release `b48f74f8` 的 28 条传输验证、Node 完整回归及 GitHub Node 22/24 CI 均通过。新并排包与采集器已安装，Desktop 和看板已完成切换；33 条自然请求通过原生窗口、reader、SQLite 与 API 一致性核验，GitHub v0.8.0 按此结果替换资产。持续追加的活动会话仍可能延后至稳定刷新，不计入已验收快照。保留 RANGE/SYNC，不增加 UI 内容；历史阶段见[上一轮记录](validation/2026-10-30-visible-output-tps/README.md)。
+用户已暂停 TPS 开发，准备后续重构技术栈。[研究盒子](archive/2026-11-01-tps-research.md)已独立保存并验证，前后端 TPS 已移除，普通用量、费用、限额、RANGE 与历史功能通过[回归](validation/2026-11-01-tps-extraction/README.md)。现有数据已备份，本机看板已采用无 TPS 的 0.8.5；安装清理及运行包核验见[切换验收](validation/2026-11-01-no-tps-cutover/README.md)。用户已授权 commit、push 与 release，研究盒子、私人备份和无关实验不上传。以下 TPS 记录仅为暂停时的历史结果。
+
+TPS 开发暂停，研究实现及未提交的各 harness 候选已收入独立研究盒子；后续复用从封存记录开始。下面的既有 TPS 验收仅作历史参考。
 
 ## 使用与接手
 

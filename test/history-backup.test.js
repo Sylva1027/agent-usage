@@ -14,7 +14,6 @@ import {
   verifyHistoryBackup,
 } from "../src/history-backup.js";
 import { getPricingCatalog, resetPricingCatalog, setPricingCatalog } from "../src/pricing.js";
-import { PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { serviceTierEvidenceFromSnapshot } from "../src/service-tier-evidence.js";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 
@@ -185,10 +184,8 @@ test("backup includes committed WAL rows and verifies a complete package", async
     const destination = path.join(box.root, "package", "history.sqlite");
     const manifest = await createHistoryBackup(source.database, destination);
     assert.equal(manifest.schemaVersion, 21);
-    assert.deepEqual(
-      { programVersion: manifest.programVersion, perfMethodVersion: manifest.perfMethodVersion },
-      { programVersion: PACKAGE.version, perfMethodVersion: PERF_METHOD_VERSION },
-    );
+    assert.equal(manifest.programVersion, PACKAGE.version);
+    assert.equal(Object.hasOwn(manifest, "perfMethodVersion"), false);
     assert.equal(manifest.database.bytes, statSync(destination).size);
     assert.equal(manifest.database.sha256, sha256(readFileSync(destination)));
     assert.equal(manifest.tables.events.rows, 1);
@@ -842,7 +839,7 @@ test("backup failure leaves no completed artifacts and does not change the sourc
   const box = withTempRoot("history-backup-fail-");
   const source = makeDatabase(box.root);
   try {
-    source.database.exec("DROP TABLE perf_request_timing_dirty_threads");
+    source.database.exec("DROP TABLE rate_limit_observations");
     const before = directorySnapshot(box.root);
     const destination = path.join(box.root, "package", "history.sqlite");
     await assert.rejects(createHistoryBackup(source.database, destination), {

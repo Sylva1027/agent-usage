@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
-import { appendFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { normalizePerfSample, PERF_METHOD_VERSION } from "../src/perf-stats.js";
 import { UsageStore } from "../src/usage-store.js";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
 
 const NOW = "2026-10-04T13:00:00.000Z";
 const LATER = "2026-10-04T13:05:00.000Z";
@@ -162,37 +159,8 @@ async function withStore(run) {
       }),
     );
     insert(store.database, "rate_limit_observations", observation(sourceA));
-    const normalized = normalizePerfSample({
-      sourceKind: "zcode",
-      identity: ["q2-request"],
-      homeId: "home-b",
-      sourcePath: sourceB,
-      channel: "zcode",
-      agentKind: "unknown",
-      agent: "",
-      sessionId: "q2-session-b",
-      turnKey: "",
-      model: "gpt-6-sol",
-      modelProvider: "",
-      reasoningEffort: "",
-      modelEvidence: "",
-      status: "completed",
-      tsMs: Date.parse("2026-10-04T12:01:00.000Z"),
-      windowStartMs: Date.parse("2026-10-04T12:01:00.000Z"),
-      windowEndMs: Date.parse("2026-10-04T12:01:01.000Z"),
-      durationMs: 1000,
-      outputTokens: 100,
-      requestCount: 1,
-    });
-    assert.ok(normalized.sample, JSON.stringify(normalized.warnings));
-    store.insertPerfSample(normalized.sample);
     store.generatedAt = NOW;
     store.writeMeta("generated_at", NOW);
-    store.writeMeta("perf_indexed_at", NOW);
-    store.writeMeta("perf_index_version", "q2-initial");
-    store.writeMeta("perf_method_version", PERF_METHOD_VERSION);
-    store.writeMeta("perf_missing_sources", "[]");
-    store.writePerfState("ready");
     await run({ store, sourceA, sourceB });
   } finally {
     store.close();
@@ -200,46 +168,24 @@ async function withStore(run) {
   }
 }
 
-test("Q2 no-op metadata and perf commits retain all timeline while refreshing state, TPS and time", async () => {
-  await withStore(async ({ store, sourceB }) => {
+test("Q2 no-op metadata commits retain all timeline while refreshing state", async () => {
+  await withStore(async ({ store }) => {
     const calls = countAllTimelines(store);
     const before = await assertFresh(store, "initial full components");
     const warmCalls = calls();
     assert.equal(before.summary.totals.total, 300);
-    assert.equal(before.summary.perf.models[0].averageTps, 100);
     assert.deepEqual(components(store), before);
     assert.equal(calls(), warmCalls);
 
     store.database.exec("BEGIN IMMEDIATE");
-    store.writeMeta("generated_at", NOW);
-    store.writeMeta("perf_indexed_at", LATER);
+    store.writeMeta("generated_at", LATER);
     store.database.exec("COMMIT");
+    store.generatedAt = LATER;
     const metadata = await assertFresh(store, "metadata commit must keep complete usage");
     assert.equal(calls(), warmCalls, "metadata-only commit must not call the all timeline");
-    assert.equal(metadata.summary.perf.indexedAt, LATER);
-    assert.equal(metadata.summary.perf.meta.indexedAt, LATER);
+    assert.equal(store.readMeta("generated_at"), LATER);
+    assert.equal(metadata.metadata.generatedAt, LATER);
     assert.deepEqual(metadata.summary.timeline, before.summary.timeline);
-
-    store.database.exec("BEGIN IMMEDIATE");
-    store.database.prepare("UPDATE perf_samples SET output_tokens = 150, duration_ms = 500").run();
-    store.writeMeta("perf_index_version", "q2-perf-only");
-    store.database.exec("COMMIT");
-    store.commitStoreRevision("perf");
-    const perf = await assertFresh(store, "actual perf commit must re-read the perf facts");
-    assert.equal(calls(), warmCalls, "perf revision must retain the all usage timeline");
-    assert.equal(perf.summary.perf.models[0].averageTps, 300);
-    assert.equal(perf.summary.perf.indexVersion, "q2-perf-only");
-    assert.deepEqual(perf.summary.timeline, before.summary.timeline);
-
-    const warning = { sourceKind: "zcode", homeId: "home-b", code: "LIVE_SOURCE_CHANGED", count: 1 };
-    store.writePerfState("degraded", { sourceWarnings: [warning] });
-    store.writeMeta("perf_missing_sources", JSON.stringify([{ path: sourceB, homeId: "home-b" }]));
-    const degraded = await assertFresh(store, "perf status must never be retained as old ready");
-    assert.equal(calls(), warmCalls);
-    assert.equal(degraded.summary.perf.state, "degraded");
-    assert.equal(degraded.summary.perf.ready, false);
-    assert.deepEqual(degraded.summary.perf.sourceWarnings, [warning]);
-    assert.equal(degraded.summary.perf.missingSources[0].path, sourceB);
   });
 });
 
@@ -302,12 +248,11 @@ test("Q2 raw events, quota and source writes refresh all independent components 
     assert.equal(deleted.summary.totals.total, 200);
     assert.equal(deleted.metadata.eventCount, 1);
     assert.deepEqual(deleted.observations, []);
-    const empty = await change("source delete also cascades to perf", () => {
+    const empty = await change("source delete also cascades to remaining usage", () => {
       store.database.prepare("DELETE FROM source_files WHERE path = ?").run(sourceB);
     });
     assert.equal(empty.summary.totals.total, 0);
     assert.equal(empty.metadata.eventCount, 0);
-    assert.equal(empty.summary.perf.coverage.eligible, 0);
     assert.deepEqual(store.database.prepare("PRAGMA foreign_key_check").all(), []);
   });
 });
@@ -338,7 +283,7 @@ for (const outcome of ["success", "FAIL", "ABORT"]) {
     await withStore(async ({ store }) => {
       store.database.exec(`
         CREATE TRIGGER q2_meta_side_effect AFTER UPDATE OF value ON store_meta
-        WHEN NEW.key = 'perf_indexed_at' AND NEW.value = '${LATER}'
+        WHEN NEW.key = 'generated_at' AND NEW.value = '${LATER}'
         BEGIN
           UPDATE events SET total = total + 7, input = input + 7 WHERE id = 1;
           UPDATE rate_limit_observations SET used_percent = 73;
@@ -349,7 +294,7 @@ for (const outcome of ["success", "FAIL", "ABORT"]) {
       const calls = countAllTimelines(store);
       const before = await assertFresh(store, "warm after installing the side-effect trigger");
       const warmCalls = calls();
-      const write = () => store.writeMeta("perf_indexed_at", LATER);
+      const write = () => store.writeMeta("generated_at", LATER);
       if (outcome === "success") write();
       else assert.throws(write, /q2 injected metadata failure/);
       const after = await assertFresh(store, `${outcome}: compare actual retained SQL effects`);
@@ -390,7 +335,7 @@ test("Q2 external commits without publication markers invalidate twice", async (
   });
 });
 
-test("Q2 controlled writeDepth rollback cannot publish uncommitted usage, quota or perf", async () => {
+test("Q2 controlled writeDepth rollback cannot publish uncommitted usage or quota", async () => {
   await withStore(async ({ store }) => {
     const calls = countAllTimelines(store);
     const before = await assertFresh(store, "committed transaction baseline");
@@ -399,12 +344,10 @@ test("Q2 controlled writeDepth rollback cannot publish uncommitted usage, quota 
     try {
       store.database.prepare("UPDATE events SET total = total + 50, input = input + 50 WHERE id = 1").run();
       store.database.prepare("UPDATE rate_limit_observations SET used_percent = 99").run();
-      store.database.prepare("UPDATE perf_samples SET output_tokens = 500").run();
       const uncommitted = components(store, true);
       assert.equal(uncommitted.summary.totals.total, 350);
       assert.equal(uncommitted.observations[0].usedPercent, 99);
       assert.equal(uncommitted.quotaSummary.quota.windows.quota_5h.usedPercent, 99);
-      assert.equal(uncommitted.summary.perf.models[0].averageTps, 500);
       assert.notDeepEqual(uncommitted.periodComparison, before.periodComparison);
     } finally {
       store.database.exec("ROLLBACK");
@@ -430,7 +373,7 @@ test("Q2 warm recursive ON REPLACE collision always uses the complete-count fall
     assert.ok(usageChanges > 0);
     // Each ignored REPLACE can offset one usage change under the rejected T-2C formula.
     for (let index = 0; index < usageChanges; index += 1) {
-      store.database.prepare("INSERT OR REPLACE INTO store_meta(key, value) VALUES('perf_indexed_at', ?)").run(LATER);
+      store.database.prepare("INSERT OR REPLACE INTO store_meta(key, value) VALUES('generated_at', ?)").run(LATER);
     }
     const actual = await assertFresh(store, "recursive ON must reject the stale usage projection");
     assert.ok(calls() > warmCalls);
@@ -439,11 +382,10 @@ test("Q2 warm recursive ON REPLACE collision always uses the complete-count fall
       actual.summary.timeline.reduce((sum, row) => sum + row.total.total, 0),
       307,
     );
-    assert.equal(actual.summary.perf.indexedAt, LATER);
   });
 });
 
-for (const target of ["metadata", "perf samples"]) {
+for (const target of ["metadata"]) {
   test(`Q2 OFF warm then ON ${target} REPLACE plus usage then OFF cannot bypass the fallback`, async () => {
     await withStore(async ({ store }) => {
       const calls = countAllTimelines(store);
@@ -452,10 +394,8 @@ for (const target of ["metadata", "perf samples"]) {
       const totalChanges = () => Number(store.database.prepare("SELECT total_changes() AS n").get().n);
       const replace = () => {
         if (target === "metadata") {
-          store.database
-            .prepare("INSERT OR REPLACE INTO store_meta(key, value) VALUES('perf_indexed_at', ?)")
-            .run(LATER);
-        } else store.database.exec("INSERT OR REPLACE INTO perf_samples SELECT * FROM perf_samples");
+          store.database.prepare("INSERT OR REPLACE INTO store_meta(key, value) VALUES('generated_at', ?)").run(LATER);
+        }
       };
       store.database.exec("PRAGMA recursive_triggers = ON");
       replace();
@@ -480,7 +420,7 @@ for (const operation of ["INSERT", "UPDATE"]) {
   test(`Q2 recursive OFF ${operation} OR REPLACE rowid conflict cannot hide unknown metadata deletion`, async () => {
     await withStore(async ({ store }) => {
       if (operation === "INSERT") {
-        store.database.prepare("DELETE FROM store_meta WHERE key = 'perf_indexed_at'").run();
+        store.database.prepare("DELETE FROM store_meta WHERE key = 'generated_at'").run();
       }
       store.writeMeta("q2_ordinary", NOW);
       const ordinaryRowid = store.database
@@ -493,24 +433,24 @@ for (const operation of ["INSERT", "UPDATE"]) {
         store.database
           .prepare(`
           INSERT OR REPLACE INTO store_meta(rowid, key, value)
-          SELECT rowid, 'perf_indexed_at', ? FROM store_meta WHERE key = 'q2_ordinary'
+          SELECT rowid, 'generated_at', ? FROM store_meta WHERE key = 'q2_ordinary'
         `)
           .run(LATER);
       } else {
         store.database
           .prepare(`
-          UPDATE OR REPLACE store_meta SET rowid = ?, value = ? WHERE key = 'perf_indexed_at'
+          UPDATE OR REPLACE store_meta SET rowid = ?, value = ? WHERE key = 'generated_at'
         `)
           .run(ordinaryRowid, LATER);
       }
       assert.equal(store.database.prepare("SELECT 1 FROM store_meta WHERE key = 'q2_ordinary'").get(), undefined);
       assert.equal(
-        store.database.prepare("SELECT rowid FROM store_meta WHERE key = 'perf_indexed_at'").get().rowid,
+        store.database.prepare("SELECT rowid FROM store_meta WHERE key = 'generated_at'").get().rowid,
         ordinaryRowid,
       );
       const after = await assertFresh(store, "implicit deletion of unknown metadata must remain in the usage guard");
       assert.ok(calls() > warmCalls, `${operation} conflict must invalidate despite the unchanged white key`);
-      assert.equal(after.summary.perf.indexedAt, LATER);
+      assert.equal(after.summary.totals.total, 300);
     });
   });
 }
@@ -518,13 +458,13 @@ for (const operation of ["INSERT", "UPDATE"]) {
 for (const operation of ["UPDATE", "UPSERT"]) {
   test(`Q2 metadata key renames via ${operation} check both OLD and NEW`, async () => {
     await withStore(async ({ store }) => {
-      store.database.prepare("DELETE FROM store_meta WHERE key = 'perf_missing_sources'").run();
+      store.database.prepare("DELETE FROM store_meta WHERE key = 'generated_at'").run();
       store.writeMeta("q2_unknown_key", "[]");
       const calls = countAllTimelines(store);
       await assertFresh(store, "unknown metadata key baseline");
       for (const [from, to] of [
-        ["q2_unknown_key", "perf_missing_sources"],
-        ["perf_missing_sources", "q2_unknown_key"],
+        ["q2_unknown_key", "generated_at"],
+        ["generated_at", "q2_unknown_key"],
       ]) {
         const before = calls();
         if (operation === "UPDATE") {
@@ -538,7 +478,7 @@ for (const operation of ["UPDATE", "UPSERT"]) {
             .run(from, to);
         }
         await assertFresh(store, `${from} to ${to}: both OLD and NEW matter`);
-        assert.ok(calls() > before, "a non-ignored endpoint cannot be subtracted as perf-only");
+        assert.ok(calls() > before, "a non-ignored endpoint cannot be subtracted as metadata-only");
       }
     });
   });
@@ -549,7 +489,7 @@ for (const damage of ["main schema", "TEMP reset"]) {
     await withStore(async ({ store }) => {
       const calls = countAllTimelines(store);
       await assertFresh(store, "warm before schema damage");
-      store.writeMeta("perf_indexed_at", LATER);
+      store.writeMeta("generated_at", LATER);
       await assertFresh(store, "establish ignored writes before damage");
       const before = calls();
       if (damage === "main schema") store.database.exec("CREATE TABLE q2_unknown_schema(value INTEGER)");
@@ -560,105 +500,16 @@ for (const damage of ["main schema", "TEMP reset"]) {
       await assertFresh(store, "DDL alone must invalidate the old guarded projection");
       assert.ok(calls() > before, "schema/TEMP guard must reject the previously warmed usage slot");
       store.database.prepare("UPDATE events SET total = total + 7, input = input + 7 WHERE id = 1").run();
-      store.writeMeta("perf_indexed_at", NOW);
+      store.writeMeta("generated_at", NOW);
       const after = await assertFresh(store, "untracked writes remain visible after schema damage");
       assert.equal(after.summary.totals.total, 307);
     });
   });
 }
 
-const LATE_TIMING = {
-  schemaVersion: 2,
-  evidenceOrigin: "fixture@1",
-  responseId: "q2-response",
-  requestedModel: "q2-late-model",
-  reportedOutputTokens: 137,
-  durationMs: 4500,
-  generation: { outputTokens: 137, durationMs: 4000, startOutputTokens: 0, timingKind: "explicit" },
-  status: "completed",
-  completedAtMs: null,
-};
-
-async function withNativeStore(run) {
-  const fixture = createPerfCodexIntegrationFixture();
-  const store = new UsageStore(fixture.serverOptions);
-  const timestamp = "2026-10-04T12:10:00.000Z";
-  const threadId = "fixture-codex-thread";
-  const turnId = "q2-turn";
-  try {
-    appendFileSync(
-      fixture.rolloutFiles[0],
-      `${[
-        { type: "turn_context", payload: { thread_id: threadId, turn_id: turnId, model: LATE_TIMING.requestedModel } },
-        {
-          type: "token_usage_record",
-          timestamp,
-          payload: {
-            thread_id: threadId,
-            turn_id: turnId,
-            response_id: LATE_TIMING.responseId,
-            usage: { output_tokens: 137 },
-            turn_token_usage: { output_tokens: 137 },
-          },
-        },
-        {
-          type: "event_msg",
-          timestamp,
-          payload: {
-            type: "token_count",
-            info: { total_token_usage: { input_tokens: 100, output_tokens: 137, total_tokens: 237 } },
-          },
-        },
-      ]
-        .map(JSON.stringify)
-        .join("\n")}\n`,
-    );
-    appendFileSync(
-      fixture.rolloutFiles[2],
-      `${[
-        {
-          type: "event_msg",
-          payload: {
-            type: "item_completed",
-            thread_id: threadId,
-            turn_id: turnId,
-            item: { id: "q2-item", type: "AgentMessage" },
-            started_at_ms: Date.parse(timestamp) - 1,
-            completed_at_ms: Date.parse(timestamp),
-          },
-        },
-        { type: "event_msg", payload: { type: "task_complete", thread_id: threadId, turn_id: turnId } },
-      ]
-        .map(JSON.stringify)
-        .join("\n")}\n`,
-    );
-    await store.open();
-    store.database.exec("PRAGMA recursive_triggers = OFF");
+test("Q2 no-op sync retains independent range caches without warming all", async () => {
+  await withStore(async ({ store }) => {
     await store.sync();
-    await fixture.seedRequestTiming(store);
-    await run({ store });
-  } finally {
-    store.close();
-    fixture.close();
-  }
-}
-
-function assertLateTiming(before, after) {
-  const perf = after.summary.perf;
-  const model = perf.models.find((entry) => entry.model === LATE_TIMING.requestedModel);
-  assert.equal(model.n, 0, "legacy external timing is retained without becoming reference-token speed");
-  for (const field of ["averageTps", "p10", "p90"]) assert.equal(model[field], null, field);
-  assert.deepEqual(perf.groups, before.summary.perf.groups);
-  assert.equal(perf.coverage.sampled, before.summary.perf.coverage.sampled);
-  assert.equal(
-    perf.codexTimingCoverage.sampledOutputTokens,
-    before.summary.perf.codexTimingCoverage.sampledOutputTokens,
-  );
-  assert.notEqual(perf.indexVersion, before.summary.perf.indexVersion);
-}
-
-test("Q2 no-op sync retains independent range caches without ever warming all", async () => {
-  await withNativeStore(async ({ store }) => {
     const allCalls = countAllTimelines(store);
     const metadata = store.metadata(new Date(NOW));
     const metadataSlot = store.metadataCache;
@@ -683,78 +534,5 @@ test("Q2 no-op sync retains independent range caches without ever warming all", 
       .prepare("UPDATE events SET total = total + 7, input = input + 7 WHERE id = (SELECT MIN(id) FROM events)")
       .run();
     assert.equal(store.periodComparison(FILTERS).totals.today.total, comparison.totals.today.total + 7);
-  });
-});
-
-test("Q2 explicit timing import then perf publication retains the usage timeline", async () => {
-  await withNativeStore(async ({ store }) => {
-    const calls = countAllTimelines(store);
-    const before = await assertFresh(store, "native candidate before late timing");
-    assert.ok(before.summary.totals.total > 0, "the retained usage projection must contain actual usage");
-    const missing = before.summary.perf.models.find((entry) => entry.model === LATE_TIMING.requestedModel);
-    assert.equal(missing.state, "missing_duration");
-    const warmCalls = calls();
-    const home = store.homes.find((entry) => entry.kind === "extra");
-    store.importRequestTimingEvidence({
-      homeId: home.id,
-      records: [LATE_TIMING],
-      reviewedOrigins: [LATE_TIMING.evidenceOrigin],
-    });
-    const status = await store.sync();
-    assert.equal(status.updatedFileCount, 0);
-    const after = await assertFresh(store, "timing-only full dashboard components");
-    assert.equal(calls(), warmCalls, "the same writer must not rebuild all timeline after timing/perf commits");
-    assertLateTiming(before, after);
-    const beforeUsage = structuredClone(before.summary);
-    const afterUsage = structuredClone(after.summary);
-    delete beforeUsage.perf;
-    delete beforeUsage.generatedAt;
-    delete afterUsage.perf;
-    delete afterUsage.generatedAt;
-    assert.deepEqual(afterUsage, beforeUsage);
-    assert.equal(store.requestTimingDirtyThreadCount(), 0);
-    assert.equal(store.perfPublicationState().timingRevision, "");
-  });
-});
-
-test("Q2 raw usage and quota between request-timing and perf commits cannot be retained as timing-only", async () => {
-  await withNativeStore(async ({ store }) => {
-    const calls = countAllTimelines(store);
-    const before = await assertFresh(store, "before explicit timing import");
-    const home = store.homes.find((entry) => entry.kind === "extra");
-    assert.ok(home);
-    const imported = store.importRequestTimingEvidence({
-      homeId: home.id,
-      records: [LATE_TIMING],
-      reviewedOrigins: [LATE_TIMING.evidenceOrigin],
-    });
-    assert.equal(imported.changed, true);
-    assert.notEqual(store.perfPublicationState().timingRevision, "");
-    const warmCalls = calls();
-    store.database
-      .prepare("UPDATE events SET total = total + 7, input = input + 7 WHERE id = (SELECT MIN(id) FROM events)")
-      .run();
-    const sourcePath = store.database.prepare("SELECT source_path FROM events ORDER BY id LIMIT 1").get().source_path;
-    insert(store.database, "rate_limit_observations", observation(sourcePath, { line_number: 999, used_percent: 73 }));
-    const intermediate = await assertFresh(store, "raw facts committed between evidence and perf publication");
-    assert.equal(intermediate.summary.totals.total, before.summary.totals.total + 7);
-    assert.equal(intermediate.quotaSummary.quota.windows.quota_5h.usedPercent, 73);
-    assert.ok(calls() > warmCalls);
-    assert.deepEqual(intermediate.summary.perf.models, before.summary.perf.models, "import alone must not publish TPS");
-    const intermediateCalls = calls();
-    await store.sync();
-    const after = await assertFresh(store, "published timing retains the updated usage, period and quota");
-    assertLateTiming(before, after);
-    assert.equal(after.summary.totals.total, intermediate.summary.totals.total);
-    assert.equal(after.quotaSummary.quota.windows.quota_5h.usedPercent, 73);
-    // The preceding raw event write leaves dirty rollups for sync to rebuild conservatively.
-    assert.ok(calls() - intermediateCalls <= 1, "rollup maintenance may cause one conservative timeline rebuild");
-    const stableCalls = calls();
-    for (let read = 0; read < 2; read += 1) {
-      assert.deepEqual(components(store), after, "consecutive reads must preserve the complete committed result");
-      assert.equal(calls(), stableCalls, "consecutive reads without writes must hit the warm all timeline");
-    }
-    assert.equal(store.requestTimingDirtyThreadCount(), 0);
-    assert.equal(store.perfPublicationState().timingRevision, "");
   });
 });

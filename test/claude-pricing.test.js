@@ -254,14 +254,14 @@ test("DSH and OpenCode count nonzero Claude writes once, including when the prov
   );
 });
 
-test("v9 and v10 indexes mark all sources for reindexing (v12 global dirtying supersedes their selective dirtying)", async () => {
+test("v9 and v10 indexes apply ordinary DSH and Claude migration dirtying only", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "claude-index-"));
   try {
     for (const previousVersion of [9, 10]) {
       const databaseFile = path.join(homeDir, `index-${previousVersion}.sqlite`);
       const initial = new UsageStore({ homeDir, databaseFile });
       await initial.open();
-      for (const kind of ["dsh", "opencode", "zcode", "main"])
+      for (const kind of ["dsh", "claude", "opencode", "zcode"])
         initial.database
           .prepare("INSERT INTO source_files VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
           .run(`${kind}.log`, kind, kind, kind, homeDir, 99, 123, "2026-10-01");
@@ -271,21 +271,27 @@ test("v9 and v10 indexes mark all sources for reindexing (v12 global dirtying su
       try {
         await migrated.open();
         assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, STORE_SCHEMA_VERSION);
-        // 登记（裁定 AP-2）：v9/v10 只标脏未变化的 DSH 文件（选择性），但迁移是 open() 内的**一次性顺序链**，
-        // 会一路跑到 STORE_SCHEMA_VERSION；v12 分支的**无 WHERE** 标脏把所有来源都标脏 ⇒
-        // 中间版本的选择性语义在当前版本**不再可观测**。本用例守护的是 v12 的全量标脏语义。
-        // 正向：全部来源都被标脏。
+        // Retired TPS migrations no longer globally dirty the index. Ordinary
+        // usage migrations re-read DSH and Claude sources while unrelated
+        // sources keep their indexed size and mtime.
+        const shouldDirty = new Map([
+          ["dsh", true],
+          ["claude", true],
+          ["opencode", false],
+          ["zcode", false],
+        ]);
         for (const row of migrated.database
           .prepare("SELECT path, kind, home_id, home_label, home_path, indexed_at, size, mtime_ms FROM source_files")
           .all()) {
-          assert.equal(row.size, -1, `${row.path} 必须被 v12 标脏`);
-          assert.equal(row.mtime_ms, -1, `${row.path} 的 mtime_ms 必须被 v12 标脏`);
-          // 反向：标脏**只动那两列**（不是把整行洗了）—— 锚点列必须逐字等于插入时的值。
-          assert.equal(row.kind, String(row.path).replace(/\.log$/, ""), `${row.path} 的 kind 不得被标脏改写`);
-          assert.equal(row.home_id, row.kind, `${row.path} 的 home_id 不得被标脏改写`);
-          assert.equal(row.home_label, row.kind, `${row.path} 的 home_label 不得被标脏改写`);
-          assert.equal(row.home_path, homeDir, `${row.path} 的 home_path 不得被标脏改写`);
-          assert.equal(row.indexed_at, "2026-10-01", `${row.path} 的 indexed_at 不得被标脏改写`);
+          const dirty = shouldDirty.get(row.kind);
+          assert.notEqual(dirty, undefined, `${row.path} 的 kind 必须是测试来源`);
+          assert.equal(row.size, dirty ? -1 : 99, `${row.path} 的 size 标脏状态不正确`);
+          assert.equal(row.mtime_ms, dirty ? -1 : 123, `${row.path} 的 mtime_ms 标脏状态不正确`);
+          assert.equal(row.kind, String(row.path).replace(/\.log$/, ""), `${row.path} 的 kind 不得被改写`);
+          assert.equal(row.home_id, row.kind, `${row.path} 的 home_id 不得被改写`);
+          assert.equal(row.home_label, row.kind, `${row.path} 的 home_label 不得被改写`);
+          assert.equal(row.home_path, homeDir, `${row.path} 的 home_path 不得被改写`);
+          assert.equal(row.indexed_at, "2026-10-01", `${row.path} 的 indexed_at 不得被改写`);
         }
       } finally {
         migrated.close();

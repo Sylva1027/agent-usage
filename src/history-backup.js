@@ -4,7 +4,6 @@ import { copyFile, link, mkdir, readFile, rm, writeFile } from "node:fs/promises
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { getPricingCatalog, validatePricingCatalog } from "./pricing.js";
-import { PERF_METHOD_VERSION } from "./perf-stats.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 import { STORE_SCHEMA_VERSION } from "./usage-store.js";
 
@@ -13,33 +12,21 @@ export const HISTORY_BACKUP_SCHEMA_VERSION = STORE_SCHEMA_VERSION;
 
 const PROGRAM_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-const REQUIRED_TABLES_19 = Object.freeze([
-  "store_meta",
-  "source_files",
-  "events",
-  "rate_limit_observations",
-  "perf_samples",
-  "perf_sample_sources",
-  "perf_rollout_threads",
-  "perf_codex_projections",
-  "workbuddy_generation_durations",
-  "workbuddy_generation_duration_observations",
-  "perf_request_timing_meta",
-  "perf_request_timing_evidence",
-  "perf_request_timing_threads",
-  "perf_request_timing_dirty_threads",
-]);
+const CORE_TABLES_19 = Object.freeze(["store_meta", "source_files", "events", "rate_limit_observations"]);
 
-const REQUIRED_TABLES_20 = Object.freeze([...REQUIRED_TABLES_19, "history_replaced_facts"]);
+const CORE_TABLES_20 = Object.freeze([...CORE_TABLES_19, "history_replaced_facts"]);
 
-const REQUIRED_TABLES_21 = Object.freeze([...REQUIRED_TABLES_20, "archive_segments"]);
+const CORE_TABLES_21 = Object.freeze([...CORE_TABLES_20, "archive_segments"]);
 
-const REQUIRED_TABLES_BY_SCHEMA_VERSION = Object.freeze({
-  19: REQUIRED_TABLES_19,
-  20: REQUIRED_TABLES_20,
-  21: REQUIRED_TABLES_21,
-  22: REQUIRED_TABLES_21,
-  23: Object.freeze([...REQUIRED_TABLES_21, "quota_usage_sources"]),
+const CORE_TABLES_23 = Object.freeze([...CORE_TABLES_21, "quota_usage_sources"]);
+
+const CORE_TABLES_BY_SCHEMA_VERSION = Object.freeze({
+  19: CORE_TABLES_19,
+  20: CORE_TABLES_20,
+  21: CORE_TABLES_21,
+  22: CORE_TABLES_21,
+  23: CORE_TABLES_23,
+  24: CORE_TABLES_23,
 });
 
 const verifiedTableEvidence = new Set();
@@ -111,14 +98,14 @@ function tablesForSchemaVersion(version) {
   if (
     typeof version !== "number" ||
     !Number.isSafeInteger(version) ||
-    !Object.hasOwn(REQUIRED_TABLES_BY_SCHEMA_VERSION, version)
+    !Object.hasOwn(CORE_TABLES_BY_SCHEMA_VERSION, version)
   ) {
     throw backupError(
       "HISTORY_BACKUP_UNSUPPORTED_SCHEMA",
-      `unsupported history backup schema ${version}; supported ${Object.keys(REQUIRED_TABLES_BY_SCHEMA_VERSION).join(", ")}`,
+      `unsupported history backup schema ${version}; supported ${Object.keys(CORE_TABLES_BY_SCHEMA_VERSION).join(", ")}`,
     );
   }
-  return REQUIRED_TABLES_BY_SCHEMA_VERSION[version];
+  return CORE_TABLES_BY_SCHEMA_VERSION[version];
 }
 
 function assertSupportedSchema(database) {
@@ -184,7 +171,9 @@ function databaseEvidence(database, tables, eventPrefix = null) {
   if (quickCheck.length !== 1 || quickCheck[0]?.quick_check !== "ok") {
     throw backupError("HISTORY_BACKUP_QUICK_CHECK", `quick_check failed: ${JSON.stringify(quickCheck)}`);
   }
-  const foreignKeyViolations = database.prepare("PRAGMA foreign_key_check").all();
+  const foreignKeyViolations = tables.flatMap((table) =>
+    database.prepare(`PRAGMA foreign_key_check(${quoteIdentifier(table)})`).all(),
+  );
   if (foreignKeyViolations.length > 0) {
     throw backupError(
       "HISTORY_BACKUP_FOREIGN_KEY",
@@ -297,7 +286,6 @@ export async function createHistoryBackup(database, destinationFile, options = {
       },
       schemaVersion,
       programVersion: PROGRAM_VERSION,
-      perfMethodVersion: PERF_METHOD_VERSION,
       pricingVersion: pricingSnapshot.version,
       pricingCheckedAt: pricingSnapshot.checkedAt,
       pricing: {

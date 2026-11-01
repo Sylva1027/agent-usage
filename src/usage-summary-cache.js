@@ -6,19 +6,17 @@ import { DatabaseSync } from "node:sqlite";
 import { buildModelActivity } from "../public/pricing-models.js";
 import { calendarPresetRange } from "../public/period-comparison.js";
 import { automaticPricingFile, pricingFile } from "./pricing-store.js";
-import { readRequestTimingRevision } from "./perf-request-timing-store.js";
 import {
   buildUsageFingerprint,
   discoverUsageSources,
   QUOTA_PERCENT_STALE_AFTER_MS,
   usageComparisonFromAggregates,
 } from "./usage-core.js";
-import { workbuddyTraceFiles } from "./workbuddy-usage.js";
 import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Bump when payload formulas or executor snapshot semantics change.
-const SUMMARY_CACHE_VERSION = 5;
+const SUMMARY_CACHE_VERSION = 6;
 
 /** Recompute clock fields from cached aggregates, using the shared formulas. */
 export function refreshSummaryClock(payload, now) {
@@ -144,7 +142,6 @@ export class UsageSummaryCache {
       for (const name of ["config.toml", "settings.json", "config.json", "logs_2.sqlite", "logs_2.sqlite-wal"]) {
         files.add(path.join(home.path, name));
       }
-      if (home.kind === "workbuddy") for (const file of await workbuddyTraceFiles(home.path)) files.add(file);
     }
     const input = createHash("sha256").update(`summary-v${SUMMARY_CACHE_VERSION}\0`).update(usage.fingerprint);
     const routing = createHash("sha256").update(usage.fingerprint);
@@ -192,28 +189,16 @@ export class UsageSummaryCache {
       const hash = createHash("sha256");
       const versionBefore = Number(this.source.prepare("PRAGMA data_version").get().data_version);
       this.source.exec("BEGIN");
-      let rawTimingRevision, publishedRevision, pending, indexVersion;
       try {
         for (const row of this.source.prepare("SELECT key,value FROM store_meta ORDER BY key").iterate()) {
           hash.update(String(row.key)).update("\0").update(String(row.value)).update("\0");
         }
-        rawTimingRevision = readRequestTimingRevision(this.source);
-        publishedRevision = Number(
-          this.source.prepare("SELECT value FROM store_meta WHERE key = 'perf_request_timing_published_revision'").get()
-            ?.value || 0,
-        );
-        pending =
-          Boolean(this.source.prepare("SELECT 1 FROM perf_request_timing_dirty_threads LIMIT 1").get()) ||
-          rawTimingRevision !== publishedRevision;
-        indexVersion =
-          this.source.prepare("SELECT value FROM store_meta WHERE key = 'perf_index_version'").get()?.value || "";
       } finally {
         this.source.exec("ROLLBACK");
       }
       const version = Number(this.source.prepare("PRAGMA data_version").get().data_version);
       if (version !== versionBefore) return null;
-      const timingRevision = pending ? String(rawTimingRevision) : "";
-      const durable = hash.update(String(timingRevision)).update(String(pending)).digest("hex");
+      const durable = hash.digest("hex");
       if (this.publication?.durable !== durable) this.samePublicationRevision = 0;
       else if (this.observedVersion !== null && version !== this.observedVersion) this.samePublicationRevision += 1;
       this.observedVersion = version;
@@ -221,9 +206,6 @@ export class UsageSummaryCache {
         durable,
         revision: this.samePublicationRevision,
         signature: `${durable}:${this.samePublicationRevision}`,
-        indexVersion,
-        timingRevision,
-        pending,
       };
       return this.publication;
     } catch (error) {
@@ -244,7 +226,7 @@ export class UsageSummaryCache {
   async get(key, source, now) {
     if (!key) return null;
     await this.open();
-    if (!source.publication || source.publication.pending) return null;
+    if (!source.publication) return null;
     const row = this.readEntry.get(key);
     if (
       !row ||
@@ -272,12 +254,11 @@ export class UsageSummaryCache {
     const next = this.source
       .prepare(`SELECT MIN(boundary) AS boundary FROM (
       SELECT MIN(timestamp_ms) AS boundary FROM events WHERE timestamp_ms >= ?
-      UNION ALL SELECT MIN(ts_ms) FROM perf_samples WHERE ts_ms >= ?
       UNION ALL SELECT MIN(observed_at_ms) FROM rate_limit_observations WHERE observed_at_ms >= ?
       UNION ALL SELECT MIN(resets_at_ms) FROM rate_limit_observations WHERE resets_at_ms >= ?
       UNION ALL SELECT MIN(resets_at_ms - window_minutes * 60000) FROM rate_limit_observations WHERE resets_at_ms - window_minutes * 60000 >= ?
     )`)
-      .get(...Array(5).fill(now.getTime())).boundary;
+      .get(...Array(4).fill(now.getTime())).boundary;
     const day = calendarPresetRange("today", now, payload.summary.range.calendarZone);
     const quotaResets = Object.values(payload.summary.quota?.windows || {})
       .filter((window) => window.state === "available")

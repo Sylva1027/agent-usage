@@ -273,11 +273,7 @@ test("UsageStore 汇总结果与内存索引保持一致", async () => {
       const actual = store.summarize(filters);
       const expected = summarizeUsageIndex(index, filters);
       // records（New Record）是磁盘索引侧的新特性，内存索引不产出该字段。
-      // perf（M3.4）同理：它是 `store_meta` 的**磁盘状态机投影**（状态/指纹/受阻 home），
-      // 内存索引（`buildUsageIndex`）里**没有** `store_meta` 这个概念 ⇒ 一并排除。
-      // ⚠️ 排除的是"内存侧**结构上不可能**有"的字段；`perf` 自身的语义由
-      // `test/perf-state.test.js` 独立验收（17 用例），此处不重复覆盖。
-      const { records: _records, perf: _perf, ...actualRest } = actual;
+      const { records: _records, ...actualRest } = actual;
       assert.deepEqual({ ...actualRest, generatedAt: "" }, { ...expected, generatedAt: "" });
     }
   } finally {
@@ -425,50 +421,7 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
   }
 });
 
-test("UsageStore upgrades schema v13 to current with an empty private projection table and v3 reparse", async () => {
-  const { homeDir, databaseFile } = await makeStoreFixture();
-  const initial = new UsageStore({ homeDir, databaseFile });
-  await initial.sync();
-  const eventsBefore = initial.database.prepare("SELECT * FROM events ORDER BY id").all();
-  initial.close();
-
-  // 退回**真实 v13 形状**：业务表齐全、只是没有 T1 的私有投影表。
-  const legacy = new DatabaseSync(databaseFile);
-  legacy.exec("DROP TABLE perf_codex_projections; PRAGMA user_version = 13;");
-  assert.equal(Number(legacy.prepare("PRAGMA user_version").get().user_version), 13);
-  legacy.close();
-
-  const migrated = new UsageStore({ homeDir, databaseFile });
-  try {
-    await migrated.open();
-    assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), STORE_SCHEMA_VERSION);
-    assert.equal(
-      Number(
-        migrated.database
-          .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'perf_codex_projections'")
-          .get().n,
-      ),
-      1,
-    );
-    // The private projection is rebuilt on sync; migration preserves usage facts.
-    assert.equal(Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM perf_codex_projections").get().n), 0);
-    assert.deepEqual(migrated.database.prepare("SELECT * FROM events ORDER BY id").all(), eventsBefore);
-    const sourceCount = Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n);
-    assert.equal(
-      Number(
-        migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files WHERE size = -1 OR mtime_ms = -1").get().n,
-      ),
-      sourceCount,
-    );
-    const result = await migrated.sync();
-    assert.equal(result.updatedFileCount, sourceCount, "v22 rebuilds source projections for the generation method");
-    assert.ok(Number(migrated.database.prepare("SELECT COUNT(*) AS n FROM events").get().n) >= 1, "业务数据未被触碰");
-  } finally {
-    migrated.close();
-  }
-});
-
-test("UsageStore upgrades v22 to v23 without replacing usage facts and rereads only Codex sources", async () => {
+test("UsageStore upgrades v23 to schema 24 without replacing usage or quota facts", async () => {
   const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
   const projectRoot = path.join(homeDir, "migration-project");
   const projectLog = path.join(projectRoot, ".codex-usage", "usage.jsonl");
@@ -517,15 +470,14 @@ test("UsageStore upgrades v22 to v23 without replacing usage facts and rereads o
     }
 
     const legacy = new DatabaseSync(databaseFile);
-    legacy.exec("DROP TABLE quota_usage_sources; PRAGMA user_version = 22;");
+    legacy.exec("PRAGMA user_version = 23;");
     legacy.close();
 
-    let dirtyBeforeReopen;
     const migrated = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
     try {
       await migrated.open();
-      assert.equal(STORE_SCHEMA_VERSION, 23);
-      assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 23);
+      assert.equal(STORE_SCHEMA_VERSION, 24);
+      assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 24);
       assert.equal(
         Number(
           migrated.database
@@ -555,19 +507,6 @@ test("UsageStore upgrades v22 to v23 without replacing usage facts and rereads o
           .map((row) => ({ ...row })),
         observationsBefore,
       );
-      dirtyBeforeReopen = migrated.database
-        .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
-        .all()
-        .map((row) => ({ ...row }));
-      assert.deepEqual(
-        dirtyBeforeReopen.map((row) => row.kind),
-        ["main"],
-      );
-      const projectSource = migrated.database
-        .prepare("SELECT size, mtime_ms FROM source_files WHERE path = ?")
-        .get(projectLog);
-      assert.notEqual(Number(projectSource.size), -1);
-      assert.notEqual(Number(projectSource.mtime_ms), -1);
     } finally {
       migrated.close();
     }
@@ -575,17 +514,8 @@ test("UsageStore upgrades v22 to v23 without replacing usage facts and rereads o
     const reopened = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
     try {
       await reopened.open();
-      assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 23);
-      assert.deepEqual(
-        reopened.database
-          .prepare("SELECT path, kind, size, mtime_ms FROM source_files WHERE size = -1 OR mtime_ms = -1 ORDER BY path")
-          .all()
-          .map((row) => ({ ...row })),
-        dirtyBeforeReopen,
-      );
-
-      const result = await reopened.sync();
-      assert.equal(result.updatedFileCount, dirtyBeforeReopen.length);
+      assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 24);
+      assert.equal((await reopened.sync()).updatedFileCount, 0);
       assert.ok(
         reopened.database
           .prepare("SELECT source_path FROM quota_usage_sources")
@@ -925,7 +855,7 @@ test("UsageStore indexes quota observations from zero-token files and uses the h
   }
 });
 
-test("UsageStore v5 migration marks all sources for retryable automatic reindex (v12 global dirtying supersedes its selective dirtying)", async () => {
+test("UsageStore v5 migration reindexes only sources with ordinary reader changes", async () => {
   const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
   const quotaFile = path.join(path.dirname(sessionFile), "quota.jsonl");
   await writeFile(
@@ -968,13 +898,13 @@ test("UsageStore v5 migration marks all sources for retryable automatic reindex 
       .all();
     assert.ok(anchorColumnsBefore.length >= 4, "基线至少要有既有会话/配额与两条合成来源");
 
-    // 登记（裁定 AP-2）：v5 只标脏 Codex JSONL（选择性），但迁移是 open() 内的**一次性顺序链**，
-    // 会一路跑到 STORE_SCHEMA_VERSION；v12 分支的**无 WHERE** 标脏把所有来源都标脏 ⇒
-    // 中间版本的选择性语义在当前版本**不再可观测**。本用例守护的是 v12 的全量标脏语义。
-    // 正向：**所有**来源（含既有会话文件与两条合成来源）都被标脏。
-    for (const row of migrated.database.prepare("SELECT path, size, mtime_ms FROM source_files ORDER BY path").all()) {
-      assert.equal(Number(row.size), -1, `${row.path} 必须被 v12 标脏`);
-      assert.equal(Number(row.mtime_ms), -1, `${row.path} 的 mtime_ms 必须被 v12 标脏`);
+    // The retired TPS migration no longer dirties unrelated usage sources.
+    for (const row of migrated.database
+      .prepare("SELECT path, kind, size, mtime_ms FROM source_files ORDER BY path")
+      .all()) {
+      const unrelated = ["zcode", "project-log"].includes(String(row.kind));
+      assert.equal(Number(row.size), unrelated ? 123 : -1, `${row.path}: reader migration size`);
+      assert.equal(Number(row.mtime_ms), unrelated ? 456 : -1, `${row.path}: reader migration mtime`);
     }
     assert.equal(Number(sourceState(sessionFile).size), -1);
     assert.equal(Number(sourceState(sessionFile).mtime_ms), -1);
@@ -1434,7 +1364,7 @@ test("UsageStore 索引 Claude Code 主转录与子代理，且只在文件变�
   }
 });
 
-test("UsageStore upgrades v15 to current by restoring Claude models and rebuilding generation projections", async () => {
+test("UsageStore upgrades v15 to current by restoring Claude model usage", async () => {
   const { homeDir, mainFile, databaseFile } = await makeClaudeStoreFixture();
   const initial = new UsageStore({ homeDir, databaseFile });
   await initial.sync();
@@ -1457,7 +1387,7 @@ test("UsageStore upgrades v15 to current by restoring Claude models and rebuildi
     assert.equal(dirty.length, migrated.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n);
 
     const result = await migrated.sync();
-    assert.equal(result.updatedFileCount, dirty.length, "the v22 migration reparses all generation projections once");
+    assert.equal(result.updatedFileCount, dirty.length);
     const models = migrated.database
       .prepare("SELECT DISTINCT model FROM events WHERE home_id LIKE 'claude%' ORDER BY model")
       .all()
@@ -1495,23 +1425,7 @@ test("UsageStore metadata 把 Claude 用量归入 harnessModels.Claude，且不�
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// C5 卡：无实际变更的同步轮 —— 不空发布、不改写候选、不无条件清空派生缓存，
-// 仍按契约更新检查时刻；`earlierFileChanged/changedSessions` 级联保留；失败提交后可重试。
-//
-// 计数口径说明（为什么这些断言**不依赖** B2 探针也能判"零发布"）：
-//   * `codexThreadBuildPlan` 为空 ⇒ 本轮**没有任何 home 进入规划** ⇒ 全文解析
-//     （`readCodexRolloutMetadata`）与候选构建（`buildCodexThreadPerfSamples`）的**唯一**
-//     调用点都没被执行（它们在 `planStableCodexHome` 里，规划是它们的唯一入口）；
-//   * `perf_samples` / `perf_rollout_threads` 的 **rowid 逐项相同**（STRICT 表 ⇒ delete+insert
-//     必然改 rowid）⇒ 候选**没有被改写**；
-//   * `perf_index_version` 不变 ⇒ 聚合"已提交指纹 + 来源身份"的版本号不变 ⇒ **没有发布**；
-//   * `replaceFile` 调用次数 = 0 ⇒ 用量侧没有重写。
-// 探针级计数（`codexParse` / `codexBuild` / `publishCodexThreads`）由 `C5/measure-c5.mjs` 以
-// B2 口径给出（本卡不得只凭源指纹判断，故这里同时钉住 rowid 与版本号两个**库内事实**）。
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** 与 `tools/fixture.mjs` 的 `codexRollout` 同形（`token_usage_record` 是 perf 候选的唯一来源）。 */
+/** Minimal Codex rollout with one ordinary cumulative token event. */
 function c5CodexRollout(threadId, turnId, { ordinalBase = 0, outputTokens = 500, startMs = 1_700_000_000_000 } = {}) {
   return jsonl([
     { type: "session_meta", ordinal: ordinalBase + 0, payload: { id: threadId, session_id: threadId, source: "cli" } },
@@ -1521,58 +1435,43 @@ function c5CodexRollout(threadId, turnId, { ordinalBase = 0, outputTokens = 500,
       payload: { thread_id: threadId, turn_id: turnId, model: "gpt-fixture", effort: "medium" },
     },
     {
-      type: "token_usage_record",
+      type: "event_msg",
       ordinal: ordinalBase + 2,
       timestamp: new Date(startMs).toISOString(),
       payload: {
-        thread_id: threadId,
-        turn_id: turnId,
-        response_id: `resp-${threadId}`,
-        usage: { output_tokens: outputTokens },
-      },
-    },
-    {
-      type: "event_msg",
-      ordinal: ordinalBase + 3,
-      payload: {
-        type: "item_completed",
-        thread_id: threadId,
-        turn_id: turnId,
-        item: { id: `item-${threadId}`, type: "AgentMessage" },
-        started_at_ms: startMs,
-        completed_at_ms: startMs + 1500,
-      },
-    },
-    {
-      type: "event_msg",
-      ordinal: ordinalBase + 4,
-      payload: {
-        type: "task_complete",
-        thread_id: threadId,
-        turn_id: turnId,
-        started_at: Math.floor(startMs / 1000),
-        completed_at: Math.floor(startMs / 1000) + 2,
-        duration_ms: 1500,
+        type: "token_count",
+        info: {
+          last_token_usage: {
+            total_tokens: outputTokens + 10,
+            input_tokens: 10,
+            output_tokens: outputTokens,
+            reasoning_output_tokens: 0,
+          },
+        },
       },
     },
   ]);
 }
 
-function c5TokenUsageFrame(threadId, turnId, ordinal, outputTokens, timestamp) {
+function c5TokenCountFrame(outputTokens, timestamp) {
   return {
-    type: "token_usage_record",
-    ordinal,
+    type: "event_msg",
     timestamp,
     payload: {
-      thread_id: threadId,
-      turn_id: turnId,
-      response_id: `resp-${turnId}`,
-      usage: { output_tokens: outputTokens },
+      type: "token_count",
+      info: {
+        last_token_usage: {
+          total_tokens: outputTokens + 10,
+          input_tokens: 10,
+          output_tokens: outputTokens,
+          reasoning_output_tokens: 0,
+        },
+      },
     },
   };
 }
 
-/** 两个 codex rollout（各自一个线程、各自产生候选）。 */
+/** Two Codex rollouts with one ordinary usage event each. */
 async function makeC5CodexHome() {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-c5-noop-"));
   const sessionDir = path.join(homeDir, ".codex", "sessions", "2026", "10", "09");
@@ -1590,40 +1489,6 @@ async function makeC5CodexHome() {
   };
 }
 
-/** `perf_samples` 的 rowid 按线程分组 —— STRICT 表 ⇒ 一旦 delete+insert，rowid 必变。 */
-function c5SampleRowidsByThread(store) {
-  const out = {};
-  for (const row of store.database
-    .prepare("SELECT rowid AS rid, sample_key FROM perf_samples WHERE source_kind = 'codex' ORDER BY sample_key")
-    .all()) {
-    let threadId = "?";
-    try {
-      const key = JSON.parse(String(row.sample_key));
-      threadId = Array.isArray(key) ? String(key[2] ?? "?") : "?";
-    } catch {
-      threadId = "?";
-    }
-    const bucket = out[threadId] || [];
-    bucket.push(Number(row.rid));
-    out[threadId] = bucket;
-  }
-  return out;
-}
-
-function c5Samples(store) {
-  return store.database
-    .prepare("SELECT sample_key FROM perf_samples WHERE source_kind = 'codex' ORDER BY sample_key")
-    .all()
-    .map((row) => String(row.sample_key));
-}
-
-function c5Rowids(store, table) {
-  return store.database
-    .prepare(`SELECT rowid AS rid FROM ${table} ORDER BY rid`)
-    .all()
-    .map((row) => Number(row.rid));
-}
-
 /** 包住 `replaceFile` 数调用次数（用量侧唯一写点）。 */
 function c5CountReplaceFile(store) {
   const original = store.replaceFile.bind(store);
@@ -1635,90 +1500,43 @@ function c5CountReplaceFile(store) {
   return state;
 }
 
-test("C5 · 连续三轮零解析/零构建/零发布，且第四轮写入一个文件立刻生效", async () => {
+test("C5 · stable sync avoids rewriting usage files and picks up the next token event", async () => {
   const { homeDir, codexA, databaseFile } = await makeC5CodexHome();
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     const first = await store.sync();
-    assert.equal(first.updatedFileCount, 2, "C5 r1 冷启动应索引 2 份 rollout");
-    assert.equal(
-      store.database.prepare("SELECT COUNT(*) AS n FROM perf_samples").get().n,
-      2,
-      "C5 r1 两个线程各 1 条候选",
-    );
-    assert.deepEqual(c5Rowids(store, "perf_rollout_threads").length, 2, "C5 r1 应有 2 条 (path, thread) 归属行");
-
+    assert.equal(first.updatedFileCount, 2, "C5 r1 cold start indexes two rollouts");
     const baseline = {
-      sampleKeys: c5Samples(store),
-      rowids: c5SampleRowidsByThread(store),
-      threadRowids: c5Rowids(store, "perf_rollout_threads"),
-      indexVersion: store.readMeta("perf_index_version"),
-      fingerprints: store.readMeta("perf_file_fingerprints"),
       eventCount: store.metadata().eventCount,
+      total: store.summarize({ preset: "all" }).totals.total,
     };
 
-    // ── 连续三轮（r2/r3/r4）：全文解析 = 候选写入 = 发布 = 0，用量侧 0 次重写 ──────────
     for (const round of [2, 3, 4]) {
       const replace = c5CountReplaceFile(store);
       const status = await store.sync();
-      assert.equal(status.updatedFileCount, 0, `C5 r${round} updatedFileCount 必须为 0`);
-      assert.equal(replace.paths.length, 0, `C5 r${round} replaceFile 调用次数必须为 0（用量侧零重写）`);
-      assert.equal(
-        store.codexThreadBuildPlan.size,
-        0,
-        `C5 r${round} 不得有任何 home 进入规划（⇒ 零全文解析/零候选构建）`,
-      );
-      assert.deepEqual(
-        c5SampleRowidsByThread(store),
-        baseline.rowids,
-        `C5 r${round} 候选 rowid 必须逐项不变（零改写）`,
-      );
-      assert.deepEqual(
-        c5Rowids(store, "perf_rollout_threads"),
-        baseline.threadRowids,
-        `C5 r${round} 归属行 rowid 必须逐项不变`,
-      );
-      assert.equal(
-        store.readMeta("perf_index_version"),
-        baseline.indexVersion,
-        `C5 r${round} perf_index_version 必须不变（零发布）`,
-      );
-      assert.equal(store.readMeta("perf_file_fingerprints"), baseline.fingerprints, `C5 r${round} 已提交指纹必须不变`);
-      assert.equal(store.metadata().eventCount, baseline.eventCount, `C5 r${round} 事件数不得变化`);
+      assert.equal(status.updatedFileCount, 0, `C5 r${round} updatedFileCount must be zero`);
+      assert.equal(replace.paths.length, 0, `C5 r${round} must not rewrite usage files`);
+      assert.equal(store.metadata().eventCount, baseline.eventCount);
     }
 
-    // ── 第四轮之后写一个文件：下一轮必须立刻生效（"跳过"没退化成"永久不更新"）────────
-    const before = c5SampleRowidsByThread(store);
-    const appended = c5TokenUsageFrame("c5-thread-a", "c5-turn-a2", 5, 321, "2026-10-09T02:30:00.000Z");
-    await appendFile(codexA, `${JSON.stringify(appended)}\n`);
-
-    const replace5 = c5CountReplaceFile(store);
-    const fifth = await store.sync();
-    assert.equal(fifth.updatedFileCount, 1, "C5 r5 只有被追加的那份 rollout 需要重提取");
-    assert.deepEqual(replace5.paths, [codexA], "C5 r5 用量侧只应重写被追加的文件");
-    const planEntries = [...store.codexThreadBuildPlan.entries()];
-    assert.equal(planEntries.length, 1, "C5 r5 应恰好规划 1 个 home");
-    assert.deepEqual([...planEntries[0][1].staged].sort(), ["c5-thread-a"], "C5 r5 只有线程 A 需要重建候选");
-    assert.deepEqual([...planEntries[0][1].retained].sort(), ["c5-thread-b"], "C5 r5 线程 B 必须原样保留");
-    const after = c5SampleRowidsByThread(store);
-    assert.equal(after["c5-thread-a"].length, before["c5-thread-a"].length + 1, "C5 r5 线程 A 应多出 1 条候选");
-    assert.deepEqual(after["c5-thread-b"], before["c5-thread-b"], "C5 r5 未受影响线程 B 的 rowid 必须逐项不变");
-    assert.notEqual(store.readMeta("perf_index_version"), baseline.indexVersion, "C5 r5 真有内容变化 ⇒ 版本必须变化");
-    // codex rollout 里的 `token_usage_record` 只产生 perf 候选，不产生用量事件（用量事件来自
-    // `token_count` 累计帧）⇒ 因此这里断言"用量侧没有被这次追加牵动"，重复计数由级联用例覆盖。
-    assert.equal(store.metadata().eventCount, baseline.eventCount, "C5 r5 本次追加不得改动用量事件数");
+    await appendFile(codexA, `${JSON.stringify(c5TokenCountFrame(321, "2026-10-09T02:30:00.000Z"))}\n`);
+    const replace = c5CountReplaceFile(store);
+    const changed = await store.sync();
+    assert.equal(changed.updatedFileCount, 1);
+    assert.deepEqual(replace.paths, [codexA]);
+    assert.equal(store.metadata().eventCount, baseline.eventCount + 1);
+    assert.equal(store.summarize({ preset: "all" }).totals.total, baseline.total + 331);
   } finally {
     store.close();
     await rm(homeDir, { recursive: true, force: true });
   }
 });
 
-test("C5 · checkedAt 每轮按契约更新，generatedAt/perf_indexed_at 保持轮次级语义", async () => {
+test("C5 · checkedAt and generatedAt refresh on no-op syncs", async () => {
   const { homeDir, databaseFile } = await makeC5CodexHome();
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.sync();
-    const indexVersion = store.readMeta("perf_index_version");
     const generatedAtSeen = [];
     const checkedAtSeen = [];
 
@@ -1726,43 +1544,16 @@ test("C5 · checkedAt 每轮按契约更新，generatedAt/perf_indexed_at 保持
       const before = Date.now();
       const status = await store.sync();
       const after = Date.now();
-      const checkedAtMs = Date.parse(status.checkedAt);
-      const generatedAtMs = Date.parse(store.generatedAt);
-      // 「按契约更新检查时刻」：本轮的 checkedAt / generatedAt 都必须**落在本轮窗口内**
-      //（不依赖"两个时刻必须差 ≥1ms"这种会偶发失败的口径）。
-      assert.ok(!Number.isNaN(checkedAtMs), `C5 r${round} checkedAt 必须是合法时刻`);
-      assert.ok(checkedAtMs >= before && checkedAtMs <= after, `C5 r${round} checkedAt 必须由本轮更新`);
-      assert.ok(!Number.isNaN(generatedAtMs), `C5 r${round} generatedAt 必须是合法时刻`);
-      assert.ok(generatedAtMs >= before && generatedAtMs <= after, `C5 r${round} generatedAt 必须由本轮更新`);
-      // `generated_at` / `perf_indexed_at` 是**轮次级**时刻（同一来源 `this.generatedAt`）⇒ 每轮写、
-      // 且两者逐字相同。它们**不是**"索引内容版本"，内容的版本号是 `perf_index_version`。
-      assert.equal(store.readMeta("generated_at"), store.generatedAt, `C5 r${round} generated_at 必须等于本轮时刻`);
-      assert.equal(
-        store.readMeta("perf_indexed_at"),
-        store.generatedAt,
-        `C5 r${round} perf_indexed_at 必须等于本轮时刻`,
-      );
-      assert.equal(
-        store.readMeta("perf_index_version"),
-        indexVersion,
-        `C5 r${round} 例行时刻更新不得改变内容版本号（perf_index_version）`,
-      );
-      // 读路径上的 `generatedAt` 同样必须是**本轮**的（派生缓存被保留时也不得冻住例行时刻）。
-      assert.equal(
-        store.metadata().generatedAt,
-        store.generatedAt,
-        `C5 r${round} metadata().generatedAt 必须等于本轮时刻`,
-      );
+      assert.ok(Date.parse(status.checkedAt) >= before && Date.parse(status.checkedAt) <= after);
+      assert.ok(Date.parse(store.generatedAt) >= before && Date.parse(store.generatedAt) <= after);
+      assert.equal(store.readMeta("generated_at"), store.generatedAt);
+      assert.equal(store.metadata().generatedAt, store.generatedAt, `C5 r${round}`);
       generatedAtSeen.push(store.generatedAt);
       checkedAtSeen.push(status.checkedAt);
     }
 
-    assert.equal(new Set(checkedAtSeen).size, checkedAtSeen.length, "三轮 no-op 的 checkedAt 应逐轮不同");
-    assert.equal(new Set(generatedAtSeen).size, generatedAtSeen.length, "三轮 no-op 的 generatedAt 应逐轮不同");
-    const ordered = [...checkedAtSeen, ...generatedAtSeen].every(
-      (value) => Date.parse(value) >= Date.parse(checkedAtSeen[0]),
-    );
-    assert.ok(ordered, "轮次级时刻不得回退");
+    assert.equal(new Set(checkedAtSeen).size, checkedAtSeen.length);
+    assert.equal(new Set(generatedAtSeen).size, generatedAtSeen.length);
   } finally {
     store.close();
     await rm(homeDir, { recursive: true, force: true });
@@ -1810,10 +1601,7 @@ test("C5 · 无实际变更的轮次保留派生缓存，真有变更的轮次�
     }
 
     // 真有变更 ⇒ 必须失效（否则会给出过期读数）。
-    await appendFile(
-      codexA,
-      `${JSON.stringify(c5TokenUsageFrame("c5-thread-a", "c5-turn-a2", 5, 321, "2026-10-09T02:30:00.000Z"))}\n`,
-    );
+    await appendFile(codexA, `${JSON.stringify(c5TokenCountFrame(321, "2026-10-09T02:30:00.000Z"))}\n`);
     const changed = await store.sync();
     assert.equal(changed.updatedFileCount, 1, "C5 r5 有变更");
     assert.equal(store.metadataCache, null, "C5 r5 有变更 ⇒ metadataCache 必须失效");
@@ -1896,73 +1684,34 @@ test("C5 · 只有早期文件变化时 laterFileChanged 级联仍重提取（�
   }
 });
 
-test("C5 · 发布事务失败回滚后，下一轮能重试成功且状态自洽", async () => {
+test("C5 · failed event transaction rolls back and retries on the next sync", async () => {
   const { homeDir, codexA, databaseFile } = await makeC5CodexHome();
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.sync();
     const baseline = {
-      sampleKeys: c5Samples(store),
-      rowids: c5SampleRowidsByThread(store),
-      indexVersion: store.readMeta("perf_index_version"),
-      fingerprints: store.readMeta("perf_file_fingerprints"),
+      eventCount: store.metadata().eventCount,
+      sourceCount: Number(store.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n),
+      total: store.summarize({ preset: "all" }).totals.total,
     };
-    assert.equal(baseline.sampleKeys.length, 2, "C5 冷启动应有 2 条候选");
-
-    // 注入一次发布失败：任何 `perf_samples` INSERT 都 ABORT（与 C2/C4 同型手法）。
     store.database.exec(
-      "CREATE TRIGGER c5_fail_publish BEFORE INSERT ON perf_samples BEGIN SELECT RAISE(ABORT, 'c5 injected publish failure'); END",
+      "CREATE TRIGGER c5_fail_event BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'c5 injected event failure'); END",
     );
-    await appendFile(
-      codexA,
-      `${JSON.stringify(c5TokenUsageFrame("c5-thread-a", "c5-turn-a2", 5, 321, "2026-10-09T02:30:00.000Z"))}\n`,
+    await appendFile(codexA, `${JSON.stringify(c5TokenCountFrame(321, "2026-10-09T02:30:00.000Z"))}\n`);
+    await assert.rejects(() => store.sync(), /c5 injected event failure/);
+    assert.equal(store.metadata().eventCount, baseline.eventCount);
+    assert.equal(
+      Number(store.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n),
+      baseline.sourceCount,
     );
-    const failed = await store.sync();
-    assert.equal(failed.updatedFileCount, 1, "C5 用量侧仍应成功写入（失败只发生在 perf 发布事务内）");
-    // 原子性不破：发布事务整体回滚 ⇒ 候选、归属行、已提交指纹与版本号**逐项**不变。
-    assert.deepEqual(c5Samples(store), baseline.sampleKeys, "C5 失败的发布不得留下任何候选");
-    assert.deepEqual(c5SampleRowidsByThread(store), baseline.rowids, "C5 失败的发布不得改任何 rowid");
-    assert.equal(store.readMeta("perf_file_fingerprints"), baseline.fingerprints, "C5 失败的发布不得改已提交指纹");
-    assert.equal(store.readMeta("perf_index_version"), baseline.indexVersion, "C5 失败的发布不得改版本号");
-    assert.notEqual(failed.perfState, "ready", "C5 失败的发布必须把状态标为受阻");
-    const codexHomeIds = store.database
-      .prepare("SELECT DISTINCT home_id FROM perf_rollout_threads")
-      .all()
-      .map((row) => String(row.home_id));
-    assert.equal(codexHomeIds.length, 1, "C5 本用例只有一个 codex home");
-    assert.ok(
-      JSON.parse(String(store.readMeta("perf_degraded_home_ids"))).includes(codexHomeIds[0]),
-      "C5 失败的发布必须指名受阻 home（供 D4 排除出排名）",
-    );
-    assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0, "C5 回滚后不得留下外键悬挂");
+    assert.equal(store.summarize({ preset: "all" }).totals.total, baseline.total);
+    assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
 
-    // 解除注入 ⇒ 下一轮必须重试成功并自洽。
-    store.database.exec("DROP TRIGGER c5_fail_publish");
-    const retried = await store.sync();
-    assert.equal(retried.perfState, "ready", "C5 重试轮必须恢复 ready");
-    assert.equal(store.readMeta("perf_degraded_home_ids"), "[]", "C5 重试轮必须清空受阻 home");
-    const retriedSamples = c5Samples(store);
-    assert.equal(retriedSamples.length, baseline.sampleKeys.length + 1, "C5 重试轮必须真的把被回滚的候选发布出去");
-    const retriedByThread = c5SampleRowidsByThread(store);
-    assert.equal(
-      retriedByThread["c5-thread-a"].length,
-      baseline.rowids["c5-thread-a"].length + 1,
-      "C5 重试轮线程 A 必须多出被回滚过的那条候选",
-    );
-    assert.deepEqual(
-      retriedByThread["c5-thread-b"],
-      baseline.rowids["c5-thread-b"],
-      "C5 重试轮线程 B 的 rowid 必须逐项不变",
-    );
-    assert.notEqual(store.readMeta("perf_index_version"), baseline.indexVersion, "C5 重试成功后版本号必须变化");
-    assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0, "C5 重试轮外键必须干净");
-    // 用量侧自洽：本轮 sync 没有重写用量行（`replaceFile` 一次都没跑），`source_files` 也不得多出重复行。
-    assert.equal(
-      store.database.prepare("SELECT COUNT(*) AS n FROM source_files").get().n,
-      2,
-      "C5 重试轮不得多出重复来源行",
-    );
-    assert.equal(store.metadata().eventCount, 0, "C5 该 fixture 的 rollout 不含累计用量帧 ⇒ 事件数恒为 0");
+    store.database.exec("DROP TRIGGER c5_fail_event");
+    assert.equal((await store.sync()).updatedFileCount, 1);
+    assert.equal(store.metadata().eventCount, baseline.eventCount + 1);
+    assert.equal(store.summarize({ preset: "all" }).totals.total, baseline.total + 331);
+    assert.equal(store.database.prepare("PRAGMA foreign_key_check").all().length, 0);
   } finally {
     store.close();
     await rm(homeDir, { recursive: true, force: true });
@@ -2053,7 +1802,6 @@ test("D1 · 无变化同步保留派生缓存：例行时刻每轮写入但不�
     const warm = d1WarmCaches(store);
     assert.ok(warm.metadataRef !== null, "D1 warm 阶段 metadataCache 必须存在");
     assert.equal(warm.comparisonKeys.length, 1, "D1 warm 阶段 periodComparisonCache 恰好 1 条");
-    const indexVersion = store.readMeta("perf_index_version");
     const generatedAtSeen = [];
 
     for (const round of [2, 3, 4]) {
@@ -2067,8 +1815,6 @@ test("D1 · 无变化同步保留派生缓存：例行时刻每轮写入但不�
       assert.equal(store.storeRevision, revisionAfterCold, `D1 r${round} 例行时刻刷新不得推进修订`);
       // 例行时刻确实被写了（否则"保留"就变成了"冻住"）。
       assert.equal(store.readMeta("generated_at"), store.generatedAt, `D1 r${round} generated_at 必须每轮写入`);
-      assert.equal(store.readMeta("perf_indexed_at"), store.generatedAt, `D1 r${round} perf_indexed_at 必须每轮写入`);
-      assert.equal(store.readMeta("perf_index_version"), indexVersion, `D1 r${round} 内容版本号不得变`);
       assert.equal(store.metadata().eventCount, warm.metadata.eventCount, `D1 r${round} 缓存读数仍必须正确`);
       assert.equal(store.metadata().generatedAt, store.generatedAt, `D1 r${round} metadata().generatedAt 必须是本轮`);
       generatedAtSeen.push(store.readMeta("generated_at"));

@@ -71,6 +71,16 @@ async function listen(server) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
+async function readSourceState(options) {
+  const store = new UsageStore(options);
+  try {
+    await store.open();
+    return store.sourceState();
+  } finally {
+    store.close();
+  }
+}
+
 function projectSession(session) {
   return {
     id: session.id,
@@ -197,7 +207,7 @@ test("full detail uses authorized cold carrier when a live source is only the ho
     const body = JSON.parse(text);
 
     assert.equal(existsSync(fixture.usageFile), true);
-    assert.deepEqual(body.summary.perf.missingSources, []);
+    assert.deepEqual(await readSourceState(fixture.serverOptions), { missingSources: [] });
     assert.deepEqual(
       {
         total: body.summary.totals.total,
@@ -257,12 +267,13 @@ test("full detail keeps the published carrier for missing sources without cold a
     }
     unlinkSync(usageFile);
 
-    server = createUsageServer({
+    const serverOptions = {
       ...source,
       databaseFile: path.join(root, "usage-index.sqlite"),
       importStoreFile: path.join(root, "imports.json"),
       heapSizeLimitBytes: 4 * 1024 * 1024 * 1024,
-    });
+    };
+    server = createUsageServer(serverOptions);
     const baseUrl = await listen(server);
     const response = await fetch(`${baseUrl}/api/usage?preset=all&detail=full`);
     const text = await response.text();
@@ -275,7 +286,10 @@ test("full detail keeps the published carrier for missing sources without cold a
       [100],
     );
     assert.deepEqual(
-      body.summary.perf.missingSources.map(({ path: missingPath, kind }) => ({ path: missingPath, kind })),
+      (await readSourceState(serverOptions)).missingSources.map(({ path: missingPath, kind }) => ({
+        path: missingPath,
+        kind,
+      })),
       [{ path: usageFile, kind: "extra" }],
     );
   } finally {

@@ -36,7 +36,6 @@ import {
 import { isQuotaUsage } from "./quota-usage.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
-import { layoutPerfModelBands, renderPerfModelDetailHtml, renderPerfModelsHtml } from "./perf-ui.js";
 import {
   dateKey,
   datePickerMonthModel,
@@ -2931,59 +2930,6 @@ function currentMetadata() {
   return state.metadata;
 }
 
-export function reconcilePerfModelSelection(models, previousKey = null) {
-  const rows = Array.isArray(models) ? models.filter((model) => model && typeof model === "object") : [];
-  if (previousKey && rows.some((model) => model.key === previousKey)) return previousKey;
-  return rows.find((model) => model.state === "ok" && Number.isFinite(model.averageTps))?.key ?? rows[0]?.key ?? null;
-}
-
-function renderPerfModels(perf) {
-  const container = $("#perfModels");
-  if (!container) return;
-  const oldScroll = container.querySelector(".perf-model-table-scroll");
-  const oldScrollTop = oldScroll?.scrollTop || 0;
-  const oldFocus = document.activeElement;
-  const oldFocusKey = oldFocus?.closest?.("[data-perf-model-key]")?.dataset.perfModelKey || null;
-  const hadScrollFocus = Boolean(oldScroll && oldFocus === oldScroll);
-  const models = Array.isArray(perf?.models) ? perf.models : [];
-  state.selectedPerfModelKey = reconcilePerfModelSelection(models, state.selectedPerfModelKey);
-  container.innerHTML = renderPerfModelsHtml(perf, {
-    locale: getLocale(),
-    selectedKey: state.selectedPerfModelKey,
-  });
-  translatePage(container);
-  layoutPerfModelBands(container);
-  const nextScroll = container.querySelector(".perf-model-table-scroll");
-  if (nextScroll) nextScroll.scrollTop = oldScrollTop;
-  if (hadScrollFocus) nextScroll?.focus({ preventScroll: true });
-  else if (oldFocusKey) {
-    [...container.querySelectorAll("[data-perf-model-key]")]
-      .find((button) => button.dataset.perfModelKey === oldFocusKey)
-      ?.focus({ preventScroll: true });
-  }
-}
-
-function selectPerfModel(key) {
-  const models = state.summary?.perf?.models;
-  const model = Array.isArray(models) ? models.find((row) => row.key === key) : null;
-  if (!model) return false;
-  state.selectedPerfModelKey = key;
-  const container = $("#perfModels");
-  for (const row of container?.querySelectorAll(".perf-model-data-row") || []) {
-    const button = row.querySelector("[data-perf-model-key]");
-    const selected = button?.dataset.perfModelKey === key;
-    row.classList.toggle("selected", selected);
-    button?.setAttribute("aria-pressed", String(selected));
-  }
-  const detail = container?.querySelector(".perf-model-detail-panel");
-  if (detail) {
-    detail.innerHTML = renderPerfModelDetailHtml(model, { locale: getLocale(), calendarZone: state.calendarZone });
-    translatePage(detail);
-    layoutPerfModelBands(detail);
-  }
-  return true;
-}
-
 function renderUnavailableQuota(reason, range = null) {
   hideUsageTooltip();
   const message = reason || QUOTA_UI_COPY.waiting;
@@ -3037,7 +2983,6 @@ function renderUnavailableQuota(reason, range = null) {
   if (legend) legend.innerHTML = "";
   const detailList = $("#detailList");
   if (detailList) detailList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
-  renderPerfModels(null);
   updateTimelineModeButtons();
   drawTimeline($("#timelineChart"), [], [], new Map(), unavailableRange, state.timelineMode);
   updateQuotaPresetButton();
@@ -3058,7 +3003,6 @@ function renderEmptySummaryState() {
   if (legend) legend.innerHTML = "";
   const details = $("#detailList");
   if (details) details.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
-  renderPerfModels(null);
   drawTimeline($("#timelineChart"), [], [], new Map(), state.emptySummaryRange, state.timelineMode);
 }
 
@@ -3092,7 +3036,6 @@ function render() {
   const quotaMode = isQuotaPreset(summary.range?.preset || state.preset) || Boolean(summary.range?.quotaWindow);
   renderComparison(summary);
   renderPeriodComparisons(state.periodComparison);
-  renderPerfModels(summary.perf);
   const rangeNode = $("#rangeLabel");
   rangeNode.textContent = rangeLabel(summary);
   const rangeStart = asDate(summary.range.start);
@@ -4915,29 +4858,6 @@ function bootDashboard() {
     if (!button || button.dataset.timelineMode === state.timelineMode) return;
     state.timelineMode = button.dataset.timelineMode;
     render();
-  });
-  $("#perfModels").addEventListener("click", (event) => {
-    const row = event.target.closest(".perf-model-data-row");
-    const key = row?.querySelector("[data-perf-model-key]")?.dataset.perfModelKey;
-    if (key) selectPerfModel(key);
-  });
-  $("#perfModels").addEventListener("keydown", (event) => {
-    const button = event.target.closest(".perf-model-row-action");
-    if (!button || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const buttons = [...$("#perfModels").querySelectorAll(".perf-model-row-action")];
-    const index = buttons.indexOf(button);
-    if (index < 0) return;
-    event.preventDefault();
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? buttons.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-    const target = buttons[next];
-    selectPerfModel(target.dataset.perfModelKey);
-    target.focus({ preventScroll: true });
-    target.closest(".perf-model-data-row")?.scrollIntoView({ block: "nearest" });
   });
 
   $("#updatePricingButton").addEventListener("click", openPricingDialog);

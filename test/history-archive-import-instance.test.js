@@ -41,13 +41,6 @@ function costEvidence(summary) {
   return summary.costEstimate;
 }
 
-function stablePerfEvidence(perf) {
-  const evidence = structuredClone(perf);
-  evidence.indexedAt = null;
-  evidence.meta.indexedAt = null;
-  return evidence;
-}
-
 async function summary(baseUrl) {
   const response = await fetch(`${baseUrl}/api/summary?preset=all&skipCheck=1`);
   assert.equal(response.status, 200, await response.clone().text());
@@ -142,14 +135,12 @@ test("imported runtime adopts bundle pricing and tier evidence without changing 
     });
     let sourceSummary;
     let sourceCost;
-    let sourcePerf;
     try {
       await sourceStore.open();
       sourceStore.serviceTierEvidence = serviceTierEvidence;
       sourceStore.homes = sourceStore.publishedUsageHomes();
       sourceSummary = await sourceStore.summarizeHistory({ preset: "all" });
       sourceCost = costEvidence(sourceSummary);
-      sourcePerf = stablePerfEvidence(sourceSummary.perf);
     } finally {
       sourceStore.close();
     }
@@ -223,7 +214,6 @@ test("imported runtime adopts bundle pricing and tier evidence without changing 
     const runtimeSummary = await summary(importedUrl);
     assert.deepEqual(runtimeSummary.totals, sourceSummary.totals);
     assert.deepEqual(costEvidence(runtimeSummary), sourceCost);
-    assert.deepEqual(stablePerfEvidence(runtimeSummary.perf), sourcePerf);
 
     const fullDetailResponse = await fetch(`${importedUrl}/api/usage?detail=full&preset=all&skipCheck=1`);
     assert.equal(fullDetailResponse.status, 400);

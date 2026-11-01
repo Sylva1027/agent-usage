@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { createPerfCodexIntegrationFixture } from "../test-support/perf-fixture.mjs";
+import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 import { UsageStore } from "../src/usage-store.js";
 import { createUsageServer } from "../src/server.js";
 import { getPricingCatalog } from "../src/pricing.js";
 import { refreshSummaryClock, summaryCacheKey, UsageSummaryCache } from "../src/usage-summary-cache.js";
 
 test("concurrent cache opens share one connection and close releases it", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const cache = new UsageSummaryCache(fixture.serverOptions);
   const connections = new Set();
   let database = null;
@@ -73,7 +73,7 @@ test("cached aggregates update trend, quota flags and model activity with the cl
 });
 
 test("rolling day bypasses summaries; obsolete state and malformed payload rebuild", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   let cache = new UsageSummaryCache(fixture.serverOptions);
   try {
@@ -105,7 +105,7 @@ test("rolling day bypasses summaries; obsolete state and malformed payload rebui
 });
 
 test("publication changed during a request is never attached to its cached result", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   const originalGet = UsageSummaryCache.prototype.get;
   const originalPublish = UsageSummaryCache.prototype.publish;
@@ -153,13 +153,12 @@ test("publication changed during a request is never attached to its cached resul
 });
 
 test("persisted dashboard matches a fresh query as time advances and survives restart", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const options = fixture.serverOptions;
   const store = new UsageStore(options);
   let cache = new UsageSummaryCache(options);
   try {
     await store.sync({ options });
-    await fixture.seedRequestTiming(store);
     const now = new Date("2026-10-04T13:00:00Z");
     const filters = { preset: "today", bucket: "hour", calendarZone: "utc", now };
     const payload = {
@@ -196,10 +195,21 @@ test("persisted dashboard matches a fresh query as time advances and survives re
 });
 
 test("new future facts expire cached results at the correct instant", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   const cache = new UsageSummaryCache(fixture.serverOptions);
   try {
+    await appendFile(
+      fixture.rolloutFiles[0],
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-10-04T12:00:12.500Z",
+        payload: {
+          type: "token_count",
+          info: { last_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 } },
+        },
+      })}\n`,
+    );
     await store.sync({ options: fixture.serverOptions });
     const now = new Date("2026-10-04T12:00:00Z");
     const filters = { preset: "all", now, bucket: "day", calendarZone: "utc" };
@@ -208,6 +218,7 @@ test("new future facts expire cached results at the correct instant", async () =
     const key = summaryCacheKey(filters, false, getPricingCatalog());
     await cache.publish(key, payload, {}, source, now);
     assert(await cache.get(key, source, new Date("2026-10-04T12:00:01Z")));
+    assert(await cache.get(key, source, new Date("2026-10-04T12:00:12.499Z")));
     assert.equal(await cache.get(key, source, new Date("2026-10-04T12:00:12.500Z")), null);
   } finally {
     cache.close();
@@ -217,7 +228,7 @@ test("new future facts expire cached results at the correct instant", async () =
 });
 
 test("recovered quota metadata expires summaries at reset without a rollout row", async () => {
-  const fixture = createPerfCodexIntegrationFixture();
+  const fixture = createCodexIntegrationFixture();
   const store = new UsageStore(fixture.serverOptions);
   const cache = new UsageSummaryCache(fixture.serverOptions);
   try {

@@ -257,28 +257,6 @@ test("cli summary --json returns lightweight summary metadata without full repor
   // 摘要**不得**携带任何完整历史报告：事件明细只可能出现在 `report(s)` 里
   assert.ok(!output.includes('"events"'), "摘要输出不得包含完整事件数组");
   assert.ok(!output.includes('"rollout'), "摘要输出不得包含会话文件名");
-  // 索引摘要仍然要给出公开的 `summary.perf`（15 键）
-  assert.deepEqual(
-    Object.keys(parsed.summary.perf).sort(),
-    [
-      "codexTimingCoverage",
-      "coverage",
-      "degradedHomeIds",
-      "missingSources",
-      "groups",
-      "models",
-      "indexVersion",
-      "indexedAt",
-      "methodVersion",
-      "meta",
-      "rankedHomeIds",
-      "ready",
-      "sourceWarnings",
-      "state",
-      "unsupportedSources",
-    ].sort(),
-    "摘要仍须公开完整 summary.perf",
-  );
   assert.ok((await stat(path.join(homeDir, ".codex-usage", "usage-index.sqlite"))).size > 0);
 });
 

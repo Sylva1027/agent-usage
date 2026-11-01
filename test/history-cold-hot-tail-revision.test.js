@@ -58,8 +58,6 @@ function invalidateSource(store, sourcePath) {
 function normalizeSummaryTimestamps(summary) {
   const normalized = structuredClone(summary);
   normalized.generatedAt = "";
-  normalized.perf.indexedAt = "";
-  normalized.perf.meta.indexedAt = "";
   return normalized;
 }
 

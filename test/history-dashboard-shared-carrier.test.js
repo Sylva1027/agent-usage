@@ -74,7 +74,7 @@ test("cold dashboard shares one verified carrier and preserves existing componen
       store.database.isTransaction === false ? 0 : 1,
       "SQL-capable readers avoid the full carrier; older Node retains it",
     );
-    assert.deepEqual(combined, individual, "all fields incl complete cost/perf/metadata/period must be unchanged");
+    assert.deepEqual(combined, individual, "all fields including cost, metadata and period must be unchanged");
     const noNow = await store.dashboardHistory({ preset: "all", calendarZone: "utc" });
     assert.equal(noNow.summary.totals.total, 130);
     assert.equal(noNow.metadata.eventCount, 2);

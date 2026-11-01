@@ -7,8 +7,7 @@ import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
-import { createPerfCodexIntegrationFixture, createPerfIntegrationFixture } from "../test-support/perf-fixture.mjs";
-import { renderPerfModelDetailHtml } from "../public/perf-ui.js";
+import { createCodexIntegrationFixture, createUsageIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 /*
  * Offline Noto Sans SC subset pins the mixed-font probes independently of installed Noto fonts.
@@ -156,7 +155,8 @@ async function openDashboard(browser, url, viewport, locale, theme) {
   await page.locator('[data-date="2026-09-28"]').click();
   await page.locator('[data-date="2026-10-04"]').click();
   await page.waitForFunction(
-    () => document.querySelectorAll(".comparison-item").length === 3 && document.querySelector("#perfModels table"),
+    () =>
+      document.querySelectorAll(".comparison-item").length === 3 && document.querySelector(".period-comparison-table"),
   );
   await page.evaluate(() => document.fonts.ready);
   await page.locator("#costEstimateNote p").first().waitFor({ state: "visible" });
@@ -188,7 +188,6 @@ async function geometry(page) {
       prices: ".price-metrics",
       comparison: "#comparisonSummary",
       main: ".main-grid",
-      perf: "#perfModelsSection",
       period: ".period-comparison-grid",
       bottom: ".bottom-grid",
     };
@@ -206,40 +205,21 @@ async function geometry(page) {
       toolbarWells: ["#presetButtons", "#dateRangeButton", ".auto-refresh-well"].map(one),
       panelWells: [
         [".chart-panel", ".timeline-chart-well"],
-        [".perf-model-table-panel", ".comparison-table-frame"],
         [".period-comparison-panel", ".comparison-table-frame"],
       ].map(([panelSelector, wellSelector]) => {
         const panel = document.querySelector(panelSelector);
         const well = panel.querySelector(wellSelector);
         return { selector: panelSelector, panel: box(panel), well: well ? box(well) : null };
       }),
-      performanceSlot: one(".perf-model-table-scroll"),
-      performanceIdentity: Object.fromEntries(
-        [
-          ["context", ".perf-model-identity-context"],
-          ["model", ".perf-model-identity-model"],
-          ["source", ".perf-model-source-name"],
-          ["provider", ".perf-model-provider-name"],
-          ["name", ".perf-model-title-name"],
-          ["effort", ".perf-model-title-effort"],
-          ["count", ".perf-model-sample-count"],
-        ].map(([key, selector]) => [key, one(selector)]),
-      ),
       metricGroups: [...document.querySelectorAll(".metrics")].map((group) => ({
         box: box(group),
         cards: [...group.querySelectorAll(".metric")].map(box),
         values: [...group.querySelectorAll("strong")].map((node) => node.textContent),
       })),
       comparisonCards: [...document.querySelectorAll("#comparisonSummary > article")].map(box),
-      panels: [
-        ".chart-panel",
-        "#detailPanel",
-        ".perf-model-table-panel",
-        ".perf-model-detail-panel",
-        ".period-comparison-panel",
-        ".homes-panel",
-        ".pricing-note-panel",
-      ].map(one),
+      panels: [".chart-panel", "#detailPanel", ".period-comparison-panel", ".homes-panel", ".pricing-note-panel"].map(
+        one,
+      ),
       mainPanels: [...document.querySelector(".main-grid").children].map(box),
       periodPanels: [...document.querySelector(".period-comparison-grid").children].map(box),
       bottomPanels: [...document.querySelector(".bottom-grid").children].map(box),
@@ -256,7 +236,6 @@ async function geometry(page) {
         (node) => getComputedStyle(node).lineHeight,
       ),
       totalTokens: document.querySelector("#totalTokens").textContent,
-      performanceRows: document.querySelectorAll(".perf-model-data-row").length,
     };
   });
 }
@@ -300,23 +279,7 @@ function assertMainGeometry(g) {
     assert.ok(well, `${selector} content well rendered`);
     near(well.x - panel.x, 21, `${selector} left rim`);
     near(panel.right - well.right, 21, `${selector} right rim`);
-    if (selector === ".perf-model-table-panel") {
-      near(well.y - panel.y, 21, "performance top rim");
-      near(panel.bottom - well.bottom, 21, "performance bottom rim");
-      near(well.radius, 9, "performance well radius");
-    }
   }
-  near(g.performanceSlot.height, 242, "performance header and five-row slot");
-  const identity = g.performanceIdentity;
-  near(identity.count.y, identity.source.y, "sample count aligns with source");
-  near(identity.count.right, identity.context.right, "sample count aligns to the right edge");
-  assert.ok(
-    identity.count.x >= (identity.provider || identity.source).right + 8,
-    "sample count clears source identity",
-  );
-  near(identity.model.y - identity.context.bottom, 4, "model identity follows source context");
-  if (identity.provider) near(identity.provider.x - identity.source.right, 8, "provider follows source closely");
-  if (identity.effort) near(identity.effort.x - identity.name.right, 8, "effort follows model closely");
   assert.equal(g.metricGroups.length, 2);
   for (const group of g.metricGroups) {
     near(group.box.height, 104, "metric row height");
@@ -353,10 +316,8 @@ function assertMainGeometry(g) {
   for (const panel of g.mainPanels) near(panel.height, 384, "main panel height");
   for (const panel of g.periodPanels) near(panel.height, 586, "period panel height");
   for (const slot of g.periodSlots) near(slot.height, 496, "period content slot");
-  near(s.perf.height, 284, "performance region height");
   for (const [before, after] of [
-    ["main", "perf"],
-    ["perf", "period"],
+    ["main", "period"],
     ["period", "bottom"],
   ]) {
     near(s[after].y - s[before].bottom, 24, `${before} to ${after} gap`);
@@ -366,19 +327,17 @@ function assertMainGeometry(g) {
     "shared heading line boxes",
   );
   assert.ok(Number.parseFloat(g.totalTokens) > 0, "real usage rendered");
-  assert.ok(g.performanceRows > 0, "real performance rows rendered");
 }
 
 function assertStableFrames(actual, expected, label) {
-  for (const name of ["topbar", "toolbar", "metrics", "prices", "comparison", "main", "perf", "period"]) {
+  for (const name of ["topbar", "toolbar", "metrics", "prices", "comparison", "main", "period"]) {
     for (const dimension of ["x", "y", "width", "height"]) {
       near(actual.sections[name][dimension], expected.sections[name][dimension], `${label} ${name} ${dimension}`);
     }
   }
   for (const slot of actual.periodSlots) near(slot.height, 496, `${label} period slot`);
   for (const [before, after] of [
-    ["main", "perf"],
-    ["perf", "period"],
+    ["main", "period"],
     ["period", "bottom"],
   ]) {
     near(actual.sections[after].y - actual.sections[before].bottom, 24, `${label} section gap`);
@@ -666,13 +625,13 @@ test("UI geometry uses the production app and isolated source fixtures", async (
     return;
   }
   const palette = await createPaletteFixture();
-  const perf = createPerfIntegrationFixture({ sources: ["zcode", "dsh", "opencode"] });
-  const codex = createPerfCodexIntegrationFixture();
+  const usage = createUsageIntegrationFixture({ sources: ["zcode", "dsh", "opencode"] });
+  const codex = createCodexIntegrationFixture();
   const serverOptions = {
     ...createPaletteServerOptions(palette),
-    extraZcodeHomes: perf.reportOptions.extraZcodeHomes,
-    extraDshHomes: perf.reportOptions.extraDshHomes,
-    extraOpencodeHomes: perf.reportOptions.extraOpencodeHomes,
+    extraZcodeHomes: usage.reportOptions.extraZcodeHomes,
+    extraDshHomes: usage.reportOptions.extraDshHomes,
+    extraOpencodeHomes: usage.reportOptions.extraOpencodeHomes,
     extraHomes: codex.codexHome,
   };
   const store = new UsageStore(serverOptions);
@@ -680,13 +639,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
     await store.sync({ options: serverOptions });
     const home = store.homes.find((candidate) => path.resolve(candidate.path) === path.resolve(codex.codexHome));
     assert.ok(home, "geometry fixture must discover its Codex home");
-    // Explicit synthetic timing exercises the UI without asserting native capture exists.
-    store.importRequestTimingEvidence({
-      homeId: String(home.id),
-      records: codex.timingRecords,
-      reviewedOrigins: ["fixture@1"],
-    });
-    await store.sync({ options: serverOptions });
   } finally {
     store.close();
   }
@@ -696,7 +648,7 @@ test("UI geometry uses the production app and isolated source fixtures", async (
     await browser?.close();
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await palette.close();
-    perf.close();
+    usage.close();
     codex.close();
   });
   const imports = JSON.parse(await readFile(palette.importStoreFile, "utf8"));
@@ -744,7 +696,7 @@ test("UI geometry uses the production app and isolated source fixtures", async (
             assert.equal(g.theme, theme);
             assertMainGeometry(g);
             if (reference) {
-              for (const name of ["topbar", "toolbar", "metrics", "prices", "comparison", "main", "perf", "period"]) {
+              for (const name of ["topbar", "toolbar", "metrics", "prices", "comparison", "main", "period"]) {
                 for (const dimension of ["x", "y", "width", "height"]) {
                   near(
                     g.sections[name][dimension],
@@ -767,85 +719,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       }
     }
   }
-
-  await t.test("the screenshot TPS distribution renders a wide band with exact tick geometry", async () => {
-    const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", "light");
-    try {
-      const narrow = renderPerfModelDetailHtml(
-        {
-          sourceKind: "workbuddy",
-          model: "deepseek-v4.1-flash-sg",
-          window: "request",
-          state: "ok",
-          averageTps: 183.5,
-          p10: 183.3,
-          p90: 183.8,
-          n: 2,
-        },
-        { locale: "zh-CN" },
-      );
-      const equal = renderPerfModelDetailHtml(
-        {
-          sourceKind: "workbuddy",
-          model: "single-sample",
-          window: "request",
-          state: "ok",
-          averageTps: 100,
-          p10: 100,
-          p90: 100,
-          n: 1,
-        },
-        { locale: "zh-CN" },
-      );
-      const band = await session.page.evaluate(
-        ({ narrowHtml, equalHtml }) => {
-          const panel = document.createElement("div");
-          panel.className = "panel detail-panel perf-model-detail-panel";
-          panel.style.cssText = "position:fixed;left:-10000px;top:0;width:480px;height:244px";
-          document.body.append(panel);
-          const measure = (html) => {
-            panel.innerHTML = html;
-            const track = panel.querySelector(".perf-model-band-track");
-            const fill = panel.querySelector(".perf-model-band-fill");
-            const endpoints = [...panel.querySelectorAll(".perf-model-tick.is-down")];
-            const average = panel.querySelector(".perf-model-tick.is-up");
-            const trackRect = track.getBoundingClientRect();
-            const x = (node) => node.getBoundingClientRect().left - trackRect.left;
-            const fillRect = fill.getBoundingClientRect();
-            return {
-              trackWidth: trackRect.width,
-              fillWidth: fillRect.width,
-              fillCenter: fillRect.left - trackRect.left + fillRect.width / 2,
-              p10: x(endpoints[0]),
-              p90: x(endpoints.at(-1)),
-              average: x(average),
-            };
-          };
-          const result = { narrow: measure(narrowHtml), equalWidth: measure(equalHtml).fillWidth };
-          panel.remove();
-          return result;
-        },
-        { narrowHtml: narrow, equalHtml: equal },
-      );
-      assert.ok(
-        band.narrow.fillWidth > band.narrow.trackWidth / 2,
-        `screenshot band exceeds half the track: ${JSON.stringify(band.narrow)}`,
-      );
-      near(band.narrow.fillCenter, (band.narrow.p10 + band.narrow.p90) / 2, "band midpoint");
-      assert.ok(
-        Math.abs(band.narrow.fillWidth - (band.narrow.p90 - band.narrow.p10)) < 2,
-        "band endpoints allow for the track's inset border",
-      );
-      near(
-        band.narrow.average,
-        band.narrow.p10 + (band.narrow.p90 - band.narrow.p10) * 0.4,
-        "average uses the same coordinate scale",
-      );
-      near(band.equalWidth, 4, "equal band minimum width");
-    } finally {
-      await session.context.close();
-    }
-  });
 
   await t.test("real font splitting preserves mixed text, input and placeholder geometry", async (t) => {
     const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", "light");
@@ -920,10 +793,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
           ["#detailPanelTitle", "#detailPanel"],
           ["#detailList .bar-name", "#detailPanel"],
           ["#detailList .bar-track", "#detailPanel"],
-          [".perf-model-table thead", null],
-          [".perf-model-row-action", null],
-          [".perf-model-hero", ".perf-model-detail-panel"],
-          [".perf-model-band-track", ".perf-model-detail-panel"],
           [".period-comparison-panel h2", ".period-comparison-panel"],
           ["#modelComparisonSearch", null],
           ["#repositoryComparisonSearch", null],
@@ -952,17 +821,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
           );
           await hoverSurface(page, `.comparison-item:nth-child(${i}) > strong`, null, failures);
         }
-        await hoverSurface(page, ".perf-model-hero", ".perf-model-detail-panel", failures);
-        const textLayers = await page.locator(".perf-model-detail-panel").evaluate((panel) => {
-          const light = Number(getComputedStyle(panel, "::after").zIndex);
-          return [...panel.querySelectorAll(".perf-model-detail-head,.perf-model-hero,.perf-model-tick")].map(
-            (node) => ({
-              name: node.className,
-              aboveLight: Number(getComputedStyle(node).zIndex) > light,
-            }),
-          );
-        });
-        for (const node of textLayers) if (!node.aboveLight) failures.push(`${node.name}: text sits below the light`);
         for (const [button, menu] of [
           ["#recentMenuButton", "#recentRangeMenu"],
           ["#calendarZoneSelect", "#calendarZoneMenu"],
@@ -1026,7 +884,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
           document.querySelector("#totalTokens").textContent = "123,456,789,012,345,678.90";
           document.querySelector(".metric > span:not(.metric-new)").textContent =
             "Long metric label 很长的指标标签 ".repeat(6);
-          document.querySelector(".perf-model-name").textContent = "long-model-name-".repeat(12);
         });
         assertMainGeometry(await geometry(page));
         assertStableFrames(await geometry(page), normal, "long content");
@@ -1133,7 +990,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
         states.push(["unavailable comparison", unavailable]);
         await page.locator('#presetButtons button[data-preset="today"]').click();
         await page.locator("#detailList .empty").waitFor({ state: "visible" });
-        await page.locator(".perf-model-table-panel > .perf-model-empty").waitFor({ state: "visible" });
         await page.locator("#modelComparisonSearch").fill("__no_geometry_match__");
         await page.locator("#repositoryComparisonSearch").fill("__no_geometry_match__");
         await page.locator("#modelComparisonTable > .empty").waitFor({ state: "visible" });
@@ -1187,7 +1043,6 @@ test("UI geometry uses the production app and isolated source fixtures", async (
           states.map(([label, g]) => ({
             label,
             main: g.sections.main.height,
-            perf: g.sections.perf.height,
             period: g.sections.period.height,
           })),
         ),

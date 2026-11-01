@@ -1,0 +1,118 @@
+{
+  "date": "2026-11-01",
+  "version": "0.9.0",
+  "status": "local_candidate_verified",
+  "archive": {
+    "files": 756,
+    "contentBytes": 80742855,
+    "zipBytes": 54427035,
+    "zipSha256": "0158e753e425a57f286f4db845d16e47154fe29747ecc6f8ad16d175515162c0",
+    "manifestVerified": true,
+    "independentExtractionVerified": true,
+    "uniqueOfflineChecksPassed": 69
+  },
+  "removal": {
+    "frontend": true,
+    "backend": true,
+    "collectors": true,
+    "productionDependencies": 0,
+    "freshSchema": 24,
+    "cacheVersion": 6,
+    "liveDatabaseModified": false
+  },
+  "validation": {
+    "fullRun": {
+      "tests": 2509,
+      "pass": 2482,
+      "fail": 2,
+      "skipped": 25
+    },
+    "finalFailures": {
+      "cause": "two tests depended on retired TPS fixture usage; now seed ordinary usage explicitly",
+      "relatedFiles": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0
+      },
+      "subsequentStrengthenedAutorefresh": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0
+      },
+      "unresolved": 0,
+      "anotherFullRunAfterTestOnlyChanges": false
+    },
+    "uiGeometry": {
+      "tests": 19,
+      "pass": 19
+    },
+    "typecheck": true,
+    "format": {
+      "files": 235,
+      "pass": true
+    },
+    "lint": {
+      "exitCode": 0,
+      "warnings": 51,
+      "infos": 3
+    },
+    "numericParity": {
+      "multiHarnessTotal": 5415,
+      "codexTotal": 246,
+      "range5hAnd7d": true,
+      "legacySchema23Upgrade": true,
+      "legacyBackup": true
+    },
+    "finalIntegrity": {
+      "ok": true,
+      "runtimeFiles": 92,
+      "changed": [],
+      "artifacts": [
+        {
+          "path": "E:\\12 AI\\ccusage\\codex-usage\\dist\\agent-usage-v0.9.0.zip",
+          "ok": true
+        },
+        {
+          "path": "E:\\12 AI\\ccusage\\codex-usage\\dist\\agent-usage-v0.9.0.tar.gz",
+          "ok": true
+        }
+      ],
+      "boxHashVerified": true
+    }
+  },
+  "runtime": {
+    "ok": true,
+    "runtimeFiles": 92,
+    "uncompressedBytes": 20908262,
+    "productionDependencies": 0,
+    "cli": true,
+    "freshSchema": 24,
+    "syntheticTotals": 246,
+    "artifacts": [
+      {
+        "path": "E:\\12 AI\\ccusage\\codex-usage\\dist\\agent-usage-v0.9.0.zip",
+        "bytes": 19785897,
+        "sha256": "9fabfdf5372b77bafee89ad39977e70345cf440d05a613327ef515292ca501c7"
+      },
+      {
+        "path": "E:\\12 AI\\ccusage\\codex-usage\\dist\\agent-usage-v0.9.0.tar.gz",
+        "bytes": 19762567,
+        "sha256": "58d09301c4402bc665dfa5b1c0ecf1d09edb9acea363985a45982af26a7985b8"
+      }
+    ]
+  },
+  "deployment": {
+    "committed": false,
+    "pushed": false,
+    "published": false,
+    "liveServiceSwitched": false,
+    "clientsRestarted": false,
+    "installedCollectorsCleaned": false
+  },
+  "workers": {
+    "requestedModel": "group/deepseek",
+    "reasoningEffort": "max",
+    "forkContext": false,
+    "closed": 4
+  }
+}
