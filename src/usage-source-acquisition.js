@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { lstat, opendir, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { discoverUsageSources } from "./usage-core.js";
@@ -31,12 +31,17 @@ export function ensureUsageSourceCatalog(database) {
         BEGIN UPDATE usage_source_catalog SET ready=0 WHERE path=''; END`);
     }
   }
-  if (installed !== 15) database.prepare("UPDATE usage_source_catalog SET ready=0 WHERE path='' AND ready=1").run();
+  for (const [operation, condition] of [["INSERT", "NEW.path<>''"], ["UPDATE", "OLD.path<>'' OR NEW.path<>''"], ["DELETE", "OLD.path<>''"]]) {
+    database.exec(`CREATE TRIGGER IF NOT EXISTS usage_source_catalog_inventory_${operation}
+      BEFORE ${operation} ON usage_source_catalog WHEN ${condition}
+      BEGIN UPDATE usage_source_catalog SET ready=0 WHERE path='' AND ready=1; END`);
+  }
+  if (installed !== 18) database.prepare("UPDATE usage_source_catalog SET ready=0 WHERE path='' AND ready=1").run();
 }
 
 function context(options) {
-  const { sourceCandidates: _candidates, ...rest } = options;
-  return digest(JSON.stringify([1, rest, options.env || process.env, process.platform]));
+  const { sourceCandidates: _candidates, shutdownToken: _shutdownToken, ...rest } = options;
+  return digest(JSON.stringify([3, rest, options.env || process.env, process.platform]));
 }
 
 function revision(store) {
@@ -69,7 +74,8 @@ export class UsageSourceAcquisition {
   state(options) {
     const row = this.store.database.prepare("SELECT * FROM usage_source_catalog WHERE path='' AND ready=1").get();
     const state = parse(row);
-    return state?.format === 1 && Array.isArray(state.homes) && state.homes.every((home) =>
+    return state?.format === 1 && state.directoryCoverage === 1 && Array.isArray(state.watchedParents) &&
+      Array.isArray(state.homes) && state.homes.every((home) =>
       home && [home.id, home.path, home.label, home.kind].every((field) => typeof field === "string")) &&
       Array.isArray(state.warnings) && Array.isArray(state.missingSources) &&
       Array.isArray(state.scopes) && state.scopes.length > 0 && state.scopes.every((root) => typeof root === "string") &&
@@ -92,6 +98,7 @@ export class UsageSourceAcquisition {
       return null;
     const volumes = new Map();
     const guards = new Set();
+    const watchedParents = new Set();
     for (const scope of scopes) {
       let existing = scope;
       while (true) {
@@ -104,6 +111,7 @@ export class UsageSourceAcquisition {
       }
       const object = await native.object(existing);
       if (!object || object.attributes & 0x400) return null;
+      if (existing !== scope) watchedParents.add(normal(existing));
       if (!volumes.has(object.volume)) {
         const cursor = await native.journal(existing);
         if (!cursor || cursor.volume !== object.volume) return null;
@@ -116,6 +124,7 @@ export class UsageSourceAcquisition {
     }
     this.invalidate();
     return { format: 1, context: context(options), scopes, volumes: [...volumes.values()], guards: [...guards], homes,
+      watchedParents: [...watchedParents],
       auxiliary: auxiliary.inputs, dataVersion: Number(this.store.database.prepare("PRAGMA data_version").get().data_version) };
   }
 
@@ -144,14 +153,18 @@ export class UsageSourceAcquisition {
         if (known && record.reason & TOPOLOGY) throw unavailable("known namespace changed");
         if (record.reason === CLOSE) continue;
         if (known?.role === "file") {
-          if (bootstrap && !value?.supported) throw unavailable("other source changed during bootstrap");
-          if (value?.seal && BigInt(record.usn) <= BigInt(value.seal)) continue;
+          if (value?.seal && (!bootstrap || value.covered !== false) && BigInt(record.usn) <= BigInt(value.seal)) continue;
           if (!value?.supported) throw unavailable("other source changed");
           dirty.add(String(known.path));
           continue;
         }
         if (known) throw unavailable("discovery directory changed");
         if (record.reason & 0x10000) throw unavailable("ambiguous hardlink change");
+        if (state.directoryCoverage === 1) {
+          const parent = this.find(cursor.volume, record.parent);
+          if (parent?.role === "directory") throw unavailable("managed directory changed");
+          if (!parent || !state.watchedParents.includes(String(parent.path))) continue;
+        }
         const object = await native.resolve(cursor.path, record.id);
         const parent = object ? null : await native.resolve(cursor.path, record.parent);
         const resolved = object || parent;
@@ -177,7 +190,8 @@ export class UsageSourceAcquisition {
     const info = await stat(value.filePath);
     if (!info.isFile() || info.nlink !== 1) throw unavailable("source alias changed");
     return { filePath: value.filePath, source: { id: String(source.home_id), kind: String(source.kind),
-      path: String(source.home_path), label: String(source.home_label) }, info, force: true };
+      path: String(source.home_path), label: String(source.home_label) }, info, force: true,
+      readMode: value.readMode || "incremental" };
   }
 
   async prepare(options, hints = null) {
@@ -216,6 +230,18 @@ export class UsageSourceAcquisition {
       .run(normal(filePath), object.volume, object.id64, object.id128, role, JSON.stringify(payload));
   }
 
+  async inventoryDirectory(directory, native) {
+    if (this.store.database.prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'").get(normal(directory))) return;
+    const object = await native.object(directory);
+    if (!object || !(object.attributes & 16) || (object.attributes & 0x400)) throw unavailable("directory coverage unavailable");
+    this.put(directory, object, "directory", {});
+    const entries = await opendir(directory);
+    for await (const entry of entries) {
+      if (entry.isSymbolicLink()) throw unavailable("reparse entry in source directory");
+      if (entry.isDirectory()) await this.inventoryDirectory(path.join(directory, entry.name), native);
+    }
+  }
+
   async capture(file, native, bootstrap = false) {
     const info = await stat(file.filePath);
     const object = await native.object(file.filePath);
@@ -223,8 +249,10 @@ export class UsageSourceAcquisition {
     const supported = ["main", "extra", "jetbrains", "codex", "dsh"].includes(file.source.kind) &&
       (file.source.kind === "dsh" || file.filePath.endsWith(".jsonl"));
     let seal = progressSeal(this.store, file.filePath);
-    if (supported) {
-      const progress = readUsageSourceProgress(this.store.database, file.filePath);
+    const progress = supported ? readUsageSourceProgress(this.store.database, file.filePath) : null;
+    const readMode = progress ? "incremental" : "full";
+    let covered = true;
+    if (supported && progress) {
       if (bootstrap && !await this.store.recertifyUnchangedFile({ ...file, info }, progress)) {
         // Flush a concurrent append without acknowledging its unparsed bytes.
         if (!seal || !await native.begin(file.filePath, 0, info))
@@ -233,16 +261,19 @@ export class UsageSourceAcquisition {
       seal = progressSeal(this.store, file.filePath);
       if (!seal || seal.volume !== object.volume || seal.id64 !== object.id64 || seal.id128 !== object.id128)
         throw unavailable("source checkpoint identity changed");
+    } else if (supported && windowsSourceProofPosition(file.sourceValidation)) {
+      seal = windowsSourceProofPosition(file.sourceValidation);
     } else {
       const fence = await native.begin(file.filePath, 0, info);
       const proof = fence && await native.advance(file.filePath, fence, 0, info);
       if (!proof) throw unavailable("other source cannot be observed");
-      const token = proof.validation.token.split(":");
-      seal = { volume: object.volume, id64: object.id64, id128: object.id128,
-        seal: BigInt(`0x${token[2]}`).toString() };
+      seal = windowsSourceProofPosition(proof.validation);
+      covered = false;
     }
+    if (!seal || seal.volume !== object.volume || seal.id64 !== object.id64 || seal.id128 !== object.id128)
+      throw unavailable("source observation identity changed");
     return { object, value: { filePath: file.filePath, source: file.source, supported, seal: seal.seal,
-      fingerprint: file.acquisitionFingerprint } };
+      fingerprint: file.acquisitionFingerprint, readMode, covered } };
   }
 
   async complete(options, plan, files, status, bootstrap = false) {
@@ -262,8 +293,25 @@ export class UsageSourceAcquisition {
         for (const dir of directories) {
           const object = await native.object(dir);
           if (!object || object.attributes & 0x400) throw unavailable("directory identity unavailable");
-          this.put(dir, object, "directory", {});
+          this.put(dir, object, "guard", {});
         }
+        for (const scope of plan.scopes) {
+          let info;
+          try { info = await lstat(scope); }
+          catch (error) { if (error.code === "ENOENT") continue; throw error; }
+          if (info.isSymbolicLink()) throw unavailable("reparse source root");
+          if (info.isDirectory()) await this.inventoryDirectory(scope, native);
+        }
+        for (const file of files) {
+          // Single-file imports may live outside the discovered home tree.
+          const parent = path.dirname(file.filePath);
+          if (!this.store.database.prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'").get(normal(parent))) {
+            const object = await native.object(parent);
+            if (!object || object.attributes & 0x400) throw unavailable("source parent unavailable");
+            this.put(parent, object, "directory", {});
+          }
+        }
+        plan.directoryCoverage = 1;
       }
       for (const file of files) {
         const captured = await this.capture(file, native, bootstrap);
@@ -289,6 +337,7 @@ export class UsageSourceAcquisition {
       const inputs = await readUsageSourceInputs(options, this.store.homes, "");
       if (inputs.inputs !== plan.auxiliary) throw unavailable("auxiliary inputs changed while synchronizing");
       const state = { format: 1, context: context(options), scopes: plan.scopes, volumes: plan.volumes,
+        directoryCoverage: plan.directoryCoverage, watchedParents: plan.watchedParents,
         homes: this.store.homes, warnings: this.store.warnings, missingSources: status.missingSources,
         fingerprint: status.fingerprint, fileCount: status.fileCount, revision: revision(this.store), auxiliary: inputs.inputs };
       this.store.database.exec("BEGIN IMMEDIATE");

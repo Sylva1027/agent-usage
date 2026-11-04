@@ -3568,12 +3568,12 @@ export class UsageStore {
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
     const hot = !database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META);
-    const progressEligible =
-      progress &&
+    const proofEligible =
       hot &&
       typeof database.isTransaction === "boolean" &&
       ((codexThreaded && filePath.endsWith(".jsonl")) || source.kind === "dsh");
-    const sourceFence = progressEligible ? await this.sourceProof.begin(filePath, info) : null;
+    const progressEligible = progress && proofEligible;
+    const sourceFence = proofEligible ? await this.sourceProof.begin(filePath, info) : null;
     const parsedHash = progressEligible && !sourceFence ? createHash("sha256") : null;
     let parsedOffset = 0;
     /** @type {any} */
@@ -3969,6 +3969,7 @@ export class UsageStore {
         projectLogWarnings,
         appended: false,
         parsedBytes: info.size,
+        sourceValidation: proofWork?.validation,
         prefixBytesRead: proofWork?.readBytes || 0,
         journalBytes: (sourceFence?.journalBytes || 0) + (proofWork?.journalBytes || 0),
       };
@@ -4295,6 +4296,7 @@ export class UsageStore {
       updatedFileCount += 1;
       committedPaths.add(file.filePath);
       nextFingerprints[file.filePath] = usageSourceFingerprint(file.filePath);
+      file.sourceValidation = outcome.sourceValidation;
       sourceWork[outcome.appended ? "appendedFiles" : "replacedFiles"] += 1;
       for (const key of ["parsedBytes", "prefixBytesRead", "journalBytes"]) sourceWork[key] += outcome[key] || 0;
       if (outcome.appended) changedSessions.add(outcome.sessionId);
@@ -4346,9 +4348,9 @@ export class UsageStore {
         }
       }
       try {
-        const callbacks = { onWarning: (warning) => warnings.push(String(warning)) };
+        const callbacks = { onWarning: (warning) => warnings.push(String(warning)), progress: file.readMode !== "full" };
         const outcome =
-          (!earlierFileChanged && !needsReparse ? await this.appendFile(file, callbacks) : null) ||
+          (!earlierFileChanged && !needsReparse && file.readMode !== "full" ? await this.appendFile(file, callbacks) : null) ||
           (await this.replaceFile(file, callbacks));
         if (!outcome?.committed) {
           if (plan) throw Object.assign(new Error("Selected source did not commit"), { code: "LIVE_SOURCE_CHANGED" });
@@ -4388,6 +4390,7 @@ export class UsageStore {
           { ...file, info: await stat(file.filePath) },
           {
             onWarning: (warning) => warnings.push(String(warning)),
+            progress: file.readMode !== "full",
           },
         );
         acceptSource(file, outcome);

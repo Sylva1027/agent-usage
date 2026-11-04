@@ -12,7 +12,7 @@ const script = fileURLToPath(import.meta.url);
 const label = process.argv[2] && process.argv[2] !== "--child" ? process.argv[2] : "recovery";
 assert.match(label, /^[a-z0-9-]+$/);
 const output = path.resolve("output/architecture-20261104/q6-implementation", label);
-const helper = path.resolve("output/architecture-20261104/q6-implementation/native-target/release/windows-source-proof.exe");
+const helper = process.env.Q6_TEST_HELPER || path.resolve("output/architecture-20261104/q6-implementation/native-target/release/windows-source-proof.exe");
 const line = (total) => JSON.stringify({ type: "event_msg", timestamp: `2026-11-05T01:00:${total === 10 ? "00" : "01"}Z`,
   payload: { type: "token_count", info: { total_token_usage: { total_tokens: total, input_tokens: total } } } }) + "\n";
 

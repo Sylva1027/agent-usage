@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -26,7 +27,7 @@ test("one certified result drives concurrent requests, notifications, scope chan
   let server, stream;
   const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
   async function listen() {
-    server = createUsageServer(options);
+    server = createUsageServer({ ...options, shutdownToken: randomUUID() });
     await new Promise((resolve, reject) => {
       server.once("error", reject);
       server.listen(49152 + process.pid % 8192, "127.0.0.1", resolve);

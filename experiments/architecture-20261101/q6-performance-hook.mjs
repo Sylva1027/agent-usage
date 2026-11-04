@@ -16,6 +16,7 @@ export function createQ6PerformanceHook({ version, output, proofMode, pricing, s
   const emit = (row) => fs.appendFileSync(file, JSON.stringify({ pid: process.pid, at: Date.now(), ...row }) + "\n");
   fs.writeFileSync(path.join(output, `process-${process.pid}.ndjson`), JSON.stringify({ type: "start", pid: process.pid, ppid: process.ppid }) + "\n");
   globalThis.__q6Event = (label) => emit({ label, counters: { ...counters } });
+  if (process.env.Q6_CAPTURE_INTERVAL === "1") globalThis.__q6DirectoryTrace = (details) => emit({ label: "directory-diagnostic", ...details });
   globalThis.__q6Counters = counters;
   globalThis.__q6Pricing = (catalog) => {
     assert.equal(catalogDigest(catalog), pricing.catalogSha256);
@@ -66,7 +67,14 @@ export function createQ6PerformanceHook({ version, output, proofMode, pricing, s
       ${capture.automaticStatus ? `getAutomaticPricingStatus=()=>structuredClone(${JSON.stringify(capture.automaticStatus)});` : ""}
       refreshAutomaticPricing=async()=>({changed:false,statusChanged:false,pricesUpdated:false,exchangeRateUpdated:false,
         errors:[],issues:[],...getAutomaticPricingStatus(),discovery:{addedModels:[],results:[]}});\n`;
-    if (relative === "src/usage-source-native.js") source += `\nexecutablePath=()=>${JSON.stringify(version.nativeBinary)};\n`;
+    if (relative === "src/usage-source-native.js") {
+      source += `\nexecutablePath=()=>${JSON.stringify(version.nativeBinary)};\n`;
+      if (process.env.Q6_CAPTURE_INTERVAL === "1") source += `\nfor(const name of ['changes','resolve']) {
+        const original=WindowsSourceProof.prototype[name];WindowsSourceProof.prototype[name]=async function(...args) {
+          const value=await original.apply(this,args);globalThis.__q6DirectoryTrace({method:name,args,value});return value;
+        };
+      }\n`;
+    }
     if (relative === "src/usage-source-proof.js") {
       if (proofMode === "sha") source += "\nUsageSourceProof.prototype.provider=async()=>null;\n";
       source += wrap("UsageSourceProof", ["verify", "capture"], "proof");

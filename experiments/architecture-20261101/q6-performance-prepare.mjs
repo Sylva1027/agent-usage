@@ -15,7 +15,9 @@ export async function prepare() {
   await mkdir(BASE, { recursive: false });
   const implementation = path.join(ROOT, "output/architecture-20261104/q6-implementation");
   const baselineHashes = await read(path.join(implementation, "baseline-hashes.json"));
-  const candidateHashes = await read(path.join(implementation, "runtime-final-hashes.json"));
+  const candidateFiles = Object.keys(await read(path.join(implementation, "runtime-final-hashes.json")));
+  const candidateHashes = Object.fromEntries(await Promise.all(candidateFiles.map(async (relative) =>
+    [relative, sha(await readFile(path.join(ROOT, relative)))])));
   const versions = [];
   for (const [variant, source, expected] of [["baseline", path.join(implementation, "baseline"), baselineHashes], ["candidate", ROOT, candidateHashes]]) {
     const directory = path.join(BASE, "versions", variant);
@@ -29,7 +31,7 @@ export async function prepare() {
       await writeFile(file, bytes, { flag: "wx" }); hashes[normalized] = hash;
     }
     const binary = variant === "baseline" ? path.join(ROOT, "native/windows-source-proof/bin/windows-source-proof.exe")
-      : path.join(implementation, "native-target/release/windows-source-proof.exe");
+      : process.env.Q6_CANDIDATE_HELPER || path.join(implementation, "native-target/release/windows-source-proof.exe");
     const nativeBinary = path.join(directory, "native/windows-source-proof/bin/windows-source-proof.exe");
     await mkdir(path.dirname(nativeBinary), { recursive: true });
     await copyFile(binary, nativeBinary);
@@ -63,7 +65,7 @@ export async function prepare() {
       const stateDirectory = path.join(directory, "state");
       await mkdir(stateDirectory, { recursive: true });
       const auxiliaryDirectory = canonical.proofMode === "native"
-        ? path.join(os.tmpdir(), "codex-q6-20261105-a", "auxiliary", canonical.id, variant) : stateDirectory;
+        ? path.join(os.tmpdir(), `codex-${label}`, "auxiliary", canonical.id, variant) : stateDirectory;
       await mkdir(auxiliaryDirectory, { recursive: true });
       for (const name of ["pricing.json", "pricing-auto.json", "codex-quota.json"]) {
         const from = path.join(canonical.prepared.stateDirectory, name);

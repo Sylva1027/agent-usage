@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +14,11 @@ import { BASE, ROOT } from "./q6-performance-prepare.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = async (file) => JSON.parse(await readFile(file, "utf8"));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function inputHash(file) {
+  const hash = createHash("sha256");
+  for await (const bytes of createReadStream(file, { highWaterMark: 1024 * 1024 })) hash.update(bytes);
+  return hash.digest("hex");
+}
 const save = async (file, value) => {
   await writeFile(`${file}.pending`, JSON.stringify(value, null, 2) + "\n", { flush: true });
   await rename(`${file}.pending`, file);
@@ -118,6 +124,12 @@ async function runCell(cell, matrix) {
     browser.page.waitForResponse = (predicate, options) => originalWait(predicate, { ...options, timeout: 120000 });
     result.first = { startedAtMs: started, endedAtMs: Date.now(), all: browser.all };
     result.initialStorage = storage(prepared); await checkpoint();
+    if (variant === "candidate" && proofMode === "native" && process.env.Q6_REQUIRE_CATALOG === "1")
+      assert.equal(result.initialStorage.catalog?.ready, 1, "Native catalog must be reusable before timed append acceptance");
+    if (cell.bootstrapOnly) {
+      result.bootstrapOnly = true;
+      result.passed = result.initialStorage.catalog?.ready === 1;
+    } else {
     let expected = browser.all.total;
     const previous = progressRows(prepared.databaseFile).find((entry) => entry.sourcePath === prepared.selected.codex.targetPath).checkpoint.state.previousCumulative;
     const state = { codex: { cumulative: { ...previous }, nextTimestampMs: matrix.appendTimeMs },
@@ -149,7 +161,7 @@ async function runCell(cell, matrix) {
       }
       await checkpoint();
     }
-    for (const preset of ["today", "week", "all"]) await scope(preset);
+    if (!cell.fileCount) for (const preset of ["today", "week", "all"]) await scope(preset);
     result.final = result.first.all.body;
     const finalResponse = await browser.page.evaluate(async () => (await fetch("/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=local&skipCheck=1")).json());
     result.final = finalResponse; result.finalStorage = storage(prepared);
@@ -158,11 +170,15 @@ async function runCell(cell, matrix) {
     await checkpoint();
     await browser.browser.close(); browser = null;
     await stopServer(server, result); server = null; await stopSampling();
-    const reopen = Date.now(); server = await launch("-reopen"); sampler = await sampling("reopen");
-    browser = await openPage(server.ready.url, directory, [observeQ5Delivery]);
-    assert.equal(browser.all.total, expected);
-    result.reopen = { startedAtMs: reopen, endedAtMs: Date.now(), all: browser.all };
-    assert.deepEqual(browser.errors, []); result.passed = true;
+    if (!cell.fileCount) {
+      const reopen = Date.now(); server = await launch("-reopen"); sampler = await sampling("reopen");
+      browser = await openPage(server.ready.url, directory, [observeQ5Delivery]);
+      assert.equal(browser.all.total, expected);
+      result.reopen = { startedAtMs: reopen, endedAtMs: Date.now(), all: browser.all };
+      assert.deepEqual(browser.errors, []);
+    }
+    result.passed = true;
+    }
   } catch (error) { result.failure = { message: error.message, stack: error.stack, code: error.code }; }
   finally {
     try { await checkpoint(); } catch {}
@@ -170,10 +186,14 @@ async function runCell(cell, matrix) {
     if (server) await stopServer(server, result);
     await stopSampling();
     if (release) {
+      result.inputRestoration = [];
       for (const prior of Object.values(cell.prior)) {
         await copyFile(prior.file, prior.path);
         await utimes(prior.path, prior.mtimeMs / 1000, prior.mtimeMs / 1000);
         assert.equal((await stat(prior.path)).size, prior.size);
+        const expected = await inputHash(prior.file), actual = await inputHash(prior.path);
+        assert.equal(actual, expected, "Private source restoration must match all original bytes");
+        result.inputRestoration.push({ path: prior.path, bytes: prior.size, sha256: actual, restored: true });
       }
       await release();
     }

@@ -61,6 +61,77 @@ test("content seals skip covered data but never namespace flags or mixed CLOSE/d
   assert.equal((await f.acquisition.interval(f.state, f.native)).volumes[0].nextUsn, "20");
 });
 
+test("a full-only target still participates in the finite initialization repair", async (t) => {
+  const f = fixture(t);
+  f.acquisition.put(f.source, f.object, "file", { seal: "15", supported: true, readMode: "full", covered: false });
+  assert.deepEqual((await f.acquisition.interval(f.state, f.native, true)).dirty, [f.source.toLowerCase()]);
+  assert.deepEqual((await f.acquisition.interval(f.state, f.native)).dirty, []);
+  f.record.reason = 0x2000;
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+});
+
+test("complete directory identities exclude outside objects without resolving inaccessible paths", async (t) => {
+  const f = fixture(t);
+  f.state.directoryCoverage = 1;
+  f.state.watchedParents = [];
+  const id = "0000000000000003", parent = "0000000000000004";
+  const events = [{ id, parent, usn: "6", reason: 0x1000 },
+    { id, parent: "0000000000000005", usn: "7", reason: 0x2000 },
+    { id, parent: "0000000000000005", usn: "8", reason: 0x80002200 }];
+  f.native.changes = async () => ({ nextUsn: "20", records: events, journalBytes: 256 });
+  f.native.resolve = async () => { assert.fail("outside objects need no path resolution"); };
+  assert.deepEqual((await f.acquisition.interval(f.state, f.native)).dirty, []);
+  events.push({ id, parent, usn: "9", reason: 2 });
+  assert.deepEqual((await f.acquisition.interval(f.state, f.native)).dirty, []);
+  events.push({ id, parent, usn: "10", reason: 0x10000 });
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+});
+
+test("directory coverage refuses new children and incoming directories even after outside writes", async (t) => {
+  const f = fixture(t);
+  f.state.directoryCoverage = 1;
+  f.state.watchedParents = [];
+  f.record.reason = 0x80000200;
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  f.record.id = "0000000000000003";
+  f.acquisition.put(f.root, { ...f.object, id64: f.record.parent, id128: "02".repeat(16) }, "directory", {});
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  f.record.reason = 0x100;
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  f.native.changes = async () => ({ nextUsn: "20", journalBytes: 256, records: [
+    { id: "0000000000000004", parent: "0000000000000003", usn: "6", reason: 2 },
+    { id: "0000000000000003", parent: f.record.parent, usn: "7", reason: 0x2000 },
+  ] });
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+});
+
+test("missing-root ancestors and incomplete coverage retain conservative path resolution", async (t) => {
+  const f = fixture(t);
+  f.record.id = "0000000000000003";
+  f.acquisition.put(f.root, { ...f.object, id64: f.record.parent, id128: "02".repeat(16) }, "guard", {});
+  f.state.directoryCoverage = 1;
+  f.state.watchedParents = [f.root.toLowerCase()];
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  f.native.resolve = async () => ({ path: path.join(f.root, "new.jsonl"), links: 1, attributes: 0 });
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  f.state.directoryCoverage = 0;
+  f.native.resolve = async () => null;
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+});
+
+test("catalog inventory edits revoke coverage and rollback restores it", (t) => {
+  const { database, acquisition, source, object } = fixture(t);
+  database.exec("INSERT INTO usage_source_catalog VALUES('','','','','state','{}',1)");
+  for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+    database.exec("BEGIN");
+    if (operation === "INSERT") acquisition.put(`${source}.other`, object, "directory", {});
+    else database.prepare(`${operation === "UPDATE" ? "UPDATE usage_source_catalog SET payload='{}'" : "DELETE FROM usage_source_catalog"} WHERE path=?`).run(source.toLowerCase());
+    assert.equal(database.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get().ready, 0);
+    database.exec("ROLLBACK");
+    assert.equal(database.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get().ready, 1);
+  }
+});
+
 test("another harness, unknown managed path, missing parent and hardlink all refuse coverage", async (t) => {
   const f = fixture(t);
   f.acquisition.put(f.source, f.object, "file", { seal: "10", supported: false });

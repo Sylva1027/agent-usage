@@ -933,7 +933,11 @@ pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json
                 return Err("nonmonotonic journal records".to_owned());
             }
             previous_usn = record.usn();
-            if record.usn() >= start_usn && record.usn() < end {
+            // JS already ignores exact CLOSE records; keep mixed data/namespace reasons.
+            if record.usn() >= start_usn
+                && record.usn() < end
+                && record.reason() != USN_REASON_CLOSE
+            {
                 if records.len() >= 2048 {
                     return Err("directory response record limit".to_owned());
                 }

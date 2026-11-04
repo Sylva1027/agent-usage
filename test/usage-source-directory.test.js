@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -40,6 +40,38 @@ test("directory protocol rejects malformed cuts, records and old-helper response
     const missing = new WindowsSourceProof(path.join(directory, "missing.exe"));
     try { assert.equal(await missing.journal(directory), null); } finally { missing.close(); }
   } finally {
+    assert.ok(path.resolve(directory).startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("directory coverage survives over 2048 self-generated CLOSE records and retains data changes", {
+  skip: process.platform !== "win32" || !process.env.Q6_TEST_HELPER,
+}, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "usage-directory-close-"));
+  const proof = new WindowsSourceProof(process.env.Q6_TEST_HELPER);
+  try {
+    const files = [];
+    for (let n = 0; n < 1050; n++) {
+      const file = path.join(directory, `${n}.txt`);
+      await writeFile(file, "initial\n"); files.push(file);
+    }
+    const cursor = await proof.journal(directory);
+    assert.ok(cursor);
+    const object = await proof.object(files[0]);
+    for (const file of files) {
+      const info = await stat(file);
+      const fence = await proof.begin(file, 0, info);
+      assert.ok(fence);
+      assert.ok(await proof.advance(file, fence, 0, info));
+    }
+    await appendFile(files[0], "new bytes\n");
+    const interval = await proof.changes(directory, cursor);
+    assert.ok(interval, "pure self-generated close records must not exhaust the change list");
+    assert.ok(interval.records.every((row) => row.reason !== 0x80000000));
+    assert.ok(interval.records.some((row) => [object.id64, object.id128].includes(row.id) && (row.reason & 2)));
+  } finally {
+    proof.close();
     assert.ok(path.resolve(directory).startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
     await rm(directory, { recursive: true, force: true });
   }
