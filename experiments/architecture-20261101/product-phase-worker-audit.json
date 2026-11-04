@@ -1,0 +1,10 @@
+{
+  "stage": "2026-11-02 Windows product pipeline",
+  "requestedParameters": { "model": "group/deepseek", "reasoning_effort": "max", "fork_context": false },
+  "workers": [
+    { "card": "A1/A2", "agent_id": "01a19836-ca0f-7b12-b090-285b5b37cc5f", "nickname": "Euler", "scope": "node/ changes feed" },
+    { "card": "B1", "agent_id": "01a19836-ca94-7891-a5f2-caed16c52f02", "nickname": "Aquinas", "scope": "native main/model/core_api changes feed" },
+    { "card": "C1-C4 (sequential review and acceptance)", "agent_id": "01a19836-cb45-74a3-aea6-816074c4be52", "nickname": "Turing", "scope": "product gateway/publisher/compat and tests" }
+  ],
+  "note": "These are requested tool parameters and returned IDs, not proof of a physical backend model. Creation return objects are retained by the conversation tool calls."
+}

@@ -1,0 +1,10 @@
+{
+  "stage": "formal full startup profiling and prototype source-gate comparison",
+  "skill": "C:/Users/Silver/.codex/skills/pinned-workers/SKILL.md",
+  "requested": { "model": "group/deepseek", "reasoning_effort": "max", "fork_context": false },
+  "workers": [
+    { "id": "01a19b07-ba4a-7121-8eba-80da66c766a3", "name": "Harvey", "cards": ["A1 tracing", "A2 wrapper bridge", "A3 fingerprint and rollup targets", "A4 adapter contract test"], "status": "accepted and closed" },
+    { "id": "01a19b07-bac3-7971-8c2b-2723473446f9", "name": "Bacon", "cards": ["B1 source inventory/capture", "B2 filesystem audit", "B3 replay and missing-WAL semantic correction"], "status": "accepted and closed" }
+  ],
+  "note": "Requested model parameters and returned agent IDs are recorded, not proof of a physical backend model. Single file owners, no descendants, each continuation followed review. Main owns the integration, experiments, final instrumentation additions, measurements and report."
+}

@@ -1,0 +1,21 @@
+{
+  "skill": "C:/Users/Silver/.codex/skills/pinned-workers/SKILL.md",
+  "requestedModel": "group/deepseek",
+  "reasoning_effort": "max",
+  "fork_context": false,
+  "workers": [
+    {
+      "agent_id": "01a19753-cb46-75d1-9476-6210639a3c04",
+      "nickname": "Rawls"
+    },
+    {
+      "agent_id": "01a19753-cbba-7ea3-83d0-685f7a53932a",
+      "nickname": "Linnaeus"
+    },
+    {
+      "agent_id": "01a19753-cc50-7f13-b5be-555514454ee2",
+      "nickname": "Bernoulli"
+    }
+  ],
+  "note": "Creation request parameters and returned IDs only; not evidence of the physical backend model."
+}

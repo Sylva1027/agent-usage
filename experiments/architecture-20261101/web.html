@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent Usage · 架构原型</title>
+<style>
+:root{font-family:system-ui,sans-serif;color-scheme:light dark}body{max-width:1000px;margin:36px auto;padding:0 20px;line-height:1.6}h1{font-size:24px}label{display:inline-flex;gap:8px;align-items:center;margin:8px 18px 8px 0}button,input,select{font:inherit;padding:5px 9px}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{text-align:left;padding:9px;border-bottom:1px solid GrayText}output{font-variant-numeric:tabular-nums}#error{color:light-dark(#a02020,#ff9696)}.metrics{display:flex;gap:32px;flex-wrap:wrap}.metrics strong{font-size:24px;display:block}small{color:GrayText}
+</style>
+<h1>Agent Usage · 架构原型</h1>
+<label>范围 <select id="range"><option value="all">全部</option><option value="today">今日</option><option value="week">本周</option><option value="month">本月</option><option value="custom">自定义</option></select></label>
+<label>开始 <input id="start" type="date"></label><label>结束 <input id="end" type="date"></label>
+<label>排除来源 <input id="exclude" placeholder="homeId，以逗号分隔"></label>
+<label><input id="live" type="checkbox" checked>自动更新</label><button id="refresh">刷新</button>
+<p id="error" role="alert"></p>
+<div class="metrics"><div>总 Token<strong><output id="total">0</output></strong></div><div>输入<strong><output id="input">0</output></strong></div><div>输出<strong><output id="output">0</output></strong></div><div>事件<strong><output id="events">0</output></strong></div><div>会话<strong><output id="sessions">0</output></strong></div></div>
+<h2>模型</h2><table><thead><tr><th>模型</th><th>Token</th><th>事件</th><th>会话</th></tr></thead><tbody id="models"></tbody></table>
+<details><summary>本次查询详情</summary><pre id="details"></pre></details>
+<script type="module">
+const byId=id=>document.getElementById(id);let snapshot=null,revision=null,inflight=false,pending=false,loadId=0;
+function query(){const p=new URLSearchParams();let start=byId('start').value,end=byId('end').value;const range=byId('range').value;
+ if(range!=='custom'&&range!=='all'){const now=new Date('2026-11-01T12:00:00Z');if(range==='today')now.setUTCHours(0,0,0,0);if(range==='week'){now.setUTCDate(now.getUTCDate()-((now.getUTCDay()||7)-1));now.setUTCHours(0,0,0,0)}if(range==='month'){now.setUTCDate(1);now.setUTCHours(0,0,0,0)}start=now.toISOString().slice(0,10);end='2026-11-01'}
+ if(range!=='all'){if(start)p.set('start',start+'T00:00:00.000Z');if(end)p.set('end',end+'T23:59:59.999Z')}
+ if(byId('exclude').value)p.set('excludeHomes',byId('exclude').value);if(snapshot!==null)p.set('snapshot',snapshot);return p;}
+async function json(url,body){const response=await fetch(url,body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const value=await response.json();if(!response.ok)throw Error(value.error||response.status);return value}
+async function load(){if(inflight){pending=true;return}inflight=true;const id=++loadId;byId('refresh').disabled=true;try{const value=await json('/api/query?'+query());if(id!==loadId)return;for(const [target,valuePart]of Object.entries({total:value.totals.total,input:value.totals.input,output:value.totals.output,events:value.eventCount,sessions:value.sessionCount}))byId(target).textContent=String(valuePart);byId('models').replaceChildren(...value.models.map(model=>{const tr=document.createElement('tr');for(const cell of[model.name,model.total.total,model.count,model.sessions]){const td=document.createElement('td');td.textContent=String(cell);tr.append(td)}return tr}));revision=value.revision;byId('details').textContent=JSON.stringify(value,null,2);byId('error').textContent='';document.body.dataset.revision=String(revision);document.body.dataset.total=String(value.totals.total);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.body.dataset.visibleRevision=String(revision);}catch(error){byId('error').textContent=error.message}finally{inflight=false;byId('refresh').disabled=false;if(pending){pending=false;void load()}}}
+for(const id of['range','start','end','exclude'])byId(id).addEventListener('change',load);byId('refresh').addEventListener('click',load);
+byId('live').addEventListener('change',async()=>{try{if(!byId('live').checked)snapshot=(await json('/api/freeze',{})).snapshot;else snapshot=null;await load()}catch(error){byId('error').textContent=error.message}});
+setInterval(async()=>{if(!byId('live').checked||inflight)return;try{const state=await json('/api/status');if(state.revision!==revision)await load()}catch(error){byId('error').textContent=error.message}},500);void load();
+</script></html>

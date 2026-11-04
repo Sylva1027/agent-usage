@@ -1,0 +1,41 @@
+name: Architecture prototypes (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype-checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Record actual platform
+        run: node -p "JSON.stringify({platform:process.platform,arch:process.arch,node:process.version})"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build and test real storage backends
+        run: cargo test --locked --release --manifest-path experiments/architecture-20261101/native/Cargo.toml --jobs 2
+      - name: Node prototype checks
+        run: node --test "experiments/architecture-20261101/node/*.test.mjs"
+      - name: Shared four-backend contract
+        run: node experiments/architecture-20261101/verify.mjs
+      - name: Codex and DSH ingestion parity
+        run: node experiments/architecture-20261101/collector-parity.mjs
+      - name: Save prototype results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-prototypes-${{ matrix.os }}
+          path: |
+            output/architecture-20261101/verification/results.json
+            output/architecture-20261101/collector-verification/results.json
