@@ -13,6 +13,7 @@ import {
   usageComparisonFromAggregates,
 } from "./usage-core.js";
 import { readCodexQuotaObservations } from "./codex-quota-cache.js";
+import { readUsageSourceInputs } from "./usage-source-inputs.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Bump when payload formulas or executor snapshot semantics change.
@@ -170,6 +171,18 @@ export class UsageSummaryCache {
       publication,
       signature: digest(`${inputs}\0${publication?.signature || ""}`),
     };
+  }
+
+  async readCertifiedSourceState(options, status) {
+    await this.open();
+    const acquisition = status?.acquisition;
+    if (acquisition?.format !== 1) return null;
+    const input = await readUsageSourceInputs(options, acquisition.homes, status.fingerprint);
+    if (input.auxiliary !== acquisition.auxiliary) return null;
+    const publication = await this.readPublication();
+    return { fingerprint: status.fingerprint, checkedAt: status.checkedAt, fileCount: status.fileCount,
+      homeCount: acquisition.homes.length, inputs: input.inputs, routingFingerprint: input.routingFingerprint,
+      publication, signature: digest(`${input.inputs}\0${publication?.signature || ""}`), acquisition };
   }
 
   async readPublication() {

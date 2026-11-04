@@ -19,7 +19,7 @@ function normalizeRoots(roots) {
  * File notifications are only hints. Source verification remains in UsageStore.
  * @param {{
  *   discoverRoots: () => Promise<Array<{ path: string, recursive?: boolean, filename?: string }>>,
- *   onHint?: () => unknown,
+ *   onHint?: (hints: {paths: Array<{root: string, path: string, event: string}>, unknown: boolean}) => unknown,
  *   ignorePath?: (filename: string) => boolean,
  *   debounceMs?: number,
  *   watchFile?: typeof watch,
@@ -41,14 +41,24 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
   let watchers = [];
   let debounceTimer = null;
   let refreshTail = Promise.resolve();
+  const pendingPaths = new Map();
+  let unknown = false;
 
-  function scheduleHint() {
+  function scheduleHint(root = null, filename = null, event = "unknown") {
     if (!active) return;
+    if (!root || !filename || pendingPaths.size >= 128) unknown = true;
+    else {
+      const resolved = path.resolve(root, String(filename));
+      pendingPaths.set(resolved, { root, path: resolved, event });
+    }
     if (debounceTimer !== null) return;
     debounceTimer = schedule(() => {
       debounceTimer = null;
       if (!active) return;
-      Promise.resolve(onHint?.()).catch(() => {});
+      const hints = { paths: [...pendingPaths.values()], unknown };
+      pendingPaths.clear();
+      unknown = false;
+      Promise.resolve(onHint?.(hints)).catch(() => {});
     }, debounceMs);
     debounceTimer?.unref?.();
   }
@@ -57,10 +67,10 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
     const next = [];
     for (const root of normalizeRoots(roots)) {
       try {
-        const watcher = watchFile(root.path, { persistent: false, recursive: root.recursive }, (_event, filename) => {
+        const watcher = watchFile(root.path, { persistent: false, recursive: root.recursive }, (event, filename) => {
           if (root.filename && filename && path.basename(String(filename)) !== root.filename) return;
           if (filename && ignorePath?.(path.resolve(root.path, String(filename)))) return;
-          scheduleHint();
+          scheduleHint(root.path, filename, event);
         });
         watcher.on?.("error", () => {
           const index = watchers.indexOf(watcher);
@@ -101,6 +111,8 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
     active = false;
     if (debounceTimer !== null) cancel(debounceTimer);
     debounceTimer = null;
+    pendingPaths.clear();
+    unknown = false;
     for (const watcher of watchers) watcher.close?.();
     watchers = [];
     await refreshTail.catch(() => {});

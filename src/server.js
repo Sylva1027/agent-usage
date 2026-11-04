@@ -376,6 +376,8 @@ export function createUsageServer(options = {}) {
   let storeStatus = null;
   let syncPromise = null;
   let publishedSource = null;
+  let sourceAcquisitionAvailable = process.platform === "win32";
+  let sourceHints = { paths: [], unknown: false };
   let snapshotDirectoryPromise = null;
   let discoveryTimer = null;
   let discoveryTimerSignature = null;
@@ -667,6 +669,21 @@ export function createUsageServer(options = {}) {
     }
     syncPromise = (async () => {
       const currentUsageOptions = await usageOptions(options);
+      const sourceOptions = { ...currentUsageOptions,
+        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE };
+      const hints = sourceHints;
+      sourceHints = { paths: [], unknown: false };
+      if (sourceAcquisitionAvailable) {
+        const certified = await usageStore.sync({ options: sourceOptions, certifiedOnly: true, sourceHints: hints });
+        sourceAcquisitionAvailable = Boolean(certified?.acquisition);
+        const source = certified && await summaryCache.readCertifiedSourceState(sourceOptions, certified);
+        if (source) {
+          publishedSource = source;
+          storeStatus = certified;
+          scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+          return certified;
+        }
+      }
       const before = await summaryCache.readSourceState({
         ...currentUsageOptions,
         importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
@@ -678,8 +695,9 @@ export function createUsageServer(options = {}) {
         publishedSource = before;
         return storeStatus;
       }
-      const status = await usageStore.sync({ options: currentUsageOptions });
-      publishedSource = publishedSummarySource(
+      const status = await usageStore.sync({ options: sourceOptions, sourceHints: hints });
+      sourceAcquisitionAvailable = Boolean(status.acquisition);
+      publishedSource = (status.acquisition && await summaryCache.readCertifiedSourceState(sourceOptions, status)) || publishedSummarySource(
         before,
         await summaryCache.readSourceState({
           ...currentUsageOptions,
@@ -697,7 +715,7 @@ export function createUsageServer(options = {}) {
 
   async function discoverUsageWatchRoots() {
     const currentOptions = await usageOptions(options);
-    const sources = await discoverUsageSources(currentOptions);
+    const sources = storeStatus?.acquisition?.homes || await discoverUsageSources(currentOptions);
     const roots = [];
     for (const source of sources) {
       const sourceRoot = path.resolve(source.path);
@@ -725,7 +743,12 @@ export function createUsageServer(options = {}) {
 
   const usageSourceWatcher = createUsageSourceWatcher({
     discoverRoots: discoverUsageWatchRoots,
-    onHint: () => requestUsageWake(),
+    onHint: (hint) => {
+      const merged = new Map([...sourceHints.paths, ...hint.paths].map((entry) => [entry.path, entry]));
+      sourceHints = { paths: [...merged.values()].slice(0, 128),
+        unknown: sourceHints.unknown || hint.unknown || merged.size > 128 };
+      return requestUsageWake();
+    },
     ignorePath: (filename) => {
       const resolved = path.resolve(filename);
       return (
@@ -1364,12 +1387,15 @@ export function createUsageServer(options = {}) {
               );
               if (source && !syncPromise && result.status?.fingerprint === source.fingerprint) {
                 const currentOptions = await usageOptions(options);
-                const afterRead = await summaryCache.readSourceState({
+                const readOptions = {
                   ...currentOptions,
                   importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-                });
+                };
+                const afterRead = source.acquisition
+                  ? await summaryCache.readCertifiedSourceState(readOptions, { ...source, acquisition: source.acquisition })
+                  : await summaryCache.readSourceState(readOptions);
                 if (
-                  afterRead.inputs === source.inputs &&
+                  afterRead?.inputs === source.inputs &&
                   afterRead.publication?.signature === source.publication?.signature
                 ) {
                   try {

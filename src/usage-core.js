@@ -432,6 +432,7 @@ export async function discoverCodexHomes(options = {}) {
 
   async function addHome(label, homePath, kind = "codex") {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved) || !(await codexHomeLooksUsable(resolved))) {
       return;
     }
@@ -447,6 +448,7 @@ export async function discoverCodexHomes(options = {}) {
   await addHome("Main Codex", path.join(homeDir, ".codex"), "main");
 
   for (const jetbrainsRoot of jetBrainsRoots({ homeDir, platform, env })) {
+    options.sourceCandidates?.push(path.resolve(jetbrainsRoot));
     if (!(await exists(jetbrainsRoot))) {
       continue;
     }
@@ -479,6 +481,7 @@ export async function discoverZcodeHomes(options = {}) {
 
   async function addHome(label, homePath) {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved)) {
       return;
     }
@@ -518,6 +521,7 @@ export async function discoverDshHomes(options = {}) {
 
   async function addHome(label, homePath) {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved) || !(await dshHomeLooksUsable(resolved))) {
       return;
     }
@@ -567,6 +571,7 @@ export async function discoverOpencodeHomes(options = {}) {
 
   async function addHome(label, homePath) {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved) || !(await opencodeHomeLooksUsable(resolved))) {
       return;
     }
@@ -605,6 +610,7 @@ export async function discoverClaudeHomes(options = {}) {
 
   async function addHome(label, homePath) {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved) || !(await claudeHomeLooksUsable(resolved))) {
       return;
     }
@@ -647,6 +653,7 @@ export async function discoverWorkbuddyHomes(options = {}) {
 
   async function addHome(label, homePath) {
     const resolved = path.resolve(homePath);
+    options.sourceCandidates?.push(resolved);
     if (seen.has(resolved) || !(await workbuddyHomeLooksUsable(resolved))) {
       return;
     }
@@ -715,6 +722,7 @@ export async function discoverUsageSources(options = {}) {
   }
 
   for (const importDir of optionImportDirs(options)) {
+    options.sourceCandidates?.push(path.resolve(importDir));
     const classified = await classifyImportDirectory(importDir);
     if (classified.type === "codex-home") {
       if (seenPaths.has(classified.path)) {

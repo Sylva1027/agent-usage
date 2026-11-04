@@ -24,6 +24,7 @@ use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
 pub const KIND: &str = "ntfs-usn-v1";
 pub const MAX_TOKEN_BYTES: usize = 512;
+pub const DIRECTORY_KIND: &str = "ntfs-usn-directory-v1";
 
 const GENERIC_READ: u32 = 0x8000_0000;
 const IO_PAGE_BYTES: usize = 65_536;
@@ -785,6 +786,193 @@ fn encode_token(token: &Token) -> String {
         token.offset,
         token.size,
         token.mtime_ns
+    )
+}
+
+fn directory_info(handle: &OwnedHandle) -> Result<serde_json::Value, String> {
+    use windows_sys::Win32::Storage::FileSystem::GetFinalPathNameByHandleW;
+    let mut basic: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
+    let mut full: FILE_ID_INFO = unsafe { mem::zeroed() };
+    if unsafe { GetFileInformationByHandle(handle.0, &mut basic) } == 0 {
+        return Err(win_error("GetFileInformationByHandle"));
+    }
+    if unsafe {
+        GetFileInformationByHandleEx(
+            handle.0,
+            FileIdInfo,
+            &mut full as *mut _ as *mut c_void,
+            size_of::<FILE_ID_INFO>() as u32,
+        )
+    } == 0
+    {
+        return Err(win_error("GetFileInformationByHandleEx"));
+    }
+    let mut name = vec![0u16; 32768];
+    let count =
+        unsafe { GetFinalPathNameByHandleW(handle.0, name.as_mut_ptr(), name.len() as u32, 0) };
+    if count == 0 || count as usize >= name.len() {
+        return Err(win_error("GetFinalPathNameByHandleW"));
+    }
+    Ok(serde_json::json!({"format": 1,
+        "path": String::from_utf16(&name[..count as usize]).map_err(|_| "invalid object path")?,
+        "volume": format!("{:016x}", full.VolumeSerialNumber),
+        "id64": format!("{:016x}", ((basic.nFileIndexHigh as u64) << 32) | basic.nFileIndexLow as u64),
+        "id128": hex_bytes(&full.FileId.Identifier), "links": basic.nNumberOfLinks,
+        "attributes": basic.dwFileAttributes,
+        "size": (((basic.nFileSizeHigh as u64) << 32) | basic.nFileSizeLow as u64).to_string()}))
+}
+
+pub fn directory_object(path: &str) -> Result<serde_json::Value, String> {
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+    let file = OwnedHandle::open(
+        path,
+        0,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )?;
+    directory_info(&file)
+}
+
+pub fn directory_resolve(path: &str, id: &str) -> Result<serde_json::Value, String> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        ExtendedFileIdType, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_128, FILE_ID_DESCRIPTOR,
+        FILE_ID_DESCRIPTOR_0, FileIdType, OpenFileById,
+    };
+    if !matches!(id.len(), 16 | 32) || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid object identity".to_owned());
+    }
+    let (volume, _) = open_volume_for(Path::new(path))?;
+    let mut descriptor = FILE_ID_DESCRIPTOR::default();
+    descriptor.dwSize = size_of::<FILE_ID_DESCRIPTOR>() as u32;
+    if id.len() == 16 {
+        descriptor.Type = FileIdType;
+        descriptor.Anonymous = FILE_ID_DESCRIPTOR_0 {
+            FileId: u64::from_str_radix(id, 16).map_err(|_| "invalid 64-bit object identity")?
+                as i64,
+        };
+    } else {
+        let mut bytes = [0u8; 16];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&id[index * 2..index * 2 + 2], 16)
+                .map_err(|_| "invalid 128-bit object identity")?;
+        }
+        descriptor.Type = ExtendedFileIdType;
+        descriptor.Anonymous = FILE_ID_DESCRIPTOR_0 {
+            ExtendedFileId: FILE_ID_128 { Identifier: bytes },
+        };
+    }
+    let raw = unsafe {
+        OpenFileById(
+            volume.0,
+            &descriptor,
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            ptr::null(),
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+        )
+    };
+    if raw.is_null() || raw == INVALID_HANDLE_VALUE {
+        return Err(win_error("OpenFileById"));
+    }
+    directory_info(&OwnedHandle(raw))
+}
+
+pub fn directory_journal(path: &str) -> Result<serde_json::Value, String> {
+    let (volume, _) = open_volume_for(Path::new(path))?;
+    let (journal, _) = query_journal(&volume)?;
+    let object = directory_object(path)?;
+    if object["attributes"].as_u64().unwrap_or(0) & 0x400 != 0 {
+        return Err("reparse root".to_owned());
+    }
+    Ok(serde_json::json!({"format": 1, "volume": object["volume"],
+        "journalId": journal.journal_id.to_string(), "firstUsn": journal.first_usn.to_string(),
+        "nextUsn": journal.next_usn.to_string(), "lowestValidUsn": journal.lowest_valid_usn.to_string()}))
+}
+
+pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json::Value, String> {
+    if id.is_empty()
+        || id.len() > 20
+        || !id.bytes().all(|byte| byte.is_ascii_digit())
+        || start.is_empty()
+        || start.len() > 19
+        || !start.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err("invalid journal cursor".to_owned());
+    }
+    let journal_id = id.parse::<u64>().map_err(|_| "invalid journal ID")?;
+    let start_usn = start.parse::<i64>().map_err(|_| "invalid journal start")?;
+    let (volume, _) = open_volume_for(Path::new(path))?;
+    let (before, _) = query_journal(&volume)?;
+    if before.journal_id != journal_id
+        || start_usn < before.first_usn
+        || start_usn < before.lowest_valid_usn
+        || start_usn > before.next_usn
+    {
+        return Err("journal coverage is incomplete".to_owned());
+    }
+    let end = before.next_usn;
+    let mut cursor = start_usn;
+    let mut previous_usn = i64::MIN;
+    let mut bytes = 0u64;
+    let mut pages = 0;
+    let mut records = Vec::new();
+    let started = Instant::now();
+    while cursor < end {
+        if pages >= MAX_PAGES || started.elapsed() > MAX_SCAN_TIME {
+            return Err("journal scan limit".to_owned());
+        }
+        let page = read_page(&volume, cursor, journal_id)?;
+        bytes += page.bytes_returned as u64;
+        pages += 1;
+        if bytes > MAX_JOURNAL_BYTES as u64 {
+            return Err("journal byte limit".to_owned());
+        }
+        let mut at = 8;
+        while at < page.bytes.len() {
+            let record = parse_record(&page.bytes, at)?;
+            if record.usn() <= previous_usn {
+                return Err("nonmonotonic journal records".to_owned());
+            }
+            previous_usn = record.usn();
+            if record.usn() >= start_usn && record.usn() < end {
+                if records.len() >= 2048 {
+                    return Err("directory response record limit".to_owned());
+                }
+                let (object_id, parent_id) = match record {
+                    UsnRecord::V2 { file_index_64, .. } => (
+                        format!("{file_index_64:016x}"),
+                        format!(
+                            "{:016x}",
+                            u64::from_le_bytes(page.bytes[at + 16..at + 24].try_into().unwrap())
+                        ),
+                    ),
+                    UsnRecord::V3 { file_id_128, .. } => (
+                        hex_bytes(&file_id_128),
+                        hex_bytes(&page.bytes[at + 24..at + 40]),
+                    ),
+                };
+                records.push(serde_json::json!({"id": object_id, "parent": parent_id,
+                    "usn": record.usn().to_string(), "reason": record.reason()}));
+            }
+            at += u32::from_le_bytes(page.bytes[at..at + 4].try_into().unwrap()) as usize;
+        }
+        if at != page.bytes.len() || page.next_usn <= cursor {
+            return Err("invalid journal page progress".to_owned());
+        }
+        cursor = page.next_usn;
+    }
+    let (after, _) = query_journal(&volume)?;
+    if after.journal_id != journal_id
+        || after.first_usn > start_usn
+        || after.lowest_valid_usn > start_usn
+        || after.flags != before.flags
+        || after.min_version != before.min_version
+        || after.max_version != before.max_version
+    {
+        return Err("journal coverage changed during scan".to_owned());
+    }
+    Ok(
+        serde_json::json!({"format": 1, "journalId": id, "startUsn": start,
+        "nextUsn": end.to_string(), "journalBytes": bytes, "records": records}),
     )
 }
 

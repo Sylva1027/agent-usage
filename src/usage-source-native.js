@@ -28,6 +28,20 @@ function safeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function decimal(value) {
+  return typeof value === "string" && /^(?:0|[1-9][0-9]{0,19})$/.test(value);
+}
+
+function hex(value, width) {
+  return typeof value === "string" && value.length === width && /^[0-9a-f]+$/.test(value);
+}
+
+function validObject(value) {
+  return value.format === 1 && typeof value.path === "string" && value.path.length > 0 &&
+    hex(value.volume, 16) && hex(value.id64, 16) && hex(value.id128, 32) &&
+    safeInteger(value.links) && safeInteger(value.attributes) && value.attributes <= 0xffffffff && decimal(value.size);
+}
+
 function bigintValue(value) {
   if (typeof value === "bigint") return value;
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
@@ -91,6 +105,13 @@ function proofResult(response, offset, info, includeKind) {
   return includeKind ? { kind: KIND, offset, ...result, info } : result;
 }
 
+export function windowsSourceProofPosition(validation) {
+  if (validation?.kind !== KIND || !safeInteger(validation.offset) || !validToken(validation.token, validation.offset))
+    return null;
+  const fields = validation.token.split(":");
+  return { volume: fields[3], id64: fields[5], id128: fields[4], seal: BigInt(`0x${fields[2]}`).toString() };
+}
+
 /**
  * One lazily-started helper is intended per writer. Create a new instance after
  * close(); malformed helper protocol disables the instance rather than retrying.
@@ -107,6 +128,50 @@ export class WindowsSourceProof {
 
   constructor(internalExecutablePath) {
     this.#executablePath = executablePath(internalExecutablePath);
+  }
+
+  async journal(filePath) {
+    return this.#directory({ op: "journal", path: path.resolve(filePath) }, (v) =>
+      v.format === 1 && hex(v.volume, 16) && decimal(v.journalId) &&
+      decimal(v.firstUsn) && decimal(v.lowestValidUsn) && decimal(v.nextUsn) &&
+      BigInt(v.nextUsn) >= BigInt(v.firstUsn) && BigInt(v.nextUsn) >= BigInt(v.lowestValidUsn));
+  }
+
+  async object(filePath) {
+    return this.#directory({ op: "object", path: path.resolve(filePath) }, validObject);
+  }
+
+  async resolve(filePath, fileId) {
+    if (!hex(fileId, 16) && !hex(fileId, 32)) return null;
+    return this.#directory({ op: "resolve", path: path.resolve(filePath), fileId }, validObject);
+  }
+
+  async changes(filePath, cursor) {
+    if (!decimal(cursor?.journalId) || !decimal(cursor?.nextUsn)) return null;
+    return this.#directory({ op: "changes", path: path.resolve(filePath),
+      journalId: cursor.journalId, startUsn: cursor.nextUsn }, (v) => {
+      if (v.format !== 1 || v.journalId !== cursor.journalId || v.startUsn !== cursor.nextUsn ||
+        !decimal(v.nextUsn) || BigInt(v.nextUsn) < BigInt(v.startUsn) ||
+        !safeInteger(v.journalBytes) || v.journalBytes > 4 * 1024 * 1024 ||
+        !Array.isArray(v.records) || v.records.length > 2048) return false;
+      let last = BigInt(v.startUsn) - 1n;
+      for (const r of v.records) {
+        if ((!hex(r.id, 16) && !hex(r.id, 32)) || !hex(r.parent, r.id.length) ||
+          !decimal(r.usn) || !safeInteger(r.reason) || r.reason > 0xffffffff ||
+          BigInt(r.usn) <= last || BigInt(r.usn) >= BigInt(v.nextUsn)) return false;
+        last = BigInt(r.usn);
+      }
+      return true;
+    });
+  }
+
+  async #directory(payload, validate) {
+    return this.#schedule(async () => {
+      const response = await this.#request(payload);
+      if (response?.ok !== true || response.available !== true ||
+        response.kind !== "ntfs-usn-directory-v1" || !response.value || !validate(response.value)) return null;
+      return response.value;
+    });
   }
 
   async begin(filePath, offset, expectedInfo) {

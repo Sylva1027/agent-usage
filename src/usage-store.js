@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
 import { createUsageInsertBatch } from "./usage-insert-batch.js";
+import { UsageSourceAcquisition, ensureUsageSourceCatalog, USAGE_SOURCE_CATALOG_TABLE } from "./usage-source-acquisition.js";
 import {
   ensureUsageMetadataSchema,
   prepareStoredMetadata,
@@ -116,6 +117,7 @@ const QUOTA_SOURCES_DDL = `CREATE TABLE IF NOT EXISTS quota_usage_sources (
 ) STRICT;`;
 
 const USAGE_PROJECTION_IGNORED_TABLES = [
+  USAGE_SOURCE_CATALOG_TABLE,
   "history_replaced_facts",
   "usage_business_revision",
   ...USAGE_RECORD_TABLE_NAMES,
@@ -2015,6 +2017,7 @@ export class UsageStore {
     this.checkedAt = "";
     this.repositoryResolver = createRepositoryResolver();
     this.sourceProof = new UsageSourceProof();
+    this.sourceAcquisition = null;
     this.lastSyncSourceWork = null;
     this.serviceTierEvidence = null;
     this.quotaSourceEvidence = null;
@@ -2400,6 +2403,7 @@ export class UsageStore {
     ensureUsageRecordSchema(this.database);
     ensureUsageQuotaSchema(this.database);
     ensureUsageSourceProgressSchema(this.database);
+    ensureUsageSourceCatalog(this.database);
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS usage_business_revision (
         singleton INTEGER PRIMARY KEY CHECK(singleton = 1), revision INTEGER NOT NULL
@@ -4181,9 +4185,41 @@ export class UsageStore {
     const view = { warnings: null };
     this.publishedFileWarningsView = view;
     try {
-      return await this.syncRound(args);
+      await this.open();
+      this.sourceAcquisition ||= new UsageSourceAcquisition(this);
+      const acquisition = this.sourceAcquisition;
+      const options = args.options || this.options;
+      const plan = args.forceFull ? null : await acquisition.prepare(options, args.sourceHints);
+      if (!plan && args.certifiedOnly) {
+        this.lastAcquisitionWork = acquisition.work;
+        return null;
+      }
+      let bootstrap = null;
+      if (!plan) {
+        try { bootstrap = await acquisition.beginFull(options); }
+        catch (error) {
+          if (!["ENOENT", "EACCES", "EPERM"].includes(error.code)) throw error;
+          acquisition.work = { mode: "fallback", reason: error.code };
+        }
+      }
+      try {
+        const result = await this.syncRound({ ...args, acquisitionPlan: plan });
+        const receipt = await acquisition.complete(options, plan || bootstrap, this.acquisitionFiles || [], result, !plan);
+        this.lastAcquisitionWork = acquisition.work;
+        if (plan && !receipt) {
+          // Facts may have committed. A full retry reuses their parser checkpoints.
+          return await this.sync({ ...args, certifiedOnly: false, forceFull: true });
+        }
+        return { ...result, ...(receipt ? { acquisition: receipt } : {}) };
+      } catch (error) {
+        acquisition.invalidate();
+        if (plan && error.code === "SOURCE_COVERAGE_UNAVAILABLE")
+          return await this.sync({ ...args, certifiedOnly: false, forceFull: true });
+        throw error;
+      }
     } finally {
       if (this.publishedFileWarningsView === view) this.publishedFileWarningsView = null;
+      this.acquisitionFiles = null;
     }
   }
 
@@ -4201,15 +4237,15 @@ export class UsageStore {
   /**
    * Discover sources, replace changed usage files, refresh missing-source state,
    * and rebuild ordinary usage projections and rollups.
-   * @param {{ options?: any }} [args]
+   * @param {{ options?: any, acquisitionPlan?: any }} [args]
    */
-  async syncRound({ options } = {}) {
+  async syncRound({ options, acquisitionPlan: plan } = {}) {
     await this.open();
     this.syncDerivedRevision();
     createUsageRollups(this.database);
     const syncOptions = options || this.options;
     this.options = syncOptions;
-    const homes = await discoverUsageSources(syncOptions);
+    const homes = plan?.homes || await discoverUsageSources(syncOptions);
     const quotaObservations = readCodexQuotaObservations({ ...syncOptions, homes });
     if (quotaObservations.length) {
       const saved = JSON.stringify(quotaObservations);
@@ -4219,19 +4255,33 @@ export class UsageStore {
       }
     }
 
-    const { files, warnings, failedHomes = [] } = await this.usageFiles(homes);
-    const status = await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes });
+    const { files, warnings, failedHomes = [] } = plan
+      ? { files: plan.files, warnings: [...plan.warnings] }
+      : await this.usageFiles(homes);
+    this.acquisitionFiles = files;
+    const status = plan ? {
+      fingerprint: files.length ? createHash("sha256").update(plan.fingerprint).update(JSON.stringify(plan.volumes)).digest("hex") : plan.fingerprint,
+      checkedAt: new Date().toISOString(), fileCount: plan.fileCount,
+    } : await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes });
     const knownFiles = new Set(files.map((file) => file.filePath));
     const failedHomeIds = new Set(failedHomes.map((home) => home.id));
     const failedHomePaths = new Set(failedHomes.map((home) => home.path));
-    const sourceRowsBefore = this.database.prepare("SELECT * FROM source_files").all();
+    const sourceRowsBefore = plan ? [] : this.database.prepare("SELECT * FROM source_files").all();
     let publishedFingerprints = {};
     try {
-      publishedFingerprints = JSON.parse(this.readMetaRaw("usage_file_fingerprints") || "{}");
+      publishedFingerprints = plan ? {} : JSON.parse(this.readMetaRaw("usage_file_fingerprints") || "{}");
       if (!publishedFingerprints || typeof publishedFingerprints !== "object" || Array.isArray(publishedFingerprints))
         publishedFingerprints = {};
     } catch {
       // The committed usage rows remain authoritative if this small scan cache is unavailable.
+    }
+    if (!plan) {
+      for (const row of this.database.prepare("SELECT payload FROM usage_source_catalog WHERE role='file'").iterate()) {
+        try {
+          const saved = JSON.parse(String(row.payload));
+          if (saved.fingerprint) publishedFingerprints[saved.filePath] = saved.fingerprint;
+        } catch { /* Rebuildable catalog; full source verification remains authoritative. */ }
+      }
     }
     const nextFingerprints = { ...publishedFingerprints };
     const currentFingerprints = new Map(files.map((file) => [file.filePath, usageSourceFingerprint(file.filePath)]));
@@ -4284,7 +4334,7 @@ export class UsageStore {
       const needsReparse = Boolean(
         this.database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(file.filePath),
       );
-      if (unchanged && !earlierFileChanged && !needsReparse) {
+      if (!file.force && unchanged && !earlierFileChanged && !needsReparse) {
         const proofCurrent =
           !savedProgress ||
           ([USAGE_SOURCE_SHA_KIND, "ntfs-usn-v1"].includes(savedProgress.validation.kind) &&
@@ -4300,9 +4350,13 @@ export class UsageStore {
         const outcome =
           (!earlierFileChanged && !needsReparse ? await this.appendFile(file, callbacks) : null) ||
           (await this.replaceFile(file, callbacks));
-        if (!outcome?.committed) continue;
+        if (!outcome?.committed) {
+          if (plan) throw Object.assign(new Error("Selected source did not commit"), { code: "LIVE_SOURCE_CHANGED" });
+          continue;
+        }
         acceptSource(file, outcome);
       } catch (error) {
+        if (plan) throw error;
         if (needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
         if (canonicalizeKind(file.source.kind) === "codex" && (Number(error?.errcode) & 0xff) === 19) throw error;
         warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
@@ -4312,8 +4366,22 @@ export class UsageStore {
     // Dependencies may precede their changed producer in discovery order, or survive a process crash.
     const availableFiles = new Map(files.map((file) => [file.filePath, file]));
     while (true) {
-      const pending = this.database.prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path").all();
-      const available = pending.map((row) => availableFiles.get(String(row.source_path))).filter(Boolean);
+      const pending = this.database.prepare(`SELECT source_path FROM usage_source_reparse ORDER BY source_path${plan ? " LIMIT 2049" : ""}`).all();
+      if (plan && pending.length > 2048)
+        throw Object.assign(new Error("Source dependency budget exceeded"), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+      const available = [];
+      for (const row of pending) {
+        const file = availableFiles.get(String(row.source_path)) || (plan ? await this.sourceAcquisition.file(String(row.source_path)) : null);
+        if (file) {
+          available.push(file);
+          if (!availableFiles.has(file.filePath)) {
+            if (plan && availableFiles.size >= 2048)
+              throw Object.assign(new Error("Source dependency budget exceeded"), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+            availableFiles.set(file.filePath, file);
+            files.push(file);
+          }
+        }
+      }
       if (!available.length) break;
       for (const file of available) {
         const outcome = await this.replaceFile(
@@ -4362,6 +4430,7 @@ export class UsageStore {
     }
 
     const publishedFileWarnings = this.publishedFileWarningsForRound();
+    if (!plan) {
     const activeSourcePaths = new Set(
       this.database
         .prepare("SELECT path FROM source_files")
@@ -4373,6 +4442,7 @@ export class UsageStore {
     }
     for (const filePath of Object.keys(nextFingerprints)) {
       if (!activeSourcePaths.has(filePath)) delete nextFingerprints[filePath];
+    }
     }
     for (const [filePath, fileWarnings] of Object.entries(publishedFileWarnings)) {
       for (const warning of fileWarnings) {
@@ -4395,7 +4465,7 @@ export class UsageStore {
     const previousMissingSources = decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META));
     const previousMissingByPath = new Map(previousMissingSources.map((source) => [source.path, source]));
     const missingSinceMs = Date.now();
-    const missingSources = this.database
+    const missingSources = plan ? plan.missingSources : this.database
       .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files ORDER BY path")
       .all()
       .filter(
@@ -4471,7 +4541,7 @@ export class UsageStore {
     try {
       this.writeMeta("generated_at", this.generatedAt);
       this.writeMeta("fingerprint", this.fingerprint);
-      this.writeMeta("usage_file_fingerprints", JSON.stringify(nextFingerprints));
+      if (!plan) this.writeMeta("usage_file_fingerprints", JSON.stringify(nextFingerprints));
       if (this.readMetaRaw("perf_file_warnings") !== publishedFileWarningsSnapshot) {
         this.writeMeta("perf_file_warnings", publishedFileWarningsSnapshot);
       }
@@ -4493,6 +4563,8 @@ export class UsageStore {
       this.metadataCache.warnings = this.warnings;
     }
     this.derivedRevision = this.storeRevision;
+
+    for (const file of files) file.acquisitionFingerprint = nextFingerprints[file.filePath];
 
     const dirtyRollupDays = listDirtyUsageRollupDays(this.database);
     const localRollupZone = currentLocalRollupZoneIdentity();

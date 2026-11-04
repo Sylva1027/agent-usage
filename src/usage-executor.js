@@ -185,8 +185,8 @@ export function checkpointUsageStore(database) {
 }
 
 /** @param {{sync: (args: any) => Promise<any>}} store @param {any} options */
-export async function syncUsageStore(store, options) {
-  return store.sync({ options });
+export async function syncUsageStore(store, options, certifiedOnly = false, sourceHints = null) {
+  return store.sync({ options, ...(certifiedOnly ? { certifiedOnly: true } : {}), ...(sourceHints ? { sourceHints } : {}) });
 }
 
 function historyArchiveStatusError(code, message) {
@@ -526,12 +526,12 @@ async function runExecutorProcess() {
         let failure = null;
         try {
           await publishedReady;
-          nextStatus = await syncUsageStore(store, message.options);
+          nextStatus = await syncUsageStore(store, message.options, message.certifiedOnly, message.sourceHints);
         } catch (error) {
           failure = error;
         } finally {
           const readerError = releasePublishedReader();
-          if (!failure && !readerError) {
+          if (nextStatus && !failure && !readerError) {
             try {
               store.prepareMetadataProjection();
             } catch (error) {
@@ -546,6 +546,7 @@ async function runExecutorProcess() {
           postCheckpointDiagnostic();
           throw failure;
         }
+        if (!nextStatus) return null;
         storeStatus = nextStatus;
         postState({ includeHomes: true });
         return storeStatus;
@@ -1137,7 +1138,7 @@ export function createUsageExecutor(
       }
       return request("open", payload);
     },
-    sync: (payload = {}) => request("sync", { options: payload.options }),
+    sync: (payload = {}) => request("sync", { options: payload.options, certifiedOnly: payload.certifiedOnly, sourceHints: payload.sourceHints }),
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
     dashboard: (filters = {}, summarizeOptions = {}) =>

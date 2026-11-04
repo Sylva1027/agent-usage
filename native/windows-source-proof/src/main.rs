@@ -19,6 +19,12 @@ struct Request {
     expected: Option<ExpectedInfoDto>,
     #[serde(default)]
     token: Option<String>,
+    #[serde(default, rename = "journalId")]
+    journal_id: Option<String>,
+    #[serde(default, rename = "startUsn")]
+    start_usn: Option<String>,
+    #[serde(default, rename = "fileId")]
+    file_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +127,29 @@ fn handle_request(request: Request) -> serde_json::Value {
     }
     if request.path.is_empty() || request.path.encode_utf16().count() >= 32_768 {
         return error_response(request.id, "invalid path");
+    }
+    if matches!(
+        request.op.as_str(),
+        "journal" | "changes" | "object" | "resolve"
+    ) {
+        let result = match request.op.as_str() {
+            "journal" => usn::directory_journal(&request.path),
+            "object" => usn::directory_object(&request.path),
+            "resolve" => {
+                usn::directory_resolve(&request.path, request.file_id.as_deref().unwrap_or(""))
+            }
+            "changes" => usn::directory_changes(
+                &request.path,
+                request.journal_id.as_deref().unwrap_or(""),
+                request.start_usn.as_deref().unwrap_or(""),
+            ),
+            _ => unreachable!(),
+        };
+        return match result {
+            Ok(value) => json!({"id": request.id, "ok": true, "available": true,
+                "kind": usn::DIRECTORY_KIND, "value": value}),
+            Err(reason) => error_response(request.id, reason),
+        };
     }
     let offset = match request.offset {
         Some(offset) => offset,
