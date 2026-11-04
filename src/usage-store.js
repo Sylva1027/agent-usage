@@ -5,6 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
+import { createUsageInsertBatch } from "./usage-insert-batch.js";
 import {
   ensureUsageMetadataSchema,
   prepareStoredMetadata,
@@ -35,6 +36,7 @@ import {
   rebuildUsageRollups,
   rebuildUsageRollupsFromEvents,
   tryAppendUsageRollups,
+  tryInitializeUsageRollups,
   checkpointUsageRollups,
   USAGE_ROLLUP_PROGRESS_TABLES,
 } from "./usage-rollups.js";
@@ -2086,7 +2088,7 @@ export class UsageStore {
      * @type {{ key: string, factsKey: string, publicationKey?: string, contextKey?: string, context?: any, guard?: any, evidence?: any, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
      */
     this.summaryProjectionCache = null;
-    /** @type {{ database: DatabaseSync, mainSchema: number, tempSchema: number, tempCatalog: string } | null} */
+    /** @type {{ database: DatabaseSync, owned: boolean, mainSchema: number, tempSchema: number, tempCatalog: string } | null} */
     this.usageProjectionTracker = null;
     this.observedUsageProjectionChanges = "";
     this.observedPublicationChanges = -1;
@@ -2556,8 +2558,8 @@ export class UsageStore {
 
   installUsageProjectionTracker() {
     this.usageProjectionTracker = null;
-    this.database.exec(`CREATE TEMP TABLE usage_projection_ignored_rows (value INTEGER NOT NULL) STRICT;
-      INSERT INTO usage_projection_ignored_rows VALUES (0);`);
+    this.database.exec(`CREATE TEMP TABLE usage_projection_ignored_rows (value INTEGER NOT NULL, owned INTEGER NOT NULL) STRICT;
+      INSERT INTO usage_projection_ignored_rows VALUES (0, 0);`);
     const keys = USAGE_PROJECTION_IGNORED_META.map((key) => `'${key}'`).join(",");
     for (const table of [...USAGE_PROJECTION_IGNORED_TABLES, "store_meta"]) {
       for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
@@ -2567,7 +2569,8 @@ export class UsageStore {
         const metadata =
           table === "store_meta" ? references.map((row) => `${row}.key IN (${keys})`).join(" AND ") : "1";
         const rowid = table === "store_meta" && operation === "UPDATE" ? " AND OLD.rowid = NEW.rowid" : "";
-        const when = `(SELECT recursive_triggers FROM pragma_recursive_triggers) = 0 AND ${metadata}${rowid}`;
+        const when = `(SELECT owned FROM usage_projection_ignored_rows) = 0
+          AND (SELECT recursive_triggers FROM pragma_recursive_triggers) = 0 AND ${metadata}${rowid}`;
         this.database.exec(`CREATE TEMP TRIGGER usage_projection_${table}_${operation}
           AFTER ${operation} ON main.${table} WHEN ${when}
           BEGIN UPDATE usage_projection_ignored_rows SET value = value + 1; END;`);
@@ -2575,6 +2578,7 @@ export class UsageStore {
     }
     this.usageProjectionTracker = {
       database: this.database,
+      owned: false,
       mainSchema: Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version),
       tempSchema: Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version),
       tempCatalog: JSON.stringify(
@@ -2599,7 +2603,7 @@ export class UsageStore {
     const ignored = Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get()?.value);
     const changes = totalChanges - 2 * ignored - this.businessProjectionIgnoredChanges;
     return Number.isSafeInteger(ignored) && ignored >= 0 && Number.isSafeInteger(changes) && changes >= 0
-      ? `usage:${changes}`
+      ? `usage:${changes}:${Number(this.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton=1").get().revision)}`
       : fallback;
   }
 
@@ -3591,20 +3595,18 @@ export class UsageStore {
         mtime_ms = excluded.mtime_ms,
         indexed_at = excluded.indexed_at
     `);
-    const insertEvent = database.prepare(`
-      INSERT INTO events (
-        source_path, timestamp_ms, session_id, home_id, home_label, channel, project, model,
-        hour_key, day_key, week_key, month_key, cwd, repository_key, repository_path, repository_kind,
-        detail_mask, reconciliation_gap, cache_write_tokens, cache_write_known, request_input_tokens,
-        context_level, service_tier, price_version, total, input, cached, output, reasoning
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const insertRateLimitObservation = database.prepare(`
+    const insertEvent = createUsageInsertBatch(database, {
+      sqlPrefix: `INSERT INTO events (${EVENT_INSERT_COLUMNS.join(",")}) VALUES`,
+      columns: EVENT_INSERT_COLUMNS.length,
+    });
+    const insertRateLimitObservation = createUsageInsertBatch(database, {
+      sqlPrefix: `
       INSERT INTO rate_limit_observations (
         source_path, line_number, role, observed_at_ms, limit_id, limit_name,
         plan_type, window_minutes, resets_at_ms, used_percent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      ) VALUES`,
+      columns: 10,
+    });
     const insertQuotaSource = database.prepare(`INSERT OR REPLACE INTO quota_usage_sources
       (source_path, home_id, session_id, timestamp_ms, quota_source, until_ms) VALUES (?, ?, ?, ?, ?, ?)`);
     const previousQuotaSources = new Map();
@@ -3636,6 +3638,7 @@ export class UsageStore {
     const previousCumulativeForSession = (sessionId, timestamp) => {
       const timestampMs = Date.parse(timestamp);
       if (!Number.isFinite(timestampMs)) return null;
+      insertEvent.flush();
       sourceBaseline = { homeId: source.id, sessionId: String(sessionId), beforeMs: timestampMs };
       const earlier = previousStatement.get(sessionId, source.id, filePath, timestampMs);
       if (!earlier.count) return null;
@@ -3716,7 +3719,7 @@ export class UsageStore {
             coldPrefix.observedRows.push({ ...row });
             return;
           }
-          insertEvent.run(...EVENT_INSERT_COLUMNS.map((column) => row[column]));
+          insertEvent.add(EVENT_INSERT_COLUMNS.map((column) => row[column]));
           if (hot && codexThreaded) {
             addCumulativeFingerprint(nextCumulative, row);
             sourceBounds.add(row.home_id, row.session_id, Number(row.timestamp_ms));
@@ -3742,7 +3745,7 @@ export class UsageStore {
           onQuotaSource: rememberQuotaSource,
           onRateLimit: ["main", "jetbrains", "extra", "codex"].includes(source.kind)
             ? (observation) => {
-                insertRateLimitObservation.run(
+                insertRateLimitObservation.add([
                   filePath,
                   observation.lineNumber,
                   observation.role,
@@ -3753,7 +3756,7 @@ export class UsageStore {
                   observation.windowMinutes,
                   observation.resetsAtMs,
                   observation.usedPercent,
-                );
+                ]);
                 quotaWritten = true;
               }
             : undefined,
@@ -3771,6 +3774,8 @@ export class UsageStore {
                 : onWarning,
         },
       );
+      insertEvent.flush();
+      insertRateLimitObservation.flush();
       let coldRevisionStateChanged = false;
       for (const prefix of coldReparsePrefixes) {
         const revision = historyArchiveColdRevisionForRows(prefix);
@@ -4547,11 +4552,12 @@ export class UsageStore {
       } else {
         this.database.exec("SAVEPOINT usage_rollup_sync");
         try {
-          if (dirtyRollupDays.length > 0) {
+          const initial = tryInitializeUsageRollups(this.database, { zoneIdentity: localRollupZone });
+          if (!initial.applied && dirtyRollupDays.length > 0) {
             rebuildUsageRollups(this.database, { days: dirtyRollupDays, calendarZone: "utc" });
           }
           const localDays = new Set(localUsageRollupDaysForUtcDays(dirtyRollupDays));
-          if (localRollupZoneChanged) {
+          if (!initial.applied && localRollupZoneChanged) {
             const eventUtcDays = this.database
               .prepare("SELECT DISTINCT date(timestamp_ms / 1000.0, 'unixepoch') AS day_key FROM events")
               .all()
@@ -4563,10 +4569,15 @@ export class UsageStore {
               localDays.add(String(row.day_key));
             }
           }
-          rebuildUsageRollups(this.database, { days: [...localDays].sort(), calendarZone: "local" });
+          if (!initial.applied)
+            rebuildUsageRollups(this.database, { days: [...localDays].sort(), calendarZone: "local" });
           this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
-          const checkpoint = checkpointUsageRollups(this.database, { zoneIdentity: localRollupZone });
-          this.lastSyncRollupWork = { ...this.lastSyncRollupWork, fallbackDays: dirtyRollupDays.length, checkpoint };
+          const checkpoint = initial.applied
+            ? initial.checkpoint
+            : checkpointUsageRollups(this.database, { zoneIdentity: localRollupZone });
+          this.lastSyncRollupWork = initial.applied
+            ? initial
+            : { ...this.lastSyncRollupWork, fallbackDays: dirtyRollupDays.length, checkpoint };
           this.database.exec("RELEASE usage_rollup_sync");
         } catch (error) {
           this.database.exec("ROLLBACK TO usage_rollup_sync");
@@ -5852,6 +5863,7 @@ export class UsageStore {
   withBusinessProjection(work) {
     const tracker = this.usageProjectionTracker;
     if (!tracker || tracker.database !== this.database) return work();
+    if (tracker.owned) return work();
     if (tracker.mainSchema !== Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version))
       return work();
     const tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
@@ -5867,14 +5879,23 @@ export class UsageStore {
       changes: Number(this.database.prepare("SELECT total_changes() AS value").get().value),
       ignored: Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get().value),
     });
+    // The enclosing scope accounts for its writes once; row triggers stay active for all other callers.
+    this.database.exec("UPDATE usage_projection_ignored_rows SET owned = 1");
+    tracker.owned = true;
     const before = observe();
     try {
       return work();
     } finally {
-      const after = observe();
-      // Owned TEMP work changes neither source facts nor their publication identity.
-      this.businessProjectionIgnoredChanges += after.changes - before.changes - 2 * (after.ignored - before.ignored);
-      tracker.tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
+      try {
+        const after = observe();
+        this.database.exec("UPDATE usage_projection_ignored_rows SET owned = 0");
+        // Owned TEMP work changes neither source facts nor their publication identity.
+        this.businessProjectionIgnoredChanges +=
+          2 + after.changes - before.changes - 2 * (after.ignored - before.ignored);
+        tracker.tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
+      } finally {
+        tracker.owned = false;
+      }
     }
   }
 

@@ -2,15 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { BUSINESS_FIELDS, CELLS, VARIANTS, assertSeedParity, coldDecision, inside, normalizeBody, publishedAll } from './q3-benchmark-support.mjs';
+import { BUSINESS_FIELDS, CELLS, Q4_VARIANTS, VARIANTS, assertQ4Matrix, assertSeedParity, coldDecision, coldStageFailures, finalQ4Cold, q4PageSeed, inside, normalizeBody, publishedAll } from './q3-benchmark-support.mjs';
 
 const base=path.resolve(process.argv[2]||'output/architecture-20261103/q1/q1-20261103-c');
 const continuation=process.argv[3]==='--continuation';
 const q2=process.argv[3]==='--q2';
 const q3=process.argv[3]==='--q3';
+const generationAt=process.argv.indexOf('--generation');
+if(generationAt>=0)assert.equal(process.argv[generationAt+1],'q4');
+const q4=process.argv[3]==='--q4'||generationAt>=0;
+const modern=q3||q4,generation=q4?'q4':q3?'q3':q2?'q2':'q1',variants=q4?Q4_VARIANTS:VARIANTS,pageRounds=q4?10:20;
 const modeAt=process.argv.indexOf('--mode');
 const q3Mode=modeAt<0?'cold':process.argv[modeAt+1];
-if(q3)assert.ok(['cold','page'].includes(q3Mode));
+if(modern)assert.ok(['cold','page'].includes(q3Mode));
 const baselineBase=q2&&process.argv[4]?path.resolve(process.argv[4]):base;
 const read=async file=>JSON.parse(await readFile(file,'utf8'));
 const lines=async file=>(await readFile(file,'utf8')).split(/\r?\n/).filter(Boolean).map(JSON.parse);
@@ -24,33 +28,45 @@ const business=summary=>Object.fromEntries(fields.map(key=>[key,summary[key]]));
 const results=[];
 const runs=new Map(),missing=[];
 let entries;
-if(q3){
+if(modern){
   const matrix=await read(path.join(base,'matrix.json'));
-  assert.equal(matrix.generation,'q3');assert.equal(matrix.prepared,true);assert.equal(matrix.trials.length,18);
+  if(q4){assert.equal(base,matrix.base);assertQ4Matrix(matrix,path.basename(base));}
+  else {assert.equal(matrix.generation,'q3');assert.equal(matrix.prepared,true);assert.equal(matrix.trials.length,18);}
   entries=q3Mode==='cold'?matrix.trials:CELLS.flatMap(cell=>['baseline','candidate'].map(variant=>({cell,variant,directory:path.join(base,'page',cell,variant)})));
 }else entries=['1x-sha','10x-sha'].flatMap(cell=>(continuation?['candidate']:['candidate','baseline']).map(variant=>({cell,variant,directory:path.join(variant==='baseline'?baselineBase:base,cell,variant)})));
 for(const {cell,variant,directory,rep} of entries){
-  assert.ok(!q3||inside(base,directory));
+  assert.ok(!modern||inside(base,directory));
   let run;
   try{run=await read(path.join(directory,'result.json'));}
-  catch(error){if(!q3||error.code!=='ENOENT')throw error;missing.push({cell,variant,rep,reserve:rep===3,directory});continue;}
+  catch(error){if(!modern||error.code!=='ENOENT')throw error;missing.push({cell,variant,rep,reserve:rep===3,directory});continue;}
   runs.set(`${cell}/${variant}/${rep??'page'}`,run);
   assert.equal(run.passed,true,`${cell}/${variant}`);
-  if(q3){
-    assert.equal(run.generation,'q3');assert.equal(run.cell,cell);assert.equal(run.variant,variant);
+  if(modern){
+    assert.equal(run.generation,generation);assert.equal(run.cell,cell);assert.equal(run.variant,variant);
     assert.equal(run.mode,q3Mode==='cold'?'cold-only':'page');
     if(q3Mode==='cold'){assert.equal(run.rep,rep);assert.equal(run.appends.length,0);}
     else{
-      assert.equal(run.seedParity?.passed,true);assert.equal(run.rounds,20);
-      for(const kind of ['codex','dsh'])assert.equal(run.appends.filter(append=>append.kind===kind).length,20);
+      assert.equal(run.seedParity?.passed,true);assert.equal(run.rounds,pageRounds);
+      for(const kind of ['codex','dsh'])assert.equal(run.appends.filter(append=>append.kind===kind).length,pageRounds);
       assertSeedParity(run.first.all,await read(run.continuedFrom));
+      if(q4){
+        assert.equal(run.appends.length,20);assert.equal(run.rep,null);
+        const seed=await q4PageSeed(base,cell,variant,run.retrySeed===true);
+        assert.equal(path.resolve(run.continuedFrom),seed.file);
+        assert.deepEqual(run.prepared,seed.run.prepared);
+        assert.deepEqual(run.sourceBefore,seed.run.sourceAfter);
+        assert.equal(run.datasetSha256,seed.run.datasetSha256);
+      }
     }
   }
   assert.deepEqual(run.sourceBefore,run.sourceAfter);
   assert.equal(run.progress.length,2);
-  for(const progress of run.progress)assert.equal(progress.validation.kind,q3&&variant==='candidate'?'sha256-prefix-v2':'sha256-prefix-v1');
+  for(const progress of run.progress)assert.equal(progress.validation.kind,q4||(q3&&variant==='candidate')?'sha256-prefix-v2':'sha256-prefix-v1');
   const components=(await Promise.all((await readdir(path.join(directory,'components'))).filter(f=>f.endsWith('.ndjson')).map(f=>lines(path.join(directory,'components',f))))).flat();
   assert.equal(components.filter(x=>x.error).length,0);
+  const coldStages=q4?(await Promise.all((await readdir(path.join(directory,'components'))).filter(f=>f.endsWith('.jsonl')).map(f=>lines(path.join(directory,'components',f))))).flat():undefined;
+  const stageFailures=q4?coldStageFailures(coldStages):undefined;
+  if(q4)assert.deepEqual(stageFailures.unhandled,[],'Only proved successful SOURCE_PROGRESS_UNSUPPORTED retries are recoveries.');
   const samples=await lines(path.join(directory,'resources.ndjson'));
   const resources=await read(path.join(directory,'resources.json'));
   const ordinary=samples.filter(x=>x.atUnixMs>=run.first.endedAtMs && x.atUnixMs<(run.reopen?.startedAtMs??Date.parse(run.endedAt)));
@@ -79,7 +95,7 @@ for(const {cell,variant,directory,rep} of entries){
     assert.ok(window.metadataWork.every(work=>!work.rebuilt&&work.readEvents<=1));
   }
   let storage;
-  if(q3)storage=run.finalView?.tables??run.initialView?.tables??[];
+  if(modern)storage=run.finalView?.tables??run.initialView?.tables??[];
   else{
     const db=new DatabaseSync(run.prepared.databaseFile,{readOnly:true});
     try{storage=db.prepare("SELECT name,SUM(pgsize) bytes FROM dbstat WHERE name IN (SELECT name FROM sqlite_master WHERE tbl_name LIKE 'usage_all_%') GROUP BY name").all();}
@@ -102,15 +118,16 @@ for(const {cell,variant,directory,rep} of entries){
     firstViewBuild:components.find(r=>r.work?.rebuilt),reusedViewMs:stats(components.filter(r=>r.work?.reused).map(r=>r.duration)),
     resourceState:resources.state,resourceTemp:resources.temp,
     q2Storage:run.finalQ2Storage,
+    ...(q4?{q4Storage:{initial:run.initialQ4Storage,final:run.finalQ4Storage,reopen:run.reopenQ4Storage},coldStages,recoveredSourceAttempts:stageFailures.recovered}:{}),
     scopes:Object.fromEntries(['today','week','all'].map(preset=>[preset,stats(run.scopes.filter(row=>row.name&&row.preset===preset).map(row=>row.wallMs))])),
   };
   results.push(result);
 }
 let q3Groups,needsSupplement,pageSeeds;
-if(q3){
-  for(const variant of VARIANTS){
+if(modern){
+  for(const variant of variants){
     const snapshots=[...runs.values()].filter(run=>run.variant===variant);
-    for(const run of snapshots)assert.deepEqual(run.sourceBefore,snapshots[0].sourceBefore,`${variant} source changed across Q3 runs`);
+    for(const run of snapshots)assert.deepEqual(run.sourceBefore,snapshots[0].sourceBefore,`${variant} source changed across ${generation.toUpperCase()} runs`);
   }
   for(const cell of CELLS){
     const cellRuns=[...runs.values()].filter(run=>run.cell===cell);
@@ -125,16 +142,22 @@ if(q3){
       }
     }
   }
-  q3Groups=q3Mode==='cold'?CELLS.flatMap(cell=>VARIANTS.map(variant=>{
+  q3Groups=q3Mode==='cold'?CELLS.flatMap(cell=>variants.map(variant=>{
     const group=results.filter(row=>row.cell===cell&&row.variant===variant);
     const raw=group.map(row=>({rep:row.rep,wallMs:row.initialOpenThroughAllMs}));
-    return {cell,variant,runs:raw,wallMs:stats(raw.map(run=>run.wallMs)),...coldDecision(raw)};
+    const decision=coldDecision(raw);
+    if(q4)assert.ok(decision.supplementRequired||!raw.some(run=>run.rep===3),'Q4 rep3 requires spread over 5%.');
+    return {cell,variant,runs:raw,wallMs:stats(raw.map(run=>run.wallMs)),...decision};
   })):undefined;
   needsSupplement=q3Mode==='cold'?q3Groups.filter(group=>group.nextRep===3):[];
-  pageSeeds=q3Mode==='cold'?CELLS.flatMap(cell=>['baseline','candidate'].map(variant=>{
+  pageSeeds=q3Mode==='cold'?await Promise.all(CELLS.flatMap(cell=>['baseline','candidate'].map(async variant=>{
+    if(q4){
+      const group=q3Groups.find(group=>group.cell===cell&&group.variant===variant);
+      return {cell,variant,preparedResult:group.complete?(await finalQ4Cold(base,cell,variant)).file:null};
+    }
     const completed=results.filter(row=>row.cell===cell&&row.variant===variant).sort((a,b)=>b.rep-a.rep);
     return {cell,variant,preparedResult:completed.length?path.join(completed[0].directory,'result.json'):null};
-  })):undefined;
+  }))):undefined;
 }else{
 for(const cell of ['1x-sha','10x-sha']){
   const a=await read(path.join(base,cell,'candidate/result.json'));
@@ -167,12 +190,12 @@ for(const cell of ['1x-sha','10x-sha']){
   }
 }
 }
-const complete=q3?(q3Mode==='cold'?q3Groups.every(group=>group.complete):results.length===4):true;
-const output={schemaVersion:q3?3:1,generatedAt:new Date().toISOString(),baselineBase,generation:q3?'q3':q2?'q2':'q1',mode:q3?q3Mode:undefined,
+const complete=modern?(q3Mode==='cold'?q3Groups.every(group=>group.complete):results.length===4):true;
+const output={schemaVersion:q4?4:q3?3:1,generatedAt:new Date().toISOString(),baselineBase,generation,mode:modern?q3Mode:undefined,
   complete,missing,needsSupplement,pageSeeds,coldGroups:q3Mode==='cold'?q3Groups:undefined,
-  quotaWorkSemantics:q3?{source:'UsageStore.lastQuotaWork',changes:'Queue operations: insert=1, update=2; not SQL scanned rows.',
+  quotaWorkSemantics:modern?{source:'UsageStore.lastQuotaWork',changes:'Queue operations: insert=1, update=2; not SQL scanned rows.',
     endpointsAndCycles:'Actual counts reported by the projection; rebuilt/reused and fallback are preserved verbatim.',
-    absent:'Frozen Q2 has no work API; missing work remains absent.'}:undefined,
-  parity:{kind:q3?`q3-${q3Mode}`:continuation?'continuation':'baseline-candidate',groups:q3?results.length:continuation?2:4,fieldsPerGroup:fields.length,passed:complete},results};
-await writeFile(path.join(base,q3?`analysis-${q3Mode}.json`:'analysis.json'),JSON.stringify(output,null,2)+'\n');
+    absent:q4?'Missing work remains absent.':'Frozen Q2 has no work API; missing work remains absent.'}:undefined,
+  parity:{kind:modern?`${generation}-${q3Mode}`:continuation?'continuation':'baseline-candidate',groups:modern?results.length:continuation?2:4,fieldsPerGroup:fields.length,passed:complete},results};
+await writeFile(path.join(base,modern?`analysis-${q3Mode}.json`:'analysis.json'),JSON.stringify(output,null,2)+'\n');
 console.log(JSON.stringify({complete,needsSupplement,pageSeeds,parity:output.parity,results:results.map(({cell,variant,rep,appends,allCoreMs,storageBytes,ordinaryServiceRssMax,wholeServiceRssMax,maximumQuoteBytes})=>({cell,variant,rep,appends,allCoreMs,storageBytes,ordinaryServiceRssMax,wholeServiceRssMax,maximumQuoteBytes}))},null,2));

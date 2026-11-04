@@ -510,7 +510,7 @@ function initialize(database, signature, revision, asOf, officials, dirty) {
 
 function rebuildCycles(database, work) {
   const updateAnchor = database.prepare(
-    `UPDATE ${ENDPOINTS} SET anchor_ms=? WHERE limit_id=? AND window_minutes=? AND resets_at_ms=?`,
+    `UPDATE ${ENDPOINTS} SET anchor_ms=? WHERE limit_id=? AND window_minutes=? AND resets_at_ms>=? AND resets_at_ms<=?`,
   );
   const insertCycle = database.prepare(`INSERT INTO ${CYCLES} VALUES(?,?,?,?,?,?,?)`);
   for (;;) {
@@ -539,6 +539,7 @@ function rebuildCycles(database, work) {
         last = null;
       const publish = () => {
         if (!cluster) return;
+        updateAnchor.run(cluster.anchor, limit, minutes, cluster.anchor, cluster.last);
         const start = cluster.selected - minutes * MINUTE;
         insertCycle.run(
           limit,
@@ -564,15 +565,15 @@ function rebuildCycles(database, work) {
             observed = Number(row.first_observed);
           if (!cluster || end - cluster.anchor > TOLERANCE) {
             publish();
-            cluster = { anchor: end, selected: end, count, first: observed };
+            cluster = { anchor: end, last: end, selected: end, count, first: observed };
           } else {
+            cluster.last = end;
             cluster.first = Math.min(cluster.first, observed);
             if (count > cluster.count || (count === cluster.count && end > cluster.selected)) {
               cluster.selected = end;
               cluster.count = count;
             }
           }
-          updateAnchor.run(cluster.anchor, limit, minutes, end);
           last = end;
           work.endpoints += 1;
         }

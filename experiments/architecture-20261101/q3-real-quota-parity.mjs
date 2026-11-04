@@ -6,12 +6,13 @@ import {DatabaseSync} from 'node:sqlite';
 import {pathToFileURL} from 'node:url';
 import * as candidate from '../../src/usage-quota-store.js';
 
-const root=path.resolve('output/architecture-20261104/q3');
+const generation=process.argv[3]==='--q4'?'q4':'q3';
+const root=path.resolve('output/architecture-20261104',generation);
 const base=path.resolve(process.argv[2]);
 assert.ok(base.startsWith(root+path.sep));
 assert.ok(process.execArgv.includes('--max-old-space-size=224'));
 assert.ok(process.execArgv.includes('--max-semi-space-size=4'));
-const frozen=await import(pathToFileURL(path.join(root,'baseline/src/usage-quota-store.js')));
+const frozen=await import(pathToFileURL(path.resolve('output/architecture-20261104/q3/baseline/src/usage-quota-store.js')));
 const read=async file=>JSON.parse(await readFile(file,'utf8'));
 const analysis=await read(path.join(base,'analysis-page.json'));assert.equal(analysis.complete,true);
 const results=[];

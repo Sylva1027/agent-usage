@@ -6,32 +6,48 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { assertSeedParity, coldDecision, inside, runOptions, versionSpec } from './q3-benchmark-support.mjs';
+import { assertQ4Matrix, assertSeedParity, coldDecision, q4PageSeed, inside, runOptions, versionSpec } from './q3-benchmark-support.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const here=path.join(root,'experiments/architecture-20261101');
 const options=runOptions(process.argv.slice(2));
 const {generation,label,cell,variant,preparedResult,scale,trial,rounds,mode,rep,base}=options;
+const modern=generation==='q3'||generation==='q4';
+const retrySeed=process.argv.includes('--retry-seed');
+if(retrySeed)assert.ok(generation==='q4'&&mode==='page');
 if(process.argv.includes('--describe')){console.log(JSON.stringify(options,null,2));process.exit(0);}
 const { prepareScale, serverOptions, waitForServer, stopServer, openPage, painted, appendAndPaint,
   progressRows, hashFile, sourceInventory, compareInventory, sleep } = await import('./b2-page-diagnostic.mjs');
 const result={generation,cell,variant,mode,rep,rounds,startedAt:new Date().toISOString(),passed:false,scopes:[],appends:[],resourceSpans:[]};
+if(retrySeed)result.retrySeed=true;
 let server,sampler,browserState;
+function observeDelivery() {
+  const records=[];window.__q4Delivery=records;
+  const fetch=window.fetch.bind(window),EventSource=window.EventSource;
+  window.fetch=(...args)=>{records.push({kind:'fetch',at:Date.now(),url:String(args[0]),sse:window.__e1Diagnostic?.usageSynced});return fetch(...args);};
+  function Tracked(url,options){const source=new EventSource(url,options);
+    for(const kind of ['open','error','usage-synced'])source.addEventListener(kind,()=>records.push({kind,at:Date.now(),sse:window.__e1Diagnostic?.usageSynced}));
+    return source;
+  }
+  Tracked.prototype=EventSource.prototype;
+  for(const key of ['CONNECTING','OPEN','CLOSED'])Object.defineProperty(Tracked,key,{value:EventSource[key]});
+  window.EventSource=Tracked;
+}
 const checkpoint=async()=>{
   const temporary=path.join(trial,'result.pending.json');
   await writeFile(temporary,JSON.stringify(result,null,2)+'\n',{flush:true});
   await rename(temporary,path.join(trial,'result.json'));
 };
 async function sourceHashes() {
-  if(generation==='q3'&&variant!=='candidate'){
-    const version=versionSpec(variant),hashes=JSON.parse(await readFile(version.hashesFile,'utf8'));
+  if(modern&&variant!=='candidate'){
+    const version=versionSpec(variant,{generation}),hashes=JSON.parse(await readFile(version.hashesFile,'utf8'));
     assert.equal(Object.keys(hashes).length,version.expectedFiles);
     for(const [relative,expected] of Object.entries(hashes))assert.equal((await hashFile(path.join(version.directory,relative))).sha256,expected);
     return hashes;
   }
   const hashes={};
   for(const folder of ['src','public'])for(const name of await readdir(path.join(root,folder),{recursive:true})){
-    if(!(generation==='q3'?/\.(js|css|html|json)$/:/\.(js|css|html)$/).test(name))continue;
+    if(generation!=='q4'&&!(modern?/\.(js|css|html|json)$/:/\.(js|css|html)$/).test(name))continue;
     const file=path.join(root,folder,name);if(!(await stat(file)).isFile())continue;
     hashes[path.relative(root,file)]=(await hashFile(file)).sha256;
   }
@@ -45,6 +61,9 @@ async function launch(prepared,suffix='') {
   const env={...process.env,Q1_VARIANT:variant,Q1_TRACE_DIR:path.join(trial,'components'),TMP:path.join(trial,'temp'),TEMP:path.join(trial,'temp')};
   if(generation==='q3'){env.Q3_VARIANT=variant;env.Q3_TRACE_DIR=env.Q1_TRACE_DIR;}
   else {delete env.Q3_VARIANT;delete env.Q3_TRACE_DIR;}
+  if(generation==='q4'){env.Q4_VARIANT=variant;env.Q4_TRACE_DIR=env.Q1_TRACE_DIR;}
+  else {delete env.Q4_VARIANT;delete env.Q4_TRACE_DIR;}
+  if(generation==='q4'&&mode==='page')env.Q4_FIXED_PRICING='1';else delete env.Q4_FIXED_PRICING;
   delete env.NODE_OPTIONS;
   await mkdir(env.TEMP,{recursive:true});
   const child=spawn(process.execPath,['--max-old-space-size=512','--import',pathToFileURL(path.join(here,`${generation}-summary-hook.mjs`)).href,
@@ -107,16 +126,23 @@ function q2Storage(prepared) {
       OR tbl_name LIKE 'usage_rollup_progress%' OR name='events_metadata_group_time_idx'
   ) GROUP BY name`).all();}finally{db.close();}
 }
+function q4Storage(prepared) {
+  const db=new DatabaseSync(prepared.databaseFile,{readOnly:true});
+  try{return db.prepare(`SELECT s.name,s.tbl_name AS tableName,s.type,COALESCE(p.bytes,0) AS bytes
+    FROM sqlite_master s LEFT JOIN (SELECT name,SUM(pgsize) bytes FROM dbstat GROUP BY name) p ON p.name=s.name
+    WHERE s.type IN ('table','index') ORDER BY s.name`).all();}finally{db.close();}
+}
 await mkdir(trial,{recursive:true});
 await assert.rejects(stat(path.join(trial,'result.json')),e=>e.code==='ENOENT');
 try {
   result.sourceBefore=await sourceHashes();
   const datasetFile=path.join(root,'output/architecture-20261103/growth-baseline',scale,'dataset.json');
   const dataset=JSON.parse(await readFile(datasetFile,'utf8'));
-  if(generation==='q3'){
+  if(modern){
     const matrixFile=path.join(base,'matrix.json'),matrix=JSON.parse(await readFile(matrixFile,'utf8'));
-    assert.equal(matrix.prepared,true,'Prepare every Q3 mirror before certification.');
-    assert.equal(matrix.label,label);assert.equal(matrix.trials.length,18);
+    if(generation==='q4')assertQ4Matrix(matrix,label);
+    else {assert.equal(matrix.prepared,true,'Prepare every Q3 mirror before certification.');
+      assert.equal(matrix.label,label);assert.equal(matrix.trials.length,18);}
     for(const entry of matrix.trials)await stat(entry.preparedFile);
     result.matrixFile=matrixFile;
     result.datasetSha256=(await hashFile(datasetFile)).sha256;
@@ -133,14 +159,18 @@ try {
   const seed=preparedResult?JSON.parse(await readFile(preparedResult,'utf8')):null;
   if(seed){
     assert.equal(seed.passed,true);assert.equal(seed.cell,cell);assert.equal(seed.variant,variant);
-    const generationRoot=path.join(root,generation==='q3'?'output/architecture-20261104':'output/architecture-20261103',generation);
+    const generationRoot=path.join(root,modern?'output/architecture-20261104':'output/architecture-20261103',generation);
     assert.ok(inside(generationRoot,seed.prepared.databaseFile));
-    if(generation==='q3'){
-      assert.equal(seed.generation,'q3');assert.deepEqual(seed.sourceAfter,result.sourceBefore);
+    if(modern){
+      assert.equal(seed.generation,generation);assert.deepEqual(seed.sourceAfter,result.sourceBefore);
       assert.equal(seed.datasetSha256,result.datasetSha256);
       assert.ok(seed.publishedInputs,'Q3 seed must save its published source hashes.');
       for(const [kind,selected] of Object.entries(seed.prepared.selected))
         assert.deepEqual(await hashFile(selected.targetPath),seed.publishedInputs[kind],`seed ${kind} content changed`);
+    }
+    if(generation==='q4'){
+      const final=await q4PageSeed(base,cell,variant,retrySeed);
+      assert.equal(path.resolve(preparedResult),final.file,'Q4 page must continue its matching final cold result.');
     }
     result.continuedFrom=path.resolve(preparedResult);
   }
@@ -148,14 +178,22 @@ try {
   const prepared=seed?.prepared || (generation!=='q1'
     ? JSON.parse(await readFile(path.join(trial,'prepared.json'),'utf8'))
     : await prepareScale(dataset,mirrorRoot,path.join(root,'output/architecture-20261103/b2/page-e1-final-v8',scale,'.codex-usage')));
-  if(generation==='q3'&&mode==='cold-only'){
+  if(modern&&mode==='cold-only'){
     assert.ok(inside(trial,prepared.databaseFile));
     await assert.rejects(stat(prepared.databaseFile),error=>error.code==='ENOENT');
+  }
+  if(generation==='q4'){
+    const fixture=seed?path.dirname(path.resolve(preparedResult)):trial;
+    for(const file of [prepared.home,prepared.databaseFile,prepared.stateDirectory])assert.ok(inside(fixture,file));
+    for(const kind of ['codex','dsh']){
+      assert.ok(inside(prepared.home,prepared.selected[kind].targetPath));
+      assert.equal((await stat(prepared.selected[kind].targetPath)).nlink,1,'Q4 appends require independent copies.');
+    }
   }
   result.prepared=prepared;await checkpoint();
   server=await launch(prepared);result.server={pid:server.ready.pid,url:server.ready.url};
   sampler=await startSampling(prepared);
-  const start=Date.now();browserState=await openPage(server.ready.url,trial);
+  const start=Date.now();browserState=await openPage(server.ready.url,trial,generation==='q4'?[observeDelivery]:[]);
   result.first={startedAtMs:start,endedAtMs:Date.now(),bootstrapMs:browserState.bootstrapMs,all:browserState.all};
   if(seed){
     result.seedParity=assertSeedParity(browserState.all,seed);
@@ -163,6 +201,7 @@ try {
   const initial=browserState.all;let expected=initial.total;
   result.initialView=viewStats(prepared);await checkpoint();
   if(generation!=='q1')result.initialQ2Storage=q2Storage(prepared);
+  if(generation==='q4')result.initialQ4Storage=q4Storage(prepared);
   if(mode!=='cold-only'){
   await request('all',expected,'unchanged-all');
   const previous=progressRows(prepared.databaseFile).find(x=>x.sourcePath===prepared.selected.codex.targetPath)?.checkpoint.state.previousCumulative;
@@ -180,6 +219,7 @@ try {
   result.finalView=viewStats(prepared);
   }
   if(generation!=='q1')result.finalQ2Storage=q2Storage(prepared);
+  if(generation==='q4')result.finalQ4Storage=q4Storage(prepared);
   const db=new DatabaseSync(prepared.databaseFile,{readOnly:true});
   assert.equal(db.prepare('SELECT count(*) n FROM events').get().n,initial.eventCount+result.appends.length);
   assert.equal(db.prepare('SELECT sum(total) n FROM events').get().n,expected);
@@ -204,11 +244,13 @@ try {
   assert.equal(browserState.all.total,expected);
   result.reopen={startedAtMs:reopened,endedAtMs:Date.now(),firstAll:browserState.all};
   result.published.firstAll=browserState.all;
+  if(generation==='q4')result.reopenQ4Storage=q4Storage(prepared);
   assert.deepEqual(browserState.errors,[]);
   }
   result.passed=true;
 } catch(error){result.failure={message:error.message,stack:error.stack};process.exitCode=1;}
 finally {
+  if(generation==='q4'&&browserState)try{result.pageDelivery=await browserState.page.evaluate(()=>window.__q4Delivery??[]);}catch{}
   if(browserState)try{await browserState.browser.close();}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
   if(server)try{await stopServer(server,result);}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
   try{await stopSampling();}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}

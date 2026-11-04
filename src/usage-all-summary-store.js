@@ -139,9 +139,13 @@ function accumulator(options, saved = null) {
     if (!Number.isSafeInteger(count) || count < 0) throw new TypeError("Invalid all-summary member count");
     const key = JSON.stringify(scope);
     let size = count;
+    let previousMember;
     return {
       add(member) {
-        size += Number(insert.run(key, String(member), current.ms, current.id).changes);
+        const value = String(member);
+        if (value === previousMember) return this;
+        size += Number(insert.run(key, value, current.ms, current.id).changes);
+        previousMember = value;
         return this;
       },
       get size() {

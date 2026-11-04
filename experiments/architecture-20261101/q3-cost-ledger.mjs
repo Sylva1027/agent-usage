@@ -4,7 +4,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const base=path.resolve(process.argv[2]);
-assert.match(base.replaceAll('\\','/'), /\/output\/architecture-20261104\/q3\/q3-[a-z0-9-]+$/);
+const q4=process.argv[3]==='--q4';
+assert.match(base.replaceAll('\\','/'), q4 ? /\/output\/architecture-20261104\/q4\/q4-[a-z0-9-]+$/ : /\/output\/architecture-20261104\/q3\/q3-[a-z0-9-]+$/);
 const read=async file=>JSON.parse(await readFile(file,'utf8'));
 const rows=async file=>(await readFile(file,'utf8')).split(/\r?\n/).filter(Boolean).map(JSON.parse);
 const stats=values=>{const v=values.sort((a,b)=>a-b),n=v.length;return n?{n,min:v[0],median:n%2?v[n>>1]:(v[n/2-1]+v[n/2])/2,max:v.at(-1)}:null;};
@@ -53,13 +54,15 @@ for(const scale of ['1x-sha','10x-sha']) {
   const current=page.results.find(row=>row.cell===scale&&row.variant==='baseline');
   const candidate=page.results.find(row=>row.cell===scale&&row.variant==='candidate');
   const codex=candidate.windows.filter(row=>row.kind==='codex');
-  assert.equal(codex.length,20);
+  assert.equal(codex.length,q4?10:20);
   assert.ok(codex.every(row=>row.quotaMs.length>0&&row.quotaWork.length>0),'Quota preparation needs observed timings and work.');
   const quota=stats(codex.map(row=>row.quotaMs.reduce((n,ms)=>n+ms,0)));
-  gates[scale]={coldFasterThanQ2:med(scale,'candidate')<med(scale,'baseline'),coldWithinPreQ2:med(scale,'candidate')<=med(scale,'preq2')*1.05,
+  gates[scale]={...(q4?{coldFasterThanQ3:med(scale,'candidate')<med(scale,'baseline'),cold400s:scale==='10x-sha'?med(scale,'candidate')<=400000:null}:
+    {coldFasterThanQ2:med(scale,'candidate')<med(scale,'baseline'),coldWithinPreQ2:med(scale,'candidate')<=med(scale,'preq2')*1.05}),
     quotaMedianMs:quota?.median,quota300ms:quota?.median<=300,
     quotaIncremental:codex.every(row=>row.quotaWork.some(work=>work.changes>0&&!work.rebuilt&&!work.fallback)),
     codexMedianMs:candidate.appends.codex.median,codex7s:scale==='10x-sha'?candidate.appends.codex.median<=7000:null,
+    ...(q4?{codexRatio:candidate.appends.codex.median/current.appends.codex.median}:{}),
     dshRatio:candidate.appends.dsh.median/current.appends.dsh.median,
     ordinaryMemoryRatio:candidate.ordinaryServiceRssMax/current.ordinaryServiceRssMax,
     ordinaryMemoryWithin10Percent:candidate.ordinaryServiceRssMax<=current.ordinaryServiceRssMax*1.1,

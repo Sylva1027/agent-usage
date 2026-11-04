@@ -983,7 +983,8 @@ function eventDaysInBatch(db, zone, lastId, targetId) {
   try {
     return db
       .prepare(`
-        SELECT ${expression} AS day_key, COUNT(*) AS event_count
+        SELECT ${expression} AS day_key, COUNT(*) AS event_count,
+          MIN(timestamp_ms) AS minimum, MAX(timestamp_ms) AS maximum
         FROM ${EVENT_TABLE}
         WHERE id > ? AND id <= ?
         GROUP BY ${expression}
@@ -992,7 +993,11 @@ function eventDaysInBatch(db, zone, lastId, targetId) {
       .all(lastId, targetId)
       .map((row) => {
         const day = String(row.day_key);
-        return { day, ...dayBounds(day, zone), eventCount: Number(row.event_count) };
+        const bounds = dayBounds(day, zone);
+        // SQLite and Node can use different local zones on Windows with an explicit TZ override.
+        if (Number(row.minimum) < bounds.start || Number(row.maximum) >= bounds.end)
+          throw new Error("Rollup calendar does not match event bounds");
+        return { day, ...bounds, eventCount: Number(row.event_count) };
       });
   } catch {
     return null;
@@ -1121,9 +1126,9 @@ function applyAppendForZone(db, { zone, lastId, targetId, days }) {
     ON CONFLICT(calendar_zone, day_key, home_id, repository_key, cwd) DO UPDATE SET
       repository_path = MIN(${REPOSITORY_TABLE}.repository_path, excluded.repository_path),
       repository_kind = MIN(${REPOSITORY_TABLE}.repository_kind, excluded.repository_kind),
-      ${MODEL_DETAIL_FIELDS.map(
-        ([column]) => `${column} = ${REPOSITORY_TABLE}.${column} + excluded.${column}`,
-      ).join(",\n      ")}
+      ${MODEL_DETAIL_FIELDS.map(([column]) => `${column} = ${REPOSITORY_TABLE}.${column} + excluded.${column}`).join(
+        ",\n      ",
+      )}
   `).run(zone, lastId, targetId);
   db.prepare(`
     INSERT OR IGNORE INTO ${SESSION_TABLE} (calendar_zone, day_key, home_id, session_id)
@@ -1137,6 +1142,36 @@ function applyAppendForZone(db, { zone, lastId, targetId, days }) {
     VALUES (?, ?, ?, ?)
   `);
   for (const day of days) markDay.run(zone, day.day, day.start, day.end);
+}
+
+/** Build an empty derived store in fact order, sharing the existing exact append aggregates. */
+export function tryInitializeUsageRollups(db, { zoneIdentity }) {
+  if (typeof zoneIdentity !== "string" || zoneIdentity === "") {
+    throw new TypeError("zoneIdentity must be a non-empty string");
+  }
+  return withWriteTransaction(db, () => {
+    if (!ensureUsageRollupProgressSchema(db) || !hasCurrentRollupFormat(db) || !eventHasId(db))
+      return fallbackResult("ROLLUP_FORMAT");
+    for (const table of [TABLE, MODEL_TABLE, REPOSITORY_TABLE, SESSION_TABLE, DAY_TABLE, PROGRESS_DAY_TABLE]) {
+      if (db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) return fallbackResult("ROLLUP_ALREADY_BUILT");
+    }
+    const bounds = db.prepare(`SELECT MIN(id) first_id, MAX(id) last_id, COUNT(*) count FROM ${EVENT_TABLE}`).get();
+    if (!Number(bounds.count)) return fallbackResult("ROLLUP_NO_EVENTS");
+    const lastId = Number(bounds.first_id) - 1,
+      targetId = Number(bounds.last_id);
+    if (!Number.isSafeInteger(lastId) || !Number.isSafeInteger(targetId)) return fallbackResult("ROLLUP_EVENT_ID");
+    const calendars = ["utc", "local"].map((zone) => ({ zone, days: eventDaysInBatch(db, zone, lastId, targetId) }));
+    if (calendars.some(({ days }) => !days)) return fallbackResult("ROLLUP_EVENT_DAY");
+    const localDays = new Set(calendars[1].days.map(({ day }) => day));
+    for (const day of localUsageRollupDaysForUtcDays(calendars[0].days.map(({ day }) => day))) {
+      if (!localDays.has(day)) calendars[1].days.push({ day, ...dayBounds(day, "local"), eventCount: 0 });
+    }
+    for (const { zone, days } of calendars) applyAppendForZone(db, { zone, lastId, targetId, days });
+    db.exec(`DELETE FROM ${DIRTY_TABLE}`);
+    const checkpoint = checkpointUsageRollups(db, { zoneIdentity });
+    if (!checkpoint.applied) throw new Error("Initial rollup certification failed");
+    return { applied: true, initialized: true, readEvents: Number(bounds.count), checkpoint };
+  });
 }
 
 /**
@@ -1505,11 +1540,16 @@ export function queryUsageRollupModelsWindow(db, { startMs, endMs, excludeHomes 
     const runs = usageRollupDayRuns(db, startMs, endMs);
     const rows = [];
     for (const run of runs) {
-      rows.push(...queryUsageRollupModelsRangeWithinSnapshot(db, {
-        startDay: run.startDay, endDay: run.endDay,
-        days: calendarDays(run.startDay, run.endDay, run.zone),
-        excludeHomes, calendarZone: run.zone, canonicalModels,
-      }));
+      rows.push(
+        ...queryUsageRollupModelsRangeWithinSnapshot(db, {
+          startDay: run.startDay,
+          endDay: run.endDay,
+          days: calendarDays(run.startDay, run.endDay, run.zone),
+          excludeHomes,
+          calendarZone: run.zone,
+          canonicalModels,
+        }),
+      );
     }
     for (const [start, end] of rawWindowIntervals(startMs, endMs, runs)) {
       rows.push(...queryRawModelRollupRows(db, start, end, excludeHomes, canonicalModels));
@@ -1528,7 +1568,10 @@ function usageRollupDayRuns(db, startMs, endMs) {
       ORDER BY start_ms
     `)
     .all(startMs, endMs);
-  const runsByZone = new Map([["utc", []], ["local", []]]);
+  const runsByZone = new Map([
+    ["utc", []],
+    ["local", []],
+  ]);
   for (const row of rows) {
     const zone = String(row.calendar_zone);
     if (zone !== "utc" && zone !== "local") continue;
@@ -1545,10 +1588,14 @@ function usageRollupDayRuns(db, startMs, endMs) {
       runs.push(next);
     }
   }
-  let best = [], covered = 0;
+  let best = [],
+    covered = 0;
   for (const runs of runsByZone.values()) {
     const duration = runs.reduce((sum, run) => sum + run.endMs - run.startMs, 0);
-    if (duration > covered) { best = runs; covered = duration; }
+    if (duration > covered) {
+      best = runs;
+      covered = duration;
+    }
   }
   return best;
 }
@@ -1568,13 +1615,13 @@ function queryRepositoryWindowRows(db, { startMs, endMs, excludeHomes }) {
   const runs = usageRollupDayRuns(db, startMs, endMs);
   if (runs.length > 0) {
     if (!hasCurrentRollupFormat(db)) {
-      throw missingRollupDaysError(runs.flatMap(run => calendarDays(run.startDay, run.endDay, run.zone)));
+      throw missingRollupDaysError(runs.flatMap((run) => calendarDays(run.startDay, run.endDay, run.zone)));
     }
     const hasRepositoryTable = db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
       .get(REPOSITORY_TABLE);
     if (!hasRepositoryTable) {
-      throw missingRollupDaysError(runs.flatMap(run => calendarDays(run.startDay, run.endDay, run.zone)));
+      throw missingRollupDaysError(runs.flatMap((run) => calendarDays(run.startDay, run.endDay, run.zone)));
     }
   }
 
