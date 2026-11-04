@@ -4283,8 +4283,30 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
   return `?${params.toString()}`;
 }
 
+let activeUsageLoadId = null;
+let usageSyncPending = false;
+let usageReconnectPending = null;
+
+function reloadSyncedUsage() {
+  if (!state.autoRefreshEnabled || state.snapshotId) return;
+  if (activeUsageLoadId === state.usageLoadId) {
+    usageSyncPending = true;
+    return;
+  }
+  usageSyncPending = false;
+  setAutoRefreshStatus("", { busy: true });
+  void loadUsage({ skipCheck: true });
+}
+
+function finishUsageLoad(loadId) {
+  if (activeUsageLoadId !== loadId) return;
+  activeUsageLoadId = null;
+  if (usageSyncPending) reloadSyncedUsage();
+}
+
 async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   const loadId = ++state.usageLoadId;
+  activeUsageLoadId = loadId;
 
   try {
     const response = await fetch(
@@ -4318,6 +4340,7 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     updateQuotaPresetButton();
     render();
     setAutoRefreshStatus("");
+    finishUsageLoad(loadId);
     if (!$("#pricingDialog").hidden && state.pricingCatalog) {
       try {
         const response = await fetch(pricingActivityUrl());
@@ -4355,6 +4378,8 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       state.fingerprint = "";
       setAutoRefreshStatus(`加载失败：${error.message}`, { error: true });
     }
+  } finally {
+    finishUsageLoad(loadId);
   }
 }
 
@@ -4387,6 +4412,9 @@ async function checkForUpdates() {
     if (runId === state.autoRefreshRunId) {
       state.autoRefreshCheckInFlight = false;
       renderAutoRefreshControls();
+      const reconnect = usageReconnectPending;
+      usageReconnectPending = null;
+      if (reconnect && reconnect === state.usageEventsSource) void checkForUpdates();
     }
   }
 }
@@ -4394,6 +4422,8 @@ async function checkForUpdates() {
 function closeUsageEventsStream() {
   const source = state.usageEventsSource;
   state.usageEventsSource = null;
+  usageSyncPending = false;
+  usageReconnectPending = null;
   source?.close?.();
 }
 
@@ -4409,12 +4439,14 @@ function startUsageEventsStream() {
   const source = new window.EventSource("/api/usage-events");
   state.usageEventsSource = source;
   source.onopen = () => {
-    if (state.autoRefreshEnabled && !state.snapshotId) void checkForUpdates();
+    if (state.usageEventsSource !== source || !state.autoRefreshEnabled || state.snapshotId) return;
+    if (state.autoRefreshCheckInFlight) usageReconnectPending = source;
+    else void checkForUpdates();
   };
+  source.addEventListener?.("ready", source.onopen);
   source.addEventListener?.("usage-synced", () => {
-    if (!state.autoRefreshEnabled || state.snapshotId) return;
-    setAutoRefreshStatus("", { busy: true });
-    void loadUsage({ skipCheck: true });
+    if (state.usageEventsSource !== source) return;
+    reloadSyncedUsage();
   });
 }
 

@@ -3,14 +3,17 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { BUSINESS_FIELDS, CELLS, Q4_VARIANTS, VARIANTS, assertQ4Matrix, assertSeedParity, coldDecision, coldStageFailures, finalQ4Cold, q4PageSeed, inside, normalizeBody, publishedAll } from './q3-benchmark-support.mjs';
+import { assertQ5Matrix, q5Trials } from './q5-prepare.mjs';
+import { readCapturedPricing, assertQ5TraceCoverage } from './q5-summary-hook.mjs';
 
 const base=path.resolve(process.argv[2]||'output/architecture-20261103/q1/q1-20261103-c');
 const continuation=process.argv[3]==='--continuation';
 const q2=process.argv[3]==='--q2';
 const q3=process.argv[3]==='--q3';
 const generationAt=process.argv.indexOf('--generation');
-if(generationAt>=0)assert.equal(process.argv[generationAt+1],'q4');
-const q4=process.argv[3]==='--q4'||generationAt>=0;
+if(generationAt>=0)assert.ok(['q4','q5'].includes(process.argv[generationAt+1]));
+const q5=process.argv[3]==='--q5'||generationAt>=0&&process.argv[generationAt+1]==='q5';
+const q4=process.argv[3]==='--q4'||generationAt>=0&&!q5;
 const modern=q3||q4,generation=q4?'q4':q3?'q3':q2?'q2':'q1',variants=q4?Q4_VARIANTS:VARIANTS,pageRounds=q4?10:20;
 const modeAt=process.argv.indexOf('--mode');
 const q3Mode=modeAt<0?'cold':process.argv[modeAt+1];
@@ -25,6 +28,7 @@ const stats=values=>{
 const maximum=values=>{const finite=values.filter(Number.isFinite);return finite.length?Math.max(...finite):null;};
 const fields=['totals','costEstimate','eventCount','sessionCount','homeCount','timeline','timelineError','channels','models'];
 const business=summary=>Object.fromEntries(fields.map(key=>[key,summary[key]]));
+if(q5){await analyzeQ5();process.exit(0);}
 const results=[];
 const runs=new Map(),missing=[];
 let entries;
@@ -199,3 +203,84 @@ const output={schemaVersion:q4?4:q3?3:1,generatedAt:new Date().toISOString(),bas
   parity:{kind:modern?`${generation}-${q3Mode}`:continuation?'continuation':'baseline-candidate',groups:modern?results.length:continuation?2:4,fieldsPerGroup:fields.length,passed:complete},results};
 await writeFile(path.join(base,modern?`analysis-${q3Mode}.json`:'analysis.json'),JSON.stringify(output,null,2)+'\n');
 console.log(JSON.stringify({complete,needsSupplement,pageSeeds,parity:output.parity,results:results.map(({cell,variant,rep,appends,allCoreMs,storageBytes,ordinaryServiceRssMax,wholeServiceRssMax,maximumQuoteBytes})=>({cell,variant,rep,appends,allCoreMs,storageBytes,ordinaryServiceRssMax,wholeServiceRssMax,maximumQuoteBytes}))},null,2));
+
+async function analyzeQ5() {
+  const mode=modeAt<0?'page':process.argv[modeAt+1];assert.ok(['cold','page','setup'].includes(mode));
+  const matrix=await read(path.join(base,'matrix.json'));assertQ5Matrix(matrix,path.basename(base));
+  readCapturedPricing(matrix.pricing.file,matrix.pricing.catalogSha256);
+  const entries=q5Trials(matrix.label).filter(row=>row.mode===(mode==='cold'?'cold-only':mode==='setup'?'setup-only':'page'));
+  const results=[],missing=[],issues=[],runs=[];
+  for(const entry of entries) {
+    const file=entry.resultFile;let run;
+    try{run=await read(file);}catch(error){if(error.code!=='ENOENT')throw error;missing.push(file);continue;}
+    const problems=[];
+    try {
+      assert.equal(run.generation,'q5');assert.equal(run.cell,entry.cell);assert.equal(run.variant,entry.variant);assert.equal(run.mode,entry.mode);
+      assert.deepEqual(run.sourceBefore,run.sourceAfter);
+      if(run.status!=='ineligible'&&run.status!=='pending') {
+        assert.equal(run.passed,true,run.failure?.message);assert.equal(run.pricing.catalogSha256,matrix.pricing.catalogSha256);
+        assert.ok(run.pricingVerifications?.length>0);
+        for(const row of run.pricingVerifications)assert.equal(row.catalogSha256,matrix.pricing.catalogSha256);
+        assertQ5TraceCoverage(run.privateTrace??[]);
+        assert.equal(run.resourceSpans?.length,mode==='page'?2:1);
+        assert.ok(Number.isFinite(run.privateStateAfter?.totalBytes));
+        if(mode==='page') {
+          assert.equal(run.fixturePreparation?.factsIdentical,true);
+          assert.equal(run.appends.length,20);
+          for(const kind of ['codex','dsh'])assert.equal(run.appends.filter(row=>row.kind===kind).length,10);
+          assert.ok(run.pageDelivery?.initial?.rows?.length>0&&run.pageDelivery?.reopen?.rows?.length>0);
+          for(const phase of ['initial','reopen'])assert.equal(run.pageDelivery[phase].dropped,0);
+          for(const append of run.appends) {
+            assert.equal(append.status,'passed');assert.ok(Number.isFinite(append.appendLandedAtMs));
+            assert.ok(append.evidence?.proofKind,'Append proof kind missing.');
+            if(entry.cell.endsWith('native'))assert.equal(append.evidence.nativeFastPath,true,'SHA fallback is not native fast path.');
+            else assert.equal(append.evidence.proofKind,'sha256-prefix-v2');
+          }
+        }else {assert.equal(run.appends.length,0);assert.ok(run.seedPublished);}
+        runs.push(run);
+      }
+    }catch(error){problems.push(error.message);issues.push({file,message:error.message});}
+    const resourceSpans=[];
+    for(const span of run.resourceSpans??[]) {
+      try{resourceSpans.push({...span,summary:await read(path.join(span.directory,'resources.json'))});}
+      catch(error){if(error.code!=='ENOENT')throw error;const message=`Resource summary missing: ${span.directory}`;
+        problems.push(message);issues.push({file,message});}
+    }
+    const windows=(run.appends??[]).map(append=>({...append,
+      eligibleForComparison:run.passed===true&&!['ineligible','pending'].includes(run.status)&&append.status==='passed'
+        &&(!entry.cell.endsWith('native')||append.evidence?.nativeFastPath===true),
+      pageTimeline:(run.pageDelivery?.initial?.rows??[]).filter(row=>row.at>=append.startedAtMs&&row.at<=append.endedAtMs)}));
+    results.push({cell:entry.cell,variant:entry.variant,mode:entry.mode,directory:entry.directory,
+      status:run.status??(run.passed?'passed':'failed'),eligible:run.eligible??run.native?.eligible,
+      failure:run.failure,problems,fixturePreparation:run.fixturePreparation,
+      privateState:{before:run.privateStateBefore,after:run.privateStateAfter},resourceSpans,
+      initialOpenThroughAllMs:run.first?run.first.endedAtMs-run.first.startedAtMs:null,
+      native:run.native,pricingVerifications:run.pricingVerifications,pageDelivery:run.pageDelivery,
+      privateTrace:run.privateTrace,windows,appends:Object.fromEntries(['codex','dsh'].map(kind=>[kind,
+        stats(windows.filter(row=>row.kind===kind&&row.eligibleForComparison).map(row=>row.wallMs))]))});
+  }
+  for(const variant of ['baseline','candidate']) {
+    const group=runs.filter(run=>run.variant===variant);
+    for(const run of group)try{assert.deepEqual(run.sourceBefore,group[0].sourceBefore);}
+    catch(error){issues.push({variant,message:error.message});}
+  }
+  if(mode==='page')for(const cell of [...new Set(runs.map(run=>run.cell))]) {
+    const group=runs.filter(run=>run.cell===cell),first=group[0];
+    for(const run of group)try {
+      assert.equal(run.datasetSha256,first.datasetSha256);
+      for(const select of [run=>run.first.all,publishedAll]) {
+        const a=normalizeBody(select(run).body,run,true),b=normalizeBody(select(first).body,first,true);
+        for(const key of BUSINESS_FIELDS)assert.deepEqual(a.summary[key],b.summary[key],`${cell} ${key}`);
+        assert.deepEqual(a.metadata,b.metadata);assert.deepEqual(a.periodComparison,b.periodComparison);
+      }
+    }catch(error){issues.push({cell,message:error.message});}
+  }
+  const complete=missing.length===0&&issues.length===0&&results.length===entries.length&&results.every(row=>row.status==='passed');
+  const output={schemaVersion:5,generation:'q5',mode,complete,missing,issues,
+    comparisonScope:'baseline/candidate within the same canonical proof mode and volume; no cross-volume causal ratios',
+    accounting:{canonicalInitializations:4,formalColdRegressions:2,setupNativeInitializations:2,pageCells:8,pageAppends:160,
+      observedAppends:results.reduce((n,row)=>n+row.windows.length,0),setupAndRecertification:'separate from append windows'},
+    parity:{kind:`q5-${mode}`,passed:complete},results};
+  await writeFile(path.join(base,`analysis-${mode}.json`),JSON.stringify(output,null,2)+'\n');
+  console.log(JSON.stringify({complete,missing,issues,statuses:results.map(({cell,variant,status})=>({cell,variant,status}))},null,2));
+}

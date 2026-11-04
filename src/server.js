@@ -385,6 +385,7 @@ export function createUsageServer(options = {}) {
   let usageEventHeartbeat = null;
   let usageWakePromise = null;
   let usageWakePending = false;
+  let lastUsageEventVersion = null;
   const snapshots = new Map();
   let snapshotDirectoryCleanup = Promise.resolve();
 
@@ -644,10 +645,10 @@ export function createUsageServer(options = {}) {
   }
 
   async function loadUsageStore({ check = true } = {}) {
-    if (!check && storeStatus && usageStore.status) return storeStatus;
     if (syncPromise) {
       return syncPromise;
     }
+    if (!check && storeStatus && usageStore.status) return storeStatus;
     if (importContext) {
       syncPromise = usageStore
         .open({
@@ -664,35 +665,33 @@ export function createUsageServer(options = {}) {
         });
       return syncPromise;
     }
-    const currentUsageOptions = await usageOptions(options);
-    if (!syncPromise) {
-      syncPromise = (async () => {
-        const before = await summaryCache.readSourceState({
+    syncPromise = (async () => {
+      const currentUsageOptions = await usageOptions(options);
+      const before = await summaryCache.readSourceState({
+        ...currentUsageOptions,
+        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+      });
+      const retained = await summaryCache.stateFor(before);
+      if (retained) {
+        usageStore.restoreState(retained);
+        storeStatus = { ...retained.status, checkedAt: before.checkedAt };
+        publishedSource = before;
+        return storeStatus;
+      }
+      const status = await usageStore.sync({ options: currentUsageOptions });
+      publishedSource = publishedSummarySource(
+        before,
+        await summaryCache.readSourceState({
           ...currentUsageOptions,
           importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-        });
-        const retained = await summaryCache.stateFor(before);
-        if (retained) {
-          usageStore.restoreState(retained);
-          storeStatus = { ...retained.status, checkedAt: before.checkedAt };
-          publishedSource = before;
-          return storeStatus;
-        }
-        const status = await usageStore.sync({ options: currentUsageOptions });
-        publishedSource = publishedSummarySource(
-          before,
-          await summaryCache.readSourceState({
-            ...currentUsageOptions,
-            importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-          }),
-        );
-        storeStatus = status;
-        scheduleUsageDiscovery(usageStore.metadata().harnessModels);
-        return status;
-      })().finally(() => {
-        syncPromise = null;
-      });
-    }
+        }),
+      );
+      storeStatus = status;
+      scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+      return status;
+    })().finally(() => {
+      syncPromise = null;
+    });
     return syncPromise;
   }
 
@@ -784,6 +783,13 @@ export function createUsageServer(options = {}) {
       checkedAt: status?.checkedAt || new Date().toISOString(),
       fingerprint: status?.fingerprint || "",
     };
+    const version = JSON.stringify([
+      data.fingerprint,
+      publishedSource?.routingFingerprint,
+      localPricingCatalog().version,
+    ]);
+    if (version === lastUsageEventVersion) return;
+    lastUsageEventVersion = version;
     for (const response of [...usageEventClients]) {
       try {
         writeUsageEvent(response, "usage-synced", data);
@@ -829,10 +835,10 @@ export function createUsageServer(options = {}) {
             return;
           }
           if (serverClosed || !usageEventClients.size) return;
+          broadcastUsageSync(status);
           if (joinedExistingSync || usageWakePending) continue;
           await usageSourceWatcher.refresh().catch(() => {});
           if (serverClosed || !usageEventClients.size) return;
-          broadcastUsageSync(status);
           return;
         }
       } finally {
@@ -1336,35 +1342,54 @@ export function createUsageServer(options = {}) {
         Object.assign(filters, { now: asOf, pricingModels: pricingCatalog.models });
         if (!frozen) {
           const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
-          let source = !importContext && !syncPromise ? publishedSource : null;
-          if (source) {
-            source = publishedSummarySource(source, { ...source, publication: await summaryCache.readPublication() });
-            publishedSource = source;
-          }
+          let result;
+          let source;
+          let cached;
+          let readAttempts = 0;
           const key = summaryCacheKey(filters, includeDetails, pricingCatalog);
-          let result = source ? await summaryCache.get(key, source, asOf) : null;
-          response.setHeader("x-summary-cache", result ? "hit" : "miss");
-          if (!result) {
-            result = await runWithPricingCatalog(pricingCatalog, () =>
-              usageStore.dashboard(filters, { includeDetails }),
-            );
-            if (source && !syncPromise && result.status?.fingerprint === usage.fingerprint) {
-              const currentOptions = await usageOptions(options);
-              const afterRead = await summaryCache.readSourceState({
-                ...currentOptions,
-                importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-              });
-              if (
-                afterRead.inputs === source.inputs &&
-                afterRead.publication?.signature === source.publication?.signature
-              ) {
-                try {
-                  await summaryCache.publish(key, result, usageStore.stateSnapshot(), source, asOf);
-                } catch {
-                  // A cache write failure must not discard a completed fresh result.
+          do {
+            await loadUsageStore({ check: false });
+            source = !importContext && !syncPromise ? publishedSource : null;
+            if (source) {
+              const previousSource = source;
+              source = publishedSummarySource(source, { ...source, publication: await summaryCache.readPublication() });
+              if (publishedSource === previousSource) publishedSource = source;
+            }
+            result = source ? await summaryCache.get(key, source, asOf) : null;
+            cached = Boolean(result);
+            response.setHeader("x-summary-cache", result ? "hit" : "miss");
+            if (!result) {
+              result = await runWithPricingCatalog(pricingCatalog, () =>
+                usageStore.dashboard(filters, { includeDetails }),
+              );
+              if (source && !syncPromise && result.status?.fingerprint === source.fingerprint) {
+                const currentOptions = await usageOptions(options);
+                const afterRead = await summaryCache.readSourceState({
+                  ...currentOptions,
+                  importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+                });
+                if (
+                  afterRead.inputs === source.inputs &&
+                  afterRead.publication?.signature === source.publication?.signature
+                ) {
+                  try {
+                    await summaryCache.publish(key, result, usageStore.stateSnapshot(), source, asOf);
+                  } catch {
+                    // A cache write failure must not discard a completed fresh result.
+                  }
                 }
               }
             }
+            // A captured cache hit is coherent; a miss must not chase an endless stream of commits.
+          } while (!cached && ++readAttempts < 2 && (syncPromise || source?.signature !== publishedSource?.signature));
+          if (
+            !cached &&
+            (syncPromise ||
+              source?.signature !== publishedSource?.signature ||
+              source?.fingerprint !== result.status?.fingerprint)
+          ) {
+            // The worker's fact fingerprint keeps this response coherent and the next check pending.
+            source = null;
           }
           const responseCatalog = result.pricingCatalog || pricingCatalog;
           const published = result.status || usage;

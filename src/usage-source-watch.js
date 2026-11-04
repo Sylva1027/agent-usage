@@ -66,6 +66,7 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
           const index = watchers.indexOf(watcher);
           if (index >= 0) watchers.splice(index, 1);
           watcher.close?.();
+          scheduleHint();
         });
         watcher.unref?.();
         next.push(watcher);

@@ -6,21 +6,39 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { registerHooks } from 'node:module';
 import { assertQ4Matrix, assertSeedParity, coldDecision, q4PageSeed, inside, runOptions, versionSpec } from './q3-benchmark-support.mjs';
+import { assertQ5Matrix, nativeEligibility, verifyQ5Frozen } from './q5-prepare.mjs';
+import { appendQ5AndPaint, observeQ5Delivery, q5DiagnosticHook, readQ5Delivery, readCapturedPricing,
+  q5PrivateRows, q5AppendEvidence, assertQ5TraceCoverage } from './q5-summary-hook.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const here=path.join(root,'experiments/architecture-20261101');
 const options=runOptions(process.argv.slice(2));
 const {generation,label,cell,variant,preparedResult,scale,trial,rounds,mode,rep,base}=options;
-const modern=generation==='q3'||generation==='q4';
+const q5=generation==='q5',modern=generation==='q3'||generation==='q4'||q5;
 const retrySeed=process.argv.includes('--retry-seed');
 if(retrySeed)assert.ok(generation==='q4'&&mode==='page');
 if(process.argv.includes('--describe')){console.log(JSON.stringify(options,null,2));process.exit(0);}
+if(q5)registerHooks(q5DiagnosticHook);
+const q5Fixture=q5?await import('./q5-fixture.mjs'):null;
 const { prepareScale, serverOptions, waitForServer, stopServer, openPage, painted, appendAndPaint,
-  progressRows, hashFile, sourceInventory, compareInventory, sleep } = await import('./b2-page-diagnostic.mjs');
+  progressRows, hashFile, sourceInventory, compareInventory, sleep, codexAppendRows, dshAppendFrame } = await import('./b2-page-diagnostic.mjs');
 const result={generation,cell,variant,mode,rep,rounds,startedAt:new Date().toISOString(),passed:false,scopes:[],appends:[],resourceSpans:[]};
 if(retrySeed)result.retrySeed=true;
-let server,sampler,browserState;
+let server,sampler,browserState,q5Matrix,releaseCanonical,deliveryPhase='initial';
+async function captureDelivery() {
+  if(!browserState)return;
+  if(q5) {
+    result.pageDelivery??={initial:{rows:[],dropped:0},reopen:{rows:[],dropped:0}};
+    try{result.pageDelivery[deliveryPhase]=await readQ5Delivery(browserState.page);}
+    catch(error){(result.deliveryErrors??=[]).push({phase:deliveryPhase,message:error.message});}
+  }else if(generation==='q4') {
+    const rows=await browserState.page.evaluate(()=>window.__q4Delivery??[]);
+    result.pageDeliveryByPhase??={};result.pageDeliveryByPhase[deliveryPhase]=rows;
+    result.pageDelivery=Object.values(result.pageDeliveryByPhase).flat();
+  }
+}
 function observeDelivery() {
   const records=[];window.__q4Delivery=records;
   const fetch=window.fetch.bind(window),EventSource=window.EventSource;
@@ -47,9 +65,13 @@ async function sourceHashes() {
   }
   const hashes={};
   for(const folder of ['src','public'])for(const name of await readdir(path.join(root,folder),{recursive:true})){
-    if(generation!=='q4'&&!(modern?/\.(js|css|html|json)$/:/\.(js|css|html)$/).test(name))continue;
+    if(generation!=='q4'&&!q5&&!(modern?/\.(js|css|html|json)$/:/\.(js|css|html)$/).test(name))continue;
     const file=path.join(root,folder,name);if(!(await stat(file)).isFile())continue;
     hashes[path.relative(root,file)]=(await hashFile(file)).sha256;
+  }
+  if(q5)for(const folder of ['native/windows-source-proof'])for(const name of await readdir(path.join(root,folder),{recursive:true})){
+    if(!/\.(rs|toml|lock|ps1|md)$|^bin[\\/]windows-source-proof\.exe$/.test(name))continue;
+    const file=path.join(root,folder,name);if((await stat(file)).isFile())hashes[path.relative(root,file)]=(await hashFile(file)).sha256;
   }
   return hashes;
 }
@@ -64,6 +86,10 @@ async function launch(prepared,suffix='') {
   if(generation==='q4'){env.Q4_VARIANT=variant;env.Q4_TRACE_DIR=env.Q1_TRACE_DIR;}
   else {delete env.Q4_VARIANT;delete env.Q4_TRACE_DIR;}
   if(generation==='q4'&&mode==='page')env.Q4_FIXED_PRICING='1';else delete env.Q4_FIXED_PRICING;
+  for(const key of ['Q5_VARIANT','Q5_TRACE_DIR','Q5_PROOF_MODE','Q5_PRICING_FILE','Q5_PRICING_SHA256','Q5_SELECTED_PATHS'])delete env[key];
+  if(q5)Object.assign(env,{Q5_VARIANT:variant,Q5_TRACE_DIR:env.Q1_TRACE_DIR,Q5_PROOF_MODE:cell.endsWith('native')?'native':'sha',
+    Q5_PRICING_FILE:q5Matrix.pricing.file,Q5_PRICING_SHA256:q5Matrix.pricing.catalogSha256,
+    Q5_SELECTED_PATHS:JSON.stringify(Object.values(prepared.selected).map(row=>row.targetPath))});
   delete env.NODE_OPTIONS;
   await mkdir(env.TEMP,{recursive:true});
   const child=spawn(process.execPath,['--max-old-space-size=512','--import',pathToFileURL(path.join(here,`${generation}-summary-hook.mjs`)).href,
@@ -136,14 +162,28 @@ await mkdir(trial,{recursive:true});
 await assert.rejects(stat(path.join(trial,'result.json')),e=>e.code==='ENOENT');
 try {
   result.sourceBefore=await sourceHashes();
+  if(q5) {
+    result.frozen=await verifyQ5Frozen();
+    q5Matrix=JSON.parse(await readFile(path.join(base,'matrix.json'),'utf8'));
+    result.native=nativeEligibility(cell,q5Matrix.nativeAvailability);
+    if(!result.native.eligible) {
+      result.status=result.native.status;result.eligible=false;
+      throw Object.assign(new Error(result.native.reason),{code:'Q5_NATIVE_INELIGIBLE'});
+    }
+    assertQ5Matrix(q5Matrix,label);
+    readCapturedPricing(q5Matrix.pricing.file,q5Matrix.pricing.catalogSha256);
+    result.pricing={...q5Matrix.pricing};
+  }
   const datasetFile=path.join(root,'output/architecture-20261103/growth-baseline',scale,'dataset.json');
   const dataset=JSON.parse(await readFile(datasetFile,'utf8'));
   if(modern){
     const matrixFile=path.join(base,'matrix.json'),matrix=JSON.parse(await readFile(matrixFile,'utf8'));
-    if(generation==='q4')assertQ4Matrix(matrix,label);
+    if(q5)assertQ5Matrix(matrix,label);
+    else if(generation==='q4')assertQ4Matrix(matrix,label);
     else {assert.equal(matrix.prepared,true,'Prepare every Q3 mirror before certification.');
       assert.equal(matrix.label,label);assert.equal(matrix.trials.length,18);}
-    for(const entry of matrix.trials)await stat(entry.preparedFile);
+    for(const entry of [...matrix.trials,...(q5?[...matrix.page,...matrix.setup]:[])])
+      if(!q5||nativeEligibility(entry.cell,matrix.nativeAvailability).eligible)await stat(entry.preparedFile);
     result.matrixFile=matrixFile;
     result.datasetSha256=(await hashFile(datasetFile)).sha256;
     if(matrix.datasets)assert.equal(result.datasetSha256,matrix.datasets[scale].sha256);
@@ -178,31 +218,48 @@ try {
   const prepared=seed?.prepared || (generation!=='q1'
     ? JSON.parse(await readFile(path.join(trial,'prepared.json'),'utf8'))
     : await prepareScale(dataset,mirrorRoot,path.join(root,'output/architecture-20261103/b2/page-e1-final-v8',scale,'.codex-usage')));
-  if(modern&&mode==='cold-only'){
+  if(modern&&(mode==='cold-only'||mode==='setup-only')){
     assert.ok(inside(trial,prepared.databaseFile));
     await assert.rejects(stat(prepared.databaseFile),error=>error.code==='ENOENT');
   }
-  if(generation==='q4'){
+  if(generation==='q4'||q5){
     const fixture=seed?path.dirname(path.resolve(preparedResult)):trial;
-    for(const file of [prepared.home,prepared.databaseFile,prepared.stateDirectory])assert.ok(inside(fixture,file));
+    for(const file of [...(q5?[]:[prepared.home]),prepared.databaseFile,prepared.stateDirectory])assert.ok(inside(fixture,file));
+    if(q5) {
+      const canonical=q5Matrix.canonical.find(entry=>entry.id===cell);assert.ok(canonical?.prepared);
+      assert.equal(prepared.home,canonical.prepared.home);
+      assert.equal(prepared.canonicalDirectory,canonical.directory);
+      assert.equal(prepared.seedDatabaseFile,canonical.seedDatabaseFile);
+      assert.deepEqual(prepared.selected,canonical.prepared.selected);
+      releaseCanonical=await q5Fixture.lockCanonical(prepared);
+      if(mode==='page')result.fixturePreparation=await q5Fixture.cloneQ5Cell(prepared,{proofMode:canonical.proofMode,
+        nativeBinary:versionSpec(variant,{generation:'q5'}).nativeBinary,variant,
+        pricingSha256:q5Matrix.pricing.catalogSha256,datasetSha256:result.datasetSha256});
+    }
     for(const kind of ['codex','dsh']){
       assert.ok(inside(prepared.home,prepared.selected[kind].targetPath));
       assert.equal((await stat(prepared.selected[kind].targetPath)).nlink,1,'Q4 appends require independent copies.');
     }
   }
   result.prepared=prepared;await checkpoint();
+  if(q5&&mode==='page') {
+    assert.equal(result.fixturePreparation.factsIdentical,true);
+    assert.ok(result.fixturePreparation.proofs.every(row=>row.proofKind===(cell.endsWith('native')?'ntfs-usn-v1':'sha256-prefix-v2')));
+  }
+  if(q5)result.privateStateBefore=await q5Fixture.privateStateSnapshot(q5Matrix);
   server=await launch(prepared);result.server={pid:server.ready.pid,url:server.ready.url};
   sampler=await startSampling(prepared);
-  const start=Date.now();browserState=await openPage(server.ready.url,trial,generation==='q4'?[observeDelivery]:[]);
+  const start=Date.now();browserState=await openPage(server.ready.url,trial,q5?[observeQ5Delivery]:generation==='q4'?[observeDelivery]:[]);
   result.first={startedAtMs:start,endedAtMs:Date.now(),bootstrapMs:browserState.bootstrapMs,all:browserState.all};
+  await captureDelivery();await checkpoint();
   if(seed){
     result.seedParity=assertSeedParity(browserState.all,seed);
   }else compareInventory(sourceInventory(prepared.databaseFile),dataset,prepared.home);
   const initial=browserState.all;let expected=initial.total;
   result.initialView=viewStats(prepared);await checkpoint();
   if(generation!=='q1')result.initialQ2Storage=q2Storage(prepared);
-  if(generation==='q4')result.initialQ4Storage=q4Storage(prepared);
-  if(mode!=='cold-only'){
+  if(generation==='q4'||q5)result.initialQ4Storage=q4Storage(prepared);
+  if(mode!=='cold-only'&&mode!=='setup-only'){
   await request('all',expected,'unchanged-all');
   const previous=progressRows(prepared.databaseFile).find(x=>x.sourcePath===prepared.selected.codex.targetPath)?.checkpoint.state.previousCumulative;
   const state={codex:{cumulative:{total:0,input:0,cached:0,output:0,reasoning:0,...previous},nextTimestampMs:Date.now()},
@@ -210,7 +267,21 @@ try {
   for(const kind of ['codex','dsh']) {
     for(let i=0;i<rounds;i++) {
       expected+=kind==='codex'?1000:1900;
-      await appendAndPaint(browserState.page,prepared,state,kind,'sse',result,expected);
+      if(q5) {
+        const persist=async()=>{await captureDelivery();await checkpoint();};
+        try{await appendQ5AndPaint(browserState.page,prepared,state,kind,result,expected,persist,{painted,codexAppendRows,dshAppendFrame});}
+        finally {
+          const append=result.appends.at(-1),rows=q5PrivateRows(path.join(trial,'components'));
+          let progress;try{progress=progressRows(prepared.databaseFile).find(row=>row.sourcePath===prepared.selected[kind].targetPath);}catch{}
+          append.evidence=q5AppendEvidence(rows,append,prepared.selected[kind].targetPath,progress);await persist();
+        }
+        const append=result.appends.at(-1);await checkpoint();
+        if(cell.endsWith('native')&&!append.evidence.nativeFastPath) {
+          result.status='ineligible';result.eligible=false;
+          throw new Error('Native append used no proved native fast path; inspect append evidence for the helper outcome.');
+        }
+      }else await appendAndPaint(browserState.page,prepared,state,kind,'sse',result,expected);
+      await checkpoint();
       assert.equal(result.appends.at(-1).responseEventCount,initial.eventCount+result.appends.length);
       await checkpoint();
     }
@@ -219,7 +290,7 @@ try {
   result.finalView=viewStats(prepared);
   }
   if(generation!=='q1')result.finalQ2Storage=q2Storage(prepared);
-  if(generation==='q4')result.finalQ4Storage=q4Storage(prepared);
+  if(generation==='q4'||q5)result.finalQ4Storage=q4Storage(prepared);
   const db=new DatabaseSync(prepared.databaseFile,{readOnly:true});
   assert.equal(db.prepare('SELECT count(*) n FROM events').get().n,initial.eventCount+result.appends.length);
   assert.equal(db.prepare('SELECT sum(total) n FROM events').get().n,expected);
@@ -233,29 +304,58 @@ try {
   for(const [kind,selected] of Object.entries(prepared.selected))result.publishedInputs[kind]=await hashFile(selected.targetPath);
   result.published={firstAll:browserState.all,appends:result.appends.length};
   assert.deepEqual(browserState.errors,[]);
-  if(mode!=='cold-only'){
+  if(mode!=='cold-only'&&mode!=='setup-only'){
+  await captureDelivery();await checkpoint();
   await browserState.browser.close();browserState=null;
   await stopServer(server,result);server=null;
   await stopSampling();
   // Restart the full service and executor against the already published view.
   const reopened=Date.now();server=await launch(prepared,'-reopen');
   sampler=await startSampling(prepared,'-reopen');
-  browserState=await openPage(server.ready.url,trial);
+  deliveryPhase='reopen';
+  browserState=await openPage(server.ready.url,trial,q5?[observeQ5Delivery]:generation==='q4'?[observeDelivery]:[]);
+  await captureDelivery();await checkpoint();
   assert.equal(browserState.all.total,expected);
   result.reopen={startedAtMs:reopened,endedAtMs:Date.now(),firstAll:browserState.all};
   result.published.firstAll=browserState.all;
-  if(generation==='q4')result.reopenQ4Storage=q4Storage(prepared);
+  if(generation==='q4'||q5)result.reopenQ4Storage=q4Storage(prepared);
   assert.deepEqual(browserState.errors,[]);
   }
   result.passed=true;
-} catch(error){result.failure={message:error.message,stack:error.stack};process.exitCode=1;}
+} catch(error){result.failure={message:error.message,stack:error.stack,code:error.code};
+  if(q5&&error.code==='Q5_NATIVE_INELIGIBLE'){result.status='ineligible';result.eligible=false;}
+  if(error.q5Delivery){result.pageDelivery??={};result.pageDelivery[deliveryPhase]=error.q5Delivery;}
+  process.exitCode=1;}
 finally {
-  if(generation==='q4'&&browserState)try{result.pageDelivery=await browserState.page.evaluate(()=>window.__q4Delivery??[]);}catch{}
+  try{await captureDelivery();}catch{}
   if(browserState)try{await browserState.browser.close();}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
   if(server)try{await stopServer(server,result);}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
   try{await stopSampling();}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
   try{result.sourceAfter=await sourceHashes();assert.deepEqual(result.sourceAfter,result.sourceBefore);}
   catch(error){result.failure??={message:error.message,stack:error.stack};result.passed=false;process.exitCode=1;}
+  if(q5) {
+    try {
+      result.privateTrace=q5PrivateRows(path.join(trial,'components'));
+      result.pricingVerifications=result.privateTrace.filter(row=>row.type==='pricing-verified');
+      if(q5Matrix?.canonical)result.privateStateAfter=await q5Fixture.privateStateSnapshot(q5Matrix);
+      if(result.passed) {
+        assertQ5TraceCoverage(result.privateTrace);
+        assert.ok(result.pricingVerifications.length>0,'No process verified Q5 pricing.');
+        for(const row of result.pricingVerifications)assert.equal(row.catalogSha256,result.pricing.catalogSha256);
+        for(const row of result.privateTrace.filter(row=>row.type==='hook-start'))
+          assert.ok(result.pricingVerifications.some(check=>check.pid===row.pid),'Every Q5 process must verify its catalog.');
+        readCapturedPricing(result.pricing.file,result.pricing.catalogSha256);
+        await verifyQ5Frozen();
+        if(mode!=='page') {
+          await q5Fixture.publishCanonicalSeed(result.prepared,{generation,cell,variant,mode,pricing:result.pricing,
+            sourceBefore:result.sourceBefore,datasetSha256:result.datasetSha256,first:result.first});
+          result.seedPublished=result.prepared.seedDatabaseFile;
+        }
+        if(mode!=='page')result.privateStateAfter=await q5Fixture.privateStateSnapshot(q5Matrix);
+      }
+    }catch(error){result.failure={message:error.message,stack:error.stack};result.passed=false;process.exitCode=1;}
+    if(releaseCanonical)try{await releaseCanonical();}catch(error){result.cleanupError=error.stack;result.passed=false;process.exitCode=1;}
+  }
   result.endedAt=new Date().toISOString();await checkpoint();
   console.log(JSON.stringify({cell,variant,passed:result.passed,appends:result.appends.map(x=>({kind:x.kind,wallMs:x.wallMs})),failure:result.failure?.message,output:trial}));
 }

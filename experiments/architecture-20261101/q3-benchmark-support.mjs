@@ -6,12 +6,22 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const Q3_ROOT = path.join(ROOT, 'output/architecture-20261104/q3');
 export const Q4_ROOT = path.join(ROOT, 'output/architecture-20261104/q4');
+export const Q5_ROOT = path.join(ROOT, 'output/architecture-20261104/q5');
+export const Q5_CELLS = ['1x-sha', '10x-sha', '1x-native', '10x-native'];
 export const VARIANTS = ['preq2', 'baseline', 'candidate'];
 export const Q4_VARIANTS = ['baseline', 'candidate'];
 export const CELLS = ['1x-sha', '10x-sha'];
 export const BUSINESS_FIELDS = ['totals','costEstimate','eventCount','sessionCount','homeCount','timeline','timelineError','channels','models'];
 
 export function versionSpec(variant, { generation = 'q3' } = {}) {
+  if (generation === 'q5') {
+    assert.ok(Q4_VARIANTS.includes(variant), `Unknown Q5 variant: ${variant}`);
+    const directory = variant === 'baseline' ? path.join(Q5_ROOT, 'baseline') : ROOT;
+    return { variant, directory, frozen: variant === 'baseline', expectedFiles: 101,
+      hashesFile: path.join(Q5_ROOT, 'baseline-hashes.json'),
+      nativeHashesFile: path.join(Q5_ROOT, 'baseline-native-hashes.json'),
+      nativeBinary: path.join(directory, 'native/windows-source-proof/bin/windows-source-proof.exe') };
+  }
   if (generation === 'q4') {
     assert.ok(Q4_VARIANTS.includes(variant), `Unknown Q4 variant: ${variant}`);
     if (variant === 'candidate') return { variant, directory: ROOT, frozen: false };
@@ -38,35 +48,45 @@ export function runOptions(argv) {
     return argv[at + 1];
   };
   const generation = arg('--generation', 'q1');
-  assert.ok(['q1', 'q2', 'q3', 'q4'].includes(generation));
-  const modern = generation === 'q3' || generation === 'q4';
+  assert.ok(['q1', 'q2', 'q3', 'q4', 'q5'].includes(generation));
+  const modern = generation === 'q3' || generation === 'q4' || generation === 'q5';
   const label = arg('--label');
   assert.match(label || '', new RegExp('^' + generation + '-[a-z0-9-]+$'));
   const cell = arg('--cell', '1x-sha');
-  assert.match(cell, modern ? /^(1|10)x-sha$/ : /^(1|10)x-(sha|native)$/);
+  assert.match(cell, modern && generation !== 'q5' ? /^(1|10)x-sha$/ : /^(1|10)x-(sha|native)$/);
   const variant = arg('--variant', 'candidate');
   assert.ok((generation === 'q3' ? VARIANTS : ['baseline','candidate']).includes(variant));
   const mode = arg('--mode', modern ? 'cold-only' : 'full');
-  assert.ok(['full','cold-only','page'].includes(mode));
-  const rounds = Number(arg('--rounds', generation === 'q4' ? '10' : generation === 'q3' ? '20' : '3'));
+  assert.ok(['full','cold-only','page',...(generation==='q5'?['setup-only']:[])].includes(mode));
+  const rounds = Number(arg('--rounds', ['q4','q5'].includes(generation) ? '10' : generation === 'q3' ? '20' : '3'));
   assert.ok(Number.isSafeInteger(rounds) && rounds > 0 && rounds <= 20);
   const preparedResult = arg('--prepared-result');
-  if (mode === 'page') assert.ok(preparedResult, '--mode page requires --prepared-result');
+  if (mode === 'page' && generation !== 'q5') assert.ok(preparedResult, '--mode page requires --prepared-result');
   if (modern) {
     assert.notEqual(mode, 'full', `${generation.toUpperCase()} uses separate cold-only and page runs.`);
     if (mode === 'page') assert.notEqual(variant, 'preq2', 'Q3 page cells compare baseline/candidate only.');
     if (mode === 'cold-only') assert.equal(preparedResult, undefined, 'Cold runs require their independent empty fixture.');
   }
   if (generation === 'q4') assert.equal(rounds, 10, 'Q4 requires ten appends per source in each page cell.');
+  if (generation === 'q5') {
+    assert.equal(rounds, 10, 'Q5 requires ten appends per source in each page cell.');
+    assert.equal(preparedResult, undefined, 'Q5 uses canonical-home fixtures; Q4 warm seeds stay untouched.');
+    if (mode === 'cold-only') {
+      assert.equal(variant, 'candidate', 'Q5 cold regressions are candidate-only.');
+      assert.ok(CELLS.includes(cell), 'Q5 cold regressions use SHA.');
+    }
+    if (mode === 'setup-only')assert.ok(variant==='baseline'&&cell.endsWith('native'),'Q5 native seed setup is baseline-only.');
+  }
   const rep = Number(arg('--rep', '1'));
   assert.ok(Number.isSafeInteger(rep) && rep >= 1 && rep <= 3);
+  if (generation === 'q5') assert.equal(argv.includes('--rep'), false, 'Q5 has two independent cold regressions, without repeats.');
   if (modern && mode === 'page') assert.equal(argv.includes('--rep'), false, 'Page results have no cold rep.');
   const base = path.join(ROOT, modern ? 'output/architecture-20261104' : 'output/architecture-20261103', generation, label);
   const trial = modern
-    ? path.join(base, mode === 'page' ? 'page' : 'cold', cell, variant, ...(mode === 'page' ? [] : ['rep-' + rep]))
+    ? path.join(base, mode === 'page' ? 'page' : mode === 'setup-only' ? 'setup' : 'cold', cell, variant, ...(mode === 'page' || generation === 'q5' ? [] : ['rep-' + rep]))
     : path.join(base, cell, variant);
   return { generation, label, cell, scale: cell.startsWith('10') ? '10x' : '1x', variant, mode,
-    rep: modern && mode !== 'page' ? rep : null, rounds, preparedResult, base, trial };
+    rep: modern && mode !== 'page' && generation !== 'q5' ? rep : null, rounds, preparedResult, base, trial };
 }
 
 export function coldMatrix(label, generation = 'q3') {

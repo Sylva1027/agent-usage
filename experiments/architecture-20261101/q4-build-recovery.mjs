@@ -3,21 +3,24 @@ import { fork } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { UsageStore } from '../../src/usage-store.js';
 import { UsageSourceProof } from '../../src/usage-source-proof.js';
 import { tryInitializeUsageRollups, tryAppendUsageRollups } from '../../src/usage-rollups.js';
 
-const [label,mode,stage,phase]=process.argv.slice(2);
-assert.match(label||'',/^q4-[a-z0-9-]+$/);
-const base=path.resolve('output/architecture-20261104/q4/recovery',label);
+const native=process.argv.includes('--native');
+const [label,mode,stage,phase]=process.argv.slice(2).filter(value=>value!=='--native');
+assert.match(label||'',/^q[45]-[a-z0-9-]+$/);
+const base=path.resolve('output/architecture-20261104',label.slice(0,2),'recovery',label);
+const fixtureBase=native?path.join(os.tmpdir(),'codex-'+label,'recovery'):base;
 const heap=['--max-old-space-size=224','--max-semi-space-size=4'];
 const zoneIdentity=Intl.DateTimeFormat().resolvedOptions().timeZone;
 const self=fileURLToPath(import.meta.url);
 const rowCount=321;
 async function open(root) {
   const store=new UsageStore({homeDir:root,databaseFile:path.join(root,'usage.sqlite'),automaticDiscoveryEnabled:false});
-  await store.open();store.sourceProof=new UsageSourceProof();store.sourceProof.provider=async()=>null;
+  await store.open();store.sourceProof=new UsageSourceProof();if(!native)store.sourceProof.provider=async()=>null;
   store.repositoryResolver=cwd=>({key:'directory:'+cwd,path:cwd,kind:'directory'});
   return store;
 }
@@ -36,7 +39,7 @@ function park(store) {
   throw new Error('Parent did not terminate parked child');
 }
 async function kill(stage,phase) {
-  const child=fork(self,[label,'child',stage,phase],{execArgv:heap,windowsHide:true,
+  const child=fork(self,[label,'child',stage,phase,...(native?['--native']:[])],{execArgv:heap,windowsHide:true,
     env:{...process.env,NODE_OPTIONS:''},stdio:['ignore','pipe','pipe','ipc']});
   let stderr='',message,requested=false;
   child.stderr.on('data',chunk=>stderr+=chunk);child.stdout.resume();
@@ -57,7 +60,7 @@ async function kill(stage,phase) {
 }
 if(mode==='child') {
   assert.ok(['facts','rollups'].includes(stage));assert.ok(['before-commit','after-commit'].includes(phase));
-  const root=path.join(base,stage+'-'+phase),store=await open(root),exec=store.database.exec.bind(store.database);
+  const root=path.join(fixtureBase,stage+'-'+phase),store=await open(root),exec=store.database.exec.bind(store.database);
   let nesting=0;
   store.database.exec=sql=>{
     const text=String(sql).trim();
@@ -72,10 +75,10 @@ if(mode==='child') {
   if(stage==='facts')await replace(store,root);else tryInitializeUsageRollups(store.database,{zoneIdentity});
   throw new Error('No commit boundary reached');
 } else {
-  assert.equal(mode,undefined);await mkdir(base,{recursive:true});
+  assert.equal(mode,undefined);await mkdir(base,{recursive:true});await mkdir(fixtureBase,{recursive:true});
   const results=[];
   for(const stage of ['facts','rollups'])for(const phase of ['before-commit','after-commit']) {
-    const root=path.join(base,stage+'-'+phase);await mkdir(root);
+    const root=path.join(fixtureBase,stage+'-'+phase);await mkdir(root);
     const usage=n=>({total_tokens:n,input_tokens:n,cached_input_tokens:0,output_tokens:0,reasoning_output_tokens:0});
     const rows=[{type:'session_meta',payload:{id:'recovery',cwd:'/recovery',source:'cli',originator:'codex-tui'}},
       {type:'turn_context',payload:{model:'gpt-6-sol'}},
@@ -91,6 +94,8 @@ if(mode==='child') {
       assert.equal(before.count,rowCount);
       assert.deepEqual(store.database.prepare('SELECT total FROM events ORDER BY id').all().map(row=>row.total),Array(rowCount).fill(1));
       assert.equal(store.database.prepare('SELECT COUNT(*) n FROM usage_source_progress').get().n,1);
+      const proofKind=JSON.parse(store.database.prepare('SELECT validation_json FROM usage_source_progress').get().validation_json).kind;
+      assert.equal(proofKind,native?'ntfs-usn-v1':'sha256-prefix-v2');
       const certified=store.database.prepare('SELECT certified FROM usage_rollup_progress').get().certified;
       assert.equal(certified,stage==='rollups'&&phase==='after-commit'?1:0);
       const work=tryInitializeUsageRollups(store.database,{zoneIdentity});
@@ -99,7 +104,7 @@ if(mode==='child') {
       for(const zone of ['utc','local'])assert.deepEqual({...store.database.prepare('SELECT SUM(event_count) n,SUM(total) total FROM usage_rollup_daily WHERE calendar_zone=?').get(zone)},{n:rowCount,total:rowCount});
       assert.deepEqual(facts(store.database),before);
       assert.equal(store.database.prepare('PRAGMA quick_check').get().quick_check,'ok');
-      results.push({stage,phase,killed,facts:before,passed:true});
+      results.push({stage,phase,killed,facts:before,proofKind,passed:true});
     } finally {store.close();}
   }
   await writeFile(path.join(base,'result.json'),JSON.stringify({passed:true,results},null,2)+'\n',{flag:'wx'});

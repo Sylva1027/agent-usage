@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, stat } from "node:fs/promises";
 
-const CHUNK_BYTES = 64 * 1024;
+const CHUNK_BYTES = 1024 * 1024;
 export const USAGE_SOURCE_SHA_KIND = "sha256-prefix-v2";
 const SHA_KIND = USAGE_SOURCE_SHA_KIND;
 
