@@ -1029,11 +1029,11 @@ test("summarizeHistory pins the no-authority marker and hot summary against an e
 
     DatabaseSync.prototype.prepare = function patchedPrepare(sql, ...args) {
       const statement = originalPrepare.call(this, sql, ...args);
-      if (this !== store.database || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
+      if (this !== store.database || !this.isTransaction || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
       return {
         get(...params) {
           const result = statement.get(...params);
-          if (!injected) {
+          if (!injected && store.database.isTransaction) {
             injected = true;
             writer.exec("BEGIN IMMEDIATE");
             try {
@@ -1244,7 +1244,7 @@ test("periodComparisonHistory pins the no-authority marker and period read again
 
     DatabaseSync.prototype.prepare = function patchedPrepare(sql, ...args) {
       const statement = originalPrepare.call(this, sql, ...args);
-      if (this !== store.database || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
+      if (this !== store.database || !this.isTransaction || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
       return {
         get(...params) {
           const result = statement.get(...params);

@@ -62,6 +62,9 @@ export function quotaRecordValues(total, cost, sessions, rate = 1) {
 }
 
 export function completedQuotaWindows(observations, limitId, asOfMs, minutes) {
+  if (typeof observations?.completedQuotaWindows === "function") {
+    return observations.completedQuotaWindows(limitId, asOfMs, minutes);
+  }
   const duration = minutes * 60000;
   const tolerance = 2 * 60000;
   const byObservation = new Map();
@@ -147,7 +150,10 @@ export function previousQuotaRange(range, quota, observations) {
   if (!Number.isFinite(start) || !Number.isFinite(asOf)) return null;
   const completed = completedQuotaWindows(observations, quota.limitId, asOf, minutes);
   if (completed === null) return null;
-  const window = completed.filter((item) => Date.parse(item.windowEndExclusive) <= start).at(-1);
+  let window;
+  for (const item of completed) {
+    if (Date.parse(item.windowEndExclusive) <= start) window = item;
+  }
   if (!window) return null;
   const windowStart = new Date(window.windowStart);
   const windowEndExclusive = new Date(window.windowEndExclusive);
@@ -179,15 +185,26 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
   if (!Number.isFinite(start) || !Number.isFinite(asOf)) return {};
   const completed = completedQuotaWindows(observations, quota.limitId, asOf, minutes);
   if (completed === null) return {};
-  const previousWindows = completed
-    .filter((window) => Date.parse(window.windowEndExclusive) <= start)
-    .map((window) => ({
+  const baselines = {};
+  let hasPrevious = false;
+  for (const window of completed) {
+    if (Date.parse(window.windowEndExclusive) > start) continue;
+    const previous = summarizeWindow({
       start: new Date(window.windowStart),
       end: new Date(Date.parse(window.windowEndExclusive) - 1),
       quotaWindow: true,
-    }));
-  const previous = previousWindows.map(summarizeWindow).filter((value) => value.eventCount > 0);
-  if (!previous.length) return {};
+    });
+    if (previous.eventCount <= 0) continue;
+    hasPrevious = true;
+    for (const [metric, value] of Object.entries(previous.values)) {
+      if (!Number.isFinite(value)) continue;
+      baselines[metric] ??= { count: 0, threshold: -Infinity };
+      const entry = baselines[metric];
+      entry.count += 1;
+      entry.threshold = Math.max(entry.threshold, value + Math.max(1, Math.abs(value)) * 1e-10);
+    }
+  }
+  if (!hasPrevious) return {};
   const current = summarizeWindow(range);
   if (!current.eventCount) return {};
   const titles = {
@@ -207,20 +224,14 @@ export function quotaRecordsForRange(range, quota, observations, summarizeWindow
   const records = {};
   for (const [metric, title] of Object.entries(titles)) {
     const value = current.values[metric];
-    const baseline = previous.map((item) => item.values[metric]).filter(Number.isFinite);
-    if (
-      !Number.isFinite(value) ||
-      value <= 0 ||
-      !baseline.length ||
-      baseline.some((old) => value <= old + Math.max(1, Math.abs(old)) * 1e-10)
-    )
-      continue;
+    const baseline = baselines[metric];
+    if (!Number.isFinite(value) || value <= 0 || !baseline?.count || value <= baseline.threshold) continue;
     records[metric] = {
       title: `${title}最高的${minutes === 300 ? "5 小时限额窗口" : "每周限额窗口"}`,
       unit: minutes === 300 ? "5-hour window" : "weekly limit window",
       period: `${new Date(range.start).toISOString()} – ${new Date(range.windowEndExclusive || new Date(range.end).getTime() + 1).toISOString()}`,
       value,
-      comparedWindowCount: baseline.length,
+      comparedWindowCount: baseline.count,
     };
   }
   return records;
@@ -572,13 +583,110 @@ function materializeSegments(groups) {
       name: group.name,
       count: group.count,
       sessions: group.sessions.size,
-      total: group.total,
+      total: { ...group.total },
     }))
     .sort((a, b) => b.total.total - a.total.total || a.name.localeCompare(b.name));
 }
 
-/** @param {Iterable<any>} events */
-export function buildTimelineRows(events = [], range = {}, bucket = "day", options = {}) {
+function invalidTimelineState(message) {
+  /** @type {TypeError & { code?: string }} */
+  const error = new TypeError(`Invalid timeline accumulator state: ${message}`);
+  error.code = "TIMELINE_STATE_INVALID";
+  return error;
+}
+
+function requireState(condition, message) {
+  if (!condition) throw invalidTimelineState(message);
+}
+
+function finiteStateNumber(value, field) {
+  requireState(typeof value === "number" && Number.isFinite(value), `${field} must be a finite number`);
+  return value;
+}
+
+function usageFromState(value = {}) {
+  requireState(value && typeof value === "object" && !Array.isArray(value), "usage must be an object");
+  const usage = emptyUsage();
+  for (const field of USAGE_FIELDS) {
+    if (value[field] !== undefined) usage[field] = finiteStateNumber(value[field], `usage.${field}`);
+  }
+  return usage;
+}
+
+function segmentFromState(value, scopeKind, rowKey, createSessionSet) {
+  requireState(value && typeof value === "object" && !Array.isArray(value), `${scopeKind} entry must be an object`);
+  const name = String(value.name ?? "");
+  requireState(name, `${scopeKind}.name is required`);
+  return {
+    key: name,
+    name,
+    count: finiteStateNumber(value.count, `${scopeKind}.count`),
+    sessions: createSessionSet([rowKey, scopeKind, name], value.sessions),
+    total: usageFromState(value.total),
+  };
+}
+
+function costFromState(value) {
+  requireState(value && typeof value === "object" && !Array.isArray(value), "cost entry must be an object");
+  const model = String(value.model ?? "");
+  const currency = value.currency === "CNY" ? "CNY" : value.currency === "USD" ? "USD" : "";
+  requireState(model, "cost.model is required");
+  requireState(currency, "cost.currency must be USD or CNY");
+  requireState(Array.isArray(value.pricingStatuses), "cost.pricingStatuses must be an array");
+  return {
+    model,
+    currency,
+    totalUsd: finiteStateNumber(value.totalUsd, "cost.totalUsd"),
+    pricedTokens: finiteStateNumber(value.pricedTokens, "cost.pricedTokens"),
+    unpricedTokens: finiteStateNumber(value.unpricedTokens, "cost.unpricedTokens"),
+    minimumEstimatedTokens: finiteStateNumber(value.minimumEstimatedTokens, "cost.minimumEstimatedTokens"),
+    serviceTierUnknownTokens: finiteStateNumber(value.serviceTierUnknownTokens, "cost.serviceTierUnknownTokens"),
+    contextUnknownTokens: finiteStateNumber(value.contextUnknownTokens, "cost.contextUnknownTokens"),
+    cacheWriteUnknownTokens: finiteStateNumber(value.cacheWriteUnknownTokens, "cost.cacheWriteUnknownTokens"),
+    pricingStatuses: new Set(value.pricingStatuses.map(String)),
+  };
+}
+
+function sessionState(snapshotSessionSet, set) {
+  return snapshotSessionSet ? snapshotSessionSet(set) : set instanceof Set ? [...set] : set.size;
+}
+
+function snapshotSegment(group, snapshotSessionSet) {
+  return {
+    name: group.name,
+    count: group.count,
+    sessions: sessionState(snapshotSessionSet, group.sessions),
+    total: { ...group.total },
+  };
+}
+
+function snapshotCost(cost) {
+  return {
+    model: cost.model,
+    currency: cost.currency,
+    totalUsd: cost.totalUsd,
+    pricedTokens: cost.pricedTokens,
+    unpricedTokens: cost.unpricedTokens,
+    minimumEstimatedTokens: cost.minimumEstimatedTokens,
+    serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
+    contextUnknownTokens: cost.contextUnknownTokens,
+    cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
+    pricingStatuses: [...cost.pricingStatuses],
+  };
+}
+
+/**
+ * Persistent timeline accumulator. Snapshot contains aggregates and member-set
+ * state only; raw events are never retained.
+ *
+ * @param {Record<string, any>} [range]
+ * @param {"day" | "hour" | "week" | "month" | "quota_30m" | "quota_24h" | string} [bucket]
+ * @param {Record<string, any>} [options]
+ */
+export function createTimelineAccumulator(range = {}, bucket = "day", options = {}) {
+  const createSessionSet =
+    options.createSessionSet || ((_scope, savedState) => new Set(Array.isArray(savedState) ? savedState : []));
+  const snapshotSessionSet = options.snapshotSessionSet;
   const sparseRange = isPreviousQuotaRange(range);
   const sparseHalfHour = sparseRange && bucket === "quota_30m";
   const startMs = asDate(range.start)?.getTime();
@@ -599,7 +707,86 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
   const estimateCost = options.estimateCost || ((event) => event.costEstimate || null);
   const pricingModels = options.pricingModels;
   const modelNameFor = options.modelName || ((value) => canonicalModelName(value, pricingModels));
-  for (const event of events) {
+  const newRow = (key, slot = {}, savedSessions) => ({
+    ...emptyRow(key, slot),
+    fact: Boolean(factsByKey?.get(key)),
+    channelGroups: new Map(),
+    modelGroups: new Map(),
+    modelCosts: new Map(),
+    scenarioReasons: new Set(),
+    sessionsSet: createSessionSet([key, "sessions"], savedSessions),
+    estimatedRecords: 0,
+  });
+
+  const savedState = options.state;
+  if (savedState !== undefined) {
+    requireState(savedState && typeof savedState === "object" && !Array.isArray(savedState), "state must be an object");
+    requireState(savedState.version === 1, "unsupported version");
+    requireState(savedState.bucket === bucket, "bucket does not match");
+    requireState(Array.isArray(savedState.rows), "rows must be an array");
+    for (const value of savedState.rows) {
+      requireState(value && typeof value === "object" && !Array.isArray(value), "row must be an object");
+      const key = String(value.key ?? "");
+      requireState(key && !rowsByKey.has(key), `duplicate or missing row key: ${key || "(empty)"}`);
+      const slot =
+        value.slotStartMs === undefined
+          ? {}
+          : {
+              slotStartMs: finiteStateNumber(value.slotStartMs, "row.slotStartMs"),
+              slotEndExclusiveMs: finiteStateNumber(value.slotEndExclusiveMs, "row.slotEndExclusiveMs"),
+              future: Boolean(value.future),
+            };
+      const row = {
+        ...newRow(key, slot, value.sessions),
+        name: String(value.name ?? key),
+        count: finiteStateNumber(value.count, "row.count"),
+        total: usageFromState(value.total),
+        estimatedRecords: finiteStateNumber(value.estimatedRecords ?? 0, "row.estimatedRecords"),
+        pricedTokens: finiteStateNumber(value.pricedTokens ?? 0, "row.pricedTokens"),
+        unpricedTokens: finiteStateNumber(value.unpricedTokens ?? 0, "row.unpricedTokens"),
+        minimumEstimatedTokens: finiteStateNumber(value.minimumEstimatedTokens ?? 0, "row.minimumEstimatedTokens"),
+        serviceTierUnknownTokens: finiteStateNumber(
+          value.serviceTierUnknownTokens ?? 0,
+          "row.serviceTierUnknownTokens",
+        ),
+        contextUnknownTokens: finiteStateNumber(value.contextUnknownTokens ?? 0, "row.contextUnknownTokens"),
+        cacheWriteUnknownTokens: finiteStateNumber(value.cacheWriteUnknownTokens ?? 0, "row.cacheWriteUnknownTokens"),
+        fact: value.fact === undefined ? Boolean(factsByKey?.get(key)) : Boolean(value.fact),
+      };
+      requireState(Array.isArray(value.channels), "row.channels must be an array");
+      requireState(Array.isArray(value.models), "row.models must be an array");
+      requireState(Array.isArray(value.costs), "row.costs must be an array");
+      requireState(Array.isArray(value.scenarioReasons), "row.scenarioReasons must be an array");
+      for (const channelValue of value.channels) {
+        requireState(
+          channelValue && typeof channelValue === "object" && !Array.isArray(channelValue),
+          "channel must be an object",
+        );
+        const name = String(channelValue.name ?? "");
+        requireState(name && !row.channelGroups.has(name), `duplicate or missing channel: ${name || "(empty)"}`);
+        row.channelGroups.set(name, segmentFromState(channelValue, "channel", key, createSessionSet));
+      }
+      for (const modelValue of value.models) {
+        requireState(
+          modelValue && typeof modelValue === "object" && !Array.isArray(modelValue),
+          "model must be an object",
+        );
+        const name = String(modelValue.name ?? "");
+        requireState(name && !row.modelGroups.has(name), `duplicate or missing model: ${name || "(empty)"}`);
+        row.modelGroups.set(name, segmentFromState(modelValue, "model", key, createSessionSet));
+      }
+      for (const costValue of value.costs) {
+        const cost = costFromState(costValue);
+        const costKey = `${cost.model}\u0000${cost.currency}`;
+        requireState(!row.modelCosts.has(costKey), `duplicate cost: ${costKey}`);
+        row.modelCosts.set(costKey, cost);
+      }
+      row.scenarioReasons = new Set(value.scenarioReasons.map(String));
+      rowsByKey.set(key, row);
+    }
+  }
+
+  const add = function add(event, ...providedEstimates) {
     if (sparseRange) {
       const timestamp = new Date(event.timestamp ?? event.timestampMs).getTime();
       if (
@@ -607,7 +794,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
         timestamp < new Date(range.start).getTime() ||
         timestamp > new Date(range.end).getTime()
       )
-        continue;
+        return;
     }
     const slotStartMs = sparseHalfHour
       ? startMs + Math.floor((new Date(event.timestamp ?? event.timestampMs).getTime() - startMs) / 1800000) * 1800000
@@ -627,23 +814,11 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       : quotaSlots || sparseHalfHour
         ? slot?.key
         : timelineBucketKey(event.timestamp ?? event.timestampMs, bucket, range?.calendarZone);
-    if (!key) continue;
-    const row = rowsByKey.get(key) || {
-      ...emptyRow(key, slot || {}),
-      factRow: factsByKey?.get(key),
-      channelGroups: new Map(),
-      modelGroups: new Map(),
-      modelCosts: new Map(),
-      scenarioReasons: new Set(),
-      sessionsSet: new Set(),
-      estimatedRecords: 0,
-      serviceTierUnknownTokens: 0,
-      contextUnknownTokens: 0,
-      cacheWriteUnknownTokens: 0,
-    };
+    if (!key) return;
+    const row = rowsByKey.get(key) || newRow(key, slot || {});
     const modelName = modelNameFor(String(event.model || "Unknown model"));
     // Unchanged fact rows survive repricing; only money and pricing coverage are rebuilt.
-    if (!row.factRow) {
+    if (!row.fact) {
       row.count += 1;
       row.sessionsSet.add(event.sessionId || "");
       addUsage(row.total, event.total || event.usage);
@@ -652,7 +827,7 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
         key: channelName,
         name: channelName,
         count: 0,
-        sessions: new Set(),
+        sessions: createSessionSet([key, "channel", channelName]),
         total: emptyUsage(),
       };
       addSegment(channel, event);
@@ -662,14 +837,14 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
         key: modelName,
         name: modelName,
         count: 0,
-        sessions: new Set(),
+        sessions: createSessionSet([key, "model", modelName]),
         total: emptyUsage(),
       };
       addSegment(model, event);
       row.modelGroups.set(modelName, model);
     }
 
-    const estimate = estimateCost(event);
+    const estimate = providedEstimates.length ? providedEstimates[0] : estimateCost(event);
     if (estimate) {
       options.onEstimate?.(event, estimate, key);
       row.estimatedRecords += 1;
@@ -708,72 +883,121 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
       }
     }
     rowsByKey.set(key, row);
-  }
+  };
 
-  const rows = [...rowsByKey.values()].map((row) => {
-    const modelCosts = [...row.modelCosts.values()];
-    const currenciesByModel = new Map();
-    for (const cost of modelCosts) {
-      const currencies = currenciesByModel.get(cost.model) || new Set();
-      currencies.add(cost.currency);
-      currenciesByModel.set(cost.model, currencies);
+  const result = (rangeOverride) => {
+    const rows = [...rowsByKey.values()].map((row) => {
+      const factRow = factsByKey?.get(row.key);
+      const modelCosts = [...row.modelCosts.values()];
+      const currenciesByModel = new Map();
+      for (const cost of modelCosts) {
+        const currencies = currenciesByModel.get(cost.model) || new Set();
+        currencies.add(cost.currency);
+        currenciesByModel.set(cost.model, currencies);
+      }
+      const statusValues = [...row.modelCosts.values()].flatMap((entry) => [...entry.pricingStatuses]);
+      let pricingStatus = "unavailable";
+      if (row.estimatedRecords > 0) {
+        pricingStatus =
+          row.unpricedTokens > 0
+            ? row.pricedTokens > 0
+              ? "partial"
+              : "unpriced"
+            : row.minimumEstimatedTokens > 0
+              ? "minimum-estimate"
+              : "estimated";
+        if (!row.pricedTokens && !row.unpricedTokens && statusValues.includes("unknown")) pricingStatus = "unknown";
+      }
+      return {
+        key: row.key,
+        name: row.name,
+        count: factRow?.count ?? row.count,
+        sessions: factRow?.sessions ?? row.sessionsSet.size,
+        total: { ...(factRow?.total ?? row.total) },
+        channels: factRow?.channels ?? materializeSegments(row.channelGroups),
+        models: factRow?.models ?? materializeSegments(row.modelGroups),
+        costByModel: Object.fromEntries(
+          modelCosts.map((cost) => {
+            const mixed = currenciesByModel.get(cost.model).size > 1;
+            return [
+              mixed ? `${cost.model}\u0000${cost.currency}` : cost.model,
+              {
+                ...(mixed ? { model: cost.model } : {}),
+                totalUsd: cost.totalUsd,
+                currency: cost.currency || "USD",
+                pricedTokens: cost.pricedTokens,
+                unpricedTokens: cost.unpricedTokens,
+                minimumEstimatedTokens: cost.minimumEstimatedTokens,
+                serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
+                contextUnknownTokens: cost.contextUnknownTokens,
+                cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
+                pricingStatus:
+                  cost.unpricedTokens > 0
+                    ? cost.pricedTokens > 0
+                      ? "partial"
+                      : "unpriced"
+                    : cost.minimumEstimatedTokens > 0
+                      ? "minimum-estimate"
+                      : "estimated",
+              },
+            ];
+          }),
+        ),
+        pricedTokens: row.pricedTokens,
+        unpricedTokens: row.unpricedTokens,
+        minimumEstimatedTokens: row.minimumEstimatedTokens,
+        serviceTierUnknownTokens: row.serviceTierUnknownTokens,
+        contextUnknownTokens: row.contextUnknownTokens,
+        cacheWriteUnknownTokens: row.cacheWriteUnknownTokens,
+        ...(row.scenarioReasons.size ? { scenarioReasons: [...row.scenarioReasons].sort() } : {}),
+        pricingStatus,
+        ...(row.slotStartMs === undefined
+          ? {}
+          : {
+              slotStartMs: row.slotStartMs,
+              slotEndExclusiveMs: row.slotEndExclusiveMs,
+              future: Boolean(row.future),
+            }),
+      };
+    });
+    rows.sort((a, b) =>
+      a.slotStartMs !== undefined && b.slotStartMs !== undefined
+        ? a.slotStartMs - b.slotStartMs
+        : a.key.localeCompare(b.key),
+    );
+
+    if (sparseRange) return rows.filter((row) => row.total.total > 0);
+
+    const displayRange = rangeOverride === undefined ? range : rangeOverride;
+    const displayBounded = Boolean(asDate(displayRange?.start) && asDate(displayRange?.end));
+    const displayKeys =
+      rangeOverride === undefined
+        ? rangedKeys
+        : quotaSlots
+          ? quotaSlots.map((slot) => slot.key)
+          : displayBounded
+            ? slotKeys(displayRange, bucket, [])
+            : null;
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const ordered = (displayKeys || slotKeys(displayRange, bucket, rows)).map(
+      (key) => byKey.get(key) || emptyRow(key, quotaSlotsByKey?.get(key) || {}),
+    );
+    if (ordered.length > MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
+    const included = new Set(ordered.map((row) => row.key));
+    for (const row of rows) {
+      if (included.has(row.key)) continue;
+      if (ordered.length >= MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
+      ordered.push(row);
     }
-    const statusValues = [...row.modelCosts.values()].flatMap((entry) => [...entry.pricingStatuses]);
-    let pricingStatus = "unavailable";
-    if (row.estimatedRecords > 0) {
-      pricingStatus =
-        row.unpricedTokens > 0
-          ? row.pricedTokens > 0
-            ? "partial"
-            : "unpriced"
-          : row.minimumEstimatedTokens > 0
-            ? "minimum-estimate"
-            : "estimated";
-      if (!row.pricedTokens && !row.unpricedTokens && statusValues.includes("unknown")) pricingStatus = "unknown";
-    }
-    return {
+    return ordered;
+  };
+
+  const snapshot = () => ({
+    version: 1,
+    bucket,
+    rows: [...rowsByKey.values()].map((row) => ({
       key: row.key,
       name: row.name,
-      count: row.factRow?.count ?? row.count,
-      sessions: row.factRow?.sessions ?? row.sessionsSet.size,
-      total: row.factRow?.total ?? row.total,
-      channels: row.factRow?.channels ?? materializeSegments(row.channelGroups),
-      models: row.factRow?.models ?? materializeSegments(row.modelGroups),
-      costByModel: Object.fromEntries(
-        modelCosts.map((cost) => {
-          const mixed = currenciesByModel.get(cost.model).size > 1;
-          return [
-            mixed ? `${cost.model}\u0000${cost.currency}` : cost.model,
-            {
-              ...(mixed ? { model: cost.model } : {}),
-              totalUsd: cost.totalUsd,
-              currency: cost.currency || "USD",
-              pricedTokens: cost.pricedTokens,
-              unpricedTokens: cost.unpricedTokens,
-              minimumEstimatedTokens: cost.minimumEstimatedTokens,
-              serviceTierUnknownTokens: cost.serviceTierUnknownTokens,
-              contextUnknownTokens: cost.contextUnknownTokens,
-              cacheWriteUnknownTokens: cost.cacheWriteUnknownTokens,
-              pricingStatus:
-                cost.unpricedTokens > 0
-                  ? cost.pricedTokens > 0
-                    ? "partial"
-                    : "unpriced"
-                  : cost.minimumEstimatedTokens > 0
-                    ? "minimum-estimate"
-                    : "estimated",
-            },
-          ];
-        }),
-      ),
-      pricedTokens: row.pricedTokens,
-      unpricedTokens: row.unpricedTokens,
-      minimumEstimatedTokens: row.minimumEstimatedTokens,
-      serviceTierUnknownTokens: row.serviceTierUnknownTokens,
-      contextUnknownTokens: row.contextUnknownTokens,
-      cacheWriteUnknownTokens: row.cacheWriteUnknownTokens,
-      ...(row.scenarioReasons.size ? { scenarioReasons: [...row.scenarioReasons].sort() } : {}),
-      pricingStatus,
       ...(row.slotStartMs === undefined
         ? {}
         : {
@@ -781,26 +1005,30 @@ export function buildTimelineRows(events = [], range = {}, bucket = "day", optio
             slotEndExclusiveMs: row.slotEndExclusiveMs,
             future: Boolean(row.future),
           }),
-    };
+      count: row.count,
+      sessions: sessionState(snapshotSessionSet, row.sessionsSet),
+      total: { ...row.total },
+      channels: [...row.channelGroups.values()].map((group) => snapshotSegment(group, snapshotSessionSet)),
+      models: [...row.modelGroups.values()].map((group) => snapshotSegment(group, snapshotSessionSet)),
+      costs: [...row.modelCosts.values()].map(snapshotCost),
+      estimatedRecords: row.estimatedRecords,
+      pricedTokens: row.pricedTokens,
+      unpricedTokens: row.unpricedTokens,
+      minimumEstimatedTokens: row.minimumEstimatedTokens,
+      serviceTierUnknownTokens: row.serviceTierUnknownTokens,
+      contextUnknownTokens: row.contextUnknownTokens,
+      cacheWriteUnknownTokens: row.cacheWriteUnknownTokens,
+      scenarioReasons: [...row.scenarioReasons].sort(),
+      fact: row.fact,
+    })),
   });
-  rows.sort((a, b) =>
-    a.slotStartMs !== undefined && b.slotStartMs !== undefined
-      ? a.slotStartMs - b.slotStartMs
-      : a.key.localeCompare(b.key),
-  );
 
-  if (sparseRange) return rows.filter((row) => row.total.total > 0);
+  return { add, result, snapshot };
+}
 
-  const byKey = new Map(rows.map((row) => [row.key, row]));
-  const ordered = (rangedKeys || slotKeys(range, bucket, rows)).map(
-    (key) => byKey.get(key) || emptyRow(key, quotaSlotsByKey?.get(key) || {}),
-  );
-  if (ordered.length > MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
-  const included = new Set(ordered.map((row) => row.key));
-  for (const row of rows) {
-    if (included.has(row.key)) continue;
-    if (ordered.length >= MAX_TIMELINE_SLOTS) throw timelineRangeTooLargeError(MAX_TIMELINE_SLOTS);
-    ordered.push(row);
-  }
-  return ordered;
+/** @param {Iterable<any>} events */
+export function buildTimelineRows(events = [], range = {}, bucket = "day", options = {}) {
+  const accumulator = createTimelineAccumulator(range, bucket, options);
+  for (const event of events) accumulator.add(event);
+  return accumulator.result();
 }

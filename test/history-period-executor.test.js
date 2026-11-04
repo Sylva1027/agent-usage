@@ -277,10 +277,12 @@ if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "f
 }
 `,
   );
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
   const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...childEnvironment,
       NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preloadFile).href}`.trim(),
       HISTORY_PERIOD_EXECUTOR_GATE: "1",
       HISTORY_PERIOD_EXECUTOR_GATE_READY: gateReadyFile,

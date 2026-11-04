@@ -56,6 +56,7 @@ test("fresh full rebuild creates rollups when the optional model table does not 
     await store.open();
     await ingestWithoutRollupRebuild(store, options);
     assert.equal(store.database.prepare("SELECT COUNT(*) AS count FROM events").get().count, 1);
+    store.database.exec("DROP TABLE usage_rollup_models");
     assert.equal(tableExists(store, "usage_rollup_models"), false);
 
     await store.rebuildHistoryRollups();
@@ -73,12 +74,19 @@ test("fresh full rebuild accepts an empty store without the optional model table
   const { homeDir, store } = await openFreshStore([]);
   try {
     await store.open();
+    store.database.exec("DROP TABLE usage_rollup_models");
     assert.equal(tableExists(store, "usage_rollup_models"), false);
 
     await store.rebuildHistoryRollups();
 
-    assert.equal(tableExists(store, "usage_rollup_models"), false);
-    for (const table of ["usage_rollup_days", "usage_rollup_daily", "usage_rollup_sessions"]) {
+    assert.equal(tableExists(store, "usage_rollup_models"), true);
+    for (const table of [
+      "usage_rollup_days",
+      "usage_rollup_daily",
+      "usage_rollup_sessions",
+      "usage_rollup_models",
+      "usage_rollup_repositories",
+    ]) {
       assert.equal(store.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0);
     }
   } finally {

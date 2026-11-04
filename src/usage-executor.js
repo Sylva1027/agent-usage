@@ -531,6 +531,13 @@ async function runExecutorProcess() {
           failure = error;
         } finally {
           const readerError = releasePublishedReader();
+          if (!failure && !readerError) {
+            try {
+              store.prepareMetadataProjection();
+            } catch (error) {
+              failure = error;
+            }
+          }
           lastCheckpoint = checkpointUsageStore(store.database);
           publishedReady = Promise.resolve();
           if (!failure && readerError) failure = readerError;

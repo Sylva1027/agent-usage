@@ -318,7 +318,7 @@ test("complete UTC day range selects rollups and matches the SQL aggregate", asy
   }
 });
 
-test("periodAggregate routes only the exact model dimension through model rollups", async () => {
+test("periodAggregate routes exact model and repository dimensions through their rollups", async () => {
   const { homeDir, store } = await createStore([
     ...DEFAULT_EVENTS,
     projectEvent("2026-07-13T23:59:59.999Z", 1, 1, 0, 0, 0),
@@ -349,7 +349,7 @@ test("periodAggregate routes only the exact model dimension through model rollup
         guard.restore();
       }
       assert.equal(guard.counts.rollupModelQueries, 0);
-      assert.equal(guard.counts.periodAggregateQueries, 1);
+      assert.equal(guard.counts.periodAggregateQueries, groupColumn === "repository_key" ? 0 : 1);
     }
   } finally {
     store.close();
@@ -462,7 +462,7 @@ test("model periodAggregate matches source SQL across partial, local, excluded, 
   }
 });
 
-test("missing model rollup days fall back to SQL while other model errors propagate", async () => {
+test("missing model days read raw gaps while other model errors propagate", async () => {
   const { homeDir, store } = await createStore([
     ...DEFAULT_EVENTS,
     projectEvent("2026-07-13T23:59:59.999Z", 1, 1, 0, 0, 0),
@@ -482,7 +482,7 @@ test("missing model rollup days fall back to SQL while other model errors propag
       guard.restore();
     }
     assert.deepEqual(fallback, expected);
-    assert.equal(guard.counts.periodAggregateQueries, 1, "only ROLLUP_DAYS_MISSING may fall back");
+    assert.equal(guard.counts.periodAggregateQueries, 0, "a missing day must not discard other complete runs");
     rebuildRollupDays(store, completeRows);
 
     store.database.exec("SAVEPOINT broken_model_rollup_contract");

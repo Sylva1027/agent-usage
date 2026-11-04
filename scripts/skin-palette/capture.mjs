@@ -230,6 +230,26 @@ const ERROR_CLASS_LABELS = Object.freeze({
   resourceFailures: "必要资源响应失败（≥400）",
 });
 
+// EventSource.close() intentionally aborts its long-lived request when auto-refresh pauses.
+export function classifyClosedUsageStreams(failures, closedUrls) {
+  const remaining = [...closedUrls];
+  const closed = [],
+    unexpected = [];
+  for (const failure of failures) {
+    const index = remaining.indexOf(failure.url);
+    if (
+      index >= 0 &&
+      failure.resourceType === "eventsource" &&
+      failure.error === "net::ERR_ABORTED" &&
+      new URL(failure.url).pathname === "/api/usage-events"
+    ) {
+      remaining.splice(index, 1);
+      closed.push(failure);
+    } else unexpected.push(failure);
+  }
+  return { closed, unexpected };
+}
+
 /**
  * 偏好播种 init script：只在键为空时写入——重载不重写，不掩盖偏好恢复失败。
  * 主题 light/dark；皮肤偏好完整对象（version/skinId/showCharacters/opacity）；
@@ -1035,7 +1055,11 @@ async function createModeContext({ browser, previewUrl, mode, skinId, viewport =
   context.on("requestfailed", (request) => {
     const url = request.url();
     if (url.startsWith(previewUrl)) {
-      errors.requestFailed.push({ url, error: request.failure()?.errorText ?? null });
+      errors.requestFailed.push({
+        url,
+        error: request.failure()?.errorText ?? null,
+        ...(request.resourceType() === "eventsource" ? { resourceType: "eventsource" } : {}),
+      });
     }
   });
   context.on("request", (request) => quotaHook("onRequest", request));
@@ -6781,6 +6805,14 @@ export async function captureOnlineFreezeRegression({
       const nativeSetInterval = window.setInterval.bind(window);
       window.setInterval = (callback, delay, ...args) =>
         nativeSetInterval(callback, delay === 60_000 ? intervalMs : delay, ...args);
+      window.__closedUsageEventStreams = [];
+      const close = window.EventSource.prototype.close;
+      window.EventSource.prototype.close = function () {
+        if (new URL(this.url, location.href).pathname === "/api/usage-events") {
+          window.__closedUsageEventStreams.push(this.url);
+        }
+        return close.call(this);
+      };
     }, pollIntervalMs);
 
     const baseline = await runBaselineCapture({
@@ -6963,6 +6995,10 @@ export async function captureOnlineFreezeRegression({
     recordRegressionAssertion(result, "恢复刷新已反映到页面指标", resumedTotal, parseMetricNumber(resumedMetricText));
     await recordUsageScreenshot("resumed-live");
 
+    const closedStreams = await ctx.page.evaluate(() => window.__closedUsageEventStreams || []);
+    const classifiedStreams = classifyClosedUsageStreams(ctx.errors.requestFailed, closedStreams);
+    ctx.errors.requestFailed = classifiedStreams.unexpected;
+    result.expectedStreamClosures = classifiedStreams.closed;
     const browserErrors = buildStateBlockers(ctx.errors);
     if (browserErrors.length > 0) result.blockers.push(...browserErrors.map((entry) => `浏览器运行错误：${entry}`));
   } catch (error) {

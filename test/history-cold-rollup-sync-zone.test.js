@@ -164,11 +164,15 @@ function runPhase(phase, timeZone, root) {
         const oracleMarkerDays = new Set(oracleMarkers.map((row) => row.day_key));
         const commonMarkers = targetMarkers.filter((row) => oracleMarkerDays.has(row.day_key));
         const extraMarkers = targetMarkers.filter((row) => !oracleMarkerDays.has(row.day_key));
-        assert.equal(extraMarkers.length, 1);
+        assert.deepEqual(extraMarkers.map((marker) => marker.day_key),
+          oracleMarkerDays.has("2026-07-13") ? [] : ["2026-07-13"]);
         for (const marker of extraMarkers) {
           rebuildUsageRollups(oracle.database, { days: [marker.day_key], calendarZone: "local" });
         }
-        const extraMarkerChecks = extraMarkers.map((marker) => {
+        // Certification may already add the empty day to the fresh oracle.
+        const preservedEmptyMarkers = targetMarkers.filter((marker) => marker.day_key === "2026-07-13");
+        assert.equal(preservedEmptyMarkers.length, 1);
+        const extraMarkerChecks = preservedEmptyMarkers.map((marker) => {
           const [year, month, date] = marker.day_key.split("-").map(Number);
           return {
             dayKey: marker.day_key,

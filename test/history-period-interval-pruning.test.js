@@ -166,6 +166,7 @@ test("raw period aggregate preserves all 16 fields and repository metadata for e
   const fixture = await createMultiHomeStore();
   const { store, homeDir, roots } = fixture;
   try {
+    store.database.exec("DROP TABLE usage_rollup_repositories");
     const excludedHome = store.homes.find((home) => home.path === roots[0]).id;
     const utcRanges = ranges({
       today: {
@@ -230,7 +231,7 @@ test("raw period aggregate preserves all 16 fields and repository metadata for e
       external.exec("PRAGMA busy_timeout = 5000");
       store.database.prepare = (sql) => {
         const statement = snapshotPrepare.call(store.database, sql);
-        if (!sql.startsWith("SELECT MIN(timestamp_ms) AS minimum") || !sql.includes("FROM events")) return statement;
+        if (!sql.includes("AS minimum") || !sql.includes("AS maximum") || !sql.includes("FROM events")) return statement;
         return new Proxy(statement, {
           get(target, property) {
             if (property === "get") {

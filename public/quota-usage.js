@@ -5,12 +5,15 @@ export function isQuotaUsage(event) {
 }
 
 // Local snapshots provide an approximate credits interval, not a per-request receipt.
-export function createQuotaSourceTracker() {
-  let provider = "";
-  let hasCredits = false;
-  let creditsUntil = 0;
-  let recovered = false;
-  return (row) => {
+/**
+ * @param {{ provider?: string, hasCredits?: boolean, creditsUntil?: number, recovered?: boolean }} [initialState]
+ */
+export function createQuotaSourceTracker(initialState = {}) {
+  let provider = String(initialState.provider || "").toLowerCase();
+  let hasCredits = Boolean(initialState.hasCredits);
+  let creditsUntil = Number(initialState.creditsUntil || 0);
+  let recovered = Boolean(initialState.recovered);
+  const track = (row) => {
     if (row.type === "session_meta") provider = String(row.payload?.model_provider || "").toLowerCase();
     const time = Date.parse(row.timestamp || "");
     const limits = row.type === "event_msg" && row.payload?.type === "token_count" ? row.payload.rate_limits : null;
@@ -33,4 +36,6 @@ export function createQuotaSourceTracker() {
       quotaSourceUntil: time < creditsUntil ? creditsUntil : 0,
     };
   };
+  track.snapshot = () => ({ provider, hasCredits, creditsUntil, recovered });
+  return track;
 }

@@ -4391,14 +4391,45 @@ async function checkForUpdates() {
   }
 }
 
+function closeUsageEventsStream() {
+  const source = state.usageEventsSource;
+  state.usageEventsSource = null;
+  source?.close?.();
+}
+
+function startUsageEventsStream() {
+  if (
+    !state.autoRefreshEnabled ||
+    state.usageEventsSource ||
+    state.snapshotId ||
+    typeof window.EventSource !== "function"
+  ) {
+    return;
+  }
+  const source = new window.EventSource("/api/usage-events");
+  state.usageEventsSource = source;
+  source.onopen = () => {
+    if (state.autoRefreshEnabled && !state.snapshotId) void checkForUpdates();
+  };
+  source.addEventListener?.("usage-synced", () => {
+    if (!state.autoRefreshEnabled || state.snapshotId) return;
+    setAutoRefreshStatus("", { busy: true });
+    void loadUsage({ skipCheck: true });
+  });
+}
+
 function startAutoRefresh() {
-  if (!state.autoRefreshEnabled || state.autoRefreshTimer) return;
-  state.autoRefreshTimer = window.setInterval(() => void checkForUpdates(), AUTO_REFRESH_INTERVAL_MS);
+  if (!state.autoRefreshEnabled) return;
+  if (!state.autoRefreshTimer) {
+    state.autoRefreshTimer = window.setInterval(() => void checkForUpdates(), AUTO_REFRESH_INTERVAL_MS);
+  }
+  startUsageEventsStream();
 }
 
 function stopAutoRefresh() {
   if (state.autoRefreshTimer) window.clearInterval(state.autoRefreshTimer);
   state.autoRefreshTimer = null;
+  closeUsageEventsStream();
 }
 
 function refreshViewForFilters() {

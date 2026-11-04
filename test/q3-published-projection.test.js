@@ -798,10 +798,12 @@ test("Q3 an untracked transaction read cannot become transferable after rollback
   const unsafeSlot = source.summaryProjectionCache;
   const counts = observe(source);
   source.writeMeta("generated_at", "2026-07-12T12:01:00.000Z");
-  await source.summarizeHistory(FILTERS, DETAILS);
-  assert.equal(counts.timeline, 0, "publication-only refresh retains the usage timeline");
+  const committed = await source.summarizeHistory(FILTERS, DETAILS);
+  assert.equal(counts.timeline, 1, "rollback rebuilds the uncommitted timeline from committed facts");
+  assert.equal(committed.totals.total, 300);
   assert.ok(source.summaryProjectionCache !== unsafeSlot);
-  assert.equal(source.captureUsageProjection(), null, "publication refresh cannot certify reused uncommitted facts");
+  const refreshed = source.captureUsageProjection();
+  assert.notEqual(refreshed?.slot, unsafeSlot, "a clean rebuild cannot certify the rolled-back slot");
   pin(reader, source);
   pin(oracle, source);
   assert.deepEqual(await reader.summarizeHistory(FILTERS, DETAILS), await oracle.summarizeHistory(FILTERS, DETAILS));

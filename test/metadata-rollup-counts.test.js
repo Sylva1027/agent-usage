@@ -116,6 +116,9 @@ test("metadata counts use complete UTC rollups and fall back on a dirty day", as
   const root = await mkdtemp(path.join(tmpdir(), "metadata-rollup-counts-"));
   const databaseFile = path.join(root, "usage.sqlite");
   const store = new UsageStore({ homeDir: root, databaseFile, importDirs: [] });
+  // Keep exercising the legacy fallback independently of the persisted metadata path.
+  store.prepareMetadataProjection = () => {};
+  store.storedMetadata = () => null;
   let guard;
   try {
     await store.open();

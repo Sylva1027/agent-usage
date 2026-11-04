@@ -132,6 +132,54 @@ async function makeStoreFixture() {
   };
 }
 
+test("UsageStore adds the cumulative-session index to old stores without reparsing retained facts", async () => {
+  const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
+  await appendFile(sessionFile, jsonl([quotaTokenRow("2026-07-12T01:02:00Z", "2026-07-12T06:02:00Z")]));
+  const store = new UsageStore({ homeDir, databaseFile });
+  const snapshot = (database) =>
+    database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'usage_metadata_%' AND name NOT LIKE 'usage_quota_projection_%' AND name NOT IN ('usage_quota_window_cache','usage_rollup_progress','usage_rollup_progress_days') ORDER BY name",
+      )
+      .all()
+      .map(({ name }) => [name, database.prepare(`SELECT * FROM "${String(name).replaceAll('"', '""')}"`).all()]);
+  const indexColumns = (database) =>
+    database
+      .prepare("PRAGMA index_info(events_session_home_time_idx)")
+      .all()
+      .map((row) => row.name);
+  try {
+    await store.sync();
+    assert.deepEqual(indexColumns(store.database), ["session_id", "home_id", "timestamp_ms"]);
+    const before = snapshot(store.database);
+    // Simulate an existing v24 index whose raw source has since disappeared.
+    store.database.exec("DROP INDEX events_session_home_time_idx");
+    store.close();
+    await rm(sessionFile);
+
+    await store.open();
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), STORE_SCHEMA_VERSION);
+    assert.deepEqual(indexColumns(store.database), ["session_id", "home_id", "timestamp_ms"]);
+    assert.deepEqual(snapshot(store.database), before);
+    assert.equal(store.summarize({ preset: "all" }).totals.total, 123);
+    const plan = store.database
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT SUM(total) FROM events WHERE session_id = ? AND home_id = ? AND source_path <> ? AND timestamp_ms < ?",
+      )
+      .all("store-session", "main", sessionFile, Date.parse("2026-07-13T00:00:00Z"));
+    assert.ok(plan.some((row) => row.detail.includes("events_session_home_time_idx")));
+    const schemaVersion = store.database.prepare("PRAGMA schema_version").get().schema_version;
+    store.close();
+
+    await store.open();
+    assert.equal(store.database.prepare("PRAGMA schema_version").get().schema_version, schemaVersion);
+    assert.deepEqual(snapshot(store.database), before);
+  } finally {
+    store.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("UsageStore 首次同步并只重建变化文件", async () => {
   const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
   const store = new UsageStore({ homeDir, databaseFile });
@@ -1523,7 +1571,8 @@ test("C5 · stable sync avoids rewriting usage files and picks up the next token
     const replace = c5CountReplaceFile(store);
     const changed = await store.sync();
     assert.equal(changed.updatedFileCount, 1);
-    assert.deepEqual(replace.paths, [codexA]);
+    assert.deepEqual(replace.paths, [], "a certified append keeps the existing source facts");
+    assert.equal(store.lastSyncSourceWork.appendedFiles, 1);
     assert.equal(store.metadata().eventCount, baseline.eventCount + 1);
     assert.equal(store.summarize({ preset: "all" }).totals.total, baseline.total + 331);
   } finally {
@@ -2036,36 +2085,22 @@ async function d2MultiDayFixture(prefix, days) {
 }
 
 /**
- * `recordsForRange` 的全历史扫描语句被 `prepare` 的次数 —— “memo 命中 / 失效”的机械证据。
- *
- * 只匹配**那一条** `SELECT timestamp_ms, day_key, week_key, month_key, session_id, model, channel,`：
- * 同名列也出现在 `replaceFile` 的 INSERT 里（`hour_key, day_key, week_key, month_key, cwd, …`），
- * 粗匹配会把“每个文件一次 INSERT”算进来。计数器可以在 `open()/sync()` **之前**装上：`database`
- * 是构造器里的自有属性，这里把它换成访问器，`open()` 赋进来的连接（以及 `close()` 的 `null`）
- * 都会自动被包一层。
+ * Count actual record builds through their first processed batch, including snapshot destinations.
+ * SQL batches and period count can change without changing the invalidation contract.
  */
 function d2CountRecordScans(store) {
   const counter = { prepares: 0 };
-  let current = null;
-  const wrap = (database) => {
-    if (!database) return database;
-    const original = database.prepare.bind(database);
-    database.prepare = (sql) => {
-      if (typeof sql === "string" && sql.includes("day_key, week_key, month_key, session_id, model, channel,")) {
-        counter.prepares += 1;
-      }
-      return original(sql);
+  const original = store.recordProjectionOptions.bind(store);
+  store.recordProjectionOptions = (...args) => {
+    let observed = false;
+    return {
+      ...original(...args),
+      afterBatch() {
+        if (!observed) counter.prepares += 1;
+        observed = true;
+      },
     };
-    return database;
   };
-  Object.defineProperty(store, "database", {
-    configurable: true,
-    get: () => current,
-    set: (value) => {
-      current = value === null ? null : wrap(value);
-    },
-  });
-  current = wrap(store.database);
   return counter;
 }
 
@@ -2122,7 +2157,7 @@ test("D2 · 历史冠军 memo 六项键：任一项改变即失效，规范排�
     assert.ok(store.commitStoreRevision("d2-probe") > 0);
     const afterRevision = store.recordsForRange(d2Range(), ["home-b", "home-a"]);
     assert.notEqual(store.recordChampionCache, cold, "① 修订前进 ⇒ memo 换新");
-    assert.equal(scans.prepares, 2, "① 修订前进 ⇒ 重扫");
+    assert.equal(scans.prepares, 1, "① 仅实例修订前进，持久事实未变 ⇒ 复用磁盘结果");
     assert.deepEqual(afterRevision, first, "① 只影响新鲜度，不改结果");
 
     // ② 价目目录版本（只改模型费率，汇率不动）⇒ 立即失效且**成本冠军按新价目重算**。
@@ -2130,7 +2165,7 @@ test("D2 · 历史冠军 memo 六项键：任一项改变即失效，规范排�
     doubled.models["gpt-6-sol"] = d2DoubleRates(doubled.models["gpt-6-sol"]);
     setPricingCatalog(doubled);
     const afterPrice = store.recordsForRange(d2Range(), ["home-b", "home-a"]);
-    assert.equal(scans.prepares, 3, "② 价目版本变化 ⇒ 重扫");
+    assert.equal(scans.prepares, 2, "② 价目版本变化 ⇒ 重算");
     assert.equal(afterPrice.totalCost.period, first.totalCost.period, "② 冠军期不变（只改价目）");
     assert.ok(
       afterPrice.totalCost.value > first.totalCost.value * 1.5,
@@ -2144,22 +2179,22 @@ test("D2 · 历史冠军 memo 六项键：任一项改变即失效，规范排�
     reRated.usdToCnyRate = Number(baseCatalog.usdToCnyRate) * 3;
     setPricingCatalog(reRated);
     const afterRate = store.recordsForRange(d2Range(), ["home-b", "home-a"]);
-    assert.equal(scans.prepares, 4, "③ 汇率变化 ⇒ 立即重扫");
+    assert.equal(scans.prepares, 3, "③ 汇率变化 ⇒ 立即重算");
     assert.ok(afterRate.totalCost.value > afterPrice.totalCost.value, "③ 汇率立即生效（不被 memo 冻结）");
 
     // ④ service-tier evidence 签名：**隔离**只改这一项（修订未动）⇒ 立即失效。
     store.serviceTierEvidenceInput = "d2-probe-tier-signature";
     store.recordsForRange(d2Range(), ["home-b", "home-a"]);
-    assert.equal(scans.prepares, 5, "④ evidence 签名变化（隔离：修订未动）⇒ 立即重扫");
+    assert.equal(scans.prepares, 4, "④ evidence 签名变化（隔离：修订未动）⇒ 立即重算");
 
     // ⑥ 真的换一个排除集合 ⇒ 立即失效（结果与“同一价目状态下、集合等价”的读数逐字相同）。
     const beforeExtra = store.recordsForRange(d2Range(), ["home-b", "home-a"]);
-    assert.equal(scans.prepares, 5, "同一键再次命中（价目改动后仍是同一槽）");
+    assert.equal(scans.prepares, 4, "同一键再次命中（价目改动后仍是同一槽）");
     const other = store.recordsForRange(d2Range(), ["home-a", "home-b", "home-c"]);
-    assert.equal(scans.prepares, 6, "⑥ 排除集合变化 ⇒ 重扫");
+    assert.equal(scans.prepares, 5, "⑥ 排除集合变化 ⇒ 重算");
     assert.deepEqual(other, beforeExtra, "排除不存在的 home ⇒ 与同价目状态下的已有读数逐字相同");
     const again = store.recordsForRange(d2Range(), ["home-a", "home-b", "home-c"]);
-    assert.equal(scans.prepares, 6, "换过之后再次命中");
+    assert.equal(scans.prepares, 5, "换过之后再次命中");
     assert.deepEqual(again, other);
   } finally {
     setPricingCatalog(baseCatalog);
@@ -2767,6 +2802,9 @@ const D4_STATIC_BLOCK_SIGNATURES = ["SELECT DISTINCT channel, model FROM events"
 
 /** `metadata()` 的观测、raw count、rollup count 与 C5 静态块各被 `prepare` 了几次。 */
 function d4CountQueries(store) {
+  // These counters exercise legacy SQL memoization; persisted metadata has its own integration suite.
+  store.prepareMetadataProjection = () => {};
+  store.storedMetadata = () => null;
   const counter = {
     unfiltered: 0,
     filtered: 0,

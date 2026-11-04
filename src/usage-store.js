@@ -5,6 +5,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
+import {
+  ensureUsageMetadataSchema,
+  prepareStoredMetadata,
+  readStoredMetadata,
+  USAGE_METADATA_TABLE_NAMES,
+} from "./usage-metadata-store.js";
 
 import {
   COMPARISON_PERIOD_KEYS,
@@ -14,7 +20,6 @@ import {
   isQuotaPreset,
   previousUsageRange,
   resolveDateRange,
-  selectQuotaWindows,
   streamUsageFileEvents,
   summarizeUsage,
   usageComparisonFromAggregates,
@@ -25,9 +30,13 @@ import {
   listDirtyUsageRollupDays,
   localUsageRollupDaysForUtcDays,
   queryUsageRollupModelsWindow,
+  queryUsageRollupRepositoriesWindow,
   queryUsageRollupsRange,
   rebuildUsageRollups,
   rebuildUsageRollupsFromEvents,
+  tryAppendUsageRollups,
+  checkpointUsageRollups,
+  USAGE_ROLLUP_PROGRESS_TABLES,
 } from "./usage-rollups.js";
 import {
   createCostEstimateAccumulator,
@@ -43,10 +52,41 @@ import {
   quotaSourceEvidenceSnapshot,
   quotaSourceEvidenceFromSnapshot,
 } from "./quota-source-evidence.js";
-import { quotaSourceResolver } from "./quota-usage-source.js";
+import { createStoredQuotaSourceResolver } from "./usage-quota-source-store.js";
 import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 import { isQuotaUsage } from "../public/quota-usage.js";
 import { HistoryQuoteInputs } from "./history-quote-inputs.js";
+import { UsageSessionMembers } from "./usage-session-members.js";
+import {
+  ensureUsageAllSummarySchema,
+  buildStoredAllSummary,
+  readStoredAllSummary,
+  USAGE_ALL_SUMMARY_TABLE_NAMES,
+} from "./usage-all-summary-store.js";
+import { UsageSourceProof, usageSourceIdentity, USAGE_SOURCE_SHA_KIND } from "./usage-source-proof.js";
+import {
+  ensureUsageSourceProgressSchema,
+  markUsageSourceDependents,
+  readUsageSourceBaseline,
+  readUsageSourceProgress,
+  UsageSourceChangeBounds,
+  writeUsageSourceBaseline,
+  writeUsageSourceProgress,
+  USAGE_SOURCE_PROGRESS_TABLE_NAMES,
+} from "./usage-source-progress.js";
+import {
+  ensureUsageQuotaSchema,
+  iterateStoredQuotaWindows,
+  selectStoredQuotaWindows,
+  quotaProjectionWork,
+  USAGE_QUOTA_TABLE_NAMES,
+} from "./usage-quota-store.js";
+import {
+  buildStoredRecordChampions,
+  ensureUsageRecordSchema,
+  readStoredRecordChampions,
+  USAGE_RECORD_TABLE_NAMES,
+} from "./usage-record-store.js";
 import { buildModelActivity, canonicalModelName } from "../public/pricing-models.js";
 import { addPeriodEvent, emptyPeriodMetrics, summarizePeriodComparison } from "../public/period-comparison.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
@@ -73,7 +113,16 @@ const QUOTA_SOURCES_DDL = `CREATE TABLE IF NOT EXISTS quota_usage_sources (
   PRIMARY KEY (source_path, session_id, timestamp_ms)
 ) STRICT;`;
 
-const USAGE_PROJECTION_IGNORED_TABLES = ["history_replaced_facts"];
+const USAGE_PROJECTION_IGNORED_TABLES = [
+  "history_replaced_facts",
+  "usage_business_revision",
+  ...USAGE_RECORD_TABLE_NAMES,
+  ...USAGE_QUOTA_TABLE_NAMES,
+  ...USAGE_SOURCE_PROGRESS_TABLE_NAMES,
+  ...USAGE_ALL_SUMMARY_TABLE_NAMES,
+  ...USAGE_METADATA_TABLE_NAMES,
+  ...USAGE_ROLLUP_PROGRESS_TABLES,
+];
 const USAGE_PROJECTION_IGNORED_META = [
   "generated_at",
   "fingerprint",
@@ -83,6 +132,7 @@ const USAGE_PROJECTION_IGNORED_META = [
 ];
 const MISSING_SOURCES_META = "perf_missing_sources";
 const LOCAL_ROLLUP_ZONE_META = "usage_rollup_local_zone_identity";
+const DEFERRED_METADATA_INDEX_META = "usage_metadata_initial_index_pending";
 const HISTORY_ARCHIVE_EVENT_AUTHORITY_META = "history_archive_event_authority";
 const HISTORY_ARCHIVE_EVENT_REVISIONS_META = "history_archive_event_revisions";
 const PROJECT_LOG_TRUNCATION_WARNING_CODE = "PROJECT_LOG_TRUNCATED";
@@ -1024,6 +1074,78 @@ function saveMissingHistoryFacts(
 
 const CODEX_ROLLOUT_READER_VERSION = "zstd-jsonl-v1";
 
+/** Source replacement retains an exact multiset on disk instead of two event arrays and JS maps. */
+class UsageReplacementFacts {
+  constructor(sourceDatabase) {
+    this.sourceDatabase = sourceDatabase;
+    this.database = null;
+  }
+
+  capture(table, sourcePath) {
+    for (const row of this.sourceDatabase.prepare(`SELECT * FROM ${table} WHERE source_path=?`).iterate(sourcePath)) {
+      if (!this.database) {
+        this.database = new DatabaseSync("");
+        this.database.exec(`PRAGMA cache_size=-1024; PRAGMA temp_store=FILE;
+          CREATE TABLE facts(fact_table TEXT,source_path TEXT,digest TEXT,payload TEXT,
+            previous_count INTEGER,current_count INTEGER DEFAULT 0,
+            PRIMARY KEY(fact_table,source_path,digest)) WITHOUT ROWID; BEGIN`);
+      }
+      const payload = JSON.stringify(canonicalFactPayload(row, table === "events" ? ["id"] : []));
+      const digest = createHash("sha256").update(payload).digest("hex");
+      this.database
+        .prepare(`INSERT INTO facts(fact_table,source_path,digest,payload,previous_count)
+        VALUES (?,?,?,?,1) ON CONFLICT(fact_table,source_path,digest)
+        DO UPDATE SET previous_count=previous_count+1`)
+        .run(table, sourcePath, digest, payload);
+    }
+  }
+
+  save(insert, table, source, methodVersion) {
+    if (!this.database) return { previousCount: 0, currentCount: 0 };
+    const previousCount = Number(
+      this.database
+        .prepare(`SELECT COALESCE(SUM(previous_count),0) AS n
+      FROM facts WHERE fact_table=? AND source_path=?`)
+        .get(table, source.path).n,
+    );
+    if (!previousCount) return { previousCount: 0, currentCount: 0 };
+    const update = this.database.prepare(`UPDATE facts SET current_count=current_count+1
+      WHERE fact_table=? AND source_path=? AND digest=?`);
+    let currentCount = 0;
+    for (const row of this.sourceDatabase.prepare(`SELECT * FROM ${table} WHERE source_path=?`).iterate(source.path)) {
+      const payload = canonicalFactPayload(row, table === "events" ? ["id"] : []);
+      update.run(table, source.path, historyPayloadDigest(payload));
+      currentCount += 1;
+    }
+    const at = new Date().toISOString();
+    for (const row of this.database
+      .prepare(`SELECT digest,payload,previous_count-current_count AS missing
+      FROM facts WHERE fact_table=? AND source_path=? AND previous_count>current_count`)
+      .iterate(table, source.path)) {
+      insert.run(
+        table,
+        String(source.kind),
+        String(source.home_id),
+        String(source.path),
+        row.digest,
+        Number(row.missing),
+        row.payload,
+        String(source.home_label),
+        String(source.home_path),
+        methodVersion,
+        "reparse_replaced",
+        at,
+      );
+    }
+    return { previousCount, currentCount };
+  }
+
+  close() {
+    this.database?.close();
+    this.database = null;
+  }
+}
+
 /**
  * W4-b1 / D1：`buildRecordChampions` 的**默认**逐行计价函数（= 模块级的 `estimateEventCost`）。
  *
@@ -1050,6 +1172,76 @@ function startOfLocalWeek(date) {
   const day = start.getDay() || 7;
   start.setDate(start.getDate() - day + 1);
   return start;
+}
+
+function sourceEventRow(filePath, event) {
+  const date = new Date(event.timestampMs);
+  return {
+    source_path: filePath,
+    timestamp_ms: event.timestampMs,
+    session_id: event.sessionId,
+    home_id: event.homeId,
+    home_label: event.homeLabel,
+    channel: event.channel,
+    project: event.project || "Unknown cwd",
+    model: event.model || "Unknown model",
+    hour_key: localHourKey(date),
+    day_key: localDateKey(date),
+    week_key: localDateKey(startOfLocalWeek(date)),
+    month_key: localDateKey(date).slice(0, 7),
+    cwd: event.project || "",
+    repository_key: event.repositoryKey || "unknown:cwd",
+    repository_path: event.repositoryPath || "Unknown cwd",
+    repository_kind: event.repositoryKind || "unknown",
+    detail_mask: Number(event.detailMask || 0),
+    reconciliation_gap: Number(event.reconciliationGap || 0),
+    cache_write_tokens: Number(event.cacheWriteTokens || 0),
+    cache_write_known: event.cacheWriteKnown ? 1 : 0,
+    request_input_tokens: Number(event.requestInputTokens || 0),
+    context_level: event.contextLevel || "unknown",
+    service_tier: event.serviceTier || "unknown",
+    price_version: event.priceVersion || "",
+    total: event.usage.total,
+    input: event.usage.input,
+    cached: event.usage.cached,
+    output: event.usage.output,
+    reasoning: event.usage.reasoning,
+  };
+}
+
+function addCumulativeFingerprint(hash, row) {
+  hash.update(
+    JSON.stringify([
+      row.home_id,
+      row.session_id,
+      row.timestamp_ms,
+      row.total,
+      row.input,
+      row.cached,
+      row.output,
+      row.reasoning,
+      Number(row.detail_mask) & 15,
+      row.cache_write_tokens,
+      row.cache_write_known,
+    ]),
+  );
+  hash.update("\n");
+}
+
+function sourceSessionId(checkpoint, filePath) {
+  return checkpoint.adapter === "codex-jsonl"
+    ? checkpoint.state.meta.id
+    : checkpoint.state.header.id || path.basename(path.dirname(filePath));
+}
+
+function sameSourceBinding(existing, source) {
+  return (
+    existing &&
+    existing.kind === (source.kind || "codex") &&
+    existing.home_id === source.id &&
+    existing.home_label === source.label &&
+    existing.home_path === source.path
+  );
 }
 
 /** @returns {import("./usage-types.js").UsageTotals} */
@@ -1124,6 +1316,8 @@ function costEventFromRowArray(row, tierEvidence, sourceKind) {
 }
 
 function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
+  let memberBytes = 0;
+  let active = true;
   const groupsByDimension = {
     channels: new Map(),
     models: new Map(),
@@ -1131,6 +1325,7 @@ function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
     projects: new Map(),
   };
   const add = (groups, key, event) => {
+    if (!active) return;
     const name = String(key);
     const group = groups.get(name) || {
       key: name,
@@ -1140,7 +1335,15 @@ function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
       total: { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 },
     };
     group.count += 1;
-    group.sessions.add(event.sessionId);
+    if (!group.sessions.has(event.sessionId)) {
+      memberBytes += 160 + String(event.sessionId).length * 2;
+      if (memberBytes > 1024 * 1024) {
+        active = false;
+        for (const dimension of Object.values(groupsByDimension)) dimension.clear();
+        return;
+      }
+      group.sessions.add(event.sessionId);
+    }
     group.total.total += event.total.total;
     group.total.input += event.total.input;
     group.total.cached += event.total.cached;
@@ -1169,6 +1372,7 @@ function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
       add(groupsByDimension.projects, event.project, event);
     },
     result() {
+      if (!active) return null;
       return {
         channels: materialize(groupsByDimension.channels),
         models: materialize(groupsByDimension.models),
@@ -1422,6 +1626,16 @@ function eventRangeScope(range, scope) {
   return {
     sql: withScope(filter.sql, scope),
     params: [...filter.params, ...scope.params],
+  };
+}
+
+function periodRollupWindow(startMs, endMs, minimum, maximum) {
+  if (startMs >= endMs || startMs > maximum || endMs <= minimum) return null;
+  const dayMs = 86_400_000;
+  // Outside the scoped fact bounds these prefixes and suffixes are empty.
+  return {
+    startMs: startMs <= minimum ? Math.floor(minimum / dayMs) * dayMs : startMs,
+    endMs: endMs > maximum ? (Math.floor(maximum / dayMs) + 1) * dayMs : endMs,
   };
 }
 
@@ -1761,6 +1975,7 @@ export class UsageStore {
   constructor(options = {}) {
     this.options = options;
     this.metadataCache = null;
+    this.businessProjectionIgnoredChanges = 0;
     /**
      * D4：`metadata()` 观测聚合的**静态输入**（`events` 未过滤分组行 + 全表最大 timestamp）。
      *
@@ -1797,9 +2012,13 @@ export class UsageStore {
     this.fingerprint = "";
     this.checkedAt = "";
     this.repositoryResolver = createRepositoryResolver();
+    this.sourceProof = new UsageSourceProof();
+    this.lastSyncSourceWork = null;
     this.serviceTierEvidence = null;
     this.quotaSourceEvidence = null;
-    this.quotaSourceLookup = quotaSourceResolver([]);
+    /** @type {ReturnType<typeof createStoredQuotaSourceResolver> | null} */
+    this.quotaSourceLookup = null;
+    this.quotaSourceDatabase = null;
     this.quotaSourceRevision = -1;
     /**
      * Per-sync cache of the ordinary project-log diagnostics sidecar.
@@ -1867,7 +2086,7 @@ export class UsageStore {
      * @type {{ key: string, factsKey: string, publicationKey?: string, contextKey?: string, context?: any, guard?: any, evidence?: any, projection: object, quoteInputs: HistoryQuoteInputs | null } | null}
      */
     this.summaryProjectionCache = null;
-    /** @type {{ database: DatabaseSync, mainSchema: number, tempSchema: number } | null} */
+    /** @type {{ database: DatabaseSync, mainSchema: number, tempSchema: number, tempCatalog: string } | null} */
     this.usageProjectionTracker = null;
     this.observedUsageProjectionChanges = "";
     this.observedPublicationChanges = -1;
@@ -1897,6 +2116,7 @@ export class UsageStore {
     if (this.database) {
       return;
     }
+    this.sourceProof ||= new UsageSourceProof();
     this.metadataCache = null;
     this.periodComparisonCache.clear();
     // D4：观测聚合缓存同为连接级状态（键含实例修订，但连接/库可能已换）⇒ 重开时一并复位。
@@ -2167,6 +2387,44 @@ export class UsageStore {
     assertArchiveSegmentsSchema(this.database);
     this.database.exec("CREATE INDEX IF NOT EXISTS events_repository_idx ON events(repository_key)");
     this.database.exec("CREATE INDEX IF NOT EXISTS events_source_path_idx ON events(source_path)");
+    this.database.exec(`CREATE INDEX IF NOT EXISTS quota_sources_thread_time_idx
+      ON quota_usage_sources(home_id, session_id, timestamp_ms)`);
+    this.database.exec(`CREATE INDEX IF NOT EXISTS quota_sources_account_time_idx
+      ON quota_usage_sources(home_id, timestamp_ms) WHERE quota_source IN ('credits', 'plan')`);
+    this.database.exec(
+      "CREATE INDEX IF NOT EXISTS events_session_home_time_idx ON events(session_id, home_id, timestamp_ms)",
+    );
+    createUsageRollups(this.database);
+    ensureUsageRecordSchema(this.database);
+    ensureUsageQuotaSchema(this.database);
+    ensureUsageSourceProgressSchema(this.database);
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS usage_business_revision (
+        singleton INTEGER PRIMARY KEY CHECK(singleton = 1), revision INTEGER NOT NULL
+      ) STRICT;
+    `);
+    if (!this.database.prepare("SELECT 1 FROM usage_business_revision WHERE singleton = 1").get()) {
+      this.database.exec("INSERT INTO usage_business_revision VALUES (1, 0)");
+    }
+    for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+      this.database.exec(`CREATE TRIGGER IF NOT EXISTS usage_business_events_${operation}
+        AFTER ${operation} ON events BEGIN
+          UPDATE usage_business_revision SET revision = revision + 1 WHERE singleton = 1;
+        END`);
+    }
+    ensureUsageAllSummarySchema(this.database);
+    this.deferredMetadataIndex = this.readMetaRaw(DEFERRED_METADATA_INDEX_META) === "1";
+    if (
+      !this.deferredMetadataIndex &&
+      !this.database.prepare("SELECT 1 FROM events LIMIT 1").get() &&
+      !this.database.prepare("SELECT 1 FROM source_files LIMIT 1").get() &&
+      !this.database.prepare("SELECT 1 FROM sqlite_master WHERE name='events_metadata_group_time_idx'").get() &&
+      !this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+    ) {
+      this.writeMeta(DEFERRED_METADATA_INDEX_META, "1");
+      this.deferredMetadataIndex = true;
+    }
+    ensureUsageMetadataSchema(this.database, { deferIndex: this.deferredMetadataIndex });
     if (this.readMetaRaw("codex_rollout_reader_version") !== CODEX_ROLLOUT_READER_VERSION) {
       // Re-read existing Codex events once: readline used to split valid Unicode JSON strings.
       this.database.exec("BEGIN");
@@ -2319,6 +2577,9 @@ export class UsageStore {
       database: this.database,
       mainSchema: Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version),
       tempSchema: Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version),
+      tempCatalog: JSON.stringify(
+        this.database.prepare("SELECT type, name, tbl_name, sql FROM temp.sqlite_master ORDER BY type, name").all(),
+      ),
     };
   }
 
@@ -2336,7 +2597,7 @@ export class UsageStore {
     if (this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META))
       return fallback;
     const ignored = Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get()?.value);
-    const changes = totalChanges - 2 * ignored;
+    const changes = totalChanges - 2 * ignored - this.businessProjectionIgnoredChanges;
     return Number.isSafeInteger(ignored) && ignored >= 0 && Number.isSafeInteger(changes) && changes >= 0
       ? `usage:${changes}`
       : fallback;
@@ -3050,6 +3311,7 @@ export class UsageStore {
     await this.open();
 
     let snapshot;
+    this.assertSourceRepairsComplete();
     this.database.exec("SAVEPOINT history_archive_union_read");
     try {
       const usageCarrier = includeUsageCarrier
@@ -3292,11 +3554,29 @@ export class UsageStore {
   /**
    * Replace one discovered source file's ordinary usage facts atomically.
    * @param {any} file
-   * @param {{ onWarning?: (warning: string) => void }} [options]
+   * @param {{ onWarning?: (warning: string) => void, progress?: boolean }} [options]
    */
-  async replaceFile({ filePath, source, info }, { onWarning } = {}) {
+  async replaceFile({ filePath, source, info }, { onWarning, progress = true } = {}) {
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
+    const hot = !database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META);
+    const progressEligible =
+      progress &&
+      hot &&
+      typeof database.isTransaction === "boolean" &&
+      ((codexThreaded && filePath.endsWith(".jsonl")) || source.kind === "dsh");
+    const sourceFence = progressEligible ? await this.sourceProof.begin(filePath, info) : null;
+    const parsedHash = progressEligible && !sourceFence ? createHash("sha256") : null;
+    let parsedOffset = 0;
+    /** @type {any} */
+    let checkpoint = null;
+    let sourceBaseline = null;
+    let proofWork = null;
+    const sourceBounds = new UsageSourceChangeBounds();
+    const replacementFacts = new UsageReplacementFacts(database);
+    const oldCumulative = createHash("sha256"),
+      nextCumulative = createHash("sha256");
+    const parserWarnings = [];
     const siblingPath = filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`;
     const representationFingerprint = codexThreaded ? usageSourceFingerprint(filePath) : undefined;
     const insertSource = database.prepare(`
@@ -3356,6 +3636,7 @@ export class UsageStore {
     const previousCumulativeForSession = (sessionId, timestamp) => {
       const timestampMs = Date.parse(timestamp);
       if (!Number.isFinite(timestampMs)) return null;
+      sourceBaseline = { homeId: source.id, sessionId: String(sessionId), beforeMs: timestampMs };
       const earlier = previousStatement.get(sessionId, source.id, filePath, timestampMs);
       if (!earlier.count) return null;
       return {
@@ -3382,10 +3663,8 @@ export class UsageStore {
         .get(filePath);
       const coldReparse = await this.historyArchiveReparsePrefixes(filePath, source);
       const coldReparsePrefixes = coldReparse.prefixes;
-      const previousEvents = database.prepare("SELECT * FROM events WHERE source_path = ?").all(filePath);
-      const previousQuotaRows = database
-        .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
-        .all(filePath);
+      replacementFacts.capture("events", filePath);
+      replacementFacts.capture("rate_limit_observations", filePath);
       const previousSiblingSource = codexThreaded
         ? database
             .prepare(
@@ -3393,14 +3672,18 @@ export class UsageStore {
             )
             .get(siblingPath, source.id)
         : null;
-      const previousSiblingEvents = previousSiblingSource
-        ? database.prepare("SELECT * FROM events WHERE source_path = ?").all(previousSiblingSource.path)
-        : [];
-      const previousSiblingQuotaRows = previousSiblingSource
-        ? database
-            .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
-            .all(previousSiblingSource.path)
-        : [];
+      if (previousSiblingSource) {
+        replacementFacts.capture("events", previousSiblingSource.path);
+        replacementFacts.capture("rate_limit_observations", previousSiblingSource.path);
+      }
+      if (hot && codexThreaded) {
+        for (const row of database
+          .prepare("SELECT * FROM events WHERE source_path IN (?,?) ORDER BY source_path,id")
+          .iterate(filePath, previousSiblingSource?.path || filePath)) {
+          addCumulativeFingerprint(oldCumulative, row);
+          sourceBounds.add(row.home_id, row.session_id, Number(row.timestamp_ms));
+        }
+      }
       insertSource.run(
         filePath,
         source.kind || "codex",
@@ -3424,39 +3707,8 @@ export class UsageStore {
         filePath,
         source,
         (event) => {
-          const date = new Date(event.timestampMs);
           rememberQuotaSource(event);
-          const row = {
-            source_path: filePath,
-            timestamp_ms: event.timestampMs,
-            session_id: event.sessionId,
-            home_id: event.homeId,
-            home_label: event.homeLabel,
-            channel: event.channel,
-            project: event.project || "Unknown cwd",
-            model: event.model || "Unknown model",
-            hour_key: localHourKey(date),
-            day_key: localDateKey(date),
-            week_key: localDateKey(startOfLocalWeek(date)),
-            month_key: localDateKey(date).slice(0, 7),
-            cwd: event.project || "",
-            repository_key: event.repositoryKey || "unknown:cwd",
-            repository_path: event.repositoryPath || "Unknown cwd",
-            repository_kind: event.repositoryKind || "unknown",
-            detail_mask: Number(event.detailMask || 0),
-            reconciliation_gap: Number(event.reconciliationGap || 0),
-            cache_write_tokens: Number(event.cacheWriteTokens || 0),
-            cache_write_known: event.cacheWriteKnown ? 1 : 0,
-            request_input_tokens: Number(event.requestInputTokens || 0),
-            context_level: event.contextLevel || "unknown",
-            service_tier: event.serviceTier || "unknown",
-            price_version: event.priceVersion || "",
-            total: event.usage.total,
-            input: event.usage.input,
-            cached: event.usage.cached,
-            output: event.usage.output,
-            reasoning: event.usage.reasoning,
-          };
+          const row = sourceEventRow(filePath, event);
           const coldPrefix = coldReparsePrefixes.find(
             (prefix) => row.timestamp_ms >= prefix.startMs && row.timestamp_ms < prefix.endMs,
           );
@@ -3465,10 +3717,28 @@ export class UsageStore {
             return;
           }
           insertEvent.run(...EVENT_INSERT_COLUMNS.map((column) => row[column]));
+          if (hot && codexThreaded) {
+            addCumulativeFingerprint(nextCumulative, row);
+            sourceBounds.add(row.home_id, row.session_id, Number(row.timestamp_ms));
+          }
         },
         {
           repositoryResolver: this.repositoryResolver,
           previousCumulativeForSession,
+          ...(progressEligible
+            ? {
+                endOffset: info.size,
+                onSourceBytes: parsedHash
+                  ? (bytes) => {
+                      parsedHash.update(bytes);
+                      parsedOffset += bytes.length;
+                    }
+                  : undefined,
+                onProgress: (value) => {
+                  checkpoint = value;
+                },
+              }
+            : {}),
           onQuotaSource: rememberQuotaSource,
           onRateLimit: ["main", "jetbrains", "extra", "codex"].includes(source.kind)
             ? (observation) => {
@@ -3496,7 +3766,9 @@ export class UsageStore {
                     projectLogMalformedLines.add(lineNumber);
                   }
                 }
-              : onWarning,
+              : progressEligible
+                ? (warning) => parserWarnings.push(String(warning))
+                : onWarning,
         },
       );
       let coldRevisionStateChanged = false;
@@ -3537,23 +3809,20 @@ export class UsageStore {
       if (coldRevisionStateChanged && coldReparse.revisionState) {
         writeHistoryArchiveEventRevisionState(database, coldReparse.revisionState);
       }
-      if (previousSource && previousEvents.length > 0) {
-        const currentEvents = database.prepare("SELECT * FROM events WHERE source_path = ?").all(filePath);
-        saveMissingHistoryFacts(insertReplacedFact, {
-          factTable: "events",
-          source: previousSource,
-          previousRows: previousEvents,
-          currentRows: currentEvents,
-          methodVersion: HISTORY_REPLACED_FACT_METHOD_VERSION,
-          excludedColumns: ["id"],
-        });
+      if (previousSource) {
+        const counts = replacementFacts.save(
+          insertReplacedFact,
+          "events",
+          previousSource,
+          HISTORY_REPLACED_FACT_METHOD_VERSION,
+        );
         if (
           String(previousSource.kind ?? "") === "project-log" &&
           String(source.kind ?? "") === "project-log" &&
           info.size < Number(previousSource.size) &&
-          currentEvents.length < previousEvents.length
+          counts.currentCount < counts.previousCount
         ) {
-          truncationEventCount = previousEvents.length - currentEvents.length;
+          truncationEventCount = counts.previousCount - counts.currentCount;
         }
       }
       if (String(source.kind ?? "") === "project-log") {
@@ -3562,35 +3831,27 @@ export class UsageStore {
           truncationWarning = formatProjectLogTruncationWarning(filePath, truncationEventCount);
         }
       }
-      if (previousSiblingSource && previousSiblingEvents.length > 0) {
-        saveMissingHistoryFacts(insertReplacedFact, {
-          factTable: "events",
-          source: previousSiblingSource,
-          previousRows: previousSiblingEvents,
-          currentRows: database.prepare("SELECT * FROM events WHERE source_path = ?").all(previousSiblingSource.path),
-          methodVersion: HISTORY_REPLACED_FACT_METHOD_VERSION,
-          excludedColumns: ["id"],
-        });
+      if (previousSiblingSource) {
+        replacementFacts.save(
+          insertReplacedFact,
+          "events",
+          previousSiblingSource,
+          HISTORY_REPLACED_FACT_METHOD_VERSION,
+        );
+        replacementFacts.save(
+          insertReplacedFact,
+          "rate_limit_observations",
+          previousSiblingSource,
+          HISTORY_REPLACED_QUOTA_METHOD_VERSION,
+        );
       }
-      if (previousSiblingSource && previousSiblingQuotaRows.length > 0) {
-        saveMissingHistoryFacts(insertReplacedFact, {
-          factTable: "rate_limit_observations",
-          source: previousSiblingSource,
-          previousRows: previousSiblingQuotaRows,
-          currentRows: database
-            .prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?")
-            .all(previousSiblingSource.path),
-          methodVersion: HISTORY_REPLACED_QUOTA_METHOD_VERSION,
-        });
-      }
-      if (previousSource && previousQuotaRows.length > 0) {
-        saveMissingHistoryFacts(insertReplacedFact, {
-          factTable: "rate_limit_observations",
-          source: previousSource,
-          previousRows: previousQuotaRows,
-          currentRows: database.prepare("SELECT * FROM rate_limit_observations WHERE source_path = ?").all(filePath),
-          methodVersion: HISTORY_REPLACED_QUOTA_METHOD_VERSION,
-        });
+      if (previousSource) {
+        replacementFacts.save(
+          insertReplacedFact,
+          "rate_limit_observations",
+          previousSource,
+          HISTORY_REPLACED_QUOTA_METHOD_VERSION,
+        );
       }
       const nextFileWarnings = this.publishedFileWarningsForRound();
       if (String(source.kind ?? "") === "project-log") {
@@ -3629,6 +3890,54 @@ export class UsageStore {
         delete nextFileWarnings[filePath];
       }
       this.writeMeta("perf_file_warnings", JSON.stringify(nextFileWarnings));
+      if (hot && codexThreaded && typeof database.isTransaction === "boolean") {
+        writeUsageSourceBaseline(database, filePath, sourceBaseline);
+        if (oldCumulative.digest("hex") !== nextCumulative.digest("hex")) {
+          markUsageSourceDependents(database, filePath, sourceBounds);
+        }
+      }
+      if (progressEligible && checkpoint) {
+        const sessionId = sourceSessionId(checkpoint, filePath);
+        if (
+          !codexThreaded ||
+          (previousQuotaSources.size <= 1 && (!previousQuotaSources.size || previousQuotaSources.has(sessionId)))
+        ) {
+          checkpoint = {
+            ...checkpoint,
+            store: { format: 1, sessionId, lastQuotaSource: previousQuotaSources.get(sessionId) ?? null },
+          };
+          proofWork = await this.sourceProof.capture(
+            filePath,
+            checkpoint.offset,
+            info,
+            sourceFence,
+            parsedHash ? { offset: parsedOffset, digest: parsedHash.copy().digest("hex") } : null,
+          );
+          writeUsageSourceProgress(database, filePath, checkpoint, proofWork.validation);
+        } else checkpoint = null;
+      }
+      if (!checkpoint) {
+        database.prepare("DELETE FROM usage_source_progress WHERE source_path=?").run(filePath);
+        if (sourceFence || parsedHash)
+          proofWork = await this.sourceProof.capture(
+            filePath,
+            0,
+            info,
+            sourceFence,
+            parsedHash ? { offset: parsedOffset, digest: parsedHash.copy().digest("hex") } : null,
+          );
+      }
+      if (hot && (codexThreaded || source.kind === "dsh")) {
+        const after = await stat(filePath);
+        if (
+          after.size !== info.size ||
+          after.mtimeMs !== info.mtimeMs ||
+          after.ctimeMs !== info.ctimeMs ||
+          usageSourceIdentity(after) !== usageSourceIdentity(info)
+        ) {
+          throw Object.assign(new Error("Source changed while indexing"), { code: "LIVE_SOURCE_CHANGED" });
+        }
+      }
       if (
         representationFingerprint !== undefined &&
         (representationFingerprint === null || usageSourceFingerprint(filePath) !== representationFingerprint)
@@ -3637,15 +3946,229 @@ export class UsageStore {
           code: "LIVE_SOURCE_CHANGED",
         });
       }
+      database.prepare("DELETE FROM usage_source_reparse WHERE source_path=?").run(filePath);
+      for (const warning of parserWarnings) onWarning?.(warning);
       database.exec("COMMIT");
       if (this.writeTransactionDepth > 0) this.writeTransactionDepth -= 1;
       if (this.publishedFileWarningsView) {
         this.publishedFileWarningsView.warnings = { ...nextFileWarnings };
       }
-      return { committed: true, quotaWritten, truncationWarning, projectLogWarnings };
+      return {
+        committed: true,
+        quotaWritten,
+        truncationWarning,
+        projectLogWarnings,
+        appended: false,
+        parsedBytes: info.size,
+        prefixBytesRead: proofWork?.readBytes || 0,
+        journalBytes: (sourceFence?.journalBytes || 0) + (proofWork?.journalBytes || 0),
+      };
     } catch (error) {
       database.exec("ROLLBACK");
       this.rollbackReplaceFileTransaction();
+      if (progressEligible && error.code === "SOURCE_PROGRESS_UNSUPPORTED") {
+        return this.replaceFile({ filePath, source, info }, { onWarning, progress: false });
+      }
+      throw error;
+    } finally {
+      sourceBounds.close();
+      replacementFacts.close();
+    }
+  }
+
+  /**
+   * Return null when an exact append cannot be proved; the caller then replaces the source.
+   * @param {any} file
+   * @param {{ onWarning?: (warning: string) => void }} [options]
+   */
+  async appendFile({ filePath, source, info }, { onWarning } = {}) {
+    const database = this.database;
+    if (
+      typeof database.isTransaction !== "boolean" ||
+      database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(filePath)
+    )
+      return null;
+    const existing = database.prepare("SELECT * FROM source_files WHERE path=?").get(filePath);
+    const saved = readUsageSourceProgress(database, filePath);
+    if (
+      !sameSourceBinding(existing, source) ||
+      !saved ||
+      info.size < Number(existing.size) ||
+      saved.checkpoint.store?.format !== 1
+    )
+      return null;
+    const verified = await this.sourceProof.verify(filePath, saved.validation, saved.checkpoint.offset, info);
+    if (!verified) return null;
+    const parsedHash = verified.hash && !verified.nativeFence ? verified.hash.copy() : null;
+    let parsedOffset = verified.offset;
+    const codex = saved.checkpoint.adapter === "codex-jsonl";
+    const sessionId = saved.checkpoint.store.sessionId;
+    let baseline = readUsageSourceBaseline(database, filePath);
+    let lastQuotaSource = saved.checkpoint.store.lastQuotaSource;
+    /** @type {any} */
+    let checkpoint = null;
+    let quotaWritten = false;
+    const warnings = [];
+    const bounds = new UsageSourceChangeBounds();
+    const unsupported = () =>
+      Object.assign(new Error("Source requires complete parsing"), { code: "SOURCE_PROGRESS_UNSUPPORTED" });
+    const eventInsert = database.prepare(`INSERT INTO events (${EVENT_INSERT_COLUMNS.join(",")})
+      VALUES (${EVENT_INSERT_COLUMNS.map(() => "?").join(",")})`);
+    const quotaInsert = database.prepare(`INSERT OR REPLACE INTO quota_usage_sources
+      (source_path,home_id,session_id,timestamp_ms,quota_source,until_ms) VALUES (?,?,?,?,?,?)`);
+    const rateInsert = database.prepare(`INSERT INTO rate_limit_observations
+      (source_path,line_number,role,observed_at_ms,limit_id,limit_name,plan_type,window_minutes,resets_at_ms,used_percent)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    const rememberQuotaSource = (event) => {
+      if (!codex || !Number.isFinite(event.timestampMs)) return;
+      if (event.sessionId !== sessionId) throw unsupported();
+      const value = `${event.quotaSource || "unknown"}:${event.quotaSourceUntil || 0}`;
+      if (value === lastQuotaSource) return;
+      quotaInsert.run(
+        filePath,
+        event.homeId,
+        event.sessionId,
+        event.timestampMs,
+        event.quotaSource || "unknown",
+        event.quotaSourceUntil || 0,
+      );
+      lastQuotaSource = value;
+    };
+    database.exec("BEGIN IMMEDIATE");
+    this.writeTransactionDepth += 1;
+    try {
+      // Verification awaited filesystem I/O: another connection may have replaced the cursor meanwhile.
+      if (
+        JSON.stringify(readUsageSourceProgress(database, filePath)) !== JSON.stringify(saved) ||
+        database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(filePath)
+      )
+        throw unsupported();
+      await streamUsageFileEvents(
+        filePath,
+        source,
+        (event) => {
+          if (codex && event.sessionId !== sessionId) throw unsupported();
+          rememberQuotaSource(event);
+          const row = sourceEventRow(filePath, event);
+          eventInsert.run(...EVENT_INSERT_COLUMNS.map((column) => row[column]));
+          if (codex) bounds.add(row.home_id, row.session_id, Number(row.timestamp_ms));
+        },
+        {
+          repositoryResolver: this.repositoryResolver,
+          resume: saved.checkpoint,
+          endOffset: info.size,
+          onSourceBytes: parsedHash
+            ? (bytes) => {
+                parsedHash.update(bytes);
+                parsedOffset += bytes.length;
+              }
+            : undefined,
+          onProgress: (value) => {
+            checkpoint = value;
+          },
+          onWarning: (warning) => warnings.push(String(warning)),
+          onQuotaSource: rememberQuotaSource,
+          onRateLimit: codex
+            ? (row) => {
+                rateInsert.run(
+                  filePath,
+                  row.lineNumber,
+                  row.role,
+                  row.observedAtMs,
+                  row.limitId,
+                  row.limitName,
+                  row.planType,
+                  row.windowMinutes,
+                  row.resetsAtMs,
+                  row.usedPercent,
+                );
+                quotaWritten = true;
+              }
+            : undefined,
+          previousCumulativeForSession: (id, timestamp) => {
+            const beforeMs = Date.parse(timestamp);
+            if (!Number.isSafeInteger(beforeMs)) return null;
+            baseline = { homeId: source.id, sessionId: String(id), beforeMs };
+            const row = database
+              .prepare(`SELECT COUNT(*) AS count,SUM(total) AS total,SUM(input) AS input,
+            SUM(cached) AS cached,SUM(output) AS output,SUM(reasoning) AS reasoning,
+            MIN(detail_mask & 1) AS i,MIN(detail_mask & 2) AS c,MIN(detail_mask & 4) AS o,
+            MIN(detail_mask & 8) AS r,SUM(cache_write_tokens) AS writes,MIN(cache_write_known) AS known
+            FROM events WHERE session_id=? AND home_id=? AND source_path<>? AND timestamp_ms<?`)
+              .get(id, source.id, filePath, beforeMs);
+            return row.count
+              ? {
+                  usage: usageFromRow(row),
+                  detailMask: Number(row.i || 0) | Number(row.c || 0) | Number(row.o || 0) | Number(row.r || 0),
+                  cacheWrite: { tokens: Number(row.writes || 0), known: Boolean(row.known) },
+                }
+              : null;
+          },
+        },
+      );
+      if (!checkpoint || sourceSessionId(checkpoint, filePath) !== sessionId) throw unsupported();
+      checkpoint = { ...checkpoint, store: { format: 1, sessionId, lastQuotaSource } };
+      const proof = await this.sourceProof.capture(
+        filePath,
+        checkpoint.offset,
+        info,
+        verified,
+        parsedHash ? { offset: parsedOffset, digest: parsedHash.copy().digest("hex") } : null,
+      );
+      database
+        .prepare("UPDATE source_files SET size=?,mtime_ms=?,indexed_at=? WHERE path=?")
+        .run(info.size, info.mtimeMs, new Date().toISOString(), filePath);
+      if (codex) {
+        writeUsageSourceBaseline(database, filePath, baseline);
+        markUsageSourceDependents(database, filePath, bounds);
+      }
+      if (!writeUsageSourceProgress(database, filePath, checkpoint, proof.validation)) throw unsupported();
+      for (const warning of warnings) onWarning?.(warning);
+      database.exec("COMMIT");
+      this.writeTransactionDepth -= 1;
+      return {
+        committed: true,
+        quotaWritten,
+        appended: true,
+        sessionId,
+        parsedBytes: info.size - saved.checkpoint.offset,
+        prefixBytesRead: (verified.readBytes || 0) + (proof.readBytes || 0),
+        journalBytes: (verified.journalBytes || 0) + (proof.journalBytes || 0),
+      };
+    } catch (error) {
+      database.exec("ROLLBACK");
+      this.rollbackReplaceFileTransaction();
+      if (error.code === "SOURCE_PROGRESS_UNSUPPORTED") return null;
+      throw error;
+    } finally {
+      bounds.close();
+    }
+  }
+
+  async recertifyUnchangedFile({ filePath, info }, saved) {
+    if (!saved || saved.checkpoint.offset !== info.size) return false;
+    // A returned file may have a new inode. An identical full certified prefix preserves the existing facts.
+    const validation =
+      saved.validation.kind === USAGE_SOURCE_SHA_KIND
+        ? { ...saved.validation, identity: usageSourceIdentity(info) }
+        : saved.validation;
+    const verified = await this.sourceProof.verify(filePath, validation, saved.checkpoint.offset, info);
+    if (!verified) return false;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      if (JSON.stringify(readUsageSourceProgress(this.database, filePath)) !== JSON.stringify(saved)) {
+        this.database.exec("ROLLBACK");
+        return false;
+      }
+      const proof = await this.sourceProof.capture(filePath, saved.checkpoint.offset, info, verified);
+      writeUsageSourceProgress(this.database, filePath, saved.checkpoint, proof.validation);
+      this.database.exec("COMMIT");
+      this.lastSyncSourceWork.prefixBytesRead += (verified.readBytes || 0) + (proof.readBytes || 0);
+      this.lastSyncSourceWork.journalBytes += (verified.journalBytes || 0) + (proof.journalBytes || 0);
+      return true;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
       throw error;
     }
   }
@@ -3656,6 +4179,17 @@ export class UsageStore {
       return await this.syncRound(args);
     } finally {
       if (this.publishedFileWarningsView === view) this.publishedFileWarningsView = null;
+    }
+  }
+
+  assertSourceRepairsComplete() {
+    if (this.database.prepare("SELECT 1 FROM usage_source_reparse LIMIT 1").get()) {
+      throw Object.assign(
+        new Error("Source dependency repair is incomplete; retry when the affected source is available"),
+        {
+          code: "SOURCE_DEPENDENCY_PENDING",
+        },
+      );
     }
   }
 
@@ -3700,11 +4234,31 @@ export class UsageStore {
     const changedSessions = new Set();
     let updatedFileCount = 0;
     let usageDerivedChanged = false;
+    const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0 };
+    this.lastSyncSourceWork = sourceWork;
+    const acceptSource = (file, outcome) => {
+      updatedFileCount += 1;
+      committedPaths.add(file.filePath);
+      nextFingerprints[file.filePath] = usageSourceFingerprint(file.filePath);
+      sourceWork[outcome.appended ? "appendedFiles" : "replacedFiles"] += 1;
+      for (const key of ["parsedBytes", "prefixBytesRead", "journalBytes"]) sourceWork[key] += outcome[key] || 0;
+      if (outcome.appended) changedSessions.add(outcome.sessionId);
+      else
+        for (const row of this.database
+          .prepare("SELECT DISTINCT session_id FROM events WHERE source_path=?")
+          .all(file.filePath))
+          changedSessions.add(row.session_id);
+      usageDerivedChanged = true;
+      if (outcome.truncationWarning) warnings.push(outcome.truncationWarning);
+      for (const warning of outcome.projectLogWarnings || []) warnings.push(warning);
+      this.commitStoreRevision(outcome.quotaWritten ? "usage+quota" : "usage");
+    };
 
     for (const file of files) {
       const existing = this.database
         .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
         .get(file.filePath);
+      const savedProgress = existing ? readUsageSourceProgress(this.database, file.filePath) : null;
       const unchanged =
         existing &&
         Number(existing.size) === file.info.size &&
@@ -3717,35 +4271,56 @@ export class UsageStore {
           publishedFingerprints[file.filePath] === currentFingerprints.get(file.filePath));
       const earlierFileChanged =
         existing &&
+        changedSessions.size > 0 &&
         this.database
           .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
           .all(file.filePath)
           .some((row) => changedSessions.has(row.session_id));
-      if (unchanged && !earlierFileChanged) {
-        nextFingerprints[file.filePath] = currentFingerprints.get(file.filePath);
-        continue;
+      const needsReparse = Boolean(
+        this.database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(file.filePath),
+      );
+      if (unchanged && !earlierFileChanged && !needsReparse) {
+        const proofCurrent =
+          !savedProgress ||
+          ([USAGE_SOURCE_SHA_KIND, "ntfs-usn-v1"].includes(savedProgress.validation.kind) &&
+            savedProgress.validation.identity === usageSourceIdentity(file.info) &&
+            savedProgress.validation.ctimeMs === file.info.ctimeMs);
+        if (proofCurrent || (await this.recertifyUnchangedFile(file, savedProgress))) {
+          nextFingerprints[file.filePath] = currentFingerprints.get(file.filePath);
+          continue;
+        }
       }
       try {
-        const outcome = await this.replaceFile(file, {
-          onWarning: (warning) => warnings.push(String(warning)),
-        });
+        const callbacks = { onWarning: (warning) => warnings.push(String(warning)) };
+        const outcome =
+          (!earlierFileChanged && !needsReparse ? await this.appendFile(file, callbacks) : null) ||
+          (await this.replaceFile(file, callbacks));
         if (!outcome?.committed) continue;
-        updatedFileCount += 1;
-        committedPaths.add(file.filePath);
-        nextFingerprints[file.filePath] = usageSourceFingerprint(file.filePath);
-        for (const row of this.database
-          .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
-          .all(file.filePath))
-          changedSessions.add(row.session_id);
-        usageDerivedChanged = true;
-        if (outcome.truncationWarning) warnings.push(outcome.truncationWarning);
-        for (const warning of outcome.projectLogWarnings || []) warnings.push(warning);
-        this.commitStoreRevision(outcome.quotaWritten ? "usage+quota" : "usage");
+        acceptSource(file, outcome);
       } catch (error) {
+        if (needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
         if (canonicalizeKind(file.source.kind) === "codex" && (Number(error?.errcode) & 0xff) === 19) throw error;
         warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
       }
     }
+
+    // Dependencies may precede their changed producer in discovery order, or survive a process crash.
+    const availableFiles = new Map(files.map((file) => [file.filePath, file]));
+    while (true) {
+      const pending = this.database.prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path").all();
+      const available = pending.map((row) => availableFiles.get(String(row.source_path))).filter(Boolean);
+      if (!available.length) break;
+      for (const file of available) {
+        const outcome = await this.replaceFile(
+          { ...file, info: await stat(file.filePath) },
+          {
+            onWarning: (warning) => warnings.push(String(warning)),
+          },
+        );
+        acceptSource(file, outcome);
+      }
+    }
+    this.assertSourceRepairsComplete();
 
     for (const old of sourceRowsBefore) {
       if (knownFiles.has(old.path) || failedHomeIds.has(old.home_id) || failedHomePaths.has(old.home_path)) continue;
@@ -3917,7 +4492,17 @@ export class UsageStore {
     const dirtyRollupDays = listDirtyUsageRollupDays(this.database);
     const localRollupZone = currentLocalRollupZoneIdentity();
     const localRollupZoneChanged = this.readMetaRaw(LOCAL_ROLLUP_ZONE_META) !== localRollupZone;
-    if (dirtyRollupDays.length > 0 || localRollupZoneChanged) {
+    this.lastSyncRollupWork = null;
+    if (
+      dirtyRollupDays.length > 0 &&
+      !localRollupZoneChanged &&
+      historyArchiveAuthorizedSegmentIds(this.database).size === 0
+    ) {
+      this.lastSyncRollupWork = this.withBusinessProjection(() =>
+        tryAppendUsageRollups(this.database, { zoneIdentity: localRollupZone }),
+      );
+    }
+    if ((dirtyRollupDays.length > 0 && !this.lastSyncRollupWork?.applied) || localRollupZoneChanged) {
       if (historyArchiveAuthorizedSegmentIds(this.database).size > 0) {
         this.database.exec("BEGIN IMMEDIATE");
         this.writeTransactionDepth += 1;
@@ -3980,12 +4565,27 @@ export class UsageStore {
           }
           rebuildUsageRollups(this.database, { days: [...localDays].sort(), calendarZone: "local" });
           this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
+          const checkpoint = checkpointUsageRollups(this.database, { zoneIdentity: localRollupZone });
+          this.lastSyncRollupWork = { ...this.lastSyncRollupWork, fallbackDays: dirtyRollupDays.length, checkpoint };
           this.database.exec("RELEASE usage_rollup_sync");
         } catch (error) {
           this.database.exec("ROLLBACK TO usage_rollup_sync");
           this.database.exec("RELEASE usage_rollup_sync");
           throw error;
         }
+      }
+    }
+
+    if (this.deferredMetadataIndex && this.database.prepare("SELECT 1 FROM events LIMIT 1").get()) {
+      this.database.exec("SAVEPOINT initial_metadata_index");
+      try {
+        ensureUsageMetadataSchema(this.database);
+        this.database.prepare("DELETE FROM store_meta WHERE key=?").run(DEFERRED_METADATA_INDEX_META);
+        this.database.exec("RELEASE initial_metadata_index");
+        this.deferredMetadataIndex = false;
+      } catch (error) {
+        this.database.exec("ROLLBACK TO initial_metadata_index; RELEASE initial_metadata_index");
+        throw error;
       }
     }
 
@@ -4054,16 +4654,75 @@ export class UsageStore {
       .filter((id) => typeof id === "string" && id.length > 0);
   }
 
+  /** @param {Date | number} [asOf] */
+  storedMetadata(asOf = new Date()) {
+    if (
+      this.writeTransactionDepth > 0 ||
+      this.verifiedHistorySqlRead ||
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      this.database
+        .prepare("PRAGMA index_list(events)")
+        .all()
+        .some((row) => Number(row.unique) !== 0)
+    )
+      return null;
+    this.database.exec("SAVEPOINT metadata_projection_read");
+    try {
+      return readStoredMetadata(this.database, typeof asOf === "number" ? asOf : asOf.getTime());
+    } finally {
+      this.database.exec("RELEASE metadata_projection_read");
+    }
+  }
+
+  prepareMetadataProjection() {
+    if (this.deferredMetadataIndex || this.database.isTransaction || this.writeTransactionDepth > 0) return;
+    if (this.storedMetadata(Number.MAX_SAFE_INTEGER)) {
+      this.lastMetadataWork = { readEvents: 0, rebuilt: false, reused: true };
+      return;
+    }
+    if (
+      this.verifiedHistorySqlRead ||
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      this.database
+        .prepare("PRAGMA index_list(events)")
+        .all()
+        .some((row) => Number(row.unique) !== 0)
+    )
+      return;
+    if (!this.usageProjectionTracker) {
+      this.installUsageProjectionTracker();
+      this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
+    }
+    this.lastMetadataWork = this.withBusinessProjection(() => prepareStoredMetadata(this.database));
+  }
+
   metadata(asOf = new Date()) {
+    this.assertSourceRepairsComplete();
     // D1：读路径先对齐修订（外部提交在这里被检出 ⇒ 缓存失效 + 必要元数据重载）。
     if (!this.metadataSnapshotRead) this.syncDerivedRevision();
     // D1：写事务内读到的是**未提交**状态 ⇒ 这一轮**不落**共享缓存（验收："事务内已读的派生缓存
     // 被安全清理" —— 预防 + 回滚时再清一次，见 `rollbackReplaceFileTransaction`）。
     const cacheable = this.writeTransactionDepth === 0;
+    let persistedMetadata = null;
+    if (cacheable && (!this.metadataCache || this.metadataObservationCache?.revision !== this.storeRevision)) {
+      this.prepareMetadataProjection();
+      if (!this.metadataSnapshotRead) this.syncDerivedRevision();
+      persistedMetadata = this.storedMetadata(Number.MAX_SAFE_INTEGER);
+      if (persistedMetadata) {
+        const rows = persistedMetadata.observationRows;
+        this.metadataObservationCache = {
+          revision: this.storeRevision,
+          rows,
+          maxTimestampMs: rows.reduce((n, row) => Math.max(n, Number(row.last_seen)), -Infinity),
+        };
+      }
+    }
     /** D1：不可缓存时（写事务内）用的**本次调用**快照；绝不写回 `this.metadataCache`。 */
     let builtMetadata = null;
     if (!this.metadataCache) {
-      const counts = readMetadataUsageCounts(this.database, this.verifiedHistorySqlRead ? this.eventBounds() : null);
+      const counts =
+        persistedMetadata ??
+        readMetadataUsageCounts(this.database, this.verifiedHistorySqlRead ? this.eventBounds() : null);
       // 按实际使用记录给出各 harness（Codex / ZCode / DSH / OpenCode / Claude / WorkBuddy）用到的模型名称。
       const harnessModels = {
         Codex: new Set(),
@@ -4074,9 +4733,10 @@ export class UsageStore {
         WorkBuddy: new Set(),
       };
       const modelRows =
-        cacheable && this.metadataObservationCache?.revision === this.storeRevision
+        persistedMetadata?.modelRows ??
+        (cacheable && this.metadataObservationCache?.revision === this.storeRevision
           ? this.metadataObservationCache.rows
-          : this.database.prepare("SELECT DISTINCT channel, model FROM events").all();
+          : this.database.prepare("SELECT DISTINCT channel, model FROM events").all());
       for (const row of modelRows) {
         const model = String(row.model || "").trim();
         if (!model || model.toLocaleLowerCase() === "unknown model") continue;
@@ -4139,7 +4799,10 @@ export class UsageStore {
         };
       }
       const memo = this.metadataObservationCache;
-      observationRows = asOfMs >= memo.maxTimestampMs ? memo.rows : queryObservationRows(asOfMs);
+      observationRows =
+        asOfMs >= memo.maxTimestampMs
+          ? memo.rows
+          : (this.storedMetadata(asOf)?.observationRows ?? queryObservationRows(asOfMs));
     } else {
       // D1：写事务内读到的是**未提交**状态 ⇒ 不读也不写共享缓存，用本次调用快照。
       observationRows = queryObservationRows(asOfMs);
@@ -4168,6 +4831,9 @@ export class UsageStore {
    */
   async metadataHistory(asOf = new Date()) {
     await this.open();
+    this.assertSourceRepairsComplete();
+    this.syncDerivedRevision();
+    this.prepareMetadataProjection();
     this.syncDerivedRevision();
     let hasAuthority = false;
     this.database.exec("SAVEPOINT metadata_history_read");
@@ -4207,6 +4873,13 @@ export class UsageStore {
                  (SELECT MAX(timestamp_ms) FROM main.events)
         )
       `)
+        .get();
+    }
+    if (excludeHomes.length === 0) {
+      return this.database
+        .prepare(`SELECT
+        (SELECT MIN(timestamp_ms) FROM events) AS minimum,
+        (SELECT MAX(timestamp_ms) FROM events) AS maximum`)
         .get();
     }
     const scope = scopeFilterSql(excludeHomes);
@@ -4265,6 +4938,8 @@ export class UsageStore {
    */
   publishedUsageEvents() {
     if (!this.database) throw new TypeError("UsageStore is not open");
+    this.assertSourceRepairsComplete();
+    this.quotaSourceLookup?.clearCache();
     const rows = this.database
       .prepare(
         `SELECT e.*, sf.kind AS source_kind
@@ -4286,6 +4961,7 @@ export class UsageStore {
    */
   async publishedHistoryUsageEvents() {
     const union = await this.historyArchiveEventUnionForRange(undefined, { completeHistory: true });
+    this.quotaSourceLookup?.clearCache();
     return publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
   }
 
@@ -4405,6 +5081,7 @@ export class UsageStore {
       completeHistory: true,
       includeUsageCarrier: true,
     });
+    this.quotaSourceLookup?.clearCache();
     const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
     const homes = union.homes ?? [];
     return {
@@ -4568,22 +5245,28 @@ export class UsageStore {
     { onEstimate, excludeHomes = [], pricingModels, factRows, includeRepositories = false, pricing, quoteInputs } = {},
   ) {
     // Quote replay uses the same price and timeline accumulators as the original streaming read.
-    return this.withEventCostMemoRound(() =>
-      buildTimelineRows(
-        quoteInputs ? quoteInputs.events() : this.costEventsForRange(range, excludeHomes, includeRepositories),
-        range,
-        bucket,
-        {
-          sourceKinds: homeSourceKinds(this.homes),
-          pricingModels,
-          factRows,
-          eventBucketKey: quoteInputs ? (event) => event.quoteBucketKey : undefined,
-          modelName: pricing?.modelName,
-          estimateCost: pricing?.estimate ?? estimateEventCost,
-          onEstimate,
-        },
-      ),
-    );
+    const members = new UsageSessionMembers();
+    try {
+      return this.withEventCostMemoRound(() =>
+        buildTimelineRows(
+          quoteInputs ? quoteInputs.events() : this.costEventsForRange(range, excludeHomes, includeRepositories),
+          range,
+          bucket,
+          {
+            sourceKinds: homeSourceKinds(this.homes),
+            pricingModels,
+            factRows,
+            eventBucketKey: quoteInputs ? (event) => event.quoteBucketKey : undefined,
+            modelName: pricing?.modelName,
+            estimateCost: pricing?.estimate ?? estimateEventCost,
+            onEstimate,
+            createSessionSet: () => members.createSet(),
+          },
+        ),
+      );
+    } finally {
+      members.close();
+    }
   }
 
   repositoriesRange(range, excludeHomes = []) {
@@ -4670,14 +5353,20 @@ export class UsageStore {
     const pricingModels = options.pricingModels ?? getPricingCatalog().models;
     const previousPricingModels = this.readPricingModels;
     this.readPricingModels = pricingModels;
+    this.database.exec("SAVEPOINT period_aggregate_read");
     try {
       return this.periodAggregateCore(groupColumn, nameColumn, _now, ranges, options);
     } finally {
+      this.database.exec("RELEASE period_aggregate_read");
       this.readPricingModels = previousPricingModels;
     }
   }
 
   periodAggregateCore(groupColumn, nameColumn, _now, ranges, { includeKind = false, excludeHomes = [] } = {}) {
+    // Published cold rollups contain the complete history, not the hot-only table.
+    const hotAuthority =
+      !this.verifiedHistorySqlRead &&
+      Boolean(this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META));
     const modelDimension = groupColumn === "model" && nameColumn === "model" && !includeKind;
     const dimensionKey = modelDimension ? "usage_model_group(model)" : groupColumn;
     const dimensionName = modelDimension ? dimensionKey : nameColumn;
@@ -4702,7 +5391,67 @@ export class UsageStore {
       ["inconsistentTokens", "CASE WHEN (detail_mask & 16) != 0 THEN total ELSE 0 END"],
       ["reconciliationGap", "reconciliation_gap"],
     ];
-    if (modelDimension) {
+    if (
+      groupColumn === "repository_key" &&
+      nameColumn === "repository_path" &&
+      includeKind &&
+      !hotAuthority &&
+      !this.verifiedHistorySqlRead
+    ) {
+      this.database.exec("SAVEPOINT period_repository_rollup");
+      try {
+        const bounds = this.eventBounds(excludeHomes);
+        if (bounds.minimum !== null && bounds.maximum !== null) {
+          const minimum = Number(bounds.minimum);
+          const endMs = Number(bounds.maximum) + 1;
+          const complete = periodRollupWindow(minimum, endMs, minimum, endMs - 1);
+          const repositories = new Map(
+            queryUsageRollupRepositoriesWindow(this.database, { ...complete, excludeHomes }).map((row) => [
+              row.key,
+              {
+                key: row.key,
+                name: row.name,
+                kind: row.kind,
+                pathCount: row.pathCount,
+                periods: Object.fromEntries(
+                  COMPARISON_PERIOD_KEYS.map((period) => [
+                    period,
+                    Object.fromEntries(fields.map(([field]) => [field, 0])),
+                  ]),
+                ),
+              },
+            ]),
+          );
+          for (const period of COMPARISON_PERIOD_KEYS) {
+            const range = ranges[period] || {};
+            const window = periodRollupWindow(
+              range.start == null ? minimum : new Date(range.start).getTime(),
+              range.end == null ? endMs : new Date(range.end).getTime() + 1,
+              minimum,
+              endMs - 1,
+            );
+            if (!window) continue;
+            for (const row of queryUsageRollupRepositoriesWindow(this.database, {
+              ...window,
+              excludeHomes,
+            })) {
+              const entry = repositories.get(row.key);
+              entry.periods[period] = Object.fromEntries(fields.map(([field]) => [field, Number(row[field] || 0)]));
+            }
+          }
+          return [...repositories.values()].sort(
+            (left, right) =>
+              right.periods.all.total - left.periods.all.total || compareSqliteText(left.name, right.name),
+          );
+        }
+        return [];
+      } catch (error) {
+        if (error?.code !== "ROLLUP_DAYS_MISSING") throw error;
+      } finally {
+        this.database.exec("RELEASE period_repository_rollup");
+      }
+    }
+    if (modelDimension && !hotAuthority) {
       this.database.exec("SAVEPOINT period_model_rollup");
       try {
         const bounds = this.eventBounds(excludeHomes);
@@ -4725,10 +5474,7 @@ export class UsageStore {
             valid = false;
             break;
           }
-          // Only complete days inside the scoped fact range may require rollup markers.
-          const clampedStartMs = Math.max(startMs, minimum);
-          const clampedEndMs = Math.min(endExclusiveMs, sourceEndMs);
-          windows[period] = clampedStartMs < clampedEndMs ? { startMs: clampedStartMs, endMs: clampedEndMs } : null;
+          windows[period] = periodRollupWindow(startMs, endExclusiveMs, minimum, maximum);
         }
 
         if (valid) {
@@ -4749,8 +5495,7 @@ export class UsageStore {
           // Seed models that the requested period windows do not touch.
           if (!windows.all || windows.all.startMs > minimum || windows.all.endMs < sourceEndMs) {
             const sourceRows = queryUsageRollupModelsWindow(this.database, {
-              startMs: minimum,
-              endMs: sourceEndMs,
+              ...periodRollupWindow(minimum, sourceEndMs, minimum, maximum),
               excludeHomes,
               canonicalModels: true,
             });
@@ -4852,8 +5597,11 @@ export class UsageStore {
   }
 
   periodComparison(options = {}) {
+    this.assertSourceRepairsComplete();
     // D1：读路径先对齐修订（外部提交在这里被检出 ⇒ 缓存失效 + 必要元数据重载）。
     const snapshotRead = this.periodComparisonSnapshotRead;
+    if (!snapshotRead) this.syncDerivedRevision();
+    this.prepareHotRollups();
     if (!snapshotRead) this.syncDerivedRevision();
     // D1：写事务内**不读也不写**共享缓存（读到的是未提交状态 ⇒ 回滚后它会说谎）。
     const cacheable = this.writeTransactionDepth === 0;
@@ -4927,6 +5675,8 @@ export class UsageStore {
    */
   async periodComparisonHistory(options = {}) {
     await this.open();
+    this.syncDerivedRevision();
+    this.prepareHotRollups();
     this.syncDerivedRevision();
     let hasAuthority = false;
     // 无 authority 时，marker 与首次 period 读取必须共享同一 SQLite 读快照。
@@ -5008,6 +5758,21 @@ export class UsageStore {
     const champions =
       memoized ??
       (() => {
+        if (!this.verifiedHistorySqlRead) {
+          const projection = this.recordProjectionOptions(zone, excludeHomes);
+          const stored = readStoredRecordChampions(projection);
+          if (stored) return stored;
+          if (this.database.isTransaction || this.writeTransactionDepth > 0) {
+            const temporary = new DatabaseSync("");
+            try {
+              temporary.exec("PRAGMA cache_size = -2048");
+              return buildStoredRecordChampions({ ...projection, database: temporary, sourceDatabase: this.database });
+            } finally {
+              temporary.close();
+            }
+          }
+          return buildStoredRecordChampions(projection);
+        }
         const eventPricing = createEventPricing();
         return this.buildRecordChampions(zone, where, scope.params, usdToCnyRate, (event) =>
           eventPricing.estimate(event),
@@ -5015,6 +5780,139 @@ export class UsageStore {
       })();
     if (cacheable && memoized === null) this.recordChampionCache = { key: memoKey, champions };
     return this.recordsWithinRange(champions, range, zone);
+  }
+
+  recordProjectionOptions(calendarZone, excludeHomes = []) {
+    const zone = calendarZone === "utc" ? "utc" : "local";
+    const scope = scopeFilterSql(excludeHomes);
+    const catalog = getPricingCatalog();
+    const rate = Number(catalog.usdToCnyRate);
+    const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    const sourceKinds = homeSourceKinds(this.homes);
+    const pricing = createEventPricing();
+    const key = createHash("sha256")
+      .update(
+        JSON.stringify([
+          "record-view-v1",
+          catalog.version,
+          usdToCnyRate,
+          this.serviceTierEvidenceInput,
+          zone,
+          currentLocalRollupZoneIdentity(),
+          [...sourceKinds].sort(),
+          [...new Set(excludeHomes.map(String))].sort(),
+        ]),
+      )
+      .digest("hex");
+    return {
+      database: this.database,
+      key,
+      factsKey: String(
+        this.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton = 1").get().revision,
+      ),
+      zone,
+      where: scope.sql ? `WHERE ${scope.sql}` : "",
+      params: scope.params,
+      usdToCnyRate,
+      estimateRow: (row) =>
+        pricing.estimate(costEventFromRow(row, this.serviceTierEvidence, sourceKinds.get(String(row.home_id)))),
+    };
+  }
+
+  prepareRecordProjection(filters) {
+    if (
+      this.database.isTransaction ||
+      this.writeTransactionDepth > 0 ||
+      this.verifiedHistorySqlRead ||
+      filters.preset === "all" ||
+      isQuotaPreset(filters.preset) ||
+      filters.quotaWindow ||
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+    )
+      return;
+    buildStoredRecordChampions(this.recordProjectionOptions(filters.calendarZone, filters.excludeHomes || []));
+  }
+
+  prepareQuotaProjection(filters) {
+    if (this.database.isTransaction || this.writeTransactionDepth > 0 || this.verifiedHistorySqlRead) return;
+    if (
+      !this.usageProjectionTracker &&
+      !this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+    ) {
+      this.installUsageProjectionTracker();
+      this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
+    }
+    const official = JSON.parse(this.readMetaRaw("official_quota_observations") || "[]");
+    this.withBusinessProjection(() =>
+      selectStoredQuotaWindows(this.database, filters.now ? new Date(filters.now) : new Date(), official),
+    );
+    this.lastQuotaWork = quotaProjectionWork(this.database);
+  }
+
+  withBusinessProjection(work) {
+    const tracker = this.usageProjectionTracker;
+    if (!tracker || tracker.database !== this.database) return work();
+    if (tracker.mainSchema !== Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version))
+      return work();
+    const tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
+    if (tracker.tempSchema !== tempSchema) {
+      // ROLLBACK can restore the TEMP schema version; certify its actual catalog before reuse.
+      const catalog = JSON.stringify(
+        this.database.prepare("SELECT type, name, tbl_name, sql FROM temp.sqlite_master ORDER BY type, name").all(),
+      );
+      if (catalog !== tracker.tempCatalog) return work();
+      tracker.tempSchema = tempSchema;
+    }
+    const observe = () => ({
+      changes: Number(this.database.prepare("SELECT total_changes() AS value").get().value),
+      ignored: Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get().value),
+    });
+    const before = observe();
+    try {
+      return work();
+    } finally {
+      const after = observe();
+      // Owned TEMP work changes neither source facts nor their publication identity.
+      this.businessProjectionIgnoredChanges += after.changes - before.changes - 2 * (after.ignored - before.ignored);
+      tracker.tempSchema = Number(this.database.prepare("PRAGMA temp.schema_version").get().schema_version);
+    }
+  }
+
+  prepareHotRollups() {
+    if (
+      this.database.isTransaction ||
+      this.writeTransactionDepth > 0 ||
+      this.verifiedHistorySqlRead ||
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+    )
+      return;
+    if (!this.usageProjectionTracker) {
+      this.installUsageProjectionTracker();
+      this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
+    }
+    return this.withBusinessProjection(() => {
+      const zoneIdentity = currentLocalRollupZoneIdentity();
+      const work = tryAppendUsageRollups(this.database, { zoneIdentity });
+      this.lastRollupWork = work;
+      if (work.applied) return;
+      const dirtyDays = listDirtyUsageRollupDays(this.database);
+      for (const day of dirtyDays) {
+        this.database.exec("SAVEPOINT business_rollup_day");
+        try {
+          rebuildUsageRollups(this.database, { days: [day], calendarZone: "utc" });
+          rebuildUsageRollups(this.database, {
+            days: localUsageRollupDaysForUtcDays([day]),
+            calendarZone: "local",
+          });
+          this.database.exec("RELEASE business_rollup_day");
+        } catch (error) {
+          this.database.exec("ROLLBACK TO business_rollup_day; RELEASE business_rollup_day");
+          throw error;
+        }
+      }
+      const checkpoint = checkpointUsageRollups(this.database, { zoneIdentity });
+      this.lastRollupWork = { ...work, fallbackDays: dirtyDays.length, checkpoint };
+    });
   }
 
   /**
@@ -5153,6 +6051,11 @@ export class UsageStore {
   }
 
   summarize(filters = {}, options = {}) {
+    this.assertSourceRepairsComplete();
+    this.syncDerivedRevision();
+    this.prepareHotRollups();
+    this.prepareQuotaProjection(filters);
+    this.prepareRecordProjection(filters);
     this.database.exec("BEGIN");
     const previousTransferable = this.summaryProjectionTransferableRead;
     this.summaryProjectionTransferableRead = true;
@@ -5178,26 +6081,26 @@ export class UsageStore {
     this.database.function("usage_model_group", (model) =>
       canonicalModelName(String(model ?? ""), this.readPricingModels),
     );
+    this.registeredReadDatabase = this.database;
   }
 
   quotaSourceFor(homeId, sessionId, time) {
-    if (this.quotaSourceRevision !== this.storeRevision) {
-      const rows = this.database
-        .prepare("SELECT home_id, session_id, timestamp_ms, quota_source, until_ms FROM quota_usage_sources")
-        .all();
-      this.quotaSourceLookup = quotaSourceResolver(
-        rows.map((row) => ({
-          homeId: String(row.home_id),
-          sessionId: String(row.session_id),
-          timestampMs: Number(row.timestamp_ms),
-          quotaSource: String(row.quota_source),
-          quotaSourceUntil: Number(row.until_ms),
-        })),
-        this.quotaSourceEvidence,
-      );
+    if (
+      this.quotaSourceDatabase !== this.database ||
+      this.quotaSourceRevision !== this.storeRevision ||
+      !this.quotaSourceLookup
+    ) {
+      this.quotaSourceLookup = createStoredQuotaSourceResolver(this.database, this.quotaSourceEvidence);
+      this.quotaSourceDatabase = this.database;
       this.quotaSourceRevision = this.storeRevision;
     }
-    return this.quotaSourceLookup(homeId, sessionId, time);
+    const writing = this.writeTransactionDepth > 0;
+    if (writing) this.quotaSourceLookup.clearCache();
+    try {
+      return this.quotaSourceLookup(homeId, sessionId, time);
+    } finally {
+      if (writing) this.quotaSourceLookup.clearCache();
+    }
   }
 
   /** SQL fast path for one unchanged event segment; other scopes retain the complete carrier. */
@@ -5263,7 +6166,8 @@ export class UsageStore {
         .prepare("SELECT name FROM history_hot.sqlite_master WHERE type = 'table'")
         .all()) {
         if (name !== "events" && !String(name).startsWith("sqlite_")) {
-          database.exec(`CREATE TEMP VIEW ${quote(name)} AS SELECT * FROM history_hot.${quote(name)}`);
+          const selection = name === "quota_usage_sources" ? "rowid, *" : "*";
+          database.exec(`CREATE TEMP VIEW ${quote(name)} AS SELECT ${selection} FROM history_hot.${quote(name)}`);
         }
       }
       database.exec(
@@ -5282,8 +6186,9 @@ export class UsageStore {
       reader.generatedAt = this.generatedAt;
       reader.serviceTierEvidence = this.serviceTierEvidence;
       reader.quotaSourceEvidence = this.quotaSourceEvidence;
-      reader.quotaSourceLookup = this.quotaSourceLookup;
-      reader.quotaSourceRevision = this.quotaSourceRevision;
+      reader.quotaSourceLookup = null;
+      reader.quotaSourceDatabase = null;
+      reader.quotaSourceRevision = -1;
       reader.serviceTierEvidenceInput = this.serviceTierEvidenceInput;
       reader.storeRevision = reader.derivedRevision = this.storeRevision;
       reader.summarySnapshotRead = true;
@@ -5310,6 +6215,7 @@ export class UsageStore {
    */
   async dashboardHistory(filters = {}, options = {}) {
     await this.open();
+    this.assertSourceRepairsComplete();
     this.syncDerivedRevision();
     const periodOptions = {
       now: filters.now,
@@ -5363,7 +6269,12 @@ export class UsageStore {
    */
   async summarizeHistory(filters = {}, options = {}) {
     await this.open();
+    this.assertSourceRepairsComplete();
     this.syncDerivedRevision();
+    this.prepareHotRollups();
+    this.prepareQuotaProjection(filters);
+    this.prepareRecordProjection(filters);
+    this.prepareAllSummaryProjection(filters, options);
     let hasAuthority = false;
     const previousTransferable = this.summaryProjectionTransferableRead;
     const ownTransaction = !this.database.isTransaction;
@@ -5434,6 +6345,108 @@ export class UsageStore {
     return summary;
   }
 
+  /** The first persistent path serves the hot, all-source dashboard only. @returns {any} */
+  allSummaryOptions(filters = {}, options = {}, range = null, bucket = null) {
+    if (
+      this.deferredMetadataIndex ||
+      filters.preset !== "all" ||
+      options.includeDetails !== false ||
+      (filters.excludeHomes || []).length ||
+      this.writeTransactionDepth > 0 ||
+      this.verifiedHistorySqlRead ||
+      this.serviceTierEvidenceInput === null ||
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      Number(this.database.prepare("PRAGMA reverse_unordered_selects").get().reverse_unordered_selects) !== 0 ||
+      this.database
+        .prepare("PRAGMA index_list(events)")
+        .all()
+        .some((row) => Number(row.unique) !== 0)
+    )
+      return null;
+    let evidence;
+    try {
+      evidence = this.serviceTierEvidence ? serviceTierEvidenceSnapshot(this.serviceTierEvidence) : null;
+    } catch {
+      return null;
+    }
+    const sourceKinds = homeSourceKinds(this.homes);
+    const sources = this.database.prepare("SELECT home_id,kind FROM source_files").all();
+    if (
+      sources.some((row) => sourceGroup("", String(row.kind)) !== sourceGroup("", sourceKinds.get(String(row.home_id))))
+    )
+      return null;
+    if (!range) {
+      const bounds = this.eventBounds();
+      const events = [bounds.minimum, bounds.maximum]
+        .filter((value) => value !== null)
+        .map((value) => ({ timestamp: new Date(Number(value)).toISOString() }));
+      range = resolveDateRange(filters, events);
+    }
+    bucket ||= deriveTimelineBucket(range, range.bucket || filters.bucket || "day");
+    if (!["day", "week", "month"].includes(bucket)) return null;
+    // Preserve the legacy rowid accumulation order, including floating-point tails.
+    const legacyWhere = eventRangeScope(range, scopeFilterSql([]));
+    const legacyPlan = this.database
+      .prepare(`EXPLAIN QUERY PLAN SELECT ${COST_EVENT_COLUMNS} FROM events WHERE ${legacyWhere.sql}`)
+      .all(...legacyWhere.params);
+    if (legacyPlan.length !== 1 || legacyPlan[0].detail !== "SCAN events") return null;
+    const catalog = getPricingCatalog();
+    const pricingModels = filters.pricingModels ?? catalog.models;
+    const schema = Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version);
+    const key = createHash("sha256")
+      .update(
+        JSON.stringify([
+          "all-summary-v3",
+          schema,
+          bucket,
+          range.calendarZone || "local",
+          currentLocalRollupZoneIdentity(),
+          catalog.version,
+          catalog.models,
+          catalog.usdToCnyRate,
+          pricingModels,
+          this.serviceTierEvidenceInput,
+          evidence,
+          this.homes,
+        ]),
+      )
+      .digest("hex");
+    const store = this;
+    return {
+      database: this.database,
+      key,
+      range,
+      bucket,
+      requestedBucket: filters.bucket || "day",
+      sourceKinds,
+      pricingModels,
+      pricing: createEventPricing(pricingModels),
+      *eventsAfter(position, limit) {
+        const query = store.database.prepare(`SELECT id,${COST_EVENT_COLUMNS} FROM events
+          WHERE id>? ORDER BY id LIMIT ?`);
+        query.setReturnArrays(true);
+        for (const value of query.iterate(position.id, limit)) {
+          const row = /** @type {any[]} */ (/** @type {unknown} */ (value));
+          const event = costEventFromRowArray(row.slice(1), store.serviceTierEvidence, sourceKinds.get(String(row[3])));
+          yield { ...event, id: Number(row[0]) };
+        }
+      },
+    };
+  }
+
+  prepareAllSummaryProjection(filters, options) {
+    if (this.database.isTransaction || this.writeTransactionDepth > 0) return;
+    const input = this.allSummaryOptions(filters, options);
+    if (!input) return;
+    input.contextKey = () => this.allSummaryOptions(filters, options)?.key;
+    try {
+      this.lastAllSummaryWork = this.withBusinessProjection(() => buildStoredAllSummary(input));
+    } catch (error) {
+      if (error.code !== "TIMELINE_RANGE_TOO_LARGE") throw error;
+      this.lastAllSummaryWork = { fallbackReason: error.code };
+    }
+  }
+
   summaryProjectionKeys(range, bucket, excludeHomes, includeDetails, pricingModels) {
     if (!this.usageProjectionTracker && !this.verifiedHistorySqlRead) {
       this.installUsageProjectionTracker();
@@ -5472,6 +6485,9 @@ export class UsageStore {
   }
 
   summarizeInReadTransaction(filters = {}, options = {}) {
+    if (this.registeredReadDatabase !== this.database) this.registerReadFunctions();
+    this.syncDerivedRevision();
+    this.quotaSourceLookup?.clearCache();
     const previousPricingModels = this.readPricingModels;
     const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
     this.readPricingModels = pricingModels;
@@ -5485,8 +6501,24 @@ export class UsageStore {
   summarizeInReadTransactionCore(filters = {}, { includeDetails = true } = {}, pricingModels) {
     const excludeHomes = filters.excludeHomes || [];
     const asOf = filters.now ? new Date(filters.now) : new Date();
-    const quotaObservations = this.quotaObservations();
-    const quota = selectQuotaWindows(quotaObservations, asOf);
+    const officialQuota = JSON.parse(this.readMetaRaw("official_quota_observations") || "[]");
+    const quota = this.withBusinessProjection(() => selectStoredQuotaWindows(this.database, asOf, officialQuota));
+    const quotaObservations = {
+      completedQuotaWindows: (limitId, time, minutes) => {
+        const windows = this.withBusinessProjection(() =>
+          iterateStoredQuotaWindows(this.database, limitId, time, minutes, officialQuota),
+        );
+        if (windows === null) return null;
+        const iterator = windows[Symbol.iterator]();
+        return {
+          [Symbol.iterator]() {
+            return this;
+          },
+          next: () => this.withBusinessProjection(() => iterator.next()),
+          return: () => this.withBusinessProjection(() => iterator.return?.() ?? { done: true }),
+        };
+      },
+    };
     const bounds = this.eventBounds(excludeHomes);
     const boundaryEvents = [];
     if (bounds.minimum !== null) {
@@ -5508,7 +6540,13 @@ export class UsageStore {
       this.writeTransactionDepth === 0 &&
       (this.verifiedHistorySqlRead ||
         !this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META));
-    const projectionCacheable = range.preset === "all" && groupingEligible;
+    const persistentOptions = this.allSummaryOptions(filters, { includeDetails }, range, bucket);
+    const persistentProjection = persistentOptions ? readStoredAllSummary(persistentOptions) : null;
+    if (persistentProjection && this.summaryProjectionCache?.quoteInputs) {
+      this.summaryProjectionCache.quoteInputs.discard();
+      this.summaryProjectionCache.quoteInputs = null;
+    }
+    const projectionCacheable = range.preset === "all" && groupingEligible && !persistentProjection;
     const projectionKeys = projectionCacheable
       ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
       : null;
@@ -5518,13 +6556,15 @@ export class UsageStore {
       this.summaryProjectionCache.evidence === this.serviceTierEvidence
         ? structuredClone(this.summaryProjectionCache.projection)
         : null;
-    const projection = factProjection && this.summaryProjectionCache.key === projectionKeys.key ? factProjection : null;
+    const projection =
+      persistentProjection ||
+      (factProjection && this.summaryProjectionCache.key === projectionKeys.key ? factProjection : null);
     let quoteInputs = factProjection ? this.summaryProjectionCache.quoteInputs : null;
     if (projectionCacheable && !factProjection && this.summaryProjectionCache?.quoteInputs) {
       this.summaryProjectionCache.quoteInputs.discard();
       this.summaryProjectionCache.quoteInputs = null;
     }
-    const aggregate = this.aggregateRange(range, scopeExclusions);
+    const aggregate = persistentProjection?.aggregate ?? this.aggregateRange(range, scopeExclusions);
     const totals = usageFromRow(aggregate);
     const previousRange = quotaPreset ? previousQuotaRange(range, quota, quotaObservations) : previousUsageRange(range);
     const previousAggregate = previousRange ? this.aggregateRange(previousRange, scopeExclusions) : null;
@@ -5540,7 +6580,7 @@ export class UsageStore {
     let timeline = projection?.timeline ?? [];
     let timelineError = projection?.timelineError ?? null;
     let costEstimate = projection?.costEstimate;
-    let fusedGroups = null;
+    let fusedGroups = persistentProjection;
     let fusedRepositories = null;
     if (!projection) {
       const quoteCapture = projectionCacheable && !factProjection ? new HistoryQuoteInputs() : null;
@@ -5740,13 +6780,15 @@ export class UsageStore {
         quoteInputs,
       };
     }
-    if (projection && this.summaryProjectionCache.publicationKey !== projectionKeys.publicationKey) {
+    if (projectionKeys && projection && this.summaryProjectionCache.publicationKey !== projectionKeys.publicationKey) {
       this.summaryProjectionCache = { ...this.summaryProjectionCache, publicationKey: projectionKeys.publicationKey };
     }
     return summary;
   }
 
   close() {
+    this.sourceProof?.close();
+    this.sourceProof = null;
     this.historySqlDashboardCache?.store.close();
     this.historySqlDashboardCache = null;
     // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
@@ -5761,8 +6803,12 @@ export class UsageStore {
     this.recordChampionCache = null;
     // D3：quota 观测映射同为连接级状态（`storeRevision` 跨 close/open **保留** ⇒ 必须显式复位）。
     this.quotaObservationCache = null;
+    this.quotaSourceLookup = null;
+    this.quotaSourceDatabase = null;
+    this.quotaSourceRevision = -1;
     this.summaryProjectionCache = null;
     this.usageProjectionTracker = null;
+    this.businessProjectionIgnoredChanges = 0;
     this.observedUsageProjectionChanges = "";
     this.publishedFileWarningsView = null;
     this.summaryProjectionTransferableRead = false;

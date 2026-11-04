@@ -11,6 +11,7 @@ export const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/abo
 export const API_PRICING_MODE = "minimum-fallback-scenario";
 export const API_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
 export const LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
+export const COST_ACCUMULATOR_STATE_VERSION = 1;
 
 export const CNY_PRICING_SOURCES = Object.freeze({
   stepfun: "https://platform.stepfun.com/docs/zh/guides/pricing/details",
@@ -1478,6 +1479,74 @@ function estimateEventCostForModel(event, model) {
   };
 }
 
+function invalidCostAccumulatorState(detail) {
+  const error = new TypeError(`Invalid cost accumulator state: ${detail}`);
+  Object.defineProperty(error, "code", {
+    value: "ERR_INVALID_COST_ACCUMULATOR_STATE",
+    enumerable: true,
+  });
+  return error;
+}
+
+function assertStateObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidCostAccumulatorState(`${label} must be an object`);
+  }
+}
+
+function assertStateKeys(value, label, expected) {
+  assertStateObject(value, label);
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    throw invalidCostAccumulatorState(`${label} has unexpected fields`);
+  }
+}
+
+function restoreStateNumbers(target, source, label) {
+  assertStateKeys(source, label, Object.keys(target));
+  for (const field of Object.keys(target)) {
+    const value = source[field];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw invalidCostAccumulatorState(`${label}.${field} must be a finite non-negative number`);
+    }
+    if ((field === "records" || field.endsWith("Records")) && !Number.isInteger(value)) {
+      throw invalidCostAccumulatorState(`${label}.${field} must be an integer`);
+    }
+    target[field] = value;
+  }
+}
+
+function restoreStateSets(target, source) {
+  assertStateKeys(source, "sets", Object.keys(target));
+  for (const field of Object.keys(target)) {
+    const values = source[field];
+    if (!Array.isArray(values) || values.some((value) => typeof value !== "string")) {
+      throw invalidCostAccumulatorState(`sets.${field} must be an array of strings`);
+    }
+    if (new Set(values).size !== values.length) {
+      throw invalidCostAccumulatorState(`sets.${field} must not contain duplicates`);
+    }
+    target[field].clear();
+    for (const value of values) target[field].add(value);
+  }
+}
+
+function restoreCostAccumulatorState(state, totals, byCurrency, sets) {
+  assertStateKeys(state, "root", ["version", "totals", "byCurrency", "sets"]);
+  if (state.version !== COST_ACCUMULATOR_STATE_VERSION) {
+    throw invalidCostAccumulatorState(
+      `unsupported version ${String(state.version)}; expected ${COST_ACCUMULATOR_STATE_VERSION}`,
+    );
+  }
+  restoreStateNumbers(totals, state.totals, "totals");
+  assertStateKeys(state.byCurrency, "byCurrency", Object.keys(byCurrency));
+  for (const currency of Object.keys(byCurrency)) {
+    restoreStateNumbers(byCurrency[currency], state.byCurrency[currency], `byCurrency.${currency}`);
+  }
+  restoreStateSets(sets, state.sets);
+}
+
 function createCostSummaryState(options = {}) {
   const totals = {
     inputUsd: 0,
@@ -1510,6 +1579,18 @@ function createCostSummaryState(options = {}) {
   const unpricedReasons = new Set();
   const priceVersions = new Set();
   const priceSources = new Set();
+  const sets = {
+    models,
+    unpricedModels,
+    minimumRateModels,
+    unpricedReasons,
+    priceVersions,
+    priceSources,
+  };
+
+  if (options.state !== undefined) {
+    restoreCostAccumulatorState(options.state, totals, byCurrency, sets);
+  }
 
   function add(item, estimate = estimateEventCost(item)) {
     for (const field of [
@@ -1601,7 +1682,19 @@ function createCostSummaryState(options = {}) {
     };
   }
 
-  return { add, result };
+  function snapshot() {
+    return {
+      version: COST_ACCUMULATOR_STATE_VERSION,
+      totals: { ...totals },
+      byCurrency: {
+        USD: { ...byCurrency.USD },
+        CNY: { ...byCurrency.CNY },
+      },
+      sets: Object.fromEntries(Object.entries(sets).map(([field, values]) => [field, [...values]])),
+    };
+  }
+
+  return { add, result, snapshot };
 }
 
 export function createCostEstimateAccumulator(options = {}) {

@@ -6,6 +6,13 @@ import path from "node:path";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { readRolloutLines, plainRolloutPath } from "./codex-rollout.js";
 import {
+  assertCodexJsonlCheckpoint,
+  CODEX_JSONL_PROGRESS_ADAPTER,
+  CODEX_JSONL_PROGRESS_FORMAT,
+  readCodexJsonlProgressRows,
+  SourceProgressUnsupportedError,
+} from "./usage-jsonl-progress.js";
+import {
   createCostEstimateAccumulator,
   estimateCostForEvents,
   estimateEventCost,
@@ -867,6 +874,9 @@ export async function buildUsageFingerprint(options = {}) {
       const details = info || (await stat(filePath));
       fileCount += 1;
       hash.update(`${filePath}\t${details.size}\t${details.mtimeMs}\n`);
+      hash.update(
+        `${details.dev ?? ""}\t${details.ino ?? ""}\t${details.birthtimeMs ?? ""}\t${details.ctimeMs ?? ""}\n`,
+      );
     } catch (error) {
       hash.update(`${filePath}\t!${error.code || "unreadable"}\n`);
     }
@@ -1658,24 +1668,65 @@ function createStringInterner() {
 
 async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
-  const meta = {
-    id: fallbackSessionId(filePath),
-    source: "",
-    originator: "",
-    cwd: "",
-  };
-  let model = "";
-  let firstAt = "";
-  let lastAt = "";
-  let previousCumulative = emptyUsage();
-  /** @type {number} */
-  let previousCumulativeMask = USAGE_DETAIL_MASK.complete;
-  let previousCumulativeCacheWrite = { tokens: 0, known: false };
-  let baselineLoaded = false;
-  let hasUsageInFile = false;
+  const compressed = filePath.endsWith(".jsonl.zst");
+  const hasResume = Object.hasOwn(options, "resume");
+  if (compressed && (hasResume || options.endOffset !== undefined)) {
+    throw new SourceProgressUnsupportedError("Compressed Codex JSONL sources do not support byte progress.");
+  }
+  const resume = hasResume ? assertCodexJsonlCheckpoint(options.resume) : null;
+  if (
+    options.endOffset !== undefined &&
+    (!Number.isSafeInteger(options.endOffset) || options.endOffset < (resume?.offset || 0))
+  ) {
+    throw new SourceProgressUnsupportedError("Codex JSONL progress endOffset is invalid.");
+  }
 
-  const quotaSourceForRow = createQuotaSourceTracker();
-  for await (const { row, lineNumber } of readJsonlRows(filePath, { withLineNumbers: true })) {
+  const saved = resume?.state;
+  const meta = {
+    id: saved?.meta.id || fallbackSessionId(filePath),
+    source: saved?.meta.source || "",
+    originator: saved?.meta.originator || "",
+    cwd: saved?.meta.cwd || "",
+  };
+  let model = saved?.model || "";
+  let firstAt = saved?.firstAt || "";
+  let lastAt = saved?.lastAt || "";
+  let previousCumulative = saved?.previousCumulative ? { ...saved.previousCumulative } : emptyUsage();
+  /** @type {number} */
+  let previousCumulativeMask = saved?.previousCumulativeMask ?? USAGE_DETAIL_MASK.complete;
+  let previousCumulativeCacheWrite = saved?.previousCumulativeCacheWrite
+    ? { ...saved.previousCumulativeCacheWrite }
+    : { tokens: 0, known: false };
+  let baselineLoaded = saved?.baselineLoaded || false;
+  let hasUsageInFile = saved?.hasUsageInFile || false;
+  let checkpointOffset = resume?.offset || 0;
+  let checkpointLineNumber = resume?.lineNumber || 0;
+  let consumedUnterminatedRow = false;
+
+  const quotaSourceForRow = createQuotaSourceTracker(saved?.quota);
+  const useProgressReader = !compressed && (hasResume || options.endOffset !== undefined || options.onProgress);
+  const rows = useProgressReader
+    ? readCodexJsonlProgressRows(filePath, {
+        offset: resume?.offset || 0,
+        lineNumber: resume?.lineNumber || 0,
+        endOffset: options.endOffset,
+        onSourceBytes: options.onSourceBytes,
+      })
+    : readJsonlRows(filePath, { withLineNumbers: true });
+
+  for await (const entry of /** @type {AsyncIterable<{ row: any, lineNumber: number, parsed?: boolean, complete?: boolean, offset?: number }>} */ (
+    rows
+  )) {
+    const { row, lineNumber } = entry;
+    if (useProgressReader) {
+      if (entry.complete) {
+        checkpointOffset = entry.offset;
+        checkpointLineNumber = lineNumber;
+      } else if (entry.parsed) {
+        consumedUnterminatedRow = true;
+      }
+    }
+    if (entry.parsed === false) continue;
     const { quotaSource, quotaSourceUntil } = quotaSourceForRow(row);
     if (row.timestamp) {
       firstAt ||= row.timestamp;
@@ -1799,6 +1850,40 @@ async function streamSessionUsageFileEvents(filePath, home, onEvent, options = {
       serviceTier,
       priceVersion: pricingVersionForTimestamp(timestamp),
     });
+  }
+
+  if (compressed) {
+    await options.onProgress?.(null);
+    return;
+  }
+  if (typeof options.onProgress === "function") {
+    let checkpoint = null;
+    if (!consumedUnterminatedRow) {
+      const candidate = {
+        format: CODEX_JSONL_PROGRESS_FORMAT,
+        adapter: CODEX_JSONL_PROGRESS_ADAPTER,
+        offset: checkpointOffset,
+        lineNumber: checkpointLineNumber,
+        state: {
+          meta: { ...meta },
+          model,
+          previousCumulative: { ...previousCumulative },
+          previousCumulativeMask,
+          previousCumulativeCacheWrite: { ...previousCumulativeCacheWrite },
+          baselineLoaded,
+          hasUsageInFile,
+          firstAt,
+          lastAt,
+          quota: quotaSourceForRow.snapshot(),
+        },
+      };
+      try {
+        checkpoint = assertCodexJsonlCheckpoint(candidate);
+      } catch (error) {
+        if (!(error instanceof SourceProgressUnsupportedError)) throw error;
+      }
+    }
+    await options.onProgress(checkpoint);
   }
 }
 

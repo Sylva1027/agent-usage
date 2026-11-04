@@ -6,12 +6,15 @@
 // - 第一帧是会话头 { type: "session", id, cwd, delegationDepth, createdAt, ... }。
 // - 用量只出现在 assistant/message 记录的 data.usage 上，且是 per-request 增量。
 // - 模型来自 request/header 的 data.header.config.model（逐请求记录）。
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { deserialize, serialize } from "node:v8";
 import { zstdDecompressSync } from "node:zlib";
 
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
+import { SourceProgressUnsupportedError, readZstdFrames } from "./dsh-frame-progress.js";
 import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
 
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -20,6 +23,11 @@ export const DSH_SESSION_FORMAT_VERSION = 4;
 const SESSION_FILE_PATTERN = /^session\.v(\d+)\.jsonl\.zstd$/;
 const SESSIONS_DIR = "sessions";
 const SESSION_TITLE_LIMIT = 120;
+const PROJECTION_MEMORY_BYTES = 1024 * 1024;
+const DSH_PROGRESS_PENDING_BYTES = PROJECTION_MEMORY_BYTES;
+const DSH_PROGRESS_FRAME_BYTES = PROJECTION_MEMORY_BYTES;
+const DSH_PROGRESS_FORMAT = 1;
+const DSH_PROGRESS_ADAPTER = "dsh-v4-zstd";
 // input/cached/output 三项在 v4 中恒定存在；reasoning 不由 DSH 提供。
 const DSH_KNOWN_DETAIL_MASK = USAGE_DETAIL_MASK.input | USAGE_DETAIL_MASK.cached | USAGE_DETAIL_MASK.output;
 
@@ -322,15 +330,6 @@ export function dshUsageFromRaw(raw) {
   return { usage, detailMask, cacheWriteTokens, cacheWriteKnown: true, requestInputTokens: input };
 }
 
-function projectDshSessionHeaderRow(row) {
-  return row?.type === "session"
-    ? {
-        type: "session",
-        header: dshSessionHeaderFromRow(row),
-      }
-    : null;
-}
-
 /** Keep only fields consumed by usage events; message content and stream never cross the yield boundary. */
 function projectDshUsageRow(row) {
   const type = row?.type;
@@ -349,13 +348,20 @@ function projectDshUsageRow(row) {
   if (type === "session/title") {
     return { type, data: { title: data?.title } };
   }
-  if (type === "assistant/message") {
+  if (type === "assistant/message" && data?.usage) {
+    const usage = data.usage;
     return {
       type,
       time: row?.time,
       seq: row?.seq,
       data: {
-        usage: data?.usage,
+        usage: {
+          inputTokens: nonNegativeInt(usage.inputTokens),
+          cacheReadTokens: nonNegativeInt(usage.cacheReadTokens),
+          cacheWriteTokens: nonNegativeInt(usage.cacheWriteTokens),
+          outputTokens: nonNegativeInt(usage.outputTokens),
+          totalTokens: numeric(usage.totalTokens),
+        },
         turn: data?.turn,
         step: data?.step,
       },
@@ -364,10 +370,237 @@ function projectDshUsageRow(row) {
   return null;
 }
 
+function applyDshContextRow(row, context) {
+  const type = row?.type;
+  const data = row?.data;
+  if (type === "session") {
+    context.header ??= dshSessionHeaderFromRow(row);
+    return;
+  }
+  if (type === "request/header" || type === "request/context") {
+    const config = data?.header?.config;
+    context.model = String(config?.model || data?.model || context.model || "").trim();
+    context.modelProvider = String(config?.provider || data?.provider || context.modelProvider || "").trim();
+    return;
+  }
+  if (type === "session/title") {
+    const title = String(data?.title || "").trim();
+    if (title) {
+      context.conversationName = title.length > SESSION_TITLE_LIMIT ? `${title.slice(0, SESSION_TITLE_LIMIT)}…` : title;
+    }
+  }
+}
+
+function dshProgressResumeContext(resume) {
+  if (resume == null) {
+    return {
+      header: null,
+      model: "",
+      modelProvider: "",
+      conversationName: "",
+      lineNumber: 0,
+    };
+  }
+  if (
+    typeof resume !== "object" ||
+    resume.format !== DSH_PROGRESS_FORMAT ||
+    resume.adapter !== DSH_PROGRESS_ADAPTER ||
+    !Number.isSafeInteger(resume.offset) ||
+    resume.offset < 0 ||
+    !Number.isSafeInteger(resume.lineNumber) ||
+    resume.lineNumber < 0 ||
+    !resume.state ||
+    typeof resume.state !== "object"
+  ) {
+    throw new SourceProgressUnsupportedError("invalid resume checkpoint");
+  }
+  const storedHeader = resume.state.header;
+  if (!storedHeader || typeof storedHeader !== "object") {
+    throw new SourceProgressUnsupportedError("resume checkpoint has no session header");
+  }
+  const header = dshSessionHeaderFromRow({
+    ...storedHeader,
+    createdAt: storedHeader.createdAtMs,
+  });
+  if (header.version !== DSH_SESSION_FORMAT_VERSION) {
+    throw new SourceProgressUnsupportedError("resume checkpoint is not DSH v4");
+  }
+  return {
+    header,
+    model: String(resume.state.model || "").trim(),
+    modelProvider: String(resume.state.modelProvider || "").trim(),
+    conversationName: String(resume.state.conversationName || ""),
+    lineNumber: resume.lineNumber,
+  };
+}
+
+async function readDshRangeExact(handle, offset, length, end) {
+  const buffer = Buffer.alloc(length);
+  let readAt = 0;
+  while (readAt < length) {
+    const { bytesRead } = await handle.read(buffer, readAt, length - readAt, offset + readAt);
+    if (bytesRead === 0 || offset + readAt + bytesRead > end) {
+      throw new SourceProgressUnsupportedError("source ended while reading a bounded frame range");
+    }
+    readAt += bytesRead;
+  }
+  return buffer;
+}
+
+async function openDshProgressRange(filePath, resume, endOffset) {
+  const startOffset = resume?.offset ?? 0;
+  if (endOffset !== undefined && (!Number.isSafeInteger(endOffset) || endOffset < 0)) {
+    throw new SourceProgressUnsupportedError("endOffset must be a non-negative safe integer");
+  }
+
+  const handle = await open(filePath, "r");
+  try {
+    const size = (await handle.stat()).size;
+    const end = endOffset ?? size;
+    if (end > size) {
+      throw new SourceProgressUnsupportedError("endOffset is beyond the current source size");
+    }
+    if (end < startOffset) {
+      throw new SourceProgressUnsupportedError("endOffset is before the verified resume offset");
+    }
+    return { handle, startOffset, endOffset: end };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+function dshProgressCheckpoint(offset, lineNumber, context) {
+  return {
+    format: DSH_PROGRESS_FORMAT,
+    adapter: DSH_PROGRESS_ADAPTER,
+    offset,
+    lineNumber,
+    state: {
+      header: { ...context.header },
+      model: context.model,
+      modelProvider: context.modelProvider,
+      conversationName: context.conversationName,
+    },
+  };
+}
+
+function copyDshProgressCheckpoint(checkpoint) {
+  return {
+    ...checkpoint,
+    state: {
+      ...checkpoint.state,
+      header: { ...checkpoint.state.header },
+    },
+  };
+}
+
+async function* streamDshSessionRowsWithProgress(
+  filePath,
+  { resume, endOffset, onWarning, onSourceBytes, context, projectRow },
+) {
+  const range = await openDshProgressRange(filePath, resume, endOffset);
+  let pending = "";
+  let malformedLines = 0;
+
+  try {
+    if (range.startOffset === range.endOffset) {
+      if (!resume) {
+        throw new SourceProgressUnsupportedError("compressed suffix is empty");
+      }
+      yield { checkpoint: copyDshProgressCheckpoint(resume) };
+      return;
+    }
+
+    const readAt = (offset, length) => readDshRangeExact(range.handle, offset, length, range.endOffset);
+    for await (const { boundary: frameBoundary, compressed } of readZstdFrames(
+      readAt,
+      range.startOffset,
+      range.endOffset,
+      { maxFrameBytes: DSH_PROGRESS_FRAME_BYTES },
+    )) {
+      if (
+        frameBoundary.contentSize !== null &&
+        (typeof frameBoundary.contentSize === "bigint"
+          ? frameBoundary.contentSize > BigInt(DSH_PROGRESS_FRAME_BYTES)
+          : frameBoundary.contentSize > DSH_PROGRESS_FRAME_BYTES)
+      ) {
+        throw new SourceProgressUnsupportedError("decoded frame size exceeds the bounded input");
+      }
+      onSourceBytes?.(compressed);
+      let decompressed;
+      try {
+        decompressed = zstdDecompressSync(compressed, { maxOutputLength: DSH_PROGRESS_FRAME_BYTES });
+      } catch {
+        throw new SourceProgressUnsupportedError("zstd frame decompression failed");
+      }
+      if (!decompressed?.length) {
+        throw new SourceProgressUnsupportedError("empty zstd frame is not valid DSH input");
+      }
+      if (
+        frameBoundary.contentSize !== null &&
+        (typeof frameBoundary.contentSize === "bigint"
+          ? frameBoundary.contentSize !== BigInt(decompressed.length)
+          : frameBoundary.contentSize !== decompressed.length)
+      ) {
+        throw new SourceProgressUnsupportedError("zstd content size does not match decoded bytes");
+      }
+      if (Buffer.byteLength(pending, "utf8") + decompressed.length > DSH_PROGRESS_PENDING_BYTES) {
+        throw new SourceProgressUnsupportedError("pending JSON exceeds the bounded progress buffer");
+      }
+
+      const text = `${pending}${decompressed.toString("utf8")}`;
+      pending = "";
+      let lineStart = 0;
+      for (let newline = text.indexOf("\n"); newline !== -1; newline = text.indexOf("\n", lineStart)) {
+        const line = text.slice(lineStart, newline);
+        lineStart = newline + 1;
+        context.lineNumber += 1;
+        if (!line.trim()) {
+          continue;
+        }
+        let row;
+        try {
+          row = JSON.parse(line);
+        } catch {
+          malformedLines += 1;
+          continue;
+        }
+        const projected = projectRow(row);
+        if (projected !== null) {
+          yield { projection: projected };
+        }
+      }
+      pending = text.slice(lineStart);
+      if (Buffer.byteLength(pending, "utf8") > DSH_PROGRESS_PENDING_BYTES) {
+        throw new SourceProgressUnsupportedError("pending JSON exceeds the bounded progress buffer");
+      }
+      if (!pending.trim()) {
+        pending = "";
+        if (context.header?.version === DSH_SESSION_FORMAT_VERSION) {
+          yield {
+            checkpoint: dshProgressCheckpoint(frameBoundary.end, context.lineNumber, context),
+          };
+        }
+      }
+    }
+
+    if (pending.trim()) {
+      throw new SourceProgressUnsupportedError("decoded EOF tail is not a complete newline-terminated record");
+    }
+    if (malformedLines) {
+      onWarning?.(
+        `MALFORMED_JSON:${malformedLines} DSH 会话日志 ${filePath} 有 ${malformedLines} 行 JSON 无法解析被跳过`,
+      );
+    }
+  } finally {
+    await range.handle.close();
+  }
+}
+
 /**
- * 两遍扫描一个会话日志，产出标准化用量事件。
- * 第一遍只保存薄 header 与 parser 告警；第二遍从头投影全部行。这样既不在
- * 晚到 header 时保留全部原始 row，也能保证 parser 告警先于任何事件回调。
+ * 解析一次并暂存薄投影，完整校验后产出用量事件。
+ * 超出内存预算的投影交给自动清理的 SQLite 临时库，保留晚到 header 和告警顺序。
  * 只读用量与元数据字段；message/content/stream/tool 参数与结果一律不读。
  * @param {string} filePath
  * @param {{ id: string, label: string, path: string }} source
@@ -376,109 +609,181 @@ function projectDshUsageRow(row) {
 export async function streamDshSessionEvents(filePath, source, onEvent, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   const parserWarnings = [];
-  let header = null;
-  let model = "";
-  let modelProvider = "";
-  let conversationName = "";
+  const progressMode = options.onProgress !== undefined || options.resume != null || options.endOffset !== undefined;
+  if (options.onProgress !== undefined && typeof options.onProgress !== "function") {
+    throw new TypeError("onProgress must be a function when provided");
+  }
+  const context = dshProgressResumeContext(progressMode ? options.resume : null);
+  const eventStartContext = {
+    model: context.model,
+    modelProvider: context.modelProvider,
+    conversationName: context.conversationName,
+  };
+  const projections = [];
+  let projectionBytes = 0;
+  /** @type {DatabaseSync | null} */
+  let staging = null;
+  let insertProjection;
 
-  for await (const row of streamDshSessionRows(filePath, {
-    onWarning: (warning) => parserWarnings.push(warning),
-    projectRow: projectDshSessionHeaderRow,
-  })) {
-    if (header === null) {
-      header = row.header;
+  try {
+    const rowStream = progressMode
+      ? streamDshSessionRowsWithProgress(filePath, {
+          resume: options.resume,
+          endOffset: options.endOffset,
+          onWarning: (warning) => parserWarnings.push(warning),
+          onSourceBytes: options.onSourceBytes,
+          context,
+          projectRow: (row) => {
+            applyDshContextRow(row, context);
+            if (row?.type === "session") return null;
+            return projectDshUsageRow(row);
+          },
+        })
+      : streamDshSessionRows(filePath, {
+          onWarning: (warning) => parserWarnings.push(warning),
+          projectRow: (row) => {
+            if (row?.type === "session") {
+              context.header ??= dshSessionHeaderFromRow(row);
+              return null;
+            }
+            return projectDshUsageRow(row);
+          },
+        });
+
+    // The projection sink consumes rows without retaining a decompressed frame's row array.
+    for await (const item of rowStream) {
+      const payload = serialize(item);
+      if (!staging && projectionBytes + payload.length > PROJECTION_MEMORY_BYTES) {
+        // The empty filename is a private temporary database, removed by SQLite on close.
+        staging = new DatabaseSync("");
+        staging.exec("PRAGMA cache_size = -1024; CREATE TABLE projections (payload BLOB NOT NULL) STRICT; BEGIN");
+        insertProjection = staging.prepare("INSERT INTO projections VALUES (?)");
+        for (const previous of projections) insertProjection.run(previous);
+        projections.length = 0;
+      }
+      if (staging) insertProjection.run(payload);
+      else {
+        projections.push(payload);
+        projectionBytes += payload.length;
+      }
     }
-  }
 
-  // 冻结实现先解压并解析完整文件、发出 parser 告警，之后才开始投影。
-  for (const warning of parserWarnings) {
-    options.onWarning?.(warning);
-  }
-  if (!header) {
-    return;
-  }
-  if (header.version !== null && header.version !== DSH_SESSION_FORMAT_VERSION) {
-    options.onWarning?.(
-      `DSH 会话日志 ${filePath} 的格式版本为 v${header.version}，本版本只支持 v${DSH_SESSION_FORMAT_VERSION}，已跳过`,
-    );
-    return;
-  }
-
-  const sessionId = header.id || path.basename(path.dirname(filePath));
-  const channel = header.delegationDepth > 0 ? "DSH Subagent" : "DSH";
-  const cwd = header.cwd;
-  const repository = await resolveRepository(cwd);
-
-  const processRow = async (row) => {
-    const type = String(row?.type || "");
-    const data = row?.data;
-
-    if (type === "request/header" || type === "request/context") {
-      const config = data?.header?.config;
-      model = String(config?.model || data?.model || model || "").trim();
-      modelProvider = String(config?.provider || data?.provider || modelProvider || "").trim();
-      return;
+    // 冻结实现先解压并解析完整文件、发出 parser 告警，之后才开始投影。
+    for (const warning of parserWarnings) {
+      options.onWarning?.(warning);
     }
-    if (type === "session/title") {
-      const title = String(data?.title || "").trim();
-      if (title) {
-        conversationName = title.length > SESSION_TITLE_LIMIT ? `${title.slice(0, SESSION_TITLE_LIMIT)}…` : title;
+    const header = context.header;
+    if (!header) {
+      if (progressMode) {
+        throw new SourceProgressUnsupportedError("session header is missing");
       }
       return;
     }
-    if (type !== "assistant/message" || !data?.usage) {
+    if (header.version !== null && header.version !== DSH_SESSION_FORMAT_VERSION) {
+      if (progressMode) {
+        throw new SourceProgressUnsupportedError(`DSH session format v${header.version} is not v4`);
+      }
+      options.onWarning?.(
+        `DSH 会话日志 ${filePath} 的格式版本为 v${header.version}，本版本只支持 v${DSH_SESSION_FORMAT_VERSION}，已跳过`,
+      );
       return;
     }
 
-    const timestampMs = numeric(row.time);
-    if (timestampMs === null) {
-      return;
-    }
+    // Checkpoint scanning leaves the context at EOF; replay projections from the
+    // checkpoint's starting context so event metadata keeps row order.
+    context.model = eventStartContext.model;
+    context.modelProvider = eventStartContext.modelProvider;
+    context.conversationName = eventStartContext.conversationName;
 
-    const mapped = dshUsageFromRaw(data.usage);
-    if (isZeroUsage(mapped.usage)) {
-      return;
-    }
-    const timestamp = new Date(timestampMs).toISOString();
-    const detailValidation = validateUsageDetails(mapped.usage, mapped.detailMask);
-    await onEvent({
-      eventId: `${sessionId}:${row.seq ?? timestampMs}`,
-      timestampMs,
-      timestamp,
-      sessionId,
-      homeId: source.id,
-      homeLabel: source.label,
-      homePath: source.path,
-      channel,
-      source: "dsh",
-      project: cwd,
-      repositoryKey: repository.key,
-      repositoryPath: repository.path,
-      repositoryKind: repository.kind,
-      conversationName,
-      model: model || "Unknown model",
-      modelProvider,
-      usage: mapped.usage,
-      detailMask: detailValidation.detailMask,
-      reconciliationGap: detailValidation.reconciliationGap,
-      cacheWriteTokens: mapped.cacheWriteTokens,
-      cacheWriteKnown: mapped.cacheWriteKnown,
-      requestInputTokens: mapped.requestInputTokens,
-      contextLevel:
-        mapped.requestInputTokens > LONG_CONTEXT_INPUT_THRESHOLD
-          ? "long"
-          : mapped.requestInputTokens > 0
-            ? "short"
-            : "unknown",
-      serviceTier: "unknown",
-      priceVersion: pricingVersionForTimestamp(timestamp),
-      turn: nonNegativeInt(data.turn),
-      step: nonNegativeInt(data.step),
-    });
-  };
+    const sessionId = header.id || path.basename(path.dirname(filePath));
+    const channel = header.delegationDepth > 0 ? "DSH Subagent" : "DSH";
+    const cwd = header.cwd;
+    const repository = await resolveRepository(cwd);
 
-  for await (const row of streamDshSessionRows(filePath, { projectRow: projectDshUsageRow })) {
-    await processRow(row);
+    const processRow = async (row) => {
+      const type = String(row?.type || "");
+      const data = row?.data;
+
+      if (type === "request/header" || type === "request/context" || type === "session/title") {
+        applyDshContextRow(row, context);
+        return;
+      }
+      if (type !== "assistant/message" || !data?.usage) {
+        return;
+      }
+
+      const timestampMs = numeric(row.time);
+      if (timestampMs === null) {
+        return;
+      }
+
+      const mapped = dshUsageFromRaw(data.usage);
+      if (isZeroUsage(mapped.usage)) {
+        return;
+      }
+      const timestamp = new Date(timestampMs).toISOString();
+      const detailValidation = validateUsageDetails(mapped.usage, mapped.detailMask);
+      await onEvent({
+        eventId: `${sessionId}:${row.seq ?? timestampMs}`,
+        timestampMs,
+        timestamp,
+        sessionId,
+        homeId: source.id,
+        homeLabel: source.label,
+        homePath: source.path,
+        channel,
+        source: "dsh",
+        project: cwd,
+        repositoryKey: repository.key,
+        repositoryPath: repository.path,
+        repositoryKind: repository.kind,
+        conversationName: context.conversationName,
+        model: context.model || "Unknown model",
+        modelProvider: context.modelProvider,
+        usage: mapped.usage,
+        detailMask: detailValidation.detailMask,
+        reconciliationGap: detailValidation.reconciliationGap,
+        cacheWriteTokens: mapped.cacheWriteTokens,
+        cacheWriteKnown: mapped.cacheWriteKnown,
+        requestInputTokens: mapped.requestInputTokens,
+        contextLevel:
+          mapped.requestInputTokens > LONG_CONTEXT_INPUT_THRESHOLD
+            ? "long"
+            : mapped.requestInputTokens > 0
+              ? "short"
+              : "unknown",
+        serviceTier: "unknown",
+        priceVersion: pricingVersionForTimestamp(timestamp),
+        turn: nonNegativeInt(data.turn),
+        step: nonNegativeInt(data.step),
+      });
+    };
+
+    if (staging) {
+      for (const row of staging.prepare("SELECT payload FROM projections ORDER BY rowid").iterate()) {
+        const item = deserialize(/** @type {Uint8Array} */ (row.payload));
+        if (progressMode && item.checkpoint) {
+          await options.onProgress?.(item.checkpoint);
+        } else if (progressMode) {
+          await processRow(item.projection);
+        } else {
+          await processRow(item);
+        }
+      }
+    } else {
+      for (const payload of projections) {
+        const item = deserialize(payload);
+        if (progressMode && item.checkpoint) {
+          await options.onProgress?.(item.checkpoint);
+        } else if (progressMode) {
+          await processRow(item.projection);
+        } else {
+          await processRow(item);
+        }
+      }
+    }
+  } finally {
+    staging?.close();
   }
 }
 

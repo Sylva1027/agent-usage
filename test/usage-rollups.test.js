@@ -653,21 +653,12 @@ test("reads model metrics across partial, complete, and boundary UTC windows", a
       raw(partialStart, partialEnd),
     );
 
-    let missingWindow;
-    assert.throws(
-      () => {
-        missingWindow = queryUsageRollupModelsWindow(db, {
-          startMs,
-          endMs: Date.parse("2026-07-15T02:00:00.000Z"),
-        });
-      },
-      (error) => {
-        assert.equal(error.code, "ROLLUP_DAYS_MISSING");
-        assert.deepEqual(error.missingDays, ["2026-07-14"]);
-        return true;
-      },
+    const missingEndMs = Date.parse("2026-07-15T02:00:00.000Z");
+    assert.deepEqual(
+      queryUsageRollupModelsWindow(db, { startMs, endMs: missingEndMs }),
+      raw(startMs, missingEndMs),
+      "uncovered days must use raw facts without discarding complete cached days",
     );
-    assert.equal(missingWindow, undefined);
   } finally {
     db.close();
     await rm(directory, { recursive: true, force: true });

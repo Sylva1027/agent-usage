@@ -171,6 +171,42 @@ test("SQL history preserves complete scopes, isolates hot caches, and falls back
   }
 });
 
+test("verified SQL source lookup preserves rowid ties through the hot metadata view", {
+  skip: !sqlSupported,
+}, async () => {
+  const f = await fixture();
+  const summarize = UsageStore.prototype.summarizeInReadTransaction;
+  const time = Date.parse("2026-01-02T12:00:00Z");
+  const insert = f.store.database.prepare(`INSERT INTO quota_usage_sources
+    (source_path,home_id,session_id,timestamp_ms,quota_source,until_ms)
+    VALUES(?,'a','session-a',?,?,?)`);
+  let expectedSource = "credits";
+  let verifiedReads = 0;
+  try {
+    insert.run("/fixture/plan", time - 1, "plan", 0);
+    insert.run("/fixture/credits", time - 1, "credits", time + 1000);
+    UsageStore.prototype.summarizeInReadTransaction = function (...args) {
+      if (this.verifiedHistorySqlRead) {
+        assert.equal(this.quotaSourceFor("a", "session-a", time), expectedSource);
+        verifiedReads += 1;
+      }
+      return summarize.apply(this, args);
+    };
+    const sha = digest(f.segment);
+    for (const source of ["credits", "plan"]) {
+      if (source === "plan") insert.run("/fixture/plan-later", time - 1, "plan", 0);
+      expectedSource = source;
+      f.store.commitStoreRevision("quota-source-fixture");
+      equivalent(await f.store.dashboardHistory(filters), await components(f.store));
+    }
+    assert.equal(verifiedReads, 2, "both classifications must use the verified SQL reader");
+    assert.equal(digest(f.segment), sha, "classification reads cannot modify the sealed segment");
+  } finally {
+    UsageStore.prototype.summarizeInReadTransaction = summarize;
+    f.cleanup();
+  }
+});
+
 test("verified metadata shares unexcluded timeline facts while keeping future observations and full inventory", {
   skip: !sqlSupported,
 }, async () => {

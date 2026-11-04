@@ -12,6 +12,7 @@ import {
   buildUsageFingerprint,
   buildUsageReport,
   classifyImportDirectory,
+  discoverUsageSources,
   isQuotaPreset,
   selectQuotaWindows,
   summarizePeriodComparison,
@@ -40,6 +41,7 @@ import {
   refreshAutomaticPricing,
   savePricingFile,
 } from "./pricing-store.js";
+import { createUsageSourceWatcher } from "./usage-source-watch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -349,6 +351,21 @@ export function createUsageServer(options = {}) {
     importContext ? (importContext.automaticPricingStatus ?? null) : getAutomaticPricingStatus();
   const usageStore = createUsageExecutor(options, { pricing: localPricingCatalog });
   const summaryCache = new UsageSummaryCache(options);
+  const runtimeDatabaseFile = path.resolve(
+    options.databaseFile || path.join(options.homeDir || os.homedir(), ".codex-usage", "usage-index.sqlite"),
+  );
+  const runtimeSummaryCacheFile = path.resolve(summaryCache.file);
+  const runtimeSegmentDirectory = `${runtimeDatabaseFile}.segments`;
+  const runtimeGeneratedFiles = [
+    runtimeDatabaseFile,
+    `${runtimeDatabaseFile}-journal`,
+    `${runtimeDatabaseFile}-wal`,
+    `${runtimeDatabaseFile}-shm`,
+    runtimeSummaryCacheFile,
+    `${runtimeSummaryCacheFile}-journal`,
+    `${runtimeSummaryCacheFile}-wal`,
+    `${runtimeSummaryCacheFile}-shm`,
+  ];
   const pricingReady = importContext ? Promise.resolve() : loadPricingFile(options);
   const pricingRefreshSchedulerEnabled = !importContext && options.pricingRefreshSchedulerEnabled !== false;
   let pricingRefreshPromise = null;
@@ -364,6 +381,10 @@ export function createUsageServer(options = {}) {
   let discoveryTimerSignature = null;
   let activeDiscoverySignature = null;
   let serverClosed = false;
+  const usageEventClients = new Set();
+  let usageEventHeartbeat = null;
+  let usageWakePromise = null;
+  let usageWakePending = false;
   const snapshots = new Map();
   let snapshotDirectoryCleanup = Promise.resolve();
 
@@ -675,6 +696,155 @@ export function createUsageServer(options = {}) {
     return syncPromise;
   }
 
+  async function discoverUsageWatchRoots() {
+    const currentOptions = await usageOptions(options);
+    const sources = await discoverUsageSources(currentOptions);
+    const roots = [];
+    for (const source of sources) {
+      const sourceRoot = path.resolve(source.path);
+      roots.push({ path: sourceRoot, recursive: true });
+      if (source.usageLogPath) {
+        const usageLogPath = path.resolve(source.usageLogPath);
+        const relative = path.relative(sourceRoot, usageLogPath);
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+          roots.push({
+            path: path.dirname(usageLogPath),
+            filename: path.basename(usageLogPath),
+            recursive: false,
+          });
+        }
+      }
+    }
+    const storeFile = importStoreFile(options);
+    roots.push({
+      path: path.dirname(storeFile),
+      filename: path.basename(storeFile),
+      recursive: false,
+    });
+    return roots;
+  }
+
+  const usageSourceWatcher = createUsageSourceWatcher({
+    discoverRoots: discoverUsageWatchRoots,
+    onHint: () => requestUsageWake(),
+    ignorePath: (filename) => {
+      const resolved = path.resolve(filename);
+      return (
+        runtimeGeneratedFiles.includes(resolved) ||
+        resolved === runtimeSegmentDirectory ||
+        resolved.startsWith(`${runtimeSegmentDirectory}${path.sep}`)
+      );
+    },
+  });
+
+  function writeUsageEventChunk(response, chunk) {
+    if (response.destroyed || response.writableEnded) {
+      removeUsageEventClient(response);
+      return false;
+    }
+    try {
+      if (response.write(chunk)) return true;
+    } catch {}
+    removeUsageEventClient(response);
+    response.destroy();
+    return false;
+  }
+
+  function writeUsageEvent(response, event, data) {
+    return writeUsageEventChunk(response, `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  }
+
+  function clearUsageEventHeartbeat() {
+    if (usageEventHeartbeat === null) return;
+    clearInterval(usageEventHeartbeat);
+    usageEventHeartbeat = null;
+  }
+
+  function startUsageEventHeartbeat() {
+    if (usageEventHeartbeat !== null) return;
+    usageEventHeartbeat = setInterval(() => {
+      for (const response of usageEventClients) {
+        writeUsageEventChunk(response, ": heartbeat\n\n");
+      }
+    }, 25_000);
+    usageEventHeartbeat.unref?.();
+  }
+
+  function removeUsageEventClient(response) {
+    usageEventClients.delete(response);
+    if (!usageEventClients.size) {
+      clearUsageEventHeartbeat();
+      void usageSourceWatcher.stop();
+    }
+  }
+
+  function broadcastUsageSync(status) {
+    if (serverClosed || !usageEventClients.size) return;
+    const data = {
+      checkedAt: status?.checkedAt || new Date().toISOString(),
+      fingerprint: status?.fingerprint || "",
+    };
+    for (const response of [...usageEventClients]) {
+      try {
+        writeUsageEvent(response, "usage-synced", data);
+      } catch {
+        removeUsageEventClient(response);
+        response.destroy();
+      }
+    }
+  }
+
+  async function closeUsageEventStreams() {
+    const clients = [...usageEventClients];
+    usageEventClients.clear();
+    clearUsageEventHeartbeat();
+    await usageSourceWatcher.stop();
+    for (const response of clients) {
+      if (response.destroyed || response.writableEnded) continue;
+      try {
+        writeUsageEvent(response, "close", {});
+        response.end();
+      } catch {
+        response.destroy();
+      }
+    }
+  }
+
+  function requestUsageWake() {
+    if (serverClosed || !usageEventClients.size) return Promise.resolve();
+    if (usageWakePromise) {
+      usageWakePending = true;
+      return usageWakePromise;
+    }
+    usageWakePromise = (async () => {
+      try {
+        while (!serverClosed && usageEventClients.size) {
+          usageWakePending = false;
+          const joinedExistingSync = syncPromise !== null;
+          let status;
+          try {
+            status = await loadUsageStore({ check: true });
+          } catch {
+            usageWakePending = false;
+            return;
+          }
+          if (serverClosed || !usageEventClients.size) return;
+          if (joinedExistingSync || usageWakePending) continue;
+          await usageSourceWatcher.refresh().catch(() => {});
+          if (serverClosed || !usageEventClients.size) return;
+          broadcastUsageSync(status);
+          return;
+        }
+      } finally {
+        usageWakePromise = null;
+        if (usageWakePending && !serverClosed && usageEventClients.size) {
+          queueMicrotask(() => void requestUsageWake());
+        }
+      }
+    })();
+    return usageWakePromise;
+  }
+
   const server = createServer(async function handleRequest(request, response, recoveryAttempted = false) {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     let createdSnapshot = null;
@@ -817,6 +987,37 @@ export function createUsageServer(options = {}) {
           changed: since ? fingerprint !== since : true,
           checkedAt: status.checkedAt,
         });
+        return;
+      }
+
+      if (url.pathname === "/api/usage-events") {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+          return;
+        }
+        if (importContext) {
+          response.writeHead(204, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-store",
+          connection: "keep-alive",
+          "x-accel-buffering": "no",
+        });
+        response.flushHeaders?.();
+        response.write("retry: 1000\n: connected\n\n");
+        usageEventClients.add(response);
+        startUsageEventHeartbeat();
+        const cleanup = () => removeUsageEventClient(response);
+        response.once("close", cleanup);
+        response.once("error", cleanup);
+        request.once("aborted", cleanup);
+        await usageSourceWatcher.start().catch(() => {});
+        if (!response.destroyed && !response.writableEnded) {
+          writeUsageEvent(response, "ready", {});
+        }
         return;
       }
 
@@ -964,6 +1165,7 @@ export function createUsageServer(options = {}) {
           await writeImportEntries(options, entries);
           await summaryCache.invalidate();
           storeStatus = null;
+          void usageSourceWatcher.refresh();
           sendJson(response, 200, {
             import: entry,
             imports: await listImportEntries(options),
@@ -977,6 +1179,7 @@ export function createUsageServer(options = {}) {
           await writeImportEntries(options, entries);
           await summaryCache.invalidate();
           storeStatus = null;
+          void usageSourceWatcher.refresh();
           sendJson(response, 200, { imports: await listImportEntries(options) });
           return;
         }
@@ -1241,6 +1444,8 @@ export function createUsageServer(options = {}) {
   }
   server.on("close", () => {
     serverClosed = true;
+    clearUsageEventHeartbeat();
+    void usageSourceWatcher.stop();
     clearPricingRefreshTimer();
     clearDiscoveryTimer();
     void closeUsageExecutor();
@@ -1268,14 +1473,17 @@ export function createUsageServer(options = {}) {
     serverClosed = true;
     clearPricingRefreshTimer();
     clearDiscoveryTimer();
-    const done = new Promise((resolve) => closeHttpServer(() => resolve())).then(async () => {
-      await closeUsageExecutor();
-      summaryCache.close();
-      // A refresh can start its merged successor in a fulfillment continuation.
-      while (pricingRefreshPromise) await pricingRefreshPromise.catch(() => {});
-      await pricingMutationTail;
-      await snapshotDirectoryCleanup;
-    });
+    const done = closeUsageEventStreams()
+      .catch(() => {})
+      .then(() => new Promise((resolve) => closeHttpServer(() => resolve())))
+      .then(async () => {
+        await closeUsageExecutor();
+        summaryCache.close();
+        // A refresh can start its merged successor in a fulfillment continuation.
+        while (pricingRefreshPromise) await pricingRefreshPromise.catch(() => {});
+        await pricingMutationTail;
+        await snapshotDirectoryCleanup;
+      });
     if (typeof callback === "function") {
       done.then(
         () => callback(),
