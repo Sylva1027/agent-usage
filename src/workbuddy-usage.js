@@ -17,6 +17,7 @@ import path from "node:path";
 import { readRolloutLines } from "./codex-rollout.js";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
+import { UsageSourceRows } from "./usage-source-rows.js";
 import { USAGE_DETAIL_MASK, emptyUsage } from "../public/usage-fields.js";
 
 export const WORKBUDDY_KIND = "workbuddy";
@@ -196,89 +197,97 @@ function usageFromProviderData(providerData) {
 export async function streamWorkbuddySessionEvents(filePath, source, onEvent, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   const fallbackSessionId = path.basename(filePath, JSONL_SUFFIX);
-  const groups = new Map();
+  const groups = new UsageSourceRows(128 * 1024 * 1024);
   let malformed = 0;
+  let invalidDate;
 
-  for await (const line of readRolloutLines(filePath)) {
-    if (!line.trim()) continue;
-    let record;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      malformed += 1;
-      continue;
+  try {
+    for await (const line of readRolloutLines(filePath)) {
+      if (!line.trim()) continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        malformed += 1;
+        continue;
+      }
+      const providerData = record?.providerData;
+      const messageId = trimmed(providerData?.messageId);
+      if (!messageId) continue;
+      const previous = groups.get(messageId);
+      if (previous) continue;
+      // Even an ineligible first row fixes the stable position of collator-equal IDs.
+      if (previous === undefined) groups.set(messageId, null);
+      if (!USAGE_RECORD_TYPES.has(trimmed(record.type)) || !providerData.usage || isAutoRecord(providerData)) continue;
+      const timestampMs = timestampMsOf(record);
+      if (!Number.isFinite(timestampMs)) continue;
+      const { usage, detailMask, inputKnown, cacheWrite } = usageFromProviderData(providerData);
+      if (Math.abs(timestampMs) > 8.64e15) {
+        invalidDate = timestampMs;
+        groups.set(messageId, { invalidDate: true });
+        continue;
+      }
+      const timestamp = new Date(timestampMs).toISOString();
+      groups.set(messageId, {
+        messageId,
+        timestampMs,
+        timestamp,
+        sessionId: trimmed(record.sessionId) || fallbackSessionId,
+        project: trimmed(record.cwd) || UNKNOWN_PROJECT,
+        model: trimmed(providerData.model) || UNKNOWN_MODEL,
+        usage,
+        detailMask,
+        cacheWriteTokens: cacheWrite.tokens,
+        cacheWriteKnown: cacheWrite.known,
+        requestInputTokens: inputKnown ? usage.input : 0,
+        contextLevel: inputKnown ? (usage.input > LONG_CONTEXT_INPUT_THRESHOLD ? "long" : "short") : "unknown",
+        serviceTier: "unknown",
+        priceVersion: pricingVersionForTimestamp(timestamp),
+      });
     }
-    const providerData = record?.providerData;
-    const messageId = trimmed(providerData?.messageId);
-    if (!messageId) continue;
-    const group = groups.get(messageId) || {
-      usageRecords: [],
-    };
-    if (USAGE_RECORD_TYPES.has(trimmed(record.type)) && providerData.usage) {
-      group.usageRecords.push({ record, providerData });
+
+    if (malformed > 0) options.onWarning?.(`WORKBUDDY_MALFORMED_JSON:${malformed} (${filePath})`);
+    // The old parser validates all selected dates after warnings and before resolving/emitting any event.
+    if (invalidDate !== undefined) new Date(invalidDate).toISOString();
+    const events = groups.ordered(
+      (left, right) => {
+        if (!left || !right) return Number(Boolean(left)) - Number(Boolean(right));
+        return left.timestampMs - right.timestampMs || left.messageId.localeCompare(right.messageId);
+      },
+      (event) => event && { timestampMs: event.timestampMs, messageId: event.messageId },
+    );
+    for (const event of events) {
+      if (!event) continue;
+      const repository = await resolveRepository(event.project);
+      await onEvent({
+        timestampMs: event.timestampMs,
+        timestamp: event.timestamp,
+        sessionId: event.sessionId,
+        homeId: source.id,
+        homeLabel: source.label,
+        homePath: source.path,
+        channel: WORKBUDDY_CHANNEL,
+        source: WORKBUDDY_KIND,
+        project: event.project,
+        repositoryKey: repository.key,
+        repositoryPath: repository.path,
+        repositoryKind: repository.kind,
+        messageId: event.messageId,
+        model: event.model,
+        modelProvider: "",
+        usage: event.usage,
+        detailMask: event.detailMask,
+        reconciliationGap: 0,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: event.contextLevel,
+        serviceTier: event.serviceTier,
+        priceVersion: event.priceVersion,
+      });
     }
-    groups.set(messageId, group);
-  }
-
-  if (malformed > 0) options.onWarning?.(`WORKBUDDY_MALFORMED_JSON:${malformed} (${filePath})`);
-
-  const events = [];
-  for (const [messageId, group] of groups) {
-    const selected = group.usageRecords.find(({ record, providerData }) => {
-      if (isAutoRecord(providerData)) return false;
-      return Number.isFinite(timestampMsOf(record));
-    });
-    if (!selected) continue;
-    const { record, providerData } = selected;
-    const timestampMs = timestampMsOf(record);
-    const { usage, detailMask, inputKnown, cacheWrite } = usageFromProviderData(providerData);
-    const timestamp = new Date(timestampMs).toISOString();
-    events.push({
-      messageId,
-      timestampMs,
-      timestamp,
-      sessionId: trimmed(record.sessionId) || fallbackSessionId,
-      project: trimmed(record.cwd) || UNKNOWN_PROJECT,
-      model: trimmed(providerData.model) || UNKNOWN_MODEL,
-      usage,
-      detailMask,
-      cacheWriteTokens: cacheWrite.tokens,
-      cacheWriteKnown: cacheWrite.known,
-      requestInputTokens: inputKnown ? usage.input : 0,
-      contextLevel: inputKnown ? (usage.input > LONG_CONTEXT_INPUT_THRESHOLD ? "long" : "short") : "unknown",
-      serviceTier: "unknown",
-      priceVersion: pricingVersionForTimestamp(timestamp),
-    });
-  }
-  events.sort((left, right) => left.timestampMs - right.timestampMs || left.messageId.localeCompare(right.messageId));
-  for (const event of events) {
-    const repository = await resolveRepository(event.project);
-    await onEvent({
-      timestampMs: event.timestampMs,
-      timestamp: event.timestamp,
-      sessionId: event.sessionId,
-      homeId: source.id,
-      homeLabel: source.label,
-      homePath: source.path,
-      channel: WORKBUDDY_CHANNEL,
-      source: WORKBUDDY_KIND,
-      project: event.project,
-      repositoryKey: repository.key,
-      repositoryPath: repository.path,
-      repositoryKind: repository.kind,
-      messageId: event.messageId,
-      model: event.model,
-      modelProvider: "",
-      usage: event.usage,
-      detailMask: event.detailMask,
-      reconciliationGap: 0,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: event.contextLevel,
-      serviceTier: event.serviceTier,
-      priceVersion: event.priceVersion,
-    });
+  } finally {
+    groups.close();
   }
 }
 

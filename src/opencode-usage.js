@@ -12,6 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
+import { UsageSourceRows, indexedSourceSessions } from "./usage-source-rows.js";
 import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
 
 // session_message 表的必需列。缺列说明 schema 又变了，整来源跳过并给出可诊断的警告。
@@ -140,15 +141,28 @@ function checkMessageTable(database, dbFile) {
 }
 
 function loadSessions(database) {
+  let statement;
   try {
-    const sessions = new Map();
-    for (const row of database.prepare("SELECT id, directory, title, version FROM session_v2").all()) {
-      sessions.set(String(row.id || ""), row);
-    }
-    return sessions;
+    statement = database.prepare("SELECT id, directory, title, version FROM session_v2");
   } catch {
     // 会话表缺失只影响工作目录、标题与版本守护，用量事件仍要输出。
-    return new Map();
+    return new UsageSourceRows();
+  }
+  const indexed = indexedSourceSessions(database, "session_v2", "id, directory, title, version");
+  if (indexed) return indexed;
+  const sessions = new UsageSourceRows();
+  try {
+    for (const row of statement.iterate()) {
+      sessions.set(String(row.id || ""), {
+        directory: String(row.directory || "").trim(),
+        title: String(row.title || ""),
+        version: String(row.version ?? ""),
+      });
+    }
+    return sessions;
+  } catch (error) {
+    sessions.close();
+    throw error;
   }
 }
 
@@ -156,13 +170,15 @@ export async function streamOpencodeDbEvents(dbFile, source, onEvent, options = 
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   const onWarning = options.onWarning;
   const database = openOpencodeDatabase(dbFile);
+  let sessionsById;
+  const warnedSessions = new UsageSourceRows();
   try {
+    database.exec("PRAGMA cache_size = -2048; PRAGMA temp_store = FILE; BEGIN");
     checkMessageTable(database, dbFile);
-    const sessionsById = loadSessions(database);
+    sessionsById = loadSessions(database);
     if (!sessionsById.size) {
       onWarning?.(`OpenCode 数据库 ${dbFile} 没有会话表或会话为空，工作目录与标题将缺失`);
     }
-    const warnedSessions = new Set();
 
     const rows = database
       .prepare(
@@ -188,16 +204,16 @@ export async function streamOpencodeDbEvents(dbFile, source, onEvent, options = 
       const session = sessionsById.get(sessionId);
       const versionMajor = session ? sessionVersionMajor(session.version) : null;
       if (session && versionMajor !== null && versionMajor < OPENCODE_SUPPORTED_SESSION_MAJOR) {
-        if (!warnedSessions.has(sessionId)) {
-          warnedSessions.add(sessionId);
+        if (!warnedSessions.get(sessionId)) {
+          warnedSessions.set(sessionId, true);
           onWarning?.(
             `OpenCode 会话 ${sessionId} 的版本为 v${session.version}，本版本只支持 v${OPENCODE_SUPPORTED_SESSION_MAJOR}，已跳过`,
           );
         }
         continue;
       }
-      if (versionMajor === null && !warnedSessions.has(sessionId)) {
-        warnedSessions.add(sessionId);
+      if (versionMajor === null && !warnedSessions.get(sessionId)) {
+        warnedSessions.set(sessionId, true);
         onWarning?.(`OpenCode 会话 ${sessionId} 缺少可解析的版本号，已按 v${OPENCODE_SUPPORTED_SESSION_MAJOR} 解析`);
       }
 
@@ -245,7 +261,13 @@ export async function streamOpencodeDbEvents(dbFile, source, onEvent, options = 
       });
     }
   } finally {
-    database.close();
+    try {
+      if (database.isTransaction) database.exec("ROLLBACK");
+    } finally {
+      database.close();
+      sessionsById?.close();
+      warnedSessions.close();
+    }
   }
 }
 

@@ -18,6 +18,7 @@ import path from "node:path";
 import { readRolloutLines } from "./codex-rollout.js";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
+import { UsageSourceRows } from "./usage-source-rows.js";
 import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
 
 const PROJECTS_DIR = "projects";
@@ -195,7 +196,7 @@ function servedModel(record) {
   return String(record.requestedModel || "").trim();
 }
 
-function eventFromRecord(record, usage, detailMask, cacheWrite, resolveRepository) {
+function eventFromRecord(record, usage, detailMask, cacheWrite) {
   const sessionId = String(record.sessionId || "").trim();
   const timestampMs = Date.parse(record.timestamp);
   if (!sessionId || !Number.isFinite(timestampMs)) {
@@ -222,7 +223,6 @@ function eventFromRecord(record, usage, detailMask, cacheWrite, resolveRepositor
     contextLevel: inputKnown ? (usage.input > LONG_CONTEXT_INPUT_THRESHOLD ? "long" : "short") : "unknown",
     serviceTier: claudeServiceTier(record.message?.usage),
     priceVersion: pricingVersionForTimestamp(timestamp),
-    resolveRepository,
   };
 }
 
@@ -237,94 +237,100 @@ export async function streamClaudeSessionEvents(filePath, source, onEvent, optio
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   // 同一 message.id 只保留 token 和最大的一条：主文件是多块同值快照，
   // 子代理文件是零用量占位块 + 一个真实块。
-  const bestByMessage = new Map();
+  // Keep ordinary long transcripts in memory; spill larger ones without raising the heap limit.
+  const bestByMessage = new UsageSourceRows(128 * 1024 * 1024);
   let conversationName = "";
   let malformed = 0;
   let missingMessageId = 0;
 
-  for await (const line of readRolloutLines(filePath)) {
-    if (!line.trim()) {
-      continue;
-    }
-    let record;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      malformed += 1;
-      continue;
-    }
-    const type = String(record?.type || "");
-    if (type === "custom-title" || type === "agent-name") {
-      const title = String(record.customTitle || record.agentName || "").trim();
-      if (title) {
-        conversationName = truncateName(title);
+  try {
+    for await (const line of readRolloutLines(filePath)) {
+      if (!line.trim()) {
+        continue;
       }
-      continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        malformed += 1;
+        continue;
+      }
+      const type = String(record?.type || "");
+      if (type === "custom-title" || type === "agent-name") {
+        const title = String(record.customTitle || record.agentName || "").trim();
+        if (title) {
+          conversationName = truncateName(title);
+        }
+        continue;
+      }
+      if (type !== "assistant" || !record?.message?.usage) {
+        continue;
+      }
+      const mapped = claudeUsageFromRaw(record.message.usage);
+      if (isZeroUsage(mapped.usage)) {
+        continue;
+      }
+      const key = String(record.message?.id || "").trim();
+      if (!key) {
+        missingMessageId += 1;
+      }
+      const identity = key || String(record.uuid || "");
+      if (!identity) {
+        continue;
+      }
+      const candidate = eventFromRecord(record, mapped.usage, mapped.detailMask, mapped.cacheWrite);
+      if (!candidate) {
+        continue;
+      }
+      const previous = bestByMessage.get(identity);
+      if (!previous || tokenSum(candidate.usage) > tokenSum(previous.usage)) {
+        bestByMessage.set(identity, candidate);
+      }
     }
-    if (type !== "assistant" || !record?.message?.usage) {
-      continue;
-    }
-    const mapped = claudeUsageFromRaw(record.message.usage);
-    if (isZeroUsage(mapped.usage)) {
-      continue;
-    }
-    const key = String(record.message?.id || "").trim();
-    if (!key) {
-      missingMessageId += 1;
-    }
-    const identity = key || String(record.uuid || "");
-    if (!identity) {
-      continue;
-    }
-    const candidate = eventFromRecord(record, mapped.usage, mapped.detailMask, mapped.cacheWrite, resolveRepository);
-    if (!candidate) {
-      continue;
-    }
-    const previous = bestByMessage.get(identity);
-    if (!previous || tokenSum(candidate.usage) > tokenSum(previous.usage)) {
-      bestByMessage.set(identity, candidate);
-    }
-  }
 
-  if (malformed > 0) {
-    options.onWarning?.(`CLAUDE_MALFORMED_JSON:${malformed} (${filePath})`);
-  }
-  if (missingMessageId > 0) {
-    options.onWarning?.(`CLAUDE_MISSING_MESSAGE_ID:${missingMessageId} (${filePath})`);
-  }
+    if (malformed > 0) {
+      options.onWarning?.(`CLAUDE_MALFORMED_JSON:${malformed} (${filePath})`);
+    }
+    if (missingMessageId > 0) {
+      options.onWarning?.(`CLAUDE_MISSING_MESSAGE_ID:${missingMessageId} (${filePath})`);
+    }
 
-  const events = [...bestByMessage.values()].sort(
-    (left, right) => left.timestampMs - right.timestampMs || left.eventId.localeCompare(right.eventId),
-  );
-  for (const event of events) {
-    const repository = await event.resolveRepository(event.project);
-    await onEvent({
-      eventId: event.eventId,
-      timestampMs: event.timestampMs,
-      timestamp: event.timestamp,
-      sessionId: event.sessionId,
-      homeId: source.id,
-      homeLabel: source.label,
-      homePath: source.path,
-      channel: "Claude Code",
-      source: "claude",
-      project: event.project,
-      repositoryKey: repository.key,
-      repositoryPath: repository.path,
-      repositoryKind: repository.kind,
-      conversationName,
-      model: event.model,
-      modelProvider: "",
-      usage: event.usage,
-      detailMask: event.detailMask,
-      reconciliationGap: event.reconciliationGap,
-      cacheWriteTokens: event.cacheWriteTokens,
-      cacheWriteKnown: event.cacheWriteKnown,
-      requestInputTokens: event.requestInputTokens,
-      contextLevel: event.contextLevel,
-      serviceTier: event.serviceTier,
-      priceVersion: event.priceVersion,
-    });
+    const events = bestByMessage.ordered(
+      (left, right) => left.timestampMs - right.timestampMs || left.eventId.localeCompare(right.eventId),
+      (event) => ({ timestampMs: event.timestampMs, eventId: event.eventId }),
+    );
+    for (const event of events) {
+      const repository = await resolveRepository(event.project);
+      await onEvent({
+        eventId: event.eventId,
+        timestampMs: event.timestampMs,
+        timestamp: event.timestamp,
+        sessionId: event.sessionId,
+        homeId: source.id,
+        homeLabel: source.label,
+        homePath: source.path,
+        channel: "Claude Code",
+        source: "claude",
+        project: event.project,
+        repositoryKey: repository.key,
+        repositoryPath: repository.path,
+        repositoryKind: repository.kind,
+        conversationName,
+        model: event.model,
+        modelProvider: "",
+        usage: event.usage,
+        detailMask: event.detailMask,
+        reconciliationGap: event.reconciliationGap,
+        cacheWriteTokens: event.cacheWriteTokens,
+        cacheWriteKnown: event.cacheWriteKnown,
+        requestInputTokens: event.requestInputTokens,
+        contextLevel: event.contextLevel,
+        serviceTier: event.serviceTier,
+        priceVersion: event.priceVersion,
+      });
+    }
+  } finally {
+    bestByMessage.close();
   }
 }
 

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
+import { UsageSourceRows, indexedSourceSessions } from "./usage-source-rows.js";
 import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
 
 // 相对 ZCode home 目录的数据库位置，按顺序探测。
@@ -124,15 +125,24 @@ function truncateName(value) {
 export async function streamZcodeDbEvents(dbFile, source, onEvent, options = {}) {
   const resolveRepository = options.repositoryResolver || createRepositoryResolver();
   const database = openZcodeDatabase(dbFile);
+  let sessionsById;
   try {
-    let sessionsById = new Map();
+    database.exec("PRAGMA cache_size = -2048; PRAGMA temp_store = FILE; BEGIN");
+    let sessionRows;
     try {
-      for (const row of database.prepare("SELECT * FROM session").all()) {
-        sessionsById.set(String(row.id || ""), row);
-      }
+      sessionRows = database.prepare("SELECT * FROM session");
     } catch {
       // 会话表缺失只影响工作目录归属，用量事件仍要输出。
-      sessionsById = new Map();
+    }
+    sessionsById = (sessionRows && indexedSourceSessions(database, "session", "*")) || new UsageSourceRows();
+    if (sessionsById instanceof UsageSourceRows) {
+      for (const row of sessionRows?.iterate() || []) {
+        sessionsById.set(String(row.id || ""), {
+          directory: String(row.directory || row.path || "").trim(),
+          parent_id: String(row.parent_id || "").trim(),
+          title: String(row.title || ""),
+        });
+      }
     }
 
     for (const row of database.prepare("SELECT * FROM model_usage ORDER BY completed_at, id").iterate()) {
@@ -180,7 +190,12 @@ export async function streamZcodeDbEvents(dbFile, source, onEvent, options = {})
       });
     }
   } finally {
-    database.close();
+    try {
+      if (database.isTransaction) database.exec("ROLLBACK");
+    } finally {
+      database.close();
+      sessionsById?.close();
+    }
   }
 }
 
