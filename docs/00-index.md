@@ -1,12 +1,14 @@
 # Agent Usage 文档入口
 
-更新：2026-11-01（无 TPS 0.8.5 本机切换）。现有功能、待办、计划与历史分别维护；历史稿不作为新的施工授权。
+更新：2026-11-05（重构交付收尾）。当前已测性能已由用户接收，转入[构建、保留历史升级与回滚](15-delivery-upgrade.md)。本轮只做本地提交，尚未切换在用服务或发布新版本。下方TPS、旧部署及旧内存预算是对应日期的历史记录。
 
 用户已暂停 TPS 开发，准备后续重构技术栈。[研究盒子](archive/2026-11-01-tps-research.md)已独立保存并验证，前后端 TPS 已移除，普通用量、费用、限额、RANGE 与历史功能通过[回归](validation/2026-11-01-tps-extraction/README.md)。现有数据已备份，本机看板已采用无 TPS 的 0.8.5；安装清理及运行包核验见[切换验收](validation/2026-11-01-no-tps-cutover/README.md)。用户已授权 commit、push 与 release，研究盒子、私人备份和无关实验不上传。以下 TPS 记录仅为暂停时的历史结果。
 
 TPS 开发暂停，研究实现及未提交的各 harness 候选已收入独立研究盒子；后续复用从封存记录开始。下面的既有 TPS 验收仅作历史参考。
 
 ## 使用与接手
+
+- [交付与升级](15-delivery-upgrade.md)：当前改造、原生助手构建/校验、数据升级、回滚与本轮收尾验证。
 
 - [v0.8.0 发布验收](validation/2026-10-30-release/README.md)与[发布说明](validation/2026-10-30-release/release-notes.md)：本轮性能、7d 恢复及发布资料。
 - [使用与启动](../README.md)与 [English](../README.en.md)：快速开始、看板功能、来源与隐私。

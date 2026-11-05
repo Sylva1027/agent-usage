@@ -13,6 +13,7 @@ Build explicitly during development or packaging:
 
 ```powershell
 pwsh -NoProfile -File native/windows-source-proof/build.ps1
+npm run native:check
 ```
 
 The script requires the Rust toolchain and Cargo on Windows. It builds with the
@@ -20,7 +21,19 @@ checked-in `Cargo.lock` using `--locked`, then copies the release executable to:
 
 ```text
 native/windows-source-proof/bin/windows-source-proof.exe
+native/windows-source-proof/bin/windows-source-proof.build.json
 ```
+
+The receipt binds the executable hash to the Cargo files, build script, Rust
+sources, and host target. `npm run native:check` verifies it without Cargo; a
+missing receipt, changed source, or different executable requires rebuilding
+before packaging. Runtime remains compatible with older or missing helpers.
+
+For an isolated build, pass `-OutputDirectory <directory>` and
+`-TargetDirectory <directory>` to the script. `-Check` only reads the output and
+source hashes. Compilation failure leaves existing output untouched; successful
+publication replaces staged files. Stop the relevant instance before an upgrade,
+or build into a new program directory. See [delivery and upgrade](../../docs/15-delivery-upgrade.md).
 
 The Node bridge discovers `bin/windows-source-proof.exe`, then
 `target/release/windows-source-proof.exe`. Tests can pass an explicit path to

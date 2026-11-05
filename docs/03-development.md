@@ -1,10 +1,10 @@
 # 开发与接手
 
-更新：2026-10-30（轻量服务与索引检查优化）。先读[文档入口](00-index.md)和[任务清单](02-tasks.md)，再按任务阅读现行专题。
+更新：2026-11-05（交付收尾）。先读[交付与升级](15-delivery-upgrade.md)及[文档入口](00-index.md)，再按任务阅读现行专题。
 
 ## 环境与启动
 
-项目使用 Node ESM，`package.json` 与锁文件要求 Node `>=23.8`。本地输出采集另依赖锁定版本 `tiktoken@1.0.22`，汇总 reader 延迟加载分词器；release ZIP/TAR.GZ 已附带运行依赖，源码安装执行 `npm ci --omit=dev`。开发检查执行 `npm ci` 安装全部依赖。
+项目使用 Node ESM，`package.json` 与锁文件要求 Node `>=23.8`。当前没有生产npm依赖；开发检查执行`npm ci`安装开发依赖。Windows可选原生助手在交付前显式构建和校验，普通运行不调用Cargo，见[构建入口](15-delivery-upgrade.md#构建与校验助手)。
 
 ```powershell
 node --version
@@ -33,7 +33,10 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 - `src/usage-core.js`：来源发现与分类、标准事件、内存报告、时间与周期统计。
 - `src/usage-store.js`：SQLite 增量索引、迁移、查询、元数据与限额聚合。
 - `src/codex-quota-cache.js`：本地额度快照与单机授权后的缺窗只读恢复；默认关闭联网补齐。
-- `src/usage-executor.js`：**唯一**持有 `DatabaseSync` 的 worker 执行器（2026-10-10 引入）；主线程只从它发布的读侧快照应答轻量端点。
+- `src/usage-executor.js`：重任务计算进程；HTTP服务保留轻量状态并做短只读版本查询，重统计由计算进程执行。
+- `src/usage-source-acquisition.js`、`src/usage-source-progress.js`：来源身份清单、解析检查点与Codex/DSH增量登记。
+- `src/usage-source-native.js`、`native/windows-source-proof/`：Windows可选原生核验、构建脚本及产物回执。
+- `src/usage-all-summary-store.js`、`src/usage-metadata-store.js`、`src/usage-record-store.js`、`src/usage-quota-store.js`：持久业务视图，保留事实与派生数据边界。
 - `src/zcode-usage.js`、`src/dsh-usage.js`、`src/opencode-usage.js`、`src/claude-code-usage.js`、`src/workbuddy-usage.js`：各来源适配器。
 - `src/repository-identity.js`、`src/service-tier-evidence.js`：仓库身份和服务档位证据。
 - `src/pricing.js`：有效价目、费用估算与不确定性标记。
@@ -52,7 +55,7 @@ Windows 使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 的 `npm.ps1` 执行�
 
 额度恢复由 `src/server.js` 在当前 5h/7d 缺窗响应后按单机授权触发，官方凭据交客户端管理；默认不调用。规范观测同时用于内存报告、Store 元数据和冻结结果，`src/usage-summary-cache.js` 把其内容纳入签名并在真实 reset 失效，重试时间不使统计缓存失效。缺窗不数学续期，已有有效窗口不查询。行为与验证见[看板说明](12-dashboard.md)及[7d 验收](validation/2026-10-30-quota-recovery/README.md)。
 
-- **内存预算**：后台 `gateway` / `restart` 的默认父服务参数仍为 `--max-old-space-size=512`，计算进程单独限制为 old-space 224 MiB、semi-space 4 MiB，计价 memo 为 8/16 MiB。它们都是堆或缓存预算，不能当作总内存上限；验收统计同一时刻服务与活跃计算进程的工作集、私有提交之和。性能投影按需加载，性能样本与 DSH 行流式消费，批量写样本复用 prepared statement。整合实测与限制见[验收记录](validation/2026-10-29-local-summary-adoption/README.md)。
+- **内存预算**：后台 `gateway` / `restart` 的默认父服务参数仍为 `--max-old-space-size=512`，计算进程单独限制为 old-space 224 MiB、semi-space 4 MiB，计价 memo 为 8/16 MiB。它们都是堆或缓存预算，不能当作总内存上限；验收统计同一时刻服务与活跃计算进程的工作集、私有提交之和。来源采用有界读取，已有业务结果在磁盘持久复用。当前改造与已接收的实测边界见[交付页](15-delivery-upgrade.md)。
 - **并发合并**：`src/server.js` 的 `loadUsageStore()` 用 `syncPromise` 把并发重请求合并成一次同步（"两轮并发只允许发出一次 `sync` 消息"由 `test/w1-executor.test.js` 的计数断言把守）。
 - **故障恢复**：执行器崩溃 ⇒ 在途请求以 `EXECUTOR_EXITED`（`retryable: true`）结算而不挂死；下一次请求就地重启一次（**无重试循环**）；`close()` 幂等且显式等待 flush/退出（`test/w3-fault.test.js`）。
 - **发布原子性**：读侧快照要么为空、要么完整；发布中途不得出现半成品（`F2-half-publish` 突变机械钉住）。

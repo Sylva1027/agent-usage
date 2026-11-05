@@ -14,6 +14,8 @@
     "lint": "biome check --formatter-enabled=false .",
     "format:check": "biome format .",
     "format": "biome format --write .",
+    "native:build": "pwsh -NoProfile -File native/windows-source-proof/build.ps1",
+    "native:check": "pwsh -NoProfile -File native/windows-source-proof/build.ps1 -Check",
     "skins:prepare": "node scripts/prepare-skin-assets.mjs prepare",
     "skins:check": "node scripts/prepare-skin-assets.mjs check",
     "skins:check:sources": "node scripts/prepare-skin-assets.mjs check-sources",

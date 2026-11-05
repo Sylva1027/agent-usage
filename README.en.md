@@ -71,6 +71,8 @@ Automatic results live in `~/.codex-usage/pricing-auto.json`; manual changes liv
 
 ## Commands
 
+The measured performance of the current refactor has been accepted; the release links still refer to the earlier v0.8.5. For a Windows build from current source, run `npm run native:build` and `npm run native:check` to prepare the matching optional helper. Runtime falls back automatically when native proof is unavailable. See [delivery, data-preserving upgrades, and rollback](docs/15-delivery-upgrade.md) (Simplified Chinese).
+
 ```bash
 node src/cli.js summary       # Terminal summary
 node src/cli.js summary --json
