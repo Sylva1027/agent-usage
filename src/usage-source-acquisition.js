@@ -160,7 +160,8 @@ export class UsageSourceAcquisition {
     for (const cursor of state.volumes) {
       if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
       const interval = await native.changes(cursor.path, cursor);
-      if (!interval) throw unavailable("journal interval unavailable");
+      if (!interval) throw unavailable(`journal interval unavailable${native.lastDirectoryFailure?.operation === "changes"
+        ? `: ${native.lastDirectoryFailure.reason}` : ""}`);
       volumes.push({ ...cursor, nextUsn: interval.nextUsn });
       journalBytes += interval.journalBytes;
       const unknown = new Map();

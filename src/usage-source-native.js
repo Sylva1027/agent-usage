@@ -125,6 +125,9 @@ export class WindowsSourceProof {
   #tail = Promise.resolve();
   #disabled = false;
   #closed = false;
+  #requestFailure = null;
+  /** @type {{operation: string, reason: string} | null} */
+  lastDirectoryFailure = null;
 
   constructor(internalExecutablePath) {
     this.#executablePath = executablePath(internalExecutablePath);
@@ -167,9 +170,14 @@ export class WindowsSourceProof {
 
   async #directory(payload, validate) {
     return this.#schedule(async () => {
+      this.lastDirectoryFailure = null;
       const response = await this.#request(payload);
       if (response?.ok !== true || response.available !== true ||
-        response.kind !== "ntfs-usn-directory-v1" || !response.value || !validate(response.value)) return null;
+        response.kind !== "ntfs-usn-directory-v1" || !response.value || !validate(response.value)) {
+        this.lastDirectoryFailure = { operation: payload.op, reason: typeof response?.reason === "string"
+          ? response.reason.slice(0, 512) : this.#requestFailure || "invalid directory response" };
+        return null;
+      }
       return response.value;
     });
   }
@@ -272,17 +280,17 @@ export class WindowsSourceProof {
 
     child.stdout.on("data", (chunk) => this.#onData(chunk));
     child.stderr.on("data", () => {});
-    child.on("error", () => this.#failProtocol());
+    child.on("error", () => this.#failProtocol("native helper start failed"));
     child.on("exit", () => {
       if (this.#child !== child) return;
       this.#child = null;
-      if (!this.#closed) this.#failProtocol();
+      if (!this.#closed) this.#failProtocol("native helper exited");
     });
   }
 
   #onData(chunk) {
     if (this.#buffer.length + chunk.length > MAX_RESPONSE_BYTES) {
-      this.#failProtocol();
+      this.#failProtocol("native response exceeded byte limit");
       return;
     }
     this.#buffer = Buffer.concat([this.#buffer, chunk]);
@@ -291,19 +299,19 @@ export class WindowsSourceProof {
     const line = this.#buffer.slice(0, lineEnd);
     this.#buffer = this.#buffer.slice(lineEnd + 1);
     if (this.#buffer.length > 0) {
-      this.#failProtocol();
+      this.#failProtocol("extra data after native response");
       return;
     }
     let response;
     try {
       response = JSON.parse(RESPONSE_DECODER.decode(line));
     } catch {
-      this.#failProtocol();
+      this.#failProtocol("invalid native response encoding or JSON");
       return;
     }
     const pending = this.#pending;
     if (!pending || response?.id !== pending.id) {
-      this.#failProtocol();
+      this.#failProtocol("native response identity mismatch");
       return;
     }
     clearTimeout(pending.timer);
@@ -312,6 +320,7 @@ export class WindowsSourceProof {
   }
 
   async #request(payload) {
+    this.#requestFailure = null;
     if (this.#closed || this.#disabled || process.platform !== "win32") return null;
     if (!this.#child) this.#start();
     const child = this.#child;
@@ -320,10 +329,10 @@ export class WindowsSourceProof {
     const frame = `${JSON.stringify({ id, ...payload })}\n`;
     if (Buffer.byteLength(frame) > 128 * 1024) return null;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => this.#failProtocol(), FIXED_TIMEOUT_MS);
+      const timer = setTimeout(() => this.#failProtocol("native request timed out"), FIXED_TIMEOUT_MS);
       this.#pending = { id, resolve, timer };
       child.stdin.write(frame, (error) => {
-        if (error) this.#failProtocol();
+        if (error) this.#failProtocol("native request write failed");
       });
     }).catch(() => null);
   }
@@ -337,7 +346,8 @@ export class WindowsSourceProof {
     void error;
   }
 
-  #failProtocol() {
+  #failProtocol(reason = "native protocol failure") {
+    this.#requestFailure = reason;
     this.#disabled = true;
     this.#failPending();
     this.#stopChild();

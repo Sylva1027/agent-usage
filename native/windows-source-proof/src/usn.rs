@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::fs;
 use std::mem::{self, size_of};
@@ -888,6 +889,32 @@ pub fn directory_journal(path: &str) -> Result<serde_json::Value, String> {
         "nextUsn": journal.next_usn.to_string(), "lowestValidUsn": journal.lowest_valid_usn.to_string()}))
 }
 
+#[derive(Debug)]
+struct DirectoryChange {
+    usn: i64,
+    reason: u32,
+}
+
+fn add_directory_change(
+    records: &mut BTreeMap<(String, String), DirectoryChange>,
+    id: String,
+    parent: String,
+    usn: i64,
+    reason: u32,
+) -> Result<(), String> {
+    let key = (id, parent);
+    if let Some(previous) = records.get_mut(&key) {
+        previous.usn = usn;
+        previous.reason |= reason;
+    } else {
+        if records.len() >= 2048 {
+            return Err("directory response object-parent limit".to_owned());
+        }
+        records.insert(key, DirectoryChange { usn, reason });
+    }
+    Ok(())
+}
+
 pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json::Value, String> {
     if id.is_empty()
         || id.len() > 20
@@ -914,7 +941,7 @@ pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json
     let mut previous_usn = i64::MIN;
     let mut bytes = 0u64;
     let mut pages = 0;
-    let mut records = Vec::new();
+    let mut records = BTreeMap::new();
     let started = Instant::now();
     while cursor < end {
         if pages >= MAX_PAGES || started.elapsed() > MAX_SCAN_TIME {
@@ -938,9 +965,6 @@ pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json
                 && record.usn() < end
                 && record.reason() != USN_REASON_CLOSE
             {
-                if records.len() >= 2048 {
-                    return Err("directory response record limit".to_owned());
-                }
                 let (object_id, parent_id) = match record {
                     UsnRecord::V2 { file_index_64, .. } => (
                         format!("{file_index_64:016x}"),
@@ -954,8 +978,13 @@ pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json
                         hex_bytes(&page.bytes[at + 24..at + 40]),
                     ),
                 };
-                records.push(serde_json::json!({"id": object_id, "parent": parent_id,
-                    "usn": record.usn().to_string(), "reason": record.reason()}));
+                add_directory_change(
+                    &mut records,
+                    object_id,
+                    parent_id,
+                    record.usn(),
+                    record.reason(),
+                )?;
             }
             at += u32::from_le_bytes(page.bytes[at..at + 4].try_into().unwrap()) as usize;
         }
@@ -974,6 +1003,17 @@ pub fn directory_changes(path: &str, id: &str, start: &str) -> Result<serde_json
     {
         return Err("journal coverage changed during scan".to_owned());
     }
+    // Latest position retains every uncovered mutation; OR keeps unsafe mixed reasons.
+    let mut records: Vec<_> = records.into_iter().collect();
+    records.sort_unstable_by_key(|(_, record)| record.usn);
+    let records: Vec<_> = records
+        .into_iter()
+        .map(|((id, parent), record)| {
+            serde_json::json!({
+                "id": id, "parent": parent, "usn": record.usn.to_string(), "reason": record.reason,
+            })
+        })
+        .collect();
     Ok(
         serde_json::json!({"format": 1, "journalId": id, "startUsn": start,
         "nextUsn": end.to_string(), "journalBytes": bytes, "records": records}),
@@ -1051,6 +1091,55 @@ pub fn process_footprint() -> Option<Footprint> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_changes_keep_latest_position_and_all_unsafe_reasons() {
+        let mut records = BTreeMap::new();
+        for usn in 0..3000 {
+            add_directory_change(&mut records, "file".into(), "parent".into(), usn, 2).unwrap();
+        }
+        add_directory_change(
+            &mut records,
+            "file".into(),
+            "parent".into(),
+            3000,
+            1 | 0x80000000,
+        )
+        .unwrap();
+        assert_eq!(records.len(), 1);
+        let original = ("file".to_owned(), "parent".to_owned());
+        assert_eq!(records[&original].usn, 3000);
+        assert_eq!(records[&original].reason, 0x80000003);
+        add_directory_change(&mut records, "file".into(), "parent".into(), 3001, 0x10000).unwrap();
+        assert_ne!(records[&original].reason & 0x10000, 0);
+        add_directory_change(
+            &mut records,
+            "file".into(),
+            "different".into(),
+            3002,
+            0x2000,
+        )
+        .unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[&original].usn, 3001);
+        assert_eq!(
+            records[&("file".to_owned(), "different".to_owned())].reason,
+            0x2000
+        );
+    }
+
+    #[test]
+    fn directory_changes_keep_the_2048_object_budget() {
+        let mut records = BTreeMap::new();
+        for usn in 0..2048 {
+            add_directory_change(&mut records, usn.to_string(), "parent".into(), usn, 2).unwrap();
+        }
+        assert!(add_directory_change(&mut records, "0".into(), "parent".into(), 2048, 2).is_ok());
+        assert!(
+            add_directory_change(&mut records, "new".into(), "parent".into(), 2049, 2).is_err()
+        );
+        assert_eq!(records.len(), 2048);
+    }
 
     fn v2_record(usn: i64, file_index: u64, reason: u32) -> Vec<u8> {
         let name: Vec<u16> = "fixture.jsonl".encode_utf16().collect();

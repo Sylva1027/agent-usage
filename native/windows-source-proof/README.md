@@ -41,6 +41,9 @@ content-based fallback.
 - The bridge has a fixed three-second per-request bound with no environment
   override. The native journal scan has its own two-second bound plus fixed page,
   byte, record, and unrelated activity limits.
+- Directory change responses merge repeated records for the same object and parent,
+  keeping the latest USN and every reason bit. Different parents remain separate;
+  the 2,048-entry response, journal-byte, page, and time limits still apply.
 - One helper process is used per `WindowsSourceProof` instance. Its measured
   footprint is small in the W3 fixture, but aggregate limits for many writers
   remain an integration responsibility.
