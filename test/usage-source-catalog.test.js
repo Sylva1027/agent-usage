@@ -132,6 +132,28 @@ test("catalog inventory edits revoke coverage and rollback restores it", (t) => 
   }
 });
 
+test("incomplete coverage cannot authorize a new directory with a known parent", async (t) => {
+  const f = fixture(t);
+  f.state.directoryCoverage = 0;
+  f.state.homes = [{ path: f.root, kind: "main" }];
+  f.record.id = "0000000000000003"; f.record.reason = 0x100;
+  f.acquisition.put(f.root, { ...f.object, id64: f.record.parent }, "directory", {});
+  f.native.resolve = async () => ({ ...f.object, id64: f.record.id, path: path.join(f.root, "sessions"), attributes: 16, links: 1 });
+  f.native.object = async () => ({ ...f.object, id64: f.record.parent, path: f.root, attributes: 16, links: 1 });
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  delete f.state.homes;
+  await assert.rejects(f.acquisition.interval(f.state, f.native), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+});
+
+test("a nested discovery scope cannot be claimed by the enclosing supported home", (t) => {
+  const f = fixture(t), imported = path.join(f.root, "sessions", "imported");
+  f.state.homes = [{ path: f.root, kind: "main" }];
+  f.state.scopes.push(imported.toLowerCase());
+  assert.throws(() => f.acquisition.additionSource(f.state,
+    path.join(imported, ".codex-usage", "usage.jsonl"), false), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+  assert.equal(f.acquisition.additionSource(f.state, path.join(f.root, "sessions", "ordinary.jsonl"), false), f.state.homes[0]);
+});
+
 test("another harness, unknown managed path, missing parent and hardlink all refuse coverage", async (t) => {
   const f = fixture(t);
   f.acquisition.put(f.source, f.object, "file", { seal: "10", supported: false });

@@ -9,6 +9,7 @@ import { readUsageSourceInputs } from "./usage-source-inputs.js";
 
 export const USAGE_SOURCE_CATALOG_TABLE = "usage_source_catalog";
 const TOPOLOGY = 0x100 | 0x200 | 0x1000 | 0x2000 | 0x10000 | 0x100000;
+const CREATE = 0x100;
 const CLOSE = 0x80000000;
 const normal = (value) => path.resolve(value.replace(/^\\\\\?\\/, "")).toLowerCase();
 const within = (file, root) => file === root || file.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`);
@@ -133,10 +134,28 @@ export class UsageSourceAcquisition {
     return this.store.database.prepare(`SELECT * FROM usage_source_catalog WHERE volume=? AND ${column}=? AND path<>''`).get(volume, id);
   }
 
+  additionSource(state, filePath, directory) {
+    const matches = state.homes.filter((home) => {
+      const relative = path.relative(normal(home.path), normal(filePath)).split(path.sep);
+      if (!relative.length || relative.includes("..") || relative.some((part) => [".tmp", "node_modules"].includes(part))) return false;
+      if (home.kind === "dsh") return relative[0] === "sessions" && relative.length <= (directory ? 4 : 5) &&
+        (directory || /^session\.v4\.jsonl\.zstd$/.test(path.basename(filePath)));
+      return ["main", "extra", "jetbrains", "codex"].includes(home.kind) &&
+        ["sessions", "archived_sessions"].includes(relative[0]) && (directory || filePath.endsWith(".jsonl"));
+    });
+    if (matches.length !== 1) throw unavailable("new source is outside a unique supported home");
+    // A nested discovery root may become another harness when its first log appears.
+    const homePath = normal(matches[0].path), candidate = normal(filePath);
+    if (state.scopes.some((root) => root !== homePath && within(root, homePath) &&
+      (within(candidate, root) || within(root, candidate)))) throw unavailable("new source overlaps another discovery scope");
+    return matches[0];
+  }
+
   async interval(state, native, bootstrap = false) {
     const deadline = performance.now() + 2000;
     const dirty = new Set();
     const volumes = [];
+    const addedFiles = new Map(), directories = [];
     let records = 0, journalBytes = 0;
     for (const cursor of state.volumes) {
       if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
@@ -144,6 +163,7 @@ export class UsageSourceAcquisition {
       if (!interval) throw unavailable("journal interval unavailable");
       volumes.push({ ...cursor, nextUsn: interval.nextUsn });
       journalBytes += interval.journalBytes;
+      const unknown = new Map();
       for (const record of interval.records) {
         if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
         if (++records > 2048) throw unavailable("change budget exceeded");
@@ -160,23 +180,64 @@ export class UsageSourceAcquisition {
         }
         if (known) throw unavailable("discovery directory changed");
         if (record.reason & 0x10000) throw unavailable("ambiguous hardlink change");
-        if (state.directoryCoverage === 1) {
-          const parent = this.find(cursor.volume, record.parent);
-          if (parent?.role === "directory") throw unavailable("managed directory changed");
-          if (!parent || !state.watchedParents.includes(String(parent.path))) continue;
+        const previous = unknown.get(record.id);
+        unknown.set(record.id, { ...record, reason: (previous?.reason || 0) | record.reason,
+          moved: previous?.moved || (previous && previous.parent !== record.parent) });
+      }
+      const newDirectories = new Map();
+      let pending = [...unknown.values()], progressed = true;
+      while (pending.length && progressed) {
+        progressed = false;
+        const remaining = [];
+        for (const record of pending) {
+          if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
+          const parent = this.find(cursor.volume, record.parent) || newDirectories.get(record.parent);
+          if (parent?.role === "directory") {
+            if (bootstrap || state.directoryCoverage !== 1 || record.moved ||
+              !(record.reason & CREATE) || (record.reason & (TOPOLOGY & ~CREATE)))
+              throw unavailable("managed directory changed");
+            const object = await native.resolve(cursor.path, record.id);
+            if (!object || (record.id.length === 16 ? object.id64 : object.id128) !== record.id ||
+              object.volume !== cursor.volume || object.attributes & 0x400 ||
+              (!(object.attributes & 16) && object.links !== 1)) throw unavailable("new source identity unavailable");
+            const parentPath = path.dirname(object.path);
+            const currentParent = await native.object(parentPath);
+            const parentId = record.parent.length === 16 ? currentParent?.id64 : currentParent?.id128;
+            if (!currentParent || currentParent.volume !== cursor.volume || parentId !== record.parent ||
+              currentParent.attributes & 0x400 || normal(parentPath) !== parent.path)
+              throw unavailable("new source parent identity changed");
+            const directory = Boolean(object.attributes & 16);
+            const source = this.additionSource(state, object.path, directory);
+            const entry = { path: normal(object.path), role: "directory", object };
+            if (directory) {
+              directories.push(entry);
+              newDirectories.set(object.id64, entry); newDirectories.set(object.id128, entry);
+            } else {
+              const filePath = path.resolve(object.path.replace(/^\\\\\?\\/, ""));
+              if (this.store.database.prepare("SELECT 1 FROM source_files WHERE path=?").get(filePath) ||
+                state.missingSources.some((missing) => normal(missing.path) === normal(filePath)) ||
+                (source.kind !== "dsh" && await lstat(`${filePath}.zst`).catch((error) => {
+                  if (error.code === "ENOENT") return undefined; throw error;
+                }))) throw unavailable("returned source or alternate representation requires full verification");
+              const info = await stat(filePath);
+              if (!info.isFile() || info.nlink !== 1) throw unavailable("new source alias changed");
+              addedFiles.set(normal(filePath), { filePath, source, info, force: true, readMode: "incremental", additionIdentity: object });
+            }
+            progressed = true;
+          } else if (state.directoryCoverage !== 1 || (parent && state.watchedParents.includes(String(parent.path)))) {
+            const object = await native.resolve(cursor.path, record.id);
+            const resolved = object || await native.resolve(cursor.path, record.parent);
+            if (!resolved || resolved.attributes & 0x400 || resolved.links > 1) throw unavailable("unresolved change");
+            const resolvedPath = normal(resolved.path);
+            if (state.scopes.some((root) => within(resolvedPath, root) || (object && within(root, resolvedPath))))
+              throw unavailable("uncatalogued source or discovery change");
+          } else remaining.push(record);
         }
-        const object = await native.resolve(cursor.path, record.id);
-        const parent = object ? null : await native.resolve(cursor.path, record.parent);
-        const resolved = object || parent;
-        if (!resolved || resolved.attributes & 0x400 || resolved.links > 1) throw unavailable("unresolved change");
-        const resolvedPath = normal(resolved.path);
-        // A deleted outside sibling need not invalidate its known, still-existing ancestors.
-        if (state.scopes.some((root) => within(resolvedPath, root) || (object && within(root, resolvedPath))))
-          throw unavailable("uncatalogued source or discovery change");
+        pending = remaining;
       }
     }
     if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
-    return { volumes, dirty: [...dirty].sort(), records, journalBytes };
+    return { volumes, dirty: [...dirty].sort(), records, journalBytes, addedFiles: [...addedFiles.values()], directories };
   }
 
   async file(filePath) {
@@ -209,13 +270,15 @@ export class UsageSourceAcquisition {
       const paths = new Set(interval.dirty);
       for (const row of this.store.database.prepare("SELECT source_path FROM usage_source_reparse LIMIT 2049").iterate())
         paths.add(String(row.source_path));
-      if (paths.size > 2048) throw unavailable("dependency budget exceeded");
-      const files = [];
+      if (paths.size + interval.addedFiles.length > 2048) throw unavailable("dependency budget exceeded");
+      const files = [...interval.addedFiles];
       for (const file of paths) files.push(await this.file(file));
       const preferred = new Set((hints?.paths || []).map((hint) => normal(hint.path)));
       files.sort((a, b) => Number(preferred.has(normal(b.filePath))) - Number(preferred.has(normal(a.filePath))));
-      const plan = { ...state, volumes: interval.volumes, files, dataVersion };
-      this.work = { mode: "certified", selectedFiles: files.length, records: interval.records, journalBytes: interval.journalBytes };
+      const plan = { ...state, volumes: interval.volumes, files, dataVersion, directories: interval.directories,
+        fileCount: state.fileCount + interval.addedFiles.length };
+      this.work = { mode: "certified", selectedFiles: files.length, addedFiles: interval.addedFiles.length,
+        addedDirectories: interval.directories.length, records: interval.records, journalBytes: interval.journalBytes };
       return plan;
     } catch (error) {
       if (error.code !== "SOURCE_COVERAGE_UNAVAILABLE" && !["ENOENT", "EACCES", "EPERM"].includes(error.code)) throw error;
@@ -227,7 +290,7 @@ export class UsageSourceAcquisition {
   async checkUnchanged(options) {
     const changes = Number(this.store.database.prepare("SELECT total_changes() n").get().n);
     const plan = await this.prepare(options);
-    if (!plan || plan.files.length) return null;
+    if (!plan || plan.files.length || plan.directories?.length) return null;
     const input = await readUsageSourceInputs(options, plan.homes, "");
     if (input.inputs !== plan.auxiliary ||
       Number(this.store.database.prepare("PRAGMA data_version").get().data_version) !== plan.dataVersion ||
@@ -270,6 +333,9 @@ export class UsageSourceAcquisition {
     const info = await stat(file.filePath);
     const object = await native.object(file.filePath);
     if (object?.links !== 1 || object.attributes & 0x400) throw unavailable("source identity unavailable");
+    if (file.additionIdentity && (object.volume !== file.additionIdentity.volume ||
+      object.id64 !== file.additionIdentity.id64 || object.id128 !== file.additionIdentity.id128))
+      throw unavailable("new source identity changed before publication");
     const supported = ["main", "extra", "jetbrains", "codex", "dsh"].includes(file.source.kind) &&
       (file.source.kind === "dsh" || file.filePath.endsWith(".jsonl"));
     let seal = progressSeal(this.store, file.filePath);
@@ -305,6 +371,13 @@ export class UsageSourceAcquisition {
     try {
       const native = await this.provider();
       if (!native) throw unavailable("native helper unavailable");
+      // Directory identities and files become authorized only with the final cut.
+      for (const directory of plan.directories || []) {
+        const current = await native.object(directory.path);
+        if (!current || current.volume !== directory.object.volume || current.id64 !== directory.object.id64 ||
+          current.id128 !== directory.object.id128 || current.attributes & 0x400)
+          throw unavailable("new directory changed before publication");
+      }
       if (bootstrap) {
         this.store.database.exec("DELETE FROM usage_source_catalog");
         const directories = new Set(plan.guards);
@@ -368,6 +441,7 @@ export class UsageSourceAcquisition {
       try {
         if (Number(this.store.database.prepare("PRAGMA data_version").get().data_version) !== plan.dataVersion)
           throw unavailable("external database commit during acquisition");
+        for (const directory of plan.directories || []) this.put(directory.path, directory.object, "directory", {});
         this.store.database.prepare(`INSERT OR REPLACE INTO usage_source_catalog VALUES('','','','','state',?,1)`)
           .run(JSON.stringify(state));
         this.store.database.exec("COMMIT");

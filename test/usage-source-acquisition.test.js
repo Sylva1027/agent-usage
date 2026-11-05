@@ -195,10 +195,11 @@ test("native directory inventory includes empty nested directories and detects n
   await initialize(f.store);
   assert.equal(f.store.database.prepare("SELECT role FROM usage_source_catalog WHERE path=?").get(empty.toLowerCase())?.role, "directory");
   const before = Number(facts(f.store).n);
+  f.store.usageFiles = () => { throw new Error("new source must not enumerate historical files"); };
   await writeFile(path.join(empty, "new.jsonl"), jsonl([...header("new-file"), token(40)]));
-  assert.equal(await f.store.sync({ certifiedOnly: true }), null);
-  assert.match(f.store.lastAcquisitionWork.reason, /managed directory changed|namespace changed|discovery directory changed/);
-  await f.store.sync();
+  const result = await f.store.sync({ certifiedOnly: true });
+  assert.ok(result?.acquisition, JSON.stringify(f.store.lastAcquisitionWork));
+  assert.equal(result.fileCount, 3);
   assert.equal(Number(facts(f.store).n), before + 40);
   assert.ok((await f.store.sync({ certifiedOnly: true }))?.acquisition);
 });
