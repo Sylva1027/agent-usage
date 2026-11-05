@@ -376,6 +376,7 @@ export function createUsageServer(options = {}) {
   let storeStatus = null;
   let syncPromise = null;
   let publishedSource = null;
+  let synchronizedSource = null;
   let sourceAcquisitionAvailable = process.platform === "win32";
   let sourceHints = { paths: [], unknown: false };
   let snapshotDirectoryPromise = null;
@@ -706,6 +707,15 @@ export function createUsageServer(options = {}) {
         ...currentUsageOptions,
         importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
       });
+      // Acquisition can be complete before a dashboard response has been cached.
+      if (before.publication && !before.publication.pending &&
+        before.signature === synchronizedSource?.signature &&
+        before.fingerprint === storeStatus?.fingerprint &&
+        usageStore.status?.fingerprint === storeStatus.fingerprint) {
+        storeStatus = { ...storeStatus, checkedAt: before.checkedAt };
+        publishedSource = before;
+        return storeStatus;
+      }
       const retained = await summaryCache.stateFor(before);
       if (retained) {
         usageStore.restoreState(retained);
@@ -722,6 +732,7 @@ export function createUsageServer(options = {}) {
           importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
         }),
       );
+      synchronizedSource = publishedSource;
       storeStatus = status;
       scheduleUsageDiscovery(usageStore.metadata().harnessModels);
       return status;

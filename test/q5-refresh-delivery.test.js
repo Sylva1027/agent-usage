@@ -380,13 +380,17 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
     UsageSummaryCache.prototype.readSourceState = async function (...args) {
       const source = await originalRead.apply(this, args);
       reads++;
-      if (reads === 21) {
+      if (reads === 19) {
         entered.resolve();
         await release.promise;
-      } else if (reads % 2 === 0 && reads <= 20) {
+      } else if (reads % 2 === 0 && reads <= 16) {
         completed++;
         if (expected.at(-1) !== source.fingerprint) expected.push(source.fingerprint);
         if (completed < 8) await appendFile(fixture.rolloutFiles[0], usageLine(1));
+        hint();
+      } else if (reads > 16) {
+        // Quiet rounds can reuse completed acquisition after one source check.
+        completed++;
         hint();
       }
       return source;
@@ -394,7 +398,7 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
     await appendFile(fixture.rolloutFiles[0], usageLine(1));
     hint();
     await entered.promise;
-    assert.equal(completed, 10, "eight changed and two unchanged syncs completed with a pending hint every round");
+    assert.equal(completed, 10, "eight changes and two quiet checks completed with a pending hint every round");
     assert.equal(expected.length, 8);
     assert.deepEqual(
       sent.map((event) => event.fingerprint),
