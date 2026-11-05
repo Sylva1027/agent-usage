@@ -45,7 +45,7 @@ async function launch(matrix, variant, directory, suffix = "") {
   await mkdir(env.TEMP, { recursive: true });
   const startedAtMs = elapsed();
   const child = spawn(process.execPath, ["--max-old-space-size=512", "--import",
-    pathToFileURL(path.join(HERE, "remaining-harness-delivery-telemetry.mjs")).href, SCRIPT, "--serve", configFile],
+    pathToFileURL(matrix.telemetryModule || path.join(HERE, "remaining-harness-delivery-telemetry.mjs")).href, SCRIPT, "--serve", configFile],
   { cwd: ROOT, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.on("data", (bytes) => void appendFile(path.join(directory, `stdout${suffix}.log`), bytes));
   child.stderr.on("data", (bytes) => void appendFile(path.join(directory, `stderr${suffix}.log`), bytes));

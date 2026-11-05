@@ -3560,11 +3560,155 @@ export class UsageStore {
   }
 
   /**
+   * Reuse an unchanged source tail only when replacement preserves IDs and order.
+   * @param {any} file
+   * @param {{ onWarning?: (warning: string) => void }} [options]
+   */
+  async reuseSourcePrefix({ filePath, source, info }, { onWarning } = {}) {
+    const database = this.database;
+    if (
+      !["claude", "workbuddy", "zcode", "opencode"].includes(source.kind) ||
+      typeof database?.isTransaction !== "boolean" ||
+      database.isTransaction ||
+      this.writeTransactionDepth
+    )
+      return null;
+    const last = database.prepare("SELECT source_path FROM events ORDER BY id DESC LIMIT 1").get();
+    const present = database.prepare("SELECT 1 FROM events WHERE source_path=? LIMIT 1").get(filePath);
+    if (present && last?.source_path !== filePath) return null;
+
+    const mismatch = new Error("Source facts require complete replacement");
+    let previous;
+    const closePrevious = () => {
+      previous?.return?.();
+      previous = null;
+    };
+    const warnings = [];
+    let warningsPublished = false;
+    const publishWarnings = () => {
+      warningsPublished = true;
+      for (const warning of warnings) onWarning?.(warning);
+    };
+    let reusedEvents = 0,
+      insertedEvents = 0;
+    database.exec("BEGIN IMMEDIATE");
+    this.writeTransactionDepth += 1;
+    try {
+      const binding = database
+        .prepare("SELECT kind,home_id,home_label,home_path FROM source_files WHERE path=?")
+        .get(filePath);
+      if (
+        !sameSourceBinding(binding, source) ||
+        database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+        database.prepare("SELECT 1 FROM archive_segments LIMIT 1").get() ||
+        database.prepare("SELECT 1 FROM temp.sqlite_schema WHERE name IN ('events','source_files') LIMIT 1").get() ||
+        database.prepare("PRAGMA main.table_xinfo(events)").all().map((column) => column.name).join(",") !==
+          ["id", ...EVENT_INSERT_COLUMNS].join(",") ||
+        database.prepare(`SELECT 1 FROM main.sqlite_schema WHERE type='trigger' AND tbl_name='source_files'
+          AND name NOT IN ('usage_source_progress_source_update',
+            'usage_source_catalog_source_files_INSERT','usage_source_catalog_source_files_UPDATE',
+            'usage_source_catalog_source_files_DELETE','usage_all_source_insert',
+            'usage_all_source_update','usage_all_source_delete') LIMIT 1`).get() ||
+        /\bAUTOINCREMENT\b/i.test(
+          String(database.prepare("SELECT sql FROM main.sqlite_schema WHERE name='events'").get()?.sql),
+        )
+      )
+        throw mismatch;
+      for (const table of [
+        "rate_limit_observations",
+        "quota_usage_sources",
+        "usage_source_progress",
+        "usage_source_baselines",
+        "usage_source_reparse",
+      ]) {
+        if (database.prepare(`SELECT 1 FROM ${table} WHERE source_path=? LIMIT 1`).get(filePath)) throw mismatch;
+      }
+      const tail = database
+        .prepare("SELECT COUNT(*) n,MIN(id) first,MAX(id) last FROM events WHERE source_path=?")
+        .get(filePath);
+      if (Number(tail.n) > 0) {
+        const maximum = database.prepare("SELECT id FROM events ORDER BY id DESC LIMIT 1").get();
+        const earlier = database.prepare("SELECT id FROM events WHERE id<? ORDER BY id DESC LIMIT 1").get(tail.first);
+        if (
+          tail.last !== maximum?.id ||
+          Number(tail.last) - Number(tail.first) + 1 !== Number(tail.n) ||
+          Number(tail.first) !== Number(earlier?.id ?? 0) + 1
+        )
+          throw mismatch;
+      }
+      const statement = database.prepare(
+        `SELECT ${EVENT_INSERT_COLUMNS.join(",")} FROM events WHERE source_path=? ORDER BY id`,
+      );
+      statement.setReturnArrays(true);
+      previous = statement.iterate(filePath);
+      let exhausted = false;
+      const insert = createUsageInsertBatch(database, {
+        sqlPrefix: `INSERT INTO events (${EVENT_INSERT_COLUMNS.join(",")}) VALUES`,
+        columns: EVENT_INSERT_COLUMNS.length,
+      });
+      await streamUsageFileEvents(
+        filePath,
+        source,
+        (event) => {
+          const row = sourceEventRow(filePath, event),
+            values = EVENT_INSERT_COLUMNS.map((column) => row[column]);
+          const old = exhausted ? null : previous.next();
+          if (old && !old.done) {
+            if (values.some((value, index) => value !== old.value[index])) throw mismatch;
+            reusedEvents += 1;
+          } else {
+            exhausted = true;
+            insert.add(values);
+            insertedEvents += 1;
+          }
+        },
+        { repositoryResolver: this.repositoryResolver, onWarning: (warning) => warnings.push(String(warning)) },
+      );
+      if (!exhausted && !previous.next().done) throw mismatch;
+      closePrevious();
+      insert.flush();
+      database
+        .prepare("UPDATE source_files SET size=?,mtime_ms=?,indexed_at=? WHERE path=?")
+        .run(info.size, info.mtimeMs, new Date().toISOString(), filePath);
+      const nextFileWarnings = this.publishedFileWarningsForRound();
+      delete nextFileWarnings[filePath];
+      this.writeMeta("perf_file_warnings", JSON.stringify(nextFileWarnings));
+      publishWarnings();
+      database.exec("COMMIT");
+      this.writeTransactionDepth -= 1;
+      if (this.publishedFileWarningsView) this.publishedFileWarningsView.warnings = { ...nextFileWarnings };
+      return {
+        committed: true,
+        appended: false,
+        quotaWritten: false,
+        reusedPrefix: true,
+        reusedEvents,
+        insertedEvents,
+        checkedEvents: reusedEvents + insertedEvents,
+        parsedBytes: info.size,
+        prefixBytesRead: 0,
+        journalBytes: 0,
+      };
+    } catch (error) {
+      closePrevious();
+      database.exec("ROLLBACK");
+      this.rollbackReplaceFileTransaction();
+      if (error === mismatch) return null;
+      if (!warningsPublished) publishWarnings();
+      throw error;
+    } finally {
+      closePrevious();
+    }
+  }
+
+  /**
    * Replace one discovered source file's ordinary usage facts atomically.
    * @param {any} file
    * @param {{ onWarning?: (warning: string) => void, progress?: boolean }} [options]
    */
   async replaceFile({ filePath, source, info }, { onWarning, progress = true } = {}) {
+    const reused = await this.reuseSourcePrefix({ filePath, source, info }, { onWarning });
+    if (reused) return reused;
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
     const hot = !database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META);
