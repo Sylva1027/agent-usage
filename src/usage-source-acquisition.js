@@ -224,6 +224,30 @@ export class UsageSourceAcquisition {
     }
   }
 
+  async checkUnchanged(options) {
+    const changes = Number(this.store.database.prepare("SELECT total_changes() n").get().n);
+    const plan = await this.prepare(options);
+    if (!plan || plan.files.length) return null;
+    const input = await readUsageSourceInputs(options, plan.homes, "");
+    if (input.inputs !== plan.auxiliary ||
+      Number(this.store.database.prepare("PRAGMA data_version").get().data_version) !== plan.dataVersion ||
+      Number(this.store.database.prepare("SELECT total_changes() n").get().n) !== changes ||
+      this.state(options)?.revision !== plan.revision) return null;
+    const status = { fingerprint: plan.fingerprint, checkedAt: new Date().toISOString(), generatedAt: this.store.generatedAt,
+      fileCount: plan.fileCount, homeCount: plan.homes.length, updatedFileCount: 0, missingSources: plan.missingSources,
+      acquisition: { format: 1, homes: plan.homes, auxiliary: input.inputs,
+        cuts: plan.volumes.map(({ volume, journalId, nextUsn }) => ({ volume, journalId, nextUsn })) } };
+    // Save progress at half the existing journal budget, without regenerating unchanged facts.
+    if (this.work.records >= 1024 || this.work.journalBytes >= 2 * 1024 * 1024) {
+      this.store.homes = plan.homes;
+      this.store.warnings = [...plan.warnings];
+      const receipt = await this.complete(options, plan, [], status);
+      if (!receipt) return null;
+      status.acquisition = receipt;
+    }
+    return status;
+  }
+
   put(filePath, object, role, payload) {
     this.store.database.prepare(`INSERT OR REPLACE INTO usage_source_catalog
       (path,volume,id64,id128,role,payload) VALUES(?,?,?,?,?,?)`)

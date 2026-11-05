@@ -498,6 +498,11 @@ async function runExecutorProcess() {
         postState({ includeHomes: true });
         return message.frozen || message.imported ? storeStatus : { opened: true };
       }
+      case "checkSources": {
+        const checked = await store.checkSources(message.options);
+        if (checked) storeStatus = checked;
+        return checked;
+      }
       case "sync": {
         // WAL readers can keep the last committed view without copying the database.
         publishedReady = (async () => {
@@ -732,6 +737,7 @@ async function runExecutorProcess() {
         priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
       const result =
         message.type === "sync" ||
+        message.type === "checkSources" ||
         message.type === "backupHistory" ||
         message.type === "snapshot" ||
         message.type === "rebuildHistoryRollups" ||
@@ -1139,6 +1145,7 @@ export function createUsageExecutor(
       return request("open", payload);
     },
     sync: (payload = {}) => request("sync", { options: payload.options, certifiedOnly: payload.certifiedOnly, sourceHints: payload.sourceHints }),
+    checkSources: (options) => request("checkSources", { options }),
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
     dashboard: (filters = {}, summarizeOptions = {}) =>

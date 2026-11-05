@@ -88,6 +88,74 @@ async function initialize(store) {
 
 const facts = (store) => store.database.prepare("SELECT SUM(total) n, COUNT(*) count FROM events").get();
 
+test("a restart checks an unchanged published cut without committing or hiding later writes", options, async (t) => {
+  const f = await fixture(t);
+  const original = await initialize(f.store);
+  const originalFacts = { ...facts(f.store) };
+  const generatedAt = f.store.generatedAt;
+  f.store.close();
+  const reopened = f.create(); await reopened.open();
+  const changes = () => Number(reopened.database.prepare("SELECT total_changes() n").get().n);
+  const before = changes();
+  const checked = await reopened.checkSources(f.config);
+  assert.ok(checked?.acquisition);
+  assert.equal(checked.fingerprint, original.fingerprint);
+  assert.equal(checked.generatedAt, generatedAt);
+  assert.equal(changes(), before, "startup verification must not invalidate the saved publication");
+  assert.deepEqual({ ...facts(reopened) }, originalFacts);
+  await appendFile(f.codex, jsonl([token(20, 2)]));
+  assert.equal(await reopened.checkSources(f.config), null);
+  assert.deepEqual({ ...facts(reopened) }, originalFacts);
+  assert.ok((await reopened.sync({ certifiedOnly: true }))?.acquisition);
+  assert.equal(Number(facts(reopened).n), Number(originalFacts.n) + 10);
+});
+
+test("startup verification rejects an external commit or auxiliary change during its check", options, async (t) => {
+  const f = await fixture(t);
+  await initialize(f.store);
+  const acquisition = f.store.sourceAcquisition;
+  const prepare = acquisition.prepare.bind(acquisition);
+  acquisition.prepare = async (...args) => {
+    const plan = await prepare(...args);
+    const writer = new DatabaseSync(f.config.databaseFile);
+    writer.exec("UPDATE events SET total=777 WHERE id=(SELECT MIN(id) FROM events)");
+    writer.close();
+    return plan;
+  };
+  assert.equal(await f.store.checkSources(f.config), null);
+  acquisition.prepare = prepare;
+  await initialize(f.store);
+  acquisition.prepare = async (...args) => {
+    const plan = await prepare(...args);
+    await writeFile(path.join(f.root, ".codex", "config.toml"), 'model="gpt-5"');
+    return plan;
+  };
+  assert.equal(await f.store.checkSources(f.config), null);
+});
+
+test("unchanged checks checkpoint journal capacity without regenerating the published data", options, async (t) => {
+  const f = await fixture(t);
+  await initialize(f.store);
+  const originalFacts = { ...facts(f.store) }, generatedAt = f.store.generatedAt;
+  const acquisition = f.store.sourceAcquisition, prepare = acquisition.prepare.bind(acquisition);
+  acquisition.prepare = async (...args) => {
+    const plan = await prepare(...args);
+    acquisition.work.records = 1024;
+    return plan;
+  };
+  const checked = await f.store.checkSources(f.config);
+  assert.ok(checked?.acquisition);
+  const saved = acquisition.state(f.config);
+  assert.deepEqual(saved.volumes.map(({ volume, journalId, nextUsn }) => ({ volume, journalId, nextUsn })), checked.acquisition.cuts);
+  assert.equal(f.store.readMetaRaw("generated_at"), generatedAt);
+  assert.deepEqual({ ...facts(f.store) }, originalFacts);
+  acquisition.prepare = prepare;
+  await appendFile(f.codex, jsonl([token(20, 2)]));
+  assert.equal(await f.store.checkSources(f.config), null);
+  await f.store.sync();
+  assert.equal(Number(facts(f.store).n), Number(originalFacts.n) + 10);
+});
+
 test("native acquisition resumes open writers and reopens durably without resolving unrelated volume objects", options, async (t) => {
   const f = await fixture(t);
   await initialize(f.store);

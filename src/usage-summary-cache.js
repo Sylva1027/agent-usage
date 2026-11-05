@@ -228,6 +228,17 @@ export class UsageSummaryCache {
     }
   }
 
+  async retainedState() {
+    // A startup hint only; current source and publication checks authorize reuse.
+    await this.open();
+    try {
+      const saved = JSON.parse(String(this.readState.get().state));
+      return saved?.executor || null;
+    } catch {
+      return null;
+    }
+  }
+
   async stateFor(source) {
     await this.open();
     const row = this.readState.get();

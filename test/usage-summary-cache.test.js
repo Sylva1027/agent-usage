@@ -35,6 +35,41 @@ test("concurrent cache opens share one connection and close releases it", async 
   }
 });
 
+test("a complete cached server response survives restart and a later append still refreshes", async () => {
+  const fixture = createCodexIntegrationFixture();
+  let server;
+  const query = "/api/usage?preset=all&bucket=day&calendarZone=utc&view=dashboard";
+  async function start() {
+    server = createUsageServer(fixture.serverOptions);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    return `http://127.0.0.1:${server.address().port}`;
+  }
+  try {
+    let base = await start();
+    let first;
+    for (let n = 0; n < 3; n++) {
+      const response = await fetch(base + (n ? `${query}&skipCheck=1` : query));
+      assert.equal(response.status, 200);
+      first = await response.json();
+      if (n === 2) assert.equal(response.headers.get("x-summary-cache"), "hit");
+    }
+    await server.close(); server = null;
+    base = await start();
+    const reopened = await fetch(base + query);
+    assert.equal(reopened.status, 200);
+    assert.equal(reopened.headers.get("x-summary-cache"), "hit");
+    assert.deepEqual((await reopened.json()).summary.totals, first.summary.totals);
+    await appendFile(fixture.rolloutFiles.at(-1), `${JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(),
+      payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000, total_tokens: 1000 } } } })}\n`);
+    const changed = await fetch(base + query);
+    assert.equal(changed.status, 200);
+    assert.equal(changed.headers.get("x-summary-cache"), "miss");
+    const fresh = await changed.json();
+    assert.equal(fresh.summary.totals.total, first.summary.totals.total + 1000);
+    assert.equal(fresh.summary.eventCount, first.summary.eventCount + 1);
+  } finally { await server?.close(); fixture.close(); }
+});
+
 test("cached aggregates update trend, quota flags and model activity with the clock", () => {
   const payload = {
     summary: {

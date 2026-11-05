@@ -4182,6 +4182,14 @@ export class UsageStore {
       throw error;
     }
   }
+  async checkSources(options = this.options) {
+    await this.open();
+    this.sourceAcquisition ||= new UsageSourceAcquisition(this);
+    const status = await this.sourceAcquisition.checkUnchanged(options);
+    this.lastAcquisitionWork = this.sourceAcquisition.work;
+    return status;
+  }
+
   async sync(args = {}) {
     const view = { warnings: null };
     this.publishedFileWarningsView = view;

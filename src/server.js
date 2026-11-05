@@ -673,6 +673,24 @@ export function createUsageServer(options = {}) {
         importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE };
       const hints = sourceHints;
       sourceHints = { paths: [], unknown: false };
+      let startupRetained = null;
+      if (!storeStatus) {
+        startupRetained = await summaryCache.retainedState();
+        if (startupRetained) {
+          sourceAcquisitionAvailable = process.platform === "win32" && Boolean(startupRetained.status?.acquisition);
+          if (sourceAcquisitionAvailable) usageStore.restoreState(startupRetained);
+        }
+      }
+      if (sourceAcquisitionAvailable && (startupRetained || storeStatus?.acquisition)) {
+        const checked = await usageStore.checkSources(sourceOptions);
+        const source = checked && await summaryCache.readCertifiedSourceState(sourceOptions, checked);
+        if (source && (!startupRetained || await summaryCache.stateFor(source))) {
+          storeStatus = checked;
+          publishedSource = source;
+          scheduleUsageDiscovery(usageStore.metadata().harnessModels);
+          return checked;
+        }
+      }
       if (sourceAcquisitionAvailable) {
         const certified = await usageStore.sync({ options: sourceOptions, certifiedOnly: true, sourceHints: hints });
         sourceAcquisitionAvailable = Boolean(certified?.acquisition);

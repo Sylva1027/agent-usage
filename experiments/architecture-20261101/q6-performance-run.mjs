@@ -45,13 +45,13 @@ function storage(prepared) {
   finally { db.close(); }
 }
 
-async function runCell(cell, matrix) {
+export async function runCell(cell, matrix) {
   const { prepared, directory, variant, proofMode } = cell;
   await assert.rejects(stat(path.join(directory, "result.json")), (error) => error.code === "ENOENT");
   const version = matrix.versions.find((entry) => entry.variant === variant);
   const traceDirectory = path.join(directory, "components");
   await mkdir(traceDirectory, { recursive: true });
-  const result = { generation: "q6", cell: cell.id, variant, proofMode, prepared, rounds: cell.rounds,
+  const result = { generation: matrix.generation || "q6", cell: cell.id, variant, proofMode, prepared, rounds: cell.rounds,
     startedAt: new Date().toISOString(), appends: [], scopes: [], resourceSpans: [], passed: false };
   let server, sampler, browser, release;
   const checkpoint = async () => {
@@ -64,11 +64,11 @@ async function runCell(cell, matrix) {
     const hookConfig = path.join(directory, `hook${suffix}.json`);
     await writeFile(configFile, JSON.stringify({ options: serverOptions(prepared, token) }));
     await writeFile(hookConfig, JSON.stringify({ version, output: traceDirectory, proofMode, pricing: matrix.pricing,
-      selected: Object.values(prepared.selected).map((entry) => entry.targetPath) }));
+      selected: Object.values(prepared.selected).map((entry) => entry.targetPath), diagnostic: cell.diagnostic || false }));
     const env = { ...process.env, Q6_PERFORMANCE_CONFIG: hookConfig, TEMP: path.join(directory, "temp"), TMP: path.join(directory, "temp") };
     for (const key of ["NODE_OPTIONS", "Q5_VARIANT", "Q6_TEST_HELPER", "Q6_TEST_TRACE"]) delete env[key];
     await mkdir(env.TEMP, { recursive: true });
-    const child = spawn(process.execPath, ["--max-old-space-size=512", "--import", pathToFileURL(path.join(here, "q6-performance-hook.mjs")).href,
+    const child = spawn(process.execPath, ["--max-old-space-size=512", "--import", pathToFileURL(matrix.hookModule || path.join(here, "q6-performance-hook.mjs")).href,
       fileURLToPath(import.meta.url), "--serve", configFile], { cwd: ROOT, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     const ready = await waitForServer(child);
     return { child, ready, shutdownToken: token };
@@ -112,7 +112,7 @@ async function runCell(cell, matrix) {
   }
   try {
     release = await lockCanonical(prepared);
-    result.fixture = await cloneQ5Cell(prepared, { proofMode, nativeBinary: version.nativeBinary, variant,
+    result.fixture = await cloneQ5Cell(prepared, { proofMode, nativeBinary: version.nativeBinary, variant: cell.fixtureVariant || variant,
       pricingSha256: matrix.pricing.catalogSha256 });
     assert.equal(result.fixture.factsIdentical, true);
     server = await launch(); result.server = server.ready;
@@ -124,16 +124,46 @@ async function runCell(cell, matrix) {
     browser.page.waitForResponse = (predicate, options) => originalWait(predicate, { ...options, timeout: 120000 });
     result.first = { startedAtMs: started, endedAtMs: Date.now(), all: browser.all };
     result.initialStorage = storage(prepared); await checkpoint();
-    if (variant === "candidate" && proofMode === "native" && process.env.Q6_REQUIRE_CATALOG === "1")
+    if (variant.startsWith("candidate") && proofMode === "native" && process.env.Q6_REQUIRE_CATALOG === "1")
       assert.equal(result.initialStorage.catalog?.ready, 1, "Native catalog must be reusable before timed append acceptance");
+    if (cell.reopenCard) {
+      if (!cell.diagnostic) {
+        result.preparedResponses = await browser.page.evaluate(async () => {
+          const urls = [...new Set(window.__q5Delivery.rows.filter((row) => row.kind === "fetch-start")
+            .map((row) => new URL(row.url, location.href))
+            .filter((url) => url.pathname === "/api/usage" && ["today", "all"].includes(url.searchParams.get("preset")))
+            .map((url) => { url.searchParams.set("skipCheck", "1"); return url.pathname + url.search; }))];
+          const rows = [];
+          for (const url of urls) for (let n = 0; n < 2; n++) {
+            const response = await fetch(url), body = await response.json();
+            rows.push({ url, status: response.status, cache: response.headers.get("x-summary-cache"), total: body.summary?.totals?.total });
+          }
+          return rows;
+        });
+        assert.ok(result.preparedResponses.length >= 4);
+        for (const row of result.preparedResponses.filter((_, n) => n % 2 === 1)) {
+          assert.equal(row.status, 200); assert.equal(row.cache, "hit", "Prepare complete response caches before restart");
+        }
+      }
+      result.preparedStorage = storage(prepared);
+      await browser.browser.close(); browser = null;
+      await stopServer(server, result); server = null; await stopSampling();
+      const reopen = Date.now(); server = await launch("-reopen"); sampler = await sampling("reopen");
+      browser = await openPage(server.ready.url, directory, [observeQ5Delivery]);
+      assert.equal(browser.all.total, result.first.all.total);
+      result.reopen = { startedAtMs: reopen, endedAtMs: Date.now(), all: browser.all };
+      assert.deepEqual(browser.errors, []);
+      await checkpoint();
+    }
     if (cell.bootstrapOnly) {
       result.bootstrapOnly = true;
       result.passed = result.initialStorage.catalog?.ready === 1;
     } else {
     let expected = browser.all.total;
     const previous = progressRows(prepared.databaseFile).find((entry) => entry.sourcePath === prepared.selected.codex.targetPath).checkpoint.state.previousCumulative;
-    const state = { codex: { cumulative: { ...previous }, nextTimestampMs: matrix.appendTimeMs },
-      dsh: { nextSequence: matrix.appendTimeMs * 10, nextTimestampMs: matrix.appendTimeMs, turn: 1, step: 1 } };
+    const appendTimeMs = cell.reopenCard ? Date.now() - 60000 : matrix.appendTimeMs;
+    const state = { codex: { cumulative: { ...previous }, nextTimestampMs: appendTimeMs },
+      dsh: { nextSequence: appendTimeMs * 10, nextTimestampMs: appendTimeMs, turn: 1, step: 1 } };
     for (const kind of ["codex", "dsh"]) for (let n = 0; n < cell.rounds; n++) {
       expected += kind === "codex" ? 1000 : 1900;
       await appendQ5AndPaint(browser.page, prepared, state, kind, result, expected, checkpoint, {
@@ -161,7 +191,7 @@ async function runCell(cell, matrix) {
       }
       await checkpoint();
     }
-    if (!cell.fileCount) for (const preset of ["today", "week", "all"]) await scope(preset);
+    if (!cell.fileCount && !cell.reopenCard) for (const preset of ["today", "week", "all"]) await scope(preset);
     result.final = result.first.all.body;
     const finalResponse = await browser.page.evaluate(async () => (await fetch("/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=local&skipCheck=1")).json());
     result.final = finalResponse; result.finalStorage = storage(prepared);
@@ -170,7 +200,7 @@ async function runCell(cell, matrix) {
     await checkpoint();
     await browser.browser.close(); browser = null;
     await stopServer(server, result); server = null; await stopSampling();
-    if (!cell.fileCount) {
+    if (!cell.fileCount && !cell.reopenCard) {
       const reopen = Date.now(); server = await launch("-reopen"); sampler = await sampling("reopen");
       browser = await openPage(server.ready.url, directory, [observeQ5Delivery]);
       assert.equal(browser.all.total, expected);

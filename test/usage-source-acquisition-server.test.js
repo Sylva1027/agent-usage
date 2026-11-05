@@ -6,12 +6,13 @@ import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createUsageServer } from "../src/server.js";
+import { UsageSummaryCache } from "../src/usage-summary-cache.js";
 
 const enabled = Boolean(process.env.Q6_TEST_HELPER && process.env.Q6_TEST_TRACE);
 const jsonl = (total, time) => `${JSON.stringify({ type: "event_msg", timestamp: new Date(time).toISOString(),
   payload: { type: "token_count", info: { total_token_usage: { input_tokens: total, total_tokens: total } } } })}\n`;
 
-test("one certified result drives concurrent requests, notifications, scope changes and a complete server reopen", { skip: !enabled }, async () => {
+test("one certified result drives concurrent requests, notifications, scope changes and a complete server reopen", { skip: !enabled }, async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "usage-acquisition-server-"));
   const trace = process.env.Q6_TEST_TRACE;
   const forbid = path.join(trace, "forbid");
@@ -25,6 +26,14 @@ test("one certified result drives concurrent requests, notifications, scope chan
     importStoreFile: path.join(root, "imports.json"), automaticDiscoveryEnabled: false,
     pricingRefreshSchedulerEnabled: false };
   let server, stream;
+  const cacheReads = [];
+  const getCached = UsageSummaryCache.prototype.get;
+  t.mock.method(UsageSummaryCache.prototype, "get", async function (...args) {
+    const result = await getCached.apply(this, args);
+    cacheReads.push({ hit: Boolean(result), expected: args[1].signature,
+      saved: this.readEntry.get(args[0])?.signature, publication: args[1].publication });
+    return result;
+  });
   const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
   async function listen() {
     server = createUsageServer({ ...options, shutdownToken: randomUUID() });
@@ -79,10 +88,18 @@ test("one certified result drives concurrent requests, notifications, scope chan
     assert.equal((await get(base, `${query}&skipCheck=1`)).summary.totals.total, 30);
     stream.abort();
     await reader.cancel().catch(() => {});
+    // The first query may publish derived facts; the next quiet query persists its response.
+    await get(base, `${query}&skipCheck=1`);
+    const quiet = await fetch(`${base}${query}&skipCheck=1`);
+    assert.equal(quiet.headers.get("x-summary-cache"), "hit", "the saved response must exist before restart");
+    await quiet.json();
     await server.close();
     server = null;
     base = await listen();
-    assert.equal((await get(base, query)).summary.totals.total, 30);
+    const reopened = await fetch(base + query);
+    assert.equal(reopened.status, 200);
+    assert.equal(reopened.headers.get("x-summary-cache"), "hit", JSON.stringify(cacheReads.slice(-3)));
+    assert.equal((await reopened.json()).summary.totals.total, 30);
     assert.equal(ready(), 1);
   } finally {
     stream?.abort();
