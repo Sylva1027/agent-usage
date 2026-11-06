@@ -186,7 +186,7 @@ test("verified SQL source lookup preserves rowid ties through the hot metadata v
     insert.run("/fixture/plan", time - 1, "plan", 0);
     insert.run("/fixture/credits", time - 1, "credits", time + 1000);
     UsageStore.prototype.summarizeInReadTransaction = function (...args) {
-      if (this.verifiedHistorySqlRead) {
+      if (this.verifiedHistorySqlRead && !this.historyDiskRead) {
         assert.equal(this.quotaSourceFor("a", "session-a", time), expectedSource);
         verifiedReads += 1;
       }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
+import { createHistoryArchiveCandidate, prepareHistoryArchiveCommit } from "../src/history-archive.js";
 import { UsageStore } from "../src/usage-store.js";
 
 const AUTHORITY_KEY = "history_archive_event_authority";
@@ -151,12 +152,6 @@ async function legacyMetadata(store, fixture, asOf, databaseFile = fixture.datab
   } finally {
     oracle.close();
   }
-}
-
-function writeAuthority(database, segmentId) {
-  database
-    .prepare("INSERT INTO store_meta(key, value) VALUES (?, ?)")
-    .run(AUTHORITY_KEY, JSON.stringify({ formatVersion: 1, segmentIds: [segmentId] }));
 }
 
 test("initial build, reopen no-op, one-row appends, cross-home/channel counts, and future asOf", async () => {
@@ -406,7 +401,7 @@ test("metadataHistory keeps its WAL snapshot when another connection commits", a
   }
 });
 
-test("cold authority falls back to the complete archive carrier", async () => {
+test("metadataHistory reads cold authority through the complete disk route", async () => {
   const fixture = await createFixture();
   const oracleFile = path.join(fixture.root, "oracle.sqlite");
   const store = new UsageStore({ ...fixture.options, databaseFile: fixture.databaseFile });
@@ -419,41 +414,39 @@ test("cold authority falls back to the complete archive carrier", async () => {
       .prepare("SELECT * FROM events ORDER BY id")
       .all()
       .map((row) => ({ ...row }));
-    const sourceKinds = new Map(
+    assert.equal(coldRows.length, 2);
+    const startMs = Math.min(...coldRows.map((row) => Number(row.timestamp_ms)));
+    const endMs = Math.max(...coldRows.map((row) => Number(row.timestamp_ms))) + 1;
+    const candidateFile = path.join(fixture.root, "cold.sqlite");
+    await createHistoryArchiveCandidate(store.database, candidateFile, { startMs, endMs });
+    const plan = await prepareHistoryArchiveCommit(store.database, candidateFile);
+    const committed = await store.commitHistoryArchiveEvents(plan);
+    assert.equal(committed.deletedEventCount, 2);
+    assert.equal(
       store.database
-        .prepare("SELECT path, kind FROM source_files")
-        .all()
-        .map((row) => [String(row.path), String(row.kind)]),
+        .prepare("SELECT COUNT(*) AS count FROM events WHERE timestamp_ms >= ? AND timestamp_ms < ?")
+        .get(startMs, endMs).count,
+      0,
+      "archive commit must remove the sealed hot interval",
     );
-    const metadataCarrier = {
-      generatedAt: store.generatedAt,
-      homes: structuredClone(store.homes),
-      warnings: structuredClone(store.warnings),
-    };
-    store.historyArchiveEventUnionForRange = async () => ({
-      rows: coldRows,
-      sourceKinds,
-      metadataCarrier,
-    });
-    const segmentId = "1".repeat(64);
-    store.database.exec("BEGIN IMMEDIATE");
-    try {
-      store.database
-        .prepare(
-          `INSERT INTO archive_segments
-           (segment_id, database_path, database_sha256, start_ms, end_ms, event_count, registered_at_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(segmentId, path.join(fixture.root, "cold.sqlite"), segmentId, 0, 1, coldRows.length, Date.now());
-      writeAuthority(store.database, segmentId);
-      store.database.exec("DELETE FROM events");
-      store.database.exec("COMMIT");
-    } catch (error) {
-      store.database.exec("ROLLBACK");
-      throw error;
-    }
+    assert.deepEqual(
+      JSON.parse(store.database.prepare("SELECT value FROM store_meta WHERE key = ?").get(AUTHORITY_KEY).value),
+      { formatVersion: 1, segmentIds: [committed.segmentId] },
+    );
 
-    const actual = await store.metadataHistory(AS_OF);
+    const originalUnion = store.historyArchiveEventUnionForRange;
+    let unionCalls = 0;
+    store.historyArchiveEventUnionForRange = async () => {
+      unionCalls += 1;
+      throw new Error("metadataHistory must not fall back to the complete carrier");
+    };
+    let actual;
+    try {
+      actual = await store.metadataHistory(AS_OF);
+    } finally {
+      store.historyArchiveEventUnionForRange = originalUnion;
+    }
+    assert.equal(unionCalls, 0);
     const expected = await legacyMetadata(oracle, fixture, AS_OF, oracleFile);
     assert.deepEqual({ ...actual, generatedAt: "" }, { ...expected, generatedAt: "" });
     assert.equal(actual.eventCount, 2);

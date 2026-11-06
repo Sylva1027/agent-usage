@@ -61,19 +61,24 @@ test("cold dashboard shares one verified carrier and preserves existing componen
     await createHistoryArchiveCandidate(store.database, segment, { startMs: start, endMs: start + 60000 });
     const plan = await prepareHistoryArchiveCommit(store.database, segment);
     await store.commitHistoryArchiveEvents(plan);
+    const originalDiskReader = store.withSqlHistoryReader;
+    let diskReads = 0;
+    store.withSqlHistoryReader = function (read) {
+      diskReads += 1;
+      return originalDiskReader.call(this, read);
+    };
     const individual = {
       summary: await store.summarizeHistory(filters),
       metadata: await store.metadataHistory(filters.now),
       periodComparison: await store.periodComparisonHistory({ now: filters.now, calendarZone: "utc" }),
     };
-    assert.equal(calls, 3, "baseline separately decodes cold union three times");
+    assert.equal(calls, 0, "standalone history readers must avoid the full union carrier");
+    assert.equal(diskReads, 3, "each standalone reader must execute the bounded disk route once");
     calls = 0;
     const combined = await store.dashboardHistory(filters);
-    assert.equal(
-      calls,
-      store.database.isTransaction === false ? 0 : 1,
-      "SQL-capable readers avoid the full carrier; older Node retains it",
-    );
+    assert.equal(calls, 0, "the combined dashboard must avoid the full carrier");
+    assert.equal(diskReads, 3, "single-all must retain its optimized SQL projection");
+    store.withSqlHistoryReader = originalDiskReader;
     assert.deepEqual(combined, individual, "all fields including cost, metadata and period must be unchanged");
     const noNow = await store.dashboardHistory({ preset: "all", calendarZone: "utc" });
     assert.equal(noNow.summary.totals.total, 130);

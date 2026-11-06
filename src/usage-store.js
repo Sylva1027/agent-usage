@@ -60,6 +60,7 @@ import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 import { isQuotaUsage } from "../public/quota-usage.js";
 import { HistoryQuoteInputs } from "./history-quote-inputs.js";
 import { UsageSessionMembers } from "./usage-session-members.js";
+import { UsageHistoryQuery } from "./usage-history-query.js";
 import {
   ensureUsageAllSummarySchema,
   buildStoredAllSummary,
@@ -2101,6 +2102,8 @@ export class UsageStore {
     /** SQL history projections stay separate from every hot-only public reader. */
     this.historySqlDashboardCache = null;
     this.verifiedHistorySqlRead = false;
+    this.historyDiskRead = false;
+    this.historySourceKinds = null;
     /**
      * D3：**已提交 quota 观测的规范映射**（单槽，见 {@link UsageStore#quotaObservations}）。
      *
@@ -4875,7 +4878,7 @@ export class UsageStore {
     if (cacheable && this.quotaObservationCache?.revision === this.storeRevision) {
       return this.quotaObservationCache.rows;
     }
-    const rows = quotaObservationsFromDatabase(this.database, Boolean(this.verifiedHistorySqlRead));
+    const rows = quotaObservationsFromDatabase(this.database, this.verifiedHistorySqlRead && !this.historyDiskRead);
     if (cacheable) this.quotaObservationCache = { revision: this.storeRevision, rows };
     return rows;
   }
@@ -5091,16 +5094,11 @@ export class UsageStore {
       this.database.exec("RELEASE metadata_history_read");
     }
 
-    const union = await this.historyArchiveEventUnionForRange(undefined, {
-      completeHistory: true,
-      includeMetadataCarrier: true,
-    });
-    const events = publishedUsageEventsFromUnion(union, this.serviceTierEvidence, this.quotaSourceFor.bind(this));
-    return metadataFromHistoryEvents(events, union.metadataCarrier, asOf);
+    return this.withSqlHistoryReader((reader) => reader.metadata(asOf));
   }
 
   eventBounds(excludeHomes = []) {
-    if (this.verifiedHistorySqlRead && excludeHomes.length === 0) {
+    if (this.verifiedHistorySqlRead && !this.historyDiskRead && excludeHomes.length === 0) {
       return this.database
         .prepare(`
         SELECT MIN(minimum) AS minimum, MAX(maximum) AS maximum FROM (
@@ -5415,8 +5413,10 @@ export class UsageStore {
     const columns = includeRepositories
       ? `${COST_EVENT_COLUMNS}, repository_key, repository_path, repository_kind, cwd, reconciliation_gap`
       : COST_EVENT_COLUMNS;
-    const statement = this.database.prepare(`SELECT ${columns} FROM events WHERE ${where.sql}`);
-    const sourceKinds = homeSourceKinds(this.homes);
+    const statement = this.database.prepare(
+      `SELECT ${columns} FROM events WHERE ${where.sql}${this.historyDiskRead ? " ORDER BY id" : ""}`,
+    );
+    const sourceKinds = this.historySourceKinds ?? homeSourceKinds(this.homes);
     if (typeof statement.setReturnArrays === "function") {
       statement.setReturnArrays(true);
       for (const row of statement.iterate(...where.params)) {
@@ -5491,7 +5491,7 @@ export class UsageStore {
           range,
           bucket,
           {
-            sourceKinds: homeSourceKinds(this.homes),
+            sourceKinds: this.historySourceKinds ?? homeSourceKinds(this.homes),
             pricingModels,
             factRows,
             eventBucketKey: quoteInputs ? (event) => event.quoteBucketKey : undefined,
@@ -5545,6 +5545,16 @@ export class UsageStore {
   }
 
   historyRepositorySessionOrder(where, firsts = null) {
+    if (this.historyDiskRead) {
+      const sessions = new Map();
+      for (const row of this.database.prepare(`SELECT repository_key,session_id,MIN(id) AS first_id
+        FROM events WHERE ${where.sql} GROUP BY repository_key,session_id ORDER BY repository_key,first_id`).iterate(...where.params)) {
+        const values = sessions.get(row.repository_key) ?? [];
+        values.push(row.session_id);
+        sessions.set(row.repository_key, values);
+      }
+      return sessions;
+    }
     firsts ??= this.database
       .prepare(`
       SELECT repository_key, session_id, MIN(timestamp_ms) AS first_ms FROM events
@@ -5552,7 +5562,7 @@ export class UsageStore {
     `)
       .all(...where.params);
     const tieRows = this.database.prepare(`
-      SELECT * FROM (SELECT * FROM history_hot.events UNION ALL SELECT * FROM main.events)
+      SELECT * FROM ${this.historyDiskRead ? "events" : "(SELECT * FROM history_hot.events UNION ALL SELECT * FROM main.events)"}
       WHERE repository_key = ? AND timestamp_ms = ? AND ${where.sql}
     `);
     const orderedSessions = new Map();
@@ -5935,13 +5945,7 @@ export class UsageStore {
     } finally {
       this.database.exec("RELEASE period_comparison_history_read");
     }
-    const events = await this.publishedHistoryUsageEvents();
-    const excludedHomeIds = new Set((options.excludeHomes || []).map(String));
-    const pricingModels = options.pricingModels ?? getPricingCatalog().models;
-    return summarizePeriodComparison(
-      excludedHomeIds.size === 0 ? events : events.filter((event) => !excludedHomeIds.has(event.homeId)),
-      { ...options, pricingModels },
-    );
+    return this.withSqlHistoryReader((reader) => reader.periodComparison(options));
   }
 
   // New Record：对日/周/月三种自然周期求各指标的历史最高期（严格新高、至少两期可比），
@@ -5996,7 +6000,7 @@ export class UsageStore {
     const champions =
       memoized ??
       (() => {
-        if (!this.verifiedHistorySqlRead) {
+        if (!this.verifiedHistorySqlRead || this.historyDiskRead) {
           const projection = this.recordProjectionOptions(zone, excludeHomes);
           const stored = readStoredRecordChampions(projection);
           if (stored) return stored;
@@ -6026,7 +6030,7 @@ export class UsageStore {
     const catalog = getPricingCatalog();
     const rate = Number(catalog.usdToCnyRate);
     const usdToCnyRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
-    const sourceKinds = homeSourceKinds(this.homes);
+    const sourceKinds = this.historySourceKinds ?? homeSourceKinds(this.homes);
     const pricing = createEventPricing();
     const key = createHash("sha256")
       .update(
@@ -6351,10 +6355,168 @@ export class UsageStore {
     }
   }
 
-  /** SQL fast path for one unchanged event segment; other scopes retain the complete carrier. */
+  /** Capture hot facts once, releasing their WAL reader before package verification. */
+  async withSqlHistoryReader(read) {
+    const started = performance.now();
+    const context = {
+      homes: structuredClone(this.homes),
+      warnings: [...this.warnings],
+      generatedAt: this.generatedAt,
+      serviceTierEvidence: this.serviceTierEvidence,
+      quotaSourceEvidence: this.quotaSourceEvidence,
+      serviceTierEvidenceInput: this.serviceTierEvidenceInput,
+      revision: this.storeRevision,
+    };
+    const query = new UsageHistoryQuery(this.database, canonicalFactPayload);
+    const database = query.database;
+    let verifiedMs = 0;
+    try {
+      const records = database.prepare("SELECT * FROM archive_segments ORDER BY start_ms,segment_id").all();
+      const authorized = historyArchiveAuthorizedSegmentIds(database);
+      const revisions = historyArchiveEventRevisions(
+        database.prepare("SELECT value FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)?.value,
+        new Map(records.map((record) => [String(record.segment_id), record])),
+      );
+      const liveSource = database.prepare(
+        "SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?",
+      );
+      const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
+      for (const record of records) {
+        const id = String(record.segment_id);
+        const before = performance.now();
+        await withVerifiedHistoryArchiveCandidate(String(record.database_path), undefined, (cold, verified) => {
+          assertHistoryArchiveRecordMatches(record, verified);
+          const sources = historyArchiveSourceIdentities(cold, Number(record.start_ms), Number(record.end_ms));
+          if (Number(cold.prepare("SELECT COUNT(*) AS n FROM events").get().n) !== Number(record.event_count))
+            throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_MISMATCH", "archive event count changed");
+          const isAuthority = authorized.has(id);
+          if (isAuthority) {
+            if (
+              database
+                .prepare(
+                  "SELECT 1 FROM history_query_rows WHERE segment_id='hot' AND timestamp_ms>=? AND timestamp_ms<? LIMIT 1",
+                )
+                .get(record.start_ms, record.end_ms)
+            )
+              throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "authorized archive still has hot facts");
+            if (Number(cold.prepare("SELECT COUNT(DISTINCT source_path) AS n FROM events").get().n) !== sources.length)
+              throw historyArchiveError(
+                "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
+                "archive source identities are incomplete",
+              );
+            for (const source of sources) {
+              const live = liveSource.get(source.path);
+              if (!live || !sameHistoryArchiveSourceIdentity(live, source))
+                throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
+            }
+          }
+          database.exec("BEGIN");
+          try {
+            query.add(cold.prepare("SELECT * FROM events ORDER BY id").iterate(), id);
+            if (!isAuthority) {
+              const differences = database
+                .prepare(`SELECT payload, SUM(n) AS n FROM (
+                SELECT payload, 1 AS n FROM history_query_rows WHERE segment_id=?
+                UNION ALL SELECT payload,-1 FROM history_query_rows
+                  WHERE segment_id='hot' AND timestamp_ms>=? AND timestamp_ms<?
+              ) GROUP BY payload HAVING SUM(n)<>0 LIMIT 1`)
+                .get(id, record.start_ms, record.end_ms);
+              if (
+                differences ||
+                JSON.stringify(sources) !==
+                  JSON.stringify(
+                    historyArchiveSourceIdentities(database, Number(record.start_ms), Number(record.end_ms)),
+                  )
+              )
+                throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "hot facts do not mirror archive");
+              database.prepare("DELETE FROM history_query_rows WHERE segment_id=?").run(id);
+            } else {
+              for (const revision of revisions.get(id) ?? []) {
+                if (!sources.some((source) => sameHistoryArchiveSourceIdentity(source, revision.sourceIdentity)))
+                  throw historyArchiveRevisionError("archive revision source binding does not match segment");
+                // Remove originals before replacements, so duplicate removals cannot consume additions.
+                for (const removed of revision.removed) {
+                  if (query.remove(id, removed.payload, removed.count) !== removed.count)
+                    throw historyArchiveRevisionError("archive revision removes more payloads than segment contains");
+                }
+                for (const added of revision.added) {
+                  for (let i = 0; i < added.count; i++) query.add([added.payload], id);
+                }
+              }
+            }
+            database.exec("COMMIT");
+          } catch (error) {
+            database.exec("ROLLBACK");
+            throw error;
+          }
+        });
+        verifiedMs += performance.now() - before;
+      }
+      query.finish(EVENT_INSERT_COLUMNS, (row) => {
+        // The carrier derives display/calendar fields at query time, after raw-payload ordering and validation.
+        const date = new Date(Number(row.timestamp_ms));
+        const day = localDateKey(date);
+        return { ...row, project: row.cwd === "" ? "Unknown cwd" : row.cwd,
+          hour_key: localHourKey(date), day_key: day,
+          week_key: localDateKey(startOfLocalWeek(date)), month_key: day.slice(0,7) };
+      });
+      if (
+        database
+          .prepare(
+            "SELECT 1 FROM events e WHERE NOT EXISTS (SELECT 1 FROM source_files sf WHERE sf.path=e.source_path) LIMIT 1",
+          )
+          .get()
+      )
+        throw historyArchiveError("HISTORY_ARCHIVE_SOURCE_CHANGED", "published event has no verified source identity");
+      const reader = new UsageStore({ databaseFile: this.databaseFile });
+      reader.database = database;
+      reader.homes = context.homes;
+      reader.warnings = context.warnings;
+      reader.generatedAt = context.generatedAt;
+      reader.serviceTierEvidence = context.serviceTierEvidence;
+      reader.quotaSourceEvidence = context.quotaSourceEvidence;
+      reader.serviceTierEvidenceInput = context.serviceTierEvidenceInput;
+      reader.storeRevision = reader.derivedRevision = context.revision;
+      reader.summarySnapshotRead = reader.metadataSnapshotRead = reader.periodComparisonSnapshotRead = true;
+      reader.verifiedHistorySqlRead = reader.historyDiskRead = true;
+      reader.historySourceKinds = homeSourceKinds(reader.publishedUsageHomes());
+      reader.registerReadFunctions();
+      const prepared = performance.now();
+      try {
+        const result = read(reader);
+        this.lastHistoryQueryWork = {
+          rows: query.rows,
+          archiveCount: records.length,
+          verifiedAndMergeMs: verifiedMs,
+          prepareMs: prepared - started,
+          queryMs: performance.now() - prepared,
+          scratchBytes: query.bytes,
+          sort: query.sortStats,
+        };
+        return result;
+      } finally {
+        reader.database = null;
+        reader.close();
+      }
+    } finally {
+      query.close();
+    }
+  }
+
   async trySqlHistoryDashboard(filters, options, periodOptions) {
+    const single = await this.trySingleSqlHistoryDashboard(filters, options, periodOptions);
+    if (single) return single;
+    return this.withSqlHistoryReader((reader) => ({
+      summary: reader.summarizeInReadTransaction(filters, options),
+      metadata: reader.metadata(filters.now ?? new Date()),
+      periodComparison: reader.periodComparison(periodOptions),
+    }));
+  }
+
+  /** Preserve the established bounded single-package projection and repricing cache. */
+  async trySingleSqlHistoryDashboard(filters, options, periodOptions) {
     const hot = this.database;
-    // shortcut: pinned/writing readers, overlays and multiple segments use the existing carrier until SQL parity covers them.
+    // Other shapes are handled by the disposable disk reader.
     if (filters.preset !== "all" || hot.isTransaction !== false || this.writeTransactionDepth > 0) return null;
     const records = hot.prepare("SELECT * FROM archive_segments").all();
     const authorized = historyArchiveAuthorizedSegmentIds(hot);
@@ -6545,8 +6707,7 @@ export class UsageStore {
       this.database.exec("RELEASE summary_history_read");
     }
 
-    const report = await this.publishedHistoryUsageReport();
-    return this.summarizeHistoryReport(report, filters, options);
+    return this.withSqlHistoryReader((reader) => reader.summarizeInReadTransaction(filters, options));
   }
 
   /**
@@ -6794,7 +6955,8 @@ export class UsageStore {
       this.summaryProjectionCache.quoteInputs.discard();
       this.summaryProjectionCache.quoteInputs = null;
     }
-    const projectionCacheable = range.preset === "all" && groupingEligible && !persistentProjection;
+    const projectionCacheable =
+      range.preset === "all" && groupingEligible && !persistentProjection && !this.historyDiskRead;
     const projectionKeys = projectionCacheable
       ? this.summaryProjectionKeys(range, bucket, scopeExclusions, includeDetails, pricingModels)
       : null;

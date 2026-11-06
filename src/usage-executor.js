@@ -486,8 +486,7 @@ async function runExecutorProcess() {
         } else if (message.imported) {
           store.serviceTierEvidence =
             message.serviceTierEvidence === null ? null : serviceTierEvidenceFromSnapshot(message.serviceTierEvidence);
-          const report = await store.publishedHistoryUsageReport();
-          store.homes = report.homes;
+          store.homes = await store.withSqlHistoryReader((reader) => reader.publishedUsageHomes());
           store.checkedAt = new Date().toISOString();
           storeStatus = {
             fingerprint: store.fingerprint,
