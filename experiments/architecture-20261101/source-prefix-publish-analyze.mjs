@@ -5,14 +5,20 @@ import { fileURLToPath } from "node:url";
 
 const base = path.resolve(process.env.REMAINING_DELIVERY_ROOT || fileURLToPath(new URL("../../output/source-prefix-publish-20261106/", import.meta.url)));
 process.env.REMAINING_DELIVERY_ROOT = base;
-const { analyze } = await import("./remaining-harness-delivery-analyze.mjs");
+const { analyze, regressed } = await import("./remaining-harness-delivery-analyze.mjs");
 const analysis = await analyze();
 const matrix = JSON.parse(await readFile(path.join(base, "matrix.json"), "utf8"));
 const rows = [];
+const initialServiceOpens = [];
 for (const pair of analysis.rows) {
+  const opening = {};
   for (const variant of ["baseline", "candidate"]) {
     const directory = path.join(base, "formal", `${pair.kind}-${variant}`);
     const result = JSON.parse(await readFile(path.join(directory, "result.json"), "utf8"));
+    if (matrix.zcodeFirstPrefix) {
+      assert.ok(Number.isFinite(result.initialServiceWallMs) && result.initialServiceWallMs > 0);
+      opening[variant] = result.initialServiceWallMs;
+    }
     const files = (await readdir(path.join(directory, "nodes"))).filter((name) => /^prefix-.*\.ndjson$/.test(name));
     const receipts = (await Promise.all(files.map(async (name) => (await readFile(path.join(directory, "nodes", name), "utf8"))
       .trim().split("\n").filter(Boolean).map(JSON.parse)))).flat();
@@ -48,8 +54,20 @@ for (const pair of analysis.rows) {
         reusedEvents: reused.reduce((sum, row) => sum + row.result.reusedEvents, 0) });
     }
   }
+  if (matrix.zcodeFirstPrefix) initialServiceOpens.push({ kind: pair.kind,
+    baselineMs: opening.baseline, candidateMs: opening.candidate,
+    trigger: regressed(opening.baseline, opening.candidate) });
 }
 const target = analysis.rows.find((row) => row.kind === "zcode").latency["append-2"];
+if (matrix.zcodeFirstPrefix) {
+  for (const change of ["append-1", "append-2"]) {
+    const receipt = rows.find((row) => row.kind === "zcode" && row.variant === "candidate" && row.change === change);
+    assert.ok(receipt, "missing ZCode publication receipt");
+    assert.equal(receipt.calls, 1, "one complete ZCode parse per append");
+    assert.equal(receipt.reusedCalls, 1, "both ZCode appends must reuse their fact prefix");
+    assert.equal(receipt.eventMutations, 1, "ZCode append must write only the new fact");
+  }
+}
 const syncRows = [];
 if (matrix.firstUpdateCache) {
   for (const pair of analysis.rows) for (const variant of ["baseline", "candidate"]) {
@@ -71,7 +89,8 @@ if (matrix.firstUpdateCache) {
 const targetRatio = matrix.firstUpdateCache ? 1.1 : matrix.sqliteStability ? 0.85 : 0.8;
 const summary = { rows, syncRows, zcodeSecondAppend: { ...target, targetRatio,
   passed: matrix.firstUpdateCache ? !target.trigger : target.ratio <= targetRatio },
-  latencyPassed: analysis.triggers.length === 0, resourcePassed: analysis.resourcePassed,
+  initialServiceOpens,
+  latencyPassed: analysis.triggers.length === 0 && initialServiceOpens.every((row) => !row.trigger), resourcePassed: analysis.resourcePassed,
   pairedResponses: analysis.pairedResponses, numericChecks: analysis.numericChecks };
 await writeFile(path.join(base, "publication-analysis.json"), `${JSON.stringify(summary, null, 2)}\n`);
 console.log(JSON.stringify(summary, null, 2));

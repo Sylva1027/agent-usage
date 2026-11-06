@@ -753,6 +753,7 @@ async function runExecutorProcess() {
       applyPricingCatalog(message.pricing);
       const priceScoped =
         message.type === "open" ||
+        message.type === "sync" ||
         message.type === "dashboard" ||
         message.type === "summarize" ||
         message.type === "periodComparison" ||
@@ -1181,7 +1182,13 @@ export function createUsageExecutor(
       }
       return request("open", payload);
     },
-    sync: (payload = {}) => request("sync", { options: payload.options, certifiedOnly: payload.certifiedOnly, sourceHints: payload.sourceHints }),
+    sync: (payload = {}) =>
+      request("sync", {
+        options: payload.options,
+        certifiedOnly: payload.certifiedOnly,
+        sourceHints: payload.sourceHints,
+        pricing: pricing(),
+      }),
     checkSources: (options) => request("checkSources", { options }),
     validateAcquisition: async (fingerprint) => {
       if (!worker || idleRetiring || terminating) return false;

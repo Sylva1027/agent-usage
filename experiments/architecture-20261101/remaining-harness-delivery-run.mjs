@@ -226,6 +226,7 @@ async function run(matrix, kind, variant, label = `${kind}-${variant}`) {
     sampler = await sampling(server, directory, "initial"); await sampler.ready;
     ({ page } = await navigate(browser.context, server.ready.url, result.errors));
     result.initial = await scope(page, "all", directory, "initial");
+    result.initialServiceWallMs = result.initial.endedAtMs - server.startedAtMs;
     assert.equal(result.initial.total, seed.storage.facts.total); assert.equal(result.initial.events, seed.storage.facts.events);
     const expected = { total: result.initial.total, events: result.initial.events, sessions: (await read(path.join(directory, "initial.json"))).summary.sessionCount };
     for (const ordinal of [1, 2]) {
