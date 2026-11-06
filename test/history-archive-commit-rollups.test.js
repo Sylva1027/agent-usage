@@ -91,13 +91,13 @@ test("moving unchanged events to a verified archive preserves valid rollups and 
       );
       assert.equal(store.database.prepare("SELECT COUNT(*) AS n FROM events").get().n, 1);
       let unions = 0;
-      const original = store.historyArchiveEventUnionForRange;
-      store.historyArchiveEventUnionForRange = function (...args) {
+      const original = store.withSqlHistoryReader;
+      store.withSqlHistoryReader = function (...args) {
         unions++;
         return original.apply(this, args);
       };
       await store.sync({ options });
-      assert.equal(unions > 0, alreadyDirty, "only already-dirty facts require a complete-history rebuild on sync");
+      assert.equal(unions > 0, alreadyDirty, "only already-dirty facts require a verified history read on sync");
       const result = await store.dashboardHistory({
         preset: "all",
         calendarZone: "utc",

@@ -822,7 +822,9 @@ function rebuildUsageRollupsFromSource(db, { days, calendarZone: zone = "utc" },
 
 export function rebuildUsageRollupsFromEvents(db, { days, events, calendarZone = "utc" }) {
   if (!Array.isArray(days)) throw new TypeError("days must be an array of YYYY-MM-DD strings");
-  if (!Array.isArray(events)) throw new TypeError("events must be an array");
+  if (events == null || typeof events === "string" || typeof events[Symbol.iterator] !== "function") {
+    throw new TypeError("events must be a synchronous iterable");
+  }
   db.exec(`
     DROP TABLE IF EXISTS temp.${COMPLETE_EVENT_TABLE};
     CREATE TEMP TABLE ${COMPLETE_EVENT_TABLE} (
@@ -850,29 +852,42 @@ export function rebuildUsageRollupsFromEvents(db, { days, events, calendarZone =
         reconciliation_gap, total, input, cached, output, reasoning
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const event of events) {
-      const timestampMs = Date.parse(event.timestamp);
-      if (!Number.isFinite(timestampMs)) throw new TypeError(`invalid event timestamp: ${String(event.timestamp)}`);
-      const usage = event.total;
-      if (!usage || typeof usage !== "object") throw new TypeError("event.total must be an object");
-      const cwd = String(event.cwd || event.project || "");
-      insert.run(
-        timestampMs,
-        event.sessionId ?? null,
-        String(event.homeId),
-        String(event.model),
-        cwd,
-        String(event.repositoryKey || (cwd ? `directory:${cwd}` : "unknown:cwd")),
-        String(event.repositoryPath || cwd || "Unknown cwd"),
-        String(event.repositoryKind || (cwd ? "directory" : "unknown")),
-        Number(event.detailMask || 0),
-        Number(event.reconciliationGap || 0),
-        Number(usage.total),
-        Number(usage.input),
-        Number(usage.cached),
-        Number(usage.output),
-        Number(usage.reasoning),
-      );
+    const iterator = events[Symbol.iterator]();
+    let completed = false;
+    try {
+      while (!completed) {
+        const step = iterator.next();
+        if (!step || typeof step !== "object") throw new TypeError("events iterator returned an invalid result");
+        if (step.done) {
+          completed = true;
+          break;
+        }
+        const event = step.value;
+        const timestampMs = Date.parse(event.timestamp);
+        if (!Number.isFinite(timestampMs)) throw new TypeError(`invalid event timestamp: ${String(event.timestamp)}`);
+        const usage = event.total;
+        if (!usage || typeof usage !== "object") throw new TypeError("event.total must be an object");
+        const cwd = String(event.cwd || event.project || "");
+        insert.run(
+          timestampMs,
+          event.sessionId ?? null,
+          String(event.homeId),
+          String(event.model),
+          cwd,
+          String(event.repositoryKey || (cwd ? `directory:${cwd}` : "unknown:cwd")),
+          String(event.repositoryPath || cwd || "Unknown cwd"),
+          String(event.repositoryKind || (cwd ? "directory" : "unknown")),
+          Number(event.detailMask || 0),
+          Number(event.reconciliationGap || 0),
+          Number(usage.total),
+          Number(usage.input),
+          Number(usage.cached),
+          Number(usage.output),
+          Number(usage.reasoning),
+        );
+      }
+    } finally {
+      if (!completed && typeof iterator.return === "function") iterator.return();
     }
     return rebuildUsageRollupsFromSource(db, { days, calendarZone }, COMPLETE_EVENT_SOURCE);
   } finally {

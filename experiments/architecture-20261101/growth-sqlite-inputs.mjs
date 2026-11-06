@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 const DAY_MS = 86_400_000;
 const WINDOW_MS = 90 * DAY_MS;
 const START_MS = Date.parse("2026-08-01T00:00:00.000Z");
+const DEFAULT_TIME_RANGE = Object.freeze({ startMs: START_MS, endMs: START_MS + WINDOW_MS });
 const PAGE_SIZE = 4096;
 const OPENCODE_CONTENT = "x".repeat(8192);
 const TRANSACTION_ROWS = 1024;
@@ -213,16 +214,72 @@ function validateFiles(files) {
       events: positiveInteger(file.events, `files[${index}].events`),
       sourceBytes: positiveInteger(file.sourceBytes, `files[${index}].sourceBytes`),
       sessions: positiveInteger(file.sessions, `files[${index}].sessions`),
+      projects:
+        file.projects === undefined ? 1 : positiveInteger(file.projects, `files[${index}].projects`),
     };
   });
 }
 
-function timestampAt(index, count) {
-  return count === 1 ? START_MS : START_MS + Math.round((index * WINDOW_MS) / (count - 1));
+function validateTimeRange(timeRange) {
+  if (timeRange === undefined) {
+    return DEFAULT_TIME_RANGE;
+  }
+  if (!timeRange || typeof timeRange !== "object" || Array.isArray(timeRange)) {
+    throw new TypeError("timeRange must be an object");
+  }
+  const { startMs, endMs } = timeRange;
+  for (const [label, value] of [
+    ["timeRange.startMs", startMs],
+    ["timeRange.endMs", endMs],
+  ]) {
+    if (!Number.isSafeInteger(value) || Number.isNaN(new Date(value).getTime())) {
+      throw new TypeError(`${label} must be a safe integer within the Date range`);
+    }
+  }
+  if (startMs >= endMs) {
+    throw new RangeError("timeRange.startMs must be less than timeRange.endMs");
+  }
+  return { startMs, endMs };
 }
 
-function syntheticDirectory(key) {
-  return `/synthetic/${key}/project`;
+function validateSessionOrder(sessionOrder) {
+  if (sessionOrder !== "round-robin" && sessionOrder !== "contiguous") {
+    throw new TypeError("sessionOrder must be round-robin or contiguous");
+  }
+  return sessionOrder;
+}
+
+function timestampAt(index, count, timeRange) {
+  if (count === 1 || index === 0) {
+    return timeRange.startMs;
+  }
+  if (index === count - 1) {
+    return timeRange.endMs;
+  }
+  return timeRange.startMs + Math.round(((timeRange.endMs - timeRange.startMs) * index) / (count - 1));
+}
+
+function sessionIndexAt(eventIndex, eventCount, sessionCount) {
+  return Math.min(sessionCount - 1, Math.floor((eventIndex * sessionCount) / eventCount));
+}
+
+function sessionTimeRange(index, eventCount, sessionCount, timeRange, sessionOrder) {
+  if (sessionOrder === "round-robin") {
+    return timeRange;
+  }
+  const firstIndex = Math.ceil((index * eventCount) / sessionCount);
+  const nextIndex = Math.ceil(((index + 1) * eventCount) / sessionCount);
+  const metadataIndex = Math.min(firstIndex, eventCount - 1);
+  return {
+    startMs: timestampAt(metadataIndex, eventCount, timeRange),
+    endMs: timestampAt(Math.max(metadataIndex, nextIndex - 1), eventCount, timeRange),
+  };
+}
+
+function syntheticDirectory(key, projectIndex = 0, projectCount = 1) {
+  return projectCount === 1
+    ? `/synthetic/${key}/project`
+    : `/synthetic/${key}/project-${projectIndex + 1}`;
 }
 
 function sessionId(kind, key, index) {
@@ -303,12 +360,11 @@ function padToBytes(database, targetBytes) {
   return rows;
 }
 
-async function createZcodeInput(root, source, scale) {
+async function createZcodeInput(root, source, scale, settings) {
   const relativePath = path.posix.join(".zcode", "cli", "db", "db.sqlite");
   const dbFile = path.join(root, ...relativePath.split("/"));
   await mkdir(path.dirname(dbFile), { recursive: true });
   const eventCount = source.events * scale;
-  const directory = syntheticDirectory(source.key);
   const database = openSourceDatabase(dbFile);
   let paddingRows = 0;
   try {
@@ -326,6 +382,14 @@ async function createZcodeInput(root, source, scale) {
     `);
     runBatches(database, source.sessions, (index) => {
       const id = sessionId("zcode", source.key, index);
+      const sessionRange = sessionTimeRange(
+        index,
+        eventCount,
+        source.sessions,
+        settings.timeRange,
+        settings.sessionOrder,
+      );
+      const directory = syntheticDirectory(source.key, index % source.projects, source.projects);
       insertSession.run(
         id,
         `synthetic-project-${source.key}`,
@@ -334,19 +398,25 @@ async function createZcodeInput(root, source, scale) {
         directory,
         `Synthetic ZCode session ${index + 1}`,
         "synthetic",
-        START_MS,
-        START_MS + WINDOW_MS,
+        sessionRange.startMs,
+        sessionRange.endMs,
       );
     });
 
     const insertUsage = database.prepare(ZCODE_USAGE_INSERT);
     runBatches(database, eventCount, (index) => {
-      const completedAt = timestampAt(index, eventCount);
+      const completedAt = timestampAt(index, eventCount, settings.timeRange);
       const id = `zcode-${source.key}-event-${String(index).padStart(8, "0")}`;
       insertUsage.run(
         id,
         `request-${source.key}-${index}`,
-        sessionId("zcode", source.key, index % source.sessions),
+        sessionId(
+          "zcode",
+          source.key,
+          settings.sessionOrder === "contiguous"
+            ? sessionIndexAt(index, eventCount, source.sessions)
+            : index % source.sessions,
+        ),
         "main_turn",
         "synthetic-zcode",
         "gpt-6-sol",
@@ -389,12 +459,11 @@ async function createZcodeInput(root, source, scale) {
   };
 }
 
-async function createOpencodeInput(root, source, scale) {
+async function createOpencodeInput(root, source, scale, settings) {
   const relativePath = path.posix.join(".opencode", "opencode.db");
   const dbFile = path.join(root, ...relativePath.split("/"));
   await mkdir(path.dirname(dbFile), { recursive: true });
   const eventCount = source.events * scale;
-  const directory = syntheticDirectory(source.key);
   const database = openSourceDatabase(dbFile);
   let paddingRows = 0;
   try {
@@ -409,6 +478,14 @@ async function createOpencodeInput(root, source, scale) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     runBatches(database, source.sessions, (index) => {
+      const sessionRange = sessionTimeRange(
+        index,
+        eventCount,
+        source.sessions,
+        settings.timeRange,
+        settings.sessionOrder,
+      );
+      const directory = syntheticDirectory(source.key, index % source.projects, source.projects);
       insertSession.run(
         sessionId("opencode", source.key, index),
         `synthetic-project-${source.key}`,
@@ -419,8 +496,8 @@ async function createOpencodeInput(root, source, scale) {
         "2.0.20",
         "synthetic",
         "deepseek-flash",
-        START_MS,
-        START_MS + WINDOW_MS,
+        sessionRange.startMs,
+        sessionRange.endMs,
       );
     });
 
@@ -430,7 +507,7 @@ async function createOpencodeInput(root, source, scale) {
       ) VALUES (?, ?, 'assistant', ?, ?, ?, ?)
     `);
     runBatches(database, eventCount, (index) => {
-      const timestamp = timestampAt(index, eventCount);
+      const timestamp = timestampAt(index, eventCount, settings.timeRange);
       const data = JSON.stringify({
         time: { created: timestamp, completed: timestamp },
         agent: "synthetic",
@@ -446,7 +523,13 @@ async function createOpencodeInput(root, source, scale) {
       });
       insertMessage.run(
         `opencode-${source.key}-message-${String(index).padStart(8, "0")}`,
-        sessionId("opencode", source.key, index % source.sessions),
+        sessionId(
+          "opencode",
+          source.key,
+          settings.sessionOrder === "contiguous"
+            ? sessionIndexAt(index, eventCount, source.sessions)
+            : index % source.sessions,
+        ),
         index + 1,
         timestamp,
         timestamp,
@@ -479,7 +562,13 @@ async function createOpencodeInput(root, source, scale) {
   };
 }
 
-export async function generateSqliteInputs({ root, scale, files } = {}) {
+export async function generateSqliteInputs({
+  root,
+  scale,
+  files,
+  timeRange,
+  sessionOrder = "round-robin",
+} = {}) {
   if (typeof root !== "string" || root.trim() === "") {
     throw new TypeError("root must be a non-empty string");
   }
@@ -487,8 +576,21 @@ export async function generateSqliteInputs({ root, scale, files } = {}) {
   if (!(await stat(rootPath)).isDirectory()) {
     throw new TypeError("root must be an existing directory");
   }
+  const normalizedTimeRange = validateTimeRange(timeRange);
+  const normalizedSessionOrder = validateSessionOrder(sessionOrder);
   const normalizedScale = positiveInteger(scale, "scale");
   const normalizedFiles = validateFiles(files);
+  const settings = {
+    timeRange: normalizedTimeRange,
+    sessionOrder: normalizedSessionOrder,
+  };
+  const diagnosticOptions =
+    timeRange === undefined && sessionOrder === "round-robin"
+      ? null
+      : {
+          timeRange: { ...normalizedTimeRange },
+          sessionOrder: normalizedSessionOrder,
+        };
   const outputs = [];
   for (const source of normalizedFiles) {
     if (
@@ -499,8 +601,11 @@ export async function generateSqliteInputs({ root, scale, files } = {}) {
     }
     const output =
       source.kind === "zcode"
-        ? await createZcodeInput(rootPath, source, normalizedScale)
-        : await createOpencodeInput(rootPath, source, normalizedScale);
+        ? await createZcodeInput(rootPath, source, normalizedScale, settings)
+        : await createOpencodeInput(rootPath, source, normalizedScale, settings);
+    if (diagnosticOptions) {
+      output.schemaDifferences.generationOptions = diagnosticOptions;
+    }
     outputs.push(output);
   }
   return outputs;

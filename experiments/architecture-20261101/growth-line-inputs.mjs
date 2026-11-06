@@ -8,6 +8,7 @@ import { createZstdCompress } from "node:zlib";
 const GROWTH_START_MS = Date.parse("2026-08-01T00:00:00.000Z");
 const GROWTH_END_MS = GROWTH_START_MS + 90 * 24 * 60 * 60 * 1000;
 const GROWTH_SPAN_MS = GROWTH_END_MS - GROWTH_START_MS;
+const DEFAULT_TIME_RANGE = Object.freeze({ startMs: GROWTH_START_MS, endMs: GROWTH_END_MS });
 const KINDS = new Set(["codex", "dsh", "claude", "workbuddy"]);
 const KEY_PATTERN = /^[A-Za-z0-9]{1,32}$/;
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
@@ -28,6 +29,30 @@ function scaledInteger(value, scale, label) {
     throw new TypeError(`${label} * scale exceeds the safe integer range`);
   }
   return result;
+}
+
+function normalizeTimeRange(file) {
+  if (file.timeRange === undefined) return DEFAULT_TIME_RANGE;
+  if (!file.timeRange || typeof file.timeRange !== "object" || Array.isArray(file.timeRange)) {
+    throw new TypeError(`${file.key}.timeRange must be an object`);
+  }
+  const { startMs, endMs } = file.timeRange;
+  if (!Number.isSafeInteger(startMs)) {
+    throw new TypeError(`${file.key}.timeRange.startMs must be a safe integer`);
+  }
+  if (!Number.isSafeInteger(endMs)) {
+    throw new TypeError(`${file.key}.timeRange.endMs must be a safe integer`);
+  }
+  if (Number.isNaN(new Date(startMs).getTime())) {
+    throw new TypeError(`${file.key}.timeRange.startMs must be a valid date`);
+  }
+  if (Number.isNaN(new Date(endMs).getTime())) {
+    throw new TypeError(`${file.key}.timeRange.endMs must be a valid date`);
+  }
+  if (endMs <= startMs) {
+    throw new RangeError(`${file.key}.timeRange.endMs must be greater than startMs`);
+  }
+  return { startMs, endMs };
 }
 
 function normalizeFile(file, scale) {
@@ -51,6 +76,9 @@ function normalizeFile(file, scale) {
   }
   if (typeof file.sessionKey !== "string" || !SESSION_PATTERN.test(file.sessionKey)) {
     throw new TypeError(`${file.key}.sessionKey must be a safe synthetic session id`);
+  }
+  if (file.projectKey !== undefined && (typeof file.projectKey !== "string" || !KEY_PATTERN.test(file.projectKey))) {
+    throw new TypeError(`${file.key}.projectKey must be a 1-32 character alphanumeric id`);
   }
 
   const events = requireInteger(file.events, `${file.key}.events`);
@@ -77,6 +105,8 @@ function normalizeFile(file, scale) {
   const requiredRows = PREFIX_ROWS[file.kind] + eventCount + quotaOnlyRows;
   return {
     ...file,
+    timeRange: normalizeTimeRange(file),
+    hasExplicitTimeRange: file.timeRange !== undefined,
     events: eventCount,
     quotaObservations: quotaObservationCount,
     quotaOnlyRows,
@@ -131,9 +161,19 @@ function buildEventOrdinals(files) {
   return ordinals;
 }
 
-function eventTimestamp(ordinal, eventCount) {
-  if (eventCount <= 1) return GROWTH_START_MS;
-  return GROWTH_START_MS + Math.floor((ordinal * GROWTH_SPAN_MS) / (eventCount - 1));
+function eventTimestamp(ordinal, eventCount, timeRange = DEFAULT_TIME_RANGE) {
+  if (eventCount <= 1) return timeRange.startMs;
+  return timeRange.startMs + Math.floor(((timeRange.endMs - timeRange.startMs) * ordinal) / (eventCount - 1));
+}
+
+function fileEventTimestamp(file, eventIndex, globalOrdinal, globalEventCount) {
+  return file.hasExplicitTimeRange
+    ? eventTimestamp(eventIndex, file.events, file.timeRange)
+    : eventTimestamp(globalOrdinal, globalEventCount, file.timeRange);
+}
+
+function paddingTimestamp(file, rowIndex) {
+  return file.timeRange.startMs + (rowIndex % (file.timeRange.endMs - file.timeRange.startMs + 1));
 }
 
 function iso(timestampMs) {
@@ -141,7 +181,7 @@ function iso(timestampMs) {
 }
 
 function syntheticCwd(file) {
-  return `/synthetic/${file.kind}/${file.key}`;
+  return `/synthetic/${file.kind}/${file.projectKey ?? file.key}`;
 }
 
 function syntheticEventId(file, ordinal) {
@@ -360,7 +400,7 @@ function workbuddyUsageRow(file, ordinal, timestampMs, paddingText) {
 function codexPaddingRow(file, rowIndex, paddingText) {
   return {
     id: `${file.key}-padding-${rowIndex}`,
-    timestamp: iso(GROWTH_START_MS),
+    timestamp: iso(file.timeRange.startMs),
     type: "response_item",
     payload: {
       type: "message",
@@ -370,11 +410,11 @@ function codexPaddingRow(file, rowIndex, paddingText) {
   };
 }
 
-function dshPaddingRow(rowIndex, seq, paddingText) {
+function dshPaddingRow(file, rowIndex, seq, paddingText) {
   return {
     type: "turn/end",
     seq,
-    time: GROWTH_START_MS + (rowIndex % (GROWTH_SPAN_MS + 1)),
+    time: paddingTimestamp(file, rowIndex),
     data: {
       turn: rowIndex + 1,
       synthetic_padding: paddingText,
@@ -387,7 +427,7 @@ function claudePaddingRow(file, rowIndex, paddingText) {
     type: "user",
     uuid: `${file.key}-padding-${rowIndex}`,
     parentUuid: null,
-    timestamp: iso(GROWTH_START_MS + (rowIndex % (GROWTH_SPAN_MS + 1))),
+    timestamp: iso(paddingTimestamp(file, rowIndex)),
     sessionId: file.sessionKey,
     cwd: syntheticCwd(file),
     message: {
@@ -400,7 +440,7 @@ function claudePaddingRow(file, rowIndex, paddingText) {
 function workbuddyPaddingRow(file, rowIndex, paddingText) {
   return {
     id: `${file.key}-padding-${rowIndex}`,
-    timestamp: GROWTH_START_MS + (rowIndex % (GROWTH_SPAN_MS + 1)),
+    timestamp: paddingTimestamp(file, rowIndex),
     type: "reasoning",
     sessionId: file.sessionKey,
     cwd: syntheticCwd(file),
@@ -419,7 +459,7 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
   if (rowIndex >= eventStart && rowIndex < eventEnd) {
     const eventIndex = rowIndex - eventStart;
     const ordinal = eventOrdinals[eventIndex];
-    const timestampMs = eventTimestamp(ordinal, eventCount);
+    const timestampMs = fileEventTimestamp(file, eventIndex, ordinal, eventCount);
     if (file.kind === "codex") return codexUsageRow(file, ordinal, timestampMs, eventIndex * 2, paddingText);
     if (file.kind === "dsh") return dshUsageRow(file, ordinal, timestampMs, paddingText);
     if (file.kind === "claude") return claudeUsageRow(file, ordinal, timestampMs, paddingText);
@@ -428,11 +468,11 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
 
   if (file.kind === "codex" && rowIndex === 0) {
     return {
-      timestamp: iso(GROWTH_START_MS),
+      timestamp: iso(file.timeRange.startMs),
       type: "session_meta",
       payload: {
         id: file.sessionKey,
-        timestamp: iso(GROWTH_START_MS),
+        timestamp: iso(file.timeRange.startMs),
         cwd: syntheticCwd(file),
         source: "cli",
         originator: "codex_cli_rs",
@@ -444,7 +484,9 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
   }
   if (file.kind === "codex" && rowIndex === 1) {
     return {
-      timestamp: iso(eventTimestamp(0, eventCount)),
+      timestamp: iso(
+        eventTimestamp(0, file.hasExplicitTimeRange ? file.events : eventCount, file.timeRange),
+      ),
       type: "turn_context",
       payload: {
         cwd: syntheticCwd(file),
@@ -460,7 +502,7 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
       type: "session",
       version: 4,
       id: file.sessionKey,
-      createdAt: GROWTH_START_MS,
+      createdAt: file.timeRange.startMs,
       cwd: syntheticCwd(file),
       isSeeded: false,
       delegationDepth: 0,
@@ -473,7 +515,7 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
     return {
       type: "request/header",
       seq: firstOrdinal,
-      time: eventTimestamp(0, eventCount),
+      time: eventTimestamp(0, file.hasExplicitTimeRange ? file.events : eventCount, file.timeRange),
       data: {
         header: {
           config: {
@@ -493,7 +535,7 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
       type: "session-meta",
       id: `${file.key}-session-meta`,
       sessionId: file.sessionKey,
-      timestamp: GROWTH_START_MS,
+      timestamp: file.timeRange.startMs,
       cwd: syntheticCwd(file),
       version: "synthetic",
       ...(paddingText !== "" ? { synthetic_padding: paddingText ?? "" } : {}),
@@ -503,7 +545,12 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
   const paddingIndex = rowIndex - eventEnd;
   if (file.kind === "codex") {
     if (paddingIndex < file.quotaOnlyRows) {
-      const timestampMs = eventTimestamp(Math.min(paddingIndex, Math.max(0, eventCount - 1)), eventCount);
+      const timestampCount = file.hasExplicitTimeRange ? file.events : eventCount;
+      const timestampMs = eventTimestamp(
+        Math.min(paddingIndex, Math.max(0, timestampCount - 1)),
+        timestampCount,
+        file.timeRange,
+      );
       return codexZeroUsageRow(
         file,
         paddingIndex,
@@ -516,7 +563,7 @@ function rowFor(file, eventOrdinals, rowIndex, eventCount, paddingText) {
   }
   if (file.kind === "dsh") {
     const lastOrdinal = file.events ? eventOrdinals[eventOrdinals.length - 1] : -1;
-    return dshPaddingRow(paddingIndex, lastOrdinal + paddingIndex + 2, paddingText);
+    return dshPaddingRow(file, paddingIndex, lastOrdinal + paddingIndex + 2, paddingText);
   }
   if (file.kind === "claude") return claudePaddingRow(file, paddingIndex, paddingText);
   return workbuddyPaddingRow(file, paddingIndex, paddingText);
@@ -706,6 +753,8 @@ export async function generateLineInputs({ root, scale, files, onProgress }) {
     await onProgress?.(fileResult, fileIndex, prepared.length);
   }
 
+  const timeStartMs = prepared.reduce((minimum, file) => Math.min(minimum, file.timeRange.startMs), Infinity);
+  const timeEndMs = prepared.reduce((maximum, file) => Math.max(maximum, file.timeRange.endMs), -Infinity);
   return {
     scale,
     files: actualFiles,
@@ -719,8 +768,8 @@ export async function generateLineInputs({ root, scale, files, onProgress }) {
       frames: actualFiles.reduce((sum, file) => sum + file.frames, 0),
     },
     time: {
-      start: iso(GROWTH_START_MS),
-      end: iso(GROWTH_END_MS),
+      start: iso(timeStartMs),
+      end: iso(timeEndMs),
       eventSlots: eventCount,
     },
   };

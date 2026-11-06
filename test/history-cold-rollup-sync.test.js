@@ -132,7 +132,15 @@ test("ordinary sync keeps cold contribution in same-day UTC and local rollups", 
     writeFileSync(usageFile, `${prefix}\n${tokenLine(hotTimestamp, 140, 40)}\n`);
     invalidateSource(archived, usageFile);
     invalidateSource(oracle, usageFile);
-    await archived.sync({ options });
+    const originalHistoryEvents = archived.publishedHistoryUsageEvents;
+    archived.publishedHistoryUsageEvents = async () => {
+      throw new Error("Cold rollup sync must stream verified facts instead of materializing complete history");
+    };
+    try {
+      await archived.sync({ options });
+    } finally {
+      archived.publishedHistoryUsageEvents = originalHistoryEvents;
+    }
     await oracle.sync({ options });
 
     assert.deepEqual(
@@ -203,15 +211,15 @@ test("ordinary sync keeps cold contribution in same-day UTC and local rollups", 
     const missingCandidate = `${candidateFile}.missing`;
     writeFileSync(usageFile, `${prefix}\n${tokenLine(hotTimestamp, 160, 60)}\n`);
     invalidateSource(archived, usageFile);
-    const originalPublishedHistoryUsageEvents = archived.publishedHistoryUsageEvents;
-    archived.publishedHistoryUsageEvents = async function (...args) {
+    const originalWithSqlHistoryReader = archived.withSqlHistoryReader;
+    archived.withSqlHistoryReader = async function (...args) {
       renameSync(candidateFile, missingCandidate);
-      return originalPublishedHistoryUsageEvents.call(this, ...args);
+      return originalWithSqlHistoryReader.call(this, ...args);
     };
     try {
       await assert.rejects(archived.sync({ options }), (error) => error?.code === "ENOENT");
     } finally {
-      archived.publishedHistoryUsageEvents = originalPublishedHistoryUsageEvents;
+      archived.withSqlHistoryReader = originalWithSqlHistoryReader;
     }
 
     assert.deepEqual(

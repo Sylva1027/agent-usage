@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { parseOpencodeDb, opencodeDatabaseFiles, streamOpencodeDbEvents } from "../../src/opencode-usage.js";
@@ -10,9 +11,31 @@ import { generateSqliteInputs } from "./growth-sqlite-inputs.mjs";
 
 const START_MS = Date.parse("2026-08-01T00:00:00.000Z");
 const END_MS = START_MS + 90 * 86_400_000;
+const TWO_YEAR_RANGE = {
+  startMs: Date.parse("2024-01-01T00:00:00.000Z"),
+  endMs: Date.parse("2026-01-01T00:00:00.000Z"),
+};
 const INPUTS = [
   { key: "z-base", kind: "zcode", events: 6, sourceBytes: 2 * 1024 * 1024, sessions: 3 },
   { key: "oc-base", kind: "opencode", events: 4, sourceBytes: 1024 * 1024 + 888, sessions: 2 },
+];
+const CONTIGUOUS_INPUTS = [
+  {
+    key: "z-contiguous",
+    kind: "zcode",
+    events: 12,
+    sourceBytes: 2 * 1024 * 1024,
+    sessions: 5,
+    projects: 3,
+  },
+  {
+    key: "oc-contiguous",
+    kind: "opencode",
+    events: 12,
+    sourceBytes: 2 * 1024 * 1024,
+    sessions: 4,
+    projects: 2,
+  },
 ];
 
 test("multi-blob SQLite padding records bounded b-tree page overhead", async () => {
@@ -64,6 +87,8 @@ test("growth SQLite inputs preserve real parser counts and scale linearly at 1x,
       const opencodeResult = result.find((source) => source.kind === "opencode");
       assert.ok(zcodeResult);
       assert.ok(opencodeResult);
+      assert.equal(zcodeResult.schemaDifferences.generationOptions, undefined);
+      assert.equal(opencodeResult.schemaDifferences.generationOptions, undefined);
 
       const zcodeHome = path.join(root, ".zcode");
       const opencodeHome = path.join(root, ".opencode");
@@ -94,6 +119,9 @@ test("growth SQLite inputs preserve real parser counts and scale linearly at 1x,
       assert.equal(zcodeStreamCount, 6 * scale);
       assert.equal(zcodeParsed.events.length, 6 * scale);
       assert.equal(zcodeParsed.sessions.length, 3);
+      assert.ok(
+        zcodeParsed.events.every((event) => event.cwd === `/synthetic/${INPUTS[0].key}/project`),
+      );
       assert.deepEqual(sumTotals(zcodeParsed.events), zcodeResult.expectedTotals);
       assert.ok(
         zcodeParsed.events.every(
@@ -114,6 +142,9 @@ test("growth SQLite inputs preserve real parser counts and scale linearly at 1x,
       assert.equal(opencodeStreamCount, 4 * scale);
       assert.equal(opencodeParsed.events.length, 4 * scale);
       assert.equal(opencodeParsed.sessions.length, 2);
+      assert.ok(
+        opencodeParsed.events.every((event) => event.cwd === `/synthetic/${INPUTS[1].key}/project`),
+      );
       assert.deepEqual(sumTotals(opencodeParsed.events), opencodeResult.expectedTotals);
       assert.ok(
         opencodeParsed.events.every(
@@ -156,5 +187,191 @@ test("growth SQLite inputs preserve real parser counts and scale linearly at 1x,
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  }
+});
+
+function expectedSessionCounts(eventCount, sessionCount) {
+  return Array.from({ length: sessionCount }, (_, index) => {
+    const first = Math.ceil((index * eventCount) / sessionCount);
+    const next = Math.ceil(((index + 1) * eventCount) / sessionCount);
+    return next - first;
+  });
+}
+
+function assertContiguousSessions(
+  parsed,
+  databaseFile,
+  table,
+  eventCount,
+  sessionCount,
+  projectCount,
+  sourceKey,
+) {
+  const sessions = new Map(parsed.sessions.map((session) => [session.id, session]));
+  const eventsBySession = new Map();
+  for (const event of parsed.events) {
+    const events = eventsBySession.get(event.sessionId) || [];
+    events.push(event);
+    eventsBySession.set(event.sessionId, events);
+  }
+  assert.deepEqual(
+    [...eventsBySession.values()].map((events) => events.length),
+    expectedSessionCounts(eventCount, sessionCount),
+  );
+  const sessionIds = [...eventsBySession.keys()];
+  assert.deepEqual(
+    parsed.events.map((event) => sessionIds.indexOf(event.sessionId)),
+    Array.from({ length: eventCount }, (_, index) =>
+      Math.min(sessionCount - 1, Math.floor((index * sessionCount) / eventCount)),
+    ),
+  );
+
+  const database = new DatabaseSync(databaseFile, { readOnly: true });
+  try {
+    const rows = database.prepare(`SELECT id, time_created, time_updated FROM ${table}`).all();
+    assert.equal(rows.length, sessionCount);
+    for (const row of rows) {
+      const session = sessions.get(row.id);
+      const events = eventsBySession.get(row.id);
+      assert.ok(session);
+      assert.ok(events?.length);
+      assert.equal(session.firstAt, events[0].timestamp);
+      assert.equal(session.lastAt, events.at(-1).timestamp);
+      assert.equal(Number(row.time_created), Date.parse(session.firstAt));
+      assert.equal(Number(row.time_updated), Date.parse(session.lastAt));
+      assert.ok(Date.parse(session.lastAt) - Date.parse(session.firstAt) < TWO_YEAR_RANGE.endMs - TWO_YEAR_RANGE.startMs);
+      const sessionIndex = Number(row.id.slice(row.id.lastIndexOf("-") + 1)) - 1;
+      const expectedDirectory = `/synthetic/${sourceKey}/project-${(sessionIndex % projectCount) + 1}`;
+      assert.ok(events.every((event) => event.cwd === expectedDirectory));
+    }
+  } finally {
+    database.close();
+  }
+}
+
+test("non-default ranges and contiguous session growth stay local for real readers", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "growth-sqlite-contiguous-"));
+  try {
+    const result = await generateSqliteInputs({
+      root,
+      scale: 1,
+      files: CONTIGUOUS_INPUTS,
+      timeRange: TWO_YEAR_RANGE,
+      sessionOrder: "contiguous",
+    });
+    assert.equal(result.length, 2);
+
+    const zcodeResult = result.find((source) => source.kind === "zcode");
+    const opencodeResult = result.find((source) => source.kind === "opencode");
+    assert.ok(zcodeResult);
+    assert.ok(opencodeResult);
+    for (const output of result) {
+      assert.deepEqual(output.schemaDifferences.generationOptions, {
+        timeRange: TWO_YEAR_RANGE,
+        sessionOrder: "contiguous",
+      });
+    }
+
+    const zcodeParsed = await parseZcodeDb(
+      path.join(root, zcodeResult.relativePath),
+      sourceFor(root, "zcode"),
+    );
+    const opencodeParsed = await parseOpencodeDb(
+      path.join(root, opencodeResult.relativePath),
+      sourceFor(root, "opencode"),
+    );
+
+    for (const [parsed, output] of [
+      [zcodeParsed, zcodeResult],
+      [opencodeParsed, opencodeResult],
+    ]) {
+      const timestamps = parsed.events.map((event) => Date.parse(event.timestamp));
+      assert.equal(parsed.events.length, 12);
+      assert.equal(parsed.sessions.length, output.sessionCount);
+      assert.equal(Math.min(...timestamps), TWO_YEAR_RANGE.startMs);
+      assert.equal(Math.max(...timestamps), TWO_YEAR_RANGE.endMs);
+      assert.deepEqual(sumTotals(parsed.events), output.expectedTotals);
+      assert.deepEqual(output.expectedTotals, {
+        total: 180,
+        input: 120,
+        cached: 24,
+        output: 60,
+        reasoning: 12,
+      });
+    }
+    assertContiguousSessions(
+      zcodeParsed,
+      path.join(root, zcodeResult.relativePath),
+      "session",
+      12,
+      5,
+      3,
+      CONTIGUOUS_INPUTS[0].key,
+    );
+    assertContiguousSessions(
+      opencodeParsed,
+      path.join(root, opencodeResult.relativePath),
+      "session_v2",
+      12,
+      4,
+      2,
+      CONTIGUOUS_INPUTS[1].key,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SQLite generation validates time ranges and session order", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "growth-sqlite-validation-"));
+  try {
+    const invalidRanges = [
+      [null, "timeRange must be an object"],
+      [{ startMs: 0.5, endMs: 1 }, "timeRange.startMs must be a safe integer within the Date range"],
+      [{ startMs: 0, endMs: 0.5 }, "timeRange.endMs must be a safe integer within the Date range"],
+      [
+        { startMs: -8_640_000_000_000_001, endMs: 0 },
+        "timeRange.startMs must be a safe integer within the Date range",
+      ],
+    ];
+    for (const [timeRange, message] of invalidRanges) {
+      await assert.rejects(
+        generateSqliteInputs({ root, scale: 1, files: [], timeRange }),
+        { name: "TypeError", message },
+      );
+    }
+    await assert.rejects(
+      generateSqliteInputs({ root, scale: 1, files: [], timeRange: { startMs: 1, endMs: 1 } }),
+      { name: "RangeError", message: "timeRange.startMs must be less than timeRange.endMs" },
+    );
+    await assert.rejects(
+      generateSqliteInputs({ root, scale: 1, files: [], sessionOrder: "random" }),
+      { name: "TypeError", message: "sessionOrder must be round-robin or contiguous" },
+    );
+    await assert.rejects(
+      generateSqliteInputs({
+        root,
+        scale: 1,
+        files: INPUTS.map((file, index) => ({
+          ...file,
+          projects: index === 0 ? 0 : 1,
+        })),
+      }),
+      { name: "TypeError", message: "files[0].projects must be a positive safe integer" },
+    );
+    const zeroRangeResult = await generateSqliteInputs({
+      root,
+      scale: 1,
+      files: INPUTS,
+      timeRange: { startMs: 0, endMs: 1 },
+      sessionOrder: "round-robin",
+    });
+    assert.equal(zeroRangeResult.length, 2);
+    assert.deepEqual(zeroRangeResult[0].schemaDifferences.generationOptions, {
+      timeRange: { startMs: 0, endMs: 1 },
+      sessionOrder: "round-robin",
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

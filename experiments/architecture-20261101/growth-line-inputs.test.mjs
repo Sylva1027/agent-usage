@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { zstdDecompressSync } from "node:zlib";
 
 import { parseClaudeSessions } from "../../src/claude-code-usage.js";
 import { parseDshSessions } from "../../src/dsh-usage.js";
@@ -78,6 +79,10 @@ function expectedUsage(kind) {
     reasoning: kind === "codex" || kind === "workbuddy" ? 1 : 0,
     total: 15,
   };
+}
+
+function assertWithinRange(timestampMs, timeRange) {
+  assert.ok(timestampMs >= timeRange.startMs && timestampMs <= timeRange.endMs);
 }
 
 test("1x/5x/10x rebuilds parse through the formal four-harness parsers", async () => {
@@ -329,5 +334,392 @@ test("event identity is unique by source path plus parser event id across shared
     assert.equal(events.filter((event) => event.eventId === "shared-codex-session:1").length, 2);
     assert.equal(new Set(events.map((event) => `${event.sourcePath}\0${event.eventId}`)).size, events.length);
     assert.equal(new Set(events.map((event) => event.timestamp)).size, events.length);
+  });
+});
+
+test("per-file ranges keep shared Codex session fragments disjoint while preserving quotas and totals", async () => {
+  const firstRange = {
+    startMs: Date.parse("2024-01-01T00:00:00.000Z"),
+    endMs: Date.parse("2024-01-11T00:00:00.000Z"),
+  };
+  const secondRange = {
+    startMs: Date.parse("2025-01-01T00:00:00.000Z"),
+    endMs: Date.parse("2025-01-11T00:00:00.000Z"),
+  };
+  const sessionKey = "shared-codex-history";
+  const projectKey = "historyRepo";
+  const files = [
+    {
+      key: "cxr1",
+      kind: "codex",
+      events: 4,
+      rows: 9,
+      decodedBytes: 4096,
+      sourceBytes: 4096,
+      frames: 0,
+      compressed: false,
+      sessionKey,
+      projectKey,
+      quotaObservations: 6,
+      timeRange: firstRange,
+    },
+    {
+      key: "cxr2",
+      kind: "codex",
+      events: 3,
+      rows: 10,
+      decodedBytes: 4096,
+      sourceBytes: 4096,
+      frames: 0,
+      compressed: false,
+      sessionKey,
+      projectKey,
+      quotaObservations: 8,
+      timeRange: secondRange,
+    },
+  ];
+
+  await withFreshRoot(async (root) => {
+    const result = await generateLineInputs({ root, scale: 1, files });
+    assert.deepEqual(result.time, {
+      start: new Date(firstRange.startMs).toISOString(),
+      end: new Date(secondRange.endMs).toISOString(),
+      eventSlots: 7,
+    });
+    assert.deepEqual(
+      {
+        events: result.totals.events,
+        quotaObservations: result.totals.quotaObservations,
+        rows: result.totals.rows,
+        decodedBytes: result.totals.decodedBytes,
+        sourceBytes: result.totals.sourceBytes,
+      },
+      { events: 7, quotaObservations: 14, rows: 19, decodedBytes: 8192, sourceBytes: 8192 },
+    );
+
+    const parsedSessions = [];
+    const parsedEvents = [];
+    const eventIdentities = [];
+    for (const [index, generated] of result.files.entries()) {
+      const timeRange = files[index].timeRange;
+      const rateLimits = [];
+      const parsed = await parseSessionFile(
+        generated.path,
+        {
+          id: "ranged-codex-home",
+          label: "Codex fixture",
+          path: path.join(root, ".codex"),
+          kind: "codex",
+        },
+        { onRateLimit: (observation) => rateLimits.push(observation) },
+      );
+      assert.equal(parsed.events.length, files[index].events);
+      assert.equal(rateLimits.length, files[index].quotaObservations);
+      for (const observation of rateLimits) assertWithinRange(observation.observedAtMs, timeRange);
+      for (const event of parsed.events) {
+        assertWithinRange(Date.parse(event.timestamp), timeRange);
+        assert.deepEqual(
+          {
+            input: event.total.input,
+            cached: event.total.cached,
+            output: event.total.output,
+            reasoning: event.total.reasoning,
+            total: event.total.total,
+          },
+          expectedUsage("codex"),
+        );
+        eventIdentities.push(`${generated.path}\0${event.id}`);
+      }
+      parsedSessions.push(parsed.session);
+      parsedEvents.push(...parsed.events);
+
+      const rows = (await readFile(generated.path, "utf8"))
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      assert.equal(rows.length, generated.rows);
+      for (const row of rows) assertWithinRange(Date.parse(row.timestamp), timeRange);
+      const tokenRows = rows.filter((row) => row.payload?.type === "token_count");
+      const zeroRows = tokenRows.filter((row) => row.payload.info.last_token_usage.total_tokens === 0);
+      assert.equal(zeroRows.length, index === 0 ? 0 : 1);
+    }
+
+    assert.deepEqual(new Set(parsedSessions.map((session) => session.id)), new Set([sessionKey]));
+    assert.deepEqual(new Set(parsedSessions.map((session) => session.cwd)), new Set(["/synthetic/codex/historyRepo"]));
+    assert.equal(parsedEvents.length, result.totals.events);
+    assert.equal(new Set(eventIdentities).size, parsedEvents.length);
+    assert.equal(parsedEvents.reduce((sum, event) => sum + event.total.input, 0), 70);
+    assert.equal(parsedEvents.reduce((sum, event) => sum + event.total.cached, 0), 14);
+    assert.equal(parsedEvents.reduce((sum, event) => sum + event.total.output, 0), 35);
+    assert.equal(parsedEvents.reduce((sum, event) => sum + event.total.reasoning, 0), 7);
+    assert.equal(parsedEvents.reduce((sum, event) => sum + event.total.total, 0), 105);
+  });
+});
+
+test("explicit file ranges keep usage and quota times independent of unrelated files", async () => {
+  const latestRange = {
+    startMs: Date.parse("2025-06-01T00:00:00.000Z"),
+    endMs: Date.parse("2025-06-10T00:00:00.000Z"),
+  };
+  const olderRange = {
+    startMs: Date.parse("2025-04-01T00:00:00.000Z"),
+    endMs: Date.parse("2025-04-15T00:00:00.000Z"),
+  };
+  const latest = {
+    key: "cxnew",
+    kind: "codex",
+    events: 5,
+    rows: 12,
+    decodedBytes: 8192,
+    sourceBytes: 8192,
+    frames: 0,
+    compressed: false,
+    sessionKey: "latest-session",
+    projectKey: "historyRepo",
+    quotaObservations: 14,
+    timeRange: latestRange,
+  };
+  const older = {
+    key: "cxold",
+    kind: "codex",
+    events: 7,
+    rows: 9,
+    decodedBytes: 8192,
+    sourceBytes: 8192,
+    frames: 0,
+    compressed: false,
+    sessionKey: "older-session",
+    projectKey: "historyRepo",
+    quotaObservations: 0,
+    timeRange: olderRange,
+  };
+
+  async function snapshot(files) {
+    let captured;
+    await withFreshRoot(async (root) => {
+      const result = await generateLineInputs({ root, scale: 1, files });
+      const generated = result.files.find((file) => file.key === latest.key);
+      const rows = (await readFile(generated.path, "utf8"))
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const tokenRows = rows.filter((row) => row.payload?.type === "token_count");
+      const eventRows = tokenRows.filter((row) => row.payload.info.last_token_usage.total_tokens !== 0);
+      const zeroRows = tokenRows.filter((row) => row.payload.info.last_token_usage.total_tokens === 0);
+      const rateLimits = [];
+      const parsed = await parseSessionFile(
+        generated.path,
+        {
+          id: "latest-codex-home",
+          label: "Codex fixture",
+          path: path.join(root, ".codex"),
+          kind: "codex",
+        },
+        { onRateLimit: (observation) => rateLimits.push(observation) },
+      );
+      captured = {
+        prefixTimes: [rows[0].timestamp, rows[0].payload.timestamp, rows[1].timestamp],
+        eventTimes: eventRows.map((row) => row.timestamp),
+        zeroTimes: zeroRows.map((row) => row.timestamp),
+        parsedEventTimes: parsed.events.map((event) => event.timestamp),
+        quotaTimes: rateLimits.map((observation) => observation.observedAtMs),
+        counts: {
+          events: parsed.events.length,
+          quotas: rateLimits.length,
+          rows: generated.rows,
+          decodedBytes: generated.decodedBytes,
+          sourceBytes: generated.sourceBytes,
+        },
+        totals: parsed.events.reduce(
+          (sum, event) => ({
+            input: sum.input + event.total.input,
+            cached: sum.cached + event.total.cached,
+            output: sum.output + event.total.output,
+            reasoning: sum.reasoning + event.total.reasoning,
+            total: sum.total + event.total.total,
+          }),
+          { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 },
+        ),
+      };
+    });
+    return captured;
+  }
+
+  const standalone = await snapshot([latest]);
+  const withOlderFile = await snapshot([older, latest]);
+  assert.deepEqual(withOlderFile, standalone);
+
+  const eventTimes = Array.from({ length: latest.events }, (_, eventIndex) =>
+    new Date(
+      latestRange.startMs +
+        Math.floor(
+          ((latestRange.endMs - latestRange.startMs) * eventIndex) /
+            (latest.events - 1),
+        ),
+    ).toISOString(),
+  );
+  assert.deepEqual(standalone.prefixTimes, [eventTimes[0], eventTimes[0], eventTimes[0]]);
+  assert.deepEqual(standalone.eventTimes, eventTimes);
+  assert.deepEqual(standalone.zeroTimes, eventTimes.slice(0, 2));
+  assert.deepEqual(standalone.parsedEventTimes, eventTimes);
+  for (const timestampMs of standalone.quotaTimes) assertWithinRange(timestampMs, latestRange);
+  assert.deepEqual(standalone.counts, {
+    events: 5,
+    quotas: 14,
+    rows: 12,
+    decodedBytes: 8192,
+    sourceBytes: 8192,
+  });
+  assert.deepEqual(standalone.totals, {
+    input: 50,
+    cached: 10,
+    output: 25,
+    reasoning: 5,
+    total: 75,
+  });
+});
+
+test("per-file ranges round-trip through multi-frame zstd DSH inputs", async () => {
+  const firstRange = {
+    startMs: Date.parse("2023-03-01T00:00:00.000Z"),
+    endMs: Date.parse("2023-03-06T00:00:00.000Z"),
+  };
+  const secondRange = {
+    startMs: Date.parse("2023-03-10T00:00:00.000Z"),
+    endMs: Date.parse("2023-03-16T00:00:00.000Z"),
+  };
+  const sessionKey = "shared-dsh-history";
+  const files = [
+    {
+      key: "dsr1",
+      kind: "dsh",
+      events: 3,
+      rows: 7,
+      decodedBytes: 4096,
+      sourceBytes: 2048,
+      frames: 2,
+      compressed: true,
+      sessionKey,
+      timeRange: firstRange,
+    },
+    {
+      key: "dsr2",
+      kind: "dsh",
+      events: 2,
+      rows: 6,
+      decodedBytes: 4096,
+      sourceBytes: 2560,
+      frames: 3,
+      compressed: true,
+      sessionKey,
+      timeRange: secondRange,
+    },
+  ];
+
+  await withFreshRoot(async (root) => {
+    const result = await generateLineInputs({ root, scale: 1, files });
+    assert.equal(result.totals.events, 5);
+    assert.equal(result.totals.rows, 13);
+    assert.equal(result.totals.decodedBytes, 8192);
+    assert.equal(result.totals.frames, 5);
+    assert.deepEqual(
+      result.files.map((file) => file.frames),
+      [2, 3],
+    );
+
+    for (const [index, generated] of result.files.entries()) {
+      const timeRange = files[index].timeRange;
+      const rows = zstdDecompressSync(await readFile(generated.path))
+        .toString("utf8")
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      assert.equal(rows.length, generated.rows);
+      assert.equal(rows.filter((row) => row.type === "request/header").length, 1);
+      for (const row of rows) {
+        const timestampMs = row.time ?? row.createdAt;
+        assertWithinRange(timestampMs, timeRange);
+      }
+    }
+
+    const parsed = await parseDshSessions(path.join(root, ".dsh"), {
+      id: "ranged-dsh-home",
+      label: "DSH fixture",
+      path: path.join(root, ".dsh"),
+      kind: "dsh",
+    });
+    const events = parsed.events;
+    assert.equal(events.length, result.totals.events);
+    assert.deepEqual(new Set(parsed.sessions.map((session) => session.id)), new Set([sessionKey]));
+    assert.equal(new Set(events.map((event) => event.id)).size, events.length);
+    assert.deepEqual(
+      events.reduce(
+        (sum, event) => ({
+          input: sum.input + event.total.input,
+          cached: sum.cached + event.total.cached,
+          output: sum.output + event.total.output,
+          reasoning: sum.reasoning + event.total.reasoning,
+          total: sum.total + event.total.total,
+        }),
+        { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 },
+      ),
+      { input: 50, cached: 10, output: 25, reasoning: 0, total: 75 },
+    );
+  });
+});
+
+test("timeRange rejects unsafe, invalid, or empty ranges while allowing epoch zero", async () => {
+  const file = {
+    key: "cxrange",
+    kind: "codex",
+    events: 0,
+    rows: 2,
+    decodedBytes: 1024,
+    sourceBytes: 1024,
+    frames: 0,
+    compressed: false,
+    sessionKey: "range-validation",
+    quotaObservations: 0,
+  };
+  const invalidDateMs = 8_640_000_000_000_001;
+
+  await withFreshRoot(async (root) => {
+    for (const timeRange of [
+      null,
+      { startMs: 0.5, endMs: 1 },
+      { startMs: 0, endMs: invalidDateMs },
+      { startMs: invalidDateMs, endMs: invalidDateMs + 1 },
+      { startMs: 0, endMs: 0 },
+      { startMs: 1, endMs: 0 },
+    ]) {
+      await assert.rejects(
+        () => generateLineInputs({ root, scale: 1, files: [{ ...file, timeRange }] }),
+        /timeRange/,
+      );
+    }
+
+    for (const projectKey of ["", "not-safe", "a".repeat(33)]) {
+      await assert.rejects(
+        () => generateLineInputs({ root, scale: 1, files: [{ ...file, projectKey }] }),
+        /projectKey/,
+      );
+    }
+
+    const epochRange = { startMs: 0, endMs: 1000 };
+    const result = await generateLineInputs({
+      root,
+      scale: 1,
+      files: [{ ...file, key: "cxepoch", timeRange: epochRange }],
+    });
+    assert.deepEqual(result.time, {
+      start: "1970-01-01T00:00:00.000Z",
+      end: "1970-01-01T00:00:01.000Z",
+      eventSlots: 0,
+    });
+    const rows = (await readFile(result.files[0].path, "utf8"))
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const row of rows) assertWithinRange(Date.parse(row.timestamp), epochRange);
   });
 });

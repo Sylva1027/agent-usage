@@ -487,6 +487,18 @@ function historyArchiveRowsByNativeIdentity(rows, segmentId) {
 }
 
 function historyArchiveColdRevisionForRows(prefix) {
+  const payloadFor = (row) => historyArchiveRevisionPayload(canonicalFactPayload(row, ["id"]), prefix.sourceIdentity);
+  // An unchanged prefix may contain several legitimate events in the same millisecond.
+  if (
+    prefix.effectiveRows.length === prefix.observedRows.length &&
+    prefix.effectiveRows.every(
+      (row, index) =>
+        historyArchiveRevisionPayloadKey(payloadFor(row)) ===
+        historyArchiveRevisionPayloadKey(payloadFor(prefix.observedRows[index])),
+    )
+  ) {
+    return null;
+  }
   const originalByIdentity = historyArchiveRowsByNativeIdentity(prefix.originalRows, prefix.segmentId);
   const effectiveByIdentity = historyArchiveRowsByNativeIdentity(prefix.effectiveRows, prefix.segmentId);
   const observedByIdentity = historyArchiveRowsByNativeIdentity(prefix.observedRows, prefix.segmentId);
@@ -503,7 +515,6 @@ function historyArchiveColdRevisionForRows(prefix) {
     );
   }
 
-  const payloadFor = (row) => historyArchiveRevisionPayload(canonicalFactPayload(row, ["id"]), prefix.sourceIdentity);
   const effectivePayloads = new Map([...effectiveByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
   const observedPayloads = new Map([...observedByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
   const removedColdEventCount = removedIdentities.length;
@@ -684,17 +695,10 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
     if (!sourceIdentity) {
       throw historyArchiveRevisionError(`archive revision source binding does not match segment ${segment.segment_id}`);
     }
-    const sourceRows = rows.filter((row) => String(row.source_path) === sourceIdentity.path);
-    const sourceCounts = historyArchiveEventCounts(sourceRows);
     const removedCounts = new Map();
     for (const removed of revision.removed) {
       const key = historyArchiveRevisionPayloadKey(removed.payload);
       const count = (removedCounts.get(key) || 0) + removed.count;
-      if (count > (sourceCounts.get(key) || 0)) {
-        throw historyArchiveRevisionError(
-          `archive revision removes more payloads than segment ${segment.segment_id} contains`,
-        );
-      }
       removedCounts.set(key, count);
     }
 
@@ -713,6 +717,11 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
       }
       revised.push(row);
     }
+    if ([...remainingRemovals.values()].some((count) => count > 0)) {
+      throw historyArchiveRevisionError(
+        `archive revision removes more payloads than segment ${segment.segment_id} contains`,
+      );
+    }
     for (const added of revision.added) {
       for (let index = 0; index < added.count; index += 1) {
         revised.push({ id: null, ...added.payload });
@@ -721,6 +730,35 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
     rows = revised;
   }
   return rows;
+}
+
+function validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdentities, revisions) {
+  if (!revisions?.length) return;
+  const matches = database.prepare(
+    `SELECT * FROM events WHERE ${EVENT_INSERT_COLUMNS.map((column) => `${column} = ?`).join(" AND ")}`,
+  );
+  for (const revision of revisions) {
+    if (!sourceIdentities.some((identity) => sameHistoryArchiveSourceIdentity(identity, revision.sourceIdentity))) {
+      throw historyArchiveRevisionError(`archive revision source binding does not match segment ${segmentId}`);
+    }
+    const removals = new Map();
+    for (const removed of revision.removed) {
+      const key = historyArchiveRevisionPayloadKey(removed.payload);
+      let count = removals.get(key);
+      if (!count) {
+        count = { needed: 0, available: 0 };
+        for (const row of matches.iterate(...EVENT_INSERT_COLUMNS.map((column) => removed.payload[column]))) {
+          // Preserve the original JS payload equality across SQLite string binding.
+          if (historyArchiveRevisionPayloadKey(row) === key) count.available++;
+        }
+        removals.set(key, count);
+      }
+      count.needed += removed.count;
+      if (count.needed > count.available) {
+        throw historyArchiveRevisionError(`archive revision removes more payloads than segment ${segmentId} contains`);
+      }
+    }
+  }
 }
 
 function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence, resolveQuotaSource) {
@@ -3158,17 +3196,36 @@ export class UsageStore {
    * verified cold snapshot. Internal to archived range reads.
    * @param {Record<string, unknown>} record
    * @param {{startMs: number, endMs: number, afterId: number, limit: number} | null} [page]
+   * @param {{path: string, revisions: any[]} | null} [sourceScope]
    * @returns {Promise<{
    *   rows: Array<Record<string, unknown>>,
    *   sourceIdentities: Array<Record<string, unknown>>,
    *   nextAfterId?: number | null
    * }>}
    */
-  async readHistoryArchiveSnapshot(record, page = null) {
+  async readHistoryArchiveSnapshot(record, page = null, sourceScope = null) {
     const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
     const eventCount = Number(record.event_count);
     return withVerifiedHistoryArchiveCandidate(String(record.database_path), undefined, (database, verified) => {
       const segmentId = assertHistoryArchiveRecordMatches(record, verified);
+      if (sourceScope) {
+        const total = Number(database.prepare("SELECT COUNT(*) AS count FROM events").get().count);
+        if (total !== eventCount) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_SEGMENT_MISMATCH",
+            `archive segment ${segmentId} contains ${total} event(s), expected ${eventCount}`,
+          );
+        }
+        const sourceIdentities = historyArchiveSourceIdentities(database, Number(record.start_ms), Number(record.end_ms));
+        validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdentities, sourceScope.revisions);
+        return {
+          rows: historyArchiveStatementRows(
+            database.prepare("SELECT * FROM events WHERE source_path = ? ORDER BY id"),
+            [sourceScope.path],
+          ),
+          sourceIdentities,
+        };
+      }
       if (page) {
         const total = Number(database.prepare("SELECT COUNT(*) AS count FROM events").get().count);
         if (total !== eventCount) {
@@ -3232,7 +3289,8 @@ export class UsageStore {
     const records = allRecords.filter((record) => authorizedSegmentIds.has(String(record.segment_id)));
     const prefixes = [];
     for (const record of records) {
-      const snapshot = await this.readHistoryArchiveSnapshot(record);
+      const revisions = revisionsBySegment.get(String(record.segment_id)) || [];
+      const snapshot = await this.readHistoryArchiveSnapshot(record, null, { path: filePath, revisions });
       const coldSource = snapshot.sourceIdentities.find((source) => String(source.path) === filePath);
       if (!coldSource) continue;
       const liveIdentity = {
@@ -3256,7 +3314,7 @@ export class UsageStore {
       const effectiveRows = applyHistoryArchiveEventRevisions(
         record,
         snapshot,
-        revisionsBySegment.get(String(record.segment_id)),
+        revisions.filter((revision) => revision.sourceIdentity.path === filePath),
       ).filter(
         (row) =>
           String(row.source_path) === filePath &&
@@ -4743,30 +4801,43 @@ export class UsageStore {
         this.writeTransactionDepth += 1;
         try {
           const roundDirtyDays = listDirtyUsageRollupDays(this.database);
-          const events = await this.publishedHistoryUsageEvents();
-          if (roundDirtyDays.length > 0) {
-            rebuildUsageRollupsFromEvents(this.database, { days: roundDirtyDays, events });
-          }
-          const localDays = new Set(localUsageRollupDaysForUtcDays(roundDirtyDays));
-          if (localRollupZoneChanged) {
-            const eventUtcDays = new Set();
-            for (const event of events) {
-              const timestamp = Date.parse(event.timestamp);
-              if (!Number.isFinite(timestamp))
-                throw new TypeError("complete history contains an invalid event timestamp");
-              eventUtcDays.add(new Date(Math.floor(timestamp / 86_400_000) * 86_400_000).toISOString().slice(0, 10));
+          await this.withSqlHistoryReader((reader) => {
+            function* eventsFor(days, calendarZone) {
+              if (days.length === 0) return;
+              const ordered = [...days].sort();
+              const range = resolveDateRange({ preset: "custom", startDate: ordered[0], endDate: ordered.at(-1), calendarZone });
+              const statement = reader.database.prepare(
+                "SELECT * FROM events WHERE timestamp_ms >= ? AND timestamp_ms <= ? ORDER BY id",
+              );
+              for (const row of statement.iterate(range.start.getTime(), range.end.getTime())) {
+                yield publishedUsageEventFromRow(row, "unknown", null);
+              }
             }
-            for (const day of localUsageRollupDaysForUtcDays([...eventUtcDays])) localDays.add(day);
-            for (const row of this.database
-              .prepare("SELECT day_key FROM usage_rollup_days WHERE calendar_zone = 'local'")
-              .all()) {
-              localDays.add(String(row.day_key));
+            if (roundDirtyDays.length > 0) {
+              rebuildUsageRollupsFromEvents(this.database, { days: roundDirtyDays, events: eventsFor(roundDirtyDays, "utc") });
             }
-          }
-          rebuildUsageRollupsFromEvents(this.database, {
-            days: [...localDays].sort(),
-            events,
-            calendarZone: "local",
+            const localDays = new Set(localUsageRollupDaysForUtcDays(roundDirtyDays));
+            if (localRollupZoneChanged) {
+              const eventUtcDays = reader.database
+                .prepare("SELECT DISTINCT date(timestamp_ms / 1000.0, 'unixepoch') AS day_key FROM events")
+                .all()
+                .map((row) => {
+                  if (row.day_key === null) throw new TypeError("complete history contains an invalid event timestamp");
+                  return String(row.day_key);
+                });
+              for (const day of localUsageRollupDaysForUtcDays(eventUtcDays)) localDays.add(day);
+              for (const row of this.database
+                .prepare("SELECT day_key FROM usage_rollup_days WHERE calendar_zone = 'local'")
+                .all()) {
+                localDays.add(String(row.day_key));
+              }
+            }
+            const days = [...localDays].sort();
+            rebuildUsageRollupsFromEvents(this.database, {
+              days,
+              events: eventsFor(days, "local"),
+              calendarZone: "local",
+            });
           });
           this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
           this.database.exec("COMMIT");
