@@ -20,6 +20,7 @@ function normalizeRoots(roots) {
  * @param {{
  *   discoverRoots: () => Promise<Array<{ path: string, recursive?: boolean, filename?: string }>>,
  *   onHint?: (hints: {paths: Array<{root: string, path: string, event: string}>, unknown: boolean}) => unknown,
+ *   retainPending?: () => (() => void),
  *   ignorePath?: (filename: string) => boolean,
  *   debounceMs?: number,
  *   watchFile?: typeof watch,
@@ -31,6 +32,7 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
   const {
     discoverRoots,
     onHint,
+    retainPending,
     ignorePath,
     debounceMs = 75,
     watchFile = watch,
@@ -40,6 +42,7 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
   let active = false;
   let watchers = [];
   let debounceTimer = null;
+  let releasePending = null;
   let refreshTail = Promise.resolve();
   const pendingPaths = new Map();
   let unknown = false;
@@ -52,13 +55,23 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
       pendingPaths.set(resolved, { root, path: resolved, event });
     }
     if (debounceTimer !== null) return;
+    releasePending = retainPending?.() || null;
     debounceTimer = schedule(() => {
       debounceTimer = null;
       if (!active) return;
+      const release = releasePending;
+      releasePending = null;
       const hints = { paths: [...pendingPaths.values()], unknown };
       pendingPaths.clear();
       unknown = false;
-      Promise.resolve(onHint?.(hints)).catch(() => {});
+      let pending;
+      try {
+        pending = onHint?.(hints);
+      } catch {
+        release?.();
+        return;
+      }
+      Promise.resolve(pending).catch(() => {}).finally(() => release?.());
     }, debounceMs);
     debounceTimer?.unref?.();
   }
@@ -111,6 +124,8 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
     active = false;
     if (debounceTimer !== null) cancel(debounceTimer);
     debounceTimer = null;
+    releasePending?.();
+    releasePending = null;
     pendingPaths.clear();
     unknown = false;
     for (const watcher of watchers) watcher.close?.();

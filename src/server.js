@@ -777,6 +777,7 @@ export function createUsageServer(options = {}) {
 
   const usageSourceWatcher = createUsageSourceWatcher({
     discoverRoots: discoverUsageWatchRoots,
+    retainPending: () => usageStore.retainWorker(),
     onHint: (hint) => {
       const merged = new Map([...sourceHints.paths, ...hint.paths].map((entry) => [entry.path, entry]));
       sourceHints = { paths: [...merged.values()].slice(0, 128),

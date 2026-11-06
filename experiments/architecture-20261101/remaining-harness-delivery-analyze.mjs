@@ -103,6 +103,8 @@ export async function analyze() {
     const pair = {};
     for (const variant of ["baseline", "candidate"]) {
       const directory = path.join(BASE, "formal", `${kind}-${variant}`), result = await read(path.join(directory, "result.json"));
+      if (matrix.opencodeRegression) assert.equal(result.runtimeCommit,
+        matrix.versions[variant === "baseline" ? matrix.baselines[kind] : variant].commit, "wrong per-source control version");
       assert.equal(result.passed, true); assert.deepEqual(result.errors, []); assert.equal(result.changes.length, 3);
       const fingerprints = [];
       for (const change of result.changes) {
@@ -139,7 +141,8 @@ export async function analyze() {
       if (latency[name].trigger) triggers.push({ kind, name, ...latency[name] });
     }
     const appendMedian = Object.fromEntries(["baseline", "candidate"].map((variant) => [variant, median(pair[variant].result.changes.slice(0, 2).map((change) => change.actualPaintMs))]));
-    rows.push({ kind, appendMedian, latency, resources: { baseline: pair.baseline.resources, candidate: pair.candidate.resources } });
+    rows.push({ kind, baselineCommit: pair.baseline.result.runtimeCommit || matrix.versions.baseline.commit,
+      appendMedian, latency, resources: { baseline: pair.baseline.resources, candidate: pair.candidate.resources } });
   }
   const analysis = { rows, triggers, pairedResponses: responses, numericChecks, observedChanges: changes,
     resourcePassed: rows.every((row) => row.resources.candidate.budgetPassed), planned: matrix.planned,

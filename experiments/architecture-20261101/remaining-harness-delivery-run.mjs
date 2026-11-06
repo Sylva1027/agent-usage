@@ -206,6 +206,8 @@ async function change(page, plan, method, expected, directory, label) {
 }
 
 async function run(matrix, kind, variant, label = `${kind}-${variant}`) {
+  if (variant === "baseline" && matrix.baselines?.[kind]) matrix = { ...matrix,
+    versions: { ...matrix.versions, baseline: matrix.versions[matrix.baselines[kind]] } };
   const { planChanges, appendChange, reviseChange } = await import("./remaining-harness-delivery-fixture.mjs");
   assert.ok(KINDS.includes(kind)); assert.ok(matrix.versions[variant]); assert.match(label, /^[a-z0-9-]+$/);
   await verifyRuntime(matrix.versions[variant]);
@@ -219,7 +221,8 @@ async function run(matrix, kind, variant, label = `${kind}-${variant}`) {
     await save(planFile, plan);
   }
   const seed = await read(path.join(BASE, "seed/result.json"));
-  const result = { kind, variant, label, errors: [], changes: [], scopes: [], startedAt: new Date().toISOString(), passed: false };
+  const result = { kind, variant, label, runtimeCommit: matrix.versions[variant].commit,
+    errors: [], changes: [], scopes: [], startedAt: new Date().toISOString(), passed: false };
   let server, sampler, browser, page;
   try {
     browser = await browserContext(matrix); server = await launch(matrix, variant, directory);
