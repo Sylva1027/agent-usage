@@ -7,6 +7,7 @@ const base = path.resolve(process.env.REMAINING_DELIVERY_ROOT || fileURLToPath(n
 process.env.REMAINING_DELIVERY_ROOT = base;
 const { analyze } = await import("./remaining-harness-delivery-analyze.mjs");
 const analysis = await analyze();
+const matrix = JSON.parse(await readFile(path.join(base, "matrix.json"), "utf8"));
 const rows = [];
 for (const pair of analysis.rows) {
   for (const variant of ["baseline", "candidate"]) {
@@ -31,6 +32,10 @@ for (const pair of analysis.rows) {
         assert.equal(reused.length, publications.length, "the measured second append must actually reuse its prefix");
         assert.equal(reused.reduce((sum, row) => sum + row.eventMutations, 0), 1);
       }
+      if (matrix.sqliteStability && variant === "candidate" && ["zcode", "opencode"].includes(pair.kind)
+        && change.label.startsWith("append-")) {
+        assert.equal(publications.length, 1, "a source append must not be followed by an empty-WAL reparse");
+      }
       if (change.label === "revision") {
         assert.ok(publications.some((row) => !row.result.reusedPrefix && row.eventMutations > 0), "old changes require full replacement");
         assert.ok(reused.every((row) => row.result.insertedEvents === 0), "only a later unchanged check may reuse revised facts");
@@ -45,7 +50,8 @@ for (const pair of analysis.rows) {
   }
 }
 const target = analysis.rows.find((row) => row.kind === "zcode").latency["append-2"];
-const summary = { rows, zcodeSecondAppend: { ...target, targetRatio: 0.8, passed: target.ratio <= 0.8 },
+const targetRatio = matrix.sqliteStability ? 0.85 : 0.8;
+const summary = { rows, zcodeSecondAppend: { ...target, targetRatio, passed: target.ratio <= targetRatio },
   latencyPassed: analysis.triggers.length === 0, resourcePassed: analysis.resourcePassed,
   pairedResponses: analysis.pairedResponses, numericChecks: analysis.numericChecks };
 await writeFile(path.join(base, "publication-analysis.json"), `${JSON.stringify(summary, null, 2)}\n`);

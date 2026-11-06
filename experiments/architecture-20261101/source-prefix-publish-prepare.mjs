@@ -5,8 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROOT, hashFile, inside, read, save, verifyRuntime } from "./remaining-harness-delivery-prepare.mjs";
 
-const base = path.resolve(process.env.REMAINING_DELIVERY_ROOT || path.join(ROOT, "output/source-prefix-publish-20261106"));
-const prior = path.join(ROOT, "output/remaining-harness-delivery-20261105");
+const sqliteStability = process.argv.includes("--sqlite-stability");
+const base = path.resolve(process.env.REMAINING_DELIVERY_ROOT || path.join(ROOT, sqliteStability
+  ? "output/sqlite-refresh-stability-20261106" : "output/source-prefix-publish-20261106"));
+const prior = path.join(ROOT, sqliteStability
+  ? "output/source-prefix-publish-20261106" : "output/remaining-harness-delivery-20261105");
 await assert.rejects(stat(path.join(base, "matrix.json")), { code: "ENOENT" });
 assert.ok(inside(path.join(ROOT, "output"), base));
 const previous = await read(path.join(prior, "matrix.json"));
@@ -26,12 +29,13 @@ for (const variant of ["baseline", "candidate"]) {
     hashes[relative] = await hashFile(target);
     if (production && variant === "baseline") {
       assert.equal(hashes[relative], manifest.find((entry) => entry.path === relative).sha256);
-      assert.equal(hashes[relative], previous.versions.candidate.hashes[relative], "baseline must retain the completed delivery implementation");
+      assert.equal(hashes[relative], previous.versions.candidate.hashes[relative], "baseline must retain the preceding completed implementation");
     }
     if (!production && !relative.includes(`${path.sep}bin${path.sep}`)) assert.equal(await hashFile(path.join(ROOT, relative)), hashes[relative]);
   }
   assert.equal(manifest.length, Object.keys(hashes).filter((relative) => /^(src|public)[\\/]/.test(relative)).length);
-  versions[variant] = { directory, hashes, commit: variant === "baseline" ? "db5e951" : "working candidate", workspaceCommit: current };
+  versions[variant] = { directory, hashes, commit: variant === "baseline"
+    ? (sqliteStability ? "7f95811" : "db5e951") : "working candidate", workspaceCommit: current };
   await verifyRuntime(versions[variant]);
 }
 for (const file of previous.files) {
@@ -46,7 +50,7 @@ await cp(path.join(prior, "seed-state"), seedTarget, { recursive: true, errorOnE
 await mkdir(path.join(base, "working-state"));
 await mkdir(path.join(base, "seed"));
 await copyFile(path.join(prior, "seed/result.json"), path.join(base, "seed/result.json"));
-const matrix = { ...previous, versions, prefixPublication: true,
+const matrix = { ...previous, versions, prefixPublication: true, ...(sqliteStability ? { sqliteStability: true } : {}),
   telemetryModule: fileURLToPath(new URL("source-prefix-publish-telemetry.mjs", import.meta.url)),
   reusedSeed: path.join(prior, "seed-state"), createdAt: new Date().toISOString() };
 await save(path.join(base, "matrix.json"), matrix);

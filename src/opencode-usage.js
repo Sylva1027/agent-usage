@@ -107,8 +107,11 @@ export async function opencodeSourceStat(dbFile) {
   let mtimeMs = main.mtimeMs;
   try {
     const wal = await stat(`${dbFile}-wal`);
-    size += wal.size;
-    mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
+    // Readers can create an empty WAL; only a nonempty WAL can contain source changes.
+    if (wal.size > 0) {
+      size += wal.size;
+      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
+    }
   } catch {
     // 没有 WAL 文件时主库就是最新状态。
   }

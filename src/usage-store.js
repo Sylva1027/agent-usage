@@ -1822,7 +1822,7 @@ function usageSourceFingerprint(filePath) {
       }
       hash.update(bytes);
     }
-    return `${info.size + (wal?.size || 0)}:${Math.max(info.mtimeMs, wal?.mtimeMs || 0)}:${hash.digest("hex")}`;
+    return `${info.size + (wal?.size || 0)}:${Math.max(info.mtimeMs, wal?.size ? wal.mtimeMs : 0)}:${hash.digest("hex")}`;
   } catch {
     return null;
   } finally {
