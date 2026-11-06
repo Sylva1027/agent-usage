@@ -668,6 +668,7 @@ export function createUsageServer(options = {}) {
         });
       return syncPromise;
     }
+    const releaseAcquisition = usageStore.retainWorker();
     syncPromise = (async () => {
       const currentUsageOptions = await usageOptions(options);
       const sourceOptions = { ...currentUsageOptions,
@@ -709,11 +710,14 @@ export function createUsageServer(options = {}) {
       });
       // Acquisition can be complete before a dashboard response has been cached.
       if (before.publication && !before.publication.pending &&
-        before.signature === synchronizedSource?.signature &&
+        before.routingFingerprint === synchronizedSource?.routingFingerprint &&
         before.fingerprint === storeStatus?.fingerprint &&
-        usageStore.status?.fingerprint === storeStatus.fingerprint) {
+        usageStore.status?.fingerprint === storeStatus.fingerprint &&
+        (before.publication.signature === synchronizedSource?.publication?.signature ||
+          await usageStore.validateAcquisition(storeStatus.fingerprint))) {
         storeStatus = { ...storeStatus, checkedAt: before.checkedAt };
         publishedSource = before;
+        synchronizedSource = before;
         return storeStatus;
       }
       const retained = await summaryCache.stateFor(before);
@@ -738,6 +742,7 @@ export function createUsageServer(options = {}) {
       return status;
     })().finally(() => {
       syncPromise = null;
+      releaseAcquisition();
     });
     return syncPromise;
   }
@@ -1272,6 +1277,9 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/usage" || url.pathname === "/api/summary") {
+        const releaseWorker = usageStore.retainWorker();
+        response.once("finish", releaseWorker);
+        response.once("close", releaseWorker);
         const filters = requestFilters(url);
         const check = url.searchParams.get("skipCheck") !== "1";
         // 已有快照先查找并校验；新快照只在请求组合受支持时创建。
@@ -1423,6 +1431,13 @@ export function createUsageServer(options = {}) {
                 const afterRead = source.acquisition
                   ? await summaryCache.readCertifiedSourceState(readOptions, { ...source, acquisition: source.acquisition })
                   : await summaryCache.readSourceState(readOptions);
+                if (!syncPromise && afterRead?.publication &&
+                  afterRead.routingFingerprint === source.routingFingerprint &&
+                  afterRead.fingerprint === result.status.fingerprint &&
+                  (afterRead.publication.signature === synchronizedSource?.publication?.signature ||
+                    await usageStore.validateAcquisition(result.status.fingerprint))) {
+                  synchronizedSource = afterRead;
+                }
                 if (
                   afterRead?.inputs === source.inputs &&
                   afterRead.publication?.signature === source.publication?.signature

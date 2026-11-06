@@ -5,10 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROOT, hashFile, inside, read, save, verifyRuntime } from "./remaining-harness-delivery-prepare.mjs";
 
-const sqliteStability = process.argv.includes("--sqlite-stability");
+const firstUpdateCache = process.argv.includes("--first-update-cache");
+const sqliteStability = firstUpdateCache || process.argv.includes("--sqlite-stability");
 const base = path.resolve(process.env.REMAINING_DELIVERY_ROOT || path.join(ROOT, sqliteStability
-  ? "output/sqlite-refresh-stability-20261106" : "output/source-prefix-publish-20261106"));
-const prior = path.join(ROOT, sqliteStability
+  ? (firstUpdateCache ? "output/first-update-cache-20261106" : "output/sqlite-refresh-stability-20261106") : "output/source-prefix-publish-20261106"));
+const prior = path.join(ROOT, firstUpdateCache ? "output/sqlite-refresh-stability-20261106" : sqliteStability
   ? "output/source-prefix-publish-20261106" : "output/remaining-harness-delivery-20261105");
 await assert.rejects(stat(path.join(base, "matrix.json")), { code: "ENOENT" });
 assert.ok(inside(path.join(ROOT, "output"), base));
@@ -35,7 +36,7 @@ for (const variant of ["baseline", "candidate"]) {
   }
   assert.equal(manifest.length, Object.keys(hashes).filter((relative) => /^(src|public)[\\/]/.test(relative)).length);
   versions[variant] = { directory, hashes, commit: variant === "baseline"
-    ? (sqliteStability ? "7f95811" : "db5e951") : "working candidate", workspaceCommit: current };
+    ? (firstUpdateCache ? "f8aefe6" : sqliteStability ? "7f95811" : "db5e951") : "working candidate", workspaceCommit: current };
   await verifyRuntime(versions[variant]);
 }
 for (const file of previous.files) {
@@ -51,7 +52,8 @@ await mkdir(path.join(base, "working-state"));
 await mkdir(path.join(base, "seed"));
 await copyFile(path.join(prior, "seed/result.json"), path.join(base, "seed/result.json"));
 const matrix = { ...previous, versions, prefixPublication: true, ...(sqliteStability ? { sqliteStability: true } : {}),
-  telemetryModule: fileURLToPath(new URL("source-prefix-publish-telemetry.mjs", import.meta.url)),
+  ...(firstUpdateCache ? { firstUpdateCache: true } : {}),
+  telemetryModule: fileURLToPath(new URL(firstUpdateCache ? "first-update-telemetry.mjs" : "source-prefix-publish-telemetry.mjs", import.meta.url)),
   reusedSeed: path.join(prior, "seed-state"), createdAt: new Date().toISOString() };
 await save(path.join(base, "matrix.json"), matrix);
 console.log(JSON.stringify({ prepared: true, files: matrix.files.length, planned: matrix.planned,

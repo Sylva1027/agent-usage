@@ -50,8 +50,27 @@ for (const pair of analysis.rows) {
   }
 }
 const target = analysis.rows.find((row) => row.kind === "zcode").latency["append-2"];
-const targetRatio = matrix.sqliteStability ? 0.85 : 0.8;
-const summary = { rows, zcodeSecondAppend: { ...target, targetRatio, passed: target.ratio <= targetRatio },
+const syncRows = [];
+if (matrix.firstUpdateCache) {
+  for (const pair of analysis.rows) for (const variant of ["baseline", "candidate"]) {
+    const directory = path.join(base, "formal", `${pair.kind}-${variant}`);
+    const result = JSON.parse(await readFile(path.join(directory, "result.json"), "utf8"));
+    const files = (await readdir(path.join(directory, "nodes"))).filter((name) => /^sync-.*\.ndjson$/.test(name));
+    const receipts = (await Promise.all(files.map(async (name) => (await readFile(path.join(directory, "nodes", name), "utf8"))
+      .trim().split("\n").filter(Boolean).map(JSON.parse)))).flat();
+    for (const change of result.changes) {
+      const calls = receipts.filter((row) => row.end >= change.landedAtMs && row.start <= change.endedAtMs);
+      assert.ok(calls.length, "no source synchronization receipt");
+      assert.ok(calls.every((row) => !row.error));
+      if (variant === "candidate") assert.equal(calls.length, 1, "one source mutation must not cause no-op resynchronization");
+      syncRows.push({ kind:pair.kind, variant, change:change.label, calls:calls.length,
+        noOpCalls:calls.filter((row) => row.updatedFiles===0).length });
+    }
+  }
+}
+const targetRatio = matrix.firstUpdateCache ? 1.1 : matrix.sqliteStability ? 0.85 : 0.8;
+const summary = { rows, syncRows, zcodeSecondAppend: { ...target, targetRatio,
+  passed: matrix.firstUpdateCache ? !target.trigger : target.ratio <= targetRatio },
   latencyPassed: analysis.triggers.length === 0, resourcePassed: analysis.resourcePassed,
   pairedResponses: analysis.pairedResponses, numericChecks: analysis.numericChecks };
 await writeFile(path.join(base, "publication-analysis.json"), `${JSON.stringify(summary, null, 2)}\n`);

@@ -357,6 +357,7 @@ async function runExecutorProcess() {
   let publishedStatus = null;
   let publishedReady = Promise.resolve();
   let lastCheckpoint = null;
+  let completedAcquisition = null;
   let syncBackupTail = Promise.resolve();
   let initialized = false;
   let initializing = false;
@@ -504,6 +505,7 @@ async function runExecutorProcess() {
         return checked;
       }
       case "sync": {
+        completedAcquisition = null;
         // WAL readers can keep the last committed view without copying the database.
         publishedReady = (async () => {
           if (!storeStatus) return;
@@ -529,8 +531,14 @@ async function runExecutorProcess() {
         })();
         let nextStatus;
         let failure = null;
+        let acquisitionStart = null;
         try {
           await publishedReady;
+          const identity = store.usageProjectionDatabaseIdentity();
+          if (identity && identity === store.openedUsageProjectionIdentity) {
+            acquisitionStart = { database: store.database, identity,
+              dataVersion: Number(store.database.prepare("PRAGMA data_version").get()?.data_version) };
+          }
           nextStatus = await syncUsageStore(store, message.options, message.certifiedOnly, message.sourceHints);
         } catch (error) {
           failure = error;
@@ -554,7 +562,24 @@ async function runExecutorProcess() {
         if (!nextStatus) return null;
         storeStatus = nextStatus;
         postState({ includeHomes: true });
+        // Install after ingestion so rebuilding facts does not pay for query-only tracking.
+        if (acquisitionStart && !store.usageProjectionTracker) {
+          store.installUsageProjectionTracker();
+          store.observedUsageProjectionChanges = store.usageProjectionChangeKey();
+        }
+        const guard = store.usageProjectionGuard();
+        if (acquisitionStart && guard && guard.database === acquisitionStart.database &&
+          guard.identity === acquisitionStart.identity && guard.dataVersion === acquisitionStart.dataVersion) {
+          completedAcquisition = { guard, key: store.usageProjectionChangeKey(), fingerprint: storeStatus.fingerprint };
+        }
         return storeStatus;
+      }
+      case "validateAcquisition": {
+        const receipt = completedAcquisition;
+        if (!receipt || receipt.fingerprint !== message.fingerprint) return false;
+        const guard = store.usageProjectionGuard();
+        return Boolean(guard && guard.database === receipt.guard.database && guard.identity === receipt.guard.identity &&
+          guard.dataVersion === receipt.guard.dataVersion && store.usageProjectionChangeKey() === receipt.key);
       }
       case "publishedUsageEvents": {
         return store.publishedUsageEvents();
@@ -867,6 +892,7 @@ export function createUsageExecutor(
   let exitResolve = null;
   let exitPromise = Promise.resolve();
   let idleTimer = null;
+  let retained = 0;
   let idleRetiring = false;
   let terminating = false;
   let expectedExit = false;
@@ -941,11 +967,11 @@ export function createUsageExecutor(
 
   const scheduleIdle = () => {
     clearIdleTimer();
-    if (closed || closing || !worker || !ready || pending.size > 0 || terminating || idleRetiring) return;
+    if (closed || closing || !worker || !ready || pending.size > 0 || retained > 0 || terminating || idleRetiring) return;
     idleTimer = setTimeout(() => {
       idleTimer = null;
       const target = worker;
-      if (closed || closing || !target || !ready || pending.size > 0 || terminating || idleRetiring) {
+      if (closed || closing || !target || !ready || pending.size > 0 || retained > 0 || terminating || idleRetiring) {
         return;
       }
       idleRetiring = true;
@@ -1131,6 +1157,17 @@ export function createUsageExecutor(
 
   return {
     // —— 阻塞工作（消息） ——
+    retainWorker: () => {
+      retained += 1;
+      clearIdleTimer();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        retained -= 1;
+        scheduleIdle();
+      };
+    },
     open: (payload = {}) => {
       const frozen = payload.frozen;
       if (frozen?.serviceTierEvidence && typeof frozen.serviceTierEvidence.resolve === "function") {
@@ -1146,6 +1183,11 @@ export function createUsageExecutor(
     },
     sync: (payload = {}) => request("sync", { options: payload.options, certifiedOnly: payload.certifiedOnly, sourceHints: payload.sourceHints }),
     checkSources: (options) => request("checkSources", { options }),
+    validateAcquisition: async (fingerprint) => {
+      if (!worker || idleRetiring || terminating) return false;
+      try { return await request("validateAcquisition", { fingerprint }, { allowSpawn: false }); }
+      catch { return false; }
+    },
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
     dashboard: (filters = {}, summarizeOptions = {}) =>
