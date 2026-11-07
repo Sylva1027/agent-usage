@@ -229,11 +229,16 @@ test("source-scoped snapshots keep every target row and revision without materia
     );
     assert.equal(reparsed.blocked, 0);
     assert.equal(reparsed.value.prefixes.length, 1);
-    assert.deepEqual(reparsed.value.prefixes[0].originalRows, scoped.value.rows);
     assert.deepEqual(
-      sortRows(reparsed.value.prefixes[0].effectiveRows),
-      sortRows(fullEffectiveRows.filter((row) => row.source_path === targetPath)),
+      [...reparsed.value.prefixes[0].originalRows.values()],
+      scoped.value.rows.map((row) => ({ ...row })),
     );
+    assert.deepEqual(
+      sortRows([...reparsed.value.prefixes[0].effectiveRows.values()]),
+      sortRows(fullEffectiveRows.filter((row) => row.source_path === targetPath).map((row) => ({ ...row }))),
+    );
+    for (const prefix of reparsed.value.prefixes)
+      for (const rows of new Set([prefix.originalRows, prefix.effectiveRows, prefix.observedRows])) rows.close();
   } finally {
     fixture.close();
   }

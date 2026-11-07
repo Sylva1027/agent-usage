@@ -9,6 +9,7 @@ coverage/
 
 # Local runtime state
 .codex-usage/
+*.history-cache/
 *.log
 !/docs/validation/**/*.log
 npm-debug.log*

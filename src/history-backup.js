@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { constants as fsConstants, createReadStream, readFileSync } from "node:fs";
-import { copyFile, link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { constants as fsConstants, readFileSync } from "node:fs";
+import { copyFile, link, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { getPricingCatalog, validatePricingCatalog } from "./pricing.js";
@@ -42,9 +42,22 @@ function sha256(bytes) {
 async function hashFile(file) {
   const hash = createHash("sha256");
   let bytes = 0;
-  for await (const chunk of createReadStream(file)) {
-    bytes += chunk.byteLength;
-    hash.update(chunk);
+  const handle = await open(file, "r");
+  try {
+    // Bounded prefetch overlaps I/O and hashing without retaining stream chunks until GC.
+    const buffers = [Buffer.alloc(1024 * 1024), Buffer.alloc(1024 * 1024)];
+    let index = 0;
+    let { bytesRead } = await handle.read(buffers[index], 0, buffers[index].length, null);
+    while (bytesRead) {
+      const buffer = buffers[index];
+      index ^= 1;
+      const pending = handle.read(buffers[index], 0, buffers[index].length, null);
+      bytes += bytesRead;
+      hash.update(buffer.subarray(0, bytesRead));
+      ({ bytesRead } = await pending);
+    }
+  } finally {
+    await handle.close();
   }
   return { bytes, sha256: hash.digest("hex") };
 }

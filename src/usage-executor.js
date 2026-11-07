@@ -186,7 +186,11 @@ export function checkpointUsageStore(database) {
 
 /** @param {{sync: (args: any) => Promise<any>}} store @param {any} options */
 export async function syncUsageStore(store, options, certifiedOnly = false, sourceHints = null) {
-  return store.sync({ options, ...(certifiedOnly ? { certifiedOnly: true } : {}), ...(sourceHints ? { sourceHints } : {}) });
+  return store.sync({
+    options,
+    ...(certifiedOnly ? { certifiedOnly: true } : {}),
+    ...(sourceHints ? { sourceHints } : {}),
+  });
 }
 
 function historyArchiveStatusError(code, message) {
@@ -353,8 +357,7 @@ async function runExecutorProcess() {
 
   let store = null;
   let storeStatus = null;
-  let publishedStore = null;
-  let publishedStatus = null;
+  let publishedReader = null;
   let publishedReady = Promise.resolve();
   let lastCheckpoint = null;
   let completedAcquisition = null;
@@ -386,6 +389,7 @@ async function runExecutorProcess() {
         while (active > 0) await new Promise((resolve) => setTimeout(resolve, 10));
       }
       try {
+        releasePublishedReader();
         store?.close();
       } catch {
         // The process boundary releases any remaining SQLite handle.
@@ -437,10 +441,9 @@ async function runExecutorProcess() {
     });
   };
 
-  const releasePublishedReader = () => {
-    const reader = publishedStore;
-    publishedStore = null;
-    publishedStatus = null;
+  const closePublishedReader = (lease) => {
+    const reader = lease.reader;
+    lease.reader = null;
     if (!reader) return null;
     let cleanupError = null;
     try {
@@ -454,6 +457,14 @@ async function runExecutorProcess() {
       cleanupError ??= error;
     }
     return cleanupError;
+  };
+
+  const releasePublishedReader = () => {
+    const lease = publishedReader;
+    publishedReader = null;
+    if (!lease) return null;
+    lease.retired = true;
+    return lease.users ? null : closePublishedReader(lease);
   };
 
   const serializeSyncBackup = (operation) => {
@@ -505,9 +516,26 @@ async function runExecutorProcess() {
       }
       case "sync": {
         completedAcquisition = null;
-        // WAL readers can keep the last committed view without copying the database.
+        // Cold publication pins the side database, leaving the primary WAL free during sync.
         publishedReady = (async () => {
           if (!storeStatus) return;
+          const authority = store.database
+            .prepare("SELECT value FROM store_meta WHERE key=?")
+            .get("history_archive_event_authority")?.value;
+          const segments =
+            authority === undefined ? [] : store.database.prepare("SELECT segment_id FROM archive_segments").all();
+          const cold = parseHistoryArchiveAuthority(authority, new Set(segments.map((row) => String(row.segment_id))))
+            ?.segmentIds.length;
+          if (cold) {
+            const reader = await store.acquirePublishedHistoryReader();
+            if (!reader)
+              throw executorError(
+                new Error("Published history projection is unavailable"),
+                "HISTORY_PROJECTION_UNAVAILABLE",
+              );
+            publishedReader = { reader, status: storeStatus, users: 0, retired: false };
+            return;
+          }
           const reader = new UsageStore({ databaseFile: store.databaseFile });
           let snapshot = store.captureUsageProjection();
           try {
@@ -519,8 +547,7 @@ async function runExecutorProcess() {
             reader.database.exec("BEGIN");
             reader.database.prepare("SELECT id FROM events LIMIT 1").get();
             if (snapshot) reader.adoptUsageProjection(snapshot);
-            publishedStore = reader;
-            publishedStatus = storeStatus;
+            publishedReader = { reader, status: storeStatus, users: 0, retired: false };
           } catch (error) {
             reader.close();
             throw error;
@@ -535,8 +562,11 @@ async function runExecutorProcess() {
           await publishedReady;
           const identity = store.usageProjectionDatabaseIdentity();
           if (identity && identity === store.openedUsageProjectionIdentity) {
-            acquisitionStart = { database: store.database, identity,
-              dataVersion: Number(store.database.prepare("PRAGMA data_version").get()?.data_version) };
+            acquisitionStart = {
+              database: store.database,
+              identity,
+              dataVersion: Number(store.database.prepare("PRAGMA data_version").get()?.data_version),
+            };
           }
           nextStatus = await syncUsageStore(store, message.options, message.certifiedOnly, message.sourceHints);
         } catch (error) {
@@ -566,19 +596,34 @@ async function runExecutorProcess() {
           store.installUsageProjectionTracker();
           store.observedUsageProjectionChanges = store.usageProjectionChangeKey();
         }
-        const guard = store.usageProjectionGuard();
-        if (acquisitionStart && guard && guard.database === acquisitionStart.database &&
-          guard.identity === acquisitionStart.identity && guard.dataVersion === acquisitionStart.dataVersion) {
-          completedAcquisition = { guard, key: store.usageProjectionChangeKey(), fingerprint: storeStatus.fingerprint };
+        const guard = store.usageProjectionGuard({ includeHistory: true });
+        if (
+          acquisitionStart &&
+          guard &&
+          guard.database === acquisitionStart.database &&
+          guard.identity === acquisitionStart.identity &&
+          guard.dataVersion === acquisitionStart.dataVersion
+        ) {
+          completedAcquisition = {
+            guard,
+            key: store.usageProjectionChangeKey(undefined, true),
+            fingerprint: storeStatus.fingerprint,
+          };
         }
         return storeStatus;
       }
       case "validateAcquisition": {
         const receipt = completedAcquisition;
         if (!receipt || receipt.fingerprint !== message.fingerprint) return false;
-        const guard = store.usageProjectionGuard();
-        return Boolean(guard && guard.database === receipt.guard.database && guard.identity === receipt.guard.identity &&
-          guard.dataVersion === receipt.guard.dataVersion && store.usageProjectionChangeKey() === receipt.key);
+        const guard = store.usageProjectionGuard({ includeHistory: true });
+        return Boolean(
+          guard &&
+            guard.database === receipt.guard.database &&
+            guard.identity === receipt.guard.identity &&
+            guard.dataVersion === receipt.guard.dataVersion &&
+            guard.evidence === receipt.guard.evidence &&
+            store.usageProjectionChangeKey(undefined, true) === receipt.key,
+        );
       }
       case "publishedUsageEvents": {
         return store.publishedUsageEvents();
@@ -589,8 +634,9 @@ async function runExecutorProcess() {
       case "dashboard": {
         applyPricingCatalog(message.pricing);
         await publishedReady;
-        const reader = publishedStore || store;
-        const published = publishedStore ? publishedStatus : storeStatus;
+        const lease = publishedReader;
+        const reader = lease?.reader || store;
+        const published = lease ? lease.status : storeStatus;
         const status = published && {
           ...published,
         };
@@ -598,7 +644,17 @@ async function runExecutorProcess() {
         const pricingModels = filters.pricingModels ?? getPricingCatalog().models;
         filters.pricingModels = pricingModels;
         if (filters.now !== undefined) filters.now = new Date(filters.now);
-        const dashboard = await reader.dashboardHistory(filters, message.options ?? {});
+        if (lease) lease.users++;
+        let dashboard,
+          cleanupError = null;
+        try {
+          dashboard = await reader.dashboardHistory(filters, message.options ?? {});
+        } finally {
+          if (lease && --lease.users === 0 && lease.retired) {
+            cleanupError = closePublishedReader(lease);
+          }
+        }
+        if (cleanupError) throw cleanupError;
         return {
           status,
           ...dashboard,
@@ -967,7 +1023,8 @@ export function createUsageExecutor(
 
   const scheduleIdle = () => {
     clearIdleTimer();
-    if (closed || closing || !worker || !ready || pending.size > 0 || retained > 0 || terminating || idleRetiring) return;
+    if (closed || closing || !worker || !ready || pending.size > 0 || retained > 0 || terminating || idleRetiring)
+      return;
     idleTimer = setTimeout(() => {
       idleTimer = null;
       const target = worker;
@@ -1191,8 +1248,11 @@ export function createUsageExecutor(
     checkSources: (options) => request("checkSources", { options }),
     validateAcquisition: async (fingerprint) => {
       if (!worker || idleRetiring || terminating) return false;
-      try { return await request("validateAcquisition", { fingerprint }, { allowSpawn: false }); }
-      catch { return false; }
+      try {
+        return await request("validateAcquisition", { fingerprint }, { allowSpawn: false });
+      } catch {
+        return false;
+      }
     },
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),

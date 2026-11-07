@@ -7,6 +7,13 @@ import test from "node:test";
 
 import { ensureUsageMetadataSchema, prepareStoredMetadata, readStoredMetadata } from "../src/usage-metadata-store.js";
 
+const LEGACY_UPDATE_TRIGGER_SQL = `CREATE TRIGGER usage_metadata_dirty_update
+  AFTER UPDATE ON events
+  WHEN EXISTS (SELECT 1 FROM usage_metadata_state WHERE singleton = 1)
+  BEGIN
+    INSERT OR IGNORE INTO usage_metadata_dirty VALUES (1);
+  END`;
+
 function createSchema(database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS events (
@@ -99,6 +106,146 @@ function seedEvents(database) {
     model: "Model-A",
   });
 }
+
+function rawMetadata(database, asOfMs) {
+  const rows = (sql, ...params) =>
+    database
+      .prepare(sql)
+      .all(...params)
+      .map((row) => ({ ...row }));
+  const counts = database
+    .prepare("SELECT COUNT(*) eventCount, COUNT(DISTINCT session_id) sessionCount FROM events")
+    .get();
+  return {
+    ...counts,
+    homeRows: new Map(
+      rows(`SELECT home_id, COUNT(*) event_count, COUNT(DISTINCT session_id) session_count
+        FROM events GROUP BY home_id ORDER BY home_id`).map(({ home_id, ...counts }) => [home_id, counts]),
+    ),
+    modelRows: rows("SELECT DISTINCT channel, model FROM events ORDER BY channel, model"),
+    observationRows: rows(
+      `SELECT channel, model, home_id, MAX(timestamp_ms) last_seen FROM events WHERE timestamp_ms <= ?
+        GROUP BY channel, model, home_id ORDER BY channel, model, home_id`,
+      asOfMs,
+    ),
+  };
+}
+
+test("an existing ordinary metadata seed keeps its exact legacy trigger and ensure performs no writes", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    createSchema(database);
+    seedEvents(database);
+    prepareStoredMetadata(database);
+    database.exec(`DROP TRIGGER usage_metadata_dirty_update;
+      ${LEGACY_UPDATE_TRIGGER_SQL};
+      UPDATE usage_metadata_format SET schema_version = (SELECT schema_version FROM pragma_schema_version);
+    `);
+    const schema = () => database.prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").all();
+    const beforeSchema = schema();
+    const beforeFormat = database.prepare("SELECT * FROM usage_metadata_format").get();
+    assert.equal(beforeFormat.version, 2);
+    assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
+    const beforeChanges = database.prepare("SELECT total_changes() n").get().n;
+
+    assert.equal(ensureUsageMetadataSchema(database), true);
+    assert.equal(ensureUsageMetadataSchema(database, { deferIndex: true }), true);
+    assert.equal(database.prepare("SELECT total_changes() n").get().n, beforeChanges);
+    assert.deepEqual(schema(), beforeSchema);
+    assert.deepEqual(database.prepare("SELECT * FROM usage_metadata_format").get(), beforeFormat);
+    assert.deepEqual(prepareStoredMetadata(database), { readEvents: 0, rebuilt: false, reused: true });
+    assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
+  } finally {
+    database.close();
+  }
+});
+
+test("ordinal reordering and unchanged metadata fields append only one event after schema recertification", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    createSchema(database);
+    seedEvents(database);
+    prepareStoredMetadata(database);
+    assert.equal(
+      database.prepare("SELECT sql FROM sqlite_master WHERE name='usage_metadata_dirty_update'").get().sql,
+      LEGACY_UPDATE_TRIGGER_SQL,
+    );
+    database.exec("ALTER TABLE events ADD COLUMN history_ordinal INTEGER NOT NULL DEFAULT 0");
+    assert.equal(readStoredMetadata(database, 1_000), null);
+    ensureUsageMetadataSchema(database);
+    assert.deepEqual(prepareStoredMetadata(database), { readEvents: 3, rebuilt: true, reused: false });
+
+    database.exec(`BEGIN;
+      UPDATE events SET history_ordinal = 1 WHERE timestamp_ms = 100;
+      UPDATE events SET id=id, timestamp_ms=timestamp_ms, session_id=session_id,
+        home_id=home_id, channel=channel, model=model;
+    `);
+    assert.equal(database.prepare("SELECT 1 FROM usage_metadata_dirty").get(), undefined);
+    insertEvent(database, {
+      id: 4,
+      timestamp: 100,
+      session: "shared",
+      home: "home-b",
+      channel: "raw-cli",
+      model: "Model-A",
+    });
+    database.exec("COMMIT");
+
+    assert.deepEqual(prepareStoredMetadata(database), { readEvents: 1, rebuilt: false, reused: false });
+    for (const asOfMs of [50, 100, 200, 300, 1_000]) {
+      assert.deepEqual(readStoredMetadata(database, asOfMs), rawMetadata(database, asOfMs));
+    }
+    assert.deepEqual(prepareStoredMetadata(database), { readEvents: 0, rebuilt: false, reused: true });
+  } finally {
+    database.close();
+  }
+});
+
+for (const [column, value] of [
+  ["id", 4],
+  ["timestamp_ms", 400],
+  ["session_id", "revised-session"],
+  ["home_id", "revised-home"],
+  ["channel", "revised-channel"],
+  ["model", "revised-model"],
+]) {
+  test(`changing metadata field ${column} still dirties and rebuilds the projection`, () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      createSchema(database);
+      database.exec("ALTER TABLE events ADD COLUMN history_ordinal INTEGER NOT NULL DEFAULT 0");
+      ensureUsageMetadataSchema(database);
+      seedEvents(database);
+      prepareStoredMetadata(database);
+      database.prepare(`UPDATE events SET ${column}=? WHERE id=1`).run(value);
+      assert.ok(database.prepare("SELECT 1 FROM usage_metadata_dirty").get());
+      assert.equal(readStoredMetadata(database, 1_000), null);
+      assert.deepEqual(prepareStoredMetadata(database), { readEvents: 3, rebuilt: true, reused: false });
+      assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
+    } finally {
+      database.close();
+    }
+  });
+}
+
+test("a fact revision without new ids retains the conservative metadata rebuild fallback", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    createSchema(database);
+    database.exec(`ALTER TABLE events ADD COLUMN history_ordinal INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE events ADD COLUMN total INTEGER NOT NULL DEFAULT 0`);
+    ensureUsageMetadataSchema(database);
+    seedEvents(database);
+    prepareStoredMetadata(database);
+    database.exec("UPDATE events SET total=1 WHERE id=1");
+    assert.equal(database.prepare("SELECT 1 FROM usage_metadata_dirty").get(), undefined);
+    assert.equal(readStoredMetadata(database, 1_000), null);
+    assert.deepEqual(prepareStoredMetadata(database), { readEvents: 3, rebuilt: true, reused: false });
+    assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
+  } finally {
+    database.close();
+  }
+});
 
 test("metadata projection resumes bounded builds, appends one event, and reopens as a no-op", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "usage-metadata-store-"));
@@ -268,10 +415,12 @@ test("old-id updates, replacement, deletion, and uncommitted reads invalidate pu
       event_count: 1,
       session_count: 1,
     });
+    assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
 
     database.prepare("DELETE FROM events WHERE id = 3").run();
     assert.deepEqual(prepareStoredMetadata(database), { readEvents: 2, rebuilt: true, reused: false });
     assert.equal(readStoredMetadata(database, 1_000).eventCount, 2);
+    assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
   } finally {
     database.close();
     await rm(root, { recursive: true, force: true });

@@ -27,6 +27,33 @@ export const USAGE_RECORD_TABLE_NAMES = Object.freeze([
   FORMAT_TABLE,
 ]);
 
+const HOT_TABLES = {
+  CACHE_TABLE,
+  PERIOD_TABLE,
+  MEMBER_TABLE,
+  APPEND_MEMBER_TABLE,
+  DIRTY_TABLE,
+  WORK_TABLE,
+  OPERATION_TABLE,
+  FORMAT_TABLE,
+};
+const HISTORY_TABLES = Object.fromEntries(
+  Object.entries(HOT_TABLES).map(([key, name]) => [key, name.replace("usage_record_", "usage_history_record_")]),
+);
+export const USAGE_HISTORY_RECORD_TABLE_NAMES = Object.freeze(Object.values(HISTORY_TABLES));
+const recordTables = (mode) => (mode === "history" ? HISTORY_TABLES : HOT_TABLES);
+const START_MS = Number.MIN_SAFE_INTEGER;
+const eventSql = (mode) =>
+  mode === "history"
+    ? RECORD_EVENT_SQL.replace("SELECT id,", "SELECT id AS fact_id, history_ordinal AS id,")
+    : RECORD_EVENT_SQL;
+const cursorSql = (mode) =>
+  mode === "history"
+    ? "(timestamp_ms,history_ordinal) > (?,?) ORDER BY timestamp_ms ASC,history_ordinal ASC"
+    : "id > ? ORDER BY id ASC";
+const cursorParams = (row, mode) =>
+  mode === "history" ? [Number(row.last_ms), Number(row.last_event_id)] : [Number(row.last_event_id)];
+
 const RECORD_METRICS = Object.freeze({
   totalTokens: "total_tokens",
   inputTokens: "input_tokens",
@@ -81,7 +108,16 @@ function assertDatabase(database) {
   }
 }
 
-function normalizeInput({ database, sourceDatabase = database, key, factsKey, zone, where = "", params = [] }) {
+function normalizeInput({
+  database,
+  sourceDatabase = database,
+  key,
+  factsKey,
+  zone,
+  where = "",
+  params = [],
+  mode = "hot",
+}) {
   assertDatabase(database);
   assertDatabase(sourceDatabase);
   if (typeof key !== "string" || key.length === 0) throw new TypeError("key must be a non-empty string");
@@ -94,21 +130,23 @@ function normalizeInput({ database, sourceDatabase = database, key, factsKey, zo
     throw new TypeError('where must be empty or start with "WHERE"');
   }
   if (!Array.isArray(params)) throw new TypeError("params must be an array");
-  return { database, sourceDatabase, key, factsKey, zone, where: where.trim(), params };
+  return { database, sourceDatabase, key, factsKey, zone, where: where.trim(), params, mode };
 }
 
-function schemaReady(database) {
-  const placeholders = USAGE_RECORD_TABLE_NAMES.map(() => "?").join(", ");
+function schemaReady(database, mode = "hot") {
+  const names = Object.values(recordTables(mode));
+  const placeholders = names.map(() => "?").join(", ");
   return (
     Number(
       database
         .prepare(`SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`)
-        .get(...USAGE_RECORD_TABLE_NAMES).count,
-    ) === USAGE_RECORD_TABLE_NAMES.length
+        .get(...names).count,
+    ) === names.length
   );
 }
 
-function currentFormatVersion(database) {
+function currentFormatVersion(database, mode = "hot") {
+  const { FORMAT_TABLE } = recordTables(mode);
   if (!database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(FORMAT_TABLE)) {
     return null;
   }
@@ -119,8 +157,18 @@ function dropDirtyTriggers(database) {
   database.exec(DIRTY_TRIGGER_NAMES.map((name) => `DROP TRIGGER IF EXISTS ${name};`).join("\n"));
 }
 
-function dropSchema(database) {
-  dropDirtyTriggers(database);
+function dropSchema(database, mode) {
+  const {
+    CACHE_TABLE,
+    PERIOD_TABLE,
+    MEMBER_TABLE,
+    APPEND_MEMBER_TABLE,
+    DIRTY_TABLE,
+    WORK_TABLE,
+    OPERATION_TABLE,
+    FORMAT_TABLE,
+  } = recordTables(mode);
+  if (mode !== "history") dropDirtyTriggers(database);
   database.exec(`
     DROP TABLE IF EXISTS ${WORK_TABLE};
     DROP TABLE IF EXISTS ${OPERATION_TABLE};
@@ -190,9 +238,20 @@ function createDirtyTriggers(database) {
   `);
 }
 
-function ensureSchema(database, installDirtyTriggers = true) {
-  if (currentFormatVersion(database) !== FORMAT_VERSION || !schemaReady(database)) {
-    dropSchema(database);
+function ensureSchema(database, installDirtyTriggers = true, mode = "hot") {
+  const {
+    CACHE_TABLE,
+    PERIOD_TABLE,
+    MEMBER_TABLE,
+    APPEND_MEMBER_TABLE,
+    DIRTY_TABLE,
+    WORK_TABLE,
+    OPERATION_TABLE,
+    FORMAT_TABLE,
+  } = recordTables(mode);
+  const history = mode === "history";
+  if (currentFormatVersion(database, mode) !== FORMAT_VERSION || !schemaReady(database, mode)) {
+    dropSchema(database, mode);
     database.exec(`
       CREATE TABLE ${FORMAT_TABLE} (
         slot INTEGER PRIMARY KEY CHECK (slot = 1),
@@ -211,6 +270,7 @@ function ensureSchema(database, installDirtyTriggers = true) {
         state TEXT NOT NULL CHECK (state IN ('building', 'complete')),
         build_mode TEXT NOT NULL CHECK (build_mode IN ('full', 'dirty', 'append')),
         last_event_id INTEGER NOT NULL DEFAULT -1,
+        ${history ? `last_ms INTEGER NOT NULL DEFAULT ${START_MS},` : ""}
         champion_json TEXT
       ) STRICT;
 
@@ -262,6 +322,7 @@ function ensureSchema(database, installDirtyTriggers = true) {
         unit TEXT NOT NULL CHECK (unit IN ('day', 'week', 'month')),
         period_key TEXT NOT NULL,
         last_event_id INTEGER NOT NULL DEFAULT -1,
+        ${history ? `last_ms INTEGER NOT NULL DEFAULT ${START_MS},` : ""}
         total_tokens REAL NOT NULL,
         input_tokens REAL NOT NULL,
         cached_tokens REAL NOT NULL,
@@ -286,6 +347,7 @@ function ensureSchema(database, installDirtyTriggers = true) {
 
     `);
   }
+  if (history) return;
   if (installDirtyTriggers) createDirtyTriggers(database);
   else dropDirtyTriggers(database);
 }
@@ -296,16 +358,17 @@ function ensureSchema(database, installDirtyTriggers = true) {
  *
  * @param {import("node:sqlite").DatabaseSync} database
  */
-export function ensureUsageRecordSchema(database) {
+export function ensureUsageRecordSchema(database, { mode = "hot" } = {}) {
   assertDatabase(database);
-  ensureSchema(database, true);
+  ensureSchema(database, true, mode);
 }
 
-function cacheRow(database) {
+function cacheRow(database, mode = "hot") {
+  const { CACHE_TABLE } = recordTables(mode);
   return database
     .prepare(
       `SELECT stable_key, target_facts_key, published_facts_key, zone, where_sql, params_json,
-        state, build_mode, last_event_id, champion_json
+        state, build_mode, last_event_id, ${mode === "history" ? "last_ms," : ""} champion_json
        FROM ${CACHE_TABLE} WHERE slot = 1`,
     )
     .get();
@@ -322,31 +385,34 @@ function parseChampionJson(raw) {
 /**
  * Read a complete matching result without creating or changing schema.
  *
- * @param {{ database: import("node:sqlite").DatabaseSync, key: string, factsKey: string }} options
+ * @param {{ database: import("node:sqlite").DatabaseSync, key: string, factsKey: string, mode?: string }} options
  * @returns {Record<string, Record<string, { period: string, value: number }>> | null}
  */
-export function readStoredRecordChampions({ database, key, factsKey }) {
+export function readStoredRecordChampions({ database, key, factsKey, mode = "hot" }) {
   assertDatabase(database);
   if (typeof key !== "string" || key.length === 0) throw new TypeError("key must be a non-empty string");
   if (typeof factsKey !== "string" || factsKey.length === 0) {
     throw new TypeError("factsKey must be a non-empty string");
   }
-  if (!schemaReady(database) || currentFormatVersion(database) !== FORMAT_VERSION) return null;
-  const row = cacheRow(database);
+  if (!schemaReady(database, mode) || currentFormatVersion(database, mode) !== FORMAT_VERSION) return null;
+  const row = cacheRow(database, mode);
   if (!row || row.stable_key !== key || row.published_facts_key !== factsKey || row.champion_json === null) return null;
   return parseChampionJson(row.champion_json);
 }
 
-function clearPublished(database) {
+function clearPublished(database, mode = "hot") {
+  const { MEMBER_TABLE, PERIOD_TABLE } = recordTables(mode);
   database.prepare(`DELETE FROM ${MEMBER_TABLE}`).run();
   database.prepare(`DELETE FROM ${PERIOD_TABLE}`).run();
 }
 
-function clearWork(database) {
+function clearWork(database, mode = "hot") {
+  const { WORK_TABLE } = recordTables(mode);
   database.prepare(`DELETE FROM ${WORK_TABLE}`).run();
 }
 
-function clearAppendMembers(database) {
+function clearAppendMembers(database, mode = "hot") {
+  const { APPEND_MEMBER_TABLE } = recordTables(mode);
   database.prepare(`DELETE FROM ${APPEND_MEMBER_TABLE}`).run();
 }
 
@@ -371,7 +437,8 @@ function validAppendState(database, row) {
   return row?.state === "complete" && resumableAppendState(database, row);
 }
 
-function populateDirtyWork(database, zone) {
+function populateDirtyWork(database, zone, mode = "hot") {
+  const { WORK_TABLE, DIRTY_TABLE, PERIOD_TABLE } = recordTables(mode);
   database
     .prepare(
       `INSERT OR IGNORE INTO ${WORK_TABLE} (
@@ -388,7 +455,9 @@ function populateDirtyWork(database, zone) {
 }
 
 function prepareCandidate(database, sourceDatabase, input, allowAppend) {
-  const current = cacheRow(database);
+  const { mode } = input;
+  const { CACHE_TABLE, DIRTY_TABLE } = recordTables(mode);
+  const current = cacheRow(database, mode);
   if (current?.stable_key === input.key) {
     if (
       current.zone !== input.zone ||
@@ -406,25 +475,26 @@ function prepareCandidate(database, sourceDatabase, input, allowAppend) {
         current.build_mode === "append" &&
         (!allowAppend || !resumableAppendState(database, current))
       ) {
-        clearWork(database);
-        clearAppendMembers(database);
+        clearWork(database, mode);
+        clearAppendMembers(database, mode);
         database
           .prepare(`UPDATE ${CACHE_TABLE} SET build_mode = 'dirty' WHERE slot = 1 AND stable_key = ?`)
           .run(input.key);
-        populateDirtyWork(database, input.zone);
+        populateDirtyWork(database, input.zone, mode);
       }
       return null;
     }
 
-    clearWork(database);
-    clearAppendMembers(database);
+    clearWork(database, mode);
+    clearAppendMembers(database, mode);
     if (current.published_facts_key === null || sourceDatabase !== database) {
-      clearPublished(database);
+      clearPublished(database, mode);
       database.prepare(`DELETE FROM ${DIRTY_TABLE}`).run();
       database
         .prepare(
           `UPDATE ${CACHE_TABLE}
-           SET target_facts_key = ?, state = 'building', build_mode = 'full', last_event_id = -1, champion_json = NULL
+           SET target_facts_key = ?, state = 'building', build_mode = 'full', last_event_id = -1,
+             ${mode === "history" ? `last_ms = ${START_MS},` : ""} champion_json = NULL
            WHERE slot = 1`,
         )
         .run(input.factsKey);
@@ -444,14 +514,14 @@ function prepareCandidate(database, sourceDatabase, input, allowAppend) {
            WHERE slot = 1`,
         )
         .run(input.factsKey);
-      populateDirtyWork(database, input.zone);
+      populateDirtyWork(database, input.zone, mode);
     }
     return null;
   }
 
-  clearPublished(database);
-  clearWork(database);
-  clearAppendMembers(database);
+  clearPublished(database, mode);
+  clearWork(database, mode);
+  clearAppendMembers(database, mode);
   database.prepare(`DELETE FROM ${DIRTY_TABLE}`).run();
   database.prepare(`DELETE FROM ${CACHE_TABLE}`).run();
   database
@@ -530,6 +600,32 @@ function eventPeriodKeys(row, zone) {
   };
 }
 
+/** Mark old and new timestamps in the caller's fact transaction; ordinal changes dirty the same periods. */
+export function markStoredHistoryRecordsDirty(database, { ms, id }) {
+  assertDatabase(database);
+  if (!Number.isSafeInteger(ms) || !Number.isSafeInteger(id))
+    throw new TypeError("Invalid history record dirty position");
+  const { DIRTY_TABLE, PERIOD_TABLE } = HISTORY_TABLES;
+  const insert = database.prepare(`INSERT INTO ${DIRTY_TABLE} VALUES(?,?,?,?,?)
+    ON CONFLICT(calendar_zone,unit,period_key) DO UPDATE SET
+      minimum_ms=MIN(minimum_ms,excluded.minimum_ms),maximum_ms=MAX(maximum_ms,excluded.maximum_ms)`);
+  for (const [unit, key] of Object.entries(eventPeriodKeys({ timestamp_ms: ms }, "utc")))
+    insert.run("utc", unit, key, ms, ms);
+  // Published bounds retain the local keys of removed facts, including keys from another timezone.
+  if (cacheRow(database, "history")?.zone === "local") {
+    for (const row of database
+      .prepare(`SELECT unit,period_key FROM ${PERIOD_TABLE}
+      WHERE minimum_ms<=? AND maximum_ms>=?`)
+      .iterate(ms, ms))
+      insert.run("local", row.unit, row.period_key, ms, ms);
+  }
+  for (const row of database
+    .prepare("SELECT DISTINCT day_key,week_key,month_key FROM events WHERE timestamp_ms=?")
+    .iterate(ms)) {
+    for (const unit of ["day", "week", "month"]) insert.run("local", unit, row[`${unit}_key`], ms, ms);
+  }
+}
+
 function memberSelectSql(where, predicateSql) {
   return `
     WITH scoped AS (
@@ -543,6 +639,7 @@ function memberSelectSql(where, predicateSql) {
 }
 
 function replacePeriodMembers(database, sourceDatabase, input, unit, periodKey, predicate) {
+  const { MEMBER_TABLE } = recordTables(input.mode);
   database.prepare(`DELETE FROM ${MEMBER_TABLE} WHERE unit = ? AND period_key = ?`).run(unit, periodKey);
   const params = [...input.params, ...predicate.params];
   const selectSql = memberSelectSql(input.where, predicate.sql);
@@ -563,7 +660,8 @@ function replacePeriodMembers(database, sourceDatabase, input, unit, periodKey, 
   }
 }
 
-function refreshWorkCounts(database, unit, periodKey) {
+function refreshWorkCounts(database, unit, periodKey, mode = "hot") {
+  const { WORK_TABLE, MEMBER_TABLE } = recordTables(mode);
   database
     .prepare(
       `UPDATE ${WORK_TABLE}
@@ -581,8 +679,9 @@ function refreshWorkCounts(database, unit, periodKey) {
 }
 
 function mergeWorkPeriod(database, sourceDatabase, input, unit, periodKey, predicate) {
+  const { WORK_TABLE, MEMBER_TABLE, PERIOD_TABLE } = recordTables(input.mode);
   replacePeriodMembers(database, sourceDatabase, input, unit, periodKey, predicate);
-  refreshWorkCounts(database, unit, periodKey);
+  refreshWorkCounts(database, unit, periodKey, input.mode);
   const exists = database
     .prepare(
       `SELECT 1
@@ -613,7 +712,8 @@ function mergeWorkPeriod(database, sourceDatabase, input, unit, periodKey, predi
   database.prepare(`DELETE FROM ${WORK_TABLE} WHERE unit = ? AND period_key = ?`).run(unit, periodKey);
 }
 
-function buildRankState(database) {
+function buildRankState(database, mode = "hot") {
+  const { PERIOD_TABLE } = recordTables(mode);
   const rankings = { day: {}, week: {}, month: {} };
   for (const [metric, column] of Object.entries(RECORD_METRICS)) {
     for (const unit of ["day", "week", "month"]) {
@@ -659,21 +759,38 @@ function highWaterEventId(sourceDatabase, input) {
 }
 
 function finishBuild(database, input, expectedDataVersion, sourceFrozen) {
+  const { mode } = input;
+  const { WORK_TABLE, CACHE_TABLE, OPERATION_TABLE, DIRTY_TABLE } = recordTables(mode);
   assertDataVersion(input.sourceDatabase, expectedDataVersion, sourceFrozen);
   if (database.prepare(`SELECT 1 FROM ${WORK_TABLE} LIMIT 1`).get()) {
     throw recordError("USAGE_RECORD_STATE_INVALID", "record work remains before publication");
   }
-  const rankings = buildRankState(database);
+  const rankings = buildRankState(database, mode);
   const champions = championsFromRankState(rankings);
+  const last =
+    mode === "history"
+      ? input.sourceDatabase
+          .prepare(`SELECT timestamp_ms,history_ordinal FROM events ${input.where}
+        ORDER BY timestamp_ms DESC,history_ordinal DESC LIMIT 1`)
+          .get(...input.params)
+      : null;
   database
     .prepare(
       `UPDATE ${CACHE_TABLE}
-       SET published_facts_key = ?, state = 'complete', last_event_id = ?, champion_json = ?
+       SET published_facts_key = ?, state = 'complete', last_event_id = ?,
+         ${mode === "history" ? "last_ms = ?," : ""} champion_json = ?
        WHERE slot = 1 AND stable_key = ?`,
     )
-    .run(input.factsKey, highWaterEventId(input.sourceDatabase, input), JSON.stringify(champions), input.key);
+    .run(
+      input.factsKey,
+      ...(mode === "history"
+        ? [Number(last?.history_ordinal ?? -1), Number(last?.timestamp_ms ?? START_MS)]
+        : [highWaterEventId(input.sourceDatabase, input)]),
+      JSON.stringify(champions),
+      input.key,
+    );
   database.prepare(`UPDATE ${OPERATION_TABLE} SET rebuild_required = 0 WHERE slot = 1`).run();
-  clearAppendMembers(database);
+  clearAppendMembers(database, mode);
   database.prepare(`DELETE FROM ${DIRTY_TABLE}`).run();
   return champions;
 }
@@ -705,11 +822,12 @@ function isSnapshotLock(error) {
 }
 
 function buildFullWork(input, options, rate, batchSize, destinationInTransaction, sourceFrozen, expectedDataVersion) {
-  const { database, sourceDatabase } = input;
+  const { database, sourceDatabase, mode } = input;
+  const { WORK_TABLE, CACHE_TABLE } = recordTables(mode);
   const cursor = sourceDatabase
-    .prepare(`${RECORD_EVENT_SQL}
-    ${input.where} ${input.where ? "AND" : "WHERE"} id > ? ORDER BY id ASC`)
-    .iterate(...input.params, Number(cacheRow(database).last_event_id));
+    .prepare(`${eventSql(mode)}
+    ${input.where} ${input.where ? "AND" : "WHERE"} ${cursorSql(mode)}`)
+    .iterate(...input.params, ...cursorParams(cacheRow(database, mode), mode));
   let released = false;
   const release = () => {
     if (!released) {
@@ -723,14 +841,17 @@ function buildFullWork(input, options, rate, batchSize, destinationInTransaction
     VALUES (?, ?, -1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
     ON CONFLICT(unit, period_key) DO UPDATE SET
       ${[...PERIOD_SCALAR_COLUMNS, "minimum_ms", "maximum_ms"].map((column) => `${column} = excluded.${column}`).join(", ")}`);
-  const saveProgress = database.prepare(`UPDATE ${CACHE_TABLE} SET last_event_id = ? WHERE slot = 1`);
+  const saveProgress = database.prepare(`UPDATE ${CACHE_TABLE} SET last_event_id = ?
+    ${mode === "history" ? ", last_ms = ?" : ""} WHERE slot = 1`);
   try {
     while (true) {
       assertDataVersion(sourceDatabase, expectedDataVersion, sourceFrozen);
       const step = () => {
         const states = new Map();
         let processed = 0;
-        let lastEventId = Number(cacheRow(database).last_event_id);
+        const current = cacheRow(database, mode);
+        let lastEventId = Number(current.last_event_id),
+          lastMs = Number(current.last_ms);
         while (processed < batchSize) {
           const next = cursor.next();
           if (next.done) break;
@@ -757,6 +878,7 @@ function buildFullWork(input, options, rate, batchSize, destinationInTransaction
             state.maximum_ms = Math.max(Number(state.maximum_ms), Number(row.timestamp_ms));
           }
           lastEventId = Number(row.id);
+          lastMs = Number(row.timestamp_ms);
           processed += 1;
         }
         for (const state of states.values()) {
@@ -768,7 +890,7 @@ function buildFullWork(input, options, rate, batchSize, destinationInTransaction
             state.maximum_ms,
           );
         }
-        saveProgress.run(lastEventId);
+        saveProgress.run(lastEventId, ...(mode === "history" ? [lastMs] : []));
         return { unit: "full", periodKey: "", lastEventId, processed, workComplete: processed < batchSize };
       };
       const batch = destinationInTransaction ? step() : transaction(database, step);
@@ -783,7 +905,7 @@ function buildFullWork(input, options, rate, batchSize, destinationInTransaction
     release();
   }
   while (true) {
-    const work = nextWork(database);
+    const work = nextWork(database, mode);
     if (!work) break;
     const step = () => {
       assertDataVersion(sourceDatabase, expectedDataVersion, sourceFrozen);
@@ -1015,7 +1137,8 @@ function publishAppend(database, input, expectedDataVersion) {
   });
 }
 
-function nextWork(database) {
+function nextWork(database, mode = "hot") {
+  const { WORK_TABLE } = recordTables(mode);
   return database
     .prepare(
       `SELECT unit, period_key, last_event_id, minimum_ms, maximum_ms
@@ -1036,6 +1159,7 @@ function nextWork(database) {
  * @param {{
  *   database: import("node:sqlite").DatabaseSync,
  *   sourceDatabase?: import("node:sqlite").DatabaseSync,
+ *   mode?: string,
  *   key: string,
  *   factsKey: string,
  *   zone: string,
@@ -1063,20 +1187,21 @@ export function buildStoredRecordChampions(options) {
   if (!Number.isSafeInteger(batchSize) || batchSize <= 0 || batchSize > 10_000) {
     throw new TypeError("batchSize must be an integer between 1 and 10000");
   }
-  const { database, sourceDatabase } = input;
+  const { database, sourceDatabase, mode } = input;
+  const { WORK_TABLE } = recordTables(mode);
   const destinationInTransaction = database.isTransaction === true;
   const sourceFrozen = sourceDatabase.isTransaction === true;
-  const allowAppend = sourceDatabase === database && !destinationInTransaction && !sourceFrozen;
+  const allowAppend = mode !== "history" && sourceDatabase === database && !destinationInTransaction && !sourceFrozen;
 
   const run = () => {
-    ensureSchema(database, sourceDatabase === database);
+    ensureSchema(database, sourceDatabase === database, mode);
     const expectedDataVersion = sourceFrozen ? null : dataVersion(sourceDatabase);
     const published = destinationInTransaction
       ? prepareCandidate(database, sourceDatabase, input, allowAppend)
       : transaction(database, () => prepareCandidate(database, sourceDatabase, input, allowAppend));
     if (published !== null) return published;
 
-    const buildMode = cacheRow(database).build_mode;
+    const buildMode = cacheRow(database, mode).build_mode;
     if (buildMode === "full") {
       buildFullWork(input, options, rate, batchSize, destinationInTransaction, sourceFrozen, expectedDataVersion);
     } else if (buildMode === "append") {
@@ -1085,21 +1210,22 @@ export function buildStoredRecordChampions(options) {
     }
 
     while (true) {
-      const work = nextWork(database);
+      const work = nextWork(database, mode);
       if (!work) break;
       const unit = String(work.unit);
       const periodKey = String(work.period_key);
       const predicate = periodPredicate(unit, periodKey, input.zone, work);
       const selectEvents = sourceDatabase.prepare(`
-        ${RECORD_EVENT_SQL}
-        ${input.where} ${input.where ? "AND" : "WHERE"} (${predicate.sql}) AND id > ?
-        ORDER BY id ASC
+        ${eventSql(mode)}
+        ${input.where} ${input.where ? "AND" : "WHERE"} (${predicate.sql}) AND ${cursorSql(mode)}
       `);
       const initial = database
-        .prepare(`SELECT last_event_id FROM ${WORK_TABLE} WHERE unit = ? AND period_key = ?`)
+        .prepare(
+          `SELECT last_event_id ${mode === "history" ? ",last_ms" : ""} FROM ${WORK_TABLE} WHERE unit = ? AND period_key = ?`,
+        )
         .get(unit, periodKey);
       if (!initial) throw recordError("USAGE_RECORD_STATE_INVALID", "record work item changed while building");
-      const iterator = selectEvents.iterate(...input.params, ...predicate.params, Number(initial.last_event_id));
+      const iterator = selectEvents.iterate(...input.params, ...predicate.params, ...cursorParams(initial, mode));
       let iteratorReleased = false;
       const releaseIterator = () => {
         if (!iteratorReleased) {
@@ -1120,7 +1246,7 @@ export function buildStoredRecordChampions(options) {
           const step = () => {
             const current = database
               .prepare(
-                `SELECT last_event_id, ${PERIOD_VALUE_COLUMNS}
+                `SELECT last_event_id, ${mode === "history" ? "last_ms," : ""} ${PERIOD_VALUE_COLUMNS}
                  FROM ${WORK_TABLE} WHERE unit = ? AND period_key = ?`,
               )
               .get(unit, periodKey);
@@ -1131,16 +1257,23 @@ export function buildStoredRecordChampions(options) {
               accumulateEvent(row, rate, options.estimateRow(row), current);
             }
             const lastEventId = rows.length > 0 ? Number(rows.at(-1).id) : Number(current.last_event_id);
+            const lastMs = rows.length > 0 ? Number(rows.at(-1).timestamp_ms) : Number(current.last_ms);
             if (rows.length > 0) {
               database
                 .prepare(
                   `UPDATE ${WORK_TABLE}
-                   SET last_event_id = ?, total_tokens = ?, input_tokens = ?, cached_tokens = ?,
+                   SET last_event_id = ?, ${mode === "history" ? "last_ms = ?," : ""} total_tokens = ?, input_tokens = ?, cached_tokens = ?,
                      output_tokens = ?, reasoning_tokens = ?, total_cost = ?, input_cost = ?,
                      cached_cost = ?, output_cost = ?
                    WHERE unit = ? AND period_key = ?`,
                 )
-                .run(lastEventId, ...PERIOD_SCALAR_COLUMNS.map((field) => current[field]), unit, periodKey);
+                .run(
+                  lastEventId,
+                  ...(mode === "history" ? [lastMs] : []),
+                  ...PERIOD_SCALAR_COLUMNS.map((field) => current[field]),
+                  unit,
+                  periodKey,
+                );
             }
             if (workComplete) mergeWorkPeriod(database, sourceDatabase, input, unit, periodKey, predicate);
             return { unit, periodKey, lastEventId, processed: rows.length, workComplete };

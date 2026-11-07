@@ -656,8 +656,7 @@ test("history tracking preserves quota identity after reopen and consecutive sin
     const summary = summarize.apply(this, args);
     assert.equal(this.verifiedHistorySqlRead, true);
     assert.equal(this.historyDiskRead, false);
-    assert.equal(quotaProjectionCacheUsable(this.database), true);
-    reads.push({ ...quotaProjectionWork(this.database) });
+    reads.push({ ...quotaProjectionWork(this.database), cacheUsable: quotaProjectionCacheUsable(this.database) });
     return summary;
   };
   const filters = { preset: "all", calendarZone: "utc", bucket: "day", now: new Date(NOW) };
@@ -668,15 +667,53 @@ test("history tracking preserves quota identity after reopen and consecutive sin
   }
   assert.equal(reads.length, 2);
   for (const work of reads) {
+    assert.equal(work.cacheUsable, true);
     assert.notEqual(work.fallback, true);
     incremental(work, 0);
     assert.equal(work.cycles, 0);
   }
 
   put(store.database, row(2, { sourcePath, observedAtMs: NOW, usedPercent: 88 }));
+  const updated = selectQuotaWindows(oracleRows(store.database, []), NOW);
+  const immediate = await store.trySingleSqlHistoryDashboard(filters, { includeDetails: false }, filters);
+  assert.ok(immediate, "new observations must retain the single-archive fast path");
+  assert.deepEqual(immediate.summary.quota, updated, "a direct read must see the new observation without preparation");
+  assert.equal(immediate.summary.quota.windows.quota_5h.usedPercent, 88);
+  assert.equal(reads.at(-1).fallback, true, "unprepared quota changes must read current observations");
+
+  // parity() also prepares the hot quota projection; that must not change which facts the archive reader sees.
   const changed = parity(store.database, { label: "real observation after history tracking" });
   incremental(changed.work, 1);
   assert.equal(changed.actual.windows.quota_5h.usedPercent, 88);
+  const prepared = await store.trySingleSqlHistoryDashboard(filters, { includeDetails: false }, filters);
+  assert.ok(prepared);
+  assert.equal(
+    prepared.summary.quota.windows.quota_5h.usedPercent,
+    88,
+    "preparing the hot projection must not restore the sealed archive's old observation (20)",
+  );
+  assert.deepEqual(prepared.summary.quota, updated);
+  assert.notEqual(reads.at(-1).fallback, true);
+
+  const boundary = NOW + MINUTE;
+  put(store.database, row(3, { sourcePath, observedAtMs: boundary, usedPercent: 93 }));
+  incremental(parity(store.database, { label: "future observation before its boundary" }).work, 1);
+  assert.equal(store.database.prepare("SELECT valid_to_ms FROM usage_quota_window_cache").get().valid_to_ms, boundary);
+  for (const asOf of [boundary - 1, boundary]) {
+    const scope = { ...filters, now: new Date(asOf) };
+    const dashboard = await store.trySingleSqlHistoryDashboard(scope, { includeDetails: false }, scope);
+    assert.ok(dashboard);
+    assert.deepEqual(dashboard.summary.quota, selectQuotaWindows(oracleRows(store.database, []), asOf));
+    assert.equal(dashboard.summary.quota.windows.quota_5h.usedPercent, asOf < boundary ? 88 : 93);
+  }
+  const promoted = parity(store.database, { asOf: boundary, label: "prepared at observation boundary" });
+  assert.equal(promoted.work.promotedTimes, 1);
+  const scope = { ...filters, now: new Date(boundary) };
+  const atBoundary = await store.trySingleSqlHistoryDashboard(scope, { includeDetails: false }, scope);
+  assert.ok(atBoundary);
+  assert.deepEqual(atBoundary.summary.quota, promoted.actual);
+  assert.equal(atBoundary.summary.quota.windows.quota_5h.usedPercent, 93);
+  assert.notEqual(reads.at(-1).fallback, true);
 });
 
 for (const name of [

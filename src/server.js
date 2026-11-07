@@ -247,6 +247,29 @@ function clientFingerprint(sourceFingerprint, pricingVersion = pricingVersionFor
     .digest("hex");
 }
 
+function usageVersion(fingerprint, source, catalog, asOf = new Date()) {
+  if (
+    !source?.routingFingerprint ||
+    !source.publication?.signature ||
+    source.publication.pending ||
+    source.fingerprint !== fingerprint ||
+    !catalog?.version
+  )
+    return null;
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        clientFingerprint(fingerprint, catalog.version, asOf),
+        source.routingFingerprint,
+        source.publication.signature,
+        catalog.version,
+        catalog.usdToCnyRate,
+        catalog.models,
+      ]),
+    )
+    .digest("hex");
+}
+
 function httpError(statusCode, message, code) {
   /** @type {Error & { statusCode?: number, code?: string }} */
   const error = new Error(message);
@@ -671,8 +694,10 @@ export function createUsageServer(options = {}) {
     const releaseAcquisition = usageStore.retainWorker();
     syncPromise = (async () => {
       const currentUsageOptions = await usageOptions(options);
-      const sourceOptions = { ...currentUsageOptions,
-        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE };
+      const sourceOptions = {
+        ...currentUsageOptions,
+        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+      };
       const hints = sourceHints;
       sourceHints = { paths: [], unknown: false };
       let startupRetained = null;
@@ -685,8 +710,8 @@ export function createUsageServer(options = {}) {
       }
       if (sourceAcquisitionAvailable && (startupRetained || storeStatus?.acquisition)) {
         const checked = await usageStore.checkSources(sourceOptions);
-        const source = checked && await summaryCache.readCertifiedSourceState(sourceOptions, checked);
-        if (source && (!startupRetained || await summaryCache.stateFor(source))) {
+        const source = checked && (await summaryCache.readCertifiedSourceState(sourceOptions, checked));
+        if (source && (!startupRetained || (await summaryCache.stateFor(source)))) {
           storeStatus = checked;
           publishedSource = source;
           scheduleUsageDiscovery(usageStore.metadata().harnessModels);
@@ -696,7 +721,7 @@ export function createUsageServer(options = {}) {
       if (sourceAcquisitionAvailable) {
         const certified = await usageStore.sync({ options: sourceOptions, certifiedOnly: true, sourceHints: hints });
         sourceAcquisitionAvailable = Boolean(certified?.acquisition);
-        const source = certified && await summaryCache.readCertifiedSourceState(sourceOptions, certified);
+        const source = certified && (await summaryCache.readCertifiedSourceState(sourceOptions, certified));
         if (source) {
           publishedSource = source;
           storeStatus = certified;
@@ -709,12 +734,15 @@ export function createUsageServer(options = {}) {
         importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
       });
       // Acquisition can be complete before a dashboard response has been cached.
-      if (before.publication && !before.publication.pending &&
+      if (
+        before.publication &&
+        !before.publication.pending &&
         before.routingFingerprint === synchronizedSource?.routingFingerprint &&
         before.fingerprint === storeStatus?.fingerprint &&
         usageStore.status?.fingerprint === storeStatus.fingerprint &&
         (before.publication.signature === synchronizedSource?.publication?.signature ||
-          await usageStore.validateAcquisition(storeStatus.fingerprint))) {
+          (await usageStore.validateAcquisition(storeStatus.fingerprint)))
+      ) {
         storeStatus = { ...storeStatus, checkedAt: before.checkedAt };
         publishedSource = before;
         synchronizedSource = before;
@@ -729,13 +757,15 @@ export function createUsageServer(options = {}) {
       }
       const status = await usageStore.sync({ options: sourceOptions, sourceHints: hints });
       sourceAcquisitionAvailable = Boolean(status.acquisition);
-      publishedSource = (status.acquisition && await summaryCache.readCertifiedSourceState(sourceOptions, status)) || publishedSummarySource(
-        before,
-        await summaryCache.readSourceState({
-          ...currentUsageOptions,
-          importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-        }),
-      );
+      publishedSource =
+        (status.acquisition && (await summaryCache.readCertifiedSourceState(sourceOptions, status))) ||
+        publishedSummarySource(
+          before,
+          await summaryCache.readSourceState({
+            ...currentUsageOptions,
+            importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+          }),
+        );
       synchronizedSource = publishedSource;
       storeStatus = status;
       scheduleUsageDiscovery(usageStore.metadata().harnessModels);
@@ -749,7 +779,7 @@ export function createUsageServer(options = {}) {
 
   async function discoverUsageWatchRoots() {
     const currentOptions = await usageOptions(options);
-    const sources = storeStatus?.acquisition?.homes || await discoverUsageSources(currentOptions);
+    const sources = storeStatus?.acquisition?.homes || (await discoverUsageSources(currentOptions));
     const roots = [];
     for (const source of sources) {
       const sourceRoot = path.resolve(source.path);
@@ -780,8 +810,10 @@ export function createUsageServer(options = {}) {
     retainPending: () => usageStore.retainWorker(),
     onHint: (hint) => {
       const merged = new Map([...sourceHints.paths, ...hint.paths].map((entry) => [entry.path, entry]));
-      sourceHints = { paths: [...merged.values()].slice(0, 128),
-        unknown: sourceHints.unknown || hint.unknown || merged.size > 128 };
+      sourceHints = {
+        paths: [...merged.values()].slice(0, 128),
+        unknown: sourceHints.unknown || hint.unknown || merged.size > 128,
+      };
       return requestUsageWake();
     },
     ignorePath: (filename) => {
@@ -837,15 +869,21 @@ export function createUsageServer(options = {}) {
 
   function broadcastUsageSync(status) {
     if (serverClosed || !usageEventClients.size) return;
+    const catalog = localPricingCatalog();
     const data = {
       checkedAt: status?.checkedAt || new Date().toISOString(),
       fingerprint: status?.fingerprint || "",
+      usageVersion: usageVersion(status?.fingerprint, publishedSource, catalog),
     };
-    const version = JSON.stringify([
-      data.fingerprint,
-      publishedSource?.routingFingerprint,
-      localPricingCatalog().version,
-    ]);
+    const version =
+      data.usageVersion ||
+      JSON.stringify([
+        data.fingerprint,
+        publishedSource?.routingFingerprint,
+        publishedSource?.publication?.signature,
+        catalog.version,
+        catalog.usdToCnyRate,
+      ]);
     if (version === lastUsageEventVersion) return;
     lastUsageEventVersion = version;
     for (const response of [...usageEventClients]) {
@@ -1041,13 +1079,16 @@ export function createUsageServer(options = {}) {
               importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
             });
         const since = url.searchParams.get("since") || "";
+        const catalog = localPricingCatalog();
+        const asOf = new Date();
         const fingerprint = clientFingerprint(
           "routingFingerprint" in status ? status.routingFingerprint : status.fingerprint,
-          localPricingCatalog().version,
-          new Date(),
+          catalog.version,
+          asOf,
         );
         sendJson(response, 200, {
           fingerprint,
+          usageVersion: usageVersion(status.fingerprint, importContext ? null : status, catalog, asOf),
           changed: since ? fingerprint !== since : true,
           checkedAt: status.checkedAt,
         });
@@ -1363,6 +1404,7 @@ export function createUsageServer(options = {}) {
             const summary = summarizeUsage(report, filters);
             return {
               fingerprint: clientFingerprint(status.fingerprint, pricingCatalog.version),
+              usageVersion: null,
               checkedAt: status.checkedAt,
               metadata: {
                 generatedAt: fullReport.generatedAt,
@@ -1405,11 +1447,13 @@ export function createUsageServer(options = {}) {
           const includeDetails = url.pathname !== "/api/usage" || url.searchParams.get("view") !== "dashboard";
           let result;
           let source;
+          let resultSource;
           let cached;
           let readAttempts = 0;
           const key = summaryCacheKey(filters, includeDetails, pricingCatalog);
           do {
             await loadUsageStore({ check: false });
+            const acquiredStatus = usageStore.status;
             source = !importContext && !syncPromise ? publishedSource : null;
             if (source) {
               const previousSource = source;
@@ -1418,6 +1462,7 @@ export function createUsageServer(options = {}) {
             }
             result = source ? await summaryCache.get(key, source, asOf) : null;
             cached = Boolean(result);
+            resultSource = cached ? source : null;
             response.setHeader("x-summary-cache", result ? "hit" : "miss");
             if (!result) {
               result = await runWithPricingCatalog(pricingCatalog, () =>
@@ -1430,15 +1475,30 @@ export function createUsageServer(options = {}) {
                   importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
                 };
                 const afterRead = source.acquisition
-                  ? await summaryCache.readCertifiedSourceState(readOptions, { ...source, acquisition: source.acquisition })
+                  ? await summaryCache.readCertifiedSourceState(readOptions, {
+                      ...source,
+                      acquisition: source.acquisition,
+                    })
                   : await summaryCache.readSourceState(readOptions);
-                if (!syncPromise && afterRead?.publication &&
+                if (
+                  !syncPromise &&
+                  afterRead?.publication &&
                   afterRead.routingFingerprint === source.routingFingerprint &&
                   afterRead.fingerprint === result.status.fingerprint &&
                   (afterRead.publication.signature === synchronizedSource?.publication?.signature ||
-                    await usageStore.validateAcquisition(result.status.fingerprint))) {
+                    (await usageStore.validateAcquisition(result.status.fingerprint)))
+                ) {
                   synchronizedSource = afterRead;
+                  // Price-check bookkeeping can change cache inputs without changing the captured response prices.
+                  if (usageStore.status === acquiredStatus) resultSource = afterRead;
                 }
+                // A status object can be republished while the captured routing and publication stay unchanged.
+                if (
+                  afterRead?.publication &&
+                  afterRead.routingFingerprint === source.routingFingerprint &&
+                  afterRead.publication.signature === source.publication?.signature
+                )
+                  resultSource = source;
                 if (
                   afterRead?.inputs === source.inputs &&
                   afterRead.publication?.signature === source.publication?.signature
@@ -1470,6 +1530,17 @@ export function createUsageServer(options = {}) {
               responseCatalog.version,
               asOf,
             ),
+            usageVersion: usageVersion(
+              published.fingerprint,
+              source &&
+                responseCatalog.version === pricingCatalog.version &&
+                responseCatalog.usdToCnyRate === pricingCatalog.usdToCnyRate &&
+                JSON.stringify(responseCatalog.models) === JSON.stringify(pricingCatalog.models)
+                ? resultSource
+                : null,
+              responseCatalog,
+              asOf,
+            ),
             checkedAt: source?.checkedAt || published.checkedAt,
             snapshotId: requestedSnapshotId || null,
             metadata: { ...result.metadata, imports: await listImportEntries(options) },
@@ -1484,6 +1555,7 @@ export function createUsageServer(options = {}) {
         const { summary, periodComparison } = await store.dashboard(filters, { includeDetails });
         sendJson(response, 200, {
           fingerprint: clientFingerprint(frozen.fingerprintSource || usage.fingerprint, pricingCatalog.version, asOf),
+          usageVersion: null,
           checkedAt: usage.checkedAt,
           snapshotId: frozen.id || requestedSnapshotId || null,
           metadata: frozen.metadata,

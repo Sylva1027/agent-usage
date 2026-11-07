@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import fsPromises, { mkdtemp, rm } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,9 +24,9 @@ test("candidate proof reuse still reads current full bytes and pins its consumer
     importDirs: [],
   });
   const prepare = DatabaseSync.prototype.prepare,
-    createReadStream = fs.createReadStream;
+    open = fsPromises.open;
   let scans = 0,
-    streams = 0,
+    hashes = 0,
     consumed;
   try {
     await store.open();
@@ -62,9 +62,9 @@ test("candidate proof reuse still reads current full bytes and pins its consumer
       if (sql === "SELECT * FROM events ORDER BY id" || sql === 'SELECT * FROM "events"') scans++;
       return prepare.call(this, sql, ...args);
     };
-    fs.createReadStream = function (name, ...args) {
-      if (path.resolve(String(name)) === file) streams++;
-      return createReadStream.call(this, name, ...args);
+    fsPromises.open = function (name, ...args) {
+      if (path.resolve(String(name)) === file) hashes++;
+      return open.call(this, name, ...args);
     };
     syncBuiltinESMExports();
     const read = () =>
@@ -84,11 +84,11 @@ test("candidate proof reuse still reads current full bytes and pins its consumer
       });
     assert.equal(await read(), 20);
     assert.equal(scans, 1);
-    assert.equal(streams, 2, "fresh file digest is checked before and under the read lock");
+    assert.equal(hashes, 2, "fresh file digest is checked before and under the read lock");
     assert.throws(() => consumed.prepare("SELECT 1"), /closed|not open/i);
     assert.equal(await read(), 20);
     assert.equal(scans, 1, "identical verified bytes reuse their completed semantic proof");
-    assert.equal(streams, 4, "warm proof still rereads every file byte twice");
+    assert.equal(hashes, 4, "warm proof still rereads every file byte twice");
     await assert.rejects(
       withVerifiedHistoryArchiveCandidate(file, undefined, () => Promise.resolve(20)),
       { code: "HISTORY_ARCHIVE_CANDIDATE_READER_ASYNC" },
@@ -115,7 +115,7 @@ test("candidate proof reuse still reads current full bytes and pins its consumer
     assert.equal(await read(), 20);
   } finally {
     DatabaseSync.prototype.prepare = prepare;
-    fs.createReadStream = createReadStream;
+    fsPromises.open = open;
     syncBuiltinESMExports();
     store.close();
     await rm(dir, { recursive: true, force: true });

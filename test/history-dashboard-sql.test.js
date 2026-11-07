@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -447,16 +448,16 @@ test("hot writes during verification and pinned publications retain coherent rea
 }, async () => {
   const f = await fixture();
   const { store, segment } = f;
-  const createReadStream = fs.createReadStream;
+  const open = fsPromises.open;
   let hook = null;
   try {
-    fs.createReadStream = function (file, ...args) {
+    fsPromises.open = function (file, ...args) {
       if (path.resolve(String(file)) === segment && hook) {
         const once = hook;
         hook = null;
         once();
       }
-      return createReadStream.call(this, file, ...args);
+      return open.call(this, file, ...args);
     };
     syncBuiltinESMExports();
     await store.dashboardHistory(filters);
@@ -495,7 +496,7 @@ test("hot writes during verification and pinned publications retain coherent rea
     }
     assert.equal((await store.dashboardHistory(filters)).summary.totals.total, 264);
   } finally {
-    fs.createReadStream = createReadStream;
+    fsPromises.open = open;
     syncBuiltinESMExports();
     f.cleanup();
   }

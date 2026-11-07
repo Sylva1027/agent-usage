@@ -72,10 +72,7 @@ const TABLE_DEFINITIONS = new Map([
   ],
   [HOMES_TABLE, { columns: ["home_id", "event_count", "session_count"], primaryKey: ["home_id"] }],
   [SESSIONS_TABLE, { columns: ["session_id"], primaryKey: ["session_id"] }],
-  [
-    HOME_SESSIONS_TABLE,
-    { columns: ["home_id", "session_id"], primaryKey: ["home_id", "session_id"] },
-  ],
+  [HOME_SESSIONS_TABLE, { columns: ["home_id", "session_id"], primaryKey: ["home_id", "session_id"] }],
   [MODELS_TABLE, { columns: ["channel", "model"], primaryKey: ["channel", "model"] }],
   [
     OBSERVATIONS_TABLE,
@@ -186,6 +183,23 @@ function schemaIsCurrent(database) {
   );
 }
 
+function triggerSql(database) {
+  if (!database.prepare("SELECT 1 FROM pragma_table_info('events') WHERE name='history_ordinal'").get())
+    return TRIGGER_SQL;
+  return TRIGGER_SQL.map((sql, index) =>
+    index === 2
+      ? sql.replace(
+          "\n  BEGIN",
+          `
+    AND (OLD.id IS NOT NEW.id OR OLD.timestamp_ms IS NOT NEW.timestamp_ms
+      OR OLD.session_id IS NOT NEW.session_id OR OLD.home_id IS NOT NEW.home_id
+      OR OLD.channel IS NOT NEW.channel OR OLD.model IS NOT NEW.model)
+  BEGIN`,
+        )
+      : sql,
+  );
+}
+
 function triggersReady(database) {
   const rows = database
     .prepare(
@@ -194,13 +208,11 @@ function triggersReady(database) {
     )
     .all(...TRIGGERS);
   const expected = new Map(
-    TRIGGER_SQL.map((sql) => [sql.match(/^CREATE TRIGGER\s+(\S+)/i)?.[1], normalizeSql(sql)]),
+    triggerSql(database).map((sql) => [sql.match(/^CREATE TRIGGER\s+(\S+)/i)?.[1], normalizeSql(sql)]),
   );
   return (
     rows.length === TRIGGERS.length &&
-    rows.every(
-      (row) => String(row.tbl_name) === "events" && expected.get(String(row.name)) === normalizeSql(row.sql),
-    )
+    rows.every((row) => String(row.tbl_name) === "events" && expected.get(String(row.name)) === normalizeSql(row.sql))
   );
 }
 
@@ -278,7 +290,11 @@ function recreateSchema(database, deferIndex) {
 }
 
 function createTriggers(database) {
-  database.exec(TRIGGER_SQL.map((sql) => `${sql};`).join("\n"));
+  database.exec(
+    triggerSql(database)
+      .map((sql) => `${sql};`)
+      .join("\n"),
+  );
 }
 
 function createGroupTimeIndex(database) {
@@ -307,9 +323,7 @@ export function ensureUsageMetadataSchema(database, { deferIndex = false } = {})
     if (!schemaIsCurrent(database)) {
       recreateSchema(database, deferIndex);
     } else {
-      const format = database
-        .prepare(`SELECT schema_version FROM ${FORMAT_TABLE} WHERE singleton = 1`)
-        .get();
+      const format = database.prepare(`SELECT schema_version FROM ${FORMAT_TABLE} WHERE singleton = 1`).get();
       invalidate = Number(format?.schema_version) !== schemaVersion(database);
     }
     if (!triggersReady(database)) {
@@ -320,9 +334,7 @@ export function ensureUsageMetadataSchema(database, { deferIndex = false } = {})
     if (
       !deferIndex &&
       normalizeSql(
-        database
-          .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
-          .get(GROUP_TIME_INDEX)?.sql,
+        database.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?").get(GROUP_TIME_INDEX)?.sql,
       ) !== normalizeSql(GROUP_TIME_INDEX_SQL)
     ) {
       createGroupTimeIndex(database);
@@ -331,9 +343,7 @@ export function ensureUsageMetadataSchema(database, { deferIndex = false } = {})
     if (invalidate && stateRow(database)) {
       database.exec(`INSERT OR IGNORE INTO ${DIRTY_TABLE} VALUES (1)`);
     }
-    database
-      .prepare(`UPDATE ${FORMAT_TABLE} SET schema_version = ? WHERE singleton = 1`)
-      .run(schemaVersion(database));
+    database.prepare(`UPDATE ${FORMAT_TABLE} SET schema_version = ? WHERE singleton = 1`).run(schemaVersion(database));
   });
   if (!schemaIsReady(database, deferIndex)) throw new Error("Unable to install metadata schema");
   return true;

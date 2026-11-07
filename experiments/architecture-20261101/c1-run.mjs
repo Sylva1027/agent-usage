@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath,pathToFileURL } from "node:url";
@@ -10,17 +10,19 @@ import {ROOT,BASE,DAY,KINDS,read,save,diskBudget,inside,datasetOptions} from "./
 const SCRIPT=fileURLToPath(import.meta.url),HERE=path.dirname(SCRIPT),TIMEOUT=1800000;
 const clock=()=>performance.timeOrigin+performance.now();
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const runtimeSpec=()=>read(path.join(BASE,`${process.env.C1_RUNTIME||"baseline"}.json`));
+const runtimeSpec=()=>read(process.env.C1_RUNTIME_SPEC || path.join(BASE,`${process.env.C1_RUNTIME||"baseline"}.json`));
 const serving=process.argv[2]==="--serve";
 const {waitForServer,painted}=serving?{}:await import("./b2-page-diagnostic.mjs");
 const {observeQ5Delivery,readQ5Delivery}=serving?{}:await import("./q5-summary-hook.mjs");
 
-async function launch(runtime,dataset,state,directory,suffix=""){
+async function launch(runtime,dataset,state,directory,suffix="",clockFile=null){
   const token=randomUUID(),config=path.join(directory,`server${suffix}.json`),nodes=path.join(directory,"nodes");
   await mkdir(nodes,{recursive:true});await mkdir(path.join(directory,"temp"),{recursive:true});
-  await save(config,{runtime,options:{...datasetOptions(dataset.home,state),shutdownToken:token}});
+  await save(config,{runtime,clockFile,options:{...datasetOptions(dataset.home,state),shutdownToken:token}});
   const env={...process.env,REMAINING_DELIVERY_TRACE:nodes,TEMP:path.join(directory,"temp"),TMP:path.join(directory,"temp")};
   delete env.NODE_OPTIONS;
+  delete env.C1_BUSINESS_CLOCK_FILE;
+  if(clockFile)env.C1_BUSINESS_CLOCK_FILE=clockFile;
   for(const name of Object.keys(env))if(/^(ARCH_|Q[0-9]+_|B3_HISTORY_)/.test(name))delete env[name];
   const startedAtMs=clock();
   const child=spawn(process.execPath,["--max-old-space-size=512","--import",pathToFileURL(path.join(HERE,"c1-telemetry.mjs")).href,SCRIPT,"--serve",config],{cwd:ROOT,env,windowsHide:true,stdio:["ignore","pipe","pipe"]});
@@ -40,7 +42,8 @@ async function stop(server){
 async function sampling(server,state,directory,suffix=""){
   const target=path.join(directory,`resources${suffix}`);await mkdir(target);const stopFile=path.join(target,"stop");
   const args=["-NoProfile","-File",path.join(HERE,"b2-attribution-resource.ps1"),"-ResultDir",target,"-ServicePid",String(server.ready.pid),"-RunnerPid",String(process.pid),"-StateDir",state,"-TempDir",path.join(directory,"temp"),"-StopFile",stopFile,"-SampleIntervalMilliseconds","250"];
-  const child=spawn("pwsh",args,{cwd:ROOT,windowsHide:true,stdio:["ignore","pipe","pipe"]});let stderr="";child.stdout.resume();child.stderr.on("data",bytes=>{stderr+=bytes;});
+  const pwsh=process.env.C1_MANIFEST?(await read(process.env.C1_MANIFEST)).runtime.pwsh.path:"pwsh";
+  const child=spawn(pwsh,args,{cwd:ROOT,windowsHide:true,stdio:["ignore","pipe","pipe"]});let stderr="";child.stdout.resume();child.stderr.on("data",bytes=>{stderr+=bytes;});
   const ended=new Promise(resolve=>child.once("exit",resolve));
   const deadline=Date.now()+30000;
   while(Date.now()<deadline){try{if((await stat(path.join(target,"resources.ndjson"))).size)break;}catch(error){if(error.code!=="ENOENT")throw error;}assert.equal(child.exitCode,null,stderr);await sleep(100);}
@@ -233,33 +236,52 @@ async function mutation(page,plan,method,expected,directory,name){
 async function scene(label,layout,runName=layout,reuseQueries=null){
   assert.ok(["hot","mixed"].includes(layout));assert.match(runName,/^[a-z0-9-]+$/);
   const dataset=await read(path.join(BASE,"datasets",label,"dataset.json"));await diskBudget();
-  const directory=path.join(dataset.root,`scene-${runName}`);await mkdir(directory);
-  const state=path.join(dataset.root,`state-scene-${runName}`);
-  await cp(path.join(dataset.root,layout==="hot"?"seed-state":"seed-mixed"),state,{recursive:true,force:false,errorOnExist:true});
-  const runtime=(await runtimeSpec()).directory;
+  const {scenePaths,verifyScene,writeReplayClock}=await import("./persistent-history-prepare.mjs");
+  const paths=scenePaths(dataset,layout,runName),{directory,state}=paths;
+  let evidence=null;
+  if(process.env.C1_RESULT_ROOT){
+    assert.ok(process.env.C1_MANIFEST&&process.env.C1_RUNTIME_SPEC,"separate results require explicit manifest and runtime spec");
+    assert.equal(reuseQueries,null,"new fixed groups must measure their own queries");
+    evidence=await verifyScene(process.env.C1_MANIFEST,label,layout,runName,process.env.C1_RUNTIME_SPEC);
+  }
+  await mkdir(path.dirname(directory),{recursive:true});await mkdir(directory);
+  const replay=label==="year"?evidence?.clockReplay:null,clockFile=replay?path.join(directory,"business-clock.json"):null,phaseWrites=[];
+  if(evidence&&label==="year")assert.ok(replay,"year candidate requires explicit historical replay");
+  const phase=async name=>{if(replay)phaseWrites.push(await writeReplayClock(clockFile,replay,name));};
+  await assert.rejects(stat(state),{code:"ENOENT"});
+  await cp(paths.seed,state,{recursive:true,force:false,errorOnExist:true});
+  const spec=await runtimeSpec(),runtime=spec.directory;
+  const {projectionStorage}=await import("./c1-telemetry.mjs");
+  const storage=[{phase:"old-index-start",atMs:clock(),...projectionStorage(state)}];
+  if(evidence)assert.equal(storage[0].databaseCount,0,"initialization must start from an old index without a projection");
   let previousQueries=null;
   if(reuseQueries){
     assert.match(reuseQueries,/^[a-z0-9-]+$/);
     previousQueries=await read(path.join(dataset.root,`scene-${reuseQueries}/result.json`));
-    assert.equal(previousQueries.label,label);assert.equal(previousQueries.layout,layout);assert.equal(previousQueries.runtime,runtime);
+    assert.equal(previousQueries.label,label);assert.equal(previousQueries.layout,layout);
     assert.deepEqual(previousQueries.scopes.map(row=>row.preset),["today","week","custom","all"]);
   }
   const {prepareC1Mutations,appendC1Mutation,reviseC1Mutation,restoreC1Mutations}=await import("./c1-source-mutations.mjs");
-  const plans=await prepareC1Mutations(dataset,{databaseFile:path.join(dataset.root,"seed-state/usage-index.sqlite"),runtimeDirectory:runtime,directory:path.join(directory,"mutations")});
+  const plans=await prepareC1Mutations(dataset,{databaseFile:path.join(dataset.root,"seed-state/usage-index.sqlite"),runtimeDirectory:runtime,directory:path.join(directory,"mutations"),
+    replayTimestamps:replay?Object.fromEntries(replay.mutations.map(row=>[row.kind,row.timestampMs])):null});
   for(const plan of plans)assert.equal(plan.sha256,dataset.files.find(file=>path.resolve(file.path)===path.resolve(plan.filePath))?.sha256,"source bytes must match the original capacity input");
+  if(replay)for(const plan of plans)assert.equal(plan.filePath,replay.mutations.find(row=>row.kind===plan.kind)?.filePath,"historical replay must mutate the same original source");
   await save(path.join(directory,"mutation-plans.json"),plans);
   const resetStarted=clock(),sourceReset=await restoreC1Mutations(plans);
-  const result={label,layout,runtime,baseline:"d31c3e0",sourceMetadataCondition:"six files restored using fixed seed mtime targets; ctime changes and real validation remains enabled",sourceReset,sourceResetMs:clock()-resetStarted,passed:false,scopes:[],changes:[],errors:[],startedAt:new Date().toISOString()};
+  const result={label,layout,runtime,baseline:spec.commit||spec.baseline||"d31c3e0",evidence,storage,sourceMetadataCondition:"six files restored using fixed seed mtime targets; ctime changes and real validation remains enabled",sourceReset,sourceResetMs:clock()-resetStarted,passed:false,scopes:[],changes:[],errors:[],startedAt:new Date().toISOString()};
+  if(replay)result.clockReplay={fingerprint:evidence.clockReplayFingerprint,clockFile,phaseWrites,boundary:replay.boundary};
   if(reuseQueries)result.reusedQueryScopesFrom=reuseQueries;
   let server,sampler,ui;
   try{
     ui=await browser();ui.page.on("pageerror",error=>result.errors.push(String(error.stack??error)));
-    server=await launch(runtime,dataset,state,directory);sampler=await sampling(server,state,directory);
+    await phase("default");server=await launch(runtime,dataset,state,directory,"",clockFile);sampler=await sampling(server,state,directory);
     const pending=responseFor(ui.page,"today");void pending.catch(()=>{});await ui.page.goto(server.ready.url,{waitUntil:"domcontentloaded"});
     const first=await pending,firstBody=await first.json();assert.equal(first.status(),200,JSON.stringify(firstBody));await painted(ui.page,firstBody.summary.totals.total,TIMEOUT);
     result.defaultPaintWallMs=clock()-server.startedAtMs;checkBody(firstBody,expectedRange(dataset,firstBody.summary.range),expectedAll(dataset));await save(path.join(directory,"default.json"),firstBody);
-    const expected=expectedAll(dataset),initial=await scope(ui.page,"all",expected.total,directory,"initial-all");checkBody(initial.body,expected);result.initialAll=initial.result;
+    await phase("initial-all");const expected=expectedAll(dataset),initial=await scope(ui.page,"all",expected.total,directory,"initial-all");checkBody(initial.body,expected);result.initialAll=initial.result;
     result.initialServiceWallMs=clock()-server.startedAtMs;
+    result.serviceStartedAtMs=server.startedAtMs;
+    storage.push({phase:"initial-all",atMs:clock(),...projectionStorage(state)});
     if(previousQueries){
       for(const name of ["today","week","custom","back-all"]){
         const body=await read(path.join(dataset.root,`scene-${reuseQueries}/${name}.json`));
@@ -268,29 +290,67 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
       }
       result.scopes=previousQueries.scopes.map(row=>({...row,reusedFrom:reuseQueries}));
     }else{
-      for(const preset of ["today","week"]){const value=await scope(ui.page,preset,undefined,directory);checkBody(value.body,expectedRange(dataset,value.body.summary.range),expected);result.scopes.push(value.result);}
-      const custom=await customScope(ui.page,dataset,directory);checkBody(custom.body,expectedRange(dataset,custom.body.summary.range),expected);result.scopes.push(custom.result);
-      const back=await scope(ui.page,"all",expected.total,directory,"back-all");checkBody(back.body,expected);result.scopes.push(back.result);
+      for(const preset of ["today","week"]){await phase(preset);const value=await scope(ui.page,preset,undefined,directory);checkBody(value.body,expectedRange(dataset,value.body.summary.range),expected);result.scopes.push(value.result);}
+      await phase("custom");const custom=await customScope(ui.page,dataset,directory);checkBody(custom.body,expectedRange(dataset,custom.body.summary.range),expected);result.scopes.push(custom.result);
+      await phase("back-all");const back=await scope(ui.page,"all",expected.total,directory,"back-all");checkBody(back.body,expected);result.scopes.push(back.result);
+    }
+    if(evidence){
+      await phase("repeat-all");
+      const repeat=await scope(ui.page,"all",expected.total,directory,"repeat-all");checkBody(repeat.body,expected);
+      const deadline=Date.now()+30000;let exited;
+      while(Date.now()<deadline&&!exited){
+        for(const file of await readdir(path.join(directory,"nodes")))if(/^node-.*\.jsonl$/.test(file)){
+          const rows=(await readFile(path.join(directory,"nodes",file),"utf8")).trim().split("\n").filter(Boolean).map(line=>JSON.parse(line));
+          exited=rows.find(row=>row.role==="executor"&&row.code===0&&row.endedAtMs>=result.initialAll.startedAtMs)||exited;
+        }
+        if(!exited)await sleep(100);
+      }
+      assert.ok(exited,"executor idle exit must be observed without extending its lifetime");
+      await sleep(500);
+      await phase("after-executor-exit-all");
+      const startedAtMs=clock(),url=new URL("/api/usage",server.ready.url);
+      url.search=new URLSearchParams({preset:"all",bucket:"day",recentValue:"今年",calendarZone:"utc",view:"dashboard"});
+      const response=await ui.page.request.get(url.href,{timeout:TIMEOUT}),body=await response.json();
+      assert.equal(response.status(),200,JSON.stringify(body));assert.equal(response.headers()["x-summary-cache"],"miss","executor reuse probe must reach business query, not HTTP cache");
+      checkBody(body,expected);
+      const {executorReuseParity}=await import("./persistent-history-analyze.mjs");executorReuseParity(body,initial.body,Boolean(replay));
+      await save(path.join(directory,"after-executor-exit-all.json"),body);
+      result.reuseChecks={repeat:repeat.result,executorExit:exited,afterExit:{preset:"all",bucket:"day",recentValue:"今年",cache:"miss",
+        cacheBypass:"unused recentValue only; same all/day business context",startedAtMs,endedAtMs:clock(),wallMs:clock()-startedAtMs}};
     }
     for(const plan of plans){
+      await phase(`append-${plan.kind}`);
       expected.events++;expected.total+=160;expected.input+=140;expected.cached+=30;expected.output+=20;expected.reasoning+=["codex","zcode","opencode","workbuddy"].includes(plan.kind)?5:0;
       result.changes.push(await mutation(ui.page,plan,appendC1Mutation,expected,directory,`append-${plan.kind}`));
+      storage.push({phase:`append-${plan.kind}`,atMs:clock(),...projectionStorage(state)});
     }
     expected.total+=19;expected.output+=19;
+    await phase("revision-zcode");
     result.changes.push(await mutation(ui.page,plans.find(plan=>plan.kind==="zcode"),reviseC1Mutation,expected,directory,"revision-zcode"));
+    storage.push({phase:"revision-zcode",atMs:clock(),...projectionStorage(state)});
     result.delivery=await readQ5Delivery(ui.page);await ui.page.screenshot({path:path.join(directory,"final.png"),fullPage:true});
     await ui.page.close();await stop(server);server=null;await sampler.stop();sampler=null;
+    storage.push({phase:"closed",atMs:clock(),...projectionStorage(state)});
     ui.page=await ui.context.newPage();ui.page.setDefaultTimeout(TIMEOUT);ui.page.setDefaultNavigationTimeout(TIMEOUT);
-    server=await launch(runtime,dataset,state,directory,"-reopen");sampler=await sampling(server,state,directory,"-reopen");
+    await phase("reopen-all");server=await launch(runtime,dataset,state,directory,"-reopen",clockFile);sampler=await sampling(server,state,directory,"-reopen");
     const reopened=responseFor(ui.page,"today");void reopened.catch(()=>{});await ui.page.goto(server.ready.url,{waitUntil:"domcontentloaded"});
     const reopenedResponse=await reopened;assert.equal(reopenedResponse.status(),200,await reopenedResponse.text());
     const value=await scope(ui.page,"all",expected.total,directory,"reopen-all");checkBody(value.body,expected);
-    result.reopen={...value.result,wallMs:clock()-server.startedAtMs};result.reopenDelivery=await readQ5Delivery(ui.page);
+    result.reopen={...value.result,serviceStartedAtMs:server.startedAtMs,wallMs:clock()-server.startedAtMs};result.reopenDelivery=await readQ5Delivery(ui.page);
     assert.deepEqual(result.errors,[]);result.expected=expected;result.passed=true;
   }catch(error){result.failure={message:error.message,stack:error.stack,code:error.code};process.exitCode=1;}
   finally{
     if(ui)await ui.instance.close();if(server)await stop(server).catch(error=>{result.cleanupError=error.stack;process.exitCode=1;});if(sampler)await sampler.stop();
-    await restoreC1Mutations(plans);result.rawRestored=true;result.endedAt=new Date().toISOString();await save(path.join(directory,"result.json"),result);
+    storage.push({phase:"reopen-closed",atMs:clock(),...projectionStorage(state)});
+    try{result.restoredSources=await restoreC1Mutations(plans);result.rawRestored=true;}
+    catch(error){result.passed=false;result.restoreFailure=error.stack;process.exitCode=1;}
+    if(evidence)try{
+      const {verifyEntries,verifyFrozenRuntime}=await import("./persistent-history-prepare.mjs");
+      const manifest=await read(process.env.C1_MANIFEST);
+      await verifyEntries(manifest.tools);await verifyEntries(manifest.workspace);await verifyFrozenRuntime(spec);
+    }
+    catch(error){result.passed=false;result.integrityFailure=error.stack;process.exitCode=1;}
+    result.endedAt=new Date().toISOString();await save(path.join(directory,"result.json"),result);
   }
   console.log(JSON.stringify({label,layout,passed:result.passed,firstAllMs:result.initialAll?.wallMs,appends:result.changes.map(row=>[row.name,row.actualPaintMs]),reopenMs:result.reopen?.wallMs,failure:result.failure?.message}));
 }

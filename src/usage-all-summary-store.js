@@ -22,18 +22,30 @@ const TRIGGERS = [
 ];
 export const USAGE_ALL_SUMMARY_TABLE_NAMES = Object.freeze([STATE, CHECKPOINTS, MEMBERS, DIRTY, FORMAT_TABLE]);
 
-const before = (a, b) => a.id < b.id;
+const HOT_TABLES = { STATE, CHECKPOINTS, MEMBERS, DIRTY, FORMAT_TABLE };
+const HISTORY_TABLES = {
+  STATE: "usage_history_all_summary_state",
+  CHECKPOINTS: "usage_history_all_summary_checkpoints",
+  MEMBERS: "usage_history_all_summary_members",
+  DIRTY: "usage_history_all_summary_dirty",
+  FORMAT_TABLE: "usage_history_all_summary_format",
+};
+export const USAGE_HISTORY_ALL_SUMMARY_TABLE_NAMES = Object.freeze(Object.values(HISTORY_TABLES));
+const tables = (options) => (options.mode === "history" ? HISTORY_TABLES : HOT_TABLES);
+const before = (a, b, history) => (history ? a.ms < b.ms || (a.ms === b.ms && a.id < b.id) : a.id < b.id);
 const position = (row) => ({ ms: Number(row.timestamp_ms), id: Number(row.event_id) });
 const revision = (db) =>
   Number(db.prepare("SELECT revision FROM usage_business_revision WHERE singleton=1").get().revision);
-const stateRow = (db) => db.prepare(`SELECT * FROM ${STATE} WHERE singleton=1`).get();
-const dirtyRow = (db) => db.prepare(`SELECT timestamp_ms,event_id FROM ${DIRTY} WHERE singleton=1`).get();
+const stateRow = (db, state) => db.prepare(`SELECT * FROM ${state} WHERE singleton=1`).get();
+const dirtyRow = (db, dirty) => db.prepare(`SELECT timestamp_ms,event_id FROM ${dirty} WHERE singleton=1`).get();
 const dirtySql = (ref) => `INSERT INTO ${DIRTY}(singleton,timestamp_ms,event_id) VALUES(1,${ref}.timestamp_ms,${ref}.id)
   ON CONFLICT(singleton) DO UPDATE SET timestamp_ms=excluded.timestamp_ms,event_id=excluded.event_id
   WHERE excluded.event_id < event_id;`;
 
-/** Rebuildable, hot-only state; authoritative facts are never replaced. */
-export function ensureUsageAllSummarySchema(database) {
+/** Rebuildable state; history tables belong only in the derived database. */
+export function ensureUsageAllSummarySchema(database, options = { mode: "hot" }) {
+  const { STATE, CHECKPOINTS, MEMBERS, DIRTY, FORMAT_TABLE } = tables(options);
+  const history = options.mode === "history";
   database.exec(
     `CREATE TABLE IF NOT EXISTS ${FORMAT_TABLE}(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL) STRICT;`,
   );
@@ -46,7 +58,7 @@ export function ensureUsageAllSummarySchema(database) {
       .get(STATE, CHECKPOINTS, MEMBERS, DIRTY).n,
   );
   if (format?.version !== FORMAT || count !== 4) {
-    for (const name of TRIGGERS) database.exec(`DROP TRIGGER IF EXISTS ${name}`);
+    if (!history) for (const name of TRIGGERS) database.exec(`DROP TRIGGER IF EXISTS ${name}`);
     for (const name of [STATE, CHECKPOINTS, MEMBERS, DIRTY]) database.exec(`DROP TABLE IF EXISTS ${name}`);
     database.exec(`DELETE FROM ${FORMAT_TABLE};INSERT INTO ${FORMAT_TABLE} VALUES(1,${FORMAT});
       CREATE TABLE ${STATE}(singleton INTEGER PRIMARY KEY CHECK(singleton=1),context_key TEXT NOT NULL,
@@ -54,12 +66,14 @@ export function ensureUsageAllSummarySchema(database) {
         published_revision INTEGER NOT NULL,status TEXT NOT NULL,last_ms INTEGER NOT NULL,last_id INTEGER NOT NULL,
         force_rebuild INTEGER NOT NULL DEFAULT 0) STRICT;
       CREATE TABLE ${CHECKPOINTS}(timestamp_ms INTEGER NOT NULL,event_id INTEGER NOT NULL,state_json TEXT NOT NULL,block INTEGER NOT NULL UNIQUE,
-        PRIMARY KEY(event_id)) STRICT;
+        PRIMARY KEY(${history ? "timestamp_ms,event_id" : "event_id"})) STRICT;
       CREATE TABLE ${MEMBERS}(scope TEXT NOT NULL,member TEXT NOT NULL,first_ms INTEGER NOT NULL,first_id INTEGER NOT NULL,
         PRIMARY KEY(scope,member)) WITHOUT ROWID;
-      CREATE INDEX usage_all_members_position_idx ON ${MEMBERS}(first_id);
+      CREATE INDEX ${history ? "usage_history_all_members_position_idx" : "usage_all_members_position_idx"}
+        ON ${MEMBERS}(${history ? "first_ms,first_id" : "first_id"});
       CREATE TABLE ${DIRTY}(singleton INTEGER PRIMARY KEY CHECK(singleton=1),timestamp_ms INTEGER NOT NULL,event_id INTEGER NOT NULL) STRICT;`);
   }
+  if (history) return;
   const enabled = `EXISTS(SELECT 1 FROM ${STATE} WHERE singleton=1)`;
   database.exec(`CREATE TRIGGER IF NOT EXISTS usage_all_insert_before BEFORE INSERT ON events WHEN ${enabled} BEGIN
     INSERT INTO ${DIRTY}(singleton,timestamp_ms,event_id) SELECT 1,timestamp_ms,id FROM events WHERE id=NEW.id
@@ -78,6 +92,17 @@ export function ensureUsageAllSummarySchema(database) {
       BEGIN UPDATE ${STATE} SET force_rebuild=1 WHERE singleton=1; END;
     CREATE TRIGGER IF NOT EXISTS usage_all_source_delete AFTER DELETE ON source_files WHEN ${enabled}
       BEGIN UPDATE ${STATE} SET force_rebuild=1 WHERE singleton=1; END;`);
+}
+
+/** Mark the earliest changed logical position in the caller's fact-update transaction. */
+export function markStoredHistoryAllSummaryDirty(database, { ms, id }) {
+  if (!Number.isSafeInteger(ms) || !Number.isSafeInteger(id))
+    throw new TypeError("Invalid history all-summary dirty position");
+  database
+    .prepare(`INSERT INTO ${HISTORY_TABLES.DIRTY}(singleton,timestamp_ms,event_id) VALUES(1,?,?)
+      ON CONFLICT(singleton) DO UPDATE SET timestamp_ms=excluded.timestamp_ms,event_id=excluded.event_id
+      WHERE (excluded.timestamp_ms,excluded.event_id)<(timestamp_ms,event_id)`)
+    .run(ms, id);
 }
 
 function transaction(database, work) {
@@ -132,6 +157,7 @@ function numberState(value) {
 /** One event is live at a time; member identities live in indexed SQLite rows. */
 function accumulator(options, saved = null) {
   const { database, range, bucket, pricing, sourceKinds, pricingModels } = options;
+  const { MEMBERS } = tables(options);
   if (saved) numberState(saved);
   let current = START;
   const insert = database.prepare(`INSERT OR IGNORE INTO ${MEMBERS}(scope,member,first_ms,first_id) VALUES(?,?,?,?)`);
@@ -249,6 +275,7 @@ function accumulator(options, saved = null) {
 }
 
 function reset(database, options, target) {
+  const { STATE, CHECKPOINTS, MEMBERS, DIRTY } = tables(options);
   for (const table of [CHECKPOINTS, MEMBERS, DIRTY, STATE]) database.exec(`DELETE FROM ${table}`);
   const empty = accumulator(options);
   database
@@ -266,7 +293,7 @@ function reset(database, options, target) {
       START.ms,
       START.id,
     );
-  return stateRow(database);
+  return stateRow(database, STATE);
 }
 
 /**
@@ -276,6 +303,8 @@ function reset(database, options, target) {
  */
 export function buildStoredAllSummary(options) {
   const { database, key } = options;
+  const { STATE, CHECKPOINTS, MEMBERS, DIRTY } = tables(options);
+  const history = options.mode === "history";
   if (database.isTransaction) throw new Error("All-summary build needs an unpinned writer");
   const batchSize = options.batchSize || 1024;
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 10000)
@@ -286,31 +315,36 @@ export function buildStoredAllSummary(options) {
   for (;;) {
     const step = transaction(database, () => {
       const target = revision(database);
-      state = stateRow(database);
+      state = stateRow(database, STATE);
       if (!state || state.context_key !== key || state.force_rebuild) {
         state = reset(database, options, target);
         restored = null;
         work.rebuilt = true;
       }
-      const dirty = dirtyRow(database);
+      const dirty = dirtyRow(database, DIRTY);
       if (state.target_revision !== target || dirty) {
         const cutoff = dirty ? position(dirty) : START;
         let checkpoint;
-        if (dirty && before({ ms: state.last_ms, id: state.last_id }, cutoff))
+        if (dirty && before({ ms: state.last_ms, id: state.last_id }, cutoff, history))
           checkpoint = { timestamp_ms: state.last_ms, event_id: state.last_id };
         else
           checkpoint = database
             .prepare(`SELECT timestamp_ms,event_id FROM ${CHECKPOINTS}
-          WHERE event_id<? ORDER BY event_id DESC LIMIT 1`)
-            .get(cutoff.id);
+          WHERE ${history ? "(timestamp_ms,event_id)<(?,?) ORDER BY timestamp_ms DESC,event_id DESC" : "event_id<? ORDER BY event_id DESC"} LIMIT 1`)
+            .get(...(history ? [cutoff.ms, cutoff.id] : [cutoff.id]));
         const at = checkpoint ? position(checkpoint) : START;
-        database.prepare(`DELETE FROM ${CHECKPOINTS} WHERE event_id>?`).run(at.id);
-        database.prepare(`DELETE FROM ${MEMBERS} WHERE first_id>?`).run(at.id);
+        const params = history ? [at.ms, at.id] : [at.id];
+        database
+          .prepare(`DELETE FROM ${CHECKPOINTS} WHERE ${history ? "(timestamp_ms,event_id)>(?,?)" : "event_id>?"}`)
+          .run(...params);
+        database
+          .prepare(`DELETE FROM ${MEMBERS} WHERE ${history ? "(first_ms,first_id)>(?,?)" : "first_id>?"}`)
+          .run(...params);
         database
           .prepare(`UPDATE ${STATE} SET target_revision=?,status='building',last_ms=?,last_id=? WHERE singleton=1`)
           .run(target, at.ms, at.id);
         database.exec(`DELETE FROM ${DIRTY}`);
-        state = stateRow(database);
+        state = stateRow(database, STATE);
         restored = null;
         work.rewinds++;
       }
@@ -337,7 +371,7 @@ export function buildStoredAllSummary(options) {
         if (
           !Number.isSafeInteger(event.id) ||
           !Number.isSafeInteger(event.timestamp) ||
-          !before(last, { ms: event.timestamp, id: event.id })
+          !before(last, { ms: event.timestamp, id: event.id }, history)
         )
           throw new TypeError("All-summary input order is invalid");
         restored.add(event);
@@ -375,15 +409,16 @@ export function buildStoredAllSummary(options) {
 
 /** Read only a complete matching view inside the caller's existing read snapshot. @param {any} options */
 export function readStoredAllSummary(options) {
+  const { STATE, CHECKPOINTS, DIRTY } = tables(options);
   const { database, key } = options,
-    state = stateRow(database);
+    state = stateRow(database, STATE);
   if (
     !state ||
     state.context_key !== key ||
     state.force_rebuild ||
     state.status !== "ready" ||
     state.published_revision !== revision(database) ||
-    dirtyRow(database)
+    dirtyRow(database, DIRTY)
   )
     return null;
   const row = database

@@ -13,11 +13,12 @@ export class UsageSourceRows {
   constructor(maxBytes = DEFAULT_MAX_BYTES) {
     if (!Number.isFinite(maxBytes) || maxBytes < 0) throw new RangeError("Invalid source rows byte budget");
     this.maxBytes = maxBytes;
-    this.entries = new Map();
+    this.memory = new Map();
     this.bytes = 0;
     this.count = 0;
     this.database = null;
     this.read = null;
+    this.contains = null;
     this.write = null;
     this.closed = false;
     this.peakMemoryBytes = 0;
@@ -44,10 +45,16 @@ export class UsageSourceRows {
   }
 
   get(key) {
-    if (!this.database) return this.entries.get(key)?.value;
+    if (!this.database) return this.memory.get(key)?.value;
     if (this.pending?.key === key) return this.pending.value;
     const payload = this.read.get(JSON.stringify(key))?.payload;
     return payload === undefined ? undefined : deserialize(/** @type {Uint8Array} */ (payload));
+  }
+
+  has(key) {
+    if (!this.database) return this.memory.has(key);
+    if (this.pending?.key === key) return true;
+    return this.contains.get(JSON.stringify(key)) !== undefined;
   }
 
   set(key, value) {
@@ -55,12 +62,12 @@ export class UsageSourceRows {
     const bytes = estimatedBytes(key, value);
     this.peakMemoryBytes = Math.max(this.peakMemoryBytes, this.bytes + bytes);
     if (!this.database) {
-      const previous = this.entries.get(key);
+      const previous = this.memory.get(key);
       const nextBytes = this.bytes + bytes - (previous?.bytes || 0);
       if (nextBytes <= this.maxBytes) {
-        this.entries.set(key, { value, bytes });
+        this.memory.set(key, { value, bytes });
         this.bytes = nextBytes;
-        this.count = this.entries.size;
+        this.count = this.memory.size;
         return this;
       }
       this.spill();
@@ -90,11 +97,12 @@ export class UsageSourceRows {
           PRIMARY KEY(pass,run,position)) WITHOUT ROWID;
         BEGIN`);
       this.read = this.database.prepare("SELECT payload FROM source_rows WHERE key=?");
+      this.contains = this.database.prepare("SELECT 1 FROM source_rows WHERE key=?");
       this.write = this.database.prepare(`INSERT INTO source_rows VALUES (?,?,?)
         ON CONFLICT(key) DO UPDATE SET payload=excluded.payload RETURNING ordinal`);
       let ordinal = 0;
-      for (const [key, entry] of this.entries) this.write.get(ordinal++, JSON.stringify(key), serialize(entry.value));
-      this.entries.clear();
+      for (const [key, entry] of this.memory) this.write.get(ordinal++, JSON.stringify(key), serialize(entry.value));
+      this.memory.clear();
       this.bytes = 0;
       this.sampleScratch();
     } catch (error) {
@@ -109,6 +117,28 @@ export class UsageSourceRows {
     this.peakScratchBytes = Math.max(this.peakScratchBytes, pages * pageSize);
   }
 
+  *keys() {
+    this.flushPending();
+    if (this.database) {
+      for (const row of this.database.prepare("SELECT key FROM source_rows ORDER BY ordinal").iterate()) {
+        yield JSON.parse(/** @type {string} */ (row.key));
+      }
+    } else {
+      yield* this.memory.keys();
+    }
+  }
+
+  *entries() {
+    this.flushPending();
+    if (this.database) {
+      for (const row of this.database.prepare("SELECT key,payload FROM source_rows ORDER BY ordinal").iterate()) {
+        yield [JSON.parse(/** @type {string} */ (row.key)), deserialize(/** @type {Uint8Array} */ (row.payload))];
+      }
+    } else {
+      for (const [key, entry] of this.memory) yield [key, entry.value];
+    }
+  }
+
   *values() {
     this.flushPending();
     if (this.database) {
@@ -116,7 +146,7 @@ export class UsageSourceRows {
         yield deserialize(/** @type {Uint8Array} */ (row.payload));
       }
     } else {
-      for (const entry of this.entries.values()) yield entry.value;
+      for (const entry of this.memory.values()) yield entry.value;
     }
   }
 
@@ -127,7 +157,7 @@ export class UsageSourceRows {
     if (!this.database) {
       const chunk = [];
       let ordinal = 0;
-      for (const entry of this.entries.values())
+      for (const entry of this.memory.values())
         chunk.push({ ordinal: ordinal++, value: keyFor(entry.value), event: entry.value });
       this.peakMemoryBytes = Math.max(this.peakMemoryBytes, this.bytes * 2);
       chunk.sort(stableCompare);
@@ -234,8 +264,9 @@ export class UsageSourceRows {
     } finally {
       this.database = null;
       this.read = null;
+      this.contains = null;
       this.write = null;
-      this.entries.clear();
+      this.memory.clear();
       this.bytes = 0;
       this.count = 0;
       this.closed = true;

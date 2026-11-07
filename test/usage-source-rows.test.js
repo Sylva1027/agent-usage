@@ -111,7 +111,7 @@ for (const timestampTies of [true, false]) {
       assert.ok(rows.stats.mergePasses > 1);
       assert.ok(rows.stats.peakScratchBytes >= 4096);
       assert.ok(rows.stats.peakMemoryBytes <= rows.maxBytes * 3);
-      assert.equal(rows.entries.size, 0, "no disk identity history may remain in JS");
+      assert.equal(rows.memory.size, 0, "no disk identity history may remain in JS");
       assert.equal(rows.bytes, 0);
       assert.deepEqual([...rows.ordered(compare)], [...expected.values()].sort(compare));
     } finally {

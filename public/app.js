@@ -4284,29 +4284,48 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
 }
 
 let activeUsageLoadId = null;
-let usageSyncPending = false;
+let activeUsageLoadDone = Promise.resolve();
+let completeUsageLoad = () => {};
+let appliedUsageVersion = null;
+let appliedUsageScope = null;
+let usageSyncPending = null;
 let usageReconnectPending = null;
 
-function reloadSyncedUsage() {
+function reloadSyncedUsage(version = null, { skipCheck = true } = {}) {
   if (!state.autoRefreshEnabled || state.snapshotId) return;
+  version = typeof version === "string" && version ? version : null;
   if (activeUsageLoadId === state.usageLoadId) {
-    usageSyncPending = true;
-    return;
+    usageSyncPending = {
+      version: usageSyncPending?.version === null ? null : version,
+      skipCheck: skipCheck && (usageSyncPending?.skipCheck ?? true),
+    };
+    return activeUsageLoadDone;
   }
-  usageSyncPending = false;
+  if (version && version === appliedUsageVersion && appliedUsageScope === usageQuery()) return;
   setAutoRefreshStatus("", { busy: true });
-  void loadUsage({ skipCheck: true });
+  void loadUsage({ skipCheck });
+  return activeUsageLoadDone;
 }
 
 function finishUsageLoad(loadId) {
   if (activeUsageLoadId !== loadId) return;
   activeUsageLoadId = null;
-  if (usageSyncPending) reloadSyncedUsage();
+  const complete = completeUsageLoad;
+  const pending = usageSyncPending;
+  usageSyncPending = null;
+  complete(pending ? reloadSyncedUsage(pending.version, pending) : undefined);
 }
 
 async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   const loadId = ++state.usageLoadId;
   activeUsageLoadId = loadId;
+  // Completion follows the rendered usage and any queued wake, independently of optional pricing.
+  const previousComplete = completeUsageLoad;
+  activeUsageLoadDone = new Promise((resolve) => {
+    completeUsageLoad = resolve;
+  });
+  previousComplete(activeUsageLoadDone);
+  const scope = usageQuery();
 
   try {
     const response = await fetch(
@@ -4339,6 +4358,8 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     renderAutoRefreshControls();
     updateQuotaPresetButton();
     render();
+    appliedUsageVersion = typeof data.usageVersion === "string" && data.usageVersion ? data.usageVersion : null;
+    appliedUsageScope = scope;
     setAutoRefreshStatus("");
     finishUsageLoad(loadId);
     if (!$("#pricingDialog").hidden && state.pricingCatalog) {
@@ -4362,6 +4383,8 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       return;
     }
     if (loadId === state.usageLoadId) {
+      appliedUsageVersion = null;
+      appliedUsageScope = null;
       if (isQuotaPreset(state.preset) && [409, 413].includes(error.status)) {
         if (error.body?.quota) state.quotaSnapshot = error.body.quota;
         state.summary = null;
@@ -4402,7 +4425,10 @@ async function checkForUpdates() {
     renderAutoRefreshControls();
     if (status.changed || isQuotaPreset(state.preset)) {
       setAutoRefreshStatus("", { busy: true });
-      await loadUsage();
+      if (isQuotaPreset(state.preset) && activeUsageLoadId !== state.usageLoadId) await loadUsage();
+      else await reloadSyncedUsage(isQuotaPreset(state.preset) ? null : status.usageVersion, { skipCheck: false });
+    } else if ("usageVersion" in status && (!status.usageVersion || status.usageVersion !== appliedUsageVersion)) {
+      await reloadSyncedUsage(status.usageVersion, { skipCheck: false });
     }
   } catch (error) {
     if (state.autoRefreshEnabled && runId === state.autoRefreshRunId) {
@@ -4422,7 +4448,7 @@ async function checkForUpdates() {
 function closeUsageEventsStream() {
   const source = state.usageEventsSource;
   state.usageEventsSource = null;
-  usageSyncPending = false;
+  usageSyncPending = null;
   usageReconnectPending = null;
   source?.close?.();
 }
@@ -4444,9 +4470,13 @@ function startUsageEventsStream() {
     else void checkForUpdates();
   };
   source.addEventListener?.("ready", source.onopen);
-  source.addEventListener?.("usage-synced", () => {
+  source.addEventListener?.("usage-synced", (event) => {
     if (state.usageEventsSource !== source) return;
-    reloadSyncedUsage();
+    let version = null;
+    try {
+      version = JSON.parse(event.data).usageVersion;
+    } catch {}
+    void reloadSyncedUsage(version);
   });
 }
 

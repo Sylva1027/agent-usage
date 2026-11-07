@@ -1,4 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, open, stat } from "node:fs/promises";
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +6,11 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { plainRolloutPath } from "./codex-rollout.js";
 import { createUsageInsertBatch } from "./usage-insert-batch.js";
-import { UsageSourceAcquisition, ensureUsageSourceCatalog, USAGE_SOURCE_CATALOG_TABLE } from "./usage-source-acquisition.js";
+import {
+  UsageSourceAcquisition,
+  ensureUsageSourceCatalog,
+  USAGE_SOURCE_CATALOG_TABLE,
+} from "./usage-source-acquisition.js";
 import {
   ensureUsageMetadataSchema,
   prepareStoredMetadata,
@@ -61,6 +65,7 @@ import { isQuotaUsage } from "../public/quota-usage.js";
 import { HistoryQuoteInputs } from "./history-quote-inputs.js";
 import { UsageSessionMembers } from "./usage-session-members.js";
 import { UsageHistoryQuery } from "./usage-history-query.js";
+import { UsageSourceRows } from "./usage-source-rows.js";
 import {
   ensureUsageAllSummarySchema,
   buildStoredAllSummary,
@@ -118,6 +123,8 @@ const QUOTA_SOURCES_DDL = `CREATE TABLE IF NOT EXISTS quota_usage_sources (
 ) STRICT;`;
 
 const USAGE_PROJECTION_IGNORED_TABLES = [
+  "usage_history_projection_inputs",
+  "usage_history_projection_batches",
   USAGE_SOURCE_CATALOG_TABLE,
   "history_replaced_facts",
   "usage_business_revision",
@@ -139,6 +146,7 @@ const MISSING_SOURCES_META = "perf_missing_sources";
 const LOCAL_ROLLUP_ZONE_META = "usage_rollup_local_zone_identity";
 const DEFERRED_METADATA_INDEX_META = "usage_metadata_initial_index_pending";
 const HISTORY_ARCHIVE_EVENT_AUTHORITY_META = "history_archive_event_authority";
+const historyProjectionQueues = new Map();
 const HISTORY_ARCHIVE_EVENT_REVISIONS_META = "history_archive_event_revisions";
 const PROJECT_LOG_TRUNCATION_WARNING_CODE = "PROJECT_LOG_TRUNCATED";
 const PROJECT_LOG_MALFORMED_LINE_WARNING_CODE = "PROJECT_LOG_MALFORMED_JSONL";
@@ -471,9 +479,12 @@ function historyArchiveRevisionEntryKey(entry) {
   return JSON.stringify(canonicalHistoryArchiveRevisionEntry(entry));
 }
 
-function historyArchiveRowsByNativeIdentity(rows, segmentId) {
-  const byIdentity = new Map();
-  for (const row of rows) {
+function historyRows(rows) {
+  return Array.isArray(rows) ? rows : rows.values();
+}
+
+function historyArchiveRowsByNativeIdentity(rows, segmentId, byIdentity) {
+  for (const row of historyRows(rows)) {
     const key = JSON.stringify([Number(row.timestamp_ms), String(row.session_id)]);
     if (byIdentity.has(key)) {
       throw historyArchiveError(
@@ -488,79 +499,102 @@ function historyArchiveRowsByNativeIdentity(rows, segmentId) {
 
 function historyArchiveColdRevisionForRows(prefix) {
   const payloadFor = (row) => historyArchiveRevisionPayload(canonicalFactPayload(row, ["id"]), prefix.sourceIdentity);
-  // An unchanged prefix may contain several legitimate events in the same millisecond.
-  if (
-    prefix.effectiveRows.length === prefix.observedRows.length &&
-    prefix.effectiveRows.every(
-      (row, index) =>
-        historyArchiveRevisionPayloadKey(payloadFor(row)) ===
-        historyArchiveRevisionPayloadKey(payloadFor(prefix.observedRows[index])),
-    )
-  ) {
-    return null;
+  // Unchanged duplicates are legal; compare streams before requiring unique native identities.
+  const previous = historyRows(prefix.effectiveRows)[Symbol.iterator]();
+  const observed = historyRows(prefix.observedRows)[Symbol.iterator]();
+  let unchanged = true;
+  try {
+    for (;;) {
+      const left = previous.next(),
+        right = observed.next();
+      if (left.done || right.done) {
+        unchanged = left.done === right.done;
+        break;
+      }
+      if (
+        historyArchiveRevisionPayloadKey(payloadFor(left.value)) !==
+        historyArchiveRevisionPayloadKey(payloadFor(right.value))
+      ) {
+        unchanged = false;
+        break;
+      }
+    }
+  } finally {
+    previous.return?.();
+    observed.return?.();
   }
-  const originalByIdentity = historyArchiveRowsByNativeIdentity(prefix.originalRows, prefix.segmentId);
-  const effectiveByIdentity = historyArchiveRowsByNativeIdentity(prefix.effectiveRows, prefix.segmentId);
-  const observedByIdentity = historyArchiveRowsByNativeIdentity(prefix.observedRows, prefix.segmentId);
-  const removedIdentities = [...effectiveByIdentity.keys()].filter((identity) => !observedByIdentity.has(identity));
-  const addedIdentities = [...observedByIdentity.keys()].filter((identity) => !effectiveByIdentity.has(identity));
-  if (
-    observedByIdentity.size === 0 ||
-    (removedIdentities.length > 0 && addedIdentities.length > 0) ||
-    (removedIdentities.length > 0 && prefix.sourceIdentity.kind !== "project-log")
-  ) {
-    throw historyArchiveError(
-      "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
-      `reparsed source removes or migrates cold events in authorized segment ${prefix.segmentId}`,
-    );
+  if (unchanged) return null;
+  const originalByIdentity = new UsageSourceRows(0),
+    effectiveByIdentity = new UsageSourceRows(0);
+  const observedByIdentity = new UsageSourceRows(0),
+    deltas = new UsageSourceRows(0);
+  try {
+    historyArchiveRowsByNativeIdentity(prefix.originalRows, prefix.segmentId, originalByIdentity);
+    historyArchiveRowsByNativeIdentity(prefix.effectiveRows, prefix.segmentId, effectiveByIdentity);
+    historyArchiveRowsByNativeIdentity(prefix.observedRows, prefix.segmentId, observedByIdentity);
+    let removedColdEventCount = 0,
+      addedCount = 0;
+    for (const identity of effectiveByIdentity.keys()) if (!observedByIdentity.has(identity)) removedColdEventCount++;
+    for (const identity of observedByIdentity.keys()) if (!effectiveByIdentity.has(identity)) addedCount++;
+    if (
+      observedByIdentity.size === 0 ||
+      (removedColdEventCount > 0 && addedCount > 0) ||
+      (removedColdEventCount > 0 && prefix.sourceIdentity.kind !== "project-log")
+    ) {
+      throw historyArchiveError(
+        "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
+        `reparsed source removes or migrates cold events in authorized segment ${prefix.segmentId}`,
+      );
+    }
+
+    const previousChangedRows = [],
+      currentChangedRows = [];
+    for (const [identity, row] of effectiveByIdentity.entries()) {
+      const current = observedByIdentity.get(identity);
+      if (
+        !current ||
+        historyArchiveRevisionPayloadKey(payloadFor(row)) !== historyArchiveRevisionPayloadKey(payloadFor(current))
+      ) {
+        previousChangedRows.push(row);
+        if (current) currentChangedRows.push(current);
+      }
+    }
+    for (const [identity, row] of observedByIdentity.entries())
+      if (!effectiveByIdentity.has(identity)) currentChangedRows.push(row);
+    if (!previousChangedRows.length && !currentChangedRows.length) return null;
+    const addPayload = (row, side) => {
+      const payload = payloadFor(row);
+      const key = historyArchiveRevisionPayloadKey(payload);
+      const delta = deltas.get(key) || { payload, originalCount: 0, observedCount: 0 };
+      delta[side] += 1;
+      deltas.set(key, delta);
+    };
+    for (const row of originalByIdentity.values()) addPayload(row, "originalCount");
+    for (const row of observedByIdentity.values()) addPayload(row, "observedCount");
+
+    const removed = [];
+    const added = [];
+    for (const { payload, originalCount, observedCount } of deltas.values()) {
+      if (originalCount > observedCount) removed.push({ payload, count: originalCount - observedCount });
+      else if (observedCount > originalCount) added.push({ payload, count: observedCount - originalCount });
+    }
+    // Keep the effective payload for recovery; the stored delta remains cumulative from the immutable candidate.
+    return {
+      entry: {
+        sourceIdentity: { ...prefix.sourceIdentity },
+        removed: canonicalHistoryArchiveRevisionDeltas(removed),
+        added: canonicalHistoryArchiveRevisionDeltas(added),
+      },
+      removedColdEventCount,
+      previousChangedRows,
+      currentChangedRows,
+    };
+  } finally {
+    originalByIdentity.close();
+    effectiveByIdentity.close();
+    observedByIdentity.close();
+    deltas.close();
   }
-
-  const effectivePayloads = new Map([...effectiveByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
-  const observedPayloads = new Map([...observedByIdentity].map(([identity, row]) => [identity, payloadFor(row)]));
-  const removedColdEventCount = removedIdentities.length;
-  const changedIdentities = [
-    ...[...effectivePayloads.keys()].filter(
-      (identity) =>
-        !observedPayloads.has(identity) ||
-        historyArchiveRevisionPayloadKey(effectivePayloads.get(identity)) !==
-          historyArchiveRevisionPayloadKey(observedPayloads.get(identity)),
-    ),
-    ...addedIdentities,
-  ];
-  if (changedIdentities.length === 0) return null;
-
-  const originalPayloads = [...originalByIdentity.values()].map(payloadFor);
-  const deltas = new Map();
-  const addPayload = (payload, side) => {
-    const key = historyArchiveRevisionPayloadKey(payload);
-    const delta = deltas.get(key) || { payload, originalCount: 0, observedCount: 0 };
-    delta[side] += 1;
-    deltas.set(key, delta);
-  };
-  for (const payload of originalPayloads) addPayload(payload, "originalCount");
-  for (const payload of observedPayloads.values()) addPayload(payload, "observedCount");
-
-  const removed = [];
-  const added = [];
-  for (const { payload, originalCount, observedCount } of deltas.values()) {
-    if (originalCount > observedCount) removed.push({ payload, count: originalCount - observedCount });
-    else if (observedCount > originalCount) added.push({ payload, count: observedCount - originalCount });
-  }
-  // Keep the effective payload for recovery; the stored delta remains cumulative from the immutable candidate.
-  return {
-    entry: {
-      sourceIdentity: { ...prefix.sourceIdentity },
-      removed: canonicalHistoryArchiveRevisionDeltas(removed),
-      added: canonicalHistoryArchiveRevisionDeltas(added),
-    },
-    removedColdEventCount,
-    previousChangedRows: changedIdentities
-      .map((identity) => effectiveByIdentity.get(identity))
-      .filter((row) => row !== undefined),
-    currentChangedRows: changedIdentities
-      .map((identity) => observedByIdentity.get(identity))
-      .filter((row) => row !== undefined),
-  };
 }
 
 function writeHistoryArchiveEventRevisionState(database, revisionState) {
@@ -758,6 +792,28 @@ function validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdenti
         throw historyArchiveRevisionError(`archive revision removes more payloads than segment ${segmentId} contains`);
       }
     }
+  }
+}
+
+function* revisedHistorySourceRows(database, sourcePath, revisions) {
+  const removals = new UsageSourceRows(0);
+  try {
+    const revision = revisions.find((entry) => entry.sourceIdentity.path === sourcePath);
+    for (const removed of revision?.removed || []) {
+      const key = historyArchiveRevisionPayloadKey(removed.payload);
+      removals.set(key, Number(removals.get(key) || 0) + removed.count);
+    }
+    for (const row of database.prepare("SELECT * FROM events WHERE source_path=? ORDER BY id").iterate(sourcePath)) {
+      const key = historyArchiveRevisionPayloadKey(row),
+        remaining = Number(removals.get(key) || 0);
+      if (remaining > 0) removals.set(key, remaining - 1);
+      else yield row;
+    }
+    for (const remaining of removals.values())
+      if (remaining > 0) throw historyArchiveRevisionError("archive source revision removes too many payloads");
+    for (const added of revision?.added || []) for (let index = 0; index < added.count; index++) yield added.payload;
+  } finally {
+    removals.close();
   }
 }
 
@@ -1079,39 +1135,44 @@ function saveMissingHistoryFacts(
   insertReplacedFact,
   { factTable, source, previousRows, currentRows, methodVersion, excludedColumns = [] },
 ) {
-  const currentCounts = new Map();
-  for (const row of currentRows) {
-    const payloadDigest = historyPayloadDigest(canonicalFactPayload(row, excludedColumns));
-    currentCounts.set(payloadDigest, (currentCounts.get(payloadDigest) || 0) + 1);
-  }
-  const previousCounts = new Map();
-  for (const row of previousRows) {
-    const payload = canonicalFactPayload(row, excludedColumns);
-    const payloadDigest = historyPayloadDigest(payload);
-    const existing = previousCounts.get(payloadDigest);
-    previousCounts.set(payloadDigest, {
-      payload,
-      count: (existing?.count || 0) + 1,
-    });
-  }
-  const recordedAt = new Date().toISOString();
-  for (const [payloadDigest, previous] of previousCounts) {
-    const missingCount = previous.count - (currentCounts.get(payloadDigest) || 0);
-    if (missingCount <= 0) continue;
-    insertReplacedFact.run(
-      factTable,
-      String(source.kind),
-      String(source.home_id),
-      String(source.path),
-      payloadDigest,
-      missingCount,
-      JSON.stringify(previous.payload),
-      String(source.home_label),
-      String(source.home_path),
-      methodVersion,
-      "reparse_replaced",
-      recordedAt,
-    );
+  const currentCounts = new UsageSourceRows(0),
+    previousCounts = new UsageSourceRows(0);
+  try {
+    for (const row of historyRows(currentRows)) {
+      const payloadDigest = historyPayloadDigest(canonicalFactPayload(row, excludedColumns));
+      currentCounts.set(payloadDigest, (currentCounts.get(payloadDigest) || 0) + 1);
+    }
+    for (const row of historyRows(previousRows)) {
+      const payload = canonicalFactPayload(row, excludedColumns);
+      const payloadDigest = historyPayloadDigest(payload);
+      const existing = previousCounts.get(payloadDigest);
+      previousCounts.set(payloadDigest, {
+        payload,
+        count: (existing?.count || 0) + 1,
+      });
+    }
+    const recordedAt = new Date().toISOString();
+    for (const [payloadDigest, previous] of previousCounts.entries()) {
+      const missingCount = previous.count - (currentCounts.get(payloadDigest) || 0);
+      if (missingCount <= 0) continue;
+      insertReplacedFact.run(
+        factTable,
+        String(source.kind),
+        String(source.home_id),
+        String(source.path),
+        payloadDigest,
+        missingCount,
+        JSON.stringify(previous.payload),
+        String(source.home_label),
+        String(source.home_path),
+        methodVersion,
+        "reparse_replaced",
+        recordedAt,
+      );
+    }
+  } finally {
+    currentCounts.close();
+    previousCounts.close();
   }
 }
 
@@ -1869,6 +1930,36 @@ function usageSourceFingerprint(filePath) {
   }
 }
 
+// The round can overlap I/O; transaction-bound checks keep the synchronous reader above.
+async function asyncUsageSourceFingerprint(filePath) {
+  let handle;
+  try {
+    const info = await stat(filePath);
+    const wal = await stat(`${filePath}-wal`).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+      return undefined;
+    });
+    const hash = createHash("sha256");
+    handle = await open(filePath, "r");
+    const length = Math.min(info.size, 64 * 1024);
+    const bytes = Buffer.alloc(length);
+    for (const offset of info.size > length ? [0, info.size - length] : [0]) {
+      let read = 0;
+      while (read < length) {
+        const { bytesRead } = await handle.read(bytes, read, length - read, offset + read);
+        if (!bytesRead) return null;
+        read += bytesRead;
+      }
+      hash.update(bytes);
+    }
+    return `${info.size + (wal?.size || 0)}:${Math.max(info.mtimeMs, wal?.size ? wal.mtimeMs : 0)}:${hash.digest("hex")}`;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close();
+  }
+}
+
 /**
  * Decode retained-but-missing source identities. Missing sources keep their
  * `source_files` row so facts and native ownership remain queryable; this
@@ -2029,6 +2120,8 @@ export class UsageStore {
     this.metadataObservationCache = null;
     /** Period-comparison results keyed by time scope and the catalog used for model normalization. */
     this.periodComparisonCache = new Map();
+    /** @type {{ query: UsageHistoryQuery, key: string, cache: Map<string, any> } | null} */
+    this.historyPeriodComparisonCache = null;
     /**
      * W4-b1 / D1：**实例私有**的"事件级计价" memo（跨形状共享）。
      *
@@ -2141,6 +2234,11 @@ export class UsageStore {
     this.historySqlDashboardCache = null;
     this.verifiedHistorySqlRead = false;
     this.historyDiskRead = false;
+    this.historyPersistentRead = false;
+    this.publishedHistoryProjection = false;
+    this.historyProjectionInput = null;
+    this.historyProjectionModule = null;
+    this.historyProjectionStore = null;
     this.historySourceKinds = null;
     /**
      * D3：**已提交 quota 观测的规范映射**（单槽，见 {@link UsageStore#quotaObservations}）。
@@ -2519,9 +2617,11 @@ export class UsageStore {
     }
   }
 
-  usageProjectionGuard() {
+  // Only acquisition may ignore owned cold bookkeeping; transferable query caches keep the default gate.
+  usageProjectionGuard({ includeHistory = false } = {}) {
     try {
-      if (this.verifiedHistorySqlRead || !this.usageProjectionChangeKey().startsWith("usage:")) return null;
+      if (this.verifiedHistorySqlRead || !this.usageProjectionChangeKey(undefined, includeHistory).startsWith("usage:"))
+        return null;
       const identity = this.usageProjectionDatabaseIdentity();
       if (!identity || identity !== this.openedUsageProjectionIdentity) return null;
       // A failed version read cannot certify a transferable snapshot.
@@ -2607,6 +2707,11 @@ export class UsageStore {
       INSERT INTO usage_projection_ignored_rows VALUES (0, 0);`);
     const keys = USAGE_PROJECTION_IGNORED_META.map((key) => `'${key}'`).join(",");
     for (const table of [...USAGE_PROJECTION_IGNORED_TABLES, "store_meta"]) {
+      if (
+        table.startsWith("usage_history_projection_") &&
+        !this.database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)
+      )
+        continue;
       for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
         // REPLACE can silently remove an unrelated metadata row through its hidden rowid.
         if (table === "store_meta" && operation === "INSERT") continue;
@@ -2634,6 +2739,7 @@ export class UsageStore {
 
   usageProjectionChangeKey(
     totalChanges = Number(this.database.prepare("SELECT total_changes() AS value").get().value),
+    includeHistory = false,
   ) {
     const tracker = this.usageProjectionTracker;
     if (!tracker || tracker.database !== this.database) return `full:${totalChanges}`;
@@ -2643,7 +2749,10 @@ export class UsageStore {
     const fallback = `full:${mainSchema}:${tempSchema}:${recursive}:${totalChanges}`;
     // REPLACE's implicit delete is omitted from total_changes even when DELETE triggers fire.
     if (mainSchema !== tracker.mainSchema || tempSchema !== tracker.tempSchema || recursive !== 0) return fallback;
-    if (this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META))
+    if (
+      !includeHistory &&
+      this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+    )
       return fallback;
     const ignored = Number(this.database.prepare("SELECT value FROM usage_projection_ignored_rows").get()?.value);
     const changes = totalChanges - 2 * ignored - this.businessProjectionIgnoredChanges;
@@ -2870,9 +2979,11 @@ export class UsageStore {
     const { startMs, endMs } = verified.candidate;
     const eventCount = Number(verified.candidate.events.rows);
     const registeredAtMs = Date.now();
+    if (historyArchiveAuthorizedSegmentIds(this.database).size) await this.ensureHistoryProjectionTracking();
 
     this.database.exec("BEGIN IMMEDIATE");
     try {
+      const projectionBefore = this.historyProjectionModule?.readHistoryProjectionStamp(this.database);
       assertHistoryArchiveSourceMatches(this.database, verified);
       const existing = this.database
         .prepare(
@@ -2925,6 +3036,10 @@ export class UsageStore {
            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(segmentId, databasePath, segmentId, startMs, endMs, eventCount, registeredAtMs);
+      if (projectionBefore)
+        this.historyProjectionModule.recordHistoryProjectionBatch(this.database, projectionBefore, {
+          mode: "archive",
+        });
       this.database.exec("COMMIT");
       return {
         inserted: true,
@@ -3033,6 +3148,8 @@ export class UsageStore {
 
       const prepared = await prepareHistoryArchiveCommit(this.database, String(candidate?.databaseFile));
       assertHistoryArchiveCommitPlan(prepared, plan);
+      if (authorized.size) await this.ensureHistoryProjectionTracking();
+      const projectionBefore = this.historyProjectionModule?.readHistoryProjectionStamp(this.database);
       const overlap = this.database
         .prepare(
           `SELECT segment_id FROM archive_segments
@@ -3099,6 +3216,11 @@ export class UsageStore {
       for (const day of rollupDays) restoreDay.run(day.calendar_zone, day.day_key, day.start_ms, day.end_ms);
       const restoreDirty = this.database.prepare("INSERT INTO usage_rollup_dirty_days (day_key) VALUES (?)");
       for (const day of dirtyDays) restoreDirty.run(day.day_key);
+      if (projectionBefore)
+        this.historyProjectionModule.recordHistoryProjectionBatch(this.database, projectionBefore, {
+          sources: prepared.source.sources.map((source) => String(source.path)),
+          mode: "archive",
+        });
       this.database.exec("COMMIT");
       this.writeTransactionDepth -= 1;
       this.commitStoreRevision("history-archive-commit");
@@ -3196,7 +3318,7 @@ export class UsageStore {
    * verified cold snapshot. Internal to archived range reads.
    * @param {Record<string, unknown>} record
    * @param {{startMs: number, endMs: number, afterId: number, limit: number} | null} [page]
-   * @param {{path: string, revisions: any[]} | null} [sourceScope]
+   * @param {{path: string, revisions: any[], onRow?: (row: any) => void} | null} [sourceScope]
    * @returns {Promise<{
    *   rows: Array<Record<string, unknown>>,
    *   sourceIdentities: Array<Record<string, unknown>>,
@@ -3216,15 +3338,18 @@ export class UsageStore {
             `archive segment ${segmentId} contains ${total} event(s), expected ${eventCount}`,
           );
         }
-        const sourceIdentities = historyArchiveSourceIdentities(database, Number(record.start_ms), Number(record.end_ms));
+        const sourceIdentities = historyArchiveSourceIdentities(
+          database,
+          Number(record.start_ms),
+          Number(record.end_ms),
+        );
         validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdentities, sourceScope.revisions);
-        return {
-          rows: historyArchiveStatementRows(
-            database.prepare("SELECT * FROM events WHERE source_path = ? ORDER BY id"),
-            [sourceScope.path],
-          ),
-          sourceIdentities,
-        };
+        const statement = database.prepare("SELECT * FROM events WHERE source_path = ? ORDER BY id");
+        if (sourceScope.onRow) {
+          for (const row of statement.iterate(sourceScope.path)) sourceScope.onRow(row);
+          return { rows: [], sourceIdentities };
+        }
+        return { rows: historyArchiveStatementRows(statement, [sourceScope.path]), sourceIdentities };
       }
       if (page) {
         const total = Number(database.prepare("SELECT COUNT(*) AS count FROM events").get().count);
@@ -3269,9 +3394,10 @@ export class UsageStore {
    * rows are the only part of the re-parsed file allowed to stay cold.
    * @param {string} filePath
    * @param {Record<string, unknown>} source
-   * @returns {Promise<{prefixes: any[], revisionState: any | null}>}
+   * @param {{reuseProjection?: boolean}} [options]
+   * @returns {Promise<{prefixes: any[], revisionState: any | null, usedProjection?: boolean}>}
    */
-  async historyArchiveReparsePrefixes(filePath, source) {
+  async historyArchiveReparsePrefixes(filePath, source, { reuseProjection = false } = {}) {
     const authorizedSegmentIds = historyArchiveAuthorizedSegmentIds(this.database);
     if (authorizedSegmentIds.size === 0) return { prefixes: [], revisionState: null };
     const allRecords = this.database
@@ -3288,50 +3414,121 @@ export class UsageStore {
     );
     const records = allRecords.filter((record) => authorizedSegmentIds.has(String(record.segment_id)));
     const prefixes = [];
-    for (const record of records) {
-      const revisions = revisionsBySegment.get(String(record.segment_id)) || [];
-      const snapshot = await this.readHistoryArchiveSnapshot(record, null, { path: filePath, revisions });
-      const coldSource = snapshot.sourceIdentities.find((source) => String(source.path) === filePath);
-      if (!coldSource) continue;
-      const liveIdentity = {
-        path: filePath,
-        kind: String(source.kind || "codex"),
-        home_id: String(source.id ?? ""),
-        home_label: String(source.label ?? ""),
-        home_path: String(source.path ?? ""),
-      };
-      if (!sameHistoryArchiveSourceIdentity(liveIdentity, coldSource)) {
-        throw historyArchiveError(
-          "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
-          `live source identity no longer matches authorized archive segment ${String(record.segment_id)}`,
-        );
-      }
-      const startMs = Number(record.start_ms);
-      const endMs = Number(record.end_ms);
-      const inPrefix = (row) =>
-        String(row.source_path) === filePath && Number(row.timestamp_ms) >= startMs && Number(row.timestamp_ms) < endMs;
-      const originalRows = snapshot.rows.filter(inPrefix);
-      const effectiveRows = applyHistoryArchiveEventRevisions(
-        record,
-        snapshot,
-        revisions.filter((revision) => revision.sourceIdentity.path === filePath),
-      ).filter(
-        (row) =>
-          String(row.source_path) === filePath &&
-          Number(row.timestamp_ms) >= startMs &&
-          Number(row.timestamp_ms) < endMs,
+    const owned = new Set();
+    let published = null;
+    const projectionIdentity =
+      reuseProjection && this.historyProjectionModule ? this.usageProjectionDatabaseIdentity() : null;
+    if (
+      projectionIdentity &&
+      ![...revisionsBySegment.values()].some((rows) => rows.some((row) => row.sourceIdentity.path === filePath))
+    ) {
+      this.historyProjectionStore ||= new this.historyProjectionModule.HistoryProjectionStore(
+        this.databaseFile,
+        canonicalFactPayload,
       );
-      prefixes.push({
-        segmentId: String(record.segment_id),
-        startMs,
-        endMs,
-        sourceIdentity: { ...coldSource },
-        originalRows,
-        effectiveRows,
-        observedRows: [],
-      });
+      published = this.historyProjectionStore.openPublished(
+        this.database,
+        projectionIdentity,
+        currentLocalRollupZoneIdentity(),
+      );
     }
-    return { prefixes, revisionState: { segmentsById, revisionsBySegment } };
+    try {
+      for (const record of records) {
+        const revisions = revisionsBySegment.get(String(record.segment_id)) || [];
+        const originalRows = new UsageSourceRows(0);
+        owned.add(originalRows);
+        const startMs = Number(record.start_ms),
+          endMs = Number(record.end_ms);
+        let ordinal = 0;
+        const onRow = (row) => {
+          if (Number(row.timestamp_ms) >= startMs && Number(row.timestamp_ms) < endMs)
+            originalRows.set(String(ordinal++), { ...row });
+        };
+        let snapshot;
+        if (published) {
+          for (const row of published.database
+            .prepare("SELECT payload FROM history_query_rows WHERE segment_id=? AND source_path=? ORDER BY rowid")
+            .iterate(String(record.segment_id), filePath))
+            onRow({ id: null, ...JSON.parse(String(row.payload)) });
+          const identity = ordinal
+            ? published.database
+                .prepare("SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?")
+                .get(filePath)
+            : null;
+          snapshot = { sourceIdentities: identity ? [identity] : [] };
+        } else
+          snapshot = await this.readHistoryArchiveSnapshot(record, null, {
+            path: filePath,
+            revisions,
+            onRow,
+          });
+        const coldSource = snapshot.sourceIdentities.find((source) => String(source.path) === filePath);
+        if (!coldSource) {
+          originalRows.close();
+          owned.delete(originalRows);
+          continue;
+        }
+        const liveIdentity = {
+          path: filePath,
+          kind: String(source.kind || "codex"),
+          home_id: String(source.id ?? ""),
+          home_label: String(source.label ?? ""),
+          home_path: String(source.path ?? ""),
+        };
+        if (!sameHistoryArchiveSourceIdentity(liveIdentity, coldSource)) {
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
+            `live source identity no longer matches authorized archive segment ${String(record.segment_id)}`,
+          );
+        }
+        const revision = revisions.find((entry) => entry.sourceIdentity.path === filePath);
+        let effectiveRows = originalRows;
+        if (revision) {
+          effectiveRows = new UsageSourceRows(0);
+          owned.add(effectiveRows);
+          const removals = new UsageSourceRows(0);
+          try {
+            for (const removed of revision.removed)
+              removals.set(historyArchiveRevisionPayloadKey(removed.payload), removed.count);
+            ordinal = 0;
+            for (const row of originalRows.values()) {
+              const key = historyArchiveRevisionPayloadKey(row),
+                count = Number(removals.get(key) || 0);
+              if (count) removals.set(key, count - 1);
+              else effectiveRows.set(String(ordinal++), row);
+            }
+            for (const count of removals.values())
+              if (count) throw historyArchiveRevisionError("archive source revision removes too many payloads");
+            for (const added of revision.added)
+              for (let index = 0; index < added.count; index++) {
+                const row = { id: null, ...added.payload };
+                if (Number(row.timestamp_ms) >= startMs && Number(row.timestamp_ms) < endMs)
+                  effectiveRows.set(String(ordinal++), row);
+              }
+          } finally {
+            removals.close();
+          }
+        }
+        const observedRows = new UsageSourceRows(0);
+        owned.add(observedRows);
+        prefixes.push({
+          segmentId: String(record.segment_id),
+          startMs,
+          endMs,
+          sourceIdentity: { ...coldSource },
+          originalRows,
+          effectiveRows,
+          observedRows,
+          observedCount: 0,
+        });
+      }
+      return { prefixes, revisionState: { segmentsById, revisionsBySegment }, usedProjection: Boolean(published) };
+    } catch (error) {
+      for (const rows of owned) rows.close();
+      throw error;
+    } finally {
+      published?.database.close();
+    }
   }
 
   /**
@@ -3568,6 +3765,22 @@ export class UsageStore {
     const warnings = [];
     /** @type {any[]} */
     const failedHomes = [];
+    /** @param {string[]} paths @param {any} source @param {(filePath: string) => Promise<any>} [readInfo] */
+    const addFiles = async (paths, source, readInfo = stat) => {
+      for (let offset = 0; offset < paths.length; offset += 32) {
+        const results = await Promise.allSettled(
+          paths.slice(offset, offset + 32).map(async (filePath) => ({
+            filePath,
+            source,
+            info: await readInfo(filePath),
+          })),
+        );
+        for (const result of results) {
+          if (result.status === "rejected") throw result.reason;
+          files.push(result.value);
+        }
+      }
+    };
     for (const home of homes) {
       try {
         if (home.kind === "project-log" && home.usageLogPath) {
@@ -3581,43 +3794,46 @@ export class UsageStore {
         if (home.kind === "dsh") {
           // DSH 的用量按会话分散在多个日志文件里，逐个纳入增量索引
           // （每个文件各自按 size+mtime 判定是否需要重解析）。
-          for (const filePath of await dshSessionFiles(home.path)) {
-            files.push({ filePath, source: home, info: await stat(filePath) });
-          }
+          await addFiles(await dshSessionFiles(home.path), home);
           continue;
         }
         if (home.kind === "opencode") {
           // 单个数据目录下可能有多个数据库（opencode.db、opencode-<channel>.db），
           // 逐个纳入增量索引（含 -wal 指纹）。
-          for (const filePath of await opencodeDatabaseFiles(home.path)) {
-            files.push({ filePath, source: home, info: await opencodeSourceStat(filePath) });
-          }
+          await addFiles(await opencodeDatabaseFiles(home.path), home, opencodeSourceStat);
           continue;
         }
         if (home.kind === "claude") {
           // Claude Code 的用量按会话转录分散在 projects/**/*.jsonl（含 subagents），
           // 每个文件各自按 size+mtime 判定是否需要重解析。
-          for (const filePath of await claudeSessionFiles(home.path)) {
-            files.push({ filePath, source: home, info: await stat(filePath) });
-          }
+          await addFiles(await claudeSessionFiles(home.path), home);
           continue;
         }
         if (home.kind === "workbuddy") {
           // WorkBuddy 同样是逐会话转录；会话文件是普通 jsonl。
-          for (const filePath of await workbuddySessionFiles(home.path)) {
-            files.push({ filePath, source: home, info: await stat(filePath) });
-          }
+          await addFiles(await workbuddySessionFiles(home.path), home);
           continue;
         }
-        for (const filePath of await discoverSessionFiles(home.path)) {
-          files.push({ filePath, source: home, info: await stat(filePath) });
-        }
+        await addFiles(await discoverSessionFiles(home.path), home);
       } catch (error) {
         failedHomes.push({ id: home.id, path: home.path });
         warnings.push(`无法读取 ${home.path}: ${error.message}`);
       }
     }
     return { files, warnings, failedHomes };
+  }
+
+  async usageFileFingerprints(files) {
+    const fingerprints = new Map();
+    for (let offset = 0; offset < files.length; offset += 32) {
+      const batch = files.slice(offset, offset + 32);
+      const results = await Promise.allSettled(batch.map((file) => asyncUsageSourceFingerprint(file.filePath)));
+      for (const [index, result] of results.entries()) {
+        if (result.status === "rejected") throw result.reason;
+        fingerprints.set(batch[index].filePath, result.value);
+      }
+    }
+    return fingerprints;
   }
 
   /**
@@ -3663,13 +3879,18 @@ export class UsageStore {
         database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
         database.prepare("SELECT 1 FROM archive_segments LIMIT 1").get() ||
         database.prepare("SELECT 1 FROM temp.sqlite_schema WHERE name IN ('events','source_files') LIMIT 1").get() ||
-        database.prepare("PRAGMA main.table_xinfo(events)").all().map((column) => column.name).join(",") !==
-          ["id", ...EVENT_INSERT_COLUMNS].join(",") ||
-        database.prepare(`SELECT 1 FROM main.sqlite_schema WHERE type='trigger' AND tbl_name='source_files'
+        database
+          .prepare("PRAGMA main.table_xinfo(events)")
+          .all()
+          .map((column) => column.name)
+          .join(",") !== ["id", ...EVENT_INSERT_COLUMNS].join(",") ||
+        database
+          .prepare(`SELECT 1 FROM main.sqlite_schema WHERE type='trigger' AND tbl_name='source_files'
           AND name NOT IN ('usage_source_progress_source_update',
             'usage_source_catalog_source_files_INSERT','usage_source_catalog_source_files_UPDATE',
             'usage_source_catalog_source_files_DELETE','usage_all_source_insert',
-            'usage_all_source_update','usage_all_source_delete') LIMIT 1`).get() ||
+            'usage_all_source_update','usage_all_source_delete') LIMIT 1`)
+          .get() ||
         /\bAUTOINCREMENT\b/i.test(
           String(database.prepare("SELECT sql FROM main.sqlite_schema WHERE name='events'").get()?.sql),
         )
@@ -3765,16 +3986,17 @@ export class UsageStore {
   /**
    * Replace one discovered source file's ordinary usage facts atomically.
    * @param {any} file
-   * @param {{ onWarning?: (warning: string) => void, progress?: boolean }} [options]
+   * @param {{ onWarning?: (warning: string) => void, progress?: boolean, reuseHistoryProjection?: boolean }} [options]
    */
-  async replaceFile({ filePath, source, info }, { onWarning, progress = true } = {}) {
+  async replaceFile({ filePath, source, info }, { onWarning, progress = true, reuseHistoryProjection = false } = {}) {
     const reused = await this.reuseSourcePrefix({ filePath, source, info }, { onWarning });
     if (reused) return reused;
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
     const hot = !database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META);
+    if (!hot) await this.ensureHistoryProjectionTracking();
     const proofEligible =
-      hot &&
+      (hot || this.sourceAppendArchiveEnd() !== null) &&
       typeof database.isTransaction === "boolean" &&
       ((codexThreaded && filePath.endsWith(".jsonl")) || source.kind === "dsh");
     const progressEligible = progress && proofEligible;
@@ -3865,16 +4087,22 @@ export class UsageStore {
     let truncationWarning;
     let truncationEventCount = 0;
     let coldRemovedEventCount = 0;
+    let coldReparsePrefixes = [];
+    let usedProjectionPrefix = false;
     const projectLogWarnings = [];
     const projectLogMalformedLines = new Set();
     database.exec("BEGIN IMMEDIATE");
     this.writeTransactionDepth += 1;
+    const projectionBefore = !hot ? this.historyProjectionModule.readHistoryProjectionStamp(database) : null;
     try {
       const previousSource = database
         .prepare("SELECT path, kind, home_id, home_label, home_path, size FROM source_files WHERE path = ?")
         .get(filePath);
-      const coldReparse = await this.historyArchiveReparsePrefixes(filePath, source);
-      const coldReparsePrefixes = coldReparse.prefixes;
+      const coldReparse = await this.historyArchiveReparsePrefixes(filePath, source, {
+        reuseProjection: reuseHistoryProjection,
+      });
+      usedProjectionPrefix = Boolean(coldReparse.usedProjection);
+      coldReparsePrefixes = coldReparse.prefixes;
       replacementFacts.capture("events", filePath);
       replacementFacts.capture("rate_limit_observations", filePath);
       const previousSiblingSource = codexThreaded
@@ -3925,7 +4153,7 @@ export class UsageStore {
             (prefix) => row.timestamp_ms >= prefix.startMs && row.timestamp_ms < prefix.endMs,
           );
           if (coldPrefix) {
-            coldPrefix.observedRows.push({ ...row });
+            coldPrefix.observedRows.set(String(coldPrefix.observedCount++), { ...row });
             return;
           }
           insertEvent.add(EVENT_INSERT_COLUMNS.map((column) => row[column]));
@@ -4141,7 +4369,7 @@ export class UsageStore {
             parsedHash ? { offset: parsedOffset, digest: parsedHash.copy().digest("hex") } : null,
           );
       }
-      if (hot && (codexThreaded || source.kind === "dsh")) {
+      if ((hot || progressEligible) && (codexThreaded || source.kind === "dsh")) {
         const after = await stat(filePath);
         if (
           after.size !== info.size ||
@@ -4162,6 +4390,11 @@ export class UsageStore {
       }
       database.prepare("DELETE FROM usage_source_reparse WHERE source_path=?").run(filePath);
       for (const warning of parserWarnings) onWarning?.(warning);
+      if (projectionBefore)
+        this.historyProjectionModule.recordHistoryProjectionBatch(database, projectionBefore, {
+          sources: previousSiblingSource ? [filePath, String(previousSiblingSource.path)] : [filePath],
+          mode: "replace",
+        });
       database.exec("COMMIT");
       if (this.writeTransactionDepth > 0) this.writeTransactionDepth -= 1;
       if (this.publishedFileWarningsView) {
@@ -4170,6 +4403,7 @@ export class UsageStore {
       return {
         committed: true,
         quotaWritten,
+        historyVerificationPending: usedProjectionPrefix,
         truncationWarning,
         projectLogWarnings,
         appended: false,
@@ -4188,7 +4422,19 @@ export class UsageStore {
     } finally {
       sourceBounds.close();
       replacementFacts.close();
+      for (const prefix of coldReparsePrefixes)
+        for (const rows of new Set([prefix.originalRows, prefix.effectiveRows, prefix.observedRows])) rows.close();
     }
+  }
+
+  sourceAppendArchiveEnd() {
+    const authorized = historyArchiveAuthorizedSegmentIds(this.database);
+    if (!authorized.size) return null;
+    const records = this.database.prepare("SELECT segment_id,end_ms FROM archive_segments").all();
+    // The single-package SQL path retains its established event insertion/money order.
+    if (records.length < 2) return null;
+    const ends = records.map((row) => Number(row.end_ms));
+    return ends.length && ends.every(Number.isSafeInteger) ? Math.max(...ends) : null;
   }
 
   /**
@@ -4200,10 +4446,15 @@ export class UsageStore {
     const database = this.database;
     if (
       typeof database.isTransaction !== "boolean" ||
-      database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
       database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(filePath)
     )
       return null;
+    let archiveEnd = null;
+    if (database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)) {
+      archiveEnd = this.sourceAppendArchiveEnd();
+      if (archiveEnd === null) return null;
+      await this.ensureHistoryProjectionTracking();
+    }
     const existing = database.prepare("SELECT * FROM source_files WHERE path=?").get(filePath);
     const saved = readUsageSourceProgress(database, filePath);
     if (
@@ -4228,6 +4479,9 @@ export class UsageStore {
     const bounds = new UsageSourceChangeBounds();
     const unsupported = () =>
       Object.assign(new Error("Source requires complete parsing"), { code: "SOURCE_PROGRESS_UNSUPPORTED" });
+    const checkHotTimestamp = (timestamp) => {
+      if (archiveEnd !== null && (!Number.isSafeInteger(timestamp) || timestamp < archiveEnd)) throw unsupported();
+    };
     const eventInsert = database.prepare(`INSERT INTO events (${EVENT_INSERT_COLUMNS.join(",")})
       VALUES (${EVENT_INSERT_COLUMNS.map(() => "?").join(",")})`);
     const quotaInsert = database.prepare(`INSERT OR REPLACE INTO quota_usage_sources
@@ -4237,6 +4491,7 @@ export class UsageStore {
       VALUES (?,?,?,?,?,?,?,?,?,?)`);
     const rememberQuotaSource = (event) => {
       if (!codex || !Number.isFinite(event.timestampMs)) return;
+      checkHotTimestamp(event.timestampMs);
       if (event.sessionId !== sessionId) throw unsupported();
       const value = `${event.quotaSource || "unknown"}:${event.quotaSourceUntil || 0}`;
       if (value === lastQuotaSource) return;
@@ -4253,10 +4508,25 @@ export class UsageStore {
     database.exec("BEGIN IMMEDIATE");
     this.writeTransactionDepth += 1;
     try {
+      const projectionBefore =
+        archiveEnd === null ? null : this.historyProjectionModule.readHistoryProjectionStamp(database);
       // Verification awaited filesystem I/O: another connection may have replaced the cursor meanwhile.
       if (
         JSON.stringify(readUsageSourceProgress(database, filePath)) !== JSON.stringify(saved) ||
         database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(filePath)
+      )
+        throw unsupported();
+      if (
+        archiveEnd !== null &&
+        codex &&
+        (database
+          .prepare("SELECT 1 FROM quota_usage_sources WHERE home_id=? AND session_id=? AND source_path<>? LIMIT 1")
+          .get(source.id, sessionId, filePath) ||
+          database
+            .prepare(`SELECT 1 FROM rate_limit_observations a JOIN rate_limit_observations b
+            ON b.limit_id=a.limit_id AND b.window_minutes=a.window_minutes AND b.observed_at_ms=a.observed_at_ms
+            AND b.source_path<>a.source_path WHERE a.source_path=? LIMIT 1`)
+            .get(filePath))
       )
         throw unsupported();
       await streamUsageFileEvents(
@@ -4266,6 +4536,7 @@ export class UsageStore {
           if (codex && event.sessionId !== sessionId) throw unsupported();
           rememberQuotaSource(event);
           const row = sourceEventRow(filePath, event);
+          checkHotTimestamp(Number(row.timestamp_ms));
           eventInsert.run(...EVENT_INSERT_COLUMNS.map((column) => row[column]));
           if (codex) bounds.add(row.home_id, row.session_id, Number(row.timestamp_ms));
         },
@@ -4286,6 +4557,7 @@ export class UsageStore {
           onQuotaSource: rememberQuotaSource,
           onRateLimit: codex
             ? (row) => {
+                checkHotTimestamp(row.observedAtMs);
                 rateInsert.run(
                   filePath,
                   row.lineNumber,
@@ -4302,6 +4574,7 @@ export class UsageStore {
               }
             : undefined,
           previousCumulativeForSession: (id, timestamp) => {
+            if (archiveEnd !== null) throw unsupported();
             const beforeMs = Date.parse(timestamp);
             if (!Number.isSafeInteger(beforeMs)) return null;
             baseline = { homeId: source.id, sessionId: String(id), beforeMs };
@@ -4340,6 +4613,11 @@ export class UsageStore {
       }
       if (!writeUsageSourceProgress(database, filePath, checkpoint, proof.validation)) throw unsupported();
       for (const warning of warnings) onWarning?.(warning);
+      if (projectionBefore)
+        this.historyProjectionModule.recordHistoryProjectionBatch(database, projectionBefore, {
+          sources: [filePath],
+          mode: "append",
+        });
       database.exec("COMMIT");
       this.writeTransactionDepth -= 1;
       return {
@@ -4410,15 +4688,22 @@ export class UsageStore {
       }
       let bootstrap = null;
       if (!plan) {
-        try { bootstrap = await acquisition.beginFull(options); }
-        catch (error) {
+        try {
+          bootstrap = await acquisition.beginFull(options);
+        } catch (error) {
           if (!["ENOENT", "EACCES", "EPERM"].includes(error.code)) throw error;
           acquisition.work = { mode: "fallback", reason: error.code };
         }
       }
       try {
         const result = await this.syncRound({ ...args, acquisitionPlan: plan });
-        const receipt = await acquisition.complete(options, plan || bootstrap, this.acquisitionFiles || [], result, !plan);
+        const receipt = await acquisition.complete(
+          options,
+          plan || bootstrap,
+          this.acquisitionFiles || [],
+          result,
+          !plan,
+        );
         this.lastAcquisitionWork = acquisition.work;
         if (plan && !receipt) {
           // Facts may have committed. A full retry reuses their parser checkpoints.
@@ -4457,26 +4742,34 @@ export class UsageStore {
     await this.open();
     this.syncDerivedRevision();
     createUsageRollups(this.database);
+    if (historyArchiveAuthorizedSegmentIds(this.database).size > 0) await this.ensureHistoryProjectionTracking();
     const syncOptions = options || this.options;
     this.options = syncOptions;
-    const homes = plan?.homes || await discoverUsageSources(syncOptions);
+    const homes = plan?.homes || (await discoverUsageSources(syncOptions));
     const quotaObservations = readCodexQuotaObservations({ ...syncOptions, homes });
     if (quotaObservations.length) {
       const saved = JSON.stringify(quotaObservations);
       if (this.readMetaRaw("official_quota_observations") !== saved) {
-        this.writeMeta("official_quota_observations", saved);
+        this.withHistoryProjectionInputChange(() => this.writeMeta("official_quota_observations", saved));
         this.commitStoreRevision("quota");
       }
     }
 
-    const { files, warnings, failedHomes = [] } = plan
-      ? { files: plan.files, warnings: [...plan.warnings] }
-      : await this.usageFiles(homes);
+    const {
+      files,
+      warnings,
+      failedHomes = [],
+    } = plan ? { files: plan.files, warnings: [...plan.warnings] } : await this.usageFiles(homes);
     this.acquisitionFiles = files;
-    const status = plan ? {
-      fingerprint: files.length ? createHash("sha256").update(plan.fingerprint).update(JSON.stringify(plan.volumes)).digest("hex") : plan.fingerprint,
-      checkedAt: new Date().toISOString(), fileCount: plan.fileCount,
-    } : await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes });
+    const status = plan
+      ? {
+          fingerprint: files.length
+            ? createHash("sha256").update(plan.fingerprint).update(JSON.stringify(plan.volumes)).digest("hex")
+            : plan.fingerprint,
+          checkedAt: new Date().toISOString(),
+          fileCount: plan.fileCount,
+        }
+      : await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes });
     const knownFiles = new Set(files.map((file) => file.filePath));
     const failedHomeIds = new Set(failedHomes.map((home) => home.id));
     const failedHomePaths = new Set(failedHomes.map((home) => home.path));
@@ -4494,18 +4787,22 @@ export class UsageStore {
         try {
           const saved = JSON.parse(String(row.payload));
           if (saved.fingerprint) publishedFingerprints[saved.filePath] = saved.fingerprint;
-        } catch { /* Rebuildable catalog; full source verification remains authoritative. */ }
+        } catch {
+          /* Rebuildable catalog; full source verification remains authoritative. */
+        }
       }
     }
     const nextFingerprints = { ...publishedFingerprints };
-    const currentFingerprints = new Map(files.map((file) => [file.filePath, usageSourceFingerprint(file.filePath)]));
+    const currentFingerprints = await this.usageFileFingerprints(files);
     const committedPaths = new Set();
     const changedSessions = new Set();
     let updatedFileCount = 0;
     let usageDerivedChanged = false;
+    let historyVerificationPending = false;
     const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0 };
     this.lastSyncSourceWork = sourceWork;
     const acceptSource = (file, outcome) => {
+      historyVerificationPending ||= Boolean(outcome.historyVerificationPending);
       updatedFileCount += 1;
       committedPaths.add(file.filePath);
       nextFingerprints[file.filePath] = usageSourceFingerprint(file.filePath);
@@ -4524,10 +4821,13 @@ export class UsageStore {
       this.commitStoreRevision(outcome.quotaWritten ? "usage+quota" : "usage");
     };
 
+    const readSource = this.database.prepare(
+      "SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
+    );
+    const readSourceSessions = this.database.prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?");
+    const readReparse = this.database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?");
     for (const file of files) {
-      const existing = this.database
-        .prepare("SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?")
-        .get(file.filePath);
+      const existing = readSource.get(file.filePath);
       const savedProgress = existing ? readUsageSourceProgress(this.database, file.filePath) : null;
       const unchanged =
         existing &&
@@ -4542,13 +4842,8 @@ export class UsageStore {
       const earlierFileChanged =
         existing &&
         changedSessions.size > 0 &&
-        this.database
-          .prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?")
-          .all(file.filePath)
-          .some((row) => changedSessions.has(row.session_id));
-      const needsReparse = Boolean(
-        this.database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(file.filePath),
-      );
+        readSourceSessions.all(file.filePath).some((row) => changedSessions.has(row.session_id));
+      const needsReparse = Boolean(readReparse.get(file.filePath));
       if (!file.force && unchanged && !earlierFileChanged && !needsReparse) {
         const proofCurrent =
           !savedProgress ||
@@ -4561,10 +4856,15 @@ export class UsageStore {
         }
       }
       try {
-        const callbacks = { onWarning: (warning) => warnings.push(String(warning)), progress: file.readMode !== "full" };
+        const callbacks = {
+          onWarning: (warning) => warnings.push(String(warning)),
+          progress: file.readMode !== "full",
+          reuseHistoryProjection: true,
+        };
         const outcome =
-          (!earlierFileChanged && !needsReparse && file.readMode !== "full" ? await this.appendFile(file, callbacks) : null) ||
-          (await this.replaceFile(file, callbacks));
+          (!earlierFileChanged && !needsReparse && file.readMode !== "full"
+            ? await this.appendFile(file, callbacks)
+            : null) || (await this.replaceFile(file, callbacks));
         if (!outcome?.committed) {
           if (plan) throw Object.assign(new Error("Selected source did not commit"), { code: "LIVE_SOURCE_CHANGED" });
           continue;
@@ -4581,17 +4881,23 @@ export class UsageStore {
     // Dependencies may precede their changed producer in discovery order, or survive a process crash.
     const availableFiles = new Map(files.map((file) => [file.filePath, file]));
     while (true) {
-      const pending = this.database.prepare(`SELECT source_path FROM usage_source_reparse ORDER BY source_path${plan ? " LIMIT 2049" : ""}`).all();
+      const pending = this.database
+        .prepare(`SELECT source_path FROM usage_source_reparse ORDER BY source_path${plan ? " LIMIT 2049" : ""}`)
+        .all();
       if (plan && pending.length > 2048)
         throw Object.assign(new Error("Source dependency budget exceeded"), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
       const available = [];
       for (const row of pending) {
-        const file = availableFiles.get(String(row.source_path)) || (plan ? await this.sourceAcquisition.file(String(row.source_path)) : null);
+        const file =
+          availableFiles.get(String(row.source_path)) ||
+          (plan ? await this.sourceAcquisition.file(String(row.source_path)) : null);
         if (file) {
           available.push(file);
           if (!availableFiles.has(file.filePath)) {
             if (plan && availableFiles.size >= 2048)
-              throw Object.assign(new Error("Source dependency budget exceeded"), { code: "SOURCE_COVERAGE_UNAVAILABLE" });
+              throw Object.assign(new Error("Source dependency budget exceeded"), {
+                code: "SOURCE_COVERAGE_UNAVAILABLE",
+              });
             availableFiles.set(file.filePath, file);
             files.push(file);
           }
@@ -4647,18 +4953,18 @@ export class UsageStore {
 
     const publishedFileWarnings = this.publishedFileWarningsForRound();
     if (!plan) {
-    const activeSourcePaths = new Set(
-      this.database
-        .prepare("SELECT path FROM source_files")
-        .all()
-        .map((row) => String(row.path)),
-    );
-    for (const filePath of Object.keys(publishedFileWarnings)) {
-      if (!activeSourcePaths.has(filePath)) delete publishedFileWarnings[filePath];
-    }
-    for (const filePath of Object.keys(nextFingerprints)) {
-      if (!activeSourcePaths.has(filePath)) delete nextFingerprints[filePath];
-    }
+      const activeSourcePaths = new Set(
+        this.database
+          .prepare("SELECT path FROM source_files")
+          .all()
+          .map((row) => String(row.path)),
+      );
+      for (const filePath of Object.keys(publishedFileWarnings)) {
+        if (!activeSourcePaths.has(filePath)) delete publishedFileWarnings[filePath];
+      }
+      for (const filePath of Object.keys(nextFingerprints)) {
+        if (!activeSourcePaths.has(filePath)) delete nextFingerprints[filePath];
+      }
     }
     for (const [filePath, fileWarnings] of Object.entries(publishedFileWarnings)) {
       for (const warning of fileWarnings) {
@@ -4681,27 +4987,31 @@ export class UsageStore {
     const previousMissingSources = decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META));
     const previousMissingByPath = new Map(previousMissingSources.map((source) => [source.path, source]));
     const missingSinceMs = Date.now();
-    const missingSources = plan ? plan.missingSources : this.database
-      .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files ORDER BY path")
-      .all()
-      .filter(
-        (row) =>
-          !knownFiles.has(String(row.path)) && !failedHomeIds.has(row.home_id) && !failedHomePaths.has(row.home_path),
-      )
-      .map((row) => {
-        const previous = previousMissingByPath.get(String(row.path));
-        const kind = String(row.kind ?? "");
-        const homeId = String(row.home_id ?? "");
-        return {
-          path: String(row.path),
-          kind,
-          homeId,
-          homeLabel: String(row.home_label ?? ""),
-          homePath: String(row.home_path ?? ""),
-          missingSinceMs:
-            previous?.kind === kind && previous?.homeId === homeId ? previous.missingSinceMs : missingSinceMs,
-        };
-      });
+    const missingSources = plan
+      ? plan.missingSources
+      : this.database
+          .prepare("SELECT path, kind, home_id, home_label, home_path FROM source_files ORDER BY path")
+          .all()
+          .filter(
+            (row) =>
+              !knownFiles.has(String(row.path)) &&
+              !failedHomeIds.has(row.home_id) &&
+              !failedHomePaths.has(row.home_path),
+          )
+          .map((row) => {
+            const previous = previousMissingByPath.get(String(row.path));
+            const kind = String(row.kind ?? "");
+            const homeId = String(row.home_id ?? "");
+            return {
+              path: String(row.path),
+              kind,
+              homeId,
+              homeLabel: String(row.home_label ?? ""),
+              homePath: String(row.home_path ?? ""),
+              missingSinceMs:
+                previous?.kind === kind && previous?.homeId === homeId ? previous.missingSinceMs : missingSinceMs,
+            };
+          });
 
     const nextServiceTierEvidence = loadServiceTierEvidence(homes);
     const nextQuotaEvidence = loadQuotaSourceEvidence(
@@ -4711,7 +5021,7 @@ export class UsageStore {
     const quotaEvidenceSnapshot = JSON.stringify(quotaSourceEvidenceSnapshot(nextQuotaEvidence));
     const previousQuotaEvidence = this.readMetaRaw("quota_source_log_evidence");
     if (quotaEvidenceSnapshot !== previousQuotaEvidence) {
-      this.writeMeta("quota_source_log_evidence", quotaEvidenceSnapshot);
+      this.withHistoryProjectionInputChange(() => this.writeMeta("quota_source_log_evidence", quotaEvidenceSnapshot));
       if (previousQuotaEvidence !== undefined || quotaSourceEvidenceSnapshot(nextQuotaEvidence).entries.length) {
         this.commitStoreRevision("quota-source");
       }
@@ -4795,26 +5105,45 @@ export class UsageStore {
         tryAppendUsageRollups(this.database, { zoneIdentity: localRollupZone }),
       );
     }
-    if ((dirtyRollupDays.length > 0 && !this.lastSyncRollupWork?.applied) || localRollupZoneChanged) {
+    if (
+      (dirtyRollupDays.length > 0 && !this.lastSyncRollupWork?.applied) ||
+      localRollupZoneChanged ||
+      historyVerificationPending
+    ) {
       if (historyArchiveAuthorizedSegmentIds(this.database).size > 0) {
-        this.database.exec("BEGIN IMMEDIATE");
-        this.writeTransactionDepth += 1;
-        try {
-          const roundDirtyDays = listDirtyUsageRollupDays(this.database);
-          await this.withSqlHistoryReader((reader) => {
+        await this.withSqlHistoryReader((reader) => {
+          if (!localRollupZoneChanged && listDirtyUsageRollupDays(this.database).length === 0) return;
+          this.database.exec("BEGIN IMMEDIATE");
+          this.writeTransactionDepth += 1;
+          try {
+            if (
+              reader.historyProjectionInput &&
+              !this.historyProjectionModule.sameHistoryProjectionStamp(
+                reader.historyProjectionInput,
+                this.historyProjectionModule.readHistoryProjectionStamp(this.database),
+              )
+            ) {
+              throw Object.assign(new Error("History inputs changed before rollup publication"), {
+                code: "HISTORY_PROJECTION_INPUT_CHANGED",
+              });
+            }
+            const roundDirtyDays = listDirtyUsageRollupDays(this.database);
             function* eventsFor(days, calendarZone) {
-              if (days.length === 0) return;
-              const ordered = [...days].sort();
-              const range = resolveDateRange({ preset: "custom", startDate: ordered[0], endDate: ordered.at(-1), calendarZone });
               const statement = reader.database.prepare(
                 "SELECT * FROM events WHERE timestamp_ms >= ? AND timestamp_ms <= ? ORDER BY id",
               );
-              for (const row of statement.iterate(range.start.getTime(), range.end.getTime())) {
-                yield publishedUsageEventFromRow(row, "unknown", null);
+              for (const day of [...new Set(days)].sort()) {
+                const range = resolveDateRange({ preset: "custom", startDate: day, endDate: day, calendarZone });
+                for (const row of statement.iterate(range.start.getTime(), range.end.getTime())) {
+                  yield publishedUsageEventFromRow(row, "unknown", null);
+                }
               }
             }
             if (roundDirtyDays.length > 0) {
-              rebuildUsageRollupsFromEvents(this.database, { days: roundDirtyDays, events: eventsFor(roundDirtyDays, "utc") });
+              rebuildUsageRollupsFromEvents(this.database, {
+                days: roundDirtyDays,
+                events: eventsFor(roundDirtyDays, "utc"),
+              });
             }
             const localDays = new Set(localUsageRollupDaysForUtcDays(roundDirtyDays));
             if (localRollupZoneChanged) {
@@ -4838,18 +5167,18 @@ export class UsageStore {
               events: eventsFor(days, "local"),
               calendarZone: "local",
             });
-          });
-          this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
-          this.database.exec("COMMIT");
-        } catch (error) {
-          try {
-            this.database.exec("ROLLBACK");
-          } finally {
-            this.writeTransactionDepth -= 1;
+            this.writeMeta(LOCAL_ROLLUP_ZONE_META, localRollupZone);
+            this.database.exec("COMMIT");
+          } catch (error) {
+            try {
+              this.database.exec("ROLLBACK");
+            } finally {
+              this.writeTransactionDepth -= 1;
+            }
+            throw error;
           }
-          throw error;
-        }
-        this.writeTransactionDepth -= 1;
+          this.writeTransactionDepth -= 1;
+        });
       } else {
         this.database.exec("SAVEPOINT usage_rollup_sync");
         try {
@@ -4970,8 +5299,9 @@ export class UsageStore {
   storedMetadata(asOf = new Date()) {
     if (
       this.writeTransactionDepth > 0 ||
-      this.verifiedHistorySqlRead ||
-      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      (this.verifiedHistorySqlRead && !this.historyPersistentRead) ||
+      (!this.historyPersistentRead &&
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)) ||
       this.database
         .prepare("PRAGMA index_list(events)")
         .all()
@@ -4993,15 +5323,16 @@ export class UsageStore {
       return;
     }
     if (
-      this.verifiedHistorySqlRead ||
-      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      (this.verifiedHistorySqlRead && !this.historyPersistentRead) ||
+      (!this.historyPersistentRead &&
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)) ||
       this.database
         .prepare("PRAGMA index_list(events)")
         .all()
         .some((row) => Number(row.unique) !== 0)
     )
       return;
-    if (!this.usageProjectionTracker) {
+    if (!this.usageProjectionTracker && !this.historyPersistentRead) {
       this.installUsageProjectionTracker();
       this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
     }
@@ -5485,7 +5816,9 @@ export class UsageStore {
       ? `${COST_EVENT_COLUMNS}, repository_key, repository_path, repository_kind, cwd, reconciliation_gap`
       : COST_EVENT_COLUMNS;
     const statement = this.database.prepare(
-      `SELECT ${columns} FROM events WHERE ${where.sql}${this.historyDiskRead ? " ORDER BY id" : ""}`,
+      `SELECT ${columns} FROM events WHERE ${where.sql}${
+        this.historyDiskRead ? ` ORDER BY ${this.historyPersistentRead ? "timestamp_ms,history_ordinal" : "id"}` : ""
+      }`,
     );
     const sourceKinds = this.historySourceKinds ?? homeSourceKinds(this.homes);
     if (typeof statement.setReturnArrays === "function") {
@@ -5618,8 +5951,14 @@ export class UsageStore {
   historyRepositorySessionOrder(where, firsts = null) {
     if (this.historyDiskRead) {
       const sessions = new Map();
-      for (const row of this.database.prepare(`SELECT repository_key,session_id,MIN(id) AS first_id
-        FROM events WHERE ${where.sql} GROUP BY repository_key,session_id ORDER BY repository_key,first_id`).iterate(...where.params)) {
+      const sql = this.historyPersistentRead
+        ? `SELECT repository_key,session_id FROM (
+        SELECT repository_key,session_id,timestamp_ms,history_ordinal,
+          ROW_NUMBER() OVER(PARTITION BY repository_key,session_id ORDER BY timestamp_ms,history_ordinal) AS position
+        FROM events WHERE ${where.sql}) WHERE position=1 ORDER BY repository_key,timestamp_ms,history_ordinal`
+        : `SELECT repository_key,session_id,MIN(id) AS first_id
+          FROM events WHERE ${where.sql} GROUP BY repository_key,session_id ORDER BY repository_key,first_id`;
+      for (const row of this.database.prepare(sql).iterate(...where.params)) {
         const values = sessions.get(row.repository_key) ?? [];
         values.push(row.session_id);
         sessions.set(row.repository_key, values);
@@ -6042,6 +6381,7 @@ export class UsageStore {
    * @param {import("./usage-types.js").UsageRange} range
    */
   recordsForRange(range, excludeHomes = []) {
+    if (this.historyPersistentRead && !this.recordRangeHasEvents(range)) return {};
     // D2：读路径先对齐修订（外部提交在这里被检出 ⇒ 数据侧输入立即失效），与 metadata()/periodComparison() 同款。
     this.syncDerivedRevision();
     // D2 复用 D1 的门：写事务内不读也不写共享 memo。
@@ -6119,6 +6459,7 @@ export class UsageStore {
       .digest("hex");
     return {
       database: this.database,
+      ...(this.historyPersistentRead ? { mode: "history" } : {}),
       key,
       factsKey: String(
         this.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton = 1").get().revision,
@@ -6132,18 +6473,44 @@ export class UsageStore {
     };
   }
 
-  prepareRecordProjection(filters) {
+  recordRangeHasEvents(range) {
+    const scope = eventRangeScope(range, scopeFilterSql([]));
+    return Boolean(this.database.prepare(`SELECT 1 FROM events WHERE ${scope.sql} LIMIT 1`).get(...scope.params));
+  }
+
+  prepareRecordProjection(filters, { force = false } = {}) {
     if (
       this.database.isTransaction ||
       this.writeTransactionDepth > 0 ||
-      this.verifiedHistorySqlRead ||
-      filters.preset === "all" ||
+      (this.verifiedHistorySqlRead && !this.historyPersistentRead) ||
+      (filters.preset === "all" && !(this.historyPersistentRead && force)) ||
       isQuotaPreset(filters.preset) ||
       filters.quotaWindow ||
-      this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+      (!this.historyPersistentRead &&
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META))
     )
       return;
-    buildStoredRecordChampions(this.recordProjectionOptions(filters.calendarZone, filters.excludeHomes || []));
+    if (this.historyPersistentRead && !force) {
+      const bounds = this.eventBounds();
+      const markers = [bounds.minimum, bounds.maximum]
+        .filter((value) => value !== null)
+        .map((value) => ({ timestamp: new Date(Number(value)).toISOString() }));
+      if (!this.recordRangeHasEvents(resolveDateRange(filters, markers))) {
+        this.lastRecordWork = { pricedEvents: 0, emptyRange: true };
+        return;
+      }
+    }
+    const input = this.recordProjectionOptions(filters.calendarZone, filters.excludeHomes || []);
+    if (this.historyPersistentRead) {
+      let pricedEvents = 0;
+      const estimate = input.estimateRow;
+      input.estimateRow = (row) => {
+        pricedEvents++;
+        return estimate(row);
+      };
+      buildStoredRecordChampions(input);
+      this.lastRecordWork = { pricedEvents };
+    } else buildStoredRecordChampions(input);
   }
 
   prepareQuotaProjection(filters) {
@@ -6205,11 +6572,20 @@ export class UsageStore {
     if (
       this.database.isTransaction ||
       this.writeTransactionDepth > 0 ||
-      this.verifiedHistorySqlRead ||
-      this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)
+      (this.verifiedHistorySqlRead && !this.historyPersistentRead) ||
+      (!this.historyPersistentRead &&
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key = ?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META))
     )
       return;
-    if (!this.usageProjectionTracker) {
+    if (this.historyPersistentRead) {
+      createUsageRollups(this.database);
+      const initial = tryInitializeUsageRollups(this.database, { zoneIdentity: currentLocalRollupZoneIdentity() });
+      if (initial.applied) {
+        this.lastRollupWork = initial;
+        return initial;
+      }
+    }
+    if (!this.usageProjectionTracker && !this.historyPersistentRead) {
       this.installUsageProjectionTracker();
       this.observedUsageProjectionChanges = this.usageProjectionChangeKey();
     }
@@ -6426,31 +6802,237 @@ export class UsageStore {
     }
   }
 
-  /** Capture hot facts once, releasing their WAL reader before package verification. */
-  async withSqlHistoryReader(read) {
-    const started = performance.now();
-    const context = {
-      homes: structuredClone(this.homes),
-      warnings: [...this.warnings],
-      generatedAt: this.generatedAt,
-      serviceTierEvidence: this.serviceTierEvidence,
-      quotaSourceEvidence: this.quotaSourceEvidence,
-      serviceTierEvidenceInput: this.serviceTierEvidenceInput,
-      revision: this.storeRevision,
-    };
-    const query = new UsageHistoryQuery(this.database, canonicalFactPayload);
-    const database = query.database;
-    let verifiedMs = 0;
+  withSqlHistoryReader(read) {
+    if (this.publishedHistoryProjection) return this.withVerifiedPublishedHistoryRead(read);
+    const key = this.databaseFile ? path.resolve(this.databaseFile) : this;
+    const result = (historyProjectionQueues.get(key) || Promise.resolve()).then(() =>
+      this.withSqlHistoryReaderCore(read),
+    );
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    historyProjectionQueues.set(key, tail);
+    void tail.then(() => {
+      if (historyProjectionQueues.get(key) === tail) historyProjectionQueues.delete(key);
+    });
+    return result;
+  }
+
+  /** Pin the owned projection, releasing the authoritative WAL before acquisition starts. */
+  async acquirePublishedHistoryReader() {
+    if (!historyArchiveAuthorizedSegmentIds(this.database).size) return null;
+    this.historyProjectionModule ||= await import("./usage-history-projection-store.js");
+    this.historyProjectionStore ||= new this.historyProjectionModule.HistoryProjectionStore(
+      this.databaseFile,
+      canonicalFactPayload,
+    );
+    const identity = this.usageProjectionDatabaseIdentity();
+    if (
+      identity === this.openedUsageProjectionIdentity &&
+      this.readDataVersion() === this.observedDataVersion &&
+      this.readMeta("fingerprint") === this.fingerprint &&
+      this.readMeta("generated_at") === this.generatedAt
+    ) {
+      this.database.exec("SAVEPOINT history_published_capture");
+      try {
+        const pinned = this.historyProjectionStore.openPublished(
+          this.database,
+          identity,
+          currentLocalRollupZoneIdentity(),
+        );
+        if (pinned) {
+          try {
+            const reader = this.createPublishedHistoryReader(pinned.file, pinned.database, this);
+            reader.historyProjectionInput = pinned.stamp;
+            reader.historySourceKinds = homeSourceKinds(reader.publishedUsageHomes());
+            return reader;
+          } catch (error) {
+            pinned.database.close();
+            throw error;
+          }
+        }
+      } finally {
+        this.database.exec("RELEASE history_published_capture");
+      }
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const acquired = await this.withSqlHistoryReader((current) => {
+        if (
+          !current.historyPersistentRead ||
+          !this.historyProjectionStore?.file ||
+          current.database !== this.historyProjectionStore.query?.database
+        )
+          return null;
+        const file = path.join(this.historyProjectionStore.directory, this.historyProjectionStore.file);
+        let database;
+        try {
+          database = new DatabaseSync(file, { readOnly: true });
+          database.exec("PRAGMA cache_size=-2048; PRAGMA temp_store=FILE; BEGIN");
+          database.prepare("SELECT id FROM events LIMIT 1").get();
+          return this.createPublishedHistoryReader(file, database, current);
+        } catch (error) {
+          database?.close();
+          throw error;
+        }
+      });
+      if (acquired) return acquired;
+    }
+    return null;
+  }
+
+  createPublishedHistoryReader(file, database, current) {
+    const reader = new UsageStore({ databaseFile: file });
+    reader.database = database;
+    for (const key of [
+      "homes",
+      "warnings",
+      "generatedAt",
+      "serviceTierEvidence",
+      "quotaSourceEvidence",
+      "serviceTierEvidenceInput",
+      "storeRevision",
+      "derivedRevision",
+      "historyProjectionInput",
+      "historySourceKinds",
+    ])
+      reader[key] = current[key];
+    reader.homes = structuredClone(current.homes);
+    reader.warnings = [...current.warnings];
+    reader.summarySnapshotRead = reader.metadataSnapshotRead = reader.periodComparisonSnapshotRead = true;
+    reader.verifiedHistorySqlRead = reader.historyDiskRead = reader.historyPersistentRead = true;
+    reader.publishedHistoryProjection = true;
+    reader.registerReadFunctions();
+    return reader;
+  }
+
+  async withVerifiedPublishedHistoryRead(read) {
+    const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
+    const records = this.database.prepare("SELECT * FROM archive_segments ORDER BY start_ms,segment_id").all();
+    const revisions = historyArchiveEventRevisions(
+      this.readMetaRaw(HISTORY_ARCHIVE_EVENT_REVISIONS_META),
+      new Map(records.map((record) => [String(record.segment_id), record])),
+    );
+    const authorized = historyArchiveAuthorizedSegmentIds(this.database);
+    for (const record of records)
+      await withVerifiedHistoryArchiveCandidate(String(record.database_path), undefined, (cold, verified) => {
+        const id = assertHistoryArchiveRecordMatches(record, verified);
+        const sources = historyArchiveSourceIdentities(cold, Number(record.start_ms), Number(record.end_ms));
+        if (Number(cold.prepare("SELECT COUNT(*) AS n FROM events").get().n) !== Number(record.event_count))
+          throw historyArchiveError("HISTORY_ARCHIVE_SEGMENT_MISMATCH", "archive event count changed");
+        validateHistoryArchiveSourceRevisions(cold, id, sources, revisions.get(id) || []);
+        if (authorized.has(id)) {
+          if (
+            this.database
+              .prepare(
+                "SELECT 1 FROM history_query_rows WHERE segment_id='hot' AND timestamp_ms>=? AND timestamp_ms<? LIMIT 1",
+              )
+              .get(record.start_ms, record.end_ms)
+          )
+            throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "authorized archive still has hot facts");
+          if (Number(cold.prepare("SELECT COUNT(DISTINCT source_path) AS n FROM events").get().n) !== sources.length)
+            throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "archive source identities are incomplete");
+          const liveSource = this.database.prepare(
+            "SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?",
+          );
+          for (const source of sources) {
+            const live = liveSource.get(source.path);
+            if (!live || !sameHistoryArchiveSourceIdentity(live, source))
+              throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
+          }
+        }
+      });
+    return read(this);
+  }
+
+  async ensureHistoryProjectionTracking() {
+    this.historyProjectionModule ||= await import("./usage-history-projection-store.js");
+    this.historyProjectionModule.ensureHistoryProjectionTracking(this.database);
+    // Tracking is source schema; settle its metadata identity before synchronization is published.
+    ensureUsageMetadataSchema(this.database, { deferIndex: this.deferredMetadataIndex });
+  }
+
+  withHistoryProjectionInputChange(work) {
+    if (!this.historyProjectionModule) return work();
+    this.database.exec("SAVEPOINT history_projection_input_change");
     try {
-      const records = database.prepare("SELECT * FROM archive_segments ORDER BY start_ms,segment_id").all();
-      const authorized = historyArchiveAuthorizedSegmentIds(database);
+      const before = this.historyProjectionModule.readHistoryProjectionStamp(this.database);
+      const value = work();
+      this.historyProjectionModule.recordHistoryProjectionBatch(this.database, before, { mode: "inputs" });
+      this.database.exec("RELEASE history_projection_input_change");
+      return value;
+    } catch (error) {
+      this.database.exec("ROLLBACK TO history_projection_input_change; RELEASE history_projection_input_change");
+      throw error;
+    }
+  }
+
+  /** Capture hot facts once, releasing their WAL reader before package verification. */
+  async withSqlHistoryReaderCore(read) {
+    const started = performance.now();
+    const previousPeriodComparison = this.historyPeriodComparisonCache;
+    this.historyPeriodComparisonCache = null;
+    const identity = this.usageProjectionDatabaseIdentity();
+    const persistent =
+      !this.database.isTransaction &&
+      !this.writeTransactionDepth &&
+      !this.verifiedHistorySqlRead &&
+      identity &&
+      historyArchiveAuthorizedSegmentIds(this.database).size > 0;
+    const calendar = currentLocalRollupZoneIdentity();
+    let projection = null,
+      preparedProjection = null,
+      query = null,
+      releaseProjectionLock = null;
+    try {
+      if (persistent) {
+        this.historyProjectionModule ||= await import("./usage-history-projection-store.js");
+        this.historyProjectionStore ||= new this.historyProjectionModule.HistoryProjectionStore(
+          this.databaseFile,
+          canonicalFactPayload,
+        );
+        projection = this.historyProjectionStore;
+        releaseProjectionLock = await projection.lock();
+        if (!this.database)
+          throw historyArchiveError("HISTORY_ARCHIVE_READ_CLOSED", "usage store closed while waiting for projection");
+        await this.ensureHistoryProjectionTracking();
+        preparedProjection = projection.prepare(this.database, identity, calendar);
+      }
+      const context = {
+        homes: structuredClone(this.homes),
+        warnings: [...this.warnings],
+        generatedAt: this.generatedAt,
+        serviceTierEvidence: this.serviceTierEvidence,
+        quotaSourceEvidence: this.quotaSourceEvidence,
+        serviceTierEvidenceInput: this.serviceTierEvidenceInput,
+        revision: this.storeRevision,
+      };
+      query = preparedProjection?.query || new UsageHistoryQuery(this.database, canonicalFactPayload);
+      const database = query.database;
+      let verifiedMs = 0;
+      const inputs = preparedProjection?.delta?.database || database;
+      const records = inputs.prepare("SELECT * FROM archive_segments ORDER BY start_ms,segment_id").all();
+      const authorized = historyArchiveAuthorizedSegmentIds(inputs);
       const revisions = historyArchiveEventRevisions(
-        database.prepare("SELECT value FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)?.value,
+        inputs.prepare("SELECT value FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)?.value,
         new Map(records.map((record) => [String(record.segment_id), record])),
       );
-      const liveSource = database.prepare(
-        "SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?",
-      );
+      const previousRevisions = preparedProjection?.delta
+        ? historyArchiveEventRevisions(
+            database.prepare("SELECT value FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)
+              ?.value,
+            new Map(records.map((record) => [String(record.segment_id), record])),
+          )
+        : null;
+      const previousSegments = preparedProjection?.delta
+        ? new Set(
+            database
+              .prepare("SELECT segment_id FROM archive_segments")
+              .all()
+              .map((row) => String(row.segment_id)),
+          )
+        : null;
+      const liveSource = inputs.prepare("SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?");
       const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
       for (const record of records) {
         const id = String(record.segment_id);
@@ -6463,11 +7045,13 @@ export class UsageStore {
           const isAuthority = authorized.has(id);
           if (isAuthority) {
             if (
-              database
-                .prepare(
-                  "SELECT 1 FROM history_query_rows WHERE segment_id='hot' AND timestamp_ms>=? AND timestamp_ms<? LIMIT 1",
-                )
-                .get(record.start_ms, record.end_ms)
+              (!preparedProjection?.delta &&
+                database
+                  .prepare(
+                    "SELECT 1 FROM history_query_rows WHERE segment_id='hot' AND timestamp_ms>=? AND timestamp_ms<? LIMIT 1",
+                  )
+                  .get(record.start_ms, record.end_ms)) ||
+              (preparedProjection?.delta && inputs.prepare("SELECT 1 FROM hot_conflicts WHERE segment_id=?").get(id))
             )
               throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "authorized archive still has hot facts");
             if (Number(cold.prepare("SELECT COUNT(DISTINCT source_path) AS n FROM events").get().n) !== sources.length)
@@ -6481,6 +7065,49 @@ export class UsageStore {
                 throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
             }
           }
+          if (preparedProjection?.delta) {
+            const current = revisions.get(id) || [],
+              previous = previousRevisions.get(id) || [];
+            validateHistoryArchiveSourceRevisions(cold, id, sources, current);
+            if (!previousSegments.has(id) && isAuthority) {
+              for (const source of sources)
+                projection.captureColdSource(
+                  preparedProjection,
+                  id,
+                  String(source.path),
+                  revisedHistorySourceRows(cold, String(source.path), current),
+                );
+              projection.work.coldCopied += Number(record.event_count);
+              return;
+            }
+            if (!isAuthority) {
+              const consume = inputs.prepare("UPDATE mirror_counts SET n=n-1 WHERE segment_id=? AND payload=? AND n>0");
+              for (const row of cold.prepare("SELECT * FROM events ORDER BY id").iterate()) {
+                if (!consume.run(id, JSON.stringify(canonicalFactPayload(row, ["id"]))).changes)
+                  throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "hot facts do not mirror archive");
+              }
+              if (
+                inputs.prepare("SELECT 1 FROM mirror_counts WHERE segment_id=? AND n<>0 LIMIT 1").get(id) ||
+                JSON.stringify(sources) !==
+                  inputs.prepare("SELECT sources_json FROM mirror_sources WHERE segment_id=?").get(id)?.sources_json
+              )
+                throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "hot facts do not mirror archive");
+            }
+            const changed = new Set([...current, ...previous].map((entry) => entry.sourceIdentity.path));
+            for (const file of changed) {
+              const after = current.find((entry) => entry.sourceIdentity.path === file);
+              const before = previous.find((entry) => entry.sourceIdentity.path === file);
+              if (JSON.stringify(after) !== JSON.stringify(before))
+                projection.captureColdSource(
+                  preparedProjection,
+                  id,
+                  file,
+                  revisedHistorySourceRows(cold, file, current),
+                );
+            }
+            return;
+          }
+          if (preparedProjection?.reused || projection?.imported(query, id)) return;
           database.exec("BEGIN");
           try {
             query.add(cold.prepare("SELECT * FROM events ORDER BY id").iterate(), id);
@@ -6515,6 +7142,10 @@ export class UsageStore {
                 }
               }
             }
+            if (projection) {
+              projection.markImported(query, id);
+              projection.work.coldCopied += Number(record.event_count);
+            }
             database.exec("COMMIT");
           } catch (error) {
             database.exec("ROLLBACK");
@@ -6523,23 +7154,51 @@ export class UsageStore {
         });
         verifiedMs += performance.now() - before;
       }
-      query.finish(EVENT_INSERT_COLUMNS, (row) => {
+      let previousDay, previousWeek;
+      const project = (row) => {
         // The carrier derives display/calendar fields at query time, after raw-payload ordering and validation.
         const date = new Date(Number(row.timestamp_ms));
         const day = localDateKey(date);
-        return { ...row, project: row.cwd === "" ? "Unknown cwd" : row.cwd,
-          hour_key: localHourKey(date), day_key: day,
-          week_key: localDateKey(startOfLocalWeek(date)), month_key: day.slice(0,7) };
-      });
+        if (day !== previousDay) {
+          previousDay = day;
+          previousWeek = localDateKey(startOfLocalWeek(date));
+        }
+        return {
+          ...row,
+          project: row.cwd === "" ? "Unknown cwd" : row.cwd,
+          hour_key: `${day} ${String(date.getHours()).padStart(2, "0")}:00`,
+          day_key: day,
+          week_key: previousWeek,
+          month_key: day.slice(0, 7),
+        };
+      };
+      if (preparedProjection?.delta) projection.applyDelta(preparedProjection, EVENT_INSERT_COLUMNS, project);
+      else if (!preparedProjection?.reused) query.finish(EVENT_INSERT_COLUMNS, project);
       if (
         database
           .prepare(
-            "SELECT 1 FROM events e WHERE NOT EXISTS (SELECT 1 FROM source_files sf WHERE sf.path=e.source_path) LIMIT 1",
+            "SELECT 1 FROM (SELECT DISTINCT source_path FROM events) e WHERE NOT EXISTS (SELECT 1 FROM source_files sf WHERE sf.path=e.source_path) LIMIT 1",
           )
           .get()
       )
         throw historyArchiveError("HISTORY_ARCHIVE_SOURCE_CHANGED", "published event has no verified source identity");
+      if (projection) projection.publish(this.database, preparedProjection, identity, calendar);
+      const periodContextKey = JSON.stringify([
+        identity,
+        calendar,
+        preparedProjection?.stamp,
+        context.revision,
+        this.readDataVersion(),
+        context.homes,
+        context.serviceTierEvidenceInput,
+      ]);
       const reader = new UsageStore({ databaseFile: this.databaseFile });
+      if (
+        preparedProjection?.reused &&
+        previousPeriodComparison?.query === query &&
+        previousPeriodComparison.key === periodContextKey
+      )
+        reader.periodComparisonCache = previousPeriodComparison.cache;
       reader.database = database;
       reader.homes = context.homes;
       reader.warnings = context.warnings;
@@ -6550,11 +7209,23 @@ export class UsageStore {
       reader.storeRevision = reader.derivedRevision = context.revision;
       reader.summarySnapshotRead = reader.metadataSnapshotRead = reader.periodComparisonSnapshotRead = true;
       reader.verifiedHistorySqlRead = reader.historyDiskRead = true;
+      reader.historyPersistentRead = Boolean(projection);
+      reader.historyProjectionInput = preparedProjection?.stamp || null;
       reader.historySourceKinds = homeSourceKinds(reader.publishedUsageHomes());
       reader.registerReadFunctions();
       const prepared = performance.now();
       try {
         const result = read(reader);
+        if (
+          projection?.query === query &&
+          this.historyProjectionStore === projection &&
+          !projection.work.superseded &&
+          reader.periodComparisonCache.size
+        ) {
+          // Keep the reader's single scope without letting its disposable close clear the retained Map.
+          this.historyPeriodComparisonCache = { query, key: periodContextKey, cache: reader.periodComparisonCache };
+          reader.periodComparisonCache = new Map();
+        }
         this.lastHistoryQueryWork = {
           rows: query.rows,
           archiveCount: records.length,
@@ -6563,6 +7234,15 @@ export class UsageStore {
           queryMs: performance.now() - prepared,
           scratchBytes: query.bytes,
           sort: query.sortStats,
+          projection: projection?.work || null,
+          views: projection
+            ? {
+                all: reader.lastAllSummaryWork,
+                metadata: reader.lastMetadataWork,
+                records: reader.lastRecordWork,
+                rollups: reader.lastRollupWork,
+              }
+            : null,
         };
         return result;
       } finally {
@@ -6570,18 +7250,32 @@ export class UsageStore {
         reader.close();
       }
     } finally {
-      query.close();
+      try {
+        if (previousPeriodComparison?.cache !== this.historyPeriodComparisonCache?.cache)
+          previousPeriodComparison?.cache.clear();
+        preparedProjection?.delta?.database?.close();
+        if (query && query !== projection?.query) query.close();
+      } finally {
+        releaseProjectionLock?.();
+      }
     }
   }
 
   async trySqlHistoryDashboard(filters, options, periodOptions) {
     const single = await this.trySingleSqlHistoryDashboard(filters, options, periodOptions);
     if (single) return single;
-    return this.withSqlHistoryReader((reader) => ({
-      summary: reader.summarizeInReadTransaction(filters, options),
-      metadata: reader.metadata(filters.now ?? new Date()),
-      periodComparison: reader.periodComparison(periodOptions),
-    }));
+    return this.withSqlHistoryReader((reader) => {
+      if (reader.historyPersistentRead) {
+        reader.prepareHotRollups();
+        reader.prepareRecordProjection(filters, { force: filters.preset === "all" });
+        reader.prepareAllSummaryProjection(filters, options);
+      }
+      return {
+        summary: reader.summarizeInReadTransaction(filters, options),
+        metadata: reader.metadata(filters.now ?? new Date()),
+        periodComparison: reader.periodComparison(periodOptions),
+      };
+    });
   }
 
   /** Preserve the established bounded single-package projection and repricing cache. */
@@ -6644,7 +7338,8 @@ export class UsageStore {
         )
         .join(",");
       for (const { name } of database
-        .prepare("SELECT name FROM history_hot.sqlite_master WHERE type = 'table'")
+        .prepare(`SELECT name FROM history_hot.sqlite_master WHERE type='table'
+          OR (type='view' AND name='usage_quota_projection_observations')`)
         .all()) {
         if (name !== "events" && !String(name).startsWith("sqlite_")) {
           const selection = name === "quota_usage_sources" ? "rowid, *" : "*";
@@ -6752,6 +7447,12 @@ export class UsageStore {
     await this.open();
     this.assertSourceRepairsComplete();
     this.syncDerivedRevision();
+    if (
+      !this.verifiedHistorySqlRead &&
+      !this.database.isTransaction &&
+      historyArchiveAuthorizedSegmentIds(this.database).size
+    )
+      await this.ensureHistoryProjectionTracking();
     this.prepareHotRollups();
     this.prepareQuotaProjection(filters);
     this.prepareRecordProjection(filters);
@@ -6778,7 +7479,14 @@ export class UsageStore {
       this.database.exec("RELEASE summary_history_read");
     }
 
-    return this.withSqlHistoryReader((reader) => reader.summarizeInReadTransaction(filters, options));
+    return this.withSqlHistoryReader((reader) => {
+      if (reader.historyPersistentRead) {
+        reader.prepareHotRollups();
+        reader.prepareRecordProjection(filters);
+        reader.prepareAllSummaryProjection(filters, options);
+      }
+      return reader.summarizeInReadTransaction(filters, options);
+    });
   }
 
   /**
@@ -6827,15 +7535,17 @@ export class UsageStore {
 
   /** The first persistent path serves the hot, all-source dashboard only. @returns {any} */
   allSummaryOptions(filters = {}, options = {}, range = null, bucket = null) {
+    const history = this.historyPersistentRead;
     if (
       this.deferredMetadataIndex ||
       filters.preset !== "all" ||
       options.includeDetails !== false ||
       (filters.excludeHomes || []).length ||
       this.writeTransactionDepth > 0 ||
-      this.verifiedHistorySqlRead ||
+      (this.verifiedHistorySqlRead && !history) ||
       this.serviceTierEvidenceInput === null ||
-      this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) ||
+      (!history &&
+        this.database.prepare("SELECT 1 FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_AUTHORITY_META)) ||
       Number(this.database.prepare("PRAGMA reverse_unordered_selects").get().reverse_unordered_selects) !== 0 ||
       this.database
         .prepare("PRAGMA index_list(events)")
@@ -6849,7 +7559,7 @@ export class UsageStore {
     } catch {
       return null;
     }
-    const sourceKinds = homeSourceKinds(this.homes);
+    const sourceKinds = this.historySourceKinds ?? homeSourceKinds(this.homes);
     const sources = this.database.prepare("SELECT home_id,kind FROM source_files").all();
     if (
       sources.some((row) => sourceGroup("", String(row.kind)) !== sourceGroup("", sourceKinds.get(String(row.home_id))))
@@ -6865,18 +7575,22 @@ export class UsageStore {
     bucket ||= deriveTimelineBucket(range, range.bucket || filters.bucket || "day");
     if (!["day", "week", "month"].includes(bucket)) return null;
     // Preserve the legacy rowid accumulation order, including floating-point tails.
-    const legacyWhere = eventRangeScope(range, scopeFilterSql([]));
-    const legacyPlan = this.database
-      .prepare(`EXPLAIN QUERY PLAN SELECT ${COST_EVENT_COLUMNS} FROM events WHERE ${legacyWhere.sql}`)
-      .all(...legacyWhere.params);
-    if (legacyPlan.length !== 1 || legacyPlan[0].detail !== "SCAN events") return null;
+    if (!history) {
+      const legacyWhere = eventRangeScope(range, scopeFilterSql([]));
+      const legacyPlan = this.database
+        .prepare(`EXPLAIN QUERY PLAN SELECT ${COST_EVENT_COLUMNS} FROM events WHERE ${legacyWhere.sql}`)
+        .all(...legacyWhere.params);
+      if (legacyPlan.length !== 1 || legacyPlan[0].detail !== "SCAN events") return null;
+    }
     const catalog = getPricingCatalog();
     const pricingModels = filters.pricingModels ?? catalog.models;
-    const schema = Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version);
+    const schema = history
+      ? this.historyProjectionInput.schema
+      : Number(this.database.prepare("PRAGMA main.schema_version").get().schema_version);
     const key = createHash("sha256")
       .update(
         JSON.stringify([
-          "all-summary-v3",
+          history ? "history-all-summary-v1" : "all-summary-v3",
           schema,
           bucket,
           range.calendarZone || "local",
@@ -6894,6 +7608,7 @@ export class UsageStore {
     const store = this;
     return {
       database: this.database,
+      ...(history ? { mode: "history" } : {}),
       key,
       range,
       bucket,
@@ -6902,10 +7617,14 @@ export class UsageStore {
       pricingModels,
       pricing: createEventPricing(pricingModels),
       *eventsAfter(position, limit) {
-        const query = store.database.prepare(`SELECT id,${COST_EVENT_COLUMNS} FROM events
-          WHERE id>? ORDER BY id LIMIT ?`);
+        const query = store.database.prepare(
+          history
+            ? `SELECT history_ordinal,${COST_EVENT_COLUMNS} FROM events
+          WHERE (timestamp_ms,history_ordinal)>(?,?) ORDER BY timestamp_ms,history_ordinal LIMIT ?`
+            : `SELECT id,${COST_EVENT_COLUMNS} FROM events WHERE id>? ORDER BY id LIMIT ?`,
+        );
         query.setReturnArrays(true);
-        for (const value of query.iterate(position.id, limit)) {
+        for (const value of query.iterate(...(history ? [position.ms, position.id, limit] : [position.id, limit]))) {
           const row = /** @type {any[]} */ (/** @type {unknown} */ (value));
           const event = costEventFromRowArray(row.slice(1), store.serviceTierEvidence, sourceKinds.get(String(row[3])));
           yield { ...event, id: Number(row[0]) };
@@ -6918,6 +7637,7 @@ export class UsageStore {
     if (this.database.isTransaction || this.writeTransactionDepth > 0) return;
     const input = this.allSummaryOptions(filters, options);
     if (!input) return;
+    if (this.historyPersistentRead) ensureUsageAllSummarySchema(this.database, { mode: "history" });
     input.contextKey = () => this.allSummaryOptions(filters, options)?.key;
     try {
       this.lastAllSummaryWork = this.withBusinessProjection(() => buildStoredAllSummary(input));
@@ -7270,8 +7990,12 @@ export class UsageStore {
   close() {
     this.sourceProof?.close();
     this.sourceProof = null;
+    this.historyPeriodComparisonCache?.cache.clear();
+    this.historyPeriodComparisonCache = null;
     this.historySqlDashboardCache?.store.close();
     this.historySqlDashboardCache = null;
+    this.historyProjectionStore?.close();
+    this.historyProjectionStore = null;
     // D1：派生缓存与写事务深度都是**连接级**状态 ⇒ `close()` 一并复位；`open()` 会把
     // `observedDataVersion` 重新取基准（外部提交检测在重开后**从零**开始计），
     // 而 `storeRevision` 是这个**实例**的单调修订号，跨 `close()/open()` 保留。

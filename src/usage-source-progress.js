@@ -8,6 +8,7 @@ export const USAGE_SOURCE_PROGRESS_TABLE_NAMES = Object.freeze([
 ]);
 const MAX_PROGRESS_BYTES = 64 * 1024;
 const CODEX_KINDS = new Set(["main", "extra", "jetbrains", "codex"]);
+const progressStatements = new WeakMap();
 
 function binding(row) {
   return JSON.stringify([row.kind, row.home_id, row.home_label, row.home_path, row.size, row.mtime_ms]);
@@ -170,10 +171,25 @@ export class UsageSourceChangeBounds {
 
 /** Returns a candidate only; its persisted validation must be verified against the current source before use. */
 export function readUsageSourceProgress(database, sourcePath) {
-  if (database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?").get(sourcePath)) return null;
-  const saved = database.prepare("SELECT * FROM usage_source_progress WHERE source_path = ?").get(sourcePath);
-  if (!saved) return null;
-  const row = sourceRow(database, sourcePath);
+  const cached = progressStatements.get(database);
+  const statements = cached || {
+    reparse: database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?"),
+    progress: database.prepare("SELECT * FROM usage_source_progress WHERE source_path = ?"),
+    source: database.prepare("SELECT kind,home_id,home_label,home_path,size,mtime_ms FROM source_files WHERE path = ?"),
+  };
+  if (!cached) progressStatements.set(database, statements);
+  let saved, row;
+  try {
+    if (statements.reparse.get(sourcePath)) return null;
+    saved = statements.progress.get(sourcePath);
+    if (!saved) return null;
+    row = statements.source.get(sourcePath);
+  } catch (error) {
+    if (!cached || error.code !== "ERR_INVALID_STATE" || error.message !== "statement has been finalized") throw error;
+    // Reopening the same DatabaseSync object leaves its old statements finalized.
+    progressStatements.delete(database);
+    return readUsageSourceProgress(database, sourcePath);
+  }
   if (!row || saved.source_binding !== binding(row)) return null;
   try {
     const checkpoint = JSON.parse(saved.checkpoint_json);

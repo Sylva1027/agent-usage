@@ -190,6 +190,7 @@ function validateOrdinal(ordinal) {
 async function verifyPlan(plan, { backup = false } = {}) {
   assert.ok(plan && typeof plan === "object", "mutation plan must be an object");
   assert.ok(C1_SOURCE_KINDS.includes(plan.kind), "mutation plan kind is invalid");
+  if (plan.replayTimestampMs !== undefined) assert.ok(Number.isSafeInteger(plan.replayTimestampMs) && plan.replayTimestampMs > 0 && plan.replayTimestampMs < 8.64e15, "invalid replay payload timestamp");
   requiredString(plan.datasetHome, "plan.datasetHome");
   requiredString(plan.originalsDirectory, "plan.originalsDirectory");
   requiredString(plan.filePath, "plan.filePath");
@@ -222,7 +223,7 @@ async function fileEndsWithNewline(filePath) {
 
 async function appendCodex(plan) {
   const startedAtMs = Date.now();
-  const timestamp = new Date(startedAtMs).toISOString();
+  const timestamp = new Date(plan.replayTimestampMs ?? startedAtMs).toISOString();
   const prefix = (await fileEndsWithNewline(plan.filePath)) ? "" : "\n";
   const usage = APPEND_TOKENS.codex;
   const payload = `${prefix}${JSON.stringify({
@@ -251,7 +252,7 @@ async function appendCodex(plan) {
 }
 
 async function appendDsh(plan, ordinal) {
-  const timestamp = Date.now();
+  const timestamp = plan.replayTimestampMs ?? Date.now();
   const seq = timestamp * 10 + ordinal;
   assert.ok(Number.isSafeInteger(seq), "DSH append sequence exceeds safe integer range");
   const usage = APPEND_TOKENS.dsh;
@@ -287,7 +288,7 @@ async function appendDsh(plan, ordinal) {
   return baseReceipt("dsh", startedAtMs, Date.now(), usage);
 }
 
-export async function prepareC1Mutations(dataset, { databaseFile, runtimeDirectory, directory } = {}) {
+export async function prepareC1Mutations(dataset, { databaseFile, runtimeDirectory, directory, replayTimestamps = null } = {}) {
   assert.ok(dataset && typeof dataset === "object", "dataset must be an object");
   requiredString(dataset.home, "dataset.home");
   requiredString(databaseFile, "databaseFile");
@@ -302,6 +303,10 @@ export async function prepareC1Mutations(dataset, { databaseFile, runtimeDirecto
   const originalsDirectory = path.join(path.resolve(directory), "originals");
   await mkdir(originalsDirectory, { recursive: true });
   const appendTimeMs = Date.now() - 60_000;
+  if (replayTimestamps) {
+    assert.deepEqual(Object.keys(replayTimestamps).sort(), [...C1_SOURCE_KINDS].sort());
+    for (const value of Object.values(replayTimestamps)) assert.ok(Number.isSafeInteger(value) && value > 1000 && value < 8.64e15 - 10000, "invalid replay payload timestamp");
+  }
   const plans = [];
 
   for (const [index, kind] of C1_SOURCE_KINDS.entries()) {
@@ -328,6 +333,7 @@ export async function prepareC1Mutations(dataset, { databaseFile, runtimeDirecto
       mtimeMs: candidate.mtimeMs,
       size: sourceFile.info.size,
       latestEventMs: candidate.latestEventMs,
+      ...(replayTimestamps ? { replayTimestampMs: replayTimestamps[kind] } : {}),
     };
     if (kind === "dsh") {
       Object.assign(plan, await inspectDshHeader(sourceFile.filePath));
@@ -337,7 +343,7 @@ export async function prepareC1Mutations(dataset, { databaseFile, runtimeDirecto
         filePath: sourceFile.filePath,
         source,
         runtimeDirectory,
-        appendTimeMs,
+        appendTimeMs: replayTimestamps ? replayTimestamps[kind] - 1000 : appendTimeMs,
       });
     }
     plans.push(plan);

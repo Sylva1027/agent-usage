@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
@@ -11,8 +14,8 @@ import {
   writeUsageSourceProgress,
 } from "../src/usage-source-progress.js";
 
-function fixture(run) {
-  const db = new DatabaseSync(":memory:");
+function fixture(run, databaseFile = ":memory:") {
+  const db = new DatabaseSync(databaseFile);
   try {
     db.exec(`PRAGMA foreign_keys=ON;
       CREATE TABLE source_files(path TEXT PRIMARY KEY,kind TEXT,home_id TEXT,home_label TEXT,home_path TEXT,size INTEGER,mtime_ms REAL);
@@ -42,6 +45,159 @@ test("source progress requires the facts transaction and rolls back with the fac
     db.exec("ROLLBACK");
     assert.equal(readUsageSourceProgress(db, "a"), null);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 0);
+  });
+});
+
+test("source progress reuses three statements per database without retaining rows or returned objects", () => {
+  fixture(db => fixture(other => {
+    let prepares = 0;
+    const database = { prepare(sql) { prepares++; return db.prepare(sql); } };
+    assert.equal(readUsageSourceProgress(database, "a"), null);
+    db.exec("BEGIN");
+    save(db);
+    save(db, "b", { ...cursor, adapter: "dsh-v4-zstd" });
+    db.exec("COMMIT");
+    other.exec("BEGIN");
+    save(other, "a", { ...cursor, offset: 80 });
+    other.exec("COMMIT");
+    const result = readUsageSourceProgress(database, "a");
+    assert.deepEqual(result, { checkpoint: cursor, validation: proof });
+    result.checkpoint.state.cumulative = -1;
+    result.validation.prefixBytes = -1;
+    assert.deepEqual(readUsageSourceProgress(database, "a"), { checkpoint: cursor, validation: proof });
+    assert.equal(readUsageSourceProgress(database, "b").checkpoint.adapter, "dsh-v4-zstd");
+    assert.equal(readUsageSourceProgress(other, "a").checkpoint.offset, 80);
+    assert.equal(prepares, 3);
+  }));
+});
+
+test("cached progress observes checkpoint changes and pending/clear changes through rollback", () => {
+  fixture(db => {
+    db.exec("BEGIN"); save(db); db.exec("COMMIT");
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    const checkpoint = { ...cursor, offset: 95 };
+    db.exec("BEGIN");
+    save(db, "a", checkpoint);
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation: proof });
+    db.exec("INSERT INTO usage_source_reparse VALUES ('a')");
+    assert.equal(readUsageSourceProgress(db, "a"), null);
+    db.exec("DELETE FROM usage_source_reparse WHERE source_path='a'");
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation: proof });
+    db.exec("ROLLBACK");
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    db.exec("INSERT INTO usage_source_reparse VALUES ('a'); BEGIN; DELETE FROM usage_source_reparse");
+    assert.ok(readUsageSourceProgress(db, "a"));
+    db.exec("ROLLBACK");
+    assert.equal(readUsageSourceProgress(db, "a"), null);
+    db.exec("DELETE FROM usage_source_reparse");
+    assert.ok(readUsageSourceProgress(db, "a"));
+  });
+});
+
+test("cached progress rejects changed bindings and invalid persisted JSON shapes on every read", () => {
+  fixture(db => {
+    db.exec("BEGIN");
+    save(db);
+    assert.ok(readUsageSourceProgress(db, "a"));
+    for (const [column, value] of [
+      ["source_binding", "wrong"],
+      ["checkpoint_json", "broken"],
+      ["checkpoint_json", JSON.stringify({ ...cursor, offset: 101 })],
+      ["checkpoint_json", JSON.stringify({ ...cursor, adapter: "dsh-v4-zstd" })],
+      ["checkpoint_json", JSON.stringify({ ...cursor, state: [] })],
+      ["validation_json", "broken"],
+      ["validation_json", "null"],
+      ["validation_json", "[]"],
+      ["validation_json", "42"],
+    ]) {
+      db.prepare(`UPDATE usage_source_progress SET ${column}=? WHERE source_path='a'`).run(value);
+      assert.equal(readUsageSourceProgress(db, "a"), null, `${column}=${value}`);
+      save(db);
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    }
+    db.exec("ROLLBACK");
+  });
+});
+
+test("cached progress reads external commits within the current SQLite snapshot", t => {
+  const root = mkdtempSync(path.join(tmpdir(), "usage-source-progress-snapshot-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = path.join(root, "index.sqlite");
+  fixture(db => {
+    db.exec("PRAGMA journal_mode=WAL; BEGIN"); save(db); db.exec("COMMIT");
+    const writer = new DatabaseSync(file);
+    try {
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+      const checkpoint = { ...cursor, offset: 95 };
+      const validation = { ...proof, prefixBytes: 95 };
+      writer.exec("BEGIN");
+      writeUsageSourceProgress(writer, "a", checkpoint, validation);
+      writer.exec("COMMIT");
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation });
+      db.exec("BEGIN");
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation });
+      writer.exec("INSERT INTO usage_source_reparse VALUES ('a')");
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation });
+      db.exec("ROLLBACK");
+      assert.equal(readUsageSourceProgress(db, "a"), null);
+      writer.exec("DELETE FROM usage_source_reparse");
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation });
+      writer.exec("UPDATE usage_source_progress SET source_binding='wrong'");
+      assert.equal(readUsageSourceProgress(db, "a"), null);
+      writer.exec("BEGIN"); save(writer); writer.exec("COMMIT; INSERT INTO events(source_path,value) VALUES ('a',1)");
+      assert.equal(readUsageSourceProgress(db, "a"), null);
+    } finally { writer.close(); }
+  }, file);
+});
+
+test("cached progress recovers a finalized statement after reopening the same database object", t => {
+  const root = mkdtempSync(path.join(tmpdir(), "usage-source-progress-reopen-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  fixture(db => {
+    db.exec("BEGIN"); save(db); db.exec("COMMIT");
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    db.close();
+    db.open();
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    db.close();
+    try {
+      assert.throws(() => readUsageSourceProgress(db, "a"), {
+        code: "ERR_INVALID_STATE", message: "database is not open",
+      });
+    } finally { db.open(); }
+    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+  }, path.join(root, "index.sqlite"));
+});
+
+test("cached progress only retries a finalized cache hit once and preserves other database errors", () => {
+  const finalized = Object.assign(new Error("statement has been finalized"), { code: "ERR_INVALID_STATE" });
+  fixture(db => {
+    db.exec("BEGIN"); save(db); db.exec("COMMIT");
+    for (const error of [
+      Object.assign(new Error("database is locked"), { code: "ERR_SQLITE_ERROR", errcode: 5 }),
+      Object.assign(new Error("other invalid state"), { code: "ERR_INVALID_STATE" }),
+      finalized,
+    ]) {
+      for (let failedStatement = 0; failedStatement < 3; failedStatement++) {
+        let prepares = 0, gets = 0, fail = false;
+        const database = {
+          prepare(sql) {
+            const index = prepares++ % 3;
+            const statement = db.prepare(sql);
+            return { get(...parameters) {
+              gets++;
+              if (fail && index === failedStatement) throw error;
+              return statement.get(...parameters);
+            } };
+          },
+        };
+        assert.deepEqual(readUsageSourceProgress(database, "a"), { checkpoint: cursor, validation: proof });
+        fail = true;
+        assert.throws(() => readUsageSourceProgress(database, "a"), caught => caught === error);
+        assert.equal(prepares, error === finalized ? 6 : 3);
+        assert.equal(gets, 3 + (failedStatement + 1) * (error === finalized ? 2 : 1));
+      }
+    }
   });
 });
 
