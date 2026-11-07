@@ -231,7 +231,19 @@ function quotaSchema(database) {
     database
       .prepare(`SELECT type,name,sql FROM sqlite_master
     WHERE tbl_name='rate_limit_observations' ORDER BY type,name`)
-      .all(),
+      .all()
+      // Only the canonical history revision counters leave quota semantics unchanged.
+      .filter(
+        ({ type, name, sql }) =>
+          type !== "trigger" ||
+          !["INSERT", "UPDATE", "DELETE"].some(
+            (operation) =>
+              name === `usage_history_input_rate_limit_observations_${operation}` &&
+              normalize(sql) ===
+                normalize(`CREATE TRIGGER ${name} AFTER ${operation} ON rate_limit_observations
+                  BEGIN UPDATE usage_history_projection_inputs SET aux_revision=aux_revision+1 WHERE singleton=1; END`),
+          ),
+      ),
   );
 }
 function schemaMatches(database) {

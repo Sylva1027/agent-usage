@@ -6,13 +6,17 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { completedQuotaWindows } from "../public/timeline-utils.js";
+import { createHistoryArchiveCandidate, prepareHistoryArchiveCommit } from "../src/history-archive.js";
 import { selectQuotaWindows } from "../src/usage-core.js";
+import { quotaProjectionCacheUsable } from "../src/usage-quota-projection.js";
 import {
   ensureUsageQuotaSchema,
   iterateStoredQuotaWindows,
   quotaProjectionWork,
   selectStoredQuotaWindows,
 } from "../src/usage-quota-store.js";
+import { UsageStore } from "../src/usage-store.js";
+import { createUsageIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const MINUTE = 60_000;
 const NOW = Date.parse("2026-11-04T12:00:00Z");
@@ -614,6 +618,85 @@ test("projection review: unrelated source schema changes do not rebuild the quot
   database.exec("DROP INDEX source_review_revision_idx");
   incremental(parity(database, { asOf: NOW + MINUTE, label: "more unrelated source DDL" }).work, 0);
 });
+
+test("history tracking preserves quota identity after reopen and consecutive single-archive reads", async (t) => {
+  const f = createUsageIntegrationFixture();
+  const store = new UsageStore(f.serverOptions);
+  const summarize = UsageStore.prototype.summarizeInReadTransaction;
+  t.after(() => {
+    UsageStore.prototype.summarizeInReadTransaction = summarize;
+    store.close();
+    f.close();
+  });
+  await store.sync();
+  const sourcePath = store.database.prepare("SELECT path FROM source_files ORDER BY path LIMIT 1").get().path;
+  put(store.database, row(1, { sourcePath }));
+  const expected = selectStoredQuotaWindows(store.database, NOW);
+  const format = store.database.prepare(`SELECT * FROM ${PREFIX}format`).get();
+  const state = store.database.prepare(`SELECT * FROM ${PREFIX}state`).get();
+  const cache = store.database.prepare("SELECT * FROM usage_quota_window_cache").get();
+  const segment = path.join(path.dirname(f.serverOptions.databaseFile), "cold.sqlite");
+  await createHistoryArchiveCandidate(store.database, segment, {
+    startMs: Date.parse("2026-10-03T00:00:00Z"),
+    endMs: Date.parse("2026-10-04T00:00:00Z"),
+  });
+  await store.commitHistoryArchiveEvents(await prepareHistoryArchiveCommit(store.database, segment));
+  await store.ensureHistoryProjectionTracking();
+  store.close();
+  await store.open();
+  assert.deepEqual(store.database.prepare(`SELECT * FROM ${PREFIX}format`).get(), format);
+  assert.deepEqual(store.database.prepare(`SELECT * FROM ${PREFIX}state`).get(), state);
+  assert.deepEqual(store.database.prepare("SELECT * FROM usage_quota_window_cache").get(), cache);
+  const reopened = parity(store.database, { label: "history tracking installed and reopened" });
+  assert.equal(reopened.work.reused, true);
+  incremental(reopened.work, 0);
+
+  const reads = [];
+  UsageStore.prototype.summarizeInReadTransaction = function (...args) {
+    const summary = summarize.apply(this, args);
+    assert.equal(this.verifiedHistorySqlRead, true);
+    assert.equal(this.historyDiskRead, false);
+    assert.equal(quotaProjectionCacheUsable(this.database), true);
+    reads.push({ ...quotaProjectionWork(this.database) });
+    return summary;
+  };
+  const filters = { preset: "all", calendarZone: "utc", bucket: "day", now: new Date(NOW) };
+  for (let index = 0; index < 2; index++) {
+    const dashboard = await store.trySingleSqlHistoryDashboard(filters, { includeDetails: false }, filters);
+    assert.ok(dashboard, "the single-archive fast path must succeed");
+    assert.deepEqual(dashboard.summary.quota, expected);
+  }
+  assert.equal(reads.length, 2);
+  for (const work of reads) {
+    assert.notEqual(work.fallback, true);
+    incremental(work, 0);
+    assert.equal(work.cycles, 0);
+  }
+
+  put(store.database, row(2, { sourcePath, observedAtMs: NOW, usedPercent: 88 }));
+  const changed = parity(store.database, { label: "real observation after history tracking" });
+  incremental(changed.work, 1);
+  assert.equal(changed.actual.windows.quota_5h.usedPercent, 88);
+});
+
+for (const name of [
+  "usage_history_input_rate_limit_observations_INSERT_extra",
+  "usage_history_input_rate_limit_observations_INSERT",
+  "quota_revision_rate_limit_insert",
+]) {
+  test(`quota identity retains unknown or modified trigger SQL: ${name}`, (t) => {
+    const { database } = fixture(t);
+    put(database, row(1));
+    parity(database);
+    database.exec(`DROP TRIGGER IF EXISTS ${name};
+      CREATE TRIGGER ${name} AFTER INSERT ON ${TABLE}
+      BEGIN UPDATE quota_revision SET revision=revision+2 WHERE singleton=1; END;`);
+    assert.equal(ensureUsageQuotaSchema(database), true);
+    assert.equal(database.prepare(`SELECT * FROM ${PREFIX}state`).get(), undefined);
+    assert.equal(database.prepare("SELECT * FROM usage_quota_window_cache").get(), undefined);
+    assert.equal(parity(database, { label: name }).work.rebuilt, true);
+  });
+}
 
 test("projection review: noncanonical official line identities remain distinct and NUL falls back correctly", (t) => {
   const { database } = fixture(t);
