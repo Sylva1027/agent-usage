@@ -44,6 +44,55 @@ start Cargo or wait for a compiler. Build before packaging or installation; if
 the executable is absent, the bridge returns `null` and the caller uses its
 content-based fallback.
 
+## Temporary archive read locks
+
+`await provider.lockFiles([databasePath, manifestPath])` returns `null` if any
+file cannot be locked, or a lease with `check(): Promise<boolean>` and
+`close(): Promise<void>`. Acquisition rolls back the entire set on failure.
+Pass both files and await `check()` before and after each consumer; discard the
+consumer's result if either check fails. Keep the SQLite read-only connection
+and its fixed read transaction alive for the same operation scope.
+
+The `archiveLock`, `archiveCheck`, and `archiveUnlock` protocol operations use
+the existing `path` and `token` fields with kind `windows-archive-read-lock-v2`;
+the bridge rejects v1 leases. File handles use `GENERIC_READ` and only
+`FILE_SHARE_READ`, independently of USN availability. Every ancestor from the
+drive root through the direct parent is also retained, using
+`FILE_LIST_DIRECTORY`, `FILE_SHARE_READ | FILE_SHARE_WRITE` (without delete sharing), and
+`FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`. Acquisition rejects
+each reparse point and verifies handle-derived final child paths against their
+retained parents. Each ancestor then has an undeletable child, so NTFS cannot
+convert it into a reparse point while the lease lives. Shared ancestors are
+retained once; files are released before their ancestor references.
+Directory write sharing is necessary for sibling renames; archive file handles
+still share reads only.
+The nonempty-directory rule is documented under
+[FSCTL_SET_REPARSE_POINT](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/fsctl-set-reparse-point).
+
+SQLite `readOnly` opens and sibling file creation, writing, rename, replacement,
+and main-database WAL activity remain compatible. Checks compare file metadata
+and identity, but ancestor checks compare only identity and directory/reparse
+state, ignoring directory timestamps and size. Existing writers, redirected
+drive roots, non-NTFS volumes, directories as file targets, device paths,
+alternate streams, and traversal/special components make acquisition unavailable.
+
+At most 64 file and shared ancestor handles are retained per helper. Tokens are never recycled within
+that helper, and leases also capture its child identity. Unlock, stdin EOF,
+bridge close, or helper death releases handles; death permanently invalidates
+old leases. Lease close is idempotent and never starts a helper. Older or missing
+helpers return `null` so callers retain their existing verification fallback.
+These locks do not replace complete SHA validation. Without a v2 lease, callers
+must not read or publish persistent verification receipts. Existing in-process
+`legacy-memory` semantic evidence reuse remains available under its original
+conditions and stays separate from the `path-locked-v2` proof domain.
+
+Run the isolated integration tests against an explicitly built candidate:
+
+```powershell
+$env:ARCHIVE_NATIVE_TEST_HELPER = (Resolve-Path <candidate-directory>/windows-source-proof.exe).Path
+node --test test/history-archive-native-lock.test.js
+```
+
 ## Runtime constraints
 
 - Supported source paths must resolve to local drive-letter NTFS volumes with

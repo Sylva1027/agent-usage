@@ -18,6 +18,7 @@ import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./
 const ARCHIVE_EVENT_THRESHOLD = 400_000;
 const COLD_HISTORY_DAYS = 180;
 const verifiedCandidateEvidence = new Set();
+const CANDIDATE_VALIDATION_VERSION = 1;
 const HISTORY_ARCHIVE_CANDIDATE_FORMAT_VERSION = 1;
 const HISTORY_ARCHIVE_CANDIDATE_META_KEY = "history_archive_candidate";
 const HISTORY_ARCHIVE_BUNDLE_FORMAT_VERSION = 1;
@@ -543,7 +544,7 @@ async function verifyHistoryArchiveCandidateWithReader(databaseFile, manifestFil
   return withVerifiedHistoryBackup(
     databaseFile,
     manifestFile,
-    (database, verified, sharedEvents) => {
+    (database, verified, sharedEvents, verifyEvidence) => {
       const metadata = candidateMetadata(database);
       const read = () => {
         const verifiedCandidate = { ...verified, candidate: metadata };
@@ -558,41 +559,39 @@ async function verifyHistoryArchiveCandidateWithReader(databaseFile, manifestFil
         }
         return result;
       };
-      const reusable = database.prepare("PRAGMA journal_mode").get().journal_mode === "delete";
-      const proof = createHash("sha256").update(JSON.stringify(verified.manifest)).digest("hex");
-      // The backup reader freshly checked every byte under this same SQLite read lock; WAL cannot reuse proofs.
-      if (reusable && verifiedCandidateEvidence.has(proof)) return read();
-      const outside = Number(
-        database
-          .prepare("SELECT COUNT(*) AS count FROM events WHERE timestamp_ms < ? OR timestamp_ms >= ?")
-          .get(metadata.startMs, metadata.endMs).count,
+      verifyEvidence(
+        "candidate",
+        CANDIDATE_VALIDATION_VERSION,
+        verifiedCandidateEvidence,
+        () => {
+          const outside = Number(
+            database
+              .prepare("SELECT COUNT(*) AS count FROM events WHERE timestamp_ms < ? OR timestamp_ms >= ?")
+              .get(metadata.startMs, metadata.endMs).count,
+          );
+          if (outside !== 0) {
+            throw archiveError(
+              "HISTORY_ARCHIVE_CANDIDATE_RANGE_MISMATCH",
+              `${outside} event(s) fall outside the candidate range`,
+            );
+          }
+          const actual = sharedEvents ?? eventEvidence(database, metadata.startMs, metadata.endMs);
+          if (actual.rows !== metadata.events.rows || actual.sha256 !== metadata.events.sha256) {
+            throw archiveError(
+              "HISTORY_ARCHIVE_CANDIDATE_FINGERPRINT_MISMATCH",
+              "candidate event fingerprint does not match metadata",
+            );
+          }
+          const actualSources = sourceEvidence(database, metadata.startMs, metadata.endMs);
+          if (actualSources.rows !== metadata.sources.rows || actualSources.sha256 !== metadata.sources.sha256) {
+            throw archiveError(
+              "HISTORY_ARCHIVE_CANDIDATE_SOURCE_MISMATCH",
+              "candidate source identity fingerprint does not match metadata",
+            );
+          }
+        },
+        HISTORY_ARCHIVE_CANDIDATE_FORMAT_VERSION,
       );
-      if (outside !== 0) {
-        throw archiveError(
-          "HISTORY_ARCHIVE_CANDIDATE_RANGE_MISMATCH",
-          `${outside} event(s) fall outside the candidate range`,
-        );
-      }
-      const actual = sharedEvents ?? eventEvidence(database, metadata.startMs, metadata.endMs);
-      if (actual.rows !== metadata.events.rows || actual.sha256 !== metadata.events.sha256) {
-        throw archiveError(
-          "HISTORY_ARCHIVE_CANDIDATE_FINGERPRINT_MISMATCH",
-          "candidate event fingerprint does not match metadata",
-        );
-      }
-      const actualSources = sourceEvidence(database, metadata.startMs, metadata.endMs);
-      if (actualSources.rows !== metadata.sources.rows || actualSources.sha256 !== metadata.sources.sha256) {
-        throw archiveError(
-          "HISTORY_ARCHIVE_CANDIDATE_SOURCE_MISMATCH",
-          "candidate source identity fingerprint does not match metadata",
-        );
-      }
-      if (reusable) {
-        if (verifiedCandidateEvidence.size >= 8) {
-          verifiedCandidateEvidence.delete(verifiedCandidateEvidence.values().next().value);
-        }
-        verifiedCandidateEvidence.add(proof);
-      }
       return read();
     },
     (database) => {

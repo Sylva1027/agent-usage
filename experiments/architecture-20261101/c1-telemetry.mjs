@@ -1,4 +1,5 @@
 import "./first-update-telemetry.mjs";
+import "./archive-verification-telemetry.mjs";
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import { appendFileSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -5,15 +5,17 @@ use std::fs;
 use std::mem::{self, size_of};
 use std::path::{Component, Path, Prefix};
 use std::ptr;
-use std::time::{Duration, Instant};
+use std::rc::{Rc, Weak};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::{
     CloseHandle, FILETIME, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_ID_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO,
-    FileIdInfo, FileStandardInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
-    OPEN_EXISTING,
+    BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FILE_STANDARD_INFO, FILE_TYPE_DISK, FileIdInfo, FileStandardInfo, GetFileInformationByHandle,
+    GetFileInformationByHandleEx, GetFileType, GetVolumeInformationByHandleW, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::IO::DeviceIoControl;
 use windows_sys::Win32::System::Ioctl::{
@@ -26,6 +28,8 @@ use windows_sys::Win32::System::Threading::GetCurrentProcess;
 pub const KIND: &str = "ntfs-usn-v1";
 pub const MAX_TOKEN_BYTES: usize = 512;
 pub const DIRECTORY_KIND: &str = "ntfs-usn-directory-v1";
+pub const ARCHIVE_LOCK_KIND: &str = "windows-archive-read-lock-v2";
+const MAX_ARCHIVE_HANDLES: usize = 64;
 
 const GENERIC_READ: u32 = 0x8000_0000;
 const IO_PAGE_BYTES: usize = 65_536;
@@ -140,12 +144,26 @@ impl Drop for OwnedHandle {
 
 impl OwnedHandle {
     fn open(path: &str, desired_access: u32, flags_and_attributes: u32) -> Result<Self, String> {
+        Self::open_shared(
+            path,
+            desired_access,
+            flags_and_attributes,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        )
+    }
+
+    fn open_shared(
+        path: &str,
+        desired_access: u32,
+        flags_and_attributes: u32,
+        sharing: u32,
+    ) -> Result<Self, String> {
         let wide = wide_null(path)?;
         let handle = unsafe {
             CreateFileW(
                 wide.as_ptr(),
                 desired_access,
-                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                sharing,
                 ptr::null(),
                 OPEN_EXISTING,
                 flags_and_attributes,
@@ -234,6 +252,278 @@ fn snapshot(handle: &OwnedHandle) -> Result<Snapshot, String> {
             file_index_64_hex: format!("{file_index_64:016x}"),
         },
     })
+}
+
+fn validate_archive_path(path: &str) -> Result<(), String> {
+    let bytes = path.as_bytes();
+    if bytes.len() < 4
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || !matches!(bytes[2], b'\\' | b'/')
+        || path.encode_utf16().count() >= 32_768
+    {
+        return Err("invalid archive path".to_owned());
+    }
+    for part in path[3..].split(['\\', '/']) {
+        let stem = part.split('.').next().unwrap_or("").to_uppercase();
+        let device = matches!(
+            stem.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$"
+        ) || ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix).is_some_and(|n| {
+                matches!(
+                    n,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        });
+        if part.is_empty()
+            || part == "."
+            || part == ".."
+            || part.ends_with(['.', ' '])
+            || device
+            || part
+                .chars()
+                .any(|c| c.is_control() || ":<>\"|?*".contains(c))
+        {
+            return Err("invalid archive path component".to_owned());
+        }
+    }
+    Ok(())
+}
+
+struct ArchiveReadLock {
+    path: String,
+    file: OwnedHandle,
+    snapshot: Snapshot,
+    parents: Vec<Rc<ArchiveDirectory>>,
+}
+
+struct ArchiveDirectory {
+    file: OwnedHandle,
+    identity: Identity,
+    final_path: String,
+}
+
+fn object_identity(info: &serde_json::Value) -> Identity {
+    Identity {
+        volume_hex: info["volume"].as_str().unwrap_or("").to_owned(),
+        file_id_128_hex: info["id128"].as_str().unwrap_or("").to_owned(),
+        file_index_64_hex: info["id64"].as_str().unwrap_or("").to_owned(),
+    }
+}
+
+fn archive_directory_info(file: &OwnedHandle) -> Result<serde_json::Value, String> {
+    let info = directory_info(file)?;
+    if info["attributes"].as_u64().unwrap_or(0) as u32
+        & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)
+        != FILE_ATTRIBUTE_DIRECTORY
+    {
+        return Err("archive ancestor is not a non-reparse directory".to_owned());
+    }
+    Ok(info)
+}
+
+fn assert_archive_child(
+    file: &OwnedHandle,
+    parent: &ArchiveDirectory,
+    name: &str,
+) -> Result<(), String> {
+    let info = directory_info(file)?;
+    let expected = format!("{}\\{}", parent.final_path.trim_end_matches('\\'), name);
+    if !info["path"]
+        .as_str()
+        .unwrap_or("")
+        .eq_ignore_ascii_case(&expected)
+        || object_identity(&archive_directory_info(&parent.file)?) != parent.identity
+    {
+        return Err("archive ancestor changed during acquisition".to_owned());
+    }
+    Ok(())
+}
+
+fn open_archive_file(path: &str) -> Result<OwnedHandle, String> {
+    validate_archive_path(path)?;
+    let file = OwnedHandle::open_shared(
+        path,
+        GENERIC_READ,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_SHARE_READ,
+    )?;
+    let info = directory_info(&file)?;
+    if unsafe { GetFileType(file.0) } != FILE_TYPE_DISK
+        || info["attributes"].as_u64().unwrap_or(0) as u32
+            & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)
+            != 0
+    {
+        return Err("archive is not a regular non-reparse file".to_owned());
+    }
+    Ok(file)
+}
+
+pub struct ArchiveLocks {
+    files: BTreeMap<String, ArchiveReadLock>,
+    parents: BTreeMap<String, Weak<ArchiveDirectory>>,
+    instance: String,
+    next: u64,
+}
+
+impl ArchiveLocks {
+    pub fn new() -> Self {
+        Self {
+            files: BTreeMap::new(),
+            parents: BTreeMap::new(),
+            instance: format!(
+                "{}-{:x}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ),
+            next: 0,
+        }
+    }
+
+    fn parent(
+        &mut self,
+        path: &str,
+        parent: Option<&ArchiveDirectory>,
+        name: &str,
+    ) -> Result<Rc<ArchiveDirectory>, String> {
+        let key = path.to_owned();
+        if let Some(held) = self.parents.get(&key).and_then(Weak::upgrade) {
+            if object_identity(&archive_directory_info(&held.file)?) != held.identity {
+                return Err("archive ancestor identity changed".to_owned());
+            }
+            return Ok(held);
+        }
+        // Reserve one slot for the archive file as well as all retained ancestors.
+        if self.files.len() + self.parents.len() + 1 >= MAX_ARCHIVE_HANDLES {
+            return Err("archive lock limit".to_owned());
+        }
+        let file = OwnedHandle::open_shared(
+            path,
+            FILE_LIST_DIRECTORY,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+        )?;
+        let info = archive_directory_info(&file)?;
+        let final_path = info["path"]
+            .as_str()
+            .ok_or("archive ancestor path unavailable")?
+            .to_owned();
+        if let Some(parent) = parent {
+            assert_archive_child(&file, parent, name)?;
+        } else {
+            if !final_path.eq_ignore_ascii_case(&format!("\\\\?\\{path}")) {
+                return Err("archive drive root is redirected".to_owned());
+            }
+            let mut filesystem = [0u16; 32];
+            if unsafe {
+                GetVolumeInformationByHandleW(
+                    file.0,
+                    ptr::null_mut(),
+                    0,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    filesystem.as_mut_ptr(),
+                    filesystem.len() as u32,
+                )
+            } == 0
+                || filesystem[..5] != [78, 84, 70, 83, 0]
+            {
+                return Err("archive path requires local NTFS".to_owned());
+            }
+        }
+        let held = Rc::new(ArchiveDirectory {
+            identity: object_identity(&info),
+            final_path,
+            file,
+        });
+        self.parents.insert(key, Rc::downgrade(&held));
+        Ok(held)
+    }
+
+    pub fn lock(&mut self, path: &str) -> Result<String, String> {
+        self.parents.retain(|_, held| held.strong_count() > 0);
+        let result = (|| {
+            validate_archive_path(path)?;
+            if self.files.len() + self.parents.len() >= MAX_ARCHIVE_HANDLES {
+                return Err("archive lock limit".to_owned());
+            }
+            self.next = self
+                .next
+                .checked_add(1)
+                .ok_or("archive lock token exhausted")?;
+            let mut prefix = format!("{}:\\", path.as_bytes()[0] as char);
+            let mut parents = vec![self.parent(&prefix, None, "")?];
+            let parts: Vec<_> = path[3..].split(['\\', '/']).collect();
+            for part in &parts[..parts.len() - 1] {
+                if !prefix.ends_with('\\') {
+                    prefix.push('\\');
+                }
+                prefix.push_str(part);
+                let held = self.parent(&prefix, parents.last().map(Rc::as_ref), part)?;
+                parents.push(held);
+            }
+            let file = open_archive_file(path)?;
+            assert_archive_child(&file, parents.last().unwrap(), parts.last().unwrap())?;
+            // Every non-reparse ancestor now contains a pinned child: NTFS refuses
+            // FSCTL_SET_REPARSE_POINT on a nonempty directory, including attribute-only handles.
+            let locked = ArchiveReadLock {
+                path: path.to_owned(),
+                snapshot: snapshot(&file)?,
+                file,
+                parents,
+            };
+            let token = format!("{}-{:x}", self.instance, self.next);
+            self.files.insert(token.clone(), locked);
+            Ok(token)
+        })();
+        self.parents.retain(|_, held| held.strong_count() > 0);
+        result
+    }
+
+    pub fn check(&mut self, path: &str, token: &str) -> Result<(), String> {
+        let locked = self.files.get(token).ok_or("archive lock is not alive")?;
+        if locked.path != path {
+            return Err("archive lock path mismatch".to_owned());
+        }
+        let valid = (|| {
+            for parent in &locked.parents {
+                if object_identity(&archive_directory_info(&parent.file)?) != parent.identity {
+                    return Ok(false);
+                }
+            }
+            let current = open_archive_file(path)?;
+            Ok::<bool, String>(
+                snapshot(&locked.file)? == locked.snapshot
+                    && snapshot(&current)? == locked.snapshot,
+            )
+        })()
+        .unwrap_or(false);
+        if !valid {
+            self.files.remove(token);
+            self.parents.retain(|_, held| held.strong_count() > 0);
+            return Err("archive lock identity changed".to_owned());
+        }
+        Ok(())
+    }
+
+    pub fn unlock(&mut self, path: &str, token: &str) -> Result<(), String> {
+        if self
+            .files
+            .get(token)
+            .is_some_and(|locked| locked.path != path)
+        {
+            return Err("archive lock path mismatch".to_owned());
+        }
+        self.files.remove(token);
+        self.parents.retain(|_, held| held.strong_count() > 0);
+        Ok(())
+    }
 }
 
 fn filetime_value(value: FILETIME) -> u64 {

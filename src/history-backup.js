@@ -1,5 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { constants as fsConstants, readFileSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync, statSync } from "node:fs";
 import { copyFile, link, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
@@ -30,6 +31,153 @@ const CORE_TABLES_BY_SCHEMA_VERSION = Object.freeze({
 });
 
 const verifiedTableEvidence = new Set();
+const BACKUP_VALIDATION_VERSION = 1;
+const verificationScopes = new AsyncLocalStorage();
+
+/**
+ * Enter one operation's verification context; success keeps its readers until close().
+ * close() rejects new work immediately and waits for current work before releasing readers.
+ * Receipts are synchronous, app-owned completed-proof storage, never archive/config input.
+ * Persistent proofs require a lease protecting both files and their complete parent paths.
+ * @param {{
+ *   receipts?: { has(key: string): boolean, add(key: string): void },
+ *   pinFiles?: (paths: string[]) => Promise<null | { check(): Promise<boolean>, close(): Promise<void> }>
+ * }} [options]
+ */
+export function createHistoryVerificationScope({ receipts, pinFiles } = {}) {
+  if (receipts && (typeof receipts.has !== "function" || typeof receipts.add !== "function")) {
+    throw new TypeError("verification receipts require synchronous has/add functions");
+  }
+  if (pinFiles !== undefined && typeof pinFiles !== "function") throw new TypeError("pinFiles must be a function");
+  const state = { receipts, pinFiles, entries: new Map(), closed: false, active: 0, finish: () => {} };
+  let resolveClose;
+  const closed = new Promise((resolve) => {
+    resolveClose = resolve;
+  });
+  state.finish = () => {
+    state.active--;
+    if (state.closed && state.active === 0) {
+      const closing = [...state.entries.values()].map((entry) => entry.close());
+      state.entries.clear();
+      Promise.allSettled(closing).then(() => resolveClose());
+    }
+  };
+  const close = () => {
+    if (!state.closed) {
+      state.closed = true;
+      state.active++;
+      state.finish();
+    }
+    return closed;
+  };
+  return {
+    run(work) {
+      assertScopeOpen(state);
+      state.active++;
+      return verificationScopes.run(state, () => {
+        try {
+          const result = work();
+          if (isThenable(result)) {
+            return Promise.resolve(result)
+              .catch((error) => {
+                close();
+                throw error;
+              })
+              .finally(state.finish);
+          }
+          state.finish();
+          return result;
+        } catch (error) {
+          close();
+          state.finish();
+          throw error;
+        }
+      });
+    },
+    close,
+  };
+}
+
+export function hasHistoryVerificationScope() {
+  const scope = verificationScopes.getStore();
+  return Boolean(scope && !scope.closed);
+}
+
+function assertScopeOpen(scope) {
+  if (scope?.closed) throw backupError("HISTORY_BACKUP_SCOPE_CLOSED", "history verification scope is closed");
+}
+
+function isThenable(value) {
+  return (
+    value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function"
+  );
+}
+
+function rememberProof(cache, key) {
+  if (!cache.has(key) && cache.size >= 8) cache.delete(cache.values().next().value);
+  cache.add(key);
+}
+
+function fileIdentity(stats) {
+  return [
+    stats.dev,
+    stats.ino,
+    stats.mode,
+    stats.nlink,
+    stats.size,
+    stats.mtimeNs,
+    stats.ctimeNs,
+    stats.birthtimeNs,
+  ].join(":");
+}
+
+function assertDatabaseHash(actual, expected) {
+  if (actual.bytes !== expected.bytes) {
+    throw backupError("HISTORY_BACKUP_SIZE_MISMATCH", "database byte size does not match manifest");
+  }
+  if (actual.sha256 !== expected.sha256) {
+    throw backupError("HISTORY_BACKUP_DIGEST_MISMATCH", "database SHA-256 does not match manifest");
+  }
+}
+
+function archiveGuard(databasePath, manifestPath, manifestDigest) {
+  const files = [];
+  const changed = () =>
+    backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive file or manifest changed during verification scope");
+  try {
+    for (const file of [databasePath, manifestPath]) {
+      const descriptor = openSync(file, "r");
+      files.push({ file, descriptor, identity: fileIdentity(fstatSync(descriptor, { bigint: true })) });
+    }
+    const check = () => {
+      for (const { file, descriptor, identity } of files) {
+        if (
+          fileIdentity(statSync(file, { bigint: true })) !== identity ||
+          fileIdentity(fstatSync(descriptor, { bigint: true })) !== identity
+        )
+          throw changed();
+      }
+      if (sha256(readFileSync(manifestPath)) !== manifestDigest) throw changed();
+      for (const { file, descriptor, identity } of files) {
+        if (
+          fileIdentity(statSync(file, { bigint: true })) !== identity ||
+          fileIdentity(fstatSync(descriptor, { bigint: true })) !== identity
+        )
+          throw changed();
+      }
+    };
+    check();
+    return {
+      check,
+      close: () => {
+        for (const { descriptor } of files) closeSync(descriptor);
+      },
+    };
+  } catch (error) {
+    for (const { descriptor } of files) closeSync(descriptor);
+    throw error;
+  }
+}
 
 function backupError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -430,11 +578,30 @@ export async function withVerifiedHistoryBackup(databaseFile, manifestFile, read
 }
 
 async function verifyHistoryBackupWithReader(databaseFile, manifestFile, reader, eventPrefix = undefined) {
+  const scope = verificationScopes.getStore();
+  assertScopeOpen(scope);
+  if (scope) scope.active++;
+  try {
+    return await verifyHistoryBackupInScope(databaseFile, manifestFile, reader, eventPrefix, scope);
+  } catch (error) {
+    if (scope) {
+      const entries = [...scope.entries.values()];
+      scope.entries.clear();
+      await Promise.allSettled(entries.map((entry) => entry.close()));
+    }
+    throw error;
+  } finally {
+    scope?.finish();
+  }
+}
+
+async function verifyHistoryBackupInScope(databaseFile, manifestFile, reader, eventPrefix, scope) {
   const databasePath = path.resolve(databaseFile);
   const manifestPath = path.resolve(manifestFile);
-  let manifest;
+  let manifest, manifestBytes;
   try {
-    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifestBytes = await readFile(manifestPath);
+    manifest = JSON.parse(manifestBytes.toString("utf8"));
   } catch (error) {
     throw backupError("HISTORY_BACKUP_BAD_MANIFEST", `cannot read manifest: ${error?.message ?? String(error)}`);
   }
@@ -460,78 +627,199 @@ async function verifyHistoryBackupWithReader(databaseFile, manifestFile, reader,
     }
   }
 
-  const databaseHash = await hashFile(databasePath);
-  if (databaseHash.bytes !== manifest.database.bytes) {
-    throw backupError("HISTORY_BACKUP_SIZE_MISMATCH", "database byte size does not match manifest");
-  }
-  if (databaseHash.sha256 !== manifest.database.sha256) {
-    throw backupError("HISTORY_BACKUP_DIGEST_MISMATCH", "database SHA-256 does not match manifest");
-  }
-
-  const database = new DatabaseSync(databasePath, { readOnly: true });
-  let began = false;
-  try {
-    database.exec("BEGIN");
-    began = true;
-    const schema = assertSupportedSchema(database);
-    if (manifest.schemaVersion !== schema.version) {
-      throw backupError(
-        "HISTORY_BACKUP_SCHEMA_MISMATCH",
-        `manifest schema ${manifest.schemaVersion} does not match database schema ${schema.version}`,
-      );
-    }
-    // Full file bytes and manifest were checked above; WAL can change rows without changing main-file bytes.
-    const reusable = database.prepare("PRAGMA journal_mode").get().journal_mode === "delete";
-    const proof = sha256(JSON.stringify(manifest));
-    // Bind both new and reused evidence to file bytes under SQLite's pinned read lock.
-    const pinnedHash = await hashFile(databasePath);
-    if (pinnedHash.bytes !== manifest.database.bytes) {
-      throw backupError("HISTORY_BACKUP_SIZE_MISMATCH", "database byte size does not match manifest");
-    }
-    if (pinnedHash.sha256 !== manifest.database.sha256) {
-      throw backupError("HISTORY_BACKUP_DIGEST_MISMATCH", "database SHA-256 does not match manifest");
-    }
-    let eventEvidence;
-    if (!reusable || !verifiedTableEvidence.has(proof)) {
-      const evidence = databaseEvidence(database, schema.tables, eventPrefix?.(database) ?? null);
-      if (
-        schema.tables.some(
-          (table) =>
-            evidence.tables[table].rows !== manifest.tables[table].rows ||
-            evidence.tables[table].sha256 !== manifest.tables[table].sha256,
-        )
-      ) {
-        throw backupError("HISTORY_BACKUP_TABLE_MISMATCH", "table row counts or hashes do not match manifest");
-      }
-      if (evidence.tables.events.prefixedSha256) {
-        eventEvidence = { rows: evidence.tables.events.rows, sha256: evidence.tables.events.prefixedSha256 };
-      }
-      if (reusable) {
-        if (verifiedTableEvidence.size >= 8) verifiedTableEvidence.delete(verifiedTableEvidence.values().next().value);
-        verifiedTableEvidence.add(proof);
-      }
-    }
-    const verified = {
-      ok: true,
-      databaseFile: databasePath,
-      manifestFile: manifestPath,
-      manifest,
+  assertScopeOpen(scope);
+  const entryKey = JSON.stringify([databasePath, manifestPath]);
+  let entry = scope?.entries.get(entryKey);
+  const first = !entry;
+  if (!entry) {
+    entry = {
+      database: null,
+      guard: null,
+      lease: null,
+      reusable: false,
+      schema: null,
+      closed: false,
+      ready: null,
+      closing: null,
+      consumer: Promise.resolve(),
+      manifestDigest: sha256(manifestBytes),
+      async close() {
+        if (this.closed) return this.closing;
+        this.closed = true;
+        this.closing = (async () => {
+          try {
+            await this.ready;
+          } catch {
+            /* Failed initialization still owns any acquired lease. */
+          }
+          try {
+            if (this.database?.isOpen && this.database.isTransaction) this.database.exec("ROLLBACK");
+          } finally {
+            try {
+              if (this.database?.isOpen) this.database.close();
+            } finally {
+              try {
+                this.guard?.close();
+              } finally {
+                await this.lease?.close();
+              }
+            }
+          }
+        })();
+        return this.closing;
+      },
     };
-    if (!reader) return verified;
-    const result = reader(database, verified, eventEvidence);
+    scope?.entries.set(entryKey, entry);
+    entry.ready = (async () => {
+      entry.lease = (await scope?.pinFiles?.([databasePath, manifestPath])) ?? null;
+      assertScopeOpen(scope);
+      if (entry.closed) throw backupError("HISTORY_BACKUP_SCOPE_CLOSED", "archive reader was released");
+      if (entry.lease) entry.guard = archiveGuard(databasePath, manifestPath, entry.manifestDigest);
+      assertDatabaseHash(await hashFile(databasePath), manifest.database);
+      assertScopeOpen(scope);
+      entry.database = new DatabaseSync(databasePath, { readOnly: true });
+      entry.database.exec("BEGIN");
+      entry.schema = assertSupportedSchema(entry.database);
+      if (manifest.schemaVersion !== entry.schema.version) {
+        throw backupError(
+          "HISTORY_BACKUP_SCHEMA_MISMATCH",
+          `manifest schema ${manifest.schemaVersion} does not match database schema ${entry.schema.version}`,
+        );
+      }
+      // A main-file SHA cannot prove rows supplied by WAL.
+      entry.reusable = entry.database.prepare("PRAGMA journal_mode").get().journal_mode === "delete";
+      assertDatabaseHash(await hashFile(databasePath), manifest.database);
+      entry.guard?.check();
+    })();
+  }
+  let releaseConsumer = () => {};
+  try {
+    await entry.ready;
+    assertScopeOpen(scope);
+    if (entry.closed) throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive reader was released");
+    if (!first && (!entry.lease || !entry.reusable)) {
+      if (scope.entries.get(entryKey) === entry) scope.entries.delete(entryKey);
+      return verifyHistoryBackupInScope(databaseFile, manifestFile, reader, eventPrefix, scope);
+    }
+    if (entry.lease && entry.reusable) {
+      const previous = entry.consumer;
+      entry.consumer = new Promise((resolve) => {
+        releaseConsumer = () => resolve(undefined);
+      });
+      await previous;
+      if (entry.closed) throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive reader was released");
+    }
+    const { database, schema, reusable } = entry;
+    const check = async () => {
+      entry.guard?.check();
+      if (entry.lease && (await entry.lease.check()) !== true) {
+        throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive file lease is no longer valid");
+      }
+      entry.guard?.check();
+    };
+    await check();
+    if (entry.manifestDigest !== sha256(manifestBytes)) {
+      throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive manifest changed during verification scope");
+    }
+    const proofIdentity = sha256(
+      JSON.stringify([
+        manifest.formatVersion,
+        manifest.schemaVersion,
+        sha256(manifestBytes),
+        manifest.database.sha256,
+        manifest.database.bytes,
+      ]),
+    );
+    const completedProofs = [];
+    const persistent = reusable && Boolean(entry.lease);
+    // Legacy memory evidence never becomes a proof from the stronger parent-path lock.
+    const proofDomain = persistent ? "path-locked-v2" : "legacy-memory";
+    // Publication waits for the post-consumer lease check, including when the consumer throws.
+    const verifyEvidence = (kind, version, cache, verify, formatVersion = manifest.formatVersion) => {
+      const key = `history-verification:${kind}:v${version}:${proofDomain}:${sha256(JSON.stringify([proofIdentity, formatVersion]))}`;
+      let completed = cache.has(key);
+      if (persistent && !completed) {
+        try {
+          completed = scope?.receipts?.has(key) === true;
+        } catch {
+          /* A missing/corrupt derived receipt falls back to complete verification. */
+        }
+      }
+      const evidence = !reusable || !completed ? verify() : undefined;
+      if (reusable) completedProofs.push({ cache, key });
+      return evidence;
+    };
+    let result,
+      consumerError,
+      consumerFailed = false;
+    try {
+      let eventEvidence;
+      verifyEvidence("backup", BACKUP_VALIDATION_VERSION, verifiedTableEvidence, () => {
+        const evidence = databaseEvidence(database, schema.tables, eventPrefix?.(database) ?? null);
+        if (
+          schema.tables.some(
+            (table) =>
+              evidence.tables[table].rows !== manifest.tables[table].rows ||
+              evidence.tables[table].sha256 !== manifest.tables[table].sha256,
+          )
+        ) {
+          throw backupError("HISTORY_BACKUP_TABLE_MISMATCH", "table row counts or hashes do not match manifest");
+        }
+        if (evidence.tables.events.prefixedSha256) {
+          eventEvidence = { rows: evidence.tables.events.rows, sha256: evidence.tables.events.prefixedSha256 };
+        }
+      });
+      const verified = {
+        ok: true,
+        databaseFile: databasePath,
+        manifestFile: manifestPath,
+        manifest,
+      };
+      result = reader ? reader(database, verified, eventEvidence, verifyEvidence) : verified;
+      if (isThenable(result)) {
+        throw backupError("HISTORY_BACKUP_READER_ASYNC", "history backup reader must be synchronous");
+      }
+    } catch (error) {
+      consumerError = error;
+      consumerFailed = true;
+    }
+    await check();
+    if (entry.lease && (!database.isOpen || !database.isTransaction)) {
+      throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive reader released its pinned transaction");
+    }
+    for (const { cache, key } of completedProofs) {
+      rememberProof(cache, key);
+      if (persistent) {
+        try {
+          scope?.receipts?.add(key);
+        } catch {
+          /* Optional derived persistence must not invalidate a completed proof. */
+        }
+      }
+    }
+    if (consumerFailed) throw consumerError;
+    // Attached hot snapshots and temporary views belong to this consumer, not the next one.
     if (
-      result !== null &&
-      (typeof result === "object" || typeof result === "function") &&
-      typeof result.then === "function"
+      scope &&
+      (database
+        .prepare("PRAGMA database_list")
+        .all()
+        .some(({ name }) => name !== "main" && name !== "temp") ||
+        database.prepare("SELECT 1 FROM sqlite_temp_master LIMIT 1").get())
     ) {
-      throw backupError("HISTORY_BACKUP_READER_ASYNC", "history backup reader must be synchronous");
+      if (scope.entries.get(entryKey) === entry) scope.entries.delete(entryKey);
+      await entry.close();
     }
     return result;
+  } catch (error) {
+    if (scope?.entries.get(entryKey) === entry) scope.entries.delete(entryKey);
+    await entry.close();
+    throw error;
   } finally {
-    try {
-      if (began) database.exec("ROLLBACK");
-    } finally {
-      database.close();
+    releaseConsumer();
+    if (!scope || ((!entry.lease || !entry.reusable) && first)) {
+      if (scope?.entries.get(entryKey) === entry) scope.entries.delete(entryKey);
+      await entry.close();
     }
   }
 }

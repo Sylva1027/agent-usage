@@ -2239,6 +2239,8 @@ export class UsageStore {
     this.historyProjectionInput = null;
     this.historyProjectionModule = null;
     this.historyProjectionStore = null;
+    /** @type {UsageStore | null} */
+    this.historyVerificationOwner = null;
     this.historySourceKinds = null;
     /**
      * D3：**已提交 quota 观测的规范映射**（单槽，见 {@link UsageStore#quotaObservations}）。
@@ -6803,10 +6805,11 @@ export class UsageStore {
   }
 
   withSqlHistoryReader(read) {
-    if (this.publishedHistoryProjection) return this.withVerifiedPublishedHistoryRead(read);
+    if (this.publishedHistoryProjection)
+      return this.withHistoryVerification(() => this.withVerifiedPublishedHistoryRead(read));
     const key = this.databaseFile ? path.resolve(this.databaseFile) : this;
     const result = (historyProjectionQueues.get(key) || Promise.resolve()).then(() =>
-      this.withSqlHistoryReaderCore(read),
+      this.withHistoryVerification(() => this.withSqlHistoryReaderCore(read)),
     );
     const tail = result.then(
       () => {},
@@ -6817,6 +6820,37 @@ export class UsageStore {
       if (historyProjectionQueues.get(key) === tail) historyProjectionQueues.delete(key);
     });
     return result;
+  }
+
+  async createHistoryVerificationScope() {
+    if (this.historyVerificationOwner) return this.historyVerificationOwner.createHistoryVerificationScope();
+    if (!this.database || !historyArchiveAuthorizedSegmentIds(this.database).size) return null;
+    this.historyProjectionModule ||= await import("./usage-history-projection-store.js");
+    this.historyProjectionStore ||= new this.historyProjectionModule.HistoryProjectionStore(
+      this.databaseFile,
+      canonicalFactPayload,
+    );
+    const { createHistoryVerificationScope } = await import("./history-backup.js");
+    return createHistoryVerificationScope({
+      receipts: this.historyProjectionStore.verificationReceipts(),
+      pinFiles: async (files) => {
+        this.sourceProof ||= new UsageSourceProof();
+        const native = await this.sourceProof.provider();
+        return (await native?.lockFiles(files)) || null;
+      },
+    });
+  }
+
+  async withHistoryVerification(work) {
+    const { hasHistoryVerificationScope } = await import("./history-backup.js");
+    if (hasHistoryVerificationScope()) return work();
+    const scope = await this.createHistoryVerificationScope();
+    if (!scope) return work();
+    try {
+      return await scope.run(work);
+    } finally {
+      await scope.close();
+    }
   }
 
   /** Pin the owned projection, releasing the authoritative WAL before acquisition starts. */
@@ -6902,6 +6936,7 @@ export class UsageStore {
     reader.summarySnapshotRead = reader.metadataSnapshotRead = reader.periodComparisonSnapshotRead = true;
     reader.verifiedHistorySqlRead = reader.historyDiskRead = reader.historyPersistentRead = true;
     reader.publishedHistoryProjection = true;
+    reader.historyVerificationOwner = this;
     reader.registerReadFunctions();
     return reader;
   }
@@ -7009,6 +7044,7 @@ export class UsageStore {
       };
       query = preparedProjection?.query || new UsageHistoryQuery(this.database, canonicalFactPayload);
       const database = query.database;
+      if (projection) projection.verificationDatabase = database;
       let verifiedMs = 0;
       const inputs = preparedProjection?.delta?.database || database;
       const records = inputs.prepare("SELECT * FROM archive_segments ORDER BY start_ms,segment_id").all();
@@ -7251,6 +7287,7 @@ export class UsageStore {
       }
     } finally {
       try {
+        if (projection) projection.verificationDatabase = null;
         if (previousPeriodComparison?.cache !== this.historyPeriodComparisonCache?.cache)
           previousPeriodComparison?.cache.clear();
         preparedProjection?.delta?.database?.close();

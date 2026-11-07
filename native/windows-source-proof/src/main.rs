@@ -113,7 +113,7 @@ fn proof_response(id: u64, proof: usn::ProofResult) -> serde_json::Value {
     })
 }
 
-fn handle_request(request: Request) -> serde_json::Value {
+fn handle_request(request: Request, archive_locks: &mut usn::ArchiveLocks) -> serde_json::Value {
     if request.id == 0 {
         return error_response(0, "request id must be nonzero");
     }
@@ -127,6 +127,41 @@ fn handle_request(request: Request) -> serde_json::Value {
     }
     if request.path.is_empty() || request.path.encode_utf16().count() >= 32_768 {
         return error_response(request.id, "invalid path");
+    }
+    if matches!(
+        request.op.as_str(),
+        "archiveLock" | "archiveCheck" | "archiveUnlock"
+    ) {
+        if request.offset.is_some()
+            || request.expected.is_some()
+            || request.journal_id.is_some()
+            || request.start_usn.is_some()
+            || request.file_id.is_some()
+        {
+            return error_response(request.id, "unexpected archive lock fields");
+        }
+        let result = if request.op == "archiveLock" {
+            if request.token.is_some() {
+                return error_response(request.id, "unexpected archive lock token");
+            }
+            archive_locks.lock(&request.path)
+        } else {
+            let token = match request.token {
+                Some(token) if !token.is_empty() && token.len() <= usn::MAX_TOKEN_BYTES => token,
+                _ => return error_response(request.id, "invalid archive lock token"),
+            };
+            let result = if request.op == "archiveCheck" {
+                archive_locks.check(&request.path, &token)
+            } else {
+                archive_locks.unlock(&request.path, &token)
+            };
+            result.map(|()| token)
+        };
+        return match result {
+            Ok(token) => json!({"id": request.id, "ok": true, "available": true,
+                "kind": usn::ARCHIVE_LOCK_KIND, "token": token}),
+            Err(reason) => error_response(request.id, reason),
+        };
     }
     if matches!(
         request.op.as_str(),
@@ -190,6 +225,7 @@ fn main() {
     let stdout = io::stdout();
     let mut reader = stdin.lock();
     let mut writer = stdout.lock();
+    let mut archive_locks = usn::ArchiveLocks::new();
 
     loop {
         let line = match read_line_bounded(&mut reader, MAX_REQUEST_BYTES) {
@@ -216,7 +252,7 @@ fn main() {
                 continue;
             }
         };
-        let response = handle_request(request);
+        let response = handle_request(request, &mut archive_locks);
         if write_response(&mut writer, response).is_err() {
             break;
         }

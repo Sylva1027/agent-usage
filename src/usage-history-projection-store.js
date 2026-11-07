@@ -370,6 +370,49 @@ export class HistoryProjectionStore {
     this.file = null;
     this.candidateFile = null;
     this.work = null;
+    this.verificationDatabase = null;
+  }
+
+  /** Only completed content-bound proofs live here; package bytes are checked on every operation. */
+  verificationReceipts() {
+    const table = "usage_history_verification_receipts";
+    const schema = `CREATE TABLE ${table}(proof TEXT PRIMARY KEY) STRICT`;
+    const read = (database, key) => {
+      if (database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table)?.sql !== schema)
+        return false;
+      return Boolean(database.prepare(`SELECT 1 FROM ${table} WHERE proof=?`).get(key));
+    };
+    return {
+      has: (key) => {
+        let owned;
+        try {
+          const current = this.verificationDatabase || this.query?.database;
+          if (current) return read(current, key);
+          const file = readPointer(this.directory, "current.json");
+          if (!file) return false;
+          owned = new DatabaseSync(path.join(this.directory, file), { readOnly: true });
+          return read(owned, key);
+        } catch {
+          // An unavailable derived receipt requires full verification of the authoritative package.
+          return false;
+        } finally {
+          owned?.close();
+        }
+      },
+      add: (key) => {
+        const database = this.verificationDatabase || this.query?.database;
+        if (!database || database.isTransaction) return;
+        transaction(database, () => {
+          if (database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table)?.sql !== schema) {
+            database.exec(`DROP TABLE IF EXISTS ${table}`);
+            database.exec(schema);
+          }
+          database.prepare(`INSERT OR IGNORE INTO ${table} VALUES(?)`).run(key);
+          database.exec(`DELETE FROM ${table} WHERE rowid IN
+            (SELECT rowid FROM ${table} ORDER BY rowid DESC LIMIT -1 OFFSET 256)`);
+        });
+      },
+    };
   }
 
   /** SQLite releases this cross-process maintenance lock even after forced termination. */
@@ -676,5 +719,6 @@ export class HistoryProjectionStore {
     this.query?.close();
     this.query = null;
     this.file = null;
+    this.verificationDatabase = null;
   }
 }

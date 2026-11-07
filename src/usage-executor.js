@@ -361,6 +361,7 @@ async function runExecutorProcess() {
   let publishedReady = Promise.resolve();
   let lastCheckpoint = null;
   let completedAcquisition = null;
+  let pendingHistoryVerification = null;
   let syncBackupTail = Promise.resolve();
   let initialized = false;
   let initializing = false;
@@ -380,6 +381,15 @@ async function runExecutorProcess() {
       });
     });
 
+  const releaseHistoryVerification = async () => {
+    const pending = pendingHistoryVerification;
+    pendingHistoryVerification = null;
+    if (pending) {
+      clearTimeout(pending.timer);
+      await pending.scope.close();
+    }
+  };
+
   const shutdown = async ({ notifyIdle = false, waitForActive = false } = {}) => {
     if (stopping) return;
     stopping = true;
@@ -389,6 +399,7 @@ async function runExecutorProcess() {
         while (active > 0) await new Promise((resolve) => setTimeout(resolve, 10));
       }
       try {
+        await releaseHistoryVerification();
         releasePublishedReader();
         store?.close();
       } catch {
@@ -814,8 +825,51 @@ async function runExecutorProcess() {
         message.type === "periodComparison" ||
         message.type === "snapshot" ||
         message.type === "backupHistory";
-      const execute = () =>
-        priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
+      const execute = async () => {
+        const work = () =>
+          priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
+        if (message.type === "sync") {
+          await releaseHistoryVerification();
+          const scope = await store.createHistoryVerificationScope();
+          if (!scope) return work();
+          try {
+            const result = await scope.run(work);
+            if (result && Number.isSafeInteger(message.historyVerification)) {
+              const pending = { scope, token: message.historyVerification, timer: null };
+              pending.timer = setTimeout(() => {
+                if (pendingHistoryVerification === pending) void releaseHistoryVerification();
+              }, REQUEST_TIMEOUT_MS);
+              pending.timer.unref?.();
+              pendingHistoryVerification = pending;
+            } else await scope.close();
+            return result;
+          } catch (error) {
+            await scope.close();
+            throw error;
+          }
+        }
+        if (message.type === "releaseHistoryVerification") {
+          if (pendingHistoryVerification?.token === message.historyVerification)
+            await releaseHistoryVerification();
+          return null;
+        }
+        if (message.type === "dashboard") {
+          const pending = pendingHistoryVerification;
+          if (pending && pending.token === message.historyVerification) {
+            pendingHistoryVerification = null;
+            clearTimeout(pending.timer);
+            try {
+              return await pending.scope.run(work);
+            } finally {
+              await pending.scope.close();
+            }
+          }
+          return store.withHistoryVerification(work);
+        }
+        if (["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(message.type))
+          await releaseHistoryVerification();
+        return work();
+      };
       const result =
         message.type === "sync" ||
         message.type === "checkSources" ||
@@ -831,7 +885,13 @@ async function runExecutorProcess() {
         message.type === "close"
           ? await serializeSyncBackup(execute)
           : await execute();
-      await send({ type: "response", id: message.id, ok: true, result: toWire(result) });
+      await send({
+        type: "response",
+        id: message.id,
+        ok: true,
+        result: toWire(result),
+        ...(message.type === "sync" ? { historyVerification: pendingHistoryVerification?.token ?? null } : {}),
+      });
       if (message.type === "close") await shutdown();
     } catch (error) {
       try {
@@ -965,6 +1025,8 @@ export function createUsageExecutor(
   /** 硬崩溃后的**就地重启**次数（一次重启 = 一次恢复；不做无限重试）。 */
   let restarts = 0;
   let state = emptyState();
+  let nextHistoryVerification = 0;
+  let pendingHistoryVerification = null;
 
   const unavailableError = (message = "usage executor is not available") =>
     executorError(new Error(message), "EXECUTOR_UNAVAILABLE");
@@ -1074,6 +1136,7 @@ export function createUsageExecutor(
       if (finalized || worker !== created) return;
       finalized = true;
       worker = null;
+      pendingHistoryVerification = null;
       ready = false;
       clearIdleTimer();
       const preserveState = expectedExit || closing || closed;
@@ -1116,6 +1179,8 @@ export function createUsageExecutor(
         if (!entry) return;
         pending.delete(message.id);
         clearTimeout(entry.timer);
+        if (entry.type === "sync" && message.historyVerification === nextHistoryVerification)
+          pendingHistoryVerification = message.historyVerification;
         if (message.ok) {
           entry.resolve(entry.type === "snapshot" ? restoreServiceTierEvidenceRecord(message.result) : message.result);
         } else entry.reject(executorError(message.error, message.error?.code));
@@ -1238,13 +1303,17 @@ export function createUsageExecutor(
       }
       return request("open", payload);
     },
-    sync: (payload = {}) =>
-      request("sync", {
+    sync: (payload = {}) => {
+      const historyVerification = ++nextHistoryVerification;
+      pendingHistoryVerification = null;
+      return request("sync", {
         options: payload.options,
         certifiedOnly: payload.certifiedOnly,
         sourceHints: payload.sourceHints,
         pricing: pricing(),
-      }),
+        historyVerification,
+      });
+    },
     checkSources: (options) => request("checkSources", { options }),
     validateAcquisition: async (fingerprint) => {
       if (!worker || idleRetiring || terminating) return false;
@@ -1256,8 +1325,21 @@ export function createUsageExecutor(
     },
     summarize: (filters = {}, summarizeOptions = {}) =>
       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
-    dashboard: (filters = {}, summarizeOptions = {}) =>
-      request("dashboard", { filters, options: summarizeOptions, pricing: pricing() }),
+    dashboard: (filters = {}, summarizeOptions = {}) => {
+      const historyVerification = pendingHistoryVerification;
+      pendingHistoryVerification = null;
+      return request("dashboard", { filters, options: summarizeOptions, pricing: pricing(), historyVerification });
+    },
+    releaseHistoryVerification: async () => {
+      const historyVerification = pendingHistoryVerification;
+      pendingHistoryVerification = null;
+      if (historyVerification === null || !worker || idleRetiring || terminating) return;
+      try {
+        await request("releaseHistoryVerification", { historyVerification }, { allowSpawn: false });
+      } catch {
+        // Process exit has already released its package read locks.
+      }
+    },
     periodComparison: (args = {}) => request("periodComparison", { args, pricing: pricing() }),
     metadataFor: (asOf) => request("metadata", { asOf: asOf instanceof Date ? asOf.getTime() : asOf }),
     publishedUsageEvents: () => request("publishedUsageEvents"),

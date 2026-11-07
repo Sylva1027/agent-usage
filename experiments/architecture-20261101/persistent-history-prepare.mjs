@@ -73,7 +73,7 @@ export function scenePaths(dataset, layout, name, resultRoot = process.env.C1_RE
     seed: path.join(dataset.root, layout === "hot" ? "seed-state" : "seed-mixed") };
 }
 
-async function freezeInputs(label) {
+export async function freezeInputs(label) {
   const file = path.join(BASE, "datasets", label, "dataset.json"), dataset = await read(file);
   assert.equal(path.resolve(dataset.root), path.dirname(file));
   const homeFiles = (await filesUnder(dataset.home)).map(file => path.join(dataset.home, file));
@@ -95,7 +95,7 @@ async function freezeInputs(label) {
   return { label, root: dataset.root, home: dataset.home, homeFiles, entries, fingerprint: fingerprint(entries) };
 }
 
-async function environment() {
+export async function environment() {
   const { runtime } = await read(path.join(ROOT, "output/b3-mixed-history-20261107/matrix.json"));
   assert.equal(process.platform, runtime.platform); assert.equal(process.arch, runtime.arch);
   assert.equal(Intl.DateTimeFormat().resolvedOptions().timeZone, runtime.timezone);

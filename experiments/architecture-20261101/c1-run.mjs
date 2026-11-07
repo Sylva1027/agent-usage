@@ -234,6 +234,8 @@ async function mutation(page,plan,method,expected,directory,name){
 }
 
 async function scene(label,layout,runName=layout,reuseQueries=null){
+  const diagnostic=process.env.C1_ARCHIVE_PROFILE==="diagnostic";
+  if(diagnostic)assert.ok(label==="two-years"&&layout==="mixed"&&runName==="mixed-diagnostic","fixed diagnostic only");
   assert.ok(["hot","mixed"].includes(layout));assert.match(runName,/^[a-z0-9-]+$/);
   const dataset=await read(path.join(BASE,"datasets",label,"dataset.json"));await diskBudget();
   const {scenePaths,verifyScene,writeReplayClock}=await import("./persistent-history-prepare.mjs");
@@ -242,11 +244,12 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
   if(process.env.C1_RESULT_ROOT){
     assert.ok(process.env.C1_MANIFEST&&process.env.C1_RUNTIME_SPEC,"separate results require explicit manifest and runtime spec");
     assert.equal(reuseQueries,null,"new fixed groups must measure their own queries");
-    evidence=await verifyScene(process.env.C1_MANIFEST,label,layout,runName,process.env.C1_RUNTIME_SPEC);
+    const verify=process.env.C1_ARCHIVE_PROFILE?(await import("./archive-verification-prepare.mjs")).verifyScene:verifyScene;
+    evidence=await verify(process.env.C1_MANIFEST,label,layout,runName,process.env.C1_RUNTIME_SPEC);
   }
   await mkdir(path.dirname(directory),{recursive:true});await mkdir(directory);
-  const replay=label==="year"?evidence?.clockReplay:null,clockFile=replay?path.join(directory,"business-clock.json"):null,phaseWrites=[];
-  if(evidence&&label==="year")assert.ok(replay,"year candidate requires explicit historical replay");
+  const replay=evidence?.clockReplay,clockFile=replay?path.join(directory,"business-clock.json"):null,phaseWrites=[];
+  if(evidence&&label==="year"&&!process.env.C1_ARCHIVE_PROFILE)assert.ok(replay,"year candidate requires explicit historical replay");
   const phase=async name=>{if(replay)phaseWrites.push(await writeReplayClock(clockFile,replay,name));};
   await assert.rejects(stat(state),{code:"ENOENT"});
   await cp(paths.seed,state,{recursive:true,force:false,errorOnExist:true});
@@ -282,7 +285,9 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
     result.initialServiceWallMs=clock()-server.startedAtMs;
     result.serviceStartedAtMs=server.startedAtMs;
     storage.push({phase:"initial-all",atMs:clock(),...projectionStorage(state)});
-    if(previousQueries){
+    if(diagnostic){
+      result.profile="diagnostic";
+    }else if(previousQueries){
       for(const name of ["today","week","custom","back-all"]){
         const body=await read(path.join(dataset.root,`scene-${reuseQueries}/${name}.json`));
         checkBody(body,expectedRange(dataset,body.summary.range),expected);
@@ -294,7 +299,7 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
       await phase("custom");const custom=await customScope(ui.page,dataset,directory);checkBody(custom.body,expectedRange(dataset,custom.body.summary.range),expected);result.scopes.push(custom.result);
       await phase("back-all");const back=await scope(ui.page,"all",expected.total,directory,"back-all");checkBody(back.body,expected);result.scopes.push(back.result);
     }
-    if(evidence){
+    if(evidence&&!diagnostic){
       await phase("repeat-all");
       const repeat=await scope(ui.page,"all",expected.total,directory,"repeat-all");checkBody(repeat.body,expected);
       const deadline=Date.now()+30000;let exited;
@@ -318,16 +323,18 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
       result.reuseChecks={repeat:repeat.result,executorExit:exited,afterExit:{preset:"all",bucket:"day",recentValue:"今年",cache:"miss",
         cacheBypass:"unused recentValue only; same all/day business context",startedAtMs,endedAtMs:clock(),wallMs:clock()-startedAtMs}};
     }
-    for(const plan of plans){
+    for(const plan of plans.filter(plan=>!diagnostic||["codex","zcode"].includes(plan.kind))){
       await phase(`append-${plan.kind}`);
       expected.events++;expected.total+=160;expected.input+=140;expected.cached+=30;expected.output+=20;expected.reasoning+=["codex","zcode","opencode","workbuddy"].includes(plan.kind)?5:0;
       result.changes.push(await mutation(ui.page,plan,appendC1Mutation,expected,directory,`append-${plan.kind}`));
       storage.push({phase:`append-${plan.kind}`,atMs:clock(),...projectionStorage(state)});
     }
+    if(!diagnostic){
     expected.total+=19;expected.output+=19;
     await phase("revision-zcode");
     result.changes.push(await mutation(ui.page,plans.find(plan=>plan.kind==="zcode"),reviseC1Mutation,expected,directory,"revision-zcode"));
     storage.push({phase:"revision-zcode",atMs:clock(),...projectionStorage(state)});
+    }
     result.delivery=await readQ5Delivery(ui.page);await ui.page.screenshot({path:path.join(directory,"final.png"),fullPage:true});
     await ui.page.close();await stop(server);server=null;await sampler.stop();sampler=null;
     storage.push({phase:"closed",atMs:clock(),...projectionStorage(state)});
@@ -347,7 +354,8 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
     if(evidence)try{
       const {verifyEntries,verifyFrozenRuntime}=await import("./persistent-history-prepare.mjs");
       const manifest=await read(process.env.C1_MANIFEST);
-      await verifyEntries(manifest.tools);await verifyEntries(manifest.workspace);await verifyFrozenRuntime(spec);
+      await verifyEntries(manifest.tools);if(manifest.workspace.length)await verifyEntries(manifest.workspace);await verifyFrozenRuntime(spec);
+      if(process.env.C1_ARCHIVE_PROFILE)await verifyEntries(manifest.datasets.find(row=>row.label===label).entries);
     }
     catch(error){result.passed=false;result.integrityFailure=error.stack;process.exitCode=1;}
     result.endedAt=new Date().toISOString();await save(path.join(directory,"result.json"),result);

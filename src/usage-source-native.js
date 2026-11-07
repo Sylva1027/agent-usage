@@ -8,6 +8,7 @@ import { TextDecoder } from "node:util";
 const KIND = "ntfs-usn-v1";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_TOKEN_BYTES = 512;
+const ARCHIVE_LOCK_KIND = "windows-archive-read-lock-v2";
 const FIXED_TIMEOUT_MS = 3_000;
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const RESPONSE_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -105,6 +106,11 @@ function proofResult(response, offset, info, includeKind) {
   return includeKind ? { kind: KIND, offset, ...result, info } : result;
 }
 
+function archiveLockResponse(response, token = response?.token) {
+  return response?.ok === true && response.available === true && response.kind === ARCHIVE_LOCK_KIND &&
+    typeof token === "string" && token.length > 0 && token.length <= MAX_TOKEN_BYTES && response.token === token;
+}
+
 export function windowsSourceProofPosition(validation) {
   if (validation?.kind !== KIND || !safeInteger(validation.offset) || !validToken(validation.token, validation.offset))
     return null;
@@ -131,6 +137,67 @@ export class WindowsSourceProof {
 
   constructor(internalExecutablePath) {
     this.#executablePath = executablePath(internalExecutablePath);
+  }
+
+  /**
+   * Hold every supplied archive/manifest file; check before and after each consumer.
+   * @param {string[]} paths
+   * @returns {Promise<null | {check(): Promise<boolean>, close(): Promise<void>}>}
+   */
+  async lockFiles(paths) {
+    return this.#schedule(async () => {
+      if (!Array.isArray(paths) || paths.length === 0 || paths.length > 64 ||
+        paths.some((file) => typeof file !== "string" || !file || file.includes("\0"))) return null;
+      const files = paths.map((file) => path.resolve(file));
+      const locks = [];
+      let child = this.#child;
+      let closed = false;
+      let closing = null;
+      const alive = () => child && this.#child === child && !this.#closed && !this.#disabled &&
+        !child.killed && child.exitCode === null && child.signalCode === null;
+      const release = async () => {
+        for (const lock of locks) {
+          if (!alive()) break;
+          const response = await this.#request({ op: "archiveUnlock", ...lock }, child);
+          if (!archiveLockResponse(response, lock.token)) {
+            this.#failProtocol("native archive unlock failed");
+            break;
+          }
+        }
+      };
+      for (const file of files) {
+        const response = await this.#request({ op: "archiveLock", path: file }, child);
+        child ??= this.#child;
+        if (!archiveLockResponse(response) || locks.some((lock) => lock.token === response.token) || !alive()) {
+          if (response?.ok === true) this.#failProtocol("invalid native archive lock response");
+          await release();
+          return null;
+        }
+        locks.push({ path: file, token: response.token });
+      }
+      return {
+        check: async () => (await this.#schedule(async () => {
+          if (closed || !alive()) return false;
+          for (const lock of locks) {
+            const response = await this.#request({ op: "archiveCheck", ...lock }, child);
+            if (!archiveLockResponse(response, lock.token) || !alive()) {
+              closed = true;
+              closing = release();
+              await closing;
+              return false;
+            }
+          }
+          return !closed && Boolean(alive());
+        })) === true,
+        close: async () => {
+          if (!closed) {
+            closed = true;
+            closing = this.#schedule(release);
+          }
+          await closing;
+        },
+      };
+    });
   }
 
   async journal(filePath) {
@@ -319,9 +386,10 @@ export class WindowsSourceProof {
     pending.resolve(response);
   }
 
-  async #request(payload) {
+  async #request(payload, expectedChild = null) {
     this.#requestFailure = null;
     if (this.#closed || this.#disabled || process.platform !== "win32") return null;
+    if (expectedChild && this.#child !== expectedChild) return null;
     if (!this.#child) this.#start();
     const child = this.#child;
     if (!child?.stdin.writable) return null;

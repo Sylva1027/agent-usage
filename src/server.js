@@ -1462,6 +1462,7 @@ export function createUsageServer(options = {}) {
             }
             result = source ? await summaryCache.get(key, source, asOf) : null;
             cached = Boolean(result);
+            if (cached) await usageStore.releaseHistoryVerification();
             resultSource = cached ? source : null;
             response.setHeader("x-summary-cache", result ? "hit" : "miss");
             if (!result) {
