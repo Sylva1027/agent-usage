@@ -106,15 +106,20 @@ export function sameHistoryProjectionStamp(left, right) {
 }
 
 /** Call before COMMIT of the facts transaction, after all its source/auxiliary writes. */
-export function recordHistoryProjectionBatch(database, before, { sources = [], mode = "replace" } = {}) {
+export function recordHistoryProjectionBatch(
+  database,
+  before,
+  { sources = [], mode = "replace", rebindings = [] } = {},
+) {
   if (!before) return null;
   if (!database.isTransaction) throw new Error("History input batch needs the facts transaction");
   if (
-    !["append", "replace", "inputs", "archive", "baseline"].includes(mode) ||
+    !["append", "replace", "inputs", "archive", "baseline", "rebind"].includes(mode) ||
     !Array.isArray(sources) ||
     sources.some((source) => typeof source !== "string" || source === "")
   )
     throw new TypeError("Invalid history projection batch");
+  if (mode === "rebind" && !validRebindings(rebindings)) throw new TypeError("Invalid archive identity mapping");
   const after = readHistoryProjectionStamp(database);
   if (after.instance !== before.instance || after.token !== before.token || after.sequence !== before.sequence)
     throw new Error("History projection batch overlaps another input version");
@@ -132,12 +137,28 @@ export function recordHistoryProjectionBatch(database, before, { sources = [], m
       before.auxiliary,
       after.auxiliary,
       mode,
-      JSON.stringify([...new Set(sources)]),
+      JSON.stringify(mode === "rebind" ? rebindings : [...new Set(sources)]),
     );
   database.prepare(`UPDATE ${STATE} SET token=?,sequence=? WHERE singleton=1`).run(token, sequence);
   // A long-unread cache may rebuild; the authoritative store never retains an unbounded change log.
   database.prepare(`DELETE FROM ${BATCHES} WHERE sequence<?`).run(sequence - 1023);
   return readHistoryProjectionStamp(database);
+}
+
+function validRebindings(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (pair) =>
+        Array.isArray(pair) &&
+        pair.length === 2 &&
+        pair.every((id) => typeof id === "string" && /^[a-f0-9]{64}$/.test(id)) &&
+        pair[0] !== pair[1],
+    ) &&
+    new Set(value.map((pair) => pair[0])).size === value.length &&
+    new Set(value.map((pair) => pair[1])).size === value.length
+  );
 }
 
 /** Missing coverage means a conservative rebuild, including old/external writer commits. */
@@ -165,9 +186,18 @@ export function historyProjectionBatches(database, from, target = readHistoryPro
     )
       return null;
     const sources = JSON.parse(String(row.sources_json));
-    if (!Array.isArray(sources) || sources.some((source) => typeof source !== "string")) return null;
+    if (
+      row.mode === "rebind"
+        ? !validRebindings(sources)
+        : !Array.isArray(sources) || sources.some((source) => typeof source !== "string")
+    )
+      return null;
     if (row.mode === "baseline") return null;
-    batches.push({ mode: String(row.mode), sources });
+    batches.push(
+      row.mode === "rebind"
+        ? { mode: String(row.mode), sources: [], rebindings: sources }
+        : { mode: String(row.mode), sources },
+    );
     cursor = {
       ...cursor,
       token: String(row.token),
@@ -235,6 +265,13 @@ function captureDelta(source, query, before, identity, calendar) {
       .iterate())
       conflict.run(row.segment_id);
     const sources = new Map();
+    const rebound = new Map();
+    for (const batch of batches)
+      for (const [from, to] of batch.rebindings || []) {
+        const prior = [...rebound].find(([, current]) => current === from);
+        rebound.set(prior ? prior[0] : from, to);
+      }
+    const rebindings = [...rebound].filter(([from, to]) => from !== to);
     for (const batch of batches)
       for (const file of batch.sources) {
         sources.set(file, sources.has(file) && sources.get(file) !== "append" ? "replace" : batch.mode);
@@ -271,7 +308,7 @@ function captureDelta(source, query, before, identity, calendar) {
         .all(segment.start_ms, segment.end_ms);
       capture.prepare("INSERT INTO mirror_sources VALUES(?,?)").run(segment.segment_id, JSON.stringify(identities));
     }
-    return { database: capture, stamp, identity, calendar, sources, fullAuxiliary };
+    return { database: capture, stamp, identity, calendar, sources, fullAuxiliary, rebindings };
   } catch (error) {
     capture?.close();
     throw error;
@@ -403,7 +440,9 @@ export class HistoryProjectionStore {
         const database = this.verificationDatabase || this.query?.database;
         if (!database || database.isTransaction) return;
         transaction(database, () => {
-          if (database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table)?.sql !== schema) {
+          if (
+            database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table)?.sql !== schema
+          ) {
             database.exec(`DROP TABLE IF EXISTS ${table}`);
             database.exec(schema);
           }
@@ -606,6 +645,12 @@ export class HistoryProjectionStore {
     ensureUsageRecordSchema(database, { mode: "history" });
     database.exec("BEGIN IMMEDIATE");
     try {
+      for (const [from, to] of delta.rebindings) {
+        if (!this.imported(query, from) || this.imported(query, to))
+          throw new Error("Archive projection identity mapping is stale");
+        database.prepare("UPDATE history_query_rows SET segment_id=? WHERE segment_id=?").run(to, from);
+        database.prepare(`UPDATE ${IMPORTED} SET segment_id=? WHERE segment_id=?`).run(to, from);
+      }
       for (const row of captured.prepare("SELECT * FROM changed_sources").iterate()) {
         const rows = captured.prepare("SELECT * FROM events WHERE source_path=? ORDER BY id").iterate(row.path);
         if (row.mode === "append") query.add(rows, "hot");

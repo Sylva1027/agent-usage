@@ -40,16 +40,17 @@ const verificationScopes = new AsyncLocalStorage();
  * Receipts are synchronous, app-owned completed-proof storage, never archive/config input.
  * Persistent proofs require a lease protecting both files and their complete parent paths.
  * @param {{
+ *   requireLeases?: boolean,
  *   receipts?: { has(key: string): boolean, add(key: string): void },
  *   pinFiles?: (paths: string[]) => Promise<null | { check(): Promise<boolean>, close(): Promise<void> }>
  * }} [options]
  */
-export function createHistoryVerificationScope({ receipts, pinFiles } = {}) {
+export function createHistoryVerificationScope({ receipts, pinFiles, requireLeases = false } = {}) {
   if (receipts && (typeof receipts.has !== "function" || typeof receipts.add !== "function")) {
     throw new TypeError("verification receipts require synchronous has/add functions");
   }
   if (pinFiles !== undefined && typeof pinFiles !== "function") throw new TypeError("pinFiles must be a function");
-  const state = { receipts, pinFiles, entries: new Map(), closed: false, active: 0, finish: () => {} };
+  const state = { receipts, pinFiles, requireLeases, entries: new Map(), closed: false, active: 0, finish: () => {} };
   let resolveClose;
   const closed = new Promise((resolve) => {
     resolveClose = resolve;
@@ -71,6 +72,16 @@ export function createHistoryVerificationScope({ receipts, pinFiles } = {}) {
     return closed;
   };
   return {
+    async check() {
+      assertScopeOpen(state);
+      for (const entry of state.entries.values()) {
+        await entry.ready;
+        entry.guard?.check();
+        if ((state.requireLeases && !entry.lease) || (entry.lease && !(await entry.lease.check())))
+          throw backupError("HISTORY_BACKUP_SCOPE_CHANGED", "archive maintenance lease is no longer valid");
+        entry.guard?.check();
+      }
+    },
     run(work) {
       assertScopeOpen(state);
       state.active++;
@@ -672,6 +683,11 @@ async function verifyHistoryBackupInScope(databaseFile, manifestFile, reader, ev
     scope?.entries.set(entryKey, entry);
     entry.ready = (async () => {
       entry.lease = (await scope?.pinFiles?.([databasePath, manifestPath])) ?? null;
+      if (scope?.requireLeases && !entry.lease)
+        throw backupError(
+          "HISTORY_BACKUP_LEASE_REQUIRED",
+          "archive replacement requires held file leases; existing history was not switched",
+        );
       assertScopeOpen(scope);
       if (entry.closed) throw backupError("HISTORY_BACKUP_SCOPE_CLOSED", "archive reader was released");
       if (entry.lease) entry.guard = archiveGuard(databasePath, manifestPath, entry.manifestDigest);
@@ -688,6 +704,11 @@ async function verifyHistoryBackupInScope(databaseFile, manifestFile, reader, ev
       }
       // A main-file SHA cannot prove rows supplied by WAL.
       entry.reusable = entry.database.prepare("PRAGMA journal_mode").get().journal_mode === "delete";
+      if (scope?.requireLeases && !entry.reusable)
+        throw backupError(
+          "HISTORY_BACKUP_MAINTENANCE_MODE",
+          "archive replacement requires standalone DELETE-mode packages; existing history was not switched",
+        );
       assertDatabaseHash(await hashFile(databasePath), manifest.database);
       entry.guard?.check();
     })();

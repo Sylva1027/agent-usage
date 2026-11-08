@@ -12,6 +12,7 @@ import {
   verifyHistoryBackup,
   withVerifiedHistoryBackup,
 } from "./history-backup.js";
+import { compactHistoryDatabase, compareHistoryDatabases, syncHistoryArchiveFiles } from "./history-compact.js";
 import { getPricingCatalog } from "./pricing.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
 
@@ -515,7 +516,15 @@ export async function createHistoryArchiveCandidate(database, destinationFile, o
         }),
       );
     working.exec("COMMIT");
-    return await createHistoryBackup(working, destinationFile, { serviceTierEvidence });
+    working.close();
+    working = null;
+    const compactFile = path.join(workDirectory, "candidate-compact.sqlite");
+    await compactHistoryDatabase(workFile, compactFile);
+    compareHistoryDatabases(workFile, compactFile);
+    working = new DatabaseSync(compactFile, { readOnly: true });
+    const manifest = await createHistoryBackup(working, destinationFile, { serviceTierEvidence });
+    await syncHistoryArchiveFiles(destinationFile);
+    return manifest;
   } finally {
     try {
       working?.close();

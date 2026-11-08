@@ -76,10 +76,10 @@ export function parseResourceSample(line) {
   return JSON.parse(line, (key, value, context) => key === "startTimeUtcTicks" && typeof value === "number" ? context.source : value);
 }
 
-export async function deriveResources(root) {
+export async function deriveResources(root, scopes = ["datasets", "diagnostic/datasets", "retained-year-first"]) {
   root = path.resolve(root);
   const files = [], excludedIdentities = new Map();
-  for (const scope of ["datasets", "diagnostic/datasets", "retained-year-first"]) {
+  for (const scope of scopes) {
     for (const source of await resourceFiles(path.join(root, scope))) {
       const input = await readFile(source), rows = input.toString("utf8").trim().split(/\r?\n/);
       let correctedSamples = 0;
@@ -101,20 +101,26 @@ export async function deriveResources(root) {
   const receipt = { version: 1, analysisToolSha256: createHash("sha256").update(await readFile(new URL(import.meta.url))).digest("hex"),
     rule: "isolated runner spawns all scopes: exclude pre-runner identities and their descendants; preserve uncertain members",
     files, excludedIdentities: [...excludedIdentities.values()], createdAt: new Date().toISOString() };
+  await mkdir(path.join(root, "resource-identity"), { recursive: true });
   await writeFile(path.join(root, "resource-identity/receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
   return receipt;
+}
+
+export async function withDerivedResources(receipt, analyze) {
+  const replacements = new Map(receipt.files.map(row => [path.resolve(row.source), row.target]));
+  const original = fs.createReadStream;
+  // Only offline analysis reads the derived ledger; timed tools and raw evidence stay frozen.
+  fs.createReadStream = (file, options) => original(typeof file === "string" ? replacements.get(path.resolve(file)) || file : file, options);
+  syncBuiltinESMExports();
+  try { return await analyze(); }
+  finally { fs.createReadStream = original; syncBuiltinESMExports(); }
 }
 
 export async function analyzeWithResourceIdentity(stage, validationFile, outputFile) {
   assert.ok(["current", "year", "all"].includes(stage));
   await assert.rejects(stat(outputFile), { code: "ENOENT" }, "analysis output must be new; preserve previous results");
   const root = path.dirname(path.resolve(validationFile)), receipt = await deriveResources(root);
-  const replacements = new Map(receipt.files.map(row => [path.resolve(row.source), row.target]));
-  const original = fs.createReadStream;
-  // Only offline analysis reads the derived ledger; timed tools and raw evidence stay frozen.
-  fs.createReadStream = (file, options) => original(typeof file === "string" ? replacements.get(path.resolve(file)) || file : file, options);
-  syncBuiltinESMExports();
-  try {
+  return withDerivedResources(receipt, async () => {
     const { analyze } = await import("./archive-verification-analyze.mjs");
     const result = await analyze(path.join(root, "manifest.json"), validationFile, outputFile, stage);
     result.resourceIdentityCorrection = { receipt: path.join(root, "resource-identity/receipt.json"),
@@ -122,7 +128,7 @@ export async function analyzeWithResourceIdentity(stage, validationFile, outputF
       excludedIdentities: receipt.excludedIdentities };
     await writeFile(outputFile, `${JSON.stringify(result, null, 2)}\n`);
     return result;
-  } finally { fs.createReadStream = original; syncBuiltinESMExports(); }
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

@@ -75,45 +75,66 @@ export function allLatencies(scene) {
 }
 const ABSOLUTE = { "append-codex": 45000, "append-dsh": 45000, "append-claude": 45000, "append-workbuddy": 45000,
   "append-zcode": 90000, "append-opencode": 80000, reopen: 90000, "revision-zcode": 100000 };
-export function latencyGates(label, layout, before, after, c1 = {}, v14 = {}) {
+export function latencyGates(label, layout, before, after, c1 = {}, v14 = {}, compaction = null) {
   const old = allLatencies(before), now = allLatencies(after);
   return Object.entries(now).map(([name, candidateMs]) => {
     const baselineMs = old[name], relativePassed = regressionPassed(baselineMs, candidateMs);
     const yearLimitMs = label === "year" && layout === "mixed" && (name === "reopen" || name.startsWith("append-") || name === "revision-zcode" || name.startsWith("scope-"))
       ? c1[name] * 0.2 : null;
     if (yearLimitMs !== null) assert.ok(Number.isFinite(yearLimitMs), `missing original year absolute gate: ${name}`);
-    const absoluteLimitMs = label === "two-years" ? ABSOLUTE[name] ?? null : yearLimitMs;
+    const absoluteLimitMs = label === "two-years" ? (compaction?.twoYearLimitsMs ?? ABSOLUTE)[name] ?? null : yearLimitMs;
+    const improved = !compaction || label !== "two-years" || !compaction.improve.includes(name) || candidateMs < baselineMs;
     return { name, v14Ms: v14[name] ?? null, baselineMs, candidateMs, relativePassed, absoluteLimitMs,
-      passed: relativePassed && (absoluteLimitMs === null || candidateMs <= absoluteLimitMs) };
+      ...(compaction ? { improved } : {}),
+      passed: relativePassed && improved && (absoluteLimitMs === null || candidateMs <= absoluteLimitMs) };
   });
 }
-export function verificationGate(scene, measured, rows, operations = timings(scene, rows, measured)) {
+export function verificationGate(scene, measured, rows, operations = timings(scene, rows, measured), compaction = null) {
   assert.ok(rows.some(row => row.stage === "process-born") && rows.some(row => row.stage === "process-exit"), "missing executor lifetime trace");
   assert.ok(rows.filter(row => row.id).every(row => !row.error), "failed verification spans");
   for (const operation of operations) assert.equal(operation.boundarySpans.length, 0,
     `${operation.name}: ambiguous cross-window SHA/semantic attribution`);
-  if (scene.layout !== "mixed" || scene.label !== "two-years") return operations;
-  const originals = new Map(measured.archiveProofs.filter(row => !row.error && row.endedAtMs <= scene.initialAll.endedAtMs)
+  if (scene.layout !== "mixed" || (!compaction && scene.label !== "two-years")) return operations;
+  const planned = compaction?.packages.filter(row => row.label === scene.label);
+  const expectedCount = compaction ? { current: 1, year: 4, "two-years": 8 }[scene.label] : 8;
+  if (compaction) assert.equal(planned.length, expectedCount, "missing compaction package mapping");
+  const originals = compaction ? new Map(planned.map(row => {
+    const entry = row[compaction.variant === "baseline" ? "previous" : "next"];
+    return [entry.databaseFile, [entry.bytes, entry.sha256]];
+  })) : new Map(measured.archiveProofs.filter(row => !row.error && row.endedAtMs <= scene.initialAll.endedAtMs)
     .map(row => [row.file, [row.bytes, row.sha256]]));
-  assert.equal(originals.size, 8, "startup must identify all eight original archives");
-  assert.equal([...originals.values()].reduce((sum, [bytes]) => sum + bytes, 0), 28761260032, "original uncompressed packages required");
+  assert.equal(originals.size, expectedCount, "startup must identify every expected archive");
+  if (!compaction) assert.equal([...originals.values()].reduce((sum, [bytes]) => sum + bytes, 0), 28761260032, "original uncompressed packages required");
+  else {
+    const startup = new Set();
+    for (const row of measured.archiveProofs) {
+      assert.ok(!row.error, "failed archive hash");
+      assert.deepEqual([row.bytes, row.sha256], originals.get(row.file), `unexpected archive identity: ${row.file}`);
+      if (row.endedAtMs <= scene.initialAll.endedAtMs) startup.add(row.file);
+    }
+    assert.equal(startup.size, expectedCount, "startup omits a mapped archive");
+    for (const row of rows.filter(row => ["sha-before-lock", "sha-inside-lock"].includes(row.stage)))
+      assert.deepEqual([row.bytes, row.sha256], originals.get(row.file), `unexpected SHA span identity: ${row.file}`);
+    if (scene.label === "two-years") assert.ok(planned.reduce((sum, row) => sum + row.next.bytes, 0) <=
+      planned.reduce((sum, row) => sum + row.previous.bytes, 0) * compaction.maximumByteRatio, "compact packages exceed 55% of original bytes");
+  }
   const checkHashes = (operation, reopen = false) => {
     const before = operation.spans.filter(row => row.stage === "sha-before-lock"), inside = operation.spans.filter(row => row.stage === "sha-inside-lock");
     if (reopen) {
-      assert.ok(before.length >= 8, "reopen must hash all eight archives before their SQLite locks");
+      assert.ok(before.length >= expectedCount, "reopen must hash every archive before its SQLite lock");
       assert.equal(inside.length, before.length, "reopen before/inside SHA counts must match");
     } else {
-      assert.equal(before.length, 8, `${operation.name}: exactly one before-lock SHA per archive`);
-      assert.equal(inside.length, 8, `${operation.name}: exactly one inside-lock SHA per archive`);
+      assert.equal(before.length, expectedCount, `${operation.name}: exactly one before-lock SHA per archive`);
+      assert.equal(inside.length, expectedCount, `${operation.name}: exactly one inside-lock SHA per archive`);
     }
     const identity = list => list.map(row => JSON.stringify([row.file, row.bytes, row.sha256])).sort();
     assert.deepEqual(identity(before), identity(inside));
-    assert.equal(new Set(before.map(row => row.file)).size, 8, "all eight original archives must be checked");
+    assert.equal(new Set(before.map(row => row.file)).size, expectedCount, "every expected archive must be checked");
     for (const row of before) assert.deepEqual([row.bytes, row.sha256], originals.get(row.file), `${operation.name}: original archive identity changed: ${row.file}`);
   };
   for (const operation of operations.filter(row => row.name.startsWith("append-"))) checkHashes(operation);
   for (const operation of operations.filter(row => row.name !== "startup")) {
-    assert.equal(operation.spans.filter(row => ["databaseEvidence", "eventEvidence", "sourceEvidence", "candidate.range"].includes(row.stage)).length, 0,
+    if (!compaction || compaction.variant === "candidate") assert.equal(operation.spans.filter(row => ["databaseEvidence", "eventEvidence", "sourceEvidence", "candidate.range"].includes(row.stage)).length, 0,
       `${operation.name}: verified unchanged archives must not repeat full semantic scans`);
     if (operation.name === "reopen") {
       checkHashes(operation, true);
@@ -137,9 +158,10 @@ export async function diagnosticReport() {
   await save(path.join(manifest.resultRoot, "analysis.json"), result); return result;
 }
 
-export async function analyze(manifestFile, validationFile, outputFile, stage = "all") {
-  const manifest = await verifyManifest(manifestFile); assert.equal(manifest.diagnostic, false);
-  const validation = await validationGate(validationFile, manifest), issues = [], groups = [];
+export async function analyze(manifestFile, validationFile, outputFile, stage = "all", compaction = null) {
+  const manifest = await (compaction?.verifyManifest ?? verifyManifest)(manifestFile);
+  if (!compaction) assert.equal(manifest.diagnostic, false);
+  const validation = await (compaction?.validationGate ?? validationGate)(validationFile, manifest), issues = [], groups = [];
   const count = { current: 4, year: 8, all: 10 }[stage]; assert.ok(count, "stage current|year|all");
   const check = async (group, gate, action) => { try { return await action(); } catch (error) { issues.push({ group, gate, message: error.message }); } };
   for (const group of GROUPS.slice(0, count)) {
@@ -156,11 +178,16 @@ export async function analyze(manifestFile, validationFile, outputFile, stage = 
       groups.push(item);
       await check(id, "memory", () => assert.equal(measured.memory.passed, true));
       await check(id, "hashes", () => { assert.equal(measured.archiveProof.failedCalls, 0); if (group.layout === "mixed") assert.ok(measured.archiveProof.successfulCalls > 0); });
+      if (compaction) {
+        item.operations = timings(scene, rows, measured);
+        await check(id, "compaction-verification", () => verificationGate(scene, measured, rows, item.operations,
+          { ...compaction, packages: manifest.compactPackages, variant: group.variant }));
+      }
       if (group.variant === "candidate") {
         item.work = workGate(scene, measured);
         await check(id, "work/storage", () => assert.equal(item.work.passed, true));
         item.operations = timings(scene, rows, measured);
-        await check(id, "verification-reuse", () => verificationGate(scene, measured, rows, item.operations));
+        if (!compaction) await check(id, "verification-reuse", () => verificationGate(scene, measured, rows, item.operations));
         await check(id, "paired-clock", async () => {
           const replay = scene.evidence.clockReplay, reference = { clockReplay: replay, clockReplayFingerprint: scene.evidence.clockReplayFingerprint };
           clockReplayGate(scene, reference, measured.businessClocks, await read(path.join(directory, "mutation-plans.json")));
@@ -177,8 +204,9 @@ export async function analyze(manifestFile, validationFile, outputFile, stage = 
       });
     });
   }
-  const v14 = await read(path.join(ROOT, "output/persistent-mixed-history-20261107/analysis-final-v14.json"));
-  const c1 = await read(path.join(manifest.dataRoot, "analysis-delivery.json"));
+  const v14 = compaction ? { groups: [] } : await read(path.join(ROOT, "output/persistent-mixed-history-20261107/analysis-final-v14.json"));
+  const c1File = path.join(manifest.dataRoot, "analysis-delivery.json");
+  const c1 = compaction ? await check("references", "year-c1", () => read(c1File)) ?? { datasets: [] } : await read(c1File);
   const referenceLatencies = (label, layout) => {
     const row = v14.groups.find(row => row.label === label && row.layout === layout && row.variant === "candidate");
     return row?.scene ? allLatencies(row.scene) : {};
@@ -193,7 +221,7 @@ export async function analyze(manifestFile, validationFile, outputFile, stage = 
     });
     await check(item.id, "latency", () => {
       const original = c1.datasets.find(row => row.label === "year")?.scenes.find(row => row.layout === item.layout);
-      item.latencies = latencyGates(item.label, item.layout, before.scene, item.scene, original ? latencies(original) : {}, referenceLatencies(item.label, item.layout));
+      item.latencies = latencyGates(item.label, item.layout, before.scene, item.scene, original ? latencies(original) : {}, referenceLatencies(item.label, item.layout), compaction);
       assert.ok(item.latencies.every(row => row.passed), JSON.stringify(item.latencies.filter(row => !row.passed)));
     });
     for (const name of CASES) await check(item.id, `exact/${name}`, async () => exactParity(await read(path.join(item.directory, `${name}.json`)),
@@ -214,15 +242,19 @@ export async function analyze(manifestFile, validationFile, outputFile, stage = 
     }
   });
   // Admission also checks immutable raw/seeds/archives after each completed stage.
-  for (const input of manifest.datasets) await verifyEntries(input.entries);
+  for (const input of manifest.datasets) {
+    if (compaction) await check(input.label, "immutable-inputs", () => verifyEntries(input.entries));
+    else await verifyEntries(input.entries);
+  }
   for (const group of groups) group.passed = !issues.some(issue => issue.group === group.id || issue.group === `${group.label}/${group.variant}`);
   const result = { version: 1, manifestFile: path.resolve(manifestFile), manifestSha256: await hashFile(manifestFile),
     candidateFingerprint: manifest.candidateFingerprint, stage, validationFile, validation, groups, issues,
     standards: { maximumGroups: 10, pairedAllLayouts: true, amountTolerance: 0, serviceEnvelopeBytes: 512 * 1048576,
-      regression: ">10% AND >100ms fails each operation", twoYearLimitsMs: ABSOLUTE, yearMixedRatio: 0.2,
+      regression: ">10% AND >100ms fails each operation", twoYearLimitsMs: compaction?.twoYearLimitsMs ?? ABSOLUTE, yearMixedRatio: 0.2,
       timing: "Inclusive nested spans; do not sum child SHA/semantics with parent verification/prepare" },
     passed: groups.length === count && issues.length === 0, createdAt: new Date().toISOString() };
-  await save(outputFile, result); return result;
+  if (compaction?.saveResult !== false) await save(outputFile, result);
+  return result;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const diagnostic = process.argv[2] === "diagnostic";

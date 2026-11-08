@@ -2968,6 +2968,83 @@ export class UsageStore {
       missingSources: decodeMissingSources(this.readMetaRaw(MISSING_SOURCES_META)),
     };
   }
+
+  captureArchiveMaintenanceGuard() {
+    if (this.database.isTransaction || this.writeTransactionDepth)
+      throw new Error("Archive maintenance requires an idle connection");
+    return {
+      database: this.database,
+      identity: this.usageProjectionDatabaseIdentity(),
+      version: this.readDataVersion(),
+      changes: this.database.prepare("SELECT total_changes() AS n").get().n,
+    };
+  }
+
+  /** Called after the maintenance coordinator has verified both packages and their complete logical equivalence. */
+  rebindHistoryArchiveReferences(replacements, guard) {
+    if (this.database.isTransaction || this.writeTransactionDepth)
+      throw new Error("Archive maintenance requires an idle connection");
+    this.database.exec("BEGIN IMMEDIATE");
+    this.writeTransactionDepth++;
+    try {
+      if (
+        guard.database !== this.database ||
+        guard.identity !== this.usageProjectionDatabaseIdentity() ||
+        guard.version !== this.readDataVersion() ||
+        guard.changes !== this.database.prepare("SELECT total_changes() AS n").get().n
+      )
+        throw historyArchiveError("HISTORY_ARCHIVE_COMPACTION_CHANGED", "database changed during archive maintenance");
+      const records = this.database.prepare("SELECT * FROM archive_segments").all();
+      const segmentsById = new Map(records.map((row) => [String(row.segment_id), row]));
+      const authority = historyArchiveAuthorizedSegmentIds(this.database);
+      const revisionsBySegment = historyArchiveEventRevisions(
+        this.readMetaRaw(HISTORY_ARCHIVE_EVENT_REVISIONS_META),
+        segmentsById,
+      );
+      const before = this.historyProjectionModule.readHistoryProjectionStamp(this.database);
+      for (const { previous, next } of replacements) {
+        const from = previous.segment_id,
+          to = next.segment_id;
+        if (JSON.stringify(segmentsById.get(from)) !== JSON.stringify(previous) || segmentsById.has(to))
+          throw historyArchiveError(
+            "HISTORY_ARCHIVE_COMPACTION_CHANGED",
+            "archive registry changed during maintenance",
+          );
+        this.database
+          .prepare("UPDATE archive_segments SET segment_id=?,database_path=?,database_sha256=? WHERE segment_id=?")
+          .run(to, next.database_path, to, from);
+        segmentsById.delete(from);
+        segmentsById.set(to, next);
+        if (authority.delete(from)) authority.add(to);
+        if (revisionsBySegment.has(from)) {
+          revisionsBySegment.set(to, revisionsBySegment.get(from));
+          revisionsBySegment.delete(from);
+        }
+      }
+      if (this.readMetaRaw(HISTORY_ARCHIVE_EVENT_AUTHORITY_META) !== undefined)
+        this.writeMeta(
+          HISTORY_ARCHIVE_EVENT_AUTHORITY_META,
+          JSON.stringify({ formatVersion: 1, segmentIds: [...authority].sort() }),
+        );
+      writeHistoryArchiveEventRevisionState(this.database, { revisionsBySegment, segmentsById });
+      this.historyProjectionModule.recordHistoryProjectionBatch(this.database, before, {
+        mode: "rebind",
+        rebindings: replacements.map(({ previous, next }) => [previous.segment_id, next.segment_id]),
+      });
+      this.database.exec("COMMIT");
+      this.writeTransactionDepth--;
+      this.commitStoreRevision("history-archive-rebind");
+      this.syncDerivedRevision();
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } finally {
+        this.rollbackReplaceFileTransaction();
+      }
+      throw error;
+    }
+  }
+
   async registerHistoryArchiveCandidate(candidateFile, manifestFile = undefined) {
     await this.open();
     // Dynamic import avoids store -> archive -> backup -> store initialization cycles.
@@ -6822,9 +6899,10 @@ export class UsageStore {
     return result;
   }
 
-  async createHistoryVerificationScope() {
-    if (this.historyVerificationOwner) return this.historyVerificationOwner.createHistoryVerificationScope();
-    if (!this.database || !historyArchiveAuthorizedSegmentIds(this.database).size) return null;
+  async createHistoryVerificationScope({ requireLeases = false } = {}) {
+    if (this.historyVerificationOwner)
+      return this.historyVerificationOwner.createHistoryVerificationScope({ requireLeases });
+    if (!this.database || (!requireLeases && !historyArchiveAuthorizedSegmentIds(this.database).size)) return null;
     this.historyProjectionModule ||= await import("./usage-history-projection-store.js");
     this.historyProjectionStore ||= new this.historyProjectionModule.HistoryProjectionStore(
       this.databaseFile,
@@ -6832,6 +6910,7 @@ export class UsageStore {
     );
     const { createHistoryVerificationScope } = await import("./history-backup.js");
     return createHistoryVerificationScope({
+      requireLeases,
       receipts: this.historyProjectionStore.verificationReceipts(),
       pinFiles: async (files) => {
         this.sourceProof ||= new UsageSourceProof();
@@ -7057,9 +7136,20 @@ export class UsageStore {
         ? historyArchiveEventRevisions(
             database.prepare("SELECT value FROM store_meta WHERE key=?").get(HISTORY_ARCHIVE_EVENT_REVISIONS_META)
               ?.value,
-            new Map(records.map((record) => [String(record.segment_id), record])),
+            new Map(
+              database
+                .prepare("SELECT * FROM archive_segments")
+                .all()
+                .map((record) => [String(record.segment_id), record]),
+            ),
           )
         : null;
+      for (const [from, to] of preparedProjection?.delta?.rebindings || []) {
+        if (previousRevisions.has(from)) {
+          previousRevisions.set(to, previousRevisions.get(from));
+          previousRevisions.delete(from);
+        }
+      }
       const previousSegments = preparedProjection?.delta
         ? new Set(
             database
@@ -7068,6 +7158,9 @@ export class UsageStore {
               .map((row) => String(row.segment_id)),
           )
         : null;
+      for (const [from, to] of preparedProjection?.delta?.rebindings || []) {
+        if (previousSegments.delete(from)) previousSegments.add(to);
+      }
       const liveSource = inputs.prepare("SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?");
       const { withVerifiedHistoryArchiveCandidate } = await import("./history-archive.js");
       for (const record of records) {

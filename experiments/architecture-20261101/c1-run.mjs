@@ -244,7 +244,8 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
   if(process.env.C1_RESULT_ROOT){
     assert.ok(process.env.C1_MANIFEST&&process.env.C1_RUNTIME_SPEC,"separate results require explicit manifest and runtime spec");
     assert.equal(reuseQueries,null,"new fixed groups must measure their own queries");
-    const verify=process.env.C1_ARCHIVE_PROFILE?(await import("./archive-verification-prepare.mjs")).verifyScene:verifyScene;
+    const verify=process.env.C1_ARCHIVE_PROFILE==="compaction"?(await import("./archive-compaction-prepare.mjs")).verifyScene:
+      process.env.C1_ARCHIVE_PROFILE?(await import("./archive-verification-prepare.mjs")).verifyScene:verifyScene;
     evidence=await verify(process.env.C1_MANIFEST,label,layout,runName,process.env.C1_RUNTIME_SPEC);
   }
   await mkdir(path.dirname(directory),{recursive:true});await mkdir(directory);
@@ -253,6 +254,8 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
   const phase=async name=>{if(replay)phaseWrites.push(await writeReplayClock(clockFile,replay,name));};
   await assert.rejects(stat(state),{code:"ENOENT"});
   await cp(paths.seed,state,{recursive:true,force:false,errorOnExist:true});
+  if(process.env.C1_ARCHIVE_PROFILE==="compaction"&&layout==="mixed"&&evidence?.variant==="candidate")
+    await (await import("./archive-compaction-prepare.mjs")).installScenePackages(process.env.C1_MANIFEST,label,state);
   const spec=await runtimeSpec(),runtime=spec.directory;
   const {projectionStorage}=await import("./c1-telemetry.mjs");
   const storage=[{phase:"old-index-start",atMs:clock(),...projectionStorage(state)}];
@@ -363,6 +366,9 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
   console.log(JSON.stringify({label,layout,passed:result.passed,firstAllMs:result.initialAll?.wallMs,appends:result.changes.map(row=>[row.name,row.actualPaintMs]),reopenMs:result.reopen?.wallMs,failure:result.failure?.message}));
 }
 
+export { launch, stop, sampling, browser, responseFor, scope, expectedAll, checkBody };
+
+if(process.argv[1]&&path.resolve(process.argv[1])===SCRIPT){
 if(serving){
   const config=await read(process.argv[3]);const {createUsageServer}=await import(pathToFileURL(path.join(config.runtime,"src/server.js")));
   let server,closing=false;async function close(){if(closing)return;closing=true;await new Promise(resolve=>server.close(resolve));process.exit(0);}
@@ -374,3 +380,4 @@ else if(process.argv[2]==="mixed")await mixed(process.argv[3]);
 else if(process.argv[2]==="scene")await scene(process.argv[3],process.argv[4],process.argv[5],process.argv[6]);
 else if(process.argv[2]==="verify")await verifyCapacity(process.argv[3]);
 else throw Error("rebuild <dataset> | mixed <dataset> | scene <dataset> <hot|mixed> [name] | verify <dataset>");
+}

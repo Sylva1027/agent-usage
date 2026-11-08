@@ -68,6 +68,27 @@ node src/cli.js history archive "E:/retention-staging/source.sqlite" --commit "E
 
 冷段文件及相邻 manifest 是历史的一部分。移走或损坏实际段时，完整查询明确失败；不会返回不完整热统计或把缺段显示成零。恢复原文件后可重试。
 
+## 显式压实已有归档
+
+压实清除归档里的空闲页，保留全部逻辑表、行 ID、额度分类、价格和证据快照。以后生成的归档候选也采用相同紧凑构建。普通刷新和服务启动不会自动执行压实。
+
+在维护窗口对已经备份的独立实例执行：
+
+```powershell
+node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retention-staging/compacted"
+
+# 使用同一主库和映射回滚引用；保留切换后新增的事实和修订
+node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retention-staging/compacted" --rollback
+```
+
+目标目录首次必须不存在。命令逐包构建、完整对拍和落盘，写入 `compaction.json`，然后用主库事务一次切换全部引用，并完成已有查询投影的身份更新。旧包继续保留。提交期间主库有其他写入时拒绝过期切换；有完整映射时再次执行同一命令可以恢复或确认已完成的操作。没有完整映射的残留目录不会被覆盖，应保留排查，并为重新执行选择新目录。
+
+显式切换需要 Windows 原生助手提供文件及父路径租约，且两侧归档均为独立的 DELETE 模式包。助手的构建、校验见[交付与升级](15-delivery-upgrade.md#构建与校验助手)；文件租约不要求 NTFS journal 已开启。保护不可用或验证失败时不切换登记。普通查询的既有验证回退继续有效。
+
+压实需要额外保存新包和临时工作文件；不会删除旧包腾空间。`compaction.json` 记录新旧路径，返回结果的 `retainedFiles` 列出保留的旧包。只有确认新包正常、回滚窗口已结束，且其他数据库登记、导出包或冻结快照不再引用旧路径后，才考虑人工回收。本命令不自动清理。
+
+本轮安全与恢复验收通过，但当前混合布局有 5 项延迟门失败，尚未进入一年／两年页面验收。具体对照、维护费用和限制见[归档压实报告](../experiments/architecture-20261101/ARCHIVE-COMPACTION-REPORT.md)。
+
 ## HTTP 与页面
 
 现有实例提供：

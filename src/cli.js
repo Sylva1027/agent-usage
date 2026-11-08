@@ -44,6 +44,7 @@ const USAGE = `Usage:
   codex-usage stop
   codex-usage history verify <databaseFile>
   codex-usage history backup <sourceDB> <newPackageDB>
+  codex-usage history compact <sourceDB> <maintenanceDirectory> [--rollback]
   codex-usage history export <sourceDB> <newDirectory> [--home-dir <dir>]
   codex-usage history import <publishedBundleDir> <newImportDir>
   codex-usage history restore <packageDB> <newDB>
@@ -671,6 +672,27 @@ async function importHistoryCommand(args) {
   }
 }
 
+async function compactHistoryCommand(args) {
+  const [, sourceFile, directory, ...extra] = args;
+  if (!sourceFile || !directory || extra.some((arg) => arg !== "--rollback") || extra.length > 1) {
+    console.error("Usage: codex-usage history compact <sourceDB> <maintenanceDirectory> [--rollback]");
+    process.exitCode = 1;
+    return;
+  }
+  const store = new UsageStore({ databaseFile: path.resolve(sourceFile) });
+  try {
+    if (!(await stat(sourceFile)).isFile()) throw new Error("Archive maintenance requires an existing database file");
+    const { compactRegisteredHistory } = await import("./history-archive-compaction.js");
+    const result = await compactRegisteredHistory(store, directory, { rollback: extra.includes("--rollback") });
+    console.log(JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error(`History archive maintenance failed: ${error?.code ? `${error.code}: ` : ""}${error.message}`);
+    process.exitCode = 1;
+  } finally {
+    store.close();
+  }
+}
+
 async function archiveHistoryCommand(args) {
   const [subcommand, sourceFile, ...archiveArgs] = args;
   if (subcommand !== "archive" || !sourceFile) {
@@ -797,6 +819,8 @@ async function main() {
       await importHistoryCommand(args);
     } else if (args[0] === "archive") {
       await archiveHistoryCommand(args);
+    } else if (args[0] === "compact") {
+      await compactHistoryCommand(args);
     } else {
       await verifyHistoryCommand(args);
     }
