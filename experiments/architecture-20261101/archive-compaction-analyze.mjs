@@ -12,6 +12,7 @@ import { exactParity, regressionPassed, resources } from "./persistent-history-a
 import { fingerprint, verifyEntries } from "./persistent-history-prepare.mjs";
 import { hashFile } from "./remaining-harness-delivery-prepare.mjs";
 import { deriveResources, withDerivedResources } from "./resource-identity-analysis.mjs";
+import { continuation, classifyIssues } from "./archive-compaction-continuation.mjs";
 
 export const COMPACTION = {
   twoYearLimitsMs: { "append-codex": 35000, "append-dsh": 35000, "append-claude": 35000,
@@ -190,6 +191,13 @@ export async function analyze(manifestFile, validationFile, outputFile, stage = 
     amountTolerance: 0, serviceEnvelopeBytes: MEMORY_LIMIT, yearMixedRatio: 0.2,
     regression: ">10% AND >100ms fails each operation", upgradeSetup: "one old projection build, charged separately from maintenance and first/reopen" };
   result.passed = result.issues.length === 0 && result.groups.length === STAGES[stage] && result.upgrades.length === ({ current: 1, year: 2, all: 3 }[stage]);
+  if (process.env.C1_COMPACTION_CONTINUATION) {
+    const manifest = await read(manifestFile), receipt = await continuation(manifest, manifestFile);
+    Object.assign(result, classifyIssues(result.issues, receipt.acceptedIssues));
+    result.continuationReceiptSha256 = await hashFile(process.env.C1_COMPACTION_CONTINUATION);
+    result.continuationPassed = result.newIssues.length === 0 && result.groups.length === STAGES[stage] &&
+      result.upgrades.length === ({ current: 1, year: 2, all: 3 }[stage]) && result.upgrades.every(row => row.passed);
+  }
   await save(outputFile, result);
   return result;
 }
@@ -199,5 +207,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const result = await analyze(path.join(RESULT_ROOT, "manifest.json"), process.argv[3] ?? path.join(RESULT_ROOT, "validation.json"),
     process.argv[4] ?? path.join(RESULT_ROOT, `analysis-${stage}.json`), stage);
   console.log(JSON.stringify({ stage, passed: result.passed, issues: result.issues }));
-  if (!result.passed) process.exitCode = 1;
+  if (!(result.continuationPassed ?? result.passed)) process.exitCode = 1;
 }

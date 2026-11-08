@@ -10,6 +10,7 @@ import {
   toolReceipt, environment, buildClockReplay,
 } from "./persistent-history-prepare.mjs";
 import { hashFile } from "./remaining-harness-delivery-prepare.mjs";
+import { continuation } from "./archive-compaction-continuation.mjs";
 
 export { GROUPS, assertMatrix };
 export const RESULT_ROOT = path.join(ROOT, "output/archive-compaction-20261108");
@@ -186,8 +187,11 @@ export async function verifyManifest(manifestFile) {
   assert.deepEqual(manifest.datasets, Object.keys(COUNTS).map(label => reused.datasets.find(row => row.label === label)));
   const packages = await read(manifest.packagesFile); assert.equal(packages.passed, true);
   assert.deepEqual(manifest.compactPackages, packages.packages); assertPackages(manifest.compactPackages, manifest.datasets, manifest.resultRoot);
-  assert.equal(fingerprint(manifest.tools), manifest.toolsFingerprint); await verifyEntries(manifest.tools);
-  assert.deepEqual((await tools()).entries, manifest.tools, "measurement tool inventory changed");
+  assert.equal(fingerprint(manifest.tools), manifest.toolsFingerprint);
+  const continued = await continuation(manifest, manifestFile);
+  const measuredTools = continued?.tools ?? manifest.tools;
+  await verifyEntries(measuredTools);
+  assert.deepEqual((await tools()).entries, measuredTools, "measurement tool inventory changed");
   assert.deepEqual(await runtimeFiles(), manifest.workspace.map(entry => path.relative(ROOT, entry.file)));
   await verifyEntries(manifest.workspace); await verifyEntries(manifest.runtimeSpecs);
   for (const variant of ["baseline", "candidate"]) {

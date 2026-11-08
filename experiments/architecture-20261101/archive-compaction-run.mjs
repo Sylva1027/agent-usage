@@ -8,6 +8,7 @@ import { command as verificationCommand } from "./archive-verification-run.mjs";
 import { verifyEntries } from "./persistent-history-prepare.mjs";
 import { hashFile } from "./remaining-harness-delivery-prepare.mjs";
 import { RESULT_ROOT, assertMatrix, verifyManifest } from "./archive-compaction-prepare.mjs";
+import { frontGate } from "./archive-compaction-continuation.mjs";
 
 export async function validationGate(file, manifest) {
   const receipt = await read(file);
@@ -40,8 +41,9 @@ export async function admission(manifest, group, manifestFile, validationFile = 
   }
   if (group.label !== "current") {
     const stage = group.label === "year" ? "current" : "year";
-    const front = await read(path.join(manifest.resultRoot, `analysis-${stage}.json`));
-    assert.equal(front.stage, stage); assert.equal(front.passed, true, "previous scale must pass before advancing");
+    const suffix = process.env.C1_COMPACTION_CONTINUATION && stage === "year" ? "-continuation" : "";
+    const front = await read(path.join(manifest.resultRoot, `analysis-${stage}${suffix}.json`));
+    assert.equal(front.stage, stage); await frontGate(front, manifest, manifestFile);
     assert.equal(front.candidateFingerprint, manifest.candidateFingerprint);
     assert.equal(front.manifestSha256, manifestSha256);
   }

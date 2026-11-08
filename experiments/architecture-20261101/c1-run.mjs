@@ -357,7 +357,8 @@ async function scene(label,layout,runName=layout,reuseQueries=null){
     if(evidence)try{
       const {verifyEntries,verifyFrozenRuntime}=await import("./persistent-history-prepare.mjs");
       const manifest=await read(process.env.C1_MANIFEST);
-      await verifyEntries(manifest.tools);if(manifest.workspace.length)await verifyEntries(manifest.workspace);await verifyFrozenRuntime(spec);
+      const continued=process.env.C1_ARCHIVE_PROFILE==="compaction"?await(await import("./archive-compaction-continuation.mjs")).continuation(manifest,process.env.C1_MANIFEST):null;
+      await verifyEntries(continued?.tools??manifest.tools);if(manifest.workspace.length)await verifyEntries(manifest.workspace);await verifyFrozenRuntime(spec);
       if(process.env.C1_ARCHIVE_PROFILE)await verifyEntries(manifest.datasets.find(row=>row.label===label).entries);
     }
     catch(error){result.passed=false;result.integrityFailure=error.stack;process.exitCode=1;}

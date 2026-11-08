@@ -97,7 +97,8 @@ async function upgrade(label) {
       const baselineMs=result.baseline[phase].wallMs,candidateMs=result.candidate[phase].wallMs;
       result.latencies.push({name:phase,baselineMs,candidateMs,passed:regressionPassed(baselineMs,candidateMs)});
     }
-    result.passed=result.latencies.every(row=>row.passed);await verifyEntries(manifest.tools);await verifyEntries(manifest.workspace);
+    const continued=await(await import("./archive-compaction-continuation.mjs")).continuation(manifest,manifestFile);
+    result.passed=result.latencies.every(row=>row.passed);await verifyEntries(continued?.tools??manifest.tools);await verifyEntries(manifest.workspace);
     await verifyEntries(manifest.datasets.find(row=>row.label===label).entries);
   }catch(error){result.failure={message:error.message,stack:error.stack};throw error;}
   finally{
