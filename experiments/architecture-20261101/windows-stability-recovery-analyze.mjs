@@ -79,31 +79,42 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
   const reliability = gates(), resource = gates(), performance = gates();
   const run = await json(path.join(root, "result.json"), evidence);
   const preflight = await json(path.join(root, "preflight.json"), evidence);
+  const multitab = run?.kind === "windows-multitab";
+  const selectedViewClock=multitab&&run.observationVersion===2;
+  const baseCount = multitab ? preflight?.baseAppendCount : 48;
   const recovery = await json(path.join(directory, "recovery.json"), evidence);
   const base = await json(path.join(directory, "base-ledger.json"), evidence);
   const schedule = await json(path.join(directory, "schedule-endurance.json"), evidence);
   const result = await json(path.join(directory, "result-endurance.json"), evidence);
   const entries = await names(directory, evidence);
   const groups = Array.isArray(preflight?.groups) ? preflight.groups : [];
-  const expectedGroups = ["before-commit", "after-commit", "sse", "resources"];
+  const expectedGroups = multitab ? ["combined-normal", "combined-before", "combined-after"] : ["before-commit", "after-commit", "sse", "resources"];
   const hashes = Object.values(preflight?.toolHashes ?? {});
   check(reliability, "preflight", verdict(Boolean(preflight), preflight?.passed === true && groups.length === expectedGroups.length &&
     expectedGroups.every(name => groups.filter(row => row?.name === name && row.passed === true).length === 1) &&
-    hashes.length > 0 && hashes.every(value => typeof value === "string" && /^[a-f\d]{64}$/i.test(value))),
+    hashes.length > 0 && hashes.every(value => typeof value === "string" && /^[a-f\d]{64}$/i.test(value)) &&
+    (!multitab || run.mode === "endurance" && [82,84].includes(baseCount) && [undefined,2].includes(run.observationVersion))),
   { ...preflight, toolHashValidation: "SHA-256 format only; Main entry verifies current-source equality for each tool." });
   const baseInputs = Array.isArray(base?.entries) ? base.entries : [];
   const baseAppends = baseInputs.filter(row => row.operation === "append");
-  check(reliability, "two-years/base-ledger", verdict(Boolean(base), base?.appendCount === 48 && base.revisionCount === 1 &&
-    baseInputs.length === 49 && baseAppends.length === 48 && baseInputs.filter(row => row.operation === "revision").length === 1 &&
-    new Set(baseAppends.map(row => row.ordinal)).size === 48 && baseAppends.every(row => Number.isSafeInteger(row.ordinal) && row.ordinal >= 1 && row.ordinal <= 48)),
+  check(reliability, "two-years/base-ledger", verdict(Boolean(base), base?.appendCount === baseCount && base.revisionCount === 1 &&
+    baseInputs.length === baseCount+1 && baseAppends.length === baseCount && baseInputs.filter(row => row.operation === "revision").length === 1 &&
+    new Set(baseAppends.map(row => row.ordinal)).size === baseCount && baseAppends.every(row => Number.isSafeInteger(row.ordinal) && row.ordinal >= 1 && row.ordinal <= baseCount)),
   { appendCount: base?.appendCount ?? null, revisionCount: base?.revisionCount ?? null, entries: baseInputs.length, countedInNewInputs: false });
   check(reliability, "two-years/same-path-recovery", verdict(Boolean(recovery), recovery?.passed === true &&
-    finite(recovery.wallMs) && recovery.wallMs >= 0 && recovery.wallMs <= 300000 && recovery.expectedAppends === 48 &&
-    recovery.beforeRecent === 47 && recovery.afterRecent === 48 && recovery.samePrimaryIdentity === true &&
+    finite(recovery.wallMs) && recovery.wallMs >= 0 && recovery.wallMs <= 300000 && recovery.expectedAppends === baseCount &&
+    recovery.beforeRecent === (multitab?baseCount:47) && recovery.afterRecent === baseCount && recovery.samePrimaryIdentity === true &&
     recovery.sameProjectionFile === true && recovery.coldCopied === 0 && recovery.fullRebuild === false &&
     recovery.oracle?.passed === true && recovery.oracle.retry !== true && recovery.oracle.skipped === undefined), recovery);
+  if(multitab){
+    const pending=await json(path.join(directory,"pending-recovery.json"),evidence);
+    check(reliability,"two-years/retained-pending-recovery",verdict(Boolean(pending),pending?.passed===true && pending.expectedAppends===80 &&
+      pending.beforeRecent===79 && pending.afterRecent===80 && pending.wallMs>=0 && pending.wallMs<=300000 &&
+      pending.samePrimaryIdentity===true && pending.sameProjectionFile===true && pending.coldCopied===0 && pending.fullRebuild===false &&
+      pending.oracle?.passed===true && pending.oracle.retry===false && pending.oracle.skipped===undefined),pending);
+  }
 
-  const events = { counts: {}, faults: [], oracles: [], normalCloses: [], locks: [], scopes: [], errors: [], sse: [], responses: [] };
+  const events = { counts: {}, faults: [], oracles: [], normalCloses: [], locks: [], scopes: [], errors: [], sse: [], responses: [],viewResponses:[],views:[] };
   const ledger = new Map(), landings = new Map(), visibleIds = new Set(), duplicates = [], conflicts = [];
   await streamNdjson(path.join(directory, "events.ndjson"), row => {
     events.counts[row.type] = (events.counts[row.type] ?? 0) + 1;
@@ -124,6 +135,8 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
     if (row.type === "write-lock") events.locks.push(row);
     if (row.type === "browser" && row.kind === "page-receipt" && ["error", "open"].includes(row.event)) events.sse.push(row);
     if (row.type === "response" && row.preset === "all") events.responses.push(row);
+    if(row.type==="response")events.viewResponses.push(row);
+    if(row.type==="view-visible"){events.views.push(row);if(selectedViewClock)mergeInput(ledger,row,conflicts);}
     if (row.type === "http-error" || row.error) events.errors.push(row);
   }, evidence);
   events.responses.sort((a, b) => a.atMs - b.atMs);
@@ -134,7 +147,7 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
   const baselineCounts = Object.fromEntries(baseAppends.map(row => [row.kind, baseAppends.filter(input => input.kind === row.kind).length]));
   check(reliability, "two-years/recovered-source-baseline", verdict(Boolean(base && baseline),
     Object.entries(baselineCounts).every(([kind, count]) => baseline?.counts?.[kind] === count) &&
-    Object.values(baseline?.counts ?? {}).reduce((n, count) => n + count, 0) === 48),
+    Object.values(baseline?.counts ?? {}).reduce((n, count) => n + count, 0) === baseCount),
   { expectedCounts: baselineCounts, response: baseline ?? null });
   const phaseInputs = Array.isArray(result?.inputs) ? result.inputs : [];
   for (const row of phaseInputs) mergeInput(ledger, row, conflicts);
@@ -174,7 +187,19 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
     row.paintedAtMs < row.landedAtMs || row.landingToPaintMs < 0 || typeof row.usageVersion !== "string" || !row.usageVersion ||
     !Number.isSafeInteger(row.responseSequence) || row.responseSequence <= 0).map(row => row.eventId);
   check(reliability, "two-years/input-publication-evidence", verdict(inputs.length > 0, !invalidInputs.length), invalidInputs);
-  const phase = phaseAnalysis("two-years", "endurance", schedule, result, ledger, events, reliability, performance, false, 48);
+  if(selectedViewClock){
+    const badViews=inputs.filter(input=>{
+      const views=events.views.filter(row=>row.eventId===input.eventId),view=views[0];
+      const response=events.viewResponses.find(row=>row.sequence===input.viewResponseSequence&&row.page===input.viewPage&&row.preset===input.viewPreset&&row.usageVersion===input.viewUsageVersion);
+      return views.length!==1||!view||!response||!input.viewUsageVersion||!finite(input.viewVisibleAtMs)||!finite(input.viewLandingToPaintMs)||
+        input.viewLandingToPaintMs<0||Math.abs(input.viewVisibleAtMs-input.landedAtMs-input.viewLandingToPaintMs)>1||response.atMs>input.viewVisibleAtMs+1000||
+        (input.viewPreset!=="all"&&(input.operation!=="append"||!(input.timestampMs>=Date.parse(response.range?.start)&&input.timestampMs<=Date.parse(response.range?.end))))||
+        (input.operation==="append"?!(Number.isSafeInteger(response.counts?.[input.kind])&&response.counts[input.kind]>=input.kindCount):
+          !(Number.isSafeInteger(response.revisionCount)&&response.revisionCount>=(input.revisionIndex??input.ordinal)));
+    }).map(row=>row.eventId);
+    check(reliability,"two-years/selected-view-evidence",verdict(Boolean(result),!badViews.length&&events.views.length===inputs.length),{badViews});
+  }
+  const phase = phaseAnalysis("two-years", "endurance", schedule, result, ledger, events, reliability, performance, false, baseCount,selectedViewClock);
   const reopen = await json(path.join(directory, "final-reopen.json"), evidence);
   const closed = await json(path.join(directory, "closed.json"), evidence);
   events.closed = closed;
@@ -205,7 +230,7 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
   }
   const resourceSummary = await resources(directory, entries, summaries, control, nodeExits, phase, events, evidence);
   resourceChecks("two-years", resourceSummary, summaries, [phase], closed, resource);
-  check(reliability, "run-completed", verdict(Boolean(run), run?.kind === "windows-stability-recovery" && run.baseAppendCount === 48 &&
+  check(reliability, "run-completed", verdict(Boolean(run), (run?.kind === "windows-stability-recovery" || multitab && run.mode === "endurance") && run.baseAppendCount === baseCount &&
     run.baseRevisionCount === 1 && run.passed === true && !run.failure && !run.cleanupError && finite(run.endedAtMs) &&
     Array.isArray(run.phases) && run.phases.length === 1 && run.phases[0]?.mode === "endurance" && run.phases[0]?.passed === true), run);
   check(reliability, "evidence-readable", evidence.some(row => row.status === "invalid") ? "failed" : verdict(evidence.length === 0, true), evidence);
@@ -216,7 +241,7 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
     historicalResults: ["current", "year"].map(label => ({ label,
       file: path.join(project, "output/windows-stability-20261109/formal-v2/diagnostic", label, "result-diagnostic.json"),
       scope: "Prior result only; not evaluated or accepted in this run." })), evidence,
-    scope: "Same-path two-year recovery plus one new continuous eight-hour run. The retained 48 appends and one revision are excluded from new input denominators. Historical current/year verdicts remain in their original files." };
+    scope: `Same-path two-year recovery plus one new continuous eight-hour run. The retained ${baseCount} appends and one revision are excluded from new input denominators. Historical current/year verdicts remain in their original files.` };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

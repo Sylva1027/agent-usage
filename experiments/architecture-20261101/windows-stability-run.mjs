@@ -24,6 +24,7 @@ export const RESULT=path.join(ROOT,"output/windows-stability-20261109");
 const FORMAL=path.join(RESULT,"formal-v2");
 const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
+export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -205,7 +206,7 @@ async function attachPage(context,page) {
       const visible=checkResponse(context,body),sequence=++context.responseSequence;
       await save(path.join(context.directory,"responses",`${String(sequence).padStart(5,"0")}.json`),body);
       const row={atMs:receivedAtMs,page:context.pages.indexOf(page),sequence,preset:body.summary.range.preset,total:body.summary.totals.total,
-        usageVersion:body.usageVersion,fingerprint:body.fingerprint,counts:visible.counts,revisionCount:visible.revisionCount,body};
+        range:{start:body.summary.range.start,end:body.summary.range.end},usageVersion:body.usageVersion,fingerprint:body.fingerprint,counts:visible.counts,revisionCount:visible.revisionCount,body};
       context.bodies.push(row);if(context.bodies.length>32)context.bodies.shift();
       context.lastBody=row;
       await log(context,"response",{...row,body:undefined});
@@ -253,13 +254,19 @@ async function pollBrowser(context) {
       if(row.kind!=="paint")continue;
       const total=Number(String(row.total).replace(/[^0-9]/g,""));
       const pageIndex=context.pages.indexOf(page);
-      const body=[...context.bodies].reverse().find(value=>value.page===pageIndex&&value.total===total&&value.preset==="all"&&value.usageVersion&&value.atMs<=row.clock+1000);
+      const body=[...context.bodies].reverse().find(value=>value.page===pageIndex&&value.total===total&&value.usageVersion&&value.atMs<=row.clock+1000);
       if(!body)continue;
       for(const input of context.inputs){
-        if(input.paintedAtMs||row.clock<input.landedAtMs)continue;
+        if(row.clock<input.landedAtMs)continue;
         const included=input.operation==="append"?body.counts[input.kind]>=input.kindCount:
           body.revisionCount>=input.revisionIndex&&body.usageVersion!==input.beforeVersion;
-        if(included){Object.assign(input,{paintedAtMs:row.clock,paintedPage:pageIndex,landingToPaintMs:row.clock-input.landedAtMs,responseSequence:body.sequence,usageVersion:body.usageVersion});context.lastActivityAtMs=Math.max(context.lastActivityAtMs,row.clock);await log(context,"input-visible",input);}
+        if(!included)continue;
+        const range=body.body?.summary?.range,withinView=body.preset==="all"||input.operation==="append"&&
+          input.timestampMs>=Date.parse(range?.start)&&input.timestampMs<=Date.parse(range?.end);
+        // Range navigation must not turn an already painted fresh value into a publication timeout.
+        if(!input.viewVisibleAtMs&&withinView){Object.assign(input,{viewVisibleAtMs:row.clock,viewLandingToPaintMs:row.clock-input.landedAtMs,
+          viewPreset:body.preset,viewPage:pageIndex,viewResponseSequence:body.sequence,viewUsageVersion:body.usageVersion});await log(context,"view-visible",input);}
+        if(!input.paintedAtMs&&body.preset==="all"){Object.assign(input,{paintedAtMs:row.clock,paintedPage:pageIndex,landingToPaintMs:row.clock-input.landedAtMs,responseSequence:body.sequence,usageVersion:body.usageVersion});context.lastActivityAtMs=Math.max(context.lastActivityAtMs,row.clock);await log(context,"input-visible",input);}
       }
     }
   }
@@ -316,6 +323,38 @@ async function recoverAppendLedger(directory,expectedCount,withRevision=false){
     }finally{db.close();}
   }
   return ledger;
+}
+
+async function retainedLedger(snapshotFile,mutationsFile){
+  const ledger=await read(snapshotFile),seen=new Set(ledger.entries.map(row=>`${row.operation}/${row.ordinal}`));
+  const baseCounts={appendCount:ledger.appendCount,revisionCount:ledger.revisionCount};
+  assert.equal(seen.size,ledger.entries.length,"Duplicate retained input");
+  if(mutationsFile)for await(const line of createInterface({input:createReadStream(mutationsFile),crlfDelay:Infinity})){
+    if(!line.trim())continue;const row=JSON.parse(line);
+    assert.ok(["append","revision"].includes(row.operation));
+    assert.ok(!seen.has(`${row.operation}/${row.ordinal}`),"Duplicate continuation input");seen.add(`${row.operation}/${row.ordinal}`);
+    const own=ledger.byKind[row.kind],counter=row.operation==="append"?"appendCount":"revisionCount";
+    assert.ok(Number.isSafeInteger(row.ordinal)&&row.ordinal>baseCounts[counter],"Continuation ordinal overlaps snapshot");
+    if(row.operation==="append")own.ordinals.push(row.ordinal);own[counter]++;ledger[counter]++;ledger.entries.push(row);
+    const delta={...row.deltaTokens,total:row.expectedDelta,events:row.expectedEventDelta,sessions:row.deltaSessions};
+    for(const [field,value] of Object.entries(delta)){ledger.expected[field]+=value;own.expected[field]+=value;}
+    if(row.cumulative)own.cumulative=row.cumulative;if(row.seq!==undefined){own.seq=row.seq;own.turn=row.turn;}
+  }
+  for(const operation of ["append","revision"]){
+    const count=ledger[operation==="append"?"appendCount":"revisionCount"],rows=ledger.entries.filter(row=>row.operation===operation);
+    assert.equal(rows.length,count);assert.deepEqual(rows.map(row=>row.ordinal).sort((a,b)=>a-b),Array.from({length:count},(_,i)=>i+1),"Continuation ordinal gap");
+  }
+  assert.ok(!ledger.restoredAtMs&&!ledger.restoring,"Retained sources were already restored");return ledger;
+}
+
+function multitabSchedule(){
+  return {version:1,mode:"multitab-local",label:"two-years",durationMs:300_000,appendCount:2,events:[
+    {atMs:0,type:"append",kind:"codex",ordinal:1,category:"ordinary",id:"multitab-codex"},
+    {atMs:0,type:"tabs-open",id:"multitab-tabs"},
+    {atMs:0,type:"scopes",id:"multitab-scopes"},
+    {atMs:60_000,type:"arm-before-commit",id:"multitab-before"},
+    {atMs:120_000,type:"append",kind:"dsh",ordinal:2,category:"ordinary-during-arm-before-commit",id:"multitab-dsh"},
+  ]};
 }
 
 async function recoverPaintInputs(context){
@@ -439,7 +478,7 @@ async function pollResources(context) {
 async function checkDeadlines(context) {
   if(context.failures.length)throw Error(JSON.stringify(context.failures.at(-1)));
   const now=Date.now();
-  for(const input of context.inputs)if(!input.paintedAtMs){
+  for(const input of context.inputs)if(!input.viewVisibleAtMs&&!input.paintedAtMs){
     const allowance=input.category==="ordinary"?120_000:300_000;
     if(now-input.landedAtMs>allowance)throw Error(`Unpublished input exceeded ${allowance}ms: ${input.eventId}`);
   }
@@ -659,7 +698,7 @@ async function idleAndReopen(context) {
   await save(path.join(context.directory,"final-reopen.json"),reopen);await verifyFull(context,"reopen");return reopen;
 }
 
-async function finishContext(context,{failed=false}={}) {
+async function finishContext(context,{failed=false,retainSources=false}={}) {
   context.closing=true;
   const errors=[];
   try{await context.ui?.instance.close();}catch(error){errors.push(String(error));}
@@ -669,7 +708,7 @@ async function finishContext(context,{failed=false}={}) {
   try{await context.sampler?.stop();}catch(error){errors.push(String(error));}
   try{await pollResources(context);}catch(error){errors.push(String(error));}
   context.seed?.close();
-  if(!failed){
+  if(!failed&&!retainSources){
     try{await restoreStabilityMutations(context.ledger);}catch(error){errors.push(String(error));}
     if(context.evidence){
       const {file,backup,existing,mtimeMs}=context.evidence;
@@ -680,7 +719,8 @@ async function finishContext(context,{failed=false}={}) {
     }
   }
   await save(path.join(context.directory,"resource-summary.json"),context.resourceSummary);
-  await save(path.join(context.directory,"closed.json"),{failed,errors,rawRestored:!failed&&!errors.length,projection:projectionStorage(context.state),atMs:Date.now()});
+  await save(path.join(context.directory,"closed.json"),{failed,errors,rawRestored:!failed&&!retainSources&&!errors.length,
+    ...(retainSources?{retainedForNextStage:true}:{}),projection:projectionStorage(context.state),atMs:Date.now()});
   assert.deepEqual(errors,[],"Context cleanup or resource checks failed");
 }
 
@@ -700,59 +740,72 @@ async function recoveryProjectionWork(directory){
   return {coldCopied:0,fullRebuild:false,samples:rows.length};
 }
 
-async function runRecovery(){
-  const resultFile=path.join(RECOVERY_RESULT,"result.json");
+async function runRecovery({multitab=false,mode="endurance"}={}){
+  const resultRoot=multitab?path.join(MULTITAB_RESULT,mode):RECOVERY_RESULT,resultFile=path.join(resultRoot,"result.json");
   assert.equal(await stat(resultFile).then(()=>true,error=>error.code==="ENOENT"?false:Promise.reject(error)),false,"Never overwrite a recovery run");
-  const preflight=await read(path.join(RECOVERY_RESULT,"preflight.json"));
+  const preflight=await read(path.join(resultRoot,"preflight.json"));
   assert.equal(preflight.passed,true);assert.ok(preflight.groups.every(row=>row.passed));
-  assert.deepEqual(preflight.groups.map(row=>row.name).sort(),["after-commit","before-commit","resources","sse"]);
+  assert.deepEqual(preflight.groups.map(row=>row.name).sort(),multitab?["combined-after","combined-before","combined-normal"]:["after-commit","before-commit","resources","sse"]);
   assert.ok(Object.keys(preflight.toolHashes??{}).length,"Preflight hashes are required");
   for(const [relative,expected] of Object.entries(preflight.toolHashes)){
     assert.equal(createHash("sha256").update(await readFile(path.join(ROOT,relative))).digest("hex"),expected,`Preflight code changed: ${relative}`);
   }
   await diskBudget(64);
-  const result={kind:"windows-stability-recovery",startedAtMs:Date.now(),baseAppendCount:48,baseRevisionCount:1,phases:[],passed:false};
+  const result={kind:multitab?"windows-multitab":"windows-stability-recovery",mode,...(multitab?{observationVersion:2}:{}),startedAtMs:Date.now(),baseAppendCount:48,baseRevisionCount:1,phases:[],passed:false};
   await save(resultFile,result);let context;
   try{
-    const origin=path.join(FORMAL,"diagnostic/two-years"),directory=path.join(RECOVERY_RESULT,"two-years");await mkdir(directory);
-    const manifest=await read(path.join(COMPACTION,"manifest.json")),runtime=await read(manifest.candidateFile);
+    const origin=path.join(FORMAL,"diagnostic/two-years"),directory=path.join(resultRoot,"two-years");await mkdir(directory);
+    const manifest=await read(path.join(COMPACTION,"manifest.json")),runtime=await read(preflight.runtimeFile??manifest.candidateFile);
     const dataset=await read(path.join(BASE,"datasets/two-years/dataset.json")),state=path.join(COMPACTION,"upgrades/two-years/state");
     const primary=path.join(state,"usage-index.sqlite"),beforeIdentity=await primaryIdentity(primary),beforeProjection=projectionStorage(state);
     assert.equal(beforeProjection.databaseCount,1);
-    const ledger=await recoverAppendLedger(origin,48,true);
+    let ledger;
+    if(!multitab)ledger=await recoverAppendLedger(origin,48,true);
+    else if(mode==="local")ledger=await retainedLedger(path.join(RECOVERY_RESULT,"two-years/base-ledger.json"),path.join(RECOVERY_RESULT,"two-years/mutations/mutations.ndjson"));
+    else{
+      const priorMode=mode==="local-verify"?"local":preflight.localMode;
+      assert.ok(["local","local-verify"].includes(priorMode));
+      const prior=await read(path.join(MULTITAB_RESULT,priorMode,"result.json"));assert.equal(prior.passed,true);
+      ledger=await retainedLedger(path.join(MULTITAB_RESULT,priorMode,"two-years/end-ledger.json"));
+    }
+    assert.equal(ledger.appendCount,multitab?(mode==="local"?80:preflight.baseAppendCount):48);
+    result.baseAppendCount=ledger.appendCount;result.baseRevisionCount=ledger.revisionCount;
     ledger.directory=path.join(directory,"mutations");ledger.runId=randomUUID();await mkdir(ledger.directory);
     await save(path.join(directory,"base-ledger.json"),ledger);
     const start=Math.min(...ledger.entries.filter(row=>row.operation==="append").map(row=>row.timestampMs));
     const beforeDb=new DatabaseSync(primary,{readOnly:true});let beforeRecent;
     try{beforeRecent=beforeDb.prepare("SELECT COUNT(*) n FROM events WHERE timestamp_ms>=?").get(start).n;}finally{beforeDb.close();}
-    assert.equal(beforeRecent,47,"Preserved failure state changed before recovery");
+    assert.equal(beforeRecent,result.baseAppendCount-(multitab&&mode!=="local"?0:1),"Preserved state changed before recovery");
     const seedDirectory=path.join(origin,"oracle-seed"),seed=new DatabaseSync(path.join(seedDirectory,"usage-index.sqlite"),{readOnly:true});
     const control=path.join(directory,"control");await mkdir(control);
     context=createContext({directory,state,control,seed,seedDirectory,ledger,selectedSessions:mutationSessions(ledger,seed),runtime:runtime.directory,dataset,
-      resultRoot:RECOVERY_RESULT,requiredAllTotal:expectedAll(dataset).total+ledger.expected.total});activeContext=context;
-    await save(path.join(directory,"preparation.json"),{state,runtime:runtime.directory,origin,seedDirectory,beforeIdentity,beforeProjection,baseAppendCount:48,beforeRecent});
+      resultRoot,requiredAllTotal:expectedAll(dataset).total+ledger.expected.total});activeContext=context;
+    await save(path.join(directory,"preparation.json"),{state,runtime:runtime.directory,origin,seedDirectory,beforeIdentity,beforeProjection,baseAppendCount:result.baseAppendCount,beforeRecent});
     context.ui=await browser();context.pages=[context.ui.page];await attachPage(context,context.ui.page);
     const recoveryStarted=Date.now();context.server=await launchServer(context);context.sampler=await startSampler(context);await loadPage(context);
     await pollBrowser(context);await Promise.all(context.responseTasks);
     const body=[...context.bodies].reverse().find(row=>row.preset==="all")?.body;assert.ok(body);
-    assert.equal(body.metadata.eventCount,expectedAll(dataset).events+48);
+    assert.equal(body.metadata.eventCount,expectedAll(dataset).events+result.baseAppendCount);
     const db=new DatabaseSync(primary,{readOnly:true});let afterRecent;
     try{afterRecent=db.prepare("SELECT COUNT(*) n FROM events WHERE timestamp_ms>=?").get(start).n;}finally{db.close();}
-    assert.equal(afterRecent,48);
+    assert.equal(afterRecent,result.baseAppendCount);
     const oracle=await verifyFull(context,"recovery");
     const afterIdentity=await primaryIdentity(primary),afterProjection=projectionStorage(state);
     assert.deepEqual(afterIdentity,beforeIdentity);assert.equal(afterProjection.current.file,beforeProjection.current.file);
-    const projection=await recoveryProjectionWork(control),recovery={passed:true,wallMs:Date.now()-recoveryStarted,expectedAppends:48,beforeRecent,afterRecent,
+    const projection=await recoveryProjectionWork(control),recovery={passed:true,wallMs:Date.now()-recoveryStarted,expectedAppends:result.baseAppendCount,beforeRecent,afterRecent,
       samePrimaryIdentity:true,sameProjectionFile:true,...projection,oracle,startedAtMs:recoveryStarted,endedAtMs:Date.now()};
     assert.ok(recovery.wallMs<=300_000,"Two-year recovery exceeded 300 seconds");await save(path.join(directory,"recovery.json"),recovery);result.recovery=recovery;
+    if(multitab&&mode==="endurance")await copyFile(path.join(MULTITAB_RESULT,"local/two-years/recovery.json"),path.join(directory,"pending-recovery.json"));
     delete context.requiredAllTotal;
     await context.sampler.stop();await pollResources(context);await save(path.join(directory,"resource-summary-recovery.json"),context.resourceSummary);
     context.sampler=await startSampler(context,"-endurance");
-    result.phases.push(await runPhase(context,stabilitySchedule("endurance")));
-    result.reopen=await idleAndReopen(context);await finishContext(context);context=null;activeContext=null;result.passed=true;
+    result.phases.push(await runPhase(context,multitab&&mode!=="endurance"?multitabSchedule():stabilitySchedule("endurance")));
+    await save(path.join(directory,"end-ledger.json"),context.ledger);
+    if(!multitab||mode==="endurance")result.reopen=await idleAndReopen(context);
+    await finishContext(context,{retainSources:multitab&&mode!=="endurance"});context=null;activeContext=null;result.passed=true;
   }catch(error){result.failure={message:error.message,stack:error.stack};if(context)await finishContext(context,{failed:true}).catch(cleanup=>result.cleanupError=String(cleanup));throw error;}
   finally{result.endedAtMs=Date.now();await save(resultFile,result);}
-  console.log(JSON.stringify({passed:result.passed,baseAppendCount:48,phases:result.phases.map(row=>({mode:row.mode,inputs:row.inputs.length,passed:row.passed}))}));
+  console.log(JSON.stringify({passed:result.passed,baseAppendCount:result.baseAppendCount,phases:result.phases.map(row=>({mode:row.mode,inputs:row.inputs.length,passed:row.passed}))}));
 }
 
 async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEndurance=false}={}) {
@@ -818,10 +871,11 @@ async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEnd
 }
 
 export { visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,recoverAppendLedger,
-  attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit };
+  attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit,retainedLedger,multitabSchedule };
 
 if(process.argv[1]&&path.resolve(process.argv[1])===SELF){
-  assert.ok(["run","smoke","resume-year-idle","resume-paint-order","restart-endurance","recover-and-soak"].includes(process.argv[2]),"run | smoke | resume-year-idle | resume-paint-order | restart-endurance | recover-and-soak");
-  if(process.argv[2]==="recover-and-soak")await runRecovery();
+  assert.ok(["run","smoke","resume-year-idle","resume-paint-order","restart-endurance","recover-and-soak","multitab-local","multitab-local-verify","multitab-endurance"].includes(process.argv[2]),"Unknown stability command");
+  if(process.argv[2].startsWith("multitab-"))await runRecovery({multitab:true,mode:process.argv[2].slice("multitab-".length)});
+  else if(process.argv[2]==="recover-and-soak")await runRecovery();
   else await runAll({smoke:process.argv[2]==="smoke",resumeYear:process.argv[2]==="resume-year-idle",resumePaint:process.argv[2]==="resume-paint-order",restartEndurance:process.argv[2]==="restart-endurance"});
 }

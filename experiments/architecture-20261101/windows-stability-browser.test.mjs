@@ -6,12 +6,14 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
+import { createCostEstimateAccumulator, createEventPricing, runWithPricingCatalog } from "../../src/pricing.js";
+import { UsageStore } from "../../src/usage-store.js";
 import { ROOT } from "./c1-datasets.mjs";
 import { browser, stop } from "./c1-run.mjs";
 import { painted } from "./b2-page-diagnostic.mjs";
 import { readQ5Delivery } from "./q5-summary-hook.mjs";
 import {
-  attachPage, launchServer, loadPage, matchingControlledExit, registerControlledExit, waitUsageResponse,
+  attachPage, launchServer, loadPage, matchingControlledExit, pollBrowser, registerControlledExit, stabilityScope, waitUsageResponse,
 } from "./windows-stability-run.mjs";
 
 const KINDS = ["codex", "dsh", "claude", "workbuddy", "zcode", "opencode"];
@@ -22,7 +24,8 @@ const lines = rows => rows.map(row => JSON.stringify(row)).join("\n") + "\n";
 const usage = { input_tokens: 140, cached_input_tokens: 30, output_tokens: 20, reasoning_output_tokens: 5, total_tokens: 160 };
 
 async function savePreflight(name, receipt) {
-  const directory = path.join(ROOT, "output/windows-stability-recovery-20261109/preflight");
+  const directory = path.join(ROOT, name.startsWith("combined-")
+    ? "output/windows-multitab-20261109/preflight" : "output/windows-stability-recovery-20261109/preflight");
   await mkdir(directory, { recursive: true });
   const file = path.join(directory, `browser-${name}.json`);
   let prior;
@@ -352,6 +355,152 @@ async function verify(context, kind, changedAtMs) {
   assert.ok(alive(context.gatewayPid), "same gateway survived");
   return { newValue: 480, changedAtMs, pages, duplicateCheck: { passed: true, expectedEvents: 3, ...stored },
     gateway: { pid: context.gatewayPid, processBornPids: [context.gatewayPid], unchanged: true, port: context.server.ready.port } };
+}
+
+for (const [name, point] of [["normal", null], ["before", "before-commit"], ["after", "after-commit-before-notify"]]) {
+  test(`combined real three-tab scope switch and source append: ${name}`, { timeout: 90_000 }, async t => {
+    const context = await fixture(t), main = context.ui.page;
+    context.receiptName = `combined-${name}`;
+    for (let index = 0; index < 2; index++) {
+      const page = await context.ui.context.newPage();
+      await addPage(context, page);
+      await loadPage(context, page);
+      await page.waitForFunction(() => window.__q5Delivery.rows.some(row => row.kind === "page-receipt" && row.event === "open"));
+    }
+    const today = await stabilityScope(context, main, "today", 320, context.directory, "combined-today");
+    await pollBrowser(context); // Drain establishment paints before tracking the real append.
+    const beforeVersion = context.lastBody.usageVersion;
+    const automatic = context.pages.slice(1).map(page => waitUsageResponse(context, page, "all", 480, 75_000));
+    for (const pending of automatic) { context.tasks.push(pending); void pending.catch(() => {}); }
+    let command, parked, killedAtMs, killFrame, week, scopeChange, scopeAppendOverlap, actual500 = [];
+    if (point) {
+      command = { id: `browser-combined-${name}`, point, sourcePath: context.files.codex };
+      await save(path.join(context.control, "pause-sync.tmp"), command);
+      await rename(path.join(context.control, "pause-sync.tmp"), path.join(context.control, "pause-sync.json"));
+    } else {
+      const requested = main.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname === "/api/usage" && url.searchParams.get("preset") === "week";
+      });
+      context.tasks.push(requested); void requested.catch(() => {});
+      scopeChange = stabilityScope(context, main, "week", undefined, context.directory, "combined-week");
+      context.tasks.push(scopeChange); void scopeChange.catch(() => {});
+      await requested;
+      await until(() => context.proxy.records.find(row => row.pathname === "/api/usage" &&
+        new URL(row.url, context.proxy.url).searchParams.get("preset") === "week" && row.forwardedAtMs && !row.status),
+      "normal week request is in flight before append");
+    }
+    const changedAtMs = await append(context, "codex");
+    const appendCompletedAtMs = Date.now();
+    const input = { ...context.ledger.entries.at(-1), kindCount: 1, landedAtMs: changedAtMs };
+    context.inputs.push(input);
+    if (!point) {
+      week = await scopeChange;
+      const request = context.proxy.records.find(row => row.pathname === "/api/usage" &&
+        new URL(row.url, context.proxy.url).searchParams.get("preset") === "week");
+      assert.ok(request.forwardedAtMs <= changedAtMs && request.receivedAtMs >= appendCompletedAtMs,
+        "real upstream week request must overlap the source append");
+      scopeAppendOverlap = { passed: true, appendStartedAtMs: changedAtMs, appendCompletedAtMs, request };
+    }
+    if (point) {
+      parked = await until(async () => (await hookRows(context)).find(row => row.event === "fault-parked" && row.commandId === command.id), "combined hook fault-parked");
+      assert.equal(parked.role, "executor"); assert.equal(parked.ppid, context.gatewayPid);
+      assert.equal(parked.point, point); assert.equal(parked.transaction, point === "before-commit");
+      assert.equal(facts(context).total, point === "before-commit" ? 320 : 480);
+      scopeChange = stabilityScope(context, main, "week", 480, context.directory, "combined-week");
+      context.tasks.push(scopeChange); void scopeChange.catch(() => {});
+      await until(() => context.proxy.records.find(row => row.pathname === "/api/usage" &&
+        new URL(row.url, context.proxy.url).searchParams.get("preset") === "week" &&
+        row.startedAtMs >= parked.atMs && row.forwardedAtMs && !row.status), "combined main week request is in flight");
+      killFrame = { atMs: Date.now(), facts: facts(context), tabs: await Promise.all(context.pages.map(async (page, index) => ({
+        page: index, ...await page.evaluate(() => ({ preset: document.querySelector("[data-preset].active")?.dataset.preset,
+          total: document.querySelector("#totalTokens")?.title })),
+      }))) };
+      assert.deepEqual(killFrame.tabs.map(row => row.preset), ["week", "all", "all"]);
+      assert.equal(killFrame.facts.total, point === "before-commit" ? 320 : 480);
+      process.kill(parked.pid, "SIGKILL");
+      killedAtMs = Date.now();
+      registerControlledExit(context, { pid: parked.pid, point, commandId: command.id, killedAtMs, gatewayPid: context.gatewayPid });
+      const failed = await until(() => context.pageSets.get(main).find(row => row.status === 500), "combined upstream controlled 500");
+      assert.equal(failed.body.code, "EXECUTOR_EXITED"); assert.ok(failed.startedAtMs <= killedAtMs);
+      const actual = context.httpErrors.find(row => row.body.code === "EXECUTOR_EXITED");
+      assert.equal(matchingControlledExit(context, actual.response, actual.body).commandId, command.id);
+      actual500 = [{ status: failed.status, code: failed.body.code, startedAtMs: failed.startedAtMs, receivedAtMs: failed.receivedAtMs }];
+      week = await scopeChange;
+      const mainRows = context.pageSets.get(main), failureIndex = mainRows.indexOf(failed);
+      assert.ok(mainRows.slice(failureIndex + 1).some(row => row.status === 200 &&
+        row.body.summary.range.preset === "week" && row.body.summary.totals.total === 480), "week recovered automatically after its 500");
+    }
+    await Promise.all(automatic);
+    const validation = await verify(context, "codex", changedAtMs);
+    const costs = [];
+    for (const [index, page] of context.pages.entries()) {
+      const preset = index === 0 ? "week" : "all";
+      assert.equal(await page.locator("[data-preset].active").getAttribute("data-preset"), preset);
+      const row = context.pageSets.get(page).findLast(row => row.status === 200 && row.body.summary.totals.total === 480);
+      assert.equal(row.body.summary.range.preset, preset);
+      assert.notEqual(row.body.usageVersion, beforeVersion);
+      for (const field of FIELDS) assert.equal(row.body.periodComparison.totals.all[field], row.body.summary.totals[field], `all ${field}`);
+      const databaseFile = path.join(context.state, "usage-index.sqlite"), database = new DatabaseSync(databaseFile, { readOnly: true });
+      const reader = new UsageStore({ databaseFile });
+      reader.database = database; reader.homes = row.body.metadata.homes;
+      let expectedCost, costEvents = 0;
+      try {
+        expectedCost = runWithPricingCatalog(row.body.pricingCatalog, () => {
+          const pricing = createEventPricing(row.body.pricingCatalog.models);
+          const accumulator = createCostEstimateAccumulator({ modelName: pricing.costModelName });
+          const range = row.body.summary.range;
+          for (const event of reader.costEventsForRange({ ...range, start: new Date(range.start), end: new Date(range.end) })) {
+            accumulator.add(event, pricing.estimate(event)); costEvents++;
+          }
+          return accumulator.result();
+        });
+      } finally { database.close(); }
+      assert.equal(costEvents, 3, "cost stream covers every real fixture event");
+      assert.deepEqual(row.body.summary.costEstimate, expectedCost, "every cost field matches the read-only SQL fact stream");
+      const cost = row.body.summary.costEstimate;
+      await page.waitForFunction(async expected => {
+        const { formatCostAmount } = await import("/app.js");
+        return document.querySelector("#totalCost")?.textContent === formatCostAmount(
+          (expected.usd ?? 0) + (expected.cny ?? 0) / expected.rate, "USD");
+      }, { usd: cost.totalUsd, cny: cost.totalCny, rate: row.body.pricingCatalog.usdToCnyRate });
+      costs.push({ page: index, preset, costEstimate: cost, expectedCost, costEvents, allCostFieldsPassed: true });
+    }
+    assert.ok(!context.bodies.some(row => row.page === 0 && row.preset === "all" && row.total === 480), "main never supplied the new all value");
+    await until(async () => { await pollBrowser(context); return input.paintedAtMs; }, "shared pollBrowser records the other tab's all paint");
+    const mainPresetAtConfirmation = await main.locator("[data-preset].active").getAttribute("data-preset");
+    assert.equal(mainPresetAtConfirmation, "week", "main is outside all when pollBrowser confirms the input");
+    assert.ok([1, 2].includes(input.paintedPage), "another tab must certify the input");
+    const body = context.bodies.find(row => row.sequence === input.responseSequence);
+    assert.equal(body.page, input.paintedPage); assert.equal(body.preset, "all"); assert.equal(body.total, 480);
+    assert.equal(body.counts.codex, 1); assert.equal(body.usageVersion, input.usageVersion);
+    const rows = await hookRows(context), log = (await readFile(path.join(context.directory, "events.ndjson"), "utf8"))
+      .trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(log.filter(row => row.type === "input-visible").length, 1);
+    assert.equal(log.find(row => row.type === "input-visible").paintedPage, input.paintedPage);
+    const upstream500 = context.proxy.records.filter(row => row.pathname === "/api/usage" && row.status === 500);
+    let executorExit, workerRebuilt, sharedWaiter;
+    if (point) {
+      executorExit = rows.find(row => row.event === "executor-exit" && row.childPid === parked.pid && row.atMs >= killedAtMs);
+      workerRebuilt = rows.find(row => row.event === "executor-spawn" && row.pid === context.gatewayPid && row.childPid !== parked.pid && row.atMs >= killedAtMs);
+      sharedWaiter = log.find(row => row.type === "waiting-for-fault-recovery" && row.commandId === command.id && row.preset === "week");
+      assert.ok(executorExit); assert.ok(workerRebuilt); assert.ok(sharedWaiter); assert.ok(upstream500.length);
+      assert.ok(rows.some(row => row.event === "process-born" && row.role === "executor" && row.pid === workerRebuilt.childPid && row.ppid === context.gatewayPid));
+      assert.ok(input.paintedAtMs >= killedAtMs && input.paintedAtMs - killedAtMs <= 75_000);
+    } else assert.equal(upstream500.length, 0);
+    assert.deepEqual(context.failures, []);
+    context.receipt = {
+      ...validation, scopes: { main: [today.result, week.result], otherTabs: ["all", "all"] }, scopeAppendOverlap, costs,
+      sharedPollBrowser: { passed: true, mainPage: 0, mainPresetAtConfirmation, confirmedAtMs: Date.now(), mainHasNewAllResponse: false, input,
+        sameTabResponse: { page: body.page, sequence: body.sequence, preset: body.preset, usageVersion: body.usageVersion } },
+      command, kill: point ? { signal: "SIGKILL", ...context.controlledExits[0], hookReceipt: parked, frame: killFrame } : undefined,
+      executorExit, workerRebuilt, actual500, upstream500,
+      automaticRecovery: { passed: true, sharedWaiter, noNavigationAfterKill: true,
+        allPagesPaintedAtMs: Math.max(...validation.pages.map(row => row.paintedAtMs)),
+        elapsedMs: Math.max(...validation.pages.map(row => row.paintedAtMs)) - (killedAtMs ?? changedAtMs) },
+    };
+    context.passed = true;
+  });
 }
 
 for (const point of ["before-commit", "after-commit-before-notify"]) {

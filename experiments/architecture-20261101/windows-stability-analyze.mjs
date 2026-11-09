@@ -224,7 +224,8 @@ function distributions(inputs) {
 
 function mergeInput(ledger, row, conflicts) {
   const previous = ledger.get(row.eventId);
-  for (const key of ["operation", "kind", "category", "ordinal", "filePath", "landedAtMs", "paintedAtMs", "landingToPaintMs", "usageVersion", "responseSequence", "outputDelta"]) {
+  for (const key of ["operation", "kind", "category", "ordinal", "filePath", "landedAtMs", "paintedAtMs", "landingToPaintMs", "usageVersion", "responseSequence", "outputDelta",
+    "viewVisibleAtMs", "viewLandingToPaintMs", "viewUsageVersion", "viewResponseSequence", "viewPreset", "viewPage"]) {
     if (previous?.[key] !== undefined && row[key] !== undefined && previous[key] !== row[key]) {
       conflicts.push({ eventId: row.eventId, key, before: previous[key], after: row[key] });
     }
@@ -277,7 +278,7 @@ function sseRecovery(events, phases, reliability) {
   return result;
 }
 
-function phaseAnalysis(label, mode, schedule, result, ledger, events, reliability, performance, restartEndurance = false, baseAppendCount = null) {
+function phaseAnalysis(label, mode, schedule, result, ledger, events, reliability, performance, restartEndurance = false, baseAppendCount = null, selectedViewClock = false) {
   const id = `${label}/${mode}`, expected = canonicalSchedule(mode, label, schedule?.eventIdPrefix);
   const expectedOrdinalOffset = baseAppendCount ?? (mode === "endurance" ? stabilitySchedule("diagnostic", label).appendCount + (restartEndurance ? 3 : 0) : 0);
   const ordinalOffsetMatches = schedule?.ordinalOffset === expectedOrdinalOffset;
@@ -331,10 +332,11 @@ function phaseAnalysis(label, mode, schedule, result, ledger, events, reliabilit
   });
   check(reliability, `${id}/exact-business`, verdict(Boolean(result?.oracle), result?.oracle?.passed === true &&
     result.oracle.retry !== true && result.oracle.skipped === undefined), result?.oracle ?? null);
-  const unpublished = inputs.filter(row => !finite(row.paintedAtMs)).map(row => row.eventId);
-  const overdue = inputs.filter(row => finite(row.landingToPaintMs) &&
-    row.landingToPaintMs > (row.category === "ordinary" ? 120000 : 300000)).map(row => row.eventId);
-  check(reliability, `${id}/publication-deadlines`, verdict(Boolean(result), !unpublished.length && !overdue.length && !missing.length), { unpublished, overdue });
+  const paintedField=selectedViewClock?"viewVisibleAtMs":"paintedAtMs",latencyField=selectedViewClock?"viewLandingToPaintMs":"landingToPaintMs";
+  const unpublished = inputs.filter(row => !finite(row[paintedField])).map(row => row.eventId);
+  const overdue = inputs.filter(row => finite(row[latencyField]) &&
+    row[latencyField] > (row.category === "ordinary" ? 120000 : 300000)).map(row => row.eventId);
+  check(reliability, `${id}/publication-deadlines`, verdict(Boolean(result), !unpublished.length && !overdue.length && !missing.length), { clock:selectedViewClock?"versioned-selected-view":"all", unpublished, overdue });
   check(reliability, `${id}/drain`, verdict(finite(result?.drainMs), result?.drainMs <= 300000), { drainMs: result?.drainMs ?? null, limitMs: 300000 });
   const invalidLatency = inputs.filter(row => finite(row.paintedAtMs) && (!finite(row.landingToPaintMs) || row.landingToPaintMs < 0 ||
     Math.abs(row.paintedAtMs - row.landedAtMs - row.landingToPaintMs) > 1)).map(row => row.eventId);
@@ -345,12 +347,14 @@ function phaseAnalysis(label, mode, schedule, result, ledger, events, reliabilit
       : row.timingInterruption ? "incomplete" : finite(row.landingToPaintMs) ? "passed" : "not-executed";
     check(performance, `${id}/${row.eventId}`, status,
       { source: row.kind, category: row.category, actualMs: row.landingToPaintMs ?? null, limitMs, timingInterruption: row.timingInterruption ?? null });
+    if(selectedViewClock)check(performance,`${id}/selected-view/${row.eventId}`,verdict(finite(row.viewLandingToPaintMs),row.viewLandingToPaintMs<=limitMs),
+      {source:row.kind,category:row.category,preset:row.viewPreset,actualMs:row.viewLandingToPaintMs??null,limitMs});
   }
   if (mode === "endurance") {
     const start = schedule?.startedAtMs;
     const continuous = inputs.filter(row => planned.get(row.eventId).inputClass === "continuous");
-    const publications = continuous.filter(row => finite(start) && row.paintedAtMs >= start + 301 * 60000 && row.paintedAtMs < start + 311 * 60000);
-    const versions = new Set(publications.map(row => row.usageVersion).filter(Boolean));
+    const publications = continuous.filter(row => finite(start) && row[paintedField] >= start + 301 * 60000 && row[paintedField] < start + 311 * 60000);
+    const versions = new Set(publications.map(row => selectedViewClock?row.viewUsageVersion:row.usageVersion).filter(Boolean));
     check(reliability, `${id}/continuous-intermediate-publication`, verdict(Boolean(result), continuous.length === 120 && versions.size > 1),
       { planned: 120, landed: continuous.length, visibleDuringWindow: publications.length, versions: versions.size,
         eventIds: publications.map(row => row.eventId) });

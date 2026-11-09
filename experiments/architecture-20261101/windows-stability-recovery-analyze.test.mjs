@@ -25,18 +25,19 @@ function sample(atMs, { bytes = 100 * MiB, handles = 100, tempFiles = 0, running
   temp: { complete: true, observedBytes: tempFiles * 16, fileCount: tempFiles } };
 }
 
-async function fixture(t) {
+async function fixture(t,{multitab=false}={}) {
+  const baseCount=multitab?82:48;
   const root = await mkdtemp(path.join(tmpdir(), "windows-recovery-analyze-")), directory = path.join(root, "two-years");
   t.after(async () => {
     assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()));
     assert.ok(path.basename(root).startsWith("windows-recovery-analyze-"));
     await rm(root, { recursive: true, force: true });
   });
-  const schedule = { ...stabilitySchedule("endurance"), startedAtMs: start, ordinalOffset: 48 };
+  const schedule = { ...stabilitySchedule("endurance"), startedAtMs: start, ordinalOffset: baseCount };
   const end = start + 8 * hour + 10000;
   const born = { event: "process-born", pid: 42, instance: "gateway", role: "gateway", atMs: start - 10000, startedAtMs: start - 10000 };
   const controls = [born], events = [], inputs = [], mutations = [], resourceRows = [], idle = [];
-  const counts = Object.fromEntries(STABILITY_KINDS.map(kind => [kind, 8]));
+  const counts = Object.fromEntries(STABILITY_KINDS.map(kind => [kind,Array.from({length:baseCount},(_,i)=>STABILITY_KINDS[i%6]).filter(value=>value===kind).length]));
   events.push({ type: "response", preset: "all", atMs: start - 2000, sequence: 1, usageVersion: "old47", counts: { ...counts, dsh: 7 } },
     { type: "response", preset: "all", atMs: start - 1000, sequence: 2, usageVersion: "baseline48", counts: { ...counts } });
   let revision = 1, sequence = 2;
@@ -46,7 +47,7 @@ async function fixture(t) {
       const kind = event.kind ?? "zcode", landedAtMs = start + event.atMs;
       if (event.type === "append") counts[kind]++;
       const input = { eventId: event.id, operation: event.type, kind, category: event.category,
-        ordinal: event.type === "append" ? event.ordinal + 48 : ++revision, outputDelta: event.outputDelta,
+        ordinal: event.type === "append" ? event.ordinal + baseCount : ++revision, outputDelta: event.outputDelta,
         id: event.id, identity: event.id, filePath: `${kind}.log`, kindCount: counts[kind], expectedEventDelta: event.type === "append" ? 1 : 0,
         expectedDelta: event.type === "append" ? 160 : event.outputDelta,
         landedAtMs, paintedAtMs: landedAtMs + 1000, landingToPaintMs: 1000, usageVersion: event.id, responseSequence: ++sequence };
@@ -87,8 +88,8 @@ async function fixture(t) {
     { type: "oracle", name: "reopen", atMs: end, result: { passed: true } });
   controls.push({ ...born, event: "process-exit", atMs: end + 1000, code: 0, usage: { maxRSS: 100 * 1024 } });
   for (let i = 0; i < 8; i++) { const atMs = start + i * hour + 61000; idle.push({ atMs }); resourceRows.push(sample(atMs)); }
-  const base = { appendCount: 48, revisionCount: 1, entries: [
-    ...Array.from({ length: 48 }, (_, i) => ({ operation: "append", kind: STABILITY_KINDS[i % 6], ordinal: i + 1 })),
+  const base = { appendCount: baseCount, revisionCount: 1, entries: [
+    ...Array.from({ length: baseCount }, (_, i) => ({ operation: "append", kind: STABILITY_KINDS[i % 6], ordinal: i + 1 })),
     { operation: "revision", kind: "zcode", ordinal: 1 },
   ] };
   const phase = { mode: "endurance", label: "two-years", passed: true, inputs, errors: [],
@@ -99,11 +100,13 @@ async function fixture(t) {
     events: path.join(directory, "events.ndjson"), mutations: path.join(directory, "mutations/mutations.ndjson"),
     controls: path.join(directory, "control/events-42.ndjson"), resources: path.join(directory, "resources/resources.ndjson"),
     summary: path.join(directory, "resource-summary.json"), closed: path.join(directory, "closed.json"), reopen: path.join(directory, "final-reopen.json") };
-  await save(files.run, { kind: "windows-stability-recovery", baseAppendCount: 48, baseRevisionCount: 1,
+  await save(files.run, { kind: multitab?"windows-multitab":"windows-stability-recovery",mode:"endurance", baseAppendCount: baseCount, baseRevisionCount: 1,
     passed: true, phases: [{ mode: "endurance", label: "two-years", passed: true }], startedAtMs: start - 10000, endedAtMs: end + 2000 });
-  await save(files.preflight, { passed: true, groups: ["before-commit", "after-commit", "sse", "resources"].map(name => ({ name, passed: true })), toolHashes: { runner: "a".repeat(64) } });
-  await save(files.recovery, { passed: true, wallMs: 1000, expectedAppends: 48, beforeRecent: 47, afterRecent: 48,
+  await save(files.preflight, { passed: true, baseAppendCount:baseCount, groups: (multitab?["combined-normal","combined-before","combined-after"]:["before-commit", "after-commit", "sse", "resources"]).map(name => ({ name, passed: true })), toolHashes: { runner: "a".repeat(64) } });
+  await save(files.recovery, { passed: true, wallMs: 1000, expectedAppends: baseCount, beforeRecent: multitab?baseCount:47, afterRecent: baseCount,
     samePrimaryIdentity: true, sameProjectionFile: true, coldCopied: 0, fullRebuild: false, oracle: { passed: true } });
+  if(multitab)await save(path.join(directory,"pending-recovery.json"),{passed:true,wallMs:1000,expectedAppends:80,beforeRecent:79,afterRecent:80,
+    samePrimaryIdentity:true,sameProjectionFile:true,coldCopied:0,fullRebuild:false,oracle:{passed:true,retry:false}});
   await save(files.base, base);
   await save(files.schedule, schedule);
   await save(files.phase, phase);
@@ -139,6 +142,43 @@ test("complete recovery and canonical new 384+2 pass independently of prior curr
   assert.equal(result.contexts[0].control.sourceProgress.reduce((n, row) => n + row.observedNetAdded, 0), 384);
   assert.equal(result.historicalResults.length, 2);
   assert.ok(result.historicalResults.every(row => row.passed === undefined));
+});
+
+test("multitab continuation keeps all 82 prior appends outside the new 384 and requires the actual 79-to-80 recovery",async t=>{
+  const f=await fixture(t,{multitab:true});let result=await f.analyze();
+  assert.equal(result.passed,true,JSON.stringify([result.reliability,result.resource,result.performance].flatMap(row=>row.checks.filter(check=>check.status!=="passed"))));
+  assert.equal(result.contexts[0].inputs.filter(row=>row.operation==="append").length,384);
+  assert.ok(result.contexts[0].inputs.filter(row=>row.operation==="append").every(row=>row.ordinal>=83));
+  const file=path.join(f.directory,"pending-recovery.json"),original=JSON.parse(await readFile(file,"utf8"));
+  await save(file,{...original,beforeRecent:80});result=await f.analyze();
+  assert.equal(gate(result,"reliability","two-years/retained-pending-recovery").status,"failed");
+  await save(file,original);
+  const run=JSON.parse(await readFile(f.files.run,"utf8"));await save(f.files.run,{...run,kind:"windows-stability-recovery"});
+  assert.equal((await f.analyze()).passed,false,"old protocol must retain its fixed original base");
+});
+
+test("observation v2 keeps selected-range publication and all-view speed independent and rejects unsupported range proofs",async t=>{
+  const f=await fixture(t,{multitab:true}),run=JSON.parse(await readFile(f.files.run,"utf8"));await save(f.files.run,{...run,observationVersion:2});
+  const target=f.inputs.find(row=>row.kind==="workbuddy"&&row.category==="ordinary");
+  const inputs=f.inputs.map(row=>({...row,timestampMs:row.landedAtMs,viewVisibleAtMs:row.paintedAtMs,viewLandingToPaintMs:row.landingToPaintMs,
+    viewUsageVersion:row.usageVersion,viewResponseSequence:row.responseSequence,viewPage:0,viewPreset:"all"}));
+  const selected=inputs.find(row=>row.eventId===target.eventId);Object.assign(selected,{paintedAtMs:selected.landedAtMs+126027,landingToPaintMs:126027,
+    viewVisibleAtMs:selected.landedAtMs+46027,viewLandingToPaintMs:46027,viewPreset:"week"});
+  const byId=new Map(inputs.map(row=>[row.eventId,row]));
+  const views=inputs.map(row=>({...row,type:"view-visible",atMs:row.viewVisibleAtMs}));
+  const responses=inputs.map(row=>({type:"response",page:0,sequence:row.viewResponseSequence,preset:row.viewPreset,
+    usageVersion:row.viewUsageVersion,atMs:row.viewVisibleAtMs-1,counts:{[row.kind]:row.kindCount},revisionCount:row.ordinal,
+    range:{start:new Date(row.landedAtMs-1000).toISOString(),end:new Date(row.landedAtMs+1000).toISOString()}}));
+  const recorded=f.events.map(row=>row.type==="input-visible"?{...row,...byId.get(row.eventId)}:row);
+  await save(f.files.phase,{...f.phase,inputs});await ndjson(f.files.events,[...recorded,...views,...responses]);
+  let result=await f.analyze();assert.equal(result.reliability.passed,true,JSON.stringify(result.reliability.checks.filter(row=>row.status!=="passed")));
+  assert.equal(gate(result,"performance",`two-years/endurance/${target.eventId}`).status,"failed","126s all result still fails its original speed target");
+  const selectedResponse=responses.find(row=>row.sequence===selected.viewResponseSequence);
+  selectedResponse.range.start=new Date(selected.timestampMs+1).toISOString();await ndjson(f.files.events,[...recorded,...views,...responses]);
+  result=await f.analyze();assert.equal(gate(result,"reliability","two-years/selected-view-evidence").status,"failed");
+  selectedResponse.range.start=new Date(selected.timestampMs-1).toISOString();delete selectedResponse.counts;
+  await ndjson(f.files.events,[...recorded,...views,...responses]);
+  assert.equal(gate(await f.analyze(),"reliability","two-years/selected-view-evidence").status,"failed");
 });
 
 test("missing evidence, including recovery, never accepts and an absent root remains analyzable", async t => {
