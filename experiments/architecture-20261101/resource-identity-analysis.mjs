@@ -131,6 +131,21 @@ export async function analyzeWithResourceIdentity(stage, validationFile, outputF
   });
 }
 
+export function resourceSnapshotRows(sample) {
+  const rows = [...sample.processes];
+  for (const tombstone of sample.tombstones ?? []) {
+    const captured = tombstone.resourceSnapshot;
+    if (!captured) continue;
+    assert.ok(tombstone.pid > 0 && Number.isFinite(Date.parse(captured.startTimeUtc)), "Invalid exited snapshot identity");
+    assert.equal(tombstone.identityEvidence?.pid, tombstone.pid);
+    rows.push({ ...captured, pid: tombstone.pid, role: tombstone.role, name: tombstone.name,
+      cpuAvailable: Number.isFinite(captured.cpuSeconds),
+      ioAvailable: Number.isFinite(captured.logicalReadBytes) && Number.isFinite(captured.logicalWriteBytes),
+      identityEvidence: tombstone.identityEvidence, liveness: tombstone.reason });
+  }
+  return rows;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const result = await analyzeWithResourceIdentity(...process.argv.slice(2));
   console.log(JSON.stringify({ stage: result.stage, passed: result.passed, issues: result.issues, resourceIdentityCorrection: result.resourceIdentityCorrection }));

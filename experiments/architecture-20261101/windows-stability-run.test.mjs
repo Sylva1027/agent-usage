@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { LineTail,visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions } from "./windows-stability-run.mjs";
+import { EventEmitter } from "node:events";
+import { LineTail,visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,
+  registerControlledExit,matchingControlledExit,waitUsageResponse,attachPage } from "./windows-stability-run.mjs";
+
+async function removeFixture(directory){
+  assert.equal(path.dirname(path.resolve(directory)),path.resolve(tmpdir()));
+  await rm(directory,{recursive:true,force:true});
+}
 
 test("concurrent source publication is checked by source counts rather than global append order",()=>{
   const kinds=["codex","dsh","claude","workbuddy","zcode","opencode"];
@@ -20,7 +27,7 @@ test("concurrent source publication is checked by source counts rather than glob
 });
 
 test("line tail preserves split UTF-8 and incomplete records and rejects truncation",async t=>{
-  const root=await mkdtemp(path.join(tmpdir(),"stability-tail-"));t.after(()=>rm(root,{recursive:true,force:true}));
+  const root=await mkdtemp(path.join(tmpdir(),"stability-tail-"));t.after(()=>removeFixture(root));
   const file=path.join(root,"stream.ndjson"),tail=new LineTail(file),bytes=Buffer.from('完整\nsecond\n');
   await writeFile(file,bytes.subarray(0,2));assert.deepEqual(await tail.read(),[]);
   await appendFile(file,bytes.subarray(2,9));assert.deepEqual(await tail.read(),["完整"]);
@@ -46,7 +53,7 @@ test("a live executor is active work; the same memory fails only after a real qu
 });
 
 test("idle continuation removes recorded query activity but retains and rejects real idle excess",async t=>{
-  const root=await mkdtemp(path.join(tmpdir(),"stability-idle-"));t.after(()=>rm(root,{recursive:true,force:true}));
+  const root=await mkdtemp(path.join(tmpdir(),"stability-idle-"));t.after(()=>removeFixture(root));
   await mkdir(path.join(root,"resources"));
   const now=Date.now(),bytes=270*1048576;
   await writeFile(path.join(root,"events.ndjson"),JSON.stringify({type:"browser",kind:"fetch-start",page:1,id:1,url:"/api/usage",clock:now})+"\n");
@@ -57,15 +64,32 @@ test("idle continuation removes recorded query activity but retains and rejects 
 });
 
 test("paint evidence waits for the already-arrived response to finish validation and persistence",async t=>{
-  const directory=await mkdtemp(path.join(tmpdir(),"stability-paint-"));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const directory=await mkdtemp(path.join(tmpdir(),"stability-paint-"));t.after(()=>removeFixture(directory));
   const clock=Date.now(),input={operation:"append",kind:"workbuddy",kindCount:1,landedAtMs:clock-1000};
   const context={directory,bodies:[],inputs:[input],responseTasks:new Set()};
   let complete;
-  const pending=new Promise(resolve=>complete=()=>{context.bodies.push({total:160,preset:"all",atMs:clock-1,sequence:1,counts:{workbuddy:1},usageVersion:"new"});resolve();});
+  const pending=new Promise(resolve=>complete=()=>{context.bodies.push({page:0,total:160,preset:"all",atMs:clock-1,sequence:1,counts:{workbuddy:1},usageVersion:"new"});resolve();});
   context.responseTasks.add(pending);
   const page={isClosed:()=>false,evaluate:async()=>{setImmediate(complete);return {dropped:0,rows:[{kind:"paint",clock,total:"160"}]};}};
   context.pages=[page];context.ui={page};
   await pollBrowser(context);assert.equal(input.paintedAtMs,clock);assert.equal(input.landingToPaintMs,1000);
+});
+
+test("an all view in another tab confirms an input while the main tab changes scope, without borrowing another tab's response",async t=>{
+  const directory=await mkdtemp(path.join(tmpdir(),"stability-multitab-"));t.after(()=>removeFixture(directory));
+  const clock=Date.now(),input={operation:"append",kind:"codex",kindCount:1,landedAtMs:clock-75747};
+  let paintPage=1;
+  const page=index=>({isClosed:()=>false,evaluate:async()=>({dropped:0,rows:paintPage===index?[{kind:"paint",clock,total:"160"}]:[]})});
+  const pages=[page(0),page(1)],context={directory,pages,ui:{page:pages[0]},inputs:[input],responseTasks:new Set(),
+    bodies:[{page:0,total:160,preset:"all",atMs:clock-1,sequence:1,counts:{codex:1},usageVersion:"other-tab"}]};
+  await pollBrowser(context);assert.equal(input.paintedAtMs,undefined,"another tab's matching total is insufficient");
+  context.bodies.push({...context.bodies[0],page:1,preset:"today",sequence:2});
+  await pollBrowser(context);assert.equal(input.paintedAtMs,undefined,"a selected range cannot certify the all view");
+  context.bodies.push({...context.bodies[0],page:1,usageVersion:null,sequence:3});
+  await pollBrowser(context);assert.equal(input.paintedAtMs,undefined,"an uncertified response is insufficient");
+  context.bodies.push({...context.bodies[0],page:1,usageVersion:"same-tab",sequence:4});
+  await pollBrowser(context);assert.equal(input.paintedAtMs,clock);assert.equal(input.paintedPage,1);
+  assert.equal(input.landingToPaintMs,75747);assert.equal(input.responseSequence,4);assert.equal(input.usageVersion,"same-tab");
 });
 
 test("range membership follows the mutation's actual session when a file contains multiple sessions",()=>{
@@ -79,4 +103,45 @@ test("range membership follows the mutation's actual session when a file contain
     const entry={kind:"claude",operation:"append",timestampMs:15,expectedDelta:160,deltaTokens:{input:140,cached:30,output:20,reasoning:5}};
     assert.equal(expectedWindow(context,body,{entries:[entry]}).sessions,2);
   }finally{seed.close();}
+});
+
+test("only in-flight requests rejected by a recorded controlled exit enter recovery observation",()=>{
+  const now=Date.now(),old={},fresh={},context={requestStarts:new WeakMap([[old,now-10],[fresh,now+10]])};
+  registerControlledExit(context,{pid:123,point:"before-commit",commandId:"kill-1",killedAtMs:now,gatewayPid:1});
+  const response=request=>({status:()=>500,request:()=>request});
+  assert.equal(matchingControlledExit(context,response(old),{code:"EXECUTOR_EXITED"}).commandId,"kill-1");
+  assert.equal(matchingControlledExit(context,response(fresh),{code:"EXECUTOR_EXITED"}),null);
+  assert.equal(matchingControlledExit(context,response(old),{code:"SQLITE_ERROR"}),null);
+  context.controlledExits[0].killedAtMs=now-300_001;
+  assert.equal(matchingControlledExit(context,response(old),{code:"EXECUTOR_EXITED"}),null);
+});
+
+test("one response listener survives the controlled 500 and observes spontaneous recovery",async t=>{
+  const directory=await mkdtemp(path.join(tmpdir(),"stability-response-"));t.after(()=>removeFixture(directory));
+  const request={},context={directory,requestStarts:new WeakMap([[request,Date.now()-10]])};
+  registerControlledExit(context,{pid:123,point:"after-commit-before-notify",commandId:"kill-1",killedAtMs:Date.now(),gatewayPid:1});
+  const response=(status,body)=>({status:()=>status,url:()=>"http://localhost/api/usage?preset=all",request:()=>request,json:async()=>body});
+  const failed=response(500,{code:"EXECUTOR_EXITED"}),recovered=response(200,{summary:{totals:{total:160}}});let listeners=0;
+  const page={waitForResponse:async predicate=>{listeners++;assert.equal(await predicate(failed),false);assert.equal(await predicate(recovered),true);return recovered;}};
+  assert.equal(await waitUsageResponse(context,page,"all",160,1000),recovered);assert.equal(listeners,1);
+  await assert.rejects(()=>waitUsageResponse({...context,controlledExits:[]},page,"all",160,1000),/EXECUTOR_EXITED/);
+});
+
+test("uncontrolled background usage errors remain a run failure",async t=>{
+  const directory=await mkdtemp(path.join(tmpdir(),"stability-error-"));t.after(()=>removeFixture(directory));
+  const context={directory,failures:[],responseTasks:new Set()},page=new EventEmitter(),request={url:()=>"http://localhost/api/usage?preset=all"};
+  await attachPage(context,page);page.emit("request",request);
+  page.emit("response",{status:()=>500,url:request.url,request:()=>request,json:async()=>({code:"EXECUTOR_EXITED"})});
+  await Promise.all(context.responseTasks);assert.equal(context.failures.length,1);assert.match(context.failures[0].message,/Unexpected usage HTTP error/);
+});
+
+test("an executor exit between snapshot and liveness confirmation cannot lower the active memory gate",async()=>{
+  const now=Date.now(),gateway={pid:10,name:"node.exe",role:"service",workingSetBytes:200*1048576};
+  const sample={atUnixMs:now,service:{processCount:1,workingSetBytes:gateway.workingSetBytes},browser:{workingSetBytes:0},processes:[gateway],
+    tombstones:[{pid:11,role:"service",name:"node.exe",reason:"exited",identityEvidence:{pid:11},resourceSnapshot:{
+      startTimeUtc:new Date(now-1000).toISOString(),workingSetBytes:320*1048576,reportedPeakWorkingSetBytes:330*1048576,cpuSeconds:1,logicalReadBytes:1,logicalWriteBytes:1}}]};
+  const context={inputs:[],actionTasks:new Set(),responseTasks:new Set(),lastActivityAtMs:now,resourceTails:[{servicePid:10,read:async()=>[JSON.stringify(sample)]}],
+    resourceSummary:{samples:0,sampledPeakBytes:0,browserPeakBytes:0,cpuSeconds:0,readBytes:0,writeBytes:0,observerCpuSeconds:0,peakStorageBytes:0,peakWalBytes:0,excluded:[],idle:[]}};
+  await assert.rejects(()=>pollResources(context),/Service tree exceeded 512/);
+  assert.equal(context.resourceSummary.sampledPeakBytes,520*1048576);
 });

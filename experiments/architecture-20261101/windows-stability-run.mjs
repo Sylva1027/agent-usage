@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createReadStream,createWriteStream } from "node:fs";
 import { appendFile, copyFile, cp, mkdir, open, readFile, readdir, rename, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -9,12 +10,12 @@ import { fileURLToPath,pathToFileURL } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { createInterface } from "node:readline";
 import { ROOT,BASE,read,datasetOptions,diskBudget } from "./c1-datasets.mjs";
-import { browser,stop,sampling,responseFor,scope,expectedAll } from "./c1-run.mjs";
+import { browser,stop,expectedAll } from "./c1-run.mjs";
 import { waitForServer,painted } from "./b2-page-diagnostic.mjs";
 import { projectionStorage } from "./c1-telemetry.mjs";
 import { prepareStabilityMutations,appendStabilityMutation,reviseStabilityMutation,restoreStabilityMutations } from "./windows-stability-mutations.mjs";
 import { stabilitySchedule,STABILITY_KINDS,quantiles,protectionPassed } from "./windows-stability-schedule.mjs";
-import { correctResourceIdentity,parseResourceSample } from "./resource-identity-analysis.mjs";
+import { correctResourceIdentity,parseResourceSample,resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 import { measureChild } from "./archive-compaction-packages.mjs";
 
 const SELF=fileURLToPath(import.meta.url),HERE=path.dirname(SELF);
@@ -22,11 +23,18 @@ const SERVER=path.join(HERE,"windows-stability-server.mjs");
 export const RESULT=path.join(ROOT,"output/windows-stability-20261109");
 const FORMAL=path.join(RESULT,"formal-v2");
 const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
+export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
 const channelKind={Codex:"codex",DSH:"dsh",Claude:"claude",WorkBuddy:"workbuddy",ZCode:"zcode",OpenCode:"opencode"};
 let activeContext;
+
+function createContext(values){
+  return {...values,rangeCache:new Map(),inputs:[],bodies:[],responseTasks:new Set(),failures:[],pages:[],responseSequence:0,navigationSequence:0,
+    resourceTails:[],resourceSummary:{samples:0,sampledPeakBytes:0,browserPeakBytes:0,writeBytes:0,readBytes:0,cpuSeconds:0,observerCpuSeconds:0,peakStorageBytes:0,peakWalBytes:0,idle:[],excluded:[]},
+    actionTasks:new Set(),oracleChildren:new Set(),lastActivityAtMs:Date.now(),serverGeneration:0,uiTail:Promise.resolve(),closing:false};
+}
 
 export class LineTail {
   offset=0;rest="";decoder=new StringDecoder("utf8");
@@ -144,19 +152,59 @@ function checkResponse(context,body) {
   return visible;
 }
 
+function registerControlledExit(context,receipt){
+  assert.ok(Number.isSafeInteger(receipt.pid)&&receipt.pid>0&&Number.isFinite(receipt.killedAtMs));
+  assert.ok(receipt.commandId&&["before-commit","after-commit-before-notify"].includes(receipt.point));
+  (context.controlledExits??=[]).push({...receipt});
+}
+
+function matchingControlledExit(context,response,body){
+  if(response.status()!==500||body?.code!=="EXECUTOR_EXITED")return null;
+  const start=context.requestStarts?.get(response.request());
+  if(!Number.isFinite(start))return null;
+  return [...(context.controlledExits??[])].reverse().find(row=>start<=row.killedAtMs&&Date.now()-row.killedAtMs<=300_000)??null;
+}
+
+async function waitUsageResponse(context,page,preset,total,timeoutMs=300_000){
+  return page.waitForResponse(async response=>{
+    const url=new URL(response.url());
+    if(url.pathname!=="/api/usage"||url.searchParams.get("preset")!==preset)return false;
+    if(response.status()===200)return total===undefined||(await response.json()).summary?.totals?.total===total;
+    const body=await response.json(),fault=matchingControlledExit(context,response,body);
+    assert.ok(fault,JSON.stringify({status:response.status(),body}));
+    await log(context,"waiting-for-fault-recovery",{commandId:fault.commandId,pid:fault.pid,preset});return false;
+  },{timeout:timeoutMs});
+}
+
+async function stabilityScope(context,page,preset,total,directory,name=preset){
+  const startedAtMs=Date.now(),pending=waitUsageResponse(context,page,preset,total);void pending.catch(()=>{});
+  await page.locator(`[data-preset="${preset}"]`).click();
+  const response=await pending,body=await response.json();
+  await painted(page,body.summary.totals.total,300_000);
+  const result={preset,wallMs:Date.now()-startedAtMs,startedAtMs,endedAtMs:Date.now(),total:body.summary.totals.total,
+    events:body.summary.eventCount,cache:response.headers()["x-summary-cache"]};
+  await save(path.join(directory,`${name}.json`),body);return {result,body};
+}
+
 async function attachPage(context,page) {
+  context.requestStarts??=new WeakMap();
   page.on("pageerror",error=>context.failures.push({atMs:Date.now(),type:"pageerror",message:String(error)}));
-  page.on("request",request=>{if(new URL(request.url()).pathname==="/api/usage")context.lastActivityAtMs=Date.now();});
+  page.on("request",request=>{if(new URL(request.url()).pathname==="/api/usage"){context.lastActivityAtMs=Date.now();context.requestStarts.set(request,Date.now());}});
   page.on("response",response=>{
     const url=new URL(response.url());if(url.pathname!=="/api/usage")return;
     context.lastActivityAtMs=Date.now();
     const pending=(async()=>{
       const receivedAtMs=Date.now();
-      if(response.status()!==200){await log(context,"http-error",{status:response.status(),url:url.pathname+url.search});return;}
+      if(response.status()!==200){
+        const body=await response.json(),fault=matchingControlledExit(context,response,body);
+        await log(context,"http-error",{status:response.status(),code:body.code,url:url.pathname+url.search,
+          requestStartedAtMs:context.requestStarts.get(response.request())??null,controlledFaultId:fault?.commandId??null});
+        assert.ok(fault,`Unexpected usage HTTP error: ${JSON.stringify(body)}`);return;
+      }
       const body=await response.json();
       const visible=checkResponse(context,body),sequence=++context.responseSequence;
       await save(path.join(context.directory,"responses",`${String(sequence).padStart(5,"0")}.json`),body);
-      const row={atMs:receivedAtMs,sequence,preset:body.summary.range.preset,total:body.summary.totals.total,
+      const row={atMs:receivedAtMs,page:context.pages.indexOf(page),sequence,preset:body.summary.range.preset,total:body.summary.totals.total,
         usageVersion:body.usageVersion,fingerprint:body.fingerprint,counts:visible.counts,revisionCount:visible.revisionCount,body};
       context.bodies.push(row);if(context.bodies.length>32)context.bodies.shift();
       context.lastBody=row;
@@ -185,11 +233,11 @@ async function launchServer(context,suffix="",port=0) {
 }
 
 async function loadPage(context,page=context.ui.page) {
-  const pending=responseFor(page,"today");void pending.catch(()=>{});
+  const pending=waitUsageResponse(context,page,"today");void pending.catch(()=>{});
   await page.goto(context.server.ready.url,{waitUntil:"domcontentloaded"});
   const response=await pending;assert.equal(response.status(),200,await response.text());
   await painted(page,(await response.json()).summary.totals.total,1_800_000);
-  await scope(page,"all",undefined,context.directory,`initial-all-${++context.navigationSequence}`);
+  await stabilityScope(context,page,"all",context.requiredAllTotal,context.directory,`initial-all-${++context.navigationSequence}`);
 }
 
 async function pollBrowser(context) {
@@ -202,15 +250,16 @@ async function pollBrowser(context) {
     await Promise.all(context.responseTasks);
     for(const row of observed.rows){
       await log(context,"browser",{page:context.pages.indexOf(page),...row});
-      if(page!==context.ui.page||row.kind!=="paint")continue;
+      if(row.kind!=="paint")continue;
       const total=Number(String(row.total).replace(/[^0-9]/g,""));
-      const body=[...context.bodies].reverse().find(value=>value.total===total&&value.preset==="all"&&value.atMs<=row.clock+1000);
+      const pageIndex=context.pages.indexOf(page);
+      const body=[...context.bodies].reverse().find(value=>value.page===pageIndex&&value.total===total&&value.preset==="all"&&value.usageVersion&&value.atMs<=row.clock+1000);
       if(!body)continue;
       for(const input of context.inputs){
         if(input.paintedAtMs||row.clock<input.landedAtMs)continue;
         const included=input.operation==="append"?body.counts[input.kind]>=input.kindCount:
           body.revisionCount>=input.revisionIndex&&body.usageVersion!==input.beforeVersion;
-        if(included){Object.assign(input,{paintedAtMs:row.clock,landingToPaintMs:row.clock-input.landedAtMs,responseSequence:body.sequence,usageVersion:body.usageVersion});context.lastActivityAtMs=Math.max(context.lastActivityAtMs,row.clock);await log(context,"input-visible",input);}
+        if(included){Object.assign(input,{paintedAtMs:row.clock,paintedPage:pageIndex,landingToPaintMs:row.clock-input.landedAtMs,responseSequence:body.sequence,usageVersion:body.usageVersion});context.lastActivityAtMs=Math.max(context.lastActivityAtMs,row.clock);await log(context,"input-visible",input);}
       }
     }
   }
@@ -238,7 +287,7 @@ async function verifyFull(context,name) {
   child.stdout.pipe(createWriteStream(path.join(context.directory,`oracle-${label}.log`)));child.stderr.pipe(createWriteStream(path.join(context.directory,`oracle-${label}-stderr.log`)));
   const code=await new Promise((resolve,reject)=>{child.once("exit",resolve);child.once("error",reject);});assert.equal(code,0,`Independent oracle ${name} failed`);
   const receipt=await read(result);await log(context,"oracle",{name,attempt,result:receipt});
-  if(receipt.retry){await scope(context.ui.page,"all",undefined,context.directory,`oracle-retry-${label}`);continue;}
+  if(receipt.retry){await stabilityScope(context,context.ui.page,"all",undefined,context.directory,`oracle-retry-${label}`);continue;}
   assert.equal(receipt.passed,true);return receipt;
   }
   throw Error(`Oracle publication did not stabilize: ${name}`);
@@ -340,10 +389,7 @@ async function prepareContext(label,{smoke=false,resume=false,restartEndurance=f
   const seed=new DatabaseSync(path.join(seedDirectory,"usage-index.sqlite"),{readOnly:true});
   const ledger=resume?await recoverAppendLedger(directory,label==="year"?7:restartEndurance?16:5,restartEndurance):await prepareStabilityMutations(dataset,path.join(directory,"mutations"),{databaseFile:path.join(seedDirectory,"usage-index.sqlite"),runtimeDirectory:runtime.directory});
   const selectedSessions=mutationSessions(ledger,seed);
-  const context={directory,state,control,seed,seedDirectory,ledger,selectedSessions,runtime:runtime.directory,dataset,smoke,
-    rangeCache:new Map(),inputs:[],bodies:[],responseTasks:new Set(),failures:[],pages:[],responseSequence:0,navigationSequence:0,
-    resourceTails:[],resourceSummary:{samples:0,sampledPeakBytes:0,browserPeakBytes:0,writeBytes:0,readBytes:0,cpuSeconds:0,observerCpuSeconds:0,peakStorageBytes:0,peakWalBytes:0,idle:[],excluded:[]},
-    actionTasks:new Set(),oracleChildren:new Set(),lastActivityAtMs:Date.now(),serverGeneration:0,uiTail:Promise.resolve(),closing:false};
+  const context=createContext({directory,state,control,seed,seedDirectory,ledger,selectedSessions,runtime:runtime.directory,dataset,smoke});
   activeContext=context;
   if(resume){
     context.inputs=(await read(path.join(directory,"result-diagnostic.json"))).inputs;
@@ -371,15 +417,16 @@ async function prepareContext(label,{smoke=false,resume=false,restartEndurance=f
 async function pollResources(context) {
   for(const tail of context.resourceTails)for(const line of await tail.read()){
     const corrected=correctResourceIdentity(parseResourceSample(line)),sample=corrected.sample,summary=context.resourceSummary;
-    summary.samples++;summary.sampledPeakBytes=Math.max(summary.sampledPeakBytes,sample.service.workingSetBytes);
+    const observed=resourceSnapshotRows(sample),activeBytes=observed.filter(row=>row.role==="service").reduce((sum,row)=>sum+(row.workingSetBytes??0),0);
+    summary.samples++;summary.sampledPeakBytes=Math.max(summary.sampledPeakBytes,sample.service.workingSetBytes,activeBytes);
     summary.browserPeakBytes=Math.max(summary.browserPeakBytes,sample.browser.workingSetBytes);
     summary.cpuSeconds+=sample.service.cpuSecondsIncrement??0;summary.readBytes+=sample.service.logicalReadBytesIncrement??0;summary.writeBytes+=sample.service.logicalWriteBytesIncrement??0;
     summary.observerCpuSeconds=Math.max(summary.observerCpuSeconds,sample.observer?.cpuSeconds??0);
     summary.peakStorageBytes=Math.max(summary.peakStorageBytes,sample.state?.observedBytes??0);summary.peakWalBytes=Math.max(summary.peakWalBytes,sample.sqlite?.categoryBytes?.wal??0);
     summary.excluded.push(...corrected.excluded);
-    const executorActive=sample.processes.some(row=>row.role==="service"&&row.name.toLowerCase()==="node.exe"&&row.pid!==tail.servicePid);
+    const executorActive=observed.some(row=>row.role==="service"&&row.name?.toLowerCase()==="node.exe"&&row.pid!==tail.servicePid);
     if(executorActive)context.lastActivityAtMs=Math.max(context.lastActivityAtMs,sample.atUnixMs);
-    if(sample.service.workingSetBytes>512*1048576)throw Error(`Service tree exceeded 512 MiB: ${sample.service.workingSetBytes}`);
+    if(Math.max(sample.service.workingSetBytes,activeBytes)>512*1048576)throw Error(`Service tree exceeded 512 MiB: ${Math.max(sample.service.workingSetBytes,activeBytes)}`);
     if(sample.service.processCount>0&&!executorActive&&!context.inputs.some(row=>!row.paintedAtMs)&&!context.actionTasks.size&&!context.responseTasks.size&&sample.atUnixMs-context.lastActivityAtMs>=60_000){
       const serviceRows=sample.processes.filter(row=>row.role==="service");
       const handles=serviceRows.every(row=>row.handleCount!==null&&row.handleCount!==undefined)?serviceRows.reduce((sum,row)=>sum+row.handleCount,0):null;
@@ -435,7 +482,10 @@ async function awaitFault(context,event,gateway) {
           const port=context.server.ready.port;await killOwnedTree(context.server);await context.sampler.stop();if(context.closing)return;
           context.server=await launchServer(context,`-recovery-${++context.serverGeneration}`,port);context.sampler=await startSampler(context,`-recovery-${context.serverGeneration}`);
           await log(context,"gateway-restarted",{pid:context.server.ready.pid,port});
-        } else {process.kill(row.pid,"SIGKILL");await log(context,"executor-killed",{pid:row.pid,point:row.point});}
+        } else {
+          process.kill(row.pid,"SIGKILL");registerControlledExit(context,{pid:row.pid,point:row.point,commandId:event.id,killedAtMs:Date.now(),gatewayPid:row.ppid});
+          await log(context,"executor-killed",{pid:row.pid,point:row.point,commandId:event.id});
+        }
         return;
       }
     }
@@ -446,7 +496,7 @@ async function awaitFault(context,event,gateway) {
 
 async function runScopes(context,event) {
   const page=context.ui.page;
-  for(const preset of ["today","week"]){const row=await scope(page,preset,undefined,context.directory,`${event.id}-${preset}`);await log(context,"scope",{eventId:event.id,...row.result});}
+  for(const preset of ["today","week"]){const row=await stabilityScope(context,page,preset,undefined,context.directory,`${event.id}-${preset}`);await log(context,"scope",{eventId:event.id,...row.result});}
   const start=new Date(context.dataset.endMs-32*86_400_000).toISOString().slice(0,10),end=new Date(context.dataset.endMs-28*86_400_000).toISOString().slice(0,10);
   await page.locator("#dateRangeButton").click();
   for(const date of [start,end]){
@@ -455,10 +505,10 @@ async function runScopes(context,event) {
       const visible=await page.locator(".date-picker-day:not(.outside-month)").first().getAttribute("data-date");
       await page.locator(`[data-date-picker-action="${date<visible?"prev":"next"}"]`).click();
     }
-    const pending=date===end?responseFor(page,"custom"):null;void pending?.catch(()=>{});await page.locator(`[data-date="${date}"]`).click();
+    const pending=date===end?waitUsageResponse(context,page,"custom"):null;void pending?.catch(()=>{});await page.locator(`[data-date="${date}"]`).click();
     if(pending){const response=await pending;assert.equal(response.status(),200);const body=await response.json();await painted(page,body.summary.totals.total,300_000);}
   }
-  const all=await scope(page,"all",undefined,context.directory,`${event.id}-all`);await log(context,"scope",{eventId:event.id,...all.result});
+  const all=await stabilityScope(context,page,"all",undefined,context.directory,`${event.id}-all`);await log(context,"scope",{eventId:event.id,...all.result});
 }
 
 async function changePrice(context,restore) {
@@ -573,7 +623,7 @@ async function runPhase(context,schedule,{resumeOffsetMs=0}={}) {
       }
       await pollBrowser(context);await checkDeadlines(context);
       if(Date.now()-lastStatus>=30_000){
-        lastStatus=Date.now();await save(path.join(RESULT,"status.json"),{phase:schedule.mode,label:schedule.label,elapsedMs:elapsed,plannedMs:schedule.durationMs,
+        lastStatus=Date.now();await save(path.join(context.resultRoot??RESULT,"status.json"),{phase:schedule.mode,label:schedule.label,elapsedMs:elapsed,plannedMs:schedule.durationMs,
           injected:context.inputs.length-firstInput,visible:context.inputs.slice(firstInput).filter(row=>row.paintedAtMs).length,
           pendingActions:context.actionTasks.size,failures:context.failures,servicePeakMiB:context.resourceSummary.sampledPeakBytes/1048576});
         console.log(JSON.stringify({phase:schedule.mode,label:schedule.label,elapsedMinutes:Math.floor(elapsed/60_000),injected:context.inputs.length-firstInput,pending:context.inputs.filter(row=>!row.paintedAtMs).length}));
@@ -583,7 +633,7 @@ async function runPhase(context,schedule,{resumeOffsetMs=0}={}) {
     assert.equal(eventIndex,schedule.events.length);
     const stoppedAtMs=Date.now();await drain(context);
     result.drainMs=Date.now()-stoppedAtMs;
-    await scope(context.ui.page,"all",undefined,context.directory,`${schedule.mode}-final-all`);await Promise.all(context.responseTasks);
+    await stabilityScope(context,context.ui.page,"all",undefined,context.directory,`${schedule.mode}-final-all`);await Promise.all(context.responseTasks);
     result.oracle=context.smoke?{skipped:"Hot-only driver smoke; cold projection cost oracle has independent fixture tests."}:await verifyFull(context,`${schedule.mode}-final`);
     result.inputs=context.inputs.slice(firstInput).map(row=>({...row}));
     assert.equal(result.inputs.filter(row=>row.operation==="append").length,schedule.appendCount);
@@ -632,6 +682,77 @@ async function finishContext(context,{failed=false}={}) {
   await save(path.join(context.directory,"resource-summary.json"),context.resourceSummary);
   await save(path.join(context.directory,"closed.json"),{failed,errors,rawRestored:!failed&&!errors.length,projection:projectionStorage(context.state),atMs:Date.now()});
   assert.deepEqual(errors,[],"Context cleanup or resource checks failed");
+}
+
+async function primaryIdentity(file){
+  const info=await stat(file,{bigint:true});return {dev:info.dev.toString(),ino:info.ino.toString()};
+}
+
+async function recoveryProjectionWork(directory){
+  const rows=[];
+  for(const name of await readdir(directory))if(/^events-\d+\.ndjson$/.test(name)){
+    for await(const line of createInterface({input:createReadStream(path.join(directory,name)),crlfDelay:Infinity})){
+      if(!line.trim())continue;const row=JSON.parse(line);if(row.event==="projection")rows.push(row);
+    }
+  }
+  assert.ok(rows.length,"Recovery projection reuse was not observed");
+  assert.ok(rows.every(row=>row.coldCopied===0&&row.fullRebuild===false),"Recovery copied or rebuilt cold projection");
+  return {coldCopied:0,fullRebuild:false,samples:rows.length};
+}
+
+async function runRecovery(){
+  const resultFile=path.join(RECOVERY_RESULT,"result.json");
+  assert.equal(await stat(resultFile).then(()=>true,error=>error.code==="ENOENT"?false:Promise.reject(error)),false,"Never overwrite a recovery run");
+  const preflight=await read(path.join(RECOVERY_RESULT,"preflight.json"));
+  assert.equal(preflight.passed,true);assert.ok(preflight.groups.every(row=>row.passed));
+  assert.deepEqual(preflight.groups.map(row=>row.name).sort(),["after-commit","before-commit","resources","sse"]);
+  assert.ok(Object.keys(preflight.toolHashes??{}).length,"Preflight hashes are required");
+  for(const [relative,expected] of Object.entries(preflight.toolHashes)){
+    assert.equal(createHash("sha256").update(await readFile(path.join(ROOT,relative))).digest("hex"),expected,`Preflight code changed: ${relative}`);
+  }
+  await diskBudget(64);
+  const result={kind:"windows-stability-recovery",startedAtMs:Date.now(),baseAppendCount:48,baseRevisionCount:1,phases:[],passed:false};
+  await save(resultFile,result);let context;
+  try{
+    const origin=path.join(FORMAL,"diagnostic/two-years"),directory=path.join(RECOVERY_RESULT,"two-years");await mkdir(directory);
+    const manifest=await read(path.join(COMPACTION,"manifest.json")),runtime=await read(manifest.candidateFile);
+    const dataset=await read(path.join(BASE,"datasets/two-years/dataset.json")),state=path.join(COMPACTION,"upgrades/two-years/state");
+    const primary=path.join(state,"usage-index.sqlite"),beforeIdentity=await primaryIdentity(primary),beforeProjection=projectionStorage(state);
+    assert.equal(beforeProjection.databaseCount,1);
+    const ledger=await recoverAppendLedger(origin,48,true);
+    ledger.directory=path.join(directory,"mutations");ledger.runId=randomUUID();await mkdir(ledger.directory);
+    await save(path.join(directory,"base-ledger.json"),ledger);
+    const start=Math.min(...ledger.entries.filter(row=>row.operation==="append").map(row=>row.timestampMs));
+    const beforeDb=new DatabaseSync(primary,{readOnly:true});let beforeRecent;
+    try{beforeRecent=beforeDb.prepare("SELECT COUNT(*) n FROM events WHERE timestamp_ms>=?").get(start).n;}finally{beforeDb.close();}
+    assert.equal(beforeRecent,47,"Preserved failure state changed before recovery");
+    const seedDirectory=path.join(origin,"oracle-seed"),seed=new DatabaseSync(path.join(seedDirectory,"usage-index.sqlite"),{readOnly:true});
+    const control=path.join(directory,"control");await mkdir(control);
+    context=createContext({directory,state,control,seed,seedDirectory,ledger,selectedSessions:mutationSessions(ledger,seed),runtime:runtime.directory,dataset,
+      resultRoot:RECOVERY_RESULT,requiredAllTotal:expectedAll(dataset).total+ledger.expected.total});activeContext=context;
+    await save(path.join(directory,"preparation.json"),{state,runtime:runtime.directory,origin,seedDirectory,beforeIdentity,beforeProjection,baseAppendCount:48,beforeRecent});
+    context.ui=await browser();context.pages=[context.ui.page];await attachPage(context,context.ui.page);
+    const recoveryStarted=Date.now();context.server=await launchServer(context);context.sampler=await startSampler(context);await loadPage(context);
+    await pollBrowser(context);await Promise.all(context.responseTasks);
+    const body=[...context.bodies].reverse().find(row=>row.preset==="all")?.body;assert.ok(body);
+    assert.equal(body.metadata.eventCount,expectedAll(dataset).events+48);
+    const db=new DatabaseSync(primary,{readOnly:true});let afterRecent;
+    try{afterRecent=db.prepare("SELECT COUNT(*) n FROM events WHERE timestamp_ms>=?").get(start).n;}finally{db.close();}
+    assert.equal(afterRecent,48);
+    const oracle=await verifyFull(context,"recovery");
+    const afterIdentity=await primaryIdentity(primary),afterProjection=projectionStorage(state);
+    assert.deepEqual(afterIdentity,beforeIdentity);assert.equal(afterProjection.current.file,beforeProjection.current.file);
+    const projection=await recoveryProjectionWork(control),recovery={passed:true,wallMs:Date.now()-recoveryStarted,expectedAppends:48,beforeRecent,afterRecent,
+      samePrimaryIdentity:true,sameProjectionFile:true,...projection,oracle,startedAtMs:recoveryStarted,endedAtMs:Date.now()};
+    assert.ok(recovery.wallMs<=300_000,"Two-year recovery exceeded 300 seconds");await save(path.join(directory,"recovery.json"),recovery);result.recovery=recovery;
+    delete context.requiredAllTotal;
+    await context.sampler.stop();await pollResources(context);await save(path.join(directory,"resource-summary-recovery.json"),context.resourceSummary);
+    context.sampler=await startSampler(context,"-endurance");
+    result.phases.push(await runPhase(context,stabilitySchedule("endurance")));
+    result.reopen=await idleAndReopen(context);await finishContext(context);context=null;activeContext=null;result.passed=true;
+  }catch(error){result.failure={message:error.message,stack:error.stack};if(context)await finishContext(context,{failed:true}).catch(cleanup=>result.cleanupError=String(cleanup));throw error;}
+  finally{result.endedAtMs=Date.now();await save(resultFile,result);}
+  console.log(JSON.stringify({passed:result.passed,baseAppendCount:48,phases:result.phases.map(row=>({mode:row.mode,inputs:row.inputs.length,passed:row.passed}))}));
 }
 
 async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEndurance=false}={}) {
@@ -696,8 +817,11 @@ async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEnd
   console.log(JSON.stringify({passed:result.passed,phases:result.phases.map(row=>({mode:row.mode,label:row.label,passed:row.passed,inputs:row.inputs.length}))}));
 }
 
-export { visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,recoverAppendLedger };
+export { visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,recoverAppendLedger,
+  attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit };
 
 if(process.argv[1]&&path.resolve(process.argv[1])===SELF){
-  assert.ok(["run","smoke","resume-year-idle","resume-paint-order","restart-endurance"].includes(process.argv[2]),"run | smoke | resume-year-idle | resume-paint-order | restart-endurance");await runAll({smoke:process.argv[2]==="smoke",resumeYear:process.argv[2]==="resume-year-idle",resumePaint:process.argv[2]==="resume-paint-order",restartEndurance:process.argv[2]==="restart-endurance"});
+  assert.ok(["run","smoke","resume-year-idle","resume-paint-order","restart-endurance","recover-and-soak"].includes(process.argv[2]),"run | smoke | resume-year-idle | resume-paint-order | restart-endurance | recover-and-soak");
+  if(process.argv[2]==="recover-and-soak")await runRecovery();
+  else await runAll({smoke:process.argv[2]==="smoke",resumeYear:process.argv[2]==="resume-year-idle",resumePaint:process.argv[2]==="resume-paint-order",restartEndurance:process.argv[2]==="restart-endurance"});
 }

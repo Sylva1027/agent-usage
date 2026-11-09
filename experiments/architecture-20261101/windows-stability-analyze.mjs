@@ -3,7 +3,7 @@ import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { correctResourceIdentity, parseResourceSample } from "./resource-identity-analysis.mjs";
+import { correctResourceIdentity, parseResourceSample, resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 import { stabilitySchedule, STABILITY_KINDS, quantiles, protectionPassed } from "./windows-stability-schedule.mjs";
 
 const MiB = 1048576, hour = 3600000;
@@ -277,9 +277,9 @@ function sseRecovery(events, phases, reliability) {
   return result;
 }
 
-function phaseAnalysis(label, mode, schedule, result, ledger, events, reliability, performance, restartEndurance = false) {
+function phaseAnalysis(label, mode, schedule, result, ledger, events, reliability, performance, restartEndurance = false, baseAppendCount = null) {
   const id = `${label}/${mode}`, expected = canonicalSchedule(mode, label, schedule?.eventIdPrefix);
-  const expectedOrdinalOffset = mode === "endurance" ? stabilitySchedule("diagnostic", label).appendCount + (restartEndurance ? 3 : 0) : 0;
+  const expectedOrdinalOffset = baseAppendCount ?? (mode === "endurance" ? stabilitySchedule("diagnostic", label).appendCount + (restartEndurance ? 3 : 0) : 0);
   const ordinalOffsetMatches = schedule?.ordinalOffset === expectedOrdinalOffset;
   const prefixMatches = mode === "endurance" && restartEndurance ? schedule?.eventIdPrefix === "endurance-accepted" : schedule?.eventIdPrefix === undefined;
   const planned = new Map(expected.events.map(row => [row.id, row]));
@@ -566,7 +566,10 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
       out.samples++;
       if (correction.excluded.length) out.correctedSamples++;
       for (const row of correction.excluded) excluded.set(`${row.pid}|${row.startTimeUtc}`, row);
-      out.sampledPeakBytes = maximum(out.sampledPeakBytes, service.workingSetBytes);
+      const snapshotRows = resourceSnapshotRows(sample);
+      const snapshotServiceRows = snapshotRows.filter(row => row.role === "service");
+      out.sampledPeakBytes = maximum(out.sampledPeakBytes, Math.max(service.workingSetBytes ?? 0,
+        sum(snapshotServiceRows.map(row => row.workingSetBytes ?? 0))));
       out.reportedPeakBytes = maximum(out.reportedPeakBytes, service.reportedPeakWorkingSetBytes);
       out.browserPeakBytes = maximum(out.browserPeakBytes, sample.browser?.workingSetBytes);
       if (!finite(service.workingSetBytes) || service.memoryAvailableProcessCount !== service.processCount) out.missingMemorySamples++;
@@ -576,10 +579,10 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
       out.tempFilePeakCount = maximum(out.tempFilePeakCount, sample.temp?.fileCount);
       if (!sample.state?.complete || !sample.temp?.complete) out.incompleteStorageSamples++;
       const serviceRows = sample.processes.filter(row => row.role === "service");
-      const otherPeak = sum(serviceRows.filter(row => !(nodeBirths.get(row.pid) ?? []).some(startedAtMs =>
+      const otherPeak = sum(snapshotServiceRows.filter(row => !(nodeBirths.get(row.pid) ?? []).some(startedAtMs =>
         Math.abs(startedAtMs - Date.parse(row.startTimeUtc)) < 1000)).map(row => row.reportedPeakWorkingSetBytes ?? 0));
       out.otherHighWaterPeakBytes = Math.max(out.otherHighWaterPeakBytes, otherPeak);
-      for (const row of serviceRows) {
+      for (const row of snapshotServiceRows) {
         if (!row.startTimeUtc || !row.pid) { out.missingIdentitySamples++; continue; }
         const key = `${row.pid}|${row.startTimeUtc}`;
         if (!processes.has(key)) processes.set(key, { pid: row.pid, startTimeUtc: row.startTimeUtc, firstAtMs: sample.atUnixMs,
@@ -594,7 +597,7 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
           item.logicalWriteBytes = maximum(item.logicalWriteBytes, row.logicalWriteBytes);
         }
       }
-      for (const row of sample.processes.filter(row => row.role === "observer")) {
+      for (const row of snapshotRows.filter(row => row.role === "observer")) {
         const key = `${row.pid}|${row.startTimeUtc}`;
         observers.set(key, maximum(observers.get(key), row.cpuSeconds));
       }
@@ -938,6 +941,8 @@ export async function analyzeWindowsStability(root = defaultRoot, { referenceFil
     contexts, continuationAudit, continuationAudits, reference: { file: referenceFile, ...reference }, upgrade: { file: upgradeFile, result: upgrade }, evidence,
     scope: "Formal-v2 only. Preparation attempts remain separate. Historical scores are protection references. No source hashing, live control, or timed-tool mutation. Previous accepted deviations do not accept any new regression." };
 }
+
+export { phaseAnalysis, controls, controlChecks, resources, resourceChecks, gates, check, finish, mergeInput };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [root, output, referenceFile, upgradeFile] = process.argv.slice(2);

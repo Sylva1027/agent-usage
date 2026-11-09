@@ -3,12 +3,24 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { analyzeWithResourceIdentity, correctResourceIdentity, parseResourceSample } from "./resource-identity-analysis.mjs";
+import { analyzeWithResourceIdentity, correctResourceIdentity, parseResourceSample, resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 
 const process = (pid, parentPid, time, role = "service") => ({ pid, parentPid, role, name: "fixture.exe", startTimeUtc: time,
   workingSetBytes: 10, privateBytes: 20, reportedPeakWorkingSetBytes: 30, cpuAvailable: true, cpuSeconds: 4,
   ioAvailable: true, logicalReadBytes: 5, logicalWriteBytes: 6, cpuSecondsIncrement: 1, logicalReadBytesIncrement: 2, logicalWriteBytesIncrement: 3 });
 const time = "2026-11-08T01:00:00.1234567Z";
+
+test("exited native snapshots preserve historical costs without pretending the process is live", () => {
+  const original = process(1, 0, time), captured = process(2, 1, time);
+  const sample = { processes: [original], tombstones: [{ pid: 2, role: "service", name: "node.exe", reason: "exited",
+    identityEvidence: { pid: 2, startTimeUtcTicks: "639296804262091236" }, resourceSnapshot: captured }] };
+  const rows = resourceSnapshotRows(sample);
+  assert.equal(sample.processes.length, 1); assert.equal(rows.length, 2);
+  assert.equal(rows[1].liveness, "exited"); assert.equal(rows[1].reportedPeakWorkingSetBytes, 30);
+  assert.equal(rows[1].cpuSeconds, 4); assert.equal(rows[1].logicalReadBytes, 5);
+  assert.equal(rows[1].identityEvidence.startTimeUtcTicks, "639296804262091236");
+  assert.throws(() => resourceSnapshotRows({ processes: [], tombstones: [{ ...sample.tombstones[0], identityEvidence: { pid: 3 } }] }));
+});
 
 test("derived JSON preserves exact Windows Int64 process identities for cleanup", () => {
   const sample = parseResourceSample('{"processes":[{"pid":1,"startTimeUtcTicks":639296804262091236},{"pid":2,"startTimeUtcTicks":null}]}');
