@@ -1,0 +1,742 @@
+diff --git a/src/server.js b/src/server.js
+index b55c81d..0e7f90d 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -1321,7 +1321,9 @@ export function createUsageServer(options = {}) {
+       if (url.pathname === "/api/usage" || url.pathname === "/api/summary") {
+         const releaseWorker = usageStore.retainWorker();
+         response.once("finish", releaseWorker);
+-        response.once("close", releaseWorker);
++        response.once("close", () => {
++          if (releaseWorker() && !response.writableFinished) void usageStore.releaseHistoryVerification();
++        });
+         const filters = requestFilters(url);
+         const check = url.searchParams.get("skipCheck") !== "1";
+         // 已有快照先查找并校验；新快照只在请求组合受支持时创建。
+@@ -1466,6 +1468,7 @@ export function createUsageServer(options = {}) {
+             resultSource = cached ? source : null;
+             response.setHeader("x-summary-cache", result ? "hit" : "miss");
+             if (!result) {
++              if (response.destroyed || response.writableEnded) return;
+               result = await runWithPricingCatalog(pricingCatalog, () =>
+                 usageStore.dashboard(filters, { includeDetails }),
+               );
+diff --git a/src/usage-executor.js b/src/usage-executor.js
+index 135e24d..4ab4e9f 100644
+--- a/src/usage-executor.js
++++ b/src/usage-executor.js
+@@ -381,15 +381,36 @@ async function runExecutorProcess() {
+       });
+     });
+ 
+-  const releaseHistoryVerification = async () => {
+-    const pending = pendingHistoryVerification;
+-    pendingHistoryVerification = null;
++  const releaseHistoryVerification = async (pending = pendingHistoryVerification) => {
++    if (pendingHistoryVerification === pending) pendingHistoryVerification = null;
+     if (pending) {
+       clearTimeout(pending.timer);
+-      await pending.scope.close();
++      pending.retired = true;
++      if (!pending.users) await pending.scope.close();
+     }
+   };
+ 
++  const runHistoryVerification = async (pending, work) => {
++    pending.users++;
++    try {
++      return await pending.scope.run(work);
++    } catch (error) {
++      await releaseHistoryVerification(pending);
++      throw error;
++    } finally {
++      if (--pending.users === 0 && pending.retired) await pending.scope.close();
++    }
++  };
++
++  const historyVerificationKey = () => {
++    const records = store.database
++      .prepare(
++        "SELECT segment_id,database_path,database_sha256,start_ms,end_ms,event_count FROM archive_segments ORDER BY segment_id",
++      )
++      .all();
++    return records.length > 1 ? JSON.stringify([records, store.readMetaRaw("history_archive_event_authority")]) : null;
++  };
++
+   const shutdown = async ({ notifyIdle = false, waitForActive = false } = {}) => {
+     if (stopping) return;
+     stopping = true;
+@@ -829,44 +850,65 @@ async function runExecutorProcess() {
+         const work = () =>
+           priceScoped ? runWithPricingCatalog(message.pricing, () => handle(message)) : handle(message);
+         if (message.type === "sync") {
+-          await releaseHistoryVerification();
+-          const scope = await store.createHistoryVerificationScope();
+-          if (!scope) return work();
++          const key = message.reuseHistoryVerification ? historyVerificationKey() : null;
++          let pending = pendingHistoryVerification;
++          if (!key || !pending?.shared || pending.key !== key) {
++            await releaseHistoryVerification();
++            const scope = await store.createHistoryVerificationScope();
++            if (!scope) return work();
++            pending = {
++              scope,
++              token: message.historyVerification,
++              timer: null,
++              key,
++              shared: Boolean(key),
++              users: 0,
++              retired: false,
++            };
++          }
+           try {
+-            const result = await scope.run(work);
+-            if (result && Number.isSafeInteger(message.historyVerification)) {
+-              const pending = { scope, token: message.historyVerification, timer: null };
+-              pending.timer = setTimeout(() => {
+-                if (pendingHistoryVerification === pending) void releaseHistoryVerification();
+-              }, REQUEST_TIMEOUT_MS);
+-              pending.timer.unref?.();
++            const result = await runHistoryVerification(pending, work);
++            if (result && Number.isSafeInteger(message.historyVerification) && !pending.retired) {
++              pending.token = message.historyVerification;
++              if (!pending.timer) {
++                pending.timer = setTimeout(() => {
++                  void releaseHistoryVerification(pending);
++                }, REQUEST_TIMEOUT_MS);
++                pending.timer.unref?.();
++              }
+               pendingHistoryVerification = pending;
+-            } else await scope.close();
++            } else await releaseHistoryVerification(pending);
+             return result;
+           } catch (error) {
+-            await scope.close();
++            await releaseHistoryVerification(pending);
+             throw error;
+           }
+         }
+         if (message.type === "releaseHistoryVerification") {
+-          if (pendingHistoryVerification?.token === message.historyVerification)
+-            await releaseHistoryVerification();
++          if (pendingHistoryVerification?.token === message.historyVerification) await releaseHistoryVerification();
+           return null;
+         }
+         if (message.type === "dashboard") {
+-          const pending = pendingHistoryVerification;
++          let pending = pendingHistoryVerification;
++          if (message.reuseHistoryVerification && pending?.shared) {
++            if (pending.key === historyVerificationKey()) return runHistoryVerification(pending, work);
++            await releaseHistoryVerification(pending);
++            pending = null;
++          }
+           if (pending && pending.token === message.historyVerification) {
+             pendingHistoryVerification = null;
+             clearTimeout(pending.timer);
+-            try {
+-              return await pending.scope.run(work);
+-            } finally {
+-              await pending.scope.close();
+-            }
++            pending.retired = true;
++            return runHistoryVerification(pending, work);
+           }
++          // shortcut: after an expired read-only window, reuse resumes at the next successful sync.
+           return store.withHistoryVerification(work);
+         }
+-        if (["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(message.type))
++        if (
++          ["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(
++            message.type,
++          )
++        )
+           await releaseHistoryVerification();
+         return work();
+       };
+@@ -1027,6 +1069,7 @@ export function createUsageExecutor(
+   let state = emptyState();
+   let nextHistoryVerification = 0;
+   let pendingHistoryVerification = null;
++  let retainedHistoryVerification = null;
+ 
+   const unavailableError = (message = "usage executor is not available") =>
+     executorError(new Error(message), "EXECUTOR_UNAVAILABLE");
+@@ -1137,6 +1180,7 @@ export function createUsageExecutor(
+       finalized = true;
+       worker = null;
+       pendingHistoryVerification = null;
++      retainedHistoryVerification = null;
+       ready = false;
+       clearIdleTimer();
+       const preserveState = expectedExit || closing || closed;
+@@ -1260,14 +1304,24 @@ export function createUsageExecutor(
+       timer.unref?.();
+       pending.set(id, { resolve, reject, timer, type });
+       try {
+-        target.send({ ...toTransferable({ type, id, ...payload }) }, (error) => {
+-          if (!error || !pending.has(id)) return;
+-          const entry = pending.get(id);
+-          pending.delete(id);
+-          clearTimeout(entry.timer);
+-          entry.reject(executorError(error, "EXECUTOR_UNAVAILABLE"));
+-          void terminateChild(target);
+-        });
++        target.send(
++          {
++            ...toTransferable({
++              type,
++              id,
++              ...payload,
++              ...(retained > 0 && (type === "sync" || type === "dashboard") ? { reuseHistoryVerification: true } : {}),
++            }),
++          },
++          (error) => {
++            if (!error || !pending.has(id)) return;
++            const entry = pending.get(id);
++            pending.delete(id);
++            clearTimeout(entry.timer);
++            entry.reject(executorError(error, "EXECUTOR_UNAVAILABLE"));
++            void terminateChild(target);
++          },
++        );
+       } catch (error) {
+         pending.delete(id);
+         clearTimeout(timer);
+@@ -1284,10 +1338,11 @@ export function createUsageExecutor(
+       clearIdleTimer();
+       let released = false;
+       return () => {
+-        if (released) return;
++        if (released) return false;
+         released = true;
+         retained -= 1;
+         scheduleIdle();
++        return retained === 0;
+       };
+     },
+     open: (payload = {}) => {
+@@ -1327,12 +1382,14 @@ export function createUsageExecutor(
+       request("summarize", { filters, options: summarizeOptions, pricing: pricing() }),
+     dashboard: (filters = {}, summarizeOptions = {}) => {
+       const historyVerification = pendingHistoryVerification;
++      if (retained > 0 && historyVerification !== null) retainedHistoryVerification = historyVerification;
+       pendingHistoryVerification = null;
+       return request("dashboard", { filters, options: summarizeOptions, pricing: pricing(), historyVerification });
+     },
+     releaseHistoryVerification: async () => {
+-      const historyVerification = pendingHistoryVerification;
++      const historyVerification = pendingHistoryVerification ?? retainedHistoryVerification;
+       pendingHistoryVerification = null;
++      retainedHistoryVerification = null;
+       if (historyVerification === null || !worker || idleRetiring || terminating) return;
+       try {
+         await request("releaseHistoryVerification", { historyVerification }, { allowSpawn: false });
+diff --git a/test/history-verification-lifecycle.test.js b/test/history-verification-lifecycle.test.js
+index 755692c..94090b6 100644
+--- a/test/history-verification-lifecycle.test.js
++++ b/test/history-verification-lifecycle.test.js
+@@ -20,9 +20,9 @@ const QUERY = "/api/usage?preset=all&view=dashboard&calendarZone=utc";
+ const LOCK_ERRORS = new Set(["EACCES", "EPERM", "EBUSY"]);
+ const FACT_COLUMNS = "source_path,timestamp_ms,session_id,home_id,total,input,cached,output,reasoning";
+ 
+-async function fixture(t) {
++async function fixture(t, { segmentCount = 2, idle = 60_000, scopeTimeoutMs = null } = {}) {
+   const input = createUsageIntegrationFixture();
+-  const options = { ...input.serverOptions, executorIdleTimeoutMs: 60_000 };
++  const options = { ...input.serverOptions, executorIdleTimeoutMs: idle };
+   const directory = path.dirname(options.databaseFile);
+   const store = new UsageStore(options),
+     argv = [...process.execArgv],
+@@ -59,7 +59,7 @@ async function fixture(t) {
+       }
+     }
+   };
+-  for (const day of [3, 4]) {
++  for (const day of [3, 4].slice(0, segmentCount)) {
+     const file = path.join(directory, `lifecycle-${day}.sqlite`);
+     const startMs = Date.parse(`2026-10-0${day}T00:00:00Z`);
+     await createHistoryArchiveCandidate(store.database, file, { startMs, endMs: startMs + 86_400_000 });
+@@ -72,6 +72,11 @@ async function fixture(t) {
+   const log = path.join(directory, "verification-lifecycle.ndjson");
+   const failSync = path.join(directory, "fail-sync-once");
+   const blockVerification = path.join(directory, "block-verification-once");
++  const pauseDashboard = path.join(directory, "pause-dashboard-once");
++  const resumeDashboard = path.join(directory, "resume-dashboard");
++  const pauseSync = path.join(directory, "pause-sync-once");
++  const resumeSync = path.join(directory, "resume-sync");
++  const invalidateLease = path.join(directory, "invalidate-lease-once");
+   writeFileSync(log, "");
+   const record = `\nimport {appendFileSync as lifecycleAppend} from 'node:fs';
+     const lifecycleRecord=value=>lifecycleAppend(${JSON.stringify(log)},JSON.stringify({pid:process.pid,...value})+'\\n');`;
+@@ -100,24 +105,59 @@ async function fixture(t) {
+           add:key=>{receipts.add(key);lifecycleRecord({kind:'receipt-add',key});}
+         };};`,
+     "/src/usage-source-native.js": `${record}
++      import {existsSync as lifecycleLeaseExists,unlinkSync as lifecycleLeaseUnlink} from 'node:fs';
+       let lifecycleSequence=0;
+       const lifecycleLock=WindowsSourceProof.prototype.lockFiles;
+       WindowsSourceProof.prototype.lockFiles=async function(files){
+         const lease=await lifecycleLock.call(this,files);if(!lease)return null;
+         const id=process.pid+':'+(++lifecycleSequence);let closed=false;
+         lifecycleRecord({kind:'lease-open',id,files});
+-        return {check:()=>lease.check(),close:async()=>{
++        return {check:async()=>{
++          const valid=await lease.check();
++          if(lifecycleLeaseExists(${JSON.stringify(invalidateLease)})){
++            lifecycleLeaseUnlink(${JSON.stringify(invalidateLease)});
++            lifecycleRecord({kind:'lease-invalid',id});return false;
++          }
++          return valid;
++        },close:async()=>{
+           if(closed)return;closed=true;await lease.close();lifecycleRecord({kind:'lease-close',id});}};
+       };`,
+-    "/src/usage-store.js": `\nimport {existsSync as lifecycleExists,unlinkSync as lifecycleUnlink} from 'node:fs';
++    "/src/usage-store.js": `${record}
++      import {existsSync as lifecycleExists,unlinkSync as lifecycleUnlink} from 'node:fs';
+       const lifecycleSync=UsageStore.prototype.sync;
+       UsageStore.prototype.sync=async function(...args){const result=await lifecycleSync.apply(this,args);
++        if(lifecycleExists(${JSON.stringify(pauseSync)})){
++          lifecycleUnlink(${JSON.stringify(pauseSync)});lifecycleRecord({kind:'sync-paused'});
++          while(!lifecycleExists(${JSON.stringify(resumeSync)}))
++            await new Promise(resolve=>setTimeout(resolve,10));
++        }
+         if(lifecycleExists(${JSON.stringify(failSync)})){lifecycleUnlink(${JSON.stringify(failSync)});
+           throw Object.assign(new Error('injected failure after archive verification'),{code:'LIFECYCLE_SYNC_FAILURE'});}
++        return result;};
++      const lifecycleDashboard=UsageStore.prototype.dashboardHistory;
++      UsageStore.prototype.dashboardHistory=async function(...args){
++        const result=await lifecycleDashboard.apply(this,args);
++        if(lifecycleExists(${JSON.stringify(pauseDashboard)})){
++          lifecycleUnlink(${JSON.stringify(pauseDashboard)});
++          lifecycleRecord({kind:'dashboard-paused'});
++          while(!lifecycleExists(${JSON.stringify(resumeDashboard)}))
++            await new Promise(resolve=>setTimeout(resolve,10));
++          lifecycleRecord({kind:'dashboard-resumed'});
++        }
+         return result;};`,
+   };
+   const loader = `import {registerHooks} from 'node:module';const probes=${JSON.stringify(probes)};
+     registerHooks({load(url,context,next){const result=next(url,context);
++      ${
++        scopeTimeoutMs === null
++          ? ""
++          : `if(url.endsWith('/src/usage-executor.js')){
++        const anchor='}, REQUEST_TIMEOUT_MS);',source=String(result.source);
++        if(source.split(anchor).length!==2)throw new Error('expected exactly one scope deadline timer');
++        return {...result,source:source.replace(anchor,'}, ${scopeTimeoutMs});')};
++      }
++      `
++      }
+       const suffix=Object.keys(probes).find(suffix=>url.endsWith(suffix));
+       return suffix?{...result,source:String(result.source)+probes[suffix]}:result;}});`;
+   process.execArgv.push("--import", `data:text/javascript,${encodeURIComponent(loader)}`);
+@@ -149,11 +189,29 @@ async function fixture(t) {
+     replies,
+     failSync,
+     blockVerification,
++    pauseDashboard,
++    resumeDashboard,
++    pauseSync,
++    resumeSync,
++    invalidateLease,
+     expectedFacts,
+     expected: input.expected,
+     rows,
+     files: archives.flatMap((file) => [file, file.replace(/\.sqlite$/, ".manifest.json")]),
+     hashes: () => rows().filter((row) => row.kind === "hash" && archives.includes(row.file)),
++    appendHot() {
++      const database = new DatabaseSync(String(rawFiles[0].path));
++      try {
++        const start = Date.parse("2026-10-05T12:00:00Z");
++        database
++          .prepare(`INSERT INTO model_usage(id,session_id,status,started_at,completed_at,duration_ms,
++          input_tokens,output_tokens,agent,query_source,model_id,provider_id)
++          VALUES('lifecycle-hot','lifecycle-hot','completed',?,?,1000,10,20,'','','small-model','fixture-provider')`)
++          .run(start, start + 1000);
++      } finally {
++        database.close();
++      }
++    },
+     async sync() {
+       touchSources();
+       return client.sync({ options });
+@@ -272,6 +330,300 @@ test(
+     assert.equal(dashboards[1].historyVerification, null);
+     assert.equal(dashboards[2].historyVerification, null);
+     assert.equal(f.requests.filter((message) => message.type === "releaseHistoryVerification").length, 1);
++    for (const message of f.requests.filter((message) => ["sync", "dashboard"].includes(message.type)))
++      assert.notEqual(message.reuseHistoryVerification, true, "unretained requests keep fresh verification semantics");
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++  },
++);
++
++test(
++  "retained multi-pack verification survives sequential filters and a hot sync without caching results",
++  WINDOWS,
++  async (t) => {
++    const f = await fixture(t);
++    const release = f.client.retainWorker();
++    t.after(release);
++    const day = { ...FILTERS, preset: "custom", startDate: "2026-10-03", endDate: "2026-10-03" };
++    const dayFacts = f.expectedFacts.filter((row) => new Date(row.timestamp_ms).toISOString().startsWith("2026-10-03"));
++    await f.sync();
++    const first = await f.client.dashboard(day, { includeDetails: false });
++    const all = await f.client.dashboard(FILTERS, { includeDetails: false });
++    assert.equal(first.summary.eventCount, dayFacts.length);
++    assert.equal(
++      first.summary.totals.total,
++      dayFacts.reduce((total, row) => total + row.total, 0),
++    );
++    assert.equal(all.summary.eventCount, f.expected.usage.eventCount);
++    assert.equal(all.summary.totals.total, f.expected.usage.totals.total);
++    assert.notEqual(first.summary.totals.total, all.summary.totals.total, "filters do not reuse a dashboard result");
++    assertHeld(f);
++
++    f.appendHot();
++    await f.sync();
++    const next = await f.client.dashboard(FILTERS, { includeDetails: false });
++    const unchangedDay = await f.client.dashboard(day, { includeDetails: false });
++    assert.equal(next.summary.eventCount, all.summary.eventCount + 1);
++    assert.equal(next.summary.totals.total, all.summary.totals.total + 30);
++    assert.equal(next.summary.totals.input, all.summary.totals.input + 10);
++    assert.equal(next.summary.totals.output, all.summary.totals.output + 20);
++    assert.deepEqual(unchangedDay.summary.totals, first.summary.totals);
++    for (const file of f.archives) {
++      const manifest = JSON.parse(readFileSync(file.replace(/\.sqlite$/, ".manifest.json"), "utf8"));
++      assert.deepEqual(
++        f
++          .hashes()
++          .filter((row) => row.file === file)
++          .map((row) => row.bytes),
++        [manifest.database.bytes, manifest.database.bytes],
++        "only two complete hashes per cold pack across both filters and the next hot sync",
++      );
++    }
++    const requests = f.requests.filter((message) => ["sync", "dashboard"].includes(message.type));
++    assert.equal(requests.length, 6);
++    for (const message of requests) assert.equal(message.reuseHistoryVerification, true, message.type);
++    assertHeld(f);
++    await f.client.releaseHistoryVerification();
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++  },
++);
++
++test("retaining a worker does not share verification for a single pack or an all-hot database", WINDOWS, async (t) => {
++  for (const segmentCount of [1, 0]) {
++    await t.test(`${segmentCount} cold packs`, async (t) => {
++      const f = await fixture(t, { segmentCount });
++      const release = f.client.retainWorker();
++      t.after(release);
++      await f.sync();
++      const first = await f.client.dashboard(FILTERS, { includeDetails: false });
++      assertReleased(f);
++      assert.equal(f.hashes().length, segmentCount * 2);
++      const second = await f.client.dashboard(FILTERS, { includeDetails: false });
++      assert.equal(first.summary.totals.total, f.expected.usage.totals.total);
++      assert.deepEqual(second.summary.totals, first.summary.totals);
++      assert.equal(f.hashes().length, segmentCount * 4, "a second dashboard uses fresh verification");
++      assertReleased(f);
++      if (segmentCount) assertLeasesClosed(f.rows());
++      else assert.equal(f.rows().filter((row) => row.kind === "lease-open").length, 0);
++    });
++  }
++});
++
++test("retained cold readers release real write locks on explicit release, close and idle exit", WINDOWS, async (t) => {
++  for (const ending of ["release", "close", "idle"]) {
++    await t.test(ending, async (t) => {
++      const f = await fixture(t, { idle: ending === "idle" ? 50 : 60_000 });
++      const release = f.client.retainWorker();
++      t.after(release);
++      await f.sync();
++      await f.client.dashboard(FILTERS, { includeDetails: false });
++      assertHeld(f);
++      const hashes = f.hashes().length;
++      if (ending === "release") {
++        await f.client.releaseHistoryVerification();
++        await f.client.releaseHistoryVerification();
++        assertReleased(f);
++        assertLeasesClosed(f.rows());
++        const next = await f.client.dashboard(FILTERS, { includeDetails: false });
++        assert.equal(next.summary.totals.total, f.expected.usage.totals.total);
++        assert.equal(f.hashes().length - hashes, 4, "explicit release forces two fresh hashes per pack");
++        assertReleased(f);
++        await f.client.close();
++      } else if (ending === "close") {
++        await f.client.close();
++      } else {
++        release();
++        await until(() => !f.client.alive && filesWritable(f.files), "idle exit must release every native reader");
++        assert.ok(f.requests.some((message) => message.type === "idleClose"));
++      }
++      assert.equal(f.client.alive, false);
++      assertReleased(f);
++      assertLeasesClosed(f.rows());
++    });
++  }
++});
++
++test("retiring a shared scope with a paused dashboard does not block the next hot sync", WINDOWS, async (t) => {
++  const f = await fixture(t);
++  const release = f.client.retainWorker();
++  t.after(release);
++  await f.sync();
++  let old, syncing, retiring;
++  let completed = false,
++    failure = null,
++    oldCompleted = false;
++  let held = [];
++  try {
++    writeFileSync(f.pauseDashboard, "pause after the real dashboard read, inside its verification scope");
++    old = f.client.dashboard(FILTERS, { includeDetails: false });
++    old.then(
++      () => {
++        oldCompleted = true;
++      },
++      () => {
++        oldCompleted = true;
++      },
++    );
++    await until(
++      () => f.rows().some((row) => row.kind === "dashboard-paused"),
++      "the old scope must have an active user",
++    );
++    assertHeld(f);
++    held = f.rows().filter((row) => row.kind === "lease-open");
++    retiring = f.client.releaseHistoryVerification();
++    f.appendHot();
++    syncing = f.sync();
++    syncing.then(
++      () => {
++        completed = true;
++      },
++      (error) => {
++        failure = error;
++        completed = true;
++      },
++    );
++    await until(() => completed, "a retired scope's paused user must not make global close block the next sync");
++    assert.ifError(failure);
++    assert.equal(oldCompleted, false, "sync completes before the old dashboard resumes");
++    for (const { id } of held)
++      assert.equal(
++        f.rows().filter((row) => row.kind === "lease-close" && row.id === id).length,
++        0,
++        "retirement keeps an active user's real native lease alive",
++      );
++    assert.ok(f.requests.some((message) => message.type === "releaseHistoryVerification"));
++  } finally {
++    writeFileSync(f.resumeDashboard, "finish the old user before fixture cleanup");
++    await Promise.allSettled([old, syncing, retiring].filter(Boolean));
++  }
++  const previous = await old;
++  assert.equal(previous.summary.totals.total, f.expected.usage.totals.total);
++  for (const { id } of held)
++    assert.equal(f.rows().filter((row) => row.kind === "lease-close" && row.id === id).length, 1);
++  const next = await f.client.dashboard(FILTERS, { includeDetails: false });
++  assert.equal(next.summary.eventCount, previous.summary.eventCount + 1);
++  assert.equal(next.summary.totals.total, previous.summary.totals.total + 30);
++  await f.client.close();
++  assertReleased(f);
++  assertLeasesClosed(f.rows());
++});
++
++test(
++  "the absolute scope deadline retires paused users without republishing their proof from an in-flight sync",
++  WINDOWS,
++  async (t) => {
++    const scopeTimeoutMs = 200;
++    const f = await fixture(t, { scopeTimeoutMs });
++    const release = f.client.retainWorker();
++    t.after(release);
++    await f.sync();
++    const originalLeases = f.rows().filter((row) => row.kind === "lease-open");
++    assert.equal(originalLeases.length, 2);
++    let old, syncing;
++    let oldCompleted = false;
++    try {
++      writeFileSync(f.pauseDashboard, "keep an old shared-scope user active past its absolute deadline");
++      old = f.client.dashboard(FILTERS, { includeDetails: false });
++      old.then(
++        () => {
++          oldCompleted = true;
++        },
++        () => {
++          oldCompleted = true;
++        },
++      );
++      await until(
++        () => f.rows().some((row) => row.kind === "dashboard-paused"),
++        "pause the old dashboard before expiry",
++      );
++      writeFileSync(f.pauseSync, "hold the next sync before it can publish the shared scope again");
++      syncing = f.sync();
++      syncing.catch(() => {});
++      await until(
++        () => f.rows().some((row) => row.kind === "sync-paused"),
++        "the next sync must enter the existing scope",
++      );
++      assert.equal(f.hashes().length, 4, "the in-flight sync starts in the original shared window");
++
++      await delay(scopeTimeoutMs + 50);
++      assertHeld(f);
++      for (const { id } of originalLeases)
++        assert.equal(f.rows().filter((row) => row.kind === "lease-close" && row.id === id).length, 0);
++      const hashes = f.hashes().length;
++      const afterExpiry = await f.client.dashboard(FILTERS, { includeDetails: false });
++      assert.equal(afterExpiry.summary.totals.total, f.expected.usage.totals.total);
++      assert.equal(f.hashes().length - hashes, 4, "a later dashboard fully hashes both packs after the deadline");
++      assert.equal(oldCompleted, false, "the later dashboard completes without waiting for the paused old user");
++
++      writeFileSync(f.resumeSync, "complete the sync whose scope retired while it was active");
++      await syncing;
++      const beforeRead = f.hashes().length;
++      const afterSync = await f.client.dashboard(FILTERS, { includeDetails: false });
++      assert.equal(afterSync.summary.eventCount, f.expected.usage.eventCount);
++      assert.equal(f.hashes().length - beforeRead, 4, "a completed sync cannot reinstall its retired scope");
++      assert.equal(oldCompleted, false);
++      assertHeld(f);
++    } finally {
++      writeFileSync(f.resumeSync, "release a failed assertion's paused sync");
++      writeFileSync(f.resumeDashboard, "release the paused old dashboard before cleanup");
++      await Promise.allSettled([old, syncing].filter(Boolean));
++    }
++    const previous = await old;
++    assert.equal(previous.summary.eventCount, f.expected.usage.eventCount);
++    assert.equal(previous.summary.totals.total, f.expected.usage.totals.total);
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++
++    f.appendHot();
++    const hashes = f.hashes().length;
++    await f.sync();
++    const next = await f.client.dashboard(FILTERS, { includeDetails: false });
++    assert.equal(next.summary.eventCount, previous.summary.eventCount + 1);
++    assert.equal(next.summary.totals.total, previous.summary.totals.total + 30);
++    assert.equal(f.hashes().length - hashes, 4, "a later successful sync establishes a fresh shared window");
++    await f.client.close();
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++  },
++);
++
++test(
++  "a false native lease check retires the shared proof and the next request fully verifies again",
++  WINDOWS,
++  async (t) => {
++    const f = await fixture(t);
++    const release = f.client.retainWorker();
++    t.after(release);
++    await f.sync();
++    const hashes = f.hashes().length;
++    assert.equal(hashes, 4);
++    const originalLeases = f.rows().filter((row) => row.kind === "lease-open");
++    writeFileSync(f.invalidateLease, "fail one owner-boundary check while retaining the real native helper");
++    await assert.rejects(f.client.dashboard(FILTERS, { includeDetails: false }), {
++      code: "HISTORY_BACKUP_SCOPE_CHANGED",
++    });
++    const invalid = f.rows().filter((row) => row.kind === "lease-invalid");
++    assert.equal(invalid.length, 1);
++    assert.ok(
++      originalLeases.some((row) => row.id === invalid[0].id),
++      "invalidate the existing proof's native lease",
++    );
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++
++    const recovered = await f.client.dashboard(FILTERS, { includeDetails: false });
++    assert.equal(recovered.summary.eventCount, f.expected.usage.eventCount);
++    assert.equal(recovered.summary.totals.total, f.expected.usage.totals.total);
++    const fresh = f.hashes().slice(hashes);
++    for (const file of f.archives) {
++      const manifest = JSON.parse(readFileSync(file.replace(/\.sqlite$/, ".manifest.json"), "utf8"));
++      assert.deepEqual(
++        fresh.filter((row) => row.file === file).map((row) => row.bytes),
++        [manifest.database.bytes, manifest.database.bytes],
++        "lease invalidation cannot reuse old byte proofs",
++      );
++    }
+     assertReleased(f);
+     assertLeasesClosed(f.rows());
+   },
+@@ -375,36 +727,45 @@ test("the HTTP cache-hit branch releases the pending native handoff without a da
+   assertLeasesClosed(f.rows());
+ });
+ 
+-test("an aborted HTTP request releases its handoff when the existing executor work finishes", WINDOWS, async (t) => {
+-  const f = await fixture(t);
+-  const entered = Promise.withResolvers(),
+-    resume = Promise.withResolvers();
+-  const controller = new AbortController();
+-  t.after(() => {
+-    controller.abort();
+-    resume.resolve();
+-  });
+-  t.mock.method(UsageSummaryCache.prototype, "get", async () => {
+-    entered.resolve();
+-    await resume.promise;
+-    return null;
+-  });
+-  const base = await f.serve();
+-  const request = fetch(base + QUERY, { signal: AbortSignal.any([controller.signal, t.signal]) });
+-  const aborted = assert.rejects(request, { name: "AbortError" });
+-  try {
+-    await Promise.race([entered.promise, request.then(() => assert.fail("request completed before the cache gate"))]);
+-    assertHeld(f);
+-    controller.abort();
+-    await aborted;
+-  } finally {
+-    resume.resolve();
+-  }
+-  // There is no executor AbortSignal API: cancellation lets the already-started operation finish.
+-  await until(
+-    () => f.replies.some((reply) => reply.type === "dashboard" && reply.ok) && filesWritable(f.files),
+-    "finishing a disconnected request must release all archive readers",
+-  );
+-  assertReleased(f);
+-  assertLeasesClosed(f.rows());
+-});
++test(
++  "an aborted HTTP request retires its handoff before the cache resumes without a dashboard IPC",
++  WINDOWS,
++  async (t) => {
++    const f = await fixture(t);
++    const entered = Promise.withResolvers(),
++      resume = Promise.withResolvers();
++    const controller = new AbortController();
++    t.after(() => {
++      controller.abort();
++      resume.resolve();
++    });
++    t.mock.method(UsageSummaryCache.prototype, "get", async () => {
++      entered.resolve();
++      await resume.promise;
++      return null;
++    });
++    const base = await f.serve();
++    const request = fetch(base + QUERY, { signal: AbortSignal.any([controller.signal, t.signal]) });
++    const aborted = assert.rejects(request, { name: "AbortError" });
++    try {
++      await Promise.race([entered.promise, request.then(() => assert.fail("request completed before the cache gate"))]);
++      assertHeld(f);
++      controller.abort();
++      await aborted;
++      await until(
++        () =>
++          f.replies.some((reply) => reply.type === "releaseHistoryVerification" && reply.ok) && filesWritable(f.files),
++        "HTTP close must finish retiring its handoff while the cache is still paused",
++      );
++      assert.equal(f.requests.filter((message) => message.type === "releaseHistoryVerification").length, 1);
++      assert.equal(f.requests.filter((message) => message.type === "dashboard").length, 0);
++    } finally {
++      resume.resolve();
++    }
++    // Let the resumed HTTP handler pass its cancellation guard before checking IPC.
++    await new Promise(setImmediate);
++    assert.equal(f.requests.filter((message) => message.type === "dashboard").length, 0);
++    assertReleased(f);
++    assertLeasesClosed(f.rows());
++  },
++);

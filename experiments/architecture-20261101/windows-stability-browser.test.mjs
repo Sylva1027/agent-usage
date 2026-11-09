@@ -26,7 +26,8 @@ const save = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + "
 const lines = rows => rows.map(row => JSON.stringify(row)).join("\n") + "\n";
 const usage = { input_tokens: 140, cached_input_tokens: 30, output_tokens: 20, reasoning_output_tokens: 5, total_tokens: 160 };
 const closeout=process.env.WINDOWS_CLOSEOUT_PREFLIGHT==="1";
-const closeoutRoot=path.join(ROOT,"output/windows-parallel-20261109");
+const closeoutRoot=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110"].some(relative=>path.join(ROOT,relative)===closeoutRoot));
 
 async function savePreflight(name, receipt) {
   const directory = closeout?path.join(closeoutRoot,"browser-preflight"):path.join(ROOT, name.startsWith("combined-")

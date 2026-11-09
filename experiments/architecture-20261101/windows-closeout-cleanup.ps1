@@ -146,7 +146,18 @@ foreach ($item in Get-ChildItem -LiteralPath $Workspace -Directory -Force -Filte
     $generated.Add($item.FullName)
 }
 foreach ($relative in @('native/windows-source-proof/target','experiments/architecture-20261101/native/target',
-    'experiments/rust-parsing-20261029/target','experiments/rust-integration-20261030/native-perf/target')) {
+    'experiments/rust-parsing-20261029/target','experiments/rust-integration-20261030/native-perf/target',
+    '.codex-usage/tps-batch-20261030','.codex-usage/tps-aligned-20261030',
+    '.codex-usage/codex-release-20261029','.codex-usage/no-tps-cutover-20261101',
+    '.codex-usage/tps-deepseek-audit-20261030','.codex-usage/tps-v4-implementation-20261029/codex',
+    '.codex-usage/release-v0.7.0-clean-lf/docs/validation',
+    '.codex-usage/billing-test-temp','.codex-usage/test-tmp',
+    '.codex-usage/dsh-hmr-fix-20261101','.codex-usage/dsh-standard-plugin-20261031',
+    '.codex-usage/tps-extraction-20261101','.codex-usage/tps-implementation-20261029',
+    '.codex-usage/tps-installed-validation-20261029','.codex-usage/tps-local-adoption-20261029',
+    '.codex-usage/tps-simplification-20261101','.codex-usage/tps-upstream-20261031',
+    '.codex-usage/release-v0.7.0-clean.tar','.codex-usage/release-v0.7.0-final.tar',
+    '.codex-usage/release-v0.7.0-clean-lf.tar')) {
     $path = Absolute $relative
     if (Test-Path -LiteralPath $path) { $generated.Add($path) }
 }
@@ -252,12 +263,12 @@ if ($Mode -eq 'SelfTest') {
     if ($longFile.Length -le 260 -or [CloseoutMetadata]::Read($longFile).LogicalBytes -ne 4096) { throw 'Long path metadata failed.' }
     if (Inside (Absolute 'output/a') (Absolute 'output/ab')) { throw 'Sibling boundary failed.' }
     $rejects=0
-    foreach ($bad in @((Absolute '../outside'), (Absolute 'src'), (Absolute 'output'))) {
+    foreach ($bad in @((Absolute '../outside'), (Absolute 'src'), (Absolute 'output'), (Absolute '.codex-usage/usage-index.sqlite'))) {
         try { ValidateTarget $bad @() @() @() | Out-Null } catch { $rejects++ }
     }
     try { ValidateTarget $testRoot @([pscustomobject]@{path=$testRoot;released=$false;consumer='selftest';releaseEvidence=''}) @() @() | Out-Null } catch { $rejects++ }
     try { ValidateTarget $file @() @() @($file) | Out-Null } catch { $rejects++ }
-    if ($rejects -ne 5) { throw 'Target rejection failed.' }
+    if ($rejects -ne 6) { throw 'Target rejection failed.' }
     $protectionRejects = 0
     try { ValidateTarget $testRoot @() @($file) @() | Out-Null } catch { $protectionRejects++ }
     try { ValidateTarget $file @() @($testRoot) @() | Out-Null } catch { $protectionRejects++ }
@@ -279,7 +290,7 @@ if ($Mode -eq 'SelfTest') {
     if ((Test-Path -LiteralPath (Absolute '-files.csv')) -or (Test-Path -LiteralPath (Absolute '-directories.csv'))) {
         throw 'Unexpected root CSV; inspect before moving owned output.'
     }
-    Save ($prefix + '.json') @{passed=$true;checks=19;fixture=$testRoot;deletedFixtureLinks=1;deleted=0;links=$after.Links}
+    Save ($prefix + '.json') @{passed=$true;checks=20;fixture=$testRoot;deletedFixtureLinks=1;deleted=0;links=$after.Links}
     Write-Output "SelfTest passed; fixture retained: $testRoot"
     exit
 }

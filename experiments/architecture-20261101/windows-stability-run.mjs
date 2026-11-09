@@ -25,7 +25,8 @@ const FORMAL=path.join(RESULT,"formal-v2");
 const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
-export const CLOSEOUT_RESULT=path.join(ROOT,"output/windows-parallel-20261109");
+export const CLOSEOUT_RESULT=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -235,6 +236,8 @@ async function launchServer(context,suffix="",port=0) {
 }
 
 async function loadPage(context,page=context.ui.page) {
+  context.navigatingPages??=new Set();context.navigatingPages.add(page);
+  try{
   const pending=waitUsageResponse(context,page,"today");void pending.catch(()=>{});
   await page.goto(context.server.ready.url,{waitUntil:"domcontentloaded"});
   const response=await pending;assert.equal(response.status(),200,await response.text());
@@ -242,14 +245,15 @@ async function loadPage(context,page=context.ui.page) {
   if(context.profile===CLOSEOUT_PROFILE)await log(context,"startup-today",{page:context.pages.indexOf(page),startedAtMs:context.server.startedAtMs,wallMs:Date.now()-context.server.startedAtMs});
   await stabilityScope(context,page,"all",context.requiredAllTotal,context.directory,`initial-all-${++context.navigationSequence}`);
   if(context.profile===CLOSEOUT_PROFILE)await log(context,"startup-all",{page:context.pages.indexOf(page),startedAtMs:context.server.startedAtMs,wallMs:Date.now()-context.server.startedAtMs});
+  }finally{context.navigatingPages.delete(page);}
 }
 
 async function pollBrowser(context) {
   for(const page of context.pages){
-    if(page.isClosed())continue;
+    if(page.isClosed()||context.navigatingPages?.has(page))continue;
     let observed;
     try{observed=await page.evaluate(()=>({rows:window.__q5Delivery?.rows.splice(0)??[],dropped:window.__q5Delivery?.dropped??0}));}
-    catch(error){if(page.isClosed())continue;throw error;}
+    catch(error){if(page.isClosed()||context.navigatingPages?.has(page)&&/Execution context was destroyed/.test(error.message))continue;throw error;}
     assert.equal(observed.dropped,0,"browser delivery evidence truncated");
     await Promise.all(context.responseTasks);
     for(const row of observed.rows){
@@ -835,6 +839,7 @@ function assertCloseoutProjection(label,projection,archiveCount) {
 
 async function runCloseout(configFile) {
   const config=await read(configFile);assert.equal(config.profile,CLOSEOUT_PROFILE);
+  if(CLOSEOUT_RESULT===path.join(ROOT,"output/archive-request-lifetime-20261110"))assert.equal(config.requireNoopStartup,true,"This card requires source-work parity evidence");
   assert.ok(["baseline","candidate"].includes(config.variant));
   const schedule=closeoutSchedule(config.mode,config.label);
   if(config.mode==="closeout-soak")assert.equal(config.variant,"candidate");
@@ -871,6 +876,13 @@ async function runCloseout(configFile) {
       heaps:{gatewayOldMiB:512,executorOldMiB:224,executorSemiMiB:4,nodeOptionsRemoved:true}});
     context.ui=await browser();context.pages=[context.ui.page];await attachPage(context,context.ui.page);
     context.server=await launchServer(context);context.sampler=await startSampler(context);await loadPage(context);
+    if(config.requireNoopStartup){
+      const {assertArchiveRequestStartup}=await import("./archive-request-prepare.mjs");
+      const rows=[];for(const name of await readdir(controlDirectory))if(/^events-\d+\.ndjson$/.test(name))
+        for(const line of (await readFile(path.join(controlDirectory,name),"utf8")).trim().split("\n"))if(line)rows.push(JSON.parse(line));
+      result.startupGuard=assertArchiveRequestStartup(rows);
+      await save(path.join(directory,"startup-guard.json"),result.startupGuard);
+    }
     await verifyFull(context,"initial");delete context.requiredAllTotal;
     result.phases.push(await runPhase(context,schedule));
     result.reopen=await idleAndReopen(context);await save(path.join(directory,"end-ledger.json"),ledger);
