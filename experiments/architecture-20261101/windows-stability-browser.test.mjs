@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { appendFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,12 +8,15 @@ import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 import { createCostEstimateAccumulator, createEventPricing, runWithPricingCatalog } from "../../src/pricing.js";
 import { UsageStore } from "../../src/usage-store.js";
-import { ROOT } from "./c1-datasets.mjs";
+import { ROOT,datasetOptions } from "./c1-datasets.mjs";
+import { createRemainingHarnessFixture } from "../../test-support/remaining-harness-fixture.mjs";
+import { prepareStabilityMutations,appendStabilityMutation } from "./windows-stability-mutations.mjs";
+import { CLOSEOUT_PROFILE } from "./windows-stability-schedule.mjs";
 import { browser, stop } from "./c1-run.mjs";
 import { painted } from "./b2-page-diagnostic.mjs";
 import { readQ5Delivery } from "./q5-summary-hook.mjs";
 import {
-  attachPage, launchServer, loadPage, matchingControlledExit, pollBrowser, registerControlledExit, stabilityScope, waitUsageResponse,
+  attachPage, launchServer, loadPage, matchingControlledExit, pollBrowser, registerControlledExit, stabilityScope, waitUsageResponse,mutationSessions,
 } from "./windows-stability-run.mjs";
 
 const KINDS = ["codex", "dsh", "claude", "workbuddy", "zcode", "opencode"];
@@ -22,9 +25,11 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const save = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + "\n");
 const lines = rows => rows.map(row => JSON.stringify(row)).join("\n") + "\n";
 const usage = { input_tokens: 140, cached_input_tokens: 30, output_tokens: 20, reasoning_output_tokens: 5, total_tokens: 160 };
+const closeout=process.env.WINDOWS_CLOSEOUT_PREFLIGHT==="1";
+const closeoutRoot=path.join(ROOT,"output/windows-parallel-20261109");
 
 async function savePreflight(name, receipt) {
-  const directory = path.join(ROOT, name.startsWith("combined-")
+  const directory = closeout?path.join(closeoutRoot,"browser-preflight"):path.join(ROOT, name.startsWith("combined-")
     ? "output/windows-multitab-20261109/preflight" : "output/windows-stability-recovery-20261109/preflight");
   await mkdir(directory, { recursive: true });
   const file = path.join(directory, `browser-${name}.json`);
@@ -32,6 +37,7 @@ async function savePreflight(name, receipt) {
   try { prior = JSON.parse(await readFile(file, "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   assert.ok(!prior || prior.passed === true, `Refuse to overwrite a failed receipt: ${file}`);
+  if(closeout)assert.equal(prior,undefined,"Preserve the first closeout browser receipt");
   await writeFile(file, JSON.stringify(receipt, null, 2) + "\n", { flag: prior ? "w" : "wx" });
   return file;
 }
@@ -187,13 +193,14 @@ $result | ConvertTo-Json -Compress
 function assertFixtureDirectory(directory) {
   assert.ok(path.isAbsolute(directory), "fixture directory must be absolute");
   const absolute = path.resolve(directory);
-  assert.equal(path.dirname(absolute), path.resolve(ROOT, "output"), "fixture parent must be ROOT/output");
+  assert.ok([path.resolve(ROOT,"output"),closeoutRoot].includes(path.dirname(absolute)), "fixture parent must be ROOT/output or private closeout root");
   assert.match(path.basename(absolute), /^windows-stability-browser-/, "fixture basename must have the browser prefix");
 }
 
-async function fixture(t) {
+async function fixture(t,{six=false}={}) {
   const startedAtMs = Date.now();
-  const directory = await mkdtemp(path.join(ROOT, "output/windows-stability-browser-"));
+  if(closeout)await mkdir(closeoutRoot,{recursive:true});
+  const directory = await mkdtemp(path.join(closeout?closeoutRoot:path.join(ROOT,"output"), "windows-stability-browser-"));
   const home = path.join(directory, "home"), state = path.join(directory, "state"), control = path.join(directory, "control");
   const timestampMs = Date.now() - 10_000;
   const files = {
@@ -201,7 +208,8 @@ async function fixture(t) {
     dsh: path.join(home, ".dsh/sessions/browser/browser-dsh/session.v4.jsonl.zstd"),
   };
   const context = {
-    directory, state, control, runtime: ROOT, timestampMs, files, trace: path.join(directory, "nodes"), startedAtMs,
+    directory, state, control, runtime: process.env.WINDOWS_CLOSEOUT_RUNTIME??ROOT, timestampMs, files, trace: path.join(directory, "nodes"), startedAtMs,
+    ...(closeout?{profile:CLOSEOUT_PROFILE}:{}),
     dataset: { home, expectedSessions: 2, expected: KINDS.map(kind => {
       const n = ["codex", "dsh"].includes(kind) ? 1 : 0;
       return { kind, events: n, sessions: n, total: n * 160, input: n * 140, cached: n * 30, output: n * 20, reasoning: kind === "codex" ? 5 : 0 };
@@ -244,16 +252,17 @@ async function fixture(t) {
       try {
         const file = await savePreflight(context.receiptName, {
           passed: true, scenario: context.receiptName, startedAtMs, completedAtMs: Date.now(),
+          observationVersion:2,...(closeout?{profile:CLOSEOUT_PROFILE}:{}),
           ...context.receipt, cleanup: { passed: true, ownedPids: owned, processes: cleanupProcesses, livePids: [], proxyClosed: true },
         });
         t.diagnostic(`Browser receipt: ${file}`);
       } catch (error) { errors.push(String(error)); }
     }
-    if (context.passed && !errors.length) {
+    if (context.passed && !errors.length&&!closeout) {
       assertFixtureDirectory(directory);
       await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
-    else t.diagnostic(`Small failure evidence: ${directory}`);
+    else t.diagnostic(`${context.passed&&!errors.length?"Preserved browser evidence":"Small failure evidence"}: ${directory}`);
     assert.deepEqual(errors, [], "isolated service cleanup");
   });
   await Promise.all([state, control, context.trace, ...Object.values(files).map(file => path.dirname(file))].map(dir => mkdir(dir, { recursive: true })));
@@ -271,6 +280,23 @@ async function fixture(t) {
     { type: "request/header", time: timestampMs, data: { header: { config: { model: "deepseek-chat", provider: "deepseek" } } } },
     dshRow(timestampMs, 1),
   ]))));
+  if(six){
+    for(const [kind,relative] of [["claude",".claude/projects/browser/session.jsonl"],["workbuddy",".workbuddy-ai/projects/browser/session.jsonl"],["zcode",".zcode/cli/db/db.sqlite"],["opencode",".opencode/opencode.db"]]){
+      const source=createRemainingHarnessFixture(path.join(directory,"raw-fixtures",kind),kind,1),file=path.join(home,relative);
+      await mkdir(path.dirname(file),{recursive:true});await copyFile(source.filePath,file);files[kind]=file;
+      if(kind==="workbuddy")await writeFile(file,lines([{type:"session-meta",sessionId:"long-session"}])+await readFile(file,"utf8"));
+    }
+    const store=new UsageStore(datasetOptions(home,state));
+    try{
+      await store.open();await store.sync();
+      context.seed.exec("DELETE FROM events");
+      for(const row of store.database.prepare("SELECT timestamp_ms,session_id,source_path,total,input,cached,output,reasoning FROM events").iterate())context.seed.prepare("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)").run(...Object.values(row));
+      context.dataset.expected=store.database.prepare("SELECT s.kind,COUNT(*) events,SUM(e.total) total,SUM(e.input) input,SUM(e.cached) cached,SUM(e.output) output,SUM(e.reasoning) reasoning FROM events e JOIN source_files s ON s.path=e.source_path GROUP BY s.kind").all().map(row=>({...row,kind:row.kind==="main"?"codex":row.kind}));
+      context.dataset.expectedSessions=store.database.prepare("SELECT COUNT(DISTINCT session_id) n FROM events").get().n;
+    }finally{store.close();}
+    context.ledger=await prepareStabilityMutations(context.dataset,path.join(directory,"mutations"),{databaseFile:path.join(state,"usage-index.sqlite"),runtimeDirectory:context.runtime});
+    context.selectedSessions=mutationSessions(context.ledger,context.seed);
+  }
   context.server = await launchServer(context);
   context.gatewayPid = context.server.ready.pid;
   context.proxy = await proxyTo(context.server.ready.url);
@@ -281,7 +307,7 @@ async function fixture(t) {
   await context.ui.page.waitForFunction(() => window.__q5Delivery.rows.some(row => row.kind === "page-receipt" && row.event === "open"));
   await Promise.all(context.responseTasks);
   assert.deepEqual(context.failures, []);
-  assert.equal(context.lastBody.total, 320);
+  assert.equal(context.lastBody.total,context.dataset.expected.reduce((n,row)=>n+row.total,0));
   return context;
 }
 
@@ -468,6 +494,7 @@ for (const [name, point] of [["normal", null], ["before", "before-commit"], ["af
     }
     assert.ok(!context.bodies.some(row => row.page === 0 && row.preset === "all" && row.total === 480), "main never supplied the new all value");
     await until(async () => { await pollBrowser(context); return input.paintedAtMs; }, "shared pollBrowser records the other tab's all paint");
+    assert.ok(input.viewVisibleAtMs&&input.viewUsageVersion&&input.viewLandingToPaintMs>=0,"v2 selected range has its own versioned clock");
     const mainPresetAtConfirmation = await main.locator("[data-preset].active").getAttribute("data-preset");
     assert.equal(mainPresetAtConfirmation, "week", "main is outside all when pollBrowser confirms the input");
     assert.ok([1, 2].includes(input.paintedPage), "another tab must certify the input");
@@ -490,6 +517,7 @@ for (const [name, point] of [["normal", null], ["before", "before-commit"], ["af
     } else assert.equal(upstream500.length, 0);
     assert.deepEqual(context.failures, []);
     context.receipt = {
+      appendCount:1,observationVersion:2,
       ...validation, scopes: { main: [today.result, week.result], otherTabs: ["all", "all"] }, scopeAppendOverlap, costs,
       sharedPollBrowser: { passed: true, mainPage: 0, mainPresetAtConfirmation, confirmedAtMs: Date.now(), mainHasNewAllResponse: false, input,
         sameTabResponse: { page: body.page, sequence: body.sequence, preset: body.preset, usageVersion: body.usageVersion } },
@@ -502,6 +530,42 @@ for (const [name, point] of [["normal", null], ["before", "before-commit"], ["af
     context.passed = true;
   });
 }
+
+test("closeout closed tabs then scope switch WorkBuddy append and six-source burst",{timeout:90_000},async t=>{
+  const context=await fixture(t,{six:true}),main=context.ui.page;
+  context.receiptName="combined-closed-tabs";
+  for(let i=0;i<2;i++){const page=await context.ui.context.newPage();await addPage(context,page);await loadPage(context,page);}
+  for(const page of context.pages.slice(1))await page.close();context.pages=context.pages.slice(0,1);
+  await stabilityScope(context,main,"week",undefined,context.directory,"closed-tabs-week");
+  await pollBrowser(context);
+  const add=async(kind,ordinal)=>{
+    const row=await appendStabilityMutation(context.ledger,kind,{ordinal,timestampMs:Date.now(),category:ordinal===1?"ordinary":"burst"});
+    const input={...row,eventId:`closed-tabs-${ordinal}`,kindCount:context.ledger.byKind[kind].appendCount};context.inputs.push(input);return input;
+  };
+  const workbuddy=await add("workbuddy",1);
+  await until(async()=>{await pollBrowser(context);return workbuddy.viewVisibleAtMs;},"automatic WorkBuddy selected week visibility",30_000);
+  assert.equal(workbuddy.viewPreset,"week");assert.equal(workbuddy.viewPage,0);assert.equal(workbuddy.paintedAtMs,undefined);
+  await stabilityScope(context,main,"all",undefined,context.directory,"closed-tabs-all");
+  await until(async()=>{await pollBrowser(context);return workbuddy.paintedAtMs;},"independent WorkBuddy all confirmation");
+  const burstStartedAtMs=Date.now();
+  await Promise.all(KINDS.map((kind,i)=>add(kind,i+2)));
+  await until(async()=>{await pollBrowser(context);return context.inputs.every(input=>input.viewVisibleAtMs&&input.paintedAtMs);},"six-source automatic burst publication",30_000);
+  await Promise.all(context.responseTasks);assert.deepEqual(context.failures,[]);
+  const body=context.lastBody.body,db=new DatabaseSync(path.join(context.state,"usage-index.sqlite"),{readOnly:true});
+  const reader=new UsageStore({databaseFile:path.join(context.state,"usage-index.sqlite")});reader.database=db;reader.homes=body.metadata.homes;
+  let expectedCost;
+  try{
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n,13);
+    expectedCost=runWithPricingCatalog(body.pricingCatalog,()=>{
+      const pricing=createEventPricing(body.pricingCatalog.models),accumulator=createCostEstimateAccumulator({modelName:pricing.costModelName}),range=body.summary.range;
+      for(const event of reader.costEventsForRange({...range,start:new Date(range.start),end:new Date(range.end)}))accumulator.add(event,pricing.estimate(event));return accumulator.result();
+    });
+  }finally{db.close();}
+  assert.deepEqual(body.summary.costEstimate,expectedCost);
+  assert.equal(context.inputs.length,7);
+  for(const input of context.inputs){assert.ok(input.viewUsageVersion&&input.usageVersion);assert.ok(input.paintedAtMs>=input.viewVisibleAtMs);}
+  context.receipt={appendCount:7,observationVersion:2,inputs:context.inputs,closedExtraTabs:2,scope:"week",burstStartedAtMs,expectedCost,exactCostPassed:true};context.passed=true;
+});
 
 for (const point of ["before-commit", "after-commit-before-notify"]) {
   test(`real three-tab establishment recovers automatically after ${point} executor kill`, { timeout: 90_000 }, async t => {

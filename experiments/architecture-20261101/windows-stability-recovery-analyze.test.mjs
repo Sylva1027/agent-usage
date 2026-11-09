@@ -3,13 +3,54 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { analyzeWindowsStabilityRecovery } from "./windows-stability-recovery-analyze.mjs";
-import { stabilitySchedule, STABILITY_KINDS } from "./windows-stability-schedule.mjs";
+import { analyzeWindowsStabilityRecovery,closeoutObservationErrors,analyzeWindowsCloseout } from "./windows-stability-recovery-analyze.mjs";
+import { phaseAnalysis,resources,gates } from "./windows-stability-analyze.mjs";
+import { stabilitySchedule,closeoutSchedule, STABILITY_KINDS } from "./windows-stability-schedule.mjs";
 
 const MiB = 1048576, hour = 3600000, start = 1800000000000;
 const save = async (file, value) => { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, JSON.stringify(value)); };
 const ndjson = async (file, rows) => { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, rows.map(row => JSON.stringify(row)).join("\n") + "\n"); };
 const projection = { candidate: null, orphanDatabases: [], walBytes: 0, databaseCount: 1 };
+
+test("closeout v2 rejects a wrong tab, empty version and out-of-range selected proof",()=>{
+  const input={eventId:"new-1",operation:"append",kind:"workbuddy",kindCount:1,timestampMs:1000,landedAtMs:1100,
+    viewPage:0,viewPreset:"week",viewUsageVersion:"fresh",viewResponseSequence:1,viewVisibleAtMs:1200,viewLandingToPaintMs:100,
+    paintedPage:1,usageVersion:"fresh-all",responseSequence:2,paintedAtMs:1400,landingToPaintMs:300};
+  const responses=[{page:0,preset:"week",usageVersion:"fresh",sequence:1,atMs:1150,counts:{workbuddy:1},range:{start:new Date(0).toISOString(),end:new Date(2000).toISOString()}},
+    {page:1,preset:"all",usageVersion:"fresh-all",sequence:2,atMs:1350,counts:{workbuddy:1}}];
+  assert.deepEqual(closeoutObservationErrors([input],responses),[]);
+  for(const change of [{viewPage:1},{viewUsageVersion:""},{timestampMs:3000},{paintedPage:0},{viewLandingToPaintMs:-1}])assert.deepEqual(closeoutObservationErrors([{...input,...change}],responses),["new-1"]);
+});
+
+test("closeout canonical 144-input phase requires independent continuous publication in every cycle",()=>{
+  const schedule={...closeoutSchedule("closeout-soak"),startedAtMs:start,ordinalOffset:135},reliability=gates(),performance=gates();
+  const inputs=schedule.events.filter(row=>row.type==="append").map(row=>({...row,eventId:row.id,operation:"append",ordinal:row.ordinal+135,
+    landedAtMs:start+row.atMs,paintedAtMs:start+row.atMs+100,landingToPaintMs:100,viewVisibleAtMs:start+row.atMs+50,viewLandingToPaintMs:50,viewUsageVersion:row.id}));
+  const ledger=new Map(inputs.map(row=>[row.eventId,row])),result={passed:true,errors:[],startedAtMs:start,observedDurationMs:schedule.durationMs,drainMs:0,inputs,oracle:{passed:true}};
+  phaseAnalysis("two-years","closeout-soak",schedule,result,ledger,{scopes:[]},reliability,performance,false,135,true);
+  assert.ok(reliability.checks.every(row=>row.status==="passed"));assert.ok(performance.checks.every(row=>row.status==="passed"));
+  assert.equal(reliability.checks.filter(row=>row.id.endsWith("continuous-publication")).length,4);
+  inputs.filter(row=>row.cycle===4&&row.inputClass==="continuous").forEach(row=>row.viewUsageVersion="one-stale-version");
+  const failed=gates();phaseAnalysis("two-years","closeout-soak",schedule,result,ledger,{scopes:[]},failed,gates(),false,135,true);
+  assert.equal(failed.checks.find(row=>row.id.includes("cycle-4/continuous-publication")).status,"failed");
+});
+
+test("four-cycle resources use the fixed 22-to-30-minute idle windows and retain WAL growth",async t=>{
+  const root=await mkdtemp(path.join(tmpdir(),"closeout-cycle-resources-"));t.after(()=>rm(root,{recursive:true,force:true}));
+  const samples=[0,1,2,3].map(i=>sample(start+(i*30+24)*60_000,{bytes:(100+i)*MiB,handles:100+i}));
+  samples.forEach((row,i)=>row.sqlite.categoryBytes.wal=i*100);
+  const outside=sample(start+15*60_000,{bytes:400*MiB});
+  await ndjson(path.join(root,"resources/resources.ndjson"),[outside,...samples]);
+  const entries=[{name:"resources",isDirectory:()=>true}],phase={expectedSchedule:closeoutSchedule("closeout-soak"),schedule:{startedAtMs:start}};
+  const data=await resources(root,entries,[{idle:[outside,...samples].map(row=>({atMs:row.atUnixMs}))}],{processes:[],exits:[],faults:[]},[],phase,{faults:[]},[]);
+  assert.equal(data.idleCycles.length,4);assert.deepEqual(data.idleCycles.map(row=>row.memory.p50),[100,101,102,103].map(n=>n*MiB));
+  assert.equal(data.walGrowth.status,"failed");assert.equal(data.handleGrowth.status,"failed");assert.equal(data.sampledPeakBytes,400*MiB);
+});
+
+test("an absent closeout group stays incomplete and never borrows legacy eight-hour success",async()=>{
+  const result=await analyzeWindowsCloseout(path.join(tmpdir(),`missing-closeout-${process.pid}`));
+  assert.equal(result.passed,false);assert.equal(result.statisticalP95Claim,false);assert.match(result.originalEightHourAcceptance,/incomplete/);
+});
 
 function sample(atMs, { bytes = 100 * MiB, handles = 100, tempFiles = 0, running = true } = {}) {
   const process = (pid, role, born, memory) => ({ pid, role, name: "node.exe", parentPid: role === "runner" ? 0 : 1,

@@ -1,0 +1,379 @@
+diff --git a/src/server.js b/src/server.js
+index b55c81d..7d68b3b 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -1466,6 +1466,10 @@ export function createUsageServer(options = {}) {
+             resultSource = cached ? source : null;
+             response.setHeader("x-summary-cache", result ? "hit" : "miss");
+             if (!result) {
++              if (response.destroyed || response.writableEnded) {
++                await usageStore.releaseHistoryVerification();
++                return;
++              }
+               result = await runWithPricingCatalog(pricingCatalog, () =>
+                 usageStore.dashboard(filters, { includeDetails }),
+               );
+diff --git a/src/usage-executor.js b/src/usage-executor.js
+index 135e24d..7f029d8 100644
+--- a/src/usage-executor.js
++++ b/src/usage-executor.js
+@@ -368,6 +368,9 @@ async function runExecutorProcess() {
+   let stopping = false;
+   let active = 0;
+   const queued = [];
++  const dashboards = [];
++  let dashboardDrain = null;
++  const activeDashboardBatches = new Set();
+ 
+   const send = (message) =>
+     new Promise((resolve, reject) => {
+@@ -807,13 +810,25 @@ async function runExecutorProcess() {
+     }
+   };
+ 
+-  const executeMessage = async (message) => {
++  const executeMessage = async (message, batch = null) => {
+     if (stopping) return;
+     if (message.type === "idleClose") {
+       await shutdown({ notifyIdle: true });
+       return;
+     }
+     active += 1;
++    let batchFinished = false;
++    const finishBatchMember = async () => {
++      if (!batch || batchFinished) return;
++      batchFinished = true;
++      if (--batch.remaining === 0) {
++        try {
++          await batch.scope?.close();
++        } finally {
++          batch.resolveDone();
++        }
++      }
++    };
+     try {
+       await store.open();
+       applyPricingCatalog(message.pricing);
+@@ -849,11 +864,39 @@ async function runExecutorProcess() {
+           }
+         }
+         if (message.type === "releaseHistoryVerification") {
+-          if (pendingHistoryVerification?.token === message.historyVerification)
+-            await releaseHistoryVerification();
++          if (pendingHistoryVerification?.token === message.historyVerification) await releaseHistoryVerification();
+           return null;
+         }
+         if (message.type === "dashboard") {
++          if (batch) {
++            batch.ready ||= (async () => {
++              await publishedReady;
++              const pending = pendingHistoryVerification;
++              if (pending && batch.tokens.has(pending.token)) {
++                pendingHistoryVerification = null;
++                clearTimeout(pending.timer);
++                batch.scope = pending.scope;
++                batch.handoffId = message.id;
++              } else batch.scope = await store.createHistoryVerificationScope();
++              batch.fingerprint = storeStatus?.fingerprint;
++              batch.guard = store.usageProjectionGuard({ includeHistory: true });
++              batch.key = store.usageProjectionChangeKey(undefined, true);
++            })();
++            await batch.ready;
++            await publishedReady;
++            const guard = store.usageProjectionGuard({ includeHistory: true });
++            if (
++              batch.scope &&
++              (batch.handoffId === message.id ||
++                (batch.guard &&
++                  guard &&
++                  batch.fingerprint === storeStatus?.fingerprint &&
++                  Object.keys(guard).every((key) => guard[key] === batch.guard[key]) &&
++                  batch.key === store.usageProjectionChangeKey(undefined, true)))
++            )
++              return batch.scope.run(work);
++            return store.withHistoryVerification(work);
++          }
+           const pending = pendingHistoryVerification;
+           if (pending && pending.token === message.historyVerification) {
+             pendingHistoryVerification = null;
+@@ -866,8 +909,14 @@ async function runExecutorProcess() {
+           }
+           return store.withHistoryVerification(work);
+         }
+-        if (["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(message.type))
++        if (
++          ["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(
++            message.type,
++          )
++        ) {
++          await Promise.all([...activeDashboardBatches].map((pending) => pending.done));
+           await releaseHistoryVerification();
++        }
+         return work();
+       };
+       const result =
+@@ -885,6 +934,7 @@ async function runExecutorProcess() {
+         message.type === "close"
+           ? await serializeSyncBackup(execute)
+           : await execute();
++      await finishBatchMember();
+       await send({
+         type: "response",
+         id: message.id,
+@@ -895,6 +945,7 @@ async function runExecutorProcess() {
+       if (message.type === "close") await shutdown();
+     } catch (error) {
+       try {
++        await finishBatchMember();
+         await send({
+           type: "response",
+           id: message.id,
+@@ -914,6 +965,46 @@ async function runExecutorProcess() {
+     }
+   };
+ 
++  const dispatch = (message) => {
++    if (message.type !== "dashboard" || !store?.readMetaRaw("history_archive_event_authority")) {
++      void executeMessage(message);
++      return;
++    }
++    dashboards.push(message);
++    if (dashboardDrain) return;
++    dashboardDrain = new Promise((resolve) =>
++      setImmediate(() => {
++        dashboardDrain = null;
++        // Snapshot admission so incoming traffic cannot keep one archive lease alive indefinitely.
++        const admitted = dashboards.splice(0);
++        let resolveDone;
++        const done = new Promise((resolve) => {
++          resolveDone = resolve;
++        });
++        const batch = {
++          remaining: admitted.length,
++          tokens: new Set(admitted.map((row) => row.historyVerification)),
++          scope: null,
++          ready: null,
++          guard: null,
++          key: null,
++          fingerprint: null,
++          handoffId: null,
++          done,
++          resolveDone,
++        };
++        activeDashboardBatches.add(batch);
++        // Flush each response before the next member; independent batches still run concurrently.
++        void (async () => {
++          for (const row of admitted) await executeMessage(row, batch);
++        })().finally(() => {
++          activeDashboardBatches.delete(batch);
++          resolve();
++        });
++      }),
++    );
++  };
++
+   const initialize = async () => {
+     if (initializing) return;
+     const initIndex = queued.findIndex((message) => message.type === "init");
+@@ -933,7 +1024,7 @@ async function runExecutorProcess() {
+       initialized = true;
+       await send({ type: "ready" });
+       const batch = queued.splice(0);
+-      for (const message of batch) void executeMessage(message);
++      for (const message of batch) dispatch(message);
+     } catch (error) {
+       try {
+         await send({
+@@ -956,7 +1047,7 @@ async function runExecutorProcess() {
+       void initialize();
+       return;
+     }
+-    void executeMessage(message);
++    dispatch(message);
+   });
+   childProcess.once("disconnect", () => {
+     void shutdown({ waitForActive: true });
+diff --git a/test/history-verification-lifecycle.test.js b/test/history-verification-lifecycle.test.js
+index 755692c..4a1f13d 100644
+--- a/test/history-verification-lifecycle.test.js
++++ b/test/history-verification-lifecycle.test.js
+@@ -72,10 +72,14 @@ async function fixture(t) {
+   const log = path.join(directory, "verification-lifecycle.ndjson");
+   const failSync = path.join(directory, "fail-sync-once");
+   const blockVerification = path.join(directory, "block-verification-once");
++  const blockDashboard = path.join(directory, "block-dashboard-once");
++  const resumeDashboard = path.join(directory, "resume-dashboard");
++  const admission = path.join(directory, "admission");
+   writeFileSync(log, "");
+   const record = `\nimport {appendFileSync as lifecycleAppend} from 'node:fs';
+     const lifecycleRecord=value=>lifecycleAppend(${JSON.stringify(log)},JSON.stringify({pid:process.pid,...value})+'\\n');`;
+   const probes = {
++    "/src/usage-executor.js": `${record}\nimport {existsSync as lifecycleAdmissionExists,readFileSync as lifecycleAdmissionRead,unlinkSync as lifecycleAdmissionRemove} from 'node:fs';`,
+     "/src/history-backup.js": `${record}
+       import {existsSync as lifecycleBlockExists,unlinkSync as lifecycleBlockUnlink} from 'node:fs';
+       const lifecycleHash=hashFile;hashFile=async function(...args){const result=await lifecycleHash(...args);
+@@ -109,7 +113,18 @@ async function fixture(t) {
+         return {check:()=>lease.check(),close:async()=>{
+           if(closed)return;closed=true;await lease.close();lifecycleRecord({kind:'lease-close',id});}};
+       };`,
+-    "/src/usage-store.js": `\nimport {existsSync as lifecycleExists,unlinkSync as lifecycleUnlink} from 'node:fs';
++    "/src/usage-store.js": `${record}\nimport {existsSync as lifecycleExists,unlinkSync as lifecycleUnlink} from 'node:fs';
++      const lifecycleDashboard=UsageStore.prototype.dashboardHistory;
++      UsageStore.prototype.dashboardHistory=async function(...args){
++        if(lifecycleExists(${JSON.stringify(blockDashboard)})){
++          lifecycleUnlink(${JSON.stringify(blockDashboard)});lifecycleRecord({kind:'dashboard-blocked'});
++          const deadline=Date.now()+10000;
++          while(!lifecycleExists(${JSON.stringify(resumeDashboard)})&&Date.now()<deadline)
++            await new Promise(resolve=>setTimeout(resolve,10));
++          if(!lifecycleExists(${JSON.stringify(resumeDashboard)}))throw new Error('dashboard gate expired');
++        }
++        return lifecycleDashboard.apply(this,args);
++      };
+       const lifecycleSync=UsageStore.prototype.sync;
+       UsageStore.prototype.sync=async function(...args){const result=await lifecycleSync.apply(this,args);
+         if(lifecycleExists(${JSON.stringify(failSync)})){lifecycleUnlink(${JSON.stringify(failSync)});
+@@ -119,7 +134,17 @@ async function fixture(t) {
+   const loader = `import {registerHooks} from 'node:module';const probes=${JSON.stringify(probes)};
+     registerHooks({load(url,context,next){const result=next(url,context);
+       const suffix=Object.keys(probes).find(suffix=>url.endsWith(suffix));
+-      return suffix?{...result,source:String(result.source)+probes[suffix]}:result;}});`;
++      if(!suffix)return result;
++      let source=String(result.source)+probes[suffix];
++      if(suffix==='/src/usage-executor.js')source=source.replace('if (\\n              batch.scope',
++        "lifecycleRecord({kind:'batch-guard',size:batch.remaining,before:batch.key,after:store.usageProjectionChangeKey(undefined,true),"+
++        "beforeVersion:batch.guard?.dataVersion,afterVersion:guard?.dataVersion,guard:!!guard});\\n            if (\\n              batch.scope");
++      if(suffix==='/src/usage-executor.js')source=source.replace('setImmediate(() => {','setImmediate(async () => {').replace('const admitted = dashboards.splice(0);',
++        'if(lifecycleAdmissionExists('+${JSON.stringify(JSON.stringify(admission))}+')){'+
++        'const count=Number(lifecycleAdmissionRead('+${JSON.stringify(JSON.stringify(admission))}+',"utf8"));const deadline=Date.now()+3000;'+
++        'while(dashboards.length<count&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));'+
++        'lifecycleAdmissionRemove('+${JSON.stringify(JSON.stringify(admission))}+');} const admitted = dashboards.splice(0);');
++      return {...result,source};}});`;
+   process.execArgv.push("--import", `data:text/javascript,${encodeURIComponent(loader)}`);
+   const fork = childProcess.fork;
+   t.mock.method(childProcess, "fork", (...args) => {
+@@ -149,6 +174,9 @@ async function fixture(t) {
+     replies,
+     failSync,
+     blockVerification,
++    blockDashboard,
++    resumeDashboard,
++    admission,
+     expectedFacts,
+     expected: input.expected,
+     rows,
+@@ -277,6 +305,86 @@ test(
+   },
+ );
+ 
++test("simultaneous callers keep bounded batches, then independent reads hash afresh", WINDOWS, async (t) => {
++  const f = await fixture(t);
++  await f.sync();
++  const before = f.hashes().length;
++  writeFileSync(f.admission, "3");
++  const results = await Promise.all(
++    ["all", "week", "today"].map((preset) => f.client.dashboard({ ...FILTERS, preset }, { includeDetails: false })),
++  );
++  const after = f.hashes().length;
++  assert.equal(after, before, "all three callers were admitted before the first query dispatch");
++  assert.equal(new Set(results.map((row) => row.status.fingerprint)).size, 1);
++  assert.equal(
++    results[0].summary.totals.total,
++    f.expectedFacts.reduce((sum, row) => sum + row.total, 0),
++  );
++  assertReleased(f);
++  await f.client.dashboard(FILTERS, { includeDetails: false });
++  assert.equal(f.hashes().length - after, 4, "a new batch revalidates both archive packages");
++  assertReleased(f);
++  assertLeasesClosed(f.rows());
++});
++
++test("late arrivals form a separate finite batch and share its fresh verification", WINDOWS, async (t) => {
++  const f = await fixture(t);
++  await f.sync();
++  writeFileSync(f.blockDashboard, "pause the admitted reader");
++  const first = f.client.dashboard(FILTERS, { includeDetails: false });
++  t.after(() => {
++    try {
++      writeFileSync(f.resumeDashboard, "resume");
++    } catch (error) {
++      if (error.code !== "ENOENT") throw error;
++    }
++  });
++  await until(() => f.rows().some((row) => row.kind === "dashboard-blocked"), "first reader enters its batch");
++  const before = f.hashes().length;
++  writeFileSync(f.admission, "2");
++  const late = ["week", "today"].map((preset) => f.client.dashboard({ ...FILTERS, preset }, { includeDetails: false }));
++  await until(() => f.requests.filter((row) => row.type === "dashboard").length === 3, "late requests reach IPC");
++  await delay(50);
++  writeFileSync(f.resumeDashboard, "resume");
++  await Promise.all([first, ...late]);
++  assert.equal(f.hashes().length - before, 4, JSON.stringify(f.rows().filter((row) => row.kind === "batch-guard")));
++  assertReleased(f);
++  assertLeasesClosed(f.rows());
++});
++
++test("an external commit invalidates remaining batch members without suppressing SHA", WINDOWS, async (t) => {
++  const f = await fixture(t);
++  await f.sync();
++  writeFileSync(f.blockDashboard, "pause before the first query");
++  const before = f.hashes().length;
++  const reads = ["all", "week", "today"].map((preset) =>
++    f.client.dashboard({ ...FILTERS, preset }, { includeDetails: false }),
++  );
++  t.after(() => {
++    try {
++      writeFileSync(f.resumeDashboard, "resume");
++    } catch (error) {
++      if (error.code !== "ENOENT") throw error;
++    }
++  });
++  await until(() => f.rows().some((row) => row.kind === "dashboard-blocked"), "reader is paused");
++  const writer = new DatabaseSync(f.options.databaseFile);
++  try {
++    writer.exec("CREATE TABLE lifecycle_external_commit(value INTEGER)");
++  } finally {
++    writer.close();
++  }
++  writeFileSync(f.resumeDashboard, "resume");
++  const results = await Promise.all(reads);
++  assert.equal(
++    results[0].summary.totals.total,
++    f.expectedFacts.reduce((sum, row) => sum + row.total, 0),
++  );
++  assert.ok(f.hashes().length - before >= 4, "later members cannot retain a pre-commit acquisition guard");
++  assertReleased(f);
++  assertLeasesClosed(f.rows());
++});
++
+ test("a sync failure after verification releases archive locks", WINDOWS, async (t) => {
+   const f = await fixture(t);
+   writeFileSync(f.failSync, "fail after the real sync has verified its archives");
+@@ -375,7 +483,7 @@ test("the HTTP cache-hit branch releases the pending native handoff without a da
+   assertLeasesClosed(f.rows());
+ });
+ 
+-test("an aborted HTTP request releases its handoff when the existing executor work finishes", WINDOWS, async (t) => {
++test("an aborted HTTP request releases its handoff without starting an unused dashboard", WINDOWS, async (t) => {
+   const f = await fixture(t);
+   const entered = Promise.withResolvers(),
+     resume = Promise.withResolvers();
+@@ -397,14 +505,16 @@ test("an aborted HTTP request releases its handoff when the existing executor wo
+     assertHeld(f);
+     controller.abort();
+     await aborted;
++    // Let the peer observe the TCP close before releasing the paused cache lookup.
++    await delay(50);
+   } finally {
+     resume.resolve();
+   }
+-  // There is no executor AbortSignal API: cancellation lets the already-started operation finish.
+   await until(
+-    () => f.replies.some((reply) => reply.type === "dashboard" && reply.ok) && filesWritable(f.files),
+-    "finishing a disconnected request must release all archive readers",
++    () => f.replies.some((reply) => reply.type === "releaseHistoryVerification" && reply.ok) && filesWritable(f.files),
++    "a disconnected waiter must release its unused archive readers",
+   );
++  assert.equal(f.requests.filter((message) => message.type === "dashboard").length, 0);
+   assertReleased(f);
+   assertLeasesClosed(f.rows());
+ });

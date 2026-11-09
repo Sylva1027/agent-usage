@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { stabilitySchedule,quantiles,protectionPassed,STABILITY_KINDS } from "./windows-stability-schedule.mjs";
+import { stabilitySchedule,closeoutSchedule,CLOSEOUT_PROFILE,quantiles,protectionPassed,STABILITY_KINDS } from "./windows-stability-schedule.mjs";
+
+test("closeout has six paired short groups and four independent thirty-minute resource cycles",()=>{
+  const shorts=["current","year","two-years"].flatMap(label=>["baseline","candidate"].map(()=>closeoutSchedule("closeout-short",label)));
+  assert.equal(shorts.reduce((n,s)=>n+s.appendCount,0),72);
+  assert.equal(shorts.flatMap(s=>s.events).filter(e=>e.type==="revision").length,6);
+  const s=closeoutSchedule("closeout-soak");
+  assert.equal(s.profile,CLOSEOUT_PROFILE);assert.equal(s.version,3);assert.equal(s.observationVersion,2);
+  assert.equal(s.durationMs,120*60_000);assert.equal(s.appendCount,144);
+  for(const [category,count] of [["ordinary",24],["burst",24],["continuous",96]])assert.equal(s.events.filter(e=>e.inputClass===category).length,count);
+  for(const cycle of s.cycles){
+    const rows=s.events.filter(e=>e.cycle===cycle.cycle),offset=(cycle.cycle-1)*30*60_000;
+    assert.deepEqual(rows.filter(e=>e.inputClass==="ordinary").map(e=>e.atMs-offset),[0,2,4,6,8,10].map(n=>n*60_000));
+    assert.ok(rows.filter(e=>e.inputClass==="burst").every(e=>e.atMs-offset===12*60_000));
+    assert.deepEqual(rows.filter(e=>e.inputClass==="continuous").map(e=>e.atMs-offset),Array.from({length:24},(_,i)=>15*60_000+i*5000));
+    assert.ok(cycle.drainDeadlineAtMs<cycle.idleFromMs);assert.equal(cycle.idleToMs-cycle.idleFromMs,8*60_000);
+  }
+  assert.equal(s.events.filter(e=>e.type==="revision"||e.type.startsWith("arm-")).length,0);
+  assert.equal(new Set(s.events.map(e=>e.id)).size,s.events.length);
+  assert.equal(stabilitySchedule("endurance").durationMs,480*60_000);
+});
 
 test("eight-hour manifest has exactly 384 append records and 40 ordinary inputs per source",()=>{
   const schedule=stabilitySchedule("endurance");

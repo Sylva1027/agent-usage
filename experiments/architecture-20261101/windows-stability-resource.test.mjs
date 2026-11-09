@@ -8,8 +8,69 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { correctResourceIdentity, parseResourceSample, resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 import { analyzeWindowsStability as oldAnalyze } from "./windows-stability-analyze.mjs";
+import { instrumentMemory } from "./windows-memory-lifetime-hook.mjs";
 
 const wrapper = fileURLToPath(new URL("./windows-stability-resource.ps1", import.meta.url));
+
+test("memory diagnostic keeps scope close pending until the last active member finishes", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "windows-memory-scope-"));
+  try {
+    const hook = new URL("./windows-memory-lifetime-hook.mjs", import.meta.url).href;
+    const source = new URL("../../src/history-backup.js", import.meta.url).href;
+    const result = spawnSync(process.execPath, ["--import", hook, "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      const {createHistoryVerificationScope}=await import(${JSON.stringify(source)});
+      const scope=createHistoryVerificationScope();let release,closed=false;
+      const work=scope.run(()=>new Promise(resolve=>release=resolve));
+      const closing=scope.close().then(()=>closed=true);
+      await Promise.resolve();assert.equal(closed,false);
+      release();await work;await closing;assert.equal(closed,true);
+    `], { encoding: "utf8", windowsHide: true, timeout: 5000,
+      env: { ...process.env, WINDOWS_MEMORY_DIAGNOSTIC_DIR: directory } });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    const rows = readFileSync(path.join(directory, `memory-${result.pid}.ndjson`), "utf8").trim().split("\n").map(JSON.parse);
+    const scope = rows.filter(row => row.event.startsWith("scope-"));
+    assert.deepEqual(scope.map(row => row.event), ["scope-open", "scope-close-requested", "scope-released"]);
+    assert.equal(new Set(scope.map(row => row.scopeId)).size, 1);
+    assert.equal(scope[1].active, 1);
+    assert.equal(scope[2].readers, 0);
+    for (const row of rows) for (const field of ["rss", "heapUsed", "heapTotal", "external", "arrayBuffers"]) assert.ok(Number.isFinite(row.memory[field]));
+    assert.equal(rows.at(-1).event, "process-exit");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("memory diagnostic changes only known scope anchors and rejects drift", () => {
+  const url = new URL("../../src/history-backup.js", import.meta.url), source = readFileSync(url, "utf8").replaceAll("\r\n", "\n");
+  assert.equal(instrumentMemory("file:///unrelated.mjs", source), source);
+  const instrumented = instrumentMemory(url.href, source);
+  for (const event of ["scope-open", "scope-close-requested", "scope-released"]) assert.ok(instrumented.includes(event));
+  assert.throws(() => instrumentMemory(url.href, source.replace("  let resolveClose;", "")), /Memory diagnostic anchor changed/);
+});
+
+test("memory diagnostic reaches the isolated server when the runner removes NODE_OPTIONS", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "windows-memory-launch-"));
+  try {
+    const hook = new URL("./windows-memory-lifetime-hook.mjs", import.meta.url).href;
+    const fixture = path.join(directory, "windows-stability-server.mjs");
+    writeFileSync(fixture, "console.log(JSON.stringify({pid:process.pid,execArgv:process.execArgv}));");
+    const result = spawnSync(process.execPath, ["--import", hook, "--input-type=module", "-e", `
+      import {spawn} from 'node:child_process';
+      const env={...process.env};delete env.NODE_OPTIONS;
+      const child=spawn(process.execPath,[${JSON.stringify(fixture)}],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+      child.stdout.pipe(process.stdout);child.stderr.pipe(process.stderr);
+      process.exitCode=await new Promise(resolve=>child.once('exit',resolve));
+    `], { encoding: "utf8", windowsHide: true, timeout: 5000,
+      env: { ...process.env, WINDOWS_MEMORY_DIAGNOSTIC_DIR: directory } });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    const child = JSON.parse(result.stdout);
+    assert.deepEqual(child.execArgv, ["--import", hook]);
+    const rows = readFileSync(path.join(directory, `memory-${child.pid}.ndjson`), "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(rows[0].role, "gateway");
+    assert.equal(rows.at(-1).event, "process-exit");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("Windows resource identity calibration (pwsh 7, tiny processes only)", {
   skip: process.platform !== "win32", timeout: 30_000,
@@ -156,6 +217,8 @@ try {
   $priorGeneration.CreationFileTime = $priorGeneration.StartTime.ToFileTimeUtc()
   $priorGeneration.ObservedAt = $rebuiltMap[[string]$secondId].ObservedAt
   $priorGeneration.WorkingSet64 = 111
+  $priorGeneration.PrivateMemorySize64 = 555
+  $priorGeneration.HandleCount = 66
   $priorGeneration.PeakWorkingSet64 = 222
   $priorGeneration.CPU = 3.25
   $priorGeneration.ReadTransferCount = 333
@@ -269,7 +332,7 @@ try {
       assert.equal(evidence.exited[0].status, "tombstone");
       assert.equal(evidence.exited[0].name, evidence.real[0].name);
       assert.equal(evidence.exited[0].identityEvidence.startTimeUtcTicks, evidence.actualTicks[0]);
-      const fields = ["startTimeUtc", "workingSetBytes", "reportedPeakWorkingSetBytes", "cpuSeconds", "logicalReadBytes", "logicalWriteBytes"];
+      const fields = ["startTimeUtc", "workingSetBytes", "privateBytes", "handleCount", "reportedPeakWorkingSetBytes", "cpuSeconds", "logicalReadBytes", "logicalWriteBytes"];
       assert.deepEqual(evidence.exited[0].resourceSnapshot, Object.fromEntries(fields.map(key => [key, evidence.real[0][key]])));
       assert.equal(evidence.reusedTombstones[0].reason, "pid-reused");
       assert.equal(evidence.reusedTombstones[0].identityEvidence.precision, "100ns");
@@ -279,7 +342,7 @@ try {
       assert.equal(BigInt(reused.identityEvidence.startTimeUtcTicks), BigInt(evidence.actualTicks[1]) - 1n);
       assert.notEqual(reused.resourceSnapshot.startTimeUtc, evidence.real[1].startTimeUtc);
       assert.deepEqual(reused.resourceSnapshot, { startTimeUtc: reused.resourceSnapshot.startTimeUtc,
-        workingSetBytes: 111, reportedPeakWorkingSetBytes: 222, cpuSeconds: 3.25, logicalReadBytes: 333, logicalWriteBytes: 444 });
+        workingSetBytes: 111, privateBytes: 555, handleCount: 66, reportedPeakWorkingSetBytes: 222, cpuSeconds: 3.25, logicalReadBytes: 333, logicalWriteBytes: 444 });
       const childId = evidence.summary.tree.serviceRootPid;
       const live = evidence.samples[0].processes.find(row => row.pid === childId);
       const tombstone = evidence.samples[1].tombstones.find(row => row.pid === childId);
@@ -288,6 +351,8 @@ try {
       assert.equal(tombstone.identityEvidence.startTimeUtcTicks, live.identityEvidence.startTimeUtcTicks);
       assert.equal(tombstone.resourceSnapshot.startTimeUtc, live.startTimeUtc);
       assert.ok(tombstone.resourceSnapshot.workingSetBytes > 0);
+      assert.ok(tombstone.resourceSnapshot.privateBytes > 0);
+      assert.ok(tombstone.resourceSnapshot.handleCount > 0);
       assert.ok(tombstone.resourceSnapshot.reportedPeakWorkingSetBytes >= tombstone.resourceSnapshot.workingSetBytes);
       assert.equal(evidence.summary.tombstones.length, evidence.samples[1].tombstones.length);
       assert.deepEqual(evidence.summary.tombstones, evidence.samples[1].tombstones);
@@ -363,6 +428,8 @@ try {
         for (const tombstone of sample.tombstones) {
           const converted = resourceSnapshotRows(sample).find(row => row.pid === tombstone.pid && row.startTimeUtc === tombstone.resourceSnapshot.startTimeUtc);
           assert.equal(converted.name, tombstone.name);
+          assert.equal(converted.privateBytes, tombstone.resourceSnapshot.privateBytes);
+          assert.equal(converted.handleCount, tombstone.resourceSnapshot.handleCount);
           assert.equal(converted.identityEvidence.precision, "100ns");
         }
       }
@@ -413,7 +480,7 @@ try {
         layout: { ...evidence.layout, unknownLayoutRejected: true }, realIdentities: evidence.real.map(row => ({ pid: row.pid, ...row.identityEvidence })),
         cimCorroboration: { ...evidence.cim, precision: "microsecond", usedForExactTicks: false },
         tombstones: [...evidence.exited, ...evidence.reusedTombstones.map(row => ({ ...row, calibrationFixture: "synthetic-prior-generation" })), ...evidence.summary.tombstones],
-        tombstoneResources: { fields: ["startTimeUtc", "workingSetBytes", "reportedPeakWorkingSetBytes", "cpuSeconds", "logicalReadBytes", "logicalWriteBytes"],
+        tombstoneResources: { fields: ["startTimeUtc", "workingSetBytes", "privateBytes", "handleCount", "reportedPeakWorkingSetBytes", "cpuSeconds", "logicalReadBytes", "logicalWriteBytes"],
           source: "same captured native process record", namePreserved: true, exitedSnapshotPreserved: true, reusedPidKeepsPriorSnapshot: true, liveRowsUnchanged: true },
         syntheticPidReuse: { pid: evidence.synthetic.old.pid, old: evidence.synthetic.old.identityEvidence,
           next: evidence.synthetic.reused.identityEvidence, differenceTicks: "1", countersSeparated: true, unknownStaysMissing: true },

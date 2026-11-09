@@ -2,6 +2,42 @@ import assert from "node:assert/strict";
 
 export const STABILITY_KINDS = ["codex", "dsh", "claude", "workbuddy", "zcode", "opencode"];
 const minute = 60_000;
+export const CLOSEOUT_PROFILE = "windows-parallel-closeout-v1";
+
+export function closeoutSchedule(mode, label = "two-years") {
+  assert.ok(["closeout-short", "closeout-soak"].includes(mode));
+  assert.ok(["current", "year", "two-years"].includes(label));
+  const events = [], cycles = [];
+  const add = (at, type, options = {}) => events.push({ atMs: Math.round(at * minute), type, ...options });
+  if (mode === "closeout-soak") {
+    assert.equal(label, "two-years");
+    for (let cycle = 1; cycle <= 4; cycle++) {
+      const offset = (cycle - 1) * 30;
+      for (let i = 0; i < 6; i++) add(offset + i * 2, "append", { kind: STABILITY_KINDS[i], inputClass: "ordinary", cycle });
+      for (const kind of STABILITY_KINDS) add(offset + 12, "append", { kind, inputClass: "burst", cycle });
+      for (let i = 0; i < 24; i++) add(offset + 15 + i / 12, "append", { kind: i % 2 ? "dsh" : "codex", inputClass: "continuous", cycle });
+      add(offset, "tabs-open", { cycle }); add(offset + 1, "scopes", { cycle });
+      add(offset + 17, "tabs-close", { cycle }); add(offset + 17, "cycle-drain", { cycle });
+      cycles.push({ cycle, lastInputAtMs: (offset + 15) * minute + 23 * 5000,
+        drainDeadlineAtMs: (offset + 15) * minute + 23 * 5000 + 300_000,
+        idleFromMs: (offset + 22) * minute, idleToMs: (offset + 30) * minute });
+    }
+  } else {
+    for (let i = 0; i < 6; i++) add(i, "append", { kind: STABILITY_KINDS[i], inputClass: "ordinary" });
+    add(0, "tabs-open"); add(6, "scopes");
+    for (const kind of STABILITY_KINDS) add(8, "append", { kind, inputClass: "burst" });
+    add(11, "revision", { outputDelta: 19 }); add(12.5, "tabs-close");
+  }
+  events.sort((a, b) => a.atMs - b.atMs);
+  let appendCount = 0;
+  for (const [i, event] of events.entries()) {
+    event.id = `${mode}-${label}-${String(i + 1).padStart(4, "0")}`;
+    event.category = event.inputClass ?? event.type;
+    if (event.type === "append") event.ordinal = ++appendCount;
+  }
+  return { version: 3, profile: CLOSEOUT_PROFILE, observationVersion: 2, mode, label,
+    durationMs: (mode === "closeout-soak" ? 120 : 13) * minute, appendCount, events, cycles };
+}
 
 export function stabilitySchedule(mode, label = "two-years") {
   assert.ok(["diagnostic", "endurance"].includes(mode));

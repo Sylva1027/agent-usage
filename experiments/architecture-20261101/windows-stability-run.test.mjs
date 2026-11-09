@@ -6,7 +6,33 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { EventEmitter } from "node:events";
 import { LineTail,visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,
-  registerControlledExit,matchingControlledExit,waitUsageResponse,attachPage,retainedLedger,multitabSchedule } from "./windows-stability-run.mjs";
+  registerControlledExit,matchingControlledExit,waitUsageResponse,attachPage,retainedLedger,multitabSchedule,closeoutEntryCounts,inheritCloseoutLedger,assertCloseoutProjection } from "./windows-stability-run.mjs";
+
+test("closeout permits the current single-archive all fast path without inventing a persistent projection",()=>{
+  assert.doesNotThrow(()=>assertCloseoutProjection("current",{databaseCount:0},1));
+  for(const [label,count] of [["current",1],["year",4],["two-years",8]])assert.doesNotThrow(()=>assertCloseoutProjection(label,{databaseCount:1},count));
+  for(const [label,count] of [["current",0],["current",2],["year",4],["two-years",8]])assert.throws(()=>assertCloseoutProjection(label,{databaseCount:0},count),/prepare the mixed query path/);
+});
+
+test("closeout entry derives 135 raw / 134 committed and pending ZCode without historical count constants",()=>{
+  const kinds=["codex","dsh","claude","workbuddy","zcode","opencode"];
+  const entries=Array.from({length:135},(_,i)=>({operation:"append",ordinal:i+1,kind:i===134?"zcode":kinds[i%6]}));
+  const committed=Object.fromEntries(kinds.map(kind=>[kind,entries.filter(row=>row.kind===kind).length-(kind==="zcode"?1:0)]));
+  const ledger={entries,appendCount:135,revisionCount:3};
+  const entry=closeoutEntryCounts(ledger,committed);assert.equal(entry.rawAppendCount,135);assert.equal(entry.committedAppendCount,134);
+  assert.equal(entry.revisionCount,3);assert.deepEqual(entry.pending,[entries.at(-1)]);
+  assert.throws(()=>closeoutEntryCounts(ledger,{...committed,zcode:999}),/Invalid committed/);
+  const empty=Object.fromEntries(kinds.map(kind=>[kind,0]));assert.equal(closeoutEntryCounts({entries:[],appendCount:0,revisionCount:0},empty).pending.length,0);
+});
+
+test("a closeout run inherits counts but keeps its fresh starting backups and live source counters",()=>{
+  const kinds=["codex","dsh","claude","workbuddy","zcode","opencode"],base={entries:[{operation:"append",ordinal:1,kind:"codex"}],expected:{total:160},appendCount:1,revisionCount:0,
+    byKind:Object.fromEntries(kinds.map(kind=>[kind,{ordinals:kind==="codex"?[1]:[],expected:{total:kind==="codex"?160:0},appendCount:kind==="codex"?1:0,revisionCount:0}]))};
+  const fresh={entries:[],plans:[{backupFile:"fresh-135-original"}],byKind:Object.fromEntries(kinds.map(kind=>[kind,{cumulative:{total_tokens:555},revisedRaw:{output_tokens:77}}]))};
+  const ledger=inheritCloseoutLedger(fresh,base);assert.equal(ledger.plans[0].backupFile,"fresh-135-original");
+  assert.equal(ledger.byKind.codex.cumulative.total_tokens,555);assert.equal(ledger.byKind.zcode.revisedRaw.output_tokens,77);
+  assert.equal(ledger.appendCount,1);assert.notEqual(ledger.entries,base.entries);assert.notEqual(ledger.byKind.codex.ordinals,base.byKind.codex.ordinals);
+});
 
 async function removeFixture(directory){
   assert.equal(path.dirname(path.resolve(directory)),path.resolve(tmpdir()));

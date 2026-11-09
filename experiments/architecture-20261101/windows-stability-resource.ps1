@@ -173,6 +173,8 @@ $source=Set-ResourceBinding $source '    $cpuSeconds = $null' @'
         resourceSnapshot=[ordered]@{
           startTimeUtc=if($startTicks-gt0){[DateTime]::new($startTicks,[DateTimeKind]::Utc).ToString('O')}else{$null}
           workingSetBytes=[long]$process.WorkingSet64
+          privateBytes=[long]$process.PrivateMemorySize64
+          handleCount=[long]$process.HandleCount
           reportedPeakWorkingSetBytes=[long]$process.PeakWorkingSet64
           cpuSeconds=[double]$process.CPU
           logicalReadBytes=[long]$process.ReadTransferCount

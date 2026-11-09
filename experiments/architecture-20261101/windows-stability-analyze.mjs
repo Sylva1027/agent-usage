@@ -4,7 +4,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { correctResourceIdentity, parseResourceSample, resourceSnapshotRows } from "./resource-identity-analysis.mjs";
-import { stabilitySchedule, STABILITY_KINDS, quantiles, protectionPassed } from "./windows-stability-schedule.mjs";
+import { stabilitySchedule, closeoutSchedule, CLOSEOUT_PROFILE, STABILITY_KINDS, quantiles, protectionPassed } from "./windows-stability-schedule.mjs";
 
 const MiB = 1048576, hour = 3600000;
 const project = fileURLToPath(new URL("../../", import.meta.url));
@@ -125,6 +125,7 @@ async function readPaintContinuationAudit(root, run, record, evidence) {
 }
 
 function canonicalSchedule(mode, label, prefix) {
+  if(mode.startsWith("closeout-"))return closeoutSchedule(mode,label);
   const schedule = stabilitySchedule(mode, label);
   if (mode === "endurance" && prefix === "endurance-accepted") {
     schedule.eventIdPrefix = prefix;
@@ -280,6 +281,7 @@ function sseRecovery(events, phases, reliability) {
 
 function phaseAnalysis(label, mode, schedule, result, ledger, events, reliability, performance, restartEndurance = false, baseAppendCount = null, selectedViewClock = false) {
   const id = `${label}/${mode}`, expected = canonicalSchedule(mode, label, schedule?.eventIdPrefix);
+  const closeout=expected.profile===CLOSEOUT_PROFILE;
   const expectedOrdinalOffset = baseAppendCount ?? (mode === "endurance" ? stabilitySchedule("diagnostic", label).appendCount + (restartEndurance ? 3 : 0) : 0);
   const ordinalOffsetMatches = schedule?.ordinalOffset === expectedOrdinalOffset;
   const prefixMatches = mode === "endurance" && restartEndurance ? schedule?.eventIdPrefix === "endurance-accepted" : schedule?.eventIdPrefix === undefined;
@@ -287,12 +289,12 @@ function phaseAnalysis(label, mode, schedule, result, ledger, events, reliabilit
   const inputs = [...ledger.values()].filter(row => planned.has(row.eventId)).map(row => ({ ...row }));
   for (const input of inputs) {
     const event = planned.get(input.eventId);
-    const tabsOpen = expected.events.find(row => row.type === "tabs-open");
-    const tabsClose = expected.events.find(row => row.type === "tabs-close");
     const atMs = finite(schedule?.startedAtMs) ? input.landedAtMs - schedule.startedAtMs : event.atMs;
-    const inTabs = tabsOpen && atMs >= tabsOpen.atMs && atMs < tabsClose.atMs;
+    const tabsOpen = expected.events.filter(row => row.type === "tabs-open"&&row.atMs<=atMs).at(-1);
+    const tabsClose = tabsOpen&&expected.events.find(row => row.type === "tabs-close"&&row.atMs>=tabsOpen.atMs);
+    const inTabs = tabsOpen && atMs < (tabsClose?.atMs??Infinity);
     input.scheduleContext = { plannedAtMs: event.atMs, inputClass: event.inputClass ?? event.type,
-      plannedTabs: inTabs ? 3 : 1, plannedTabsWindow: inTabs ? { fromMs: tabsOpen.atMs, toMs: tabsClose.atMs } : null,
+      plannedTabs: inTabs ? 3 : 1, plannedTabsWindow: inTabs ? { fromMs: tabsOpen.atMs, toMs: tabsClose?.atMs??null } : null,
       plannedScopes: expected.events.filter(row => row.type === "scopes" && finite(schedule?.startedAtMs) &&
         schedule.startedAtMs + row.atMs >= input.landedAtMs && schedule.startedAtMs + row.atMs <= (input.paintedAtMs ?? input.landedAtMs)),
       observedScopes: events.scopes.filter(row => row.startedAtMs <= (input.paintedAtMs ?? input.landedAtMs) && row.endedAtMs >= input.landedAtMs),
@@ -306,7 +308,7 @@ function phaseAnalysis(label, mode, schedule, result, ledger, events, reliabilit
       (event.type === "revision" && row.outputDelta !== event.outputDelta);
   }).map(row => row.eventId);
   const scheduleMatches = schedule && prefixMatches && ordinalOffsetMatches && schedule.durationMs === expected.durationMs && schedule.appendCount === expected.appendCount &&
-    JSON.stringify(schedule.events) === JSON.stringify(expected.events);
+    JSON.stringify(schedule.events) === JSON.stringify(expected.events)&&(!closeout||schedule.profile===CLOSEOUT_PROFILE&&schedule.version===3&&schedule.observationVersion===2&&JSON.stringify(schedule.cycles)===JSON.stringify(expected.cycles));
   check(reliability, `${id}/schedule`, schedule ? verdict(true, scheduleMatches) : "not-executed", {
     expectedAppends: expected.appendCount, expectedOrdinalOffset, actualOrdinalOffset: schedule?.ordinalOffset ?? null,
     missingInputs: missing, mismatchedInputs: mismatched,
@@ -349,6 +351,20 @@ function phaseAnalysis(label, mode, schedule, result, ledger, events, reliabilit
       { source: row.kind, category: row.category, actualMs: row.landingToPaintMs ?? null, limitMs, timingInterruption: row.timingInterruption ?? null });
     if(selectedViewClock)check(performance,`${id}/selected-view/${row.eventId}`,verdict(finite(row.viewLandingToPaintMs),row.viewLandingToPaintMs<=limitMs),
       {source:row.kind,category:row.category,preset:row.viewPreset,actualMs:row.viewLandingToPaintMs??null,limitMs});
+  }
+  if(mode==="closeout-soak"){
+    const start=schedule?.startedAtMs;
+    for(const cycle of expected.cycles){
+      const continuous=inputs.filter(row=>planned.get(row.eventId).cycle===cycle.cycle&&planned.get(row.eventId).inputClass==="continuous");
+      const publications=continuous.filter(row=>row[paintedField]>=start+(cycle.cycle-1)*30*60000+15*60000&&row[paintedField]<=start+cycle.lastInputAtMs);
+      const versions=new Set(publications.map(row=>selectedViewClock?row.viewUsageVersion:row.usageVersion).filter(Boolean));
+      check(reliability,`${id}/cycle-${cycle.cycle}/continuous-publication`,verdict(Boolean(result),continuous.length===24&&versions.size>1),{planned:24,landed:continuous.length,versions:versions.size});
+    }
+    for(const category of ["ordinary","burst","continuous"]){
+      const values=cycle=>inputs.filter(row=>planned.get(row.eventId).cycle===cycle&&planned.get(row.eventId).inputClass===category).map(row=>row.landingToPaintMs);
+      const first=quantiles(values(1)),last=quantiles(values(4));
+      check(performance,`${id}/first-fourth/${category}`,verdict(Boolean(first&&last),first&&last&&protectionPassed(first.p50,last.p50)),{firstCycle:first,fourthCycle:last});
+    }
   }
   if (mode === "endurance") {
     const start = schedule?.startedAtMs;
@@ -493,7 +509,7 @@ function controlChecks(label, control, events, phases, reliability, interruptedI
   const parked = control.faults.filter(row => row.event === "fault-parked");
   check(reliability, `${label}/fault-cardinality`, verdict(phases.every(row => row.result), parked.length === expectedFaultIds.length &&
     expectedFaultIds.every(id => parked.filter(row => row.commandId === id).length === 1)), { expectedFaultIds, observedCommandIds: parked.map(row => row.commandId) });
-  if (label === "current") check(reliability, `${label}/real-dropped-hint`, verdict(control.faults.length > 0,
+  if (label === "current"&&!phases.some(row=>row.expectedSchedule.profile===CLOSEOUT_PROFILE)) check(reliability, `${label}/real-dropped-hint`, verdict(control.faults.length > 0,
     control.faults.some(row => row.event === "watch-hint-dropped")), control.faults.filter(row => row.event === "watch-hint-dropped"));
   const fatal = control.errors.filter(row => ["control-error", "fault-timeout"].includes(row.event));
   check(reliability, `${label}/hook-control`, verdict(Object.keys(control.counts).length > 0, !fatal.length), fatal);
@@ -535,13 +551,13 @@ function controlChecks(label, control, events, phases, reliability, interruptedI
     zcode: { ordinaryChecks: zcodeChecks, deltas: zcode } };
 }
 
-function growth(hours, field) {
+function growth(hours, field, count=8) {
   const values = hours.map(row => row[field]?.p50 ?? null);
-  const complete = values.length === 8 && values.every(finite);
+  const complete = values.length === count && values.every(finite);
   const accumulating = complete && values.at(-1) > values[0] && values.every((value, i) => i === 0 || value >= values[i - 1]);
   return { status: verdict(complete, !accumulating), hourlyMedians: values,
     delta: finite(values[0]) && finite(values.at(-1)) ? values.at(-1) - values[0] : null,
-    criterion: "eight comparable idle-hour medians; monotonic net growth fails" };
+    criterion: `${count} comparable idle-window medians; monotonic net growth fails` };
 }
 
 async function resources(directory, entries, summaries, control, nodeExits, endurance, events, evidence, idleRows) {
@@ -559,7 +575,8 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
     if (!nodeBirths.has(row.pid)) nodeBirths.set(row.pid, []);
     nodeBirths.get(row.pid).push(row.startedAtMs);
   }
-  const idle = Array.from({ length: 8 }, () => ({ bytes: [], handles: [], tempFiles: [], tempBytes: [] }));
+  const closeout=endurance?.expectedSchedule?.profile===CLOSEOUT_PROFILE;
+  const idle = Array.from({ length: closeout?4:8 }, () => ({ bytes: [], handles: [], tempFiles: [], tempBytes: [],walBytes:[] }));
   const start = endurance?.schedule?.startedAtMs;
   for (const entry of entries.filter(row => row.isDirectory() && /^resources(?:-|$)/.test(row.name)).sort((a,b) => a.name.localeCompare(b.name))) {
     let last = null;
@@ -610,13 +627,15 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
         if (!serviceRows.every(row => finite(row.handleCount))) out.idleMissingHandles++;
         if (!sample.temp?.complete || !finite(sample.temp.fileCount) || !finite(sample.temp.observedBytes)) out.idleMissingTemp++;
         out.idlePeakBytes = maximum(out.idlePeakBytes, service.workingSetBytes);
-        const index = Math.floor((sample.atUnixMs - start) / hour);
-        if (index >= 0 && index < 8) {
+        const elapsed=sample.atUnixMs-start;
+        const index = closeout?endurance.expectedSchedule.cycles.findIndex(row=>elapsed>=row.idleFromMs&&elapsed<row.idleToMs):Math.floor(elapsed / hour);
+        if (index >= 0 && index < idle.length) {
           const bucket = idle[index];
           if (finite(service.workingSetBytes)) bucket.bytes.push(service.workingSetBytes);
           if (serviceRows.every(row => finite(row.handleCount))) bucket.handles.push(sum(serviceRows.map(row => row.handleCount)));
           if (sample.temp?.complete && finite(sample.temp.fileCount)) bucket.tempFiles.push(sample.temp.fileCount);
           if (sample.temp?.complete && finite(sample.temp.observedBytes)) bucket.tempBytes.push(sample.temp.observedBytes);
+          if(sample.sqlite?.complete&&finite(sample.sqlite.categoryBytes?.wal))bucket.walBytes.push(sample.sqlite.categoryBytes.wal);
         }
       }
       if (!last || sample.atUnixMs > last.atMs) last = { atMs: sample.atUnixMs, serviceProcessCount: service.processCount, sqlite: sample.sqlite, temp: sample.temp };
@@ -631,10 +650,12 @@ async function resources(directory, entries, summaries, control, nodeExits, endu
   out.sampledLogicalWriteBytes = sum(out.processes.map(row => row.logicalWriteBytes ?? 0));
   out.counterMissingProcesses = out.processes.filter(row => !finite(row.cpuSeconds) || !finite(row.logicalReadBytes) || !finite(row.logicalWriteBytes));
   out.idleHours = idle.map((row, index) => ({ hour: index + 1, memory: quantiles(row.bytes), handles: quantiles(row.handles),
-    tempFiles: quantiles(row.tempFiles), tempBytes: quantiles(row.tempBytes) }));
-  out.handleGrowth = growth(out.idleHours, "handles");
-  out.tempFileGrowth = growth(out.idleHours, "tempFiles");
-  out.tempByteGrowth = growth(out.idleHours, "tempBytes");
+    tempFiles: quantiles(row.tempFiles), tempBytes: quantiles(row.tempBytes),...(closeout?{cycle:index+1,walBytes:quantiles(row.walBytes)}:{}) }));
+  if(closeout)out.idleCycles=out.idleHours;
+  out.handleGrowth = growth(out.idleHours, "handles",idle.length);
+  out.tempFileGrowth = growth(out.idleHours, "tempFiles",idle.length);
+  out.tempByteGrowth = growth(out.idleHours, "tempBytes",idle.length);
+  if(closeout)out.walGrowth=growth(out.idleHours,"walBytes",4);
   if (out.idleMissingHandles && out.handleGrowth.status !== "failed") out.handleGrowth.status = "incomplete";
   if (out.idleMissingTemp) {
     if (out.tempFileGrowth.status !== "failed") out.tempFileGrowth.status = "incomplete";
@@ -721,6 +742,11 @@ function resourceChecks(label, data, summaries, phases, closed, group) {
     check(group, `${label}/idle-handle-growth`, data.handleGrowth.status, data.handleGrowth);
     check(group, `${label}/idle-temp-file-growth`, data.tempFileGrowth.status, data.tempFileGrowth);
     check(group, `${label}/idle-temp-byte-growth`, data.tempByteGrowth.status, data.tempByteGrowth);
+  }
+  if(phases.some(row=>row.mode==="closeout-soak")){
+    const first=data.idleCycles?.[0]?.memory,last=data.idleCycles?.[3]?.memory;
+    check(group,`${label}/four-cycle-idle-memory-growth`,verdict(Boolean(first&&last),first&&last&&last.p50<=first.p50+32*MiB),{firstCycle:first,fourthCycle:last,allowanceBytes:32*MiB});
+    for(const [name,value] of [["handles",data.handleGrowth],["temp-files",data.tempFileGrowth],["temp-bytes",data.tempByteGrowth],["wal",data.walGrowth]])check(group,`${label}/four-cycle-${name}`,value?.status??"incomplete",value);
   }
 }
 

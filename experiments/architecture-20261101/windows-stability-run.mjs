@@ -14,7 +14,7 @@ import { browser,stop,expectedAll } from "./c1-run.mjs";
 import { waitForServer,painted } from "./b2-page-diagnostic.mjs";
 import { projectionStorage } from "./c1-telemetry.mjs";
 import { prepareStabilityMutations,appendStabilityMutation,reviseStabilityMutation,restoreStabilityMutations } from "./windows-stability-mutations.mjs";
-import { stabilitySchedule,STABILITY_KINDS,quantiles,protectionPassed } from "./windows-stability-schedule.mjs";
+import { stabilitySchedule,closeoutSchedule,CLOSEOUT_PROFILE,STABILITY_KINDS,quantiles,protectionPassed } from "./windows-stability-schedule.mjs";
 import { correctResourceIdentity,parseResourceSample,resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 import { measureChild } from "./archive-compaction-packages.mjs";
 
@@ -25,6 +25,7 @@ const FORMAL=path.join(RESULT,"formal-v2");
 const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
+export const CLOSEOUT_RESULT=path.join(ROOT,"output/windows-parallel-20261109");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -238,7 +239,9 @@ async function loadPage(context,page=context.ui.page) {
   await page.goto(context.server.ready.url,{waitUntil:"domcontentloaded"});
   const response=await pending;assert.equal(response.status(),200,await response.text());
   await painted(page,(await response.json()).summary.totals.total,1_800_000);
+  if(context.profile===CLOSEOUT_PROFILE)await log(context,"startup-today",{page:context.pages.indexOf(page),startedAtMs:context.server.startedAtMs,wallMs:Date.now()-context.server.startedAtMs});
   await stabilityScope(context,page,"all",context.requiredAllTotal,context.directory,`initial-all-${++context.navigationSequence}`);
+  if(context.profile===CLOSEOUT_PROFILE)await log(context,"startup-all",{page:context.pages.indexOf(page),startedAtMs:context.server.startedAtMs,wallMs:Date.now()-context.server.startedAtMs});
 }
 
 async function pollBrowser(context) {
@@ -469,7 +472,8 @@ async function pollResources(context) {
     if(sample.service.processCount>0&&!executorActive&&!context.inputs.some(row=>!row.paintedAtMs)&&!context.actionTasks.size&&!context.responseTasks.size&&sample.atUnixMs-context.lastActivityAtMs>=60_000){
       const serviceRows=sample.processes.filter(row=>row.role==="service");
       const handles=serviceRows.every(row=>row.handleCount!==null&&row.handleCount!==undefined)?serviceRows.reduce((sum,row)=>sum+row.handleCount,0):null;
-      summary.idle.push({atMs:sample.atUnixMs,bytes:sample.service.workingSetBytes,handles,tempFiles:sample.temp?.fileCount??null});
+      summary.idle.push({atMs:sample.atUnixMs,bytes:sample.service.workingSetBytes,handles,tempFiles:sample.temp?.fileCount??null,
+        ...(context.profile===CLOSEOUT_PROFILE?{walBytes:sample.sqlite?.categoryBytes?.wal??null,privateBytes:sample.service.privateBytes??null}: {})});
       if(sample.service.workingSetBytes>256*1048576)throw Error("Idle service tree exceeded 256 MiB");
     }
   }
@@ -485,11 +489,11 @@ async function checkDeadlines(context) {
   await pollResources(context);
 }
 
-async function drain(context,deadlineMs=300_000) {
+async function drain(context,deadlineMs=300_000,actionAllowance=0) {
   const deadline=Date.now()+deadlineMs;
   while(Date.now()<deadline&&!context.closing){
     await pollBrowser(context);await checkDeadlines(context);
-    if(!context.inputs.some(row=>!row.paintedAtMs)&&!context.actionTasks.size&&!context.responseTasks.size)return;
+    if(!context.inputs.some(row=>!row.paintedAtMs)&&context.actionTasks.size<=actionAllowance&&!context.responseTasks.size)return;
     await pause(500);
   }
   throw Error("Work did not drain within 300 seconds");
@@ -537,6 +541,7 @@ async function runScopes(context,event) {
   const page=context.ui.page;
   for(const preset of ["today","week"]){const row=await stabilityScope(context,page,preset,undefined,context.directory,`${event.id}-${preset}`);await log(context,"scope",{eventId:event.id,...row.result});}
   const start=new Date(context.dataset.endMs-32*86_400_000).toISOString().slice(0,10),end=new Date(context.dataset.endMs-28*86_400_000).toISOString().slice(0,10);
+  const customStartedAtMs=Date.now();
   await page.locator("#dateRangeButton").click();
   for(const date of [start,end]){
     for(let i=0;!(await page.locator(`[data-date="${date}"]`).count());i++){
@@ -545,7 +550,8 @@ async function runScopes(context,event) {
       await page.locator(`[data-date-picker-action="${date<visible?"prev":"next"}"]`).click();
     }
     const pending=date===end?waitUsageResponse(context,page,"custom"):null;void pending?.catch(()=>{});await page.locator(`[data-date="${date}"]`).click();
-    if(pending){const response=await pending;assert.equal(response.status(),200);const body=await response.json();await painted(page,body.summary.totals.total,300_000);}
+    if(pending){const response=await pending;assert.equal(response.status(),200);const body=await response.json();await painted(page,body.summary.totals.total,300_000);
+      if(context.profile===CLOSEOUT_PROFILE)await log(context,"scope",{eventId:event.id,preset:"custom",wallMs:Date.now()-customStartedAtMs,startedAtMs:customStartedAtMs,endedAtMs:Date.now()});}
   }
   const all=await stabilityScope(context,page,"all",undefined,context.directory,`${event.id}-all`);await log(context,"scope",{eventId:event.id,...all.result});
 }
@@ -616,6 +622,11 @@ async function dispatch(context,event) {
     const receipt=await reviseStabilityMutation(context.ledger,{outputDelta:event.outputDelta,category:event.category});
     const input={...receipt,eventId:event.id,revisionIndex:context.ledger.revisionCount,beforeVersion:context.lastBody?.usageVersion};context.inputs.push(input);await log(context,"input-landed",input);return;
   }
+  if(event.type==="cycle-drain"){
+    const cycle=context.phaseSchedule.cycles.find(row=>row.cycle===event.cycle),lastInputAtMs=context.phaseStartedAtMs+cycle.lastInputAtMs;
+    await drain(context,Math.max(0,lastInputAtMs+300_000-Date.now()),1);
+    await log(context,"cycle-drained",{cycle:event.cycle,lastInputAtMs,drainMs:Math.max(0,Date.now()-lastInputAtMs),projection:projectionStorage(context.state)});return;
+  }
   if(event.type==="scopes"){
     const queued=context.uiTail.then(()=>runScopes(context,event));context.uiTail=queued.catch(()=>{});return queued;
   }
@@ -646,10 +657,11 @@ async function dispatch(context,event) {
 async function runPhase(context,schedule,{resumeOffsetMs=0}={}) {
   const phaseStart=Date.now()-resumeOffsetMs,firstInput=resumeOffsetMs?0:context.inputs.length,resourceStart=context.resourceSummary.samples;
   context.ordinalOffset=resumeOffsetMs?0:context.ledger.appendCount;
+  context.phaseSchedule=schedule;context.phaseStartedAtMs=phaseStart;
   const original=resumeOffsetMs?await read(path.join(context.directory,`schedule-${schedule.mode}.json`)):null;
   await save(path.join(context.directory,`schedule-${schedule.mode}${resumeOffsetMs?"-continuation":""}.json`),{...schedule,startedAtMs:original?.startedAtMs??phaseStart,ordinalOffset:context.ordinalOffset,
     ...(resumeOffsetMs?{resumedAtMs:Date.now(),resumeOffsetMs,pauseMs:phaseStart-original.startedAtMs}:{})});
-  const result={mode:schedule.mode,label:schedule.label,startedAtMs:phaseStart,plannedDurationMs:schedule.durationMs,passed:false,inputs:[],errors:[]};
+  const result={mode:schedule.mode,label:schedule.label,...(schedule.profile?{profile:schedule.profile,observationVersion:2}:{}),startedAtMs:phaseStart,plannedDurationMs:schedule.durationMs,passed:false,inputs:[],errors:[]};
   if(resumeOffsetMs)result.continuation={originalStartedAtMs:original.startedAtMs,resumeOffsetMs,pauseMs:phaseStart-original.startedAtMs};
   let eventIndex=resumeOffsetMs?schedule.events.filter(row=>row.atMs<=resumeOffsetMs).length:0,lastStatus=0;
   try{
@@ -726,6 +738,146 @@ async function finishContext(context,{failed=false,retainSources=false}={}) {
 
 async function primaryIdentity(file){
   const info=await stat(file,{bigint:true});return {dev:info.dev.toString(),ino:info.ino.toString()};
+}
+
+function closeoutEntryCounts(ledger, committedByKind) {
+  const rawByKind=Object.fromEntries(STABILITY_KINDS.map(kind=>[kind,ledger.entries.filter(row=>row.operation==="append"&&row.kind===kind).length]));
+  const pending=[];
+  for(const kind of STABILITY_KINDS){
+    const count=committedByKind[kind];assert.ok(Number.isSafeInteger(count)&&count>=0&&count<=rawByKind[kind],`Invalid committed ${kind} count`);
+    pending.push(...ledger.entries.filter(row=>row.operation==="append"&&row.kind===kind).slice(count));
+  }
+  return {rawAppendCount:ledger.appendCount,committedAppendCount:Object.values(committedByKind).reduce((a,b)=>a+b,0),
+    revisionCount:ledger.revisionCount,rawByKind,committedByKind,pending};
+}
+
+async function registerCloseoutEntry(configFile) {
+  const config=await read(configFile),ledger=await retainedLedger(config.baseLedgerFile,config.baseMutationsFile);
+  const start=Math.min(...ledger.entries.filter(row=>row.operation==="append").map(row=>row.timestampMs));
+  assert.ok(Number.isFinite(start));
+  const primary=path.join(config.state,"usage-index.sqlite"),db=new DatabaseSync(primary,{readOnly:true});
+  const committedByKind={};
+  try{for(const kind of STABILITY_KINDS){
+    const plans=ledger.plans.filter(row=>row.kind===kind);assert.equal(plans.length,1);
+    committedByKind[kind]=db.prepare("SELECT COUNT(*) n FROM events WHERE source_path=? AND timestamp_ms>=?").get(plans[0].filePath,start).n;
+  }}finally{db.close();}
+  const counts=closeoutEntryCounts(ledger,committedByKind),sources=[];
+  const {streamUsageFileEvents}=await import(pathToFileURL(path.join(config.runtime,"src/usage-core.js")));
+  for(const plan of ledger.plans){
+    let raw=0;
+    await streamUsageFileEvents(plan.filePath,plan.source,event=>{if(event.timestampMs>=start)raw++;},{repositoryResolver:cwd=>({key:cwd,path:cwd,kind:"directory"}),onWarning:warning=>assert.fail(JSON.stringify(warning))});
+    assert.equal(raw,counts.rawByKind[plan.kind],`Raw ${plan.kind} no longer matches retained ledger`);
+    const hash=createHash("sha256");for await(const bytes of createReadStream(plan.filePath))hash.update(bytes);
+    sources.push({kind:plan.kind,file:plan.filePath,bytes:(await stat(plan.filePath)).size,sha256:hash.digest("hex")});
+  }
+  const result={profile:CLOSEOUT_PROFILE,version:1,registeredAtMs:Date.now(),...counts,primary,identity:await primaryIdentity(primary),
+    projection:projectionStorage(config.state),sources,baseLedgerFile:config.baseLedgerFile,baseMutationsFile:config.baseMutationsFile};
+  await mkdir(path.dirname(config.entryFile),{recursive:true});
+  await writeFile(config.entryFile,JSON.stringify(result,null,2)+"\n",{flag:"wx",flush:true});return result;
+}
+
+async function closeoutPreflight() {
+  const names=["normal","before","after","closed-tabs"],groups=[];
+  for(const name of names){const file=path.join(CLOSEOUT_RESULT,`browser-preflight/browser-combined-${name}.json`),receipt=await read(file);
+    assert.equal(receipt.passed,true);assert.equal(receipt.profile,CLOSEOUT_PROFILE);assert.equal(receipt.observationVersion,2);
+    assert.equal(receipt.appendCount,name==="closed-tabs"?7:1);groups.push({name,file,sha256:createHash("sha256").update(await readFile(file)).digest("hex")});}
+  const result={profile:CLOSEOUT_PROFILE,observationVersion:2,passed:true,appendCount:10,groups};
+  await writeFile(path.join(CLOSEOUT_RESULT,"preflight.json"),JSON.stringify(result,null,2)+"\n",{flag:"wx",flush:true});return result;
+}
+
+async function freezeCloseoutRuntime(source,destination) {
+  const {runtimeFiles}=await import("./archive-compaction-prepare.mjs"),{hashFile,verifyRuntime}=await import("./remaining-harness-delivery-prepare.mjs");
+  source=path.resolve(source);destination=path.resolve(destination);
+  assert.equal(path.dirname(destination),CLOSEOUT_RESULT,"Freeze runtime directly under private closeout root");
+  await mkdir(destination,{recursive:false});const hashes={};
+  for(const relative of await runtimeFiles(source)){
+    const file=path.join(destination,relative);await mkdir(path.dirname(file),{recursive:true});await copyFile(path.join(source,relative),file);
+    hashes[relative]=await hashFile(path.join(source,relative));
+  }
+  const spec={profile:CLOSEOUT_PROFILE,directory:destination,source,hashes};await verifyRuntime(spec);
+  await writeFile(destination+".json",JSON.stringify(spec,null,2)+"\n",{flag:"wx",flush:true});return spec;
+}
+
+async function closeoutConfigs() {
+  const directory=path.join(CLOSEOUT_RESULT,"configs");await mkdir(directory,{recursive:false});
+  const retained={baseLedgerFile:path.join(MULTITAB_RESULT,"endurance/two-years/base-ledger.json"),baseMutationsFile:path.join(MULTITAB_RESULT,"endurance/two-years/mutations/mutations.ndjson"),entryFile:path.join(CLOSEOUT_RESULT,"retained-entry.json")};
+  const entry={...retained,runtime:path.join(CLOSEOUT_RESULT,"baseline-runtime"),state:path.join(COMPACTION,"upgrades/two-years/state")};
+  await writeFile(path.join(directory,"entry.json"),JSON.stringify(entry,null,2)+"\n",{flag:"wx"});
+  const files=[];
+  for(const label of ["current","year","two-years"])for(const variant of ["baseline","candidate"]){
+    const config={profile:CLOSEOUT_PROFILE,mode:"closeout-short",label,variant,runtime:path.join(CLOSEOUT_RESULT,`${variant}-runtime`),
+      datasetFile:path.join(BASE,`datasets/${label}/dataset.json`),seedDirectory:label==="two-years"?path.join(FORMAL,`diagnostic/${label}/oracle-seed`):path.join(BASE,`datasets/${label}/seed-state`),
+      state:path.join(CLOSEOUT_RESULT,`fixtures/${label}/${variant}-state`),directory:path.join(CLOSEOUT_RESULT,`short/${label}/${variant}`),
+      preflightFile:path.join(CLOSEOUT_RESULT,"preflight.json"),...(label==="two-years"?retained:{})};
+    const file=path.join(directory,`${label}-${variant}.json`);await writeFile(file,JSON.stringify(config,null,2)+"\n",{flag:"wx"});files.push(file);
+    await mkdir(path.dirname(config.directory),{recursive:true});
+    if(label==="two-years"&&variant==="candidate")await writeFile(path.join(directory,"soak.json"),JSON.stringify({...config,mode:"closeout-soak",state:path.join(CLOSEOUT_RESULT,"fixtures/two-years/soak-state"),directory:path.join(CLOSEOUT_RESULT,"soak")},null,2)+"\n",{flag:"wx"});
+  }
+  await writeFile(path.join(directory,"serial.json"),JSON.stringify({profile:CLOSEOUT_PROFILE,groups:files},null,2)+"\n",{flag:"wx"});return files;
+}
+
+function inheritCloseoutLedger(ledger,base) {
+  assert.equal(ledger.entries.length,0);
+  ledger.entries=structuredClone(base.entries);ledger.expected=structuredClone(base.expected);
+  ledger.appendCount=base.appendCount;ledger.revisionCount=base.revisionCount;
+  for(const kind of STABILITY_KINDS){
+    const original=base.byKind[kind],own=ledger.byKind[kind];
+    Object.assign(own,{ordinals:[...original.ordinals],expected:{...original.expected},appendCount:original.appendCount,revisionCount:original.revisionCount});
+  }
+  return ledger;
+}
+
+function assertCloseoutProjection(label,projection,archiveCount) {
+  // The single-archive all fast path does not create a persistent projection.
+  assert.ok(projection.databaseCount===1||label==="current"&&archiveCount===1&&projection.databaseCount===0,
+    "Main must prepare the mixed query path before timing");
+}
+
+async function runCloseout(configFile) {
+  const config=await read(configFile);assert.equal(config.profile,CLOSEOUT_PROFILE);
+  assert.ok(["baseline","candidate"].includes(config.variant));
+  const schedule=closeoutSchedule(config.mode,config.label);
+  if(config.mode==="closeout-soak")assert.equal(config.variant,"candidate");
+  const preflight=await read(config.preflightFile);assert.equal(preflight.profile,CLOSEOUT_PROFILE);assert.equal(preflight.passed,true);
+  assert.deepEqual(preflight.groups.map(row=>row.name).sort(),["after","before","closed-tabs","normal"]);
+  for(const group of preflight.groups)assert.equal(createHash("sha256").update(await readFile(group.file)).digest("hex"),group.sha256,"Browser preflight receipt changed");
+  const directory=path.resolve(config.directory),relative=path.relative(CLOSEOUT_RESULT,directory);
+  assert.ok(relative&&!relative.startsWith("..")&&!path.isAbsolute(relative),"Closeout output must be private and new");
+  await mkdir(directory,{recursive:false});
+  const resultFile=path.join(directory,"result.json"),result={profile:CLOSEOUT_PROFILE,version:1,observationVersion:2,
+    mode:config.mode,label:config.label,variant:config.variant,runtime:config.runtime,startedAtMs:Date.now(),passed:false,phases:[]};
+  await save(resultFile,result);let context;
+  try{
+    const dataset=await read(config.datasetFile),seedDirectory=config.seedDirectory;
+    const stateDb=new DatabaseSync(path.join(config.state,"usage-index.sqlite"),{readOnly:true});let archiveCount;
+    try{archiveCount=stateDb.prepare("SELECT COUNT(*) n FROM archive_segments").get().n;}finally{stateDb.close();}
+    assertCloseoutProjection(config.label,projectionStorage(config.state),archiveCount);
+    let base;
+    if(config.baseLedgerFile){
+      base=await retainedLedger(config.baseLedgerFile,config.baseMutationsFile);
+      const entry=await read(config.entryFile);assert.equal(entry.profile,CLOSEOUT_PROFILE);
+      assert.equal(entry.rawAppendCount,base.appendCount);assert.equal(entry.revisionCount,base.revisionCount);
+      for(const source of entry.sources){const hash=createHash("sha256");for await(const bytes of createReadStream(source.file))hash.update(bytes);assert.equal(hash.digest("hex"),source.sha256,"Registered retained source changed");}
+      result.entry=entry;
+    }
+    const ledger=await prepareStabilityMutations(dataset,path.join(directory,"mutations"),{databaseFile:path.join(seedDirectory,"usage-index.sqlite"),runtimeDirectory:config.runtime});
+    if(base)inheritCloseoutLedger(ledger,base);
+    await save(path.join(directory,"base-ledger.json"),ledger);
+    const seed=new DatabaseSync(path.join(seedDirectory,"usage-index.sqlite"),{readOnly:true}),controlDirectory=path.join(directory,"control");await mkdir(controlDirectory);
+    context=createContext({directory,state:config.state,control:controlDirectory,seed,seedDirectory,ledger,selectedSessions:mutationSessions(ledger,seed),
+      runtime:config.runtime,dataset,profile:CLOSEOUT_PROFILE,resultRoot:directory,requiredAllTotal:expectedAll(dataset).total+ledger.expected.total});
+    activeContext=context;
+    await save(path.join(directory,"preparation.json"),{...config,baseAppendCount:ledger.appendCount,baseRevisionCount:ledger.revisionCount,projection:projectionStorage(context.state),
+      heaps:{gatewayOldMiB:512,executorOldMiB:224,executorSemiMiB:4,nodeOptionsRemoved:true}});
+    context.ui=await browser();context.pages=[context.ui.page];await attachPage(context,context.ui.page);
+    context.server=await launchServer(context);context.sampler=await startSampler(context);await loadPage(context);
+    await verifyFull(context,"initial");delete context.requiredAllTotal;
+    result.phases.push(await runPhase(context,schedule));
+    result.reopen=await idleAndReopen(context);await save(path.join(directory,"end-ledger.json"),ledger);
+    await finishContext(context);context=null;activeContext=null;result.passed=true;
+  }catch(error){result.failure={message:error.message,stack:error.stack};if(context)await finishContext(context,{failed:true}).catch(cleanup=>result.cleanupError=String(cleanup));throw error;}
+  finally{result.endedAtMs=Date.now();await save(resultFile,result);}
+  return result;
 }
 
 async function recoveryProjectionWork(directory){
@@ -871,11 +1023,19 @@ async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEnd
 }
 
 export { visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,recoverAppendLedger,
-  attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit,retainedLedger,multitabSchedule };
+  attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit,retainedLedger,multitabSchedule,
+  closeoutEntryCounts,inheritCloseoutLedger,assertCloseoutProjection,registerCloseoutEntry,runCloseout };
 
 if(process.argv[1]&&path.resolve(process.argv[1])===SELF){
+  if(process.argv[2]==="closeout-freeze")await freezeCloseoutRuntime(process.argv[3],process.argv[4]);
+  else if(process.argv[2]==="closeout-configs")await closeoutConfigs();
+  else if(process.argv[2]==="closeout-preflight")await closeoutPreflight();
+  else if(process.argv[2]==="closeout-entry")await registerCloseoutEntry(process.argv[3]);
+  else if(process.argv[2]==="closeout-run")await runCloseout(process.argv[3]);
+  else {
   assert.ok(["run","smoke","resume-year-idle","resume-paint-order","restart-endurance","recover-and-soak","multitab-local","multitab-local-verify","multitab-endurance"].includes(process.argv[2]),"Unknown stability command");
   if(process.argv[2].startsWith("multitab-"))await runRecovery({multitab:true,mode:process.argv[2].slice("multitab-".length)});
   else if(process.argv[2]==="recover-and-soak")await runRecovery();
   else await runAll({smoke:process.argv[2]==="smoke",resumeYear:process.argv[2]==="resume-year-idle",resumePaint:process.argv[2]==="resume-paint-order",restartEndurance:process.argv[2]==="restart-endurance"});
+  }
 }

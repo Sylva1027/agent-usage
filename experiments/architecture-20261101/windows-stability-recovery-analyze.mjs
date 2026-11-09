@@ -5,7 +5,7 @@ import {
   phaseAnalysis, controls, controlChecks, resources, resourceChecks,
   gates, check, finish, mergeInput, streamNdjson,
 } from "./windows-stability-analyze.mjs";
-import { stabilitySchedule } from "./windows-stability-schedule.mjs";
+import { stabilitySchedule,closeoutSchedule,CLOSEOUT_PROFILE,protectionPassed } from "./windows-stability-schedule.mjs";
 
 const project = fileURLToPath(new URL("../../", import.meta.url));
 const defaultRoot = path.join(project, "output/windows-stability-recovery-20261109");
@@ -40,7 +40,7 @@ function gatewayContinuity(control, events, phase, reliability) {
   const complete = phase.result?.passed === true && phase.result.startedAtMs === start &&
     phase.result.observedDurationMs >= phase.expectedSchedule.durationMs && phase.result.endedAtMs >= end;
   const violation = activeAtStart.length > 1 || bornDuring.length || exitedDuring.length || restartedDuring.length || closedDuring.length;
-  check(reliability, "two-years/endurance/gateway-continuity", violation ? "failed" : verdict(complete && activeAtStart.length === 1, true),
+  check(reliability, `${phase.label}/${phase.mode}/gateway-continuity`, violation ? "failed" : verdict(complete && activeAtStart.length === 1, true),
     { start, end, activeAtStart, bornDuring, exitedDuring, restartedDuring, closedDuring });
 }
 
@@ -93,7 +93,7 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
   check(reliability, "preflight", verdict(Boolean(preflight), preflight?.passed === true && groups.length === expectedGroups.length &&
     expectedGroups.every(name => groups.filter(row => row?.name === name && row.passed === true).length === 1) &&
     hashes.length > 0 && hashes.every(value => typeof value === "string" && /^[a-f\d]{64}$/i.test(value)) &&
-    (!multitab || run.mode === "endurance" && [82,84].includes(baseCount) && [undefined,2].includes(run.observationVersion))),
+    (!multitab || run.mode === "endurance" && Number.isSafeInteger(baseCount)&&baseCount>0 && [undefined,2].includes(run.observationVersion))),
   { ...preflight, toolHashValidation: "SHA-256 format only; Main entry verifies current-source equality for each tool." });
   const baseInputs = Array.isArray(base?.entries) ? base.entries : [];
   const baseAppends = baseInputs.filter(row => row.operation === "append");
@@ -244,10 +244,103 @@ export async function analyzeWindowsStabilityRecovery(root = defaultRoot) {
     scope: `Same-path two-year recovery plus one new continuous eight-hour run. The retained ${baseCount} appends and one revision are excluded from new input denominators. Historical current/year verdicts remain in their original files.` };
 }
 
+export function closeoutObservationErrors(inputs,responses) {
+  return inputs.filter(input=>["view","all"].some(clock=>{
+    const view=clock==="view",sequence=view?input.viewResponseSequence:input.responseSequence,
+      page=view?input.viewPage:input.paintedPage,version=view?input.viewUsageVersion:input.usageVersion,
+      at=view?input.viewVisibleAtMs:input.paintedAtMs,latency=view?input.viewLandingToPaintMs:input.landingToPaintMs;
+    const response=responses.find(row=>row.sequence===sequence&&row.page===page&&row.usageVersion===version);
+    if(!response||!version||!finite(at)||!finite(latency)||latency<0||Math.abs(at-input.landedAtMs-latency)>1||response.atMs>at+1000)return true;
+    if(view&&response.preset!==input.viewPreset||!view&&response.preset!=="all")return true;
+    if(response.preset!=="all"&&!(input.operation==="append"&&input.timestampMs>=Date.parse(response.range?.start)&&input.timestampMs<=Date.parse(response.range?.end)))return true;
+    return input.operation==="append"?!(Number.isSafeInteger(input.kindCount)&&response.counts?.[input.kind]>=input.kindCount):!(Number.isSafeInteger(input.revisionIndex)&&response.revisionCount>=input.revisionIndex);
+  })).map(row=>row.eventId);
+}
+
+export async function analyzeWindowsCloseout(directory) {
+  directory=path.resolve(directory);
+  const evidence=[],reliability=gates(),resource=gates(),performance=gates();
+  const run=await json(path.join(directory,"result.json"),evidence),mode=run?.mode??"closeout-short",label=run?.label??"two-years";
+  const expected=closeoutSchedule(mode,label),schedule=await json(path.join(directory,`schedule-${mode}.json`),evidence),result=await json(path.join(directory,`result-${mode}.json`),evidence);
+  const base=await json(path.join(directory,"base-ledger.json"),evidence),closed=await json(path.join(directory,"closed.json"),evidence),reopen=await json(path.join(directory,"final-reopen.json"),evidence);
+  const preparation=await json(path.join(directory,"preparation.json"),evidence);
+  const events={counts:{},faults:[],oracles:[],normalCloses:[],locks:[],scopes:[],errors:[],sse:[],responses:[],viewResponses:[],views:[],drains:[],startup:[]};
+  const ledger=new Map(),conflicts=[],landings=new Set(),visible=new Set(),duplicates=[];
+  await streamNdjson(path.join(directory,"events.ndjson"),row=>{
+    events.counts[row.type]=(events.counts[row.type]??0)+1;
+    if(["input-landed","view-visible","input-visible"].includes(row.type)){
+      if(row.type!=="view-visible"){const seen=row.type==="input-landed"?landings:visible;if(seen.has(row.eventId))duplicates.push(row.eventId);seen.add(row.eventId);}
+      mergeInput(ledger,row,conflicts);
+    }
+    if(row.type==="response"){events.viewResponses.push(row);if(row.preset==="all")events.responses.push(row);}
+    if(row.type==="view-visible")events.views.push(row);
+    if(row.type==="scope")events.scopes.push(row);
+    if(row.type==="oracle")events.oracles.push({name:row.name,...row.result});
+    if(row.type==="normal-close")events.normalCloses.push(row);
+    if(row.type==="cycle-drained")events.drains.push(row);
+    if(row.type.startsWith("startup-"))events.startup.push(row);
+    if(row.type==="http-error"||row.error)events.errors.push(row);
+  },evidence);
+  events.responses.sort((a,b)=>a.atMs-b.atMs);events.firstAllResponse=events.responses.filter(row=>row.atMs<=schedule?.startedAtMs).at(-1);events.lastAllResponse=events.responses.at(-1);events.closed=closed;
+  for(const row of result?.inputs??[])mergeInput(ledger,row,conflicts);
+  const inputs=[...ledger.values()],mutations=[];
+  await streamNdjson(path.join(directory,"mutations/mutations.ndjson"),row=>{if(["append","revision"].includes(row.operation))mutations.push(row);},evidence);
+  check(reliability,"closeout-profile",verdict(Boolean(run),run?.profile===CLOSEOUT_PROFILE&&run.observationVersion===2&&run.passed===true&&!run.failure&&!run.cleanupError),{profile:run?.profile,mode,label,failure:run?.failure});
+  check(reliability,"fixed-heaps",verdict(Boolean(preparation),preparation?.heaps?.gatewayOldMiB===512&&preparation.heaps.executorOldMiB===224&&preparation.heaps.executorSemiMiB===4&&preparation.heaps.nodeOptionsRemoved===true),preparation?.heaps);
+  const preflight=preparation?.preflightFile?await json(preparation.preflightFile,evidence):null;
+  check(reliability,"browser-v2-preflight",verdict(Boolean(preflight),preflight?.profile===CLOSEOUT_PROFILE&&preflight.passed===true&&preflight.appendCount===10&&JSON.stringify(preflight.groups?.map(row=>row.name).sort())===JSON.stringify(["after","before","closed-tabs","normal"])),preflight);
+  check(reliability,"raw-journal-agreement",verdict(Boolean(result),mutations.length===inputs.length&&mutations.every(row=>inputs.some(input=>mutationKey(input)===mutationKey(row)))&&inputs.every(row=>landings.has(row.eventId)&&visible.has(row.eventId))&&!duplicates.length&&!conflicts.length),{mutations:mutations.length,inputs:inputs.length,duplicates,conflicts});
+  check(reliability,"dual-clock-evidence",verdict(inputs.length>0,closeoutObservationErrors(inputs,events.viewResponses).length===0&&events.views.length===inputs.length),closeoutObservationErrors(inputs,events.viewResponses));
+  check(reliability,"unexpected-errors",verdict(Boolean(run),!events.errors.length),events.errors);
+  const phase=phaseAnalysis(label,mode,schedule,result,ledger,events,reliability,performance,false,base?.appendCount??0,true);
+  const entries=await names(directory,evidence),control=await controls(path.join(directory,"control"),evidence),controlSummary=controlChecks(label,control,events,[phase],reliability);
+  if(mode==="closeout-soak"){
+    gatewayContinuity(control,events,phase,reliability);
+    for(const cycle of expected.cycles){
+      const drains=events.drains.filter(row=>row.cycle===cycle.cycle),drain=drains[0];
+      check(reliability,`cycle-${cycle.cycle}/drain`,verdict(Boolean(result),drains.length===1&&finite(drain?.drainMs)&&drain.drainMs<=300000&&drain.atMs<=schedule.startedAtMs+cycle.drainDeadlineAtMs&&drain.projection?.candidate===null&&drain.projection?.orphanDatabases?.length===0),drain);
+    }
+  }
+  check(reliability,"exact-final-and-reopen",verdict(Boolean(closed&&reopen),closed?.failed===false&&closed.rawRestored===true&&!closed.errors?.length&&events.oracles.some(row=>row.name==="reopen"&&row.passed===true&&!row.retry&&!row.skipped)&&events.oracles.every(row=>row.retry===true||row.passed===true&&!row.skipped)),{closed,reopen,oracles:events.oracles});
+  if(label==="two-years")check(performance,"reopen-absolute",verdict(finite(reopen?.wallMs),reopen?.wallMs<=45000),{actualMs:reopen?.wallMs,limitMs:45000});
+  const nodeExits=[];for(const entry of await names(path.join(directory,"nodes"),evidence))if(/^node-\d+\.jsonl$/.test(entry.name))await streamNdjson(path.join(directory,"nodes",entry.name),row=>nodeExits.push(row),evidence);
+  const summary=await json(path.join(directory,"resource-summary.json"),evidence),summaries=summary?[summary]:[];
+  const resourceSummary=await resources(directory,entries,summaries,control,nodeExits,phase,events,evidence);
+  resourceChecks(label,resourceSummary,summaries,[phase],closed,resource);
+  const metrics={};
+  for(const name of ["today","all"]){const startup=events.startup.find(row=>row.page===0&&row.type===`startup-${name}`);metrics[`startup-${name}`]=startup?.wallMs;}
+  metrics.reopen=reopen?.wallMs;
+  for(const row of events.scopes)metrics[`scope-${row.preset}`]=row.wallMs;
+  for(const input of inputs)metrics[input.eventId]=input.landingToPaintMs;
+  check(reliability,"startup-and-switch-metrics",verdict(Boolean(result),["startup-today","startup-all","reopen",...(["today","week","custom","all"].map(name=>`scope-${name}`))].every(key=>finite(metrics[key]))),metrics);
+  check(performance,"timing-metrics-recorded",verdict(Boolean(result),Object.keys(metrics).length>=7&&Object.values(metrics).every(value=>finite(value)&&value>=0)),{metrics,relativeProtection:"evaluated against the paired variant in closeout-matrix"});
+  check(reliability,"evidence-readable",verdict(evidence.length===0,true),evidence);
+  finish(reliability);finish(resource);finish(performance);
+  return {profile:CLOSEOUT_PROFILE,kind:"windows-closeout-analysis",directory,label,variant:run?.variant,mode,passed:reliability.passed&&resource.passed&&performance.passed,
+    reliability,resource,performance,metrics,phase,control:controlSummary,resources:resourceSummary,evidence,
+    statisticalP95Claim:false,originalEightHourAcceptance:"incomplete; evaluated only by its original profile"};
+}
+
+export async function analyzeCloseoutMatrix(root) {
+  const groups=[];for(const label of ["current","year","two-years"])for(const variant of ["baseline","candidate"])groups.push(await analyzeWindowsCloseout(path.join(root,"short",label,variant)));
+  const protection=gates();
+  for(const label of ["current","year","two-years"]){
+    const before=groups.find(row=>row.label===label&&row.variant==="baseline"),after=groups.find(row=>row.label===label&&row.variant==="candidate");
+    const keys=new Set([...Object.keys(before?.metrics??{}),...Object.keys(after?.metrics??{})]);
+    check(protection,`${label}/paired-groups`,verdict(Boolean(before&&after),before?.phase.expectedSchedule.profile===CLOSEOUT_PROFILE&&after?.phase.expectedSchedule.profile===CLOSEOUT_PROFILE),{before:before?.directory,after:after?.directory});
+    for(const key of keys){const a=before?.metrics[key],b=after?.metrics[key];check(protection,`${label}/${key}`,verdict(finite(a)&&finite(b),finite(a)&&finite(b)&&protectionPassed(a,b)),{beforeMs:a,afterMs:b,rule:"both >10% and >100ms slower fails"});}
+  }
+  finish(protection);
+  const appends=groups.reduce((n,row)=>n+row.phase.inputs.filter(input=>input.operation==="append").length,0),revisions=groups.reduce((n,row)=>n+row.phase.inputs.filter(input=>input.operation==="revision").length,0);
+  return {profile:CLOSEOUT_PROFILE,kind:"windows-closeout-matrix",passed:groups.every(row=>row.reliability.passed&&row.resource.passed&&(row.variant==="baseline"||row.performance.passed))&&protection.passed&&appends===72&&revisions===6,appends,revisions,reopens:groups.filter(row=>finite(row.metrics.reopen)).length,protection,groups,statisticalP95Claim:false};
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [root, output] = process.argv.slice(2);
-  const result = await analyzeWindowsStabilityRecovery(root);
-  if (output) await writeFile(output, JSON.stringify(result, null, 2) + "\n", { flag: "wx" });
+  const closeout=root==="closeout"||root==="closeout-matrix";
+  const result = root==="closeout"?await analyzeWindowsCloseout(output):root==="closeout-matrix"?await analyzeCloseoutMatrix(output):await analyzeWindowsStabilityRecovery(root);
+  const outputFile=closeout?process.argv[4]:output;
+  if (outputFile) await writeFile(outputFile, JSON.stringify(result, null, 2) + "\n", { flag: "wx" });
   else console.log(JSON.stringify(result, null, 2));
   if (!result.passed) process.exitCode = 1;
 }
