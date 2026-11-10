@@ -1072,12 +1072,18 @@ export function createUsageServer(options = {}) {
 
       if (url.pathname === "/api/status") {
         const currentOptions = await usageOptions(options);
+        const sourceOptions = {
+          ...currentOptions,
+          importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+        };
+        // Revalidate raw sources before reusing the committed acquisition's identity.
+        const checked = !importContext && !syncPromise && sourceAcquisitionAvailable && storeStatus?.acquisition
+          ? await usageStore.checkSources(sourceOptions)
+          : null;
         const status = importContext
           ? await buildUsageFingerprint(currentOptions)
-          : await summaryCache.readSourceState({
-              ...currentOptions,
-              importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-            });
+          : (checked && !syncPromise && await summaryCache.readCertifiedSourceState(sourceOptions, checked)) ||
+            await summaryCache.readSourceState(sourceOptions);
         const since = url.searchParams.get("since") || "";
         const catalog = localPricingCatalog();
         const asOf = new Date();

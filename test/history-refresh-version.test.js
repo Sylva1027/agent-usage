@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createUsageServer } from "../src/server.js";
 import { getPricingCatalog, runWithPricingCatalog, setPricingCatalog } from "../src/pricing.js";
+import { buildUsageFingerprint } from "../src/usage-core.js";
 import { UsageSummaryCache } from "../src/usage-summary-cache.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createHistoryArchiveCandidate, prepareHistoryArchiveCommit } from "../src/history-archive.js";
@@ -381,6 +382,7 @@ test("SSE, API and status name the same completed publication", async (t) => {
     assert.equal(typeof notification.usageVersion, "string");
     assert.equal(notification.usageVersion, status.usageVersion);
     assert.equal(result.usageVersion, notification.usageVersion);
+    const rawBeforeCorrection = await buildUsageFingerprint(input.serverOptions);
     const db = new DatabaseSync(input.serverOptions.databaseFile);
     try {
       db.exec("UPDATE events SET total=total+50,input=input+50");
@@ -389,14 +391,18 @@ test("SSE, API and status name the same completed publication", async (t) => {
     }
     callbacks[0]("change", "rollout.jsonl");
     const correction = await next("usage-synced");
-    assert.equal(correction.fingerprint, notification.fingerprint, "external corrections keep the raw fingerprint");
+    // A certified journal identity can switch to a full-scan identity after an external commit.
+    assert.equal((await buildUsageFingerprint(input.serverOptions)).fingerprint, rawBeforeCorrection.fingerprint,
+      "external corrections keep the raw sources unchanged");
     assert.notEqual(
       correction.usageVersion,
       notification.usageVersion,
       "SSE deduplication includes publication identity",
     );
     assert.equal((await get("/api/status")).usageVersion, correction.usageVersion);
-    assert.equal((await get()).usageVersion, correction.usageVersion);
+    const corrected = await get();
+    assert.equal(corrected.summary.totals.total, 400);
+    assert.equal(corrected.usageVersion, correction.usageVersion);
   } finally {
     await reader.cancel();
   }

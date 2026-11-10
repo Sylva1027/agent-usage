@@ -26,7 +26,7 @@ const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
 export const CLOSEOUT_RESULT=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
-assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;

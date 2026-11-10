@@ -17,8 +17,8 @@ const save = async (file, value) => {
   await fs.writeFile(file, JSON.stringify(value, null, 2) + "\n", { flag: "wx", flush: true });
 };
 const hash = async file => createHash("sha256").update(await fs.readFile(file)).digest("hex");
-const within = file => {
-  const relative = path.relative(root, path.resolve(file));
+const within = (file, outputRoot = root) => {
+  const relative = path.relative(outputRoot, path.resolve(file));
   assert(relative && !relative.startsWith("..") && !path.isAbsolute(relative), "Private output escaped");
 };
 async function files(directory, relative = "") {
@@ -42,8 +42,8 @@ function facts(state) {
     }));
   } finally { db.close(); }
 }
-async function verify(config, name, expected) {
-  const directory = path.join(root, "preparations", config.label, name), control = path.join(directory, "control");
+async function verify(config, name, expected, outputRoot = root) {
+  const directory = path.join(outputRoot, "preparations", config.label, name), control = path.join(directory, "control");
   await fs.mkdir(control, { recursive: true });
   const dataset = await read(config.datasetFile), before = facts(config.state), started = Date.now();
   const server = await launchServer({ ...config, dataset, directory, control, closing: false });
@@ -63,8 +63,8 @@ async function verify(config, name, expected) {
     business: { totals: body.summary.totals, events: body.metadata.eventCount, sessions: body.metadata.sessionCount, cost: body.summary.costEstimate } });
   return after;
 }
-async function restore(config) {
-  within(config.startState);
+async function restore(config, outputRoot = root) {
+  within(config.startState, outputRoot);
   const primary = path.join(config.state, "usage-index.sqlite"), identity = await fs.stat(primary, { bigint: true });
   assert.equal(identity.nlink, 1n);
   const saved = await files(config.startState), expected = new Set(saved);
@@ -158,4 +158,5 @@ async function main() {
   } finally { await fs.writeFile(path.join(root, "progress.json"), JSON.stringify(progress, null, 2)); }
   console.log(JSON.stringify(progress));
 }
+export { files, facts, verify, restore };
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve("experiments/architecture-20261101/source-snapshot-memory-run.mjs")) await main();

@@ -1,6 +1,6 @@
 # 交付、构建与升级
 
-更新：2026-11-10。现有实现继续使用浏览器、Node.js 和 SQLite；本页是交付操作入口。11月5日已接受的性能只适用于当时已测范围；后续冷热历史、压实和多标签验收分别保留自己的结果。本次最终产物与四个小场景已核验，有限批次性能候选未过保护门、未合入生产；最终运行代码保持6fcc95d。结果见[集中收尾表](../experiments/architecture-20261101/WINDOWS-PARALLEL-CLOSEOUT-REPORT.md)，历史失败不改写。
+更新：2026-11-10。现有实现继续使用浏览器、Node.js 和 SQLite；本页是交付操作入口。11月5日已接受的性能只适用于当时已测范围；后续冷热历史、压实和多标签验收分别保留自己的结果。当前在来源快照内存修复 `d696737` 基础上，补齐API/SSE/status版本标识一致性修复，构建／升级流程不变。最后验收包已执行并清理，但连续写入在15.405分钟出现 `LIVE_SOURCE_CHANGED` 请求错误，稳定性验收未通过；短测内存通过，速度欠项保留。见[最终结果、标准与判定](../experiments/architecture-20261101/WINDOWS-FINAL-ACCEPTANCE-REPORT.md)。本地提交后停止反馈，未替换在用服务或助手。
 
 ## 本轮已有改造
 
@@ -30,7 +30,7 @@
 
 归档校验复用依赖有效租约，助手协议为 `windows-archive-read-lock-v2`，保护数据库、manifest 及完整父路径。该租约不要求启用 NTFS journal；来源追加证明使用现有 journal，是另一项能力。助手缺失、协议旧或租约不可用时，普通查询保留完整内容校验回退；显式压实须取得所需租约，否则拒绝切换，保留原历史。
 
-较早测量见[Q10报告](../experiments/architecture-20261101/Q10-REFRESH-REOPEN-REPORT.md)；后续状态见[多标签报告](../experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)与[本次计划](plans/2026-11-09-windows-parallel-closeout.md)。原八小时门未完成，两小时收尾不能替代它；Linux/macOS专项适配仍另行安排。
+较早测量见[Q10报告](../experiments/architecture-20261101/Q10-REFRESH-REOPEN-REPORT.md)；后续状态见[多标签报告](../experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)与[最后验收计划](plans/2026-11-10-windows-final-acceptance.md)。1秒刷新／200ms切换已转后续目标，当前custom既有偏差获用户接受；原八小时及本次两小时资源收敛均未完成。Linux/macOS专项适配仍另行安排。
 
 ## 运行与开发环境
 

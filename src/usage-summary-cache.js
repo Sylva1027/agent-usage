@@ -5,14 +5,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { buildModelActivity } from "../public/pricing-models.js";
 import { calendarPresetRange } from "../public/period-comparison.js";
-import { automaticPricingFile, pricingFile } from "./pricing-store.js";
 import {
   buildUsageFingerprint,
   discoverUsageSources,
   QUOTA_PERCENT_STALE_AFTER_MS,
   usageComparisonFromAggregates,
 } from "./usage-core.js";
-import { readCodexQuotaObservations } from "./codex-quota-cache.js";
 import { readUsageSourceInputs } from "./usage-source-inputs.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -136,38 +134,12 @@ export class UsageSummaryCache {
     await this.open();
     const homes = await discoverUsageSources(options);
     const usage = await buildUsageFingerprint({ ...options, homes });
-    const files = new Set(
-      [pricingFile(options), automaticPricingFile(options), options.importStoreFile].filter(Boolean),
-    );
-    for (const home of homes) {
-      for (const name of ["config.toml", "settings.json", "config.json", "logs_2.sqlite", "logs_2.sqlite-wal"]) {
-        files.add(path.join(home.path, name));
-      }
-    }
-    const input = createHash("sha256").update(`summary-v${SUMMARY_CACHE_VERSION}\0`).update(usage.fingerprint);
-    const routing = createHash("sha256").update(usage.fingerprint);
-    const quotaInput = JSON.stringify(readCodexQuotaObservations({ ...options, homes }));
-    input.update("\0quota\0").update(quotaInput);
-    routing.update("\0quota\0").update(quotaInput);
-    const priceFiles = new Set([pricingFile(options), automaticPricingFile(options)]);
-    for (const file of [...files].sort()) {
-      let observation;
-      try {
-        const info = await stat(file);
-        observation = JSON.stringify([file, info.size, info.mtimeMs]);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-        observation = JSON.stringify([file, "missing"]);
-      }
-      input.update(observation);
-      if (!priceFiles.has(file)) routing.update(observation);
-    }
-    const inputs = input.digest("hex");
+    const { inputs, routingFingerprint } = await readUsageSourceInputs(options, homes, usage.fingerprint);
     const publication = await this.readPublication();
     return {
       ...usage,
       inputs,
-      routingFingerprint: routing.digest("hex"),
+      routingFingerprint,
       publication,
       signature: digest(`${inputs}\0${publication?.signature || ""}`),
     };
