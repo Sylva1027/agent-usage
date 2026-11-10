@@ -2704,6 +2704,13 @@ export class UsageStore {
   }
 
   installUsageProjectionTracker() {
+    if (this.usageProjectionTracker?.database === this.database) {
+      for (const table of [...USAGE_PROJECTION_IGNORED_TABLES, "store_meta"])
+        for (const operation of ["INSERT", "UPDATE", "DELETE"])
+          this.database.exec(`DROP TRIGGER IF EXISTS temp.usage_projection_${table}_${operation}`);
+      this.database.exec("DROP TABLE temp.usage_projection_ignored_rows");
+      this.businessProjectionIgnoredChanges = 0;
+    }
     this.usageProjectionTracker = null;
     this.database.exec(`CREATE TEMP TABLE usage_projection_ignored_rows (value INTEGER NOT NULL, owned INTEGER NOT NULL) STRICT;
       INSERT INTO usage_projection_ignored_rows VALUES (0, 0);`);

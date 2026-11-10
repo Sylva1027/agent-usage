@@ -4382,7 +4382,7 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     render();
     appliedUsageVersion = typeof data.usageVersion === "string" && data.usageVersion ? data.usageVersion : null;
     appliedUsageScope = scope;
-    setAutoRefreshStatus("");
+    setAutoRefreshStatus("", { busy: data.updatePending === true });
     finishUsageLoad(loadId);
     if (!$("#pricingDialog").hidden && state.pricingCatalog) {
       try {

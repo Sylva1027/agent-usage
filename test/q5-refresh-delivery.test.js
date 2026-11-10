@@ -228,14 +228,16 @@ for (const stage of ["cache", "dashboard"]) {
       };
       const read = await json(base, `/api/usage?${QUERY}&skipCheck=1`);
       assert.ifError(deliveryError);
-      assert.equal(reads, 2, "a miss may retry once, even if every await overlaps another commit");
-      assert.equal(read.summary.totals.total, stage === "cache" ? 30 : 15);
+      assert.equal(reads, stage === "cache" ? 2 : 1,
+        "an uncaptured miss retries at most once; a completed read does not chase the next commit");
+      assert.equal(read.summary.totals.total, stage === "cache" ? 30 : 0);
+      if (stage === "dashboard") assert.ok(read.usageVersion, "the captured batch retains its completed identity");
       assert.equal(publications, 0, "a raced dashboard must not be cached with an older source");
       assert.equal((await json(base, `/api/status?since=${read.fingerprint}`)).changed, true);
       UsageSummaryCache.prototype.get = originalGet;
       t.mock.restoreAll();
       const followUp = await json(base, `/api/usage?${QUERY}&skipCheck=1`);
-      assert.equal(followUp.summary.totals.total, 30);
+      assert.equal(followUp.summary.totals.total, stage === "cache" ? 30 : 15);
       assert.equal((await json(base, `/api/status?since=${followUp.fingerprint}`)).changed, false);
     } finally {
       UsageSummaryCache.prototype.get = originalGet;
@@ -248,7 +250,7 @@ for (const stage of ["cache", "dashboard"]) {
   });
 }
 
-test("Q5 poll collision and append during sync converge before the SSE wake is delivered", async (t) => {
+test("Q5 poll collision publishes an admitted batch and retains the later append", async (t) => {
   const fixture = createCodexIntegrationFixture();
   const callbacks = [];
   const hints = [];
@@ -322,9 +324,11 @@ test("Q5 poll collision and append during sync converge before the SSE wake is d
     release.resolve();
     const notification = await next("usage-synced");
     assert.ok(notification.fingerprint);
-    assert.equal((await poll).summary.totals.total, 300);
-    assert.equal((await skipped).summary.totals.total, 300);
-    const latest = await json(base, `/api/usage?${QUERY}&skipCheck=1`);
+    for (const payload of await Promise.all([poll, skipped])) {
+      assert.ok([100, 300].includes(payload.summary.totals.total), "both reads include the admitted first append");
+      assert.ok(payload.usageVersion, "each read identifies its completed batch");
+    }
+    const latest = await json(base, `/api/usage?${QUERY}`);
     assert.equal(latest.summary.totals.total, 300);
     assert.equal((await json(base, `/api/status?since=${latest.fingerprint}`)).changed, false);
   } finally {
@@ -512,6 +516,29 @@ for (const switchScope of [false, true]) {
     }
   });
 }
+
+test("a completed batch paints while later input remains pending, then clears busy on drain", async () => {
+  let pending = true;
+  const harness = await browser((request, payloads) => {
+    if (request.path !== "/api/usage") return;
+    const payload = app.clone(payloads.today);
+    payload.fingerprint = pending ? "completed-batch" : "drained-batch";
+    payload.usageVersion = payload.fingerprint;
+    payload.updatePending = pending;
+    return { payload };
+  });
+  try {
+    await harness.api.loadUsage({ skipCheck: true });
+    assert.equal(harness.state.fingerprint, "completed-batch");
+    assert.equal(harness.counts.renders, 1);
+    assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), true);
+    pending = false;
+    await harness.api.loadUsage({ skipCheck: true });
+    assert.equal(harness.state.fingerprint, "drained-batch");
+    assert.equal(harness.counts.renders, 2);
+    assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), false);
+  } finally { harness.dispose(); }
+});
 
 test("Q5 SSE during a checked load cannot supersede its fresh response with an older skipCheck read", async () => {
   const release = deferred();

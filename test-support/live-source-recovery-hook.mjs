@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import { createConnection } from "node:net";
 import { UsageSourceProof } from "../src/usage-source-proof.js";
 import { UsageStore } from "../src/usage-store.js";
@@ -126,6 +128,37 @@ export function installRecoveryHooks(point, firstPath = null) {
   };
 }
 
+function installPublicationHandoffHooks(point) {
+  UsageSourceProof.prototype.provider = async () => null;
+  globalThis[Symbol.for("usage-publication-handoff")] = point;
+  const probe = (stage, fields = "") =>
+    `await globalThis[Symbol.for("usage-publication-handoff")]({stage:${JSON.stringify(stage)},pid:process.pid,requestId:message.id${fields}});`;
+  registerHooks({
+    load(url, context, next) {
+      const loaded = next(url, context);
+      if (url !== new URL("../src/usage-executor.js", import.meta.url).href) return loaded;
+      let source = String(loaded.source);
+      const inject = (needle, replacement) => {
+        assert.equal(source.split(needle).length, 2, `Publication handoff hook moved: ${needle}`);
+        source = source.replace(needle, replacement);
+      };
+      // Preserve the promise captured by the real await before pausing the child.
+      inject("await liveReadersDone;", `const waitingReaders = liveReadersDone;
+        ${probe("sync-wait", ",liveReaders")}
+        await waitingReaders;`);
+      inject("ready = publishedReady;", `ready = publishedReady;
+          ${probe("reader-wait")}`);
+      inject("nextStatus = await syncUsageStore(", `${probe("sync-start", ",liveReaders,pinned:Boolean(publishedReader)")}
+          nextStatus = await syncUsageStore(`);
+      const query = "dashboard = await reader.dashboardHistory(filters, message.options ?? {});";
+      inject(query, `${probe("reader-enter", ",liveReaders,pinned:Boolean(lease)")}
+          ${query}
+          ${probe("reader-result", ",liveReaders,pinned:Boolean(lease)")}`);
+      return { ...loaded, source };
+    },
+  });
+}
+
 if (process.env.LIVE_RECOVERY_CONTROL_PORT && process.env.CODEX_USAGE_EXECUTOR_CHILD === "1") {
   const socket = createConnection({ host: "127.0.0.1", port: Number(process.env.LIVE_RECOVERY_CONTROL_PORT) });
   await new Promise((resolve, reject) => {
@@ -147,13 +180,11 @@ if (process.env.LIVE_RECOVERY_CONTROL_PORT && process.env.CODEX_USAGE_EXECUTOR_C
     }
   });
   socket.unref();
-  installRecoveryHooks(
-    (event) =>
-      new Promise((resolve) => {
-        const id = ++sequence;
-        waiting.set(id, resolve);
-        socket.write(`${JSON.stringify({ id, ...event })}\n`);
-      }),
-    process.env.LIVE_RECOVERY_FIRST_PATH || null,
-  );
+  const point = (event) => new Promise((resolve) => {
+    const id = ++sequence;
+    waiting.set(id, resolve);
+    socket.write(`${JSON.stringify({ id, ...event })}\n`);
+  });
+  if (process.env.LIVE_RECOVERY_HANDOFF === "1") installPublicationHandoffHooks(point);
+  else installRecoveryHooks(point, process.env.LIVE_RECOVERY_FIRST_PATH || null);
 }

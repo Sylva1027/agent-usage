@@ -122,7 +122,9 @@ test("rolling day bypasses summaries; obsolete state and malformed payload rebui
       summaryCacheKey({ ...filters, preset: "recent", recentValue: "1 天" }, false, getPricingCatalog()),
       null,
     );
+    payload.completion = "process-local-completion";
     await cache.publish(key, payload, {}, source, now);
+    assert.equal((await cache.get(key, source, now)).completion, undefined, "live completion credentials are never persisted");
     cache.database.prepare("UPDATE summaries SET payload = 'broken'").run();
     assert.equal(await cache.get(key, source, now), null);
     await cache.publish(key, payload, {}, source, now);

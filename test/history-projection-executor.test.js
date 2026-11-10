@@ -226,7 +226,9 @@ if (process.argv.includes("--fixture-child")) {
     assert.equal(existsSync(input.file("captures")), false);
     assert.equal(readFileSync(input.file("verifications"), "utf8").trim().split("\n").length, 2);
     writeFileSync(input.file("sync-release"), "release");
-    assert.deepEqual(await sync, NEXT);
+    const { completion, ...completed } = await sync;
+    assert.equal(completion, null, "the mocked store cannot issue a live completion credential");
+    assert.deepEqual(completed, NEXT);
     assert.equal(readFileSync(input.file("closes"), "utf8"), "close\n");
     const fresh = await worker.request("dashboard");
     assert.deepEqual(fresh.status, NEXT);

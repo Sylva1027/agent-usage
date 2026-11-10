@@ -21,6 +21,7 @@
 //   · 崩溃/超时：在飞请求收到**可重试**错误（`EXECUTOR_UNAVAILABLE`/`EXECUTOR_EXITED`/超时），
 //     不做无限重试。
 import { fork } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { rm, stat } from "node:fs/promises";
 import path from "node:path";
@@ -361,6 +362,9 @@ async function runExecutorProcess() {
   let publishedReady = Promise.resolve();
   let lastCheckpoint = null;
   let completedAcquisition = null;
+  let liveReaders = 0;
+  let liveReadersDone = Promise.resolve();
+  let releaseLiveReaders = () => {};
   let pendingHistoryVerification = null;
   let syncBackupTail = Promise.resolve();
   let initialized = false;
@@ -488,6 +492,15 @@ async function runExecutorProcess() {
     return result;
   };
 
+  const completedPublication = () => {
+    const receipt = completedAcquisition;
+    if (!receipt) return null;
+    const guard = store.usageProjectionGuard({ includeHistory: true });
+    return guard && guard.database === receipt.guard.database && guard.identity === receipt.guard.identity &&
+      guard.dataVersion === receipt.guard.dataVersion && guard.evidence === receipt.guard.evidence &&
+      store.usageProjectionChangeKey(undefined, true) === receipt.key ? receipt : null;
+  };
+
   const handle = async (message) => {
     switch (message.type) {
       case "open": {
@@ -526,10 +539,12 @@ async function runExecutorProcess() {
         return checked;
       }
       case "sync": {
-        completedAcquisition = null;
         // Cold publication pins the side database, leaving the primary WAL free during sync.
         publishedReady = (async () => {
+          // Readers already admitted finish first; later readers use the pinned publication during this sync.
+          await liveReadersDone;
           if (!storeStatus) return;
+          const completion = completedPublication()?.token;
           const authority = store.database
             .prepare("SELECT value FROM store_meta WHERE key=?")
             .get("history_archive_event_authority")?.value;
@@ -544,7 +559,8 @@ async function runExecutorProcess() {
                 new Error("Published history projection is unavailable"),
                 "HISTORY_PROJECTION_UNAVAILABLE",
               );
-            publishedReader = { reader, status: storeStatus, users: 0, retired: false };
+            publishedReader = { reader, status: storeStatus, users: 0, retired: false,
+              completion: completion && completedPublication()?.token === completion ? completion : null };
             return;
           }
           const reader = new UsageStore({ databaseFile: store.databaseFile });
@@ -558,7 +574,8 @@ async function runExecutorProcess() {
             reader.database.exec("BEGIN");
             reader.database.prepare("SELECT id FROM events LIMIT 1").get();
             if (snapshot) reader.adoptUsageProjection(snapshot);
-            publishedReader = { reader, status: storeStatus, users: 0, retired: false };
+            publishedReader = { reader, status: storeStatus, users: 0, retired: false,
+              completion: completion && completedPublication()?.token === completion ? completion : null };
           } catch (error) {
             reader.close();
             throw error;
@@ -571,6 +588,7 @@ async function runExecutorProcess() {
         let acquisitionStart = null;
         try {
           await publishedReady;
+          completedAcquisition = null;
           const identity = store.usageProjectionDatabaseIdentity();
           if (identity && identity === store.openedUsageProjectionIdentity) {
             acquisitionStart = {
@@ -586,7 +604,7 @@ async function runExecutorProcess() {
           const readerError = releasePublishedReader();
           if (nextStatus && !failure && !readerError) {
             try {
-              store.prepareMetadataProjection();
+              store.withBusinessProjection(() => store.prepareMetadataProjection());
             } catch (error) {
               failure = error;
             }
@@ -596,6 +614,7 @@ async function runExecutorProcess() {
           if (!failure && readerError) failure = readerError;
         }
         if (failure) {
+          completedAcquisition = null;
           postCheckpointDiagnostic();
           throw failure;
         }
@@ -603,7 +622,7 @@ async function runExecutorProcess() {
         storeStatus = nextStatus;
         postState({ includeHomes: true });
         // Install after ingestion so rebuilding facts does not pay for query-only tracking.
-        if (acquisitionStart && !store.usageProjectionTracker) {
+        if (acquisitionStart && !store.usageProjectionGuard({ includeHistory: true })) {
           store.installUsageProjectionTracker();
           store.observedUsageProjectionChanges = store.usageProjectionChangeKey();
         }
@@ -616,25 +635,18 @@ async function runExecutorProcess() {
           guard.dataVersion === acquisitionStart.dataVersion
         ) {
           completedAcquisition = {
+            token: randomUUID(),
             guard,
             key: store.usageProjectionChangeKey(undefined, true),
             fingerprint: storeStatus.fingerprint,
           };
         }
-        return storeStatus;
+        return { ...storeStatus, completion: completedAcquisition?.token ?? null };
       }
       case "validateAcquisition": {
-        const receipt = completedAcquisition;
+        const receipt = completedPublication();
         if (!receipt || receipt.fingerprint !== message.fingerprint) return false;
-        const guard = store.usageProjectionGuard({ includeHistory: true });
-        return Boolean(
-          guard &&
-            guard.database === receipt.guard.database &&
-            guard.identity === receipt.guard.identity &&
-            guard.dataVersion === receipt.guard.dataVersion &&
-            guard.evidence === receipt.guard.evidence &&
-            store.usageProjectionChangeKey(undefined, true) === receipt.key,
-        );
+        return message.completion ? receipt.token : true;
       }
       case "publishedUsageEvents": {
         return store.publishedUsageEvents();
@@ -644,10 +656,15 @@ async function runExecutorProcess() {
       }
       case "dashboard": {
         applyPricingCatalog(message.pricing);
-        await publishedReady;
+        let ready;
+        do {
+          ready = publishedReady;
+          await ready;
+        } while (ready !== publishedReady);
         const lease = publishedReader;
         const reader = lease?.reader || store;
         const published = lease ? lease.status : storeStatus;
+        const completion = lease ? lease.completion : completedPublication()?.token;
         const status = published && {
           ...published,
         };
@@ -656,6 +673,7 @@ async function runExecutorProcess() {
         filters.pricingModels = pricingModels;
         if (filters.now !== undefined) filters.now = new Date(filters.now);
         if (lease) lease.users++;
+        else if (liveReaders++ === 0) liveReadersDone = new Promise(resolve => { releaseLiveReaders = resolve; });
         let dashboard,
           cleanupError = null;
         try {
@@ -664,10 +682,12 @@ async function runExecutorProcess() {
           if (lease && --lease.users === 0 && lease.retired) {
             cleanupError = closePublishedReader(lease);
           }
+          if (!lease && --liveReaders === 0) releaseLiveReaders();
         }
         if (cleanupError) throw cleanupError;
         return {
           status,
+          completion: lease || completion === completedPublication()?.token ? completion ?? null : null,
           ...dashboard,
           pricingCatalog: getPricingCatalog(),
         };
@@ -1315,10 +1335,10 @@ export function createUsageExecutor(
       });
     },
     checkSources: (options) => request("checkSources", { options }),
-    validateAcquisition: async (fingerprint) => {
+    validateAcquisition: async (fingerprint, { completion = false } = {}) => {
       if (!worker || idleRetiring || terminating) return false;
       try {
-        return await request("validateAcquisition", { fingerprint }, { allowSpawn: false });
+        return await request("validateAcquisition", { fingerprint, completion }, { allowSpawn: false });
       } catch {
         return false;
       }

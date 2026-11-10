@@ -26,7 +26,7 @@ const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
 export const CLOSEOUT_RESULT=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
-assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110","output/live-source-recovery-20261110","output/live-source-recovery-20261110/validated"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110","output/live-source-recovery-20261110","output/live-source-recovery-20261110/validated","output/committed-publication-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -299,10 +299,10 @@ async function pollBrowser(context) {
 }
 
 async function verifyFull(context,name) {
-  await context.beforeOracle?.(name);
   for(let attempt=0;attempt<3;attempt++){
   await Promise.all(context.responseTasks);
-  const row=[...context.bodies].reverse().find(value=>value.preset==="all");assert.ok(row,"all response missing");
+  const row=[...context.bodies].reverse().find(value=>value.preset==="all"&&(!context.requireCompleteOracle||
+    visibleInputs(context,value.body).entries.length===context.ledger.entries.length));assert.ok(row,"all response missing");
   const cost=row.body.summary.costEstimate;
   await context.ui.page.waitForFunction(async expected=>{
     const {formatCostAmount}=await import("/app.js");
@@ -316,6 +316,7 @@ async function verifyFull(context,name) {
     else expectedDelta.output+=entry.outputDelta;
   }
   await save(config,{body:row.body,dataset:{home:context.dataset.home,expected:context.dataset.expected,expectedSessions:context.dataset.expectedSessions},state:context.state,expectedDelta,output:result});
+  await context.beforeOracle?.(name);
   const child=spawn(process.execPath,["--max-old-space-size=224",path.join(HERE,"windows-stability-oracle.mjs"),config],{cwd:ROOT,windowsHide:true,stdio:["ignore","pipe","pipe"]});
   context.oracleChildren.add(child);child.once("exit",()=>context.oracleChildren.delete(child));
   child.stdout.pipe(createWriteStream(path.join(context.directory,`oracle-${label}.log`)));child.stderr.pipe(createWriteStream(path.join(context.directory,`oracle-${label}-stderr.log`)));
@@ -489,6 +490,15 @@ async function pollResources(context) {
     summary.cpuSeconds+=sample.service.cpuSecondsIncrement??0;summary.readBytes+=sample.service.logicalReadBytesIncrement??0;summary.writeBytes+=sample.service.logicalWriteBytesIncrement??0;
     summary.observerCpuSeconds=Math.max(summary.observerCpuSeconds,sample.observer?.cpuSeconds??0);
     summary.peakStorageBytes=Math.max(summary.peakStorageBytes,sample.state?.observedBytes??0);summary.peakWalBytes=Math.max(summary.peakWalBytes,sample.sqlite?.categoryBytes?.wal??0);
+    if(context.preserveMissingCosts){
+      const missing=summary.incompleteCosts??={};
+      for(const [field,value] of Object.entries({cpuSeconds:sample.service.cpuSecondsIncrement,readBytes:sample.service.logicalReadBytesIncrement,
+        writeBytes:sample.service.logicalWriteBytesIncrement,observerCpuSeconds:sample.observer?.cpuSeconds,
+        peakStorageBytes:sample.state?.complete?sample.state.observedBytes:null,peakWalBytes:sample.sqlite?.complete?sample.sqlite.categoryBytes?.wal:null})){
+        if(!Number.isFinite(value))missing[field]=(missing[field]??0)+1;
+        if(missing[field])summary[field]=null;
+      }
+    }
     summary.excluded.push(...corrected.excluded);
     const executorActive=observed.some(row=>row.role==="service"&&row.name?.toLowerCase()==="node.exe"&&row.pid!==tail.servicePid);
     if(executorActive)context.lastActivityAtMs=Math.max(context.lastActivityAtMs,sample.atUnixMs);

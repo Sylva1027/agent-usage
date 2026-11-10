@@ -9,11 +9,184 @@ import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createContext, attachPage, waitUsageResponse, pollBrowser, idleAndReopen,
-  startSampler, dispatch, verifyFull, finishContext } from "./windows-stability-run.mjs";
+  startSampler, dispatch, verifyFull, finishContext, pollResources } from "./windows-stability-run.mjs";
 import {
   plan, continuousSchedule, assertContinuous, comparePair, isSourceUpdatePending,
   snapshot, restoreSnapshot, cleanupSnapshot, identity, ordinaryWork, checkPending, assertOrdinaryControl, assertInternalRecovery, activeExecutors,
+  LEGACY_CARD, PUBLICATION_CARD, publicationTiming, runContinuous, settlePublicationTabs, canContinueGroup, analyzeGroup, inspectResults, summarizeGroups, finishResults,
 } from "./live-source-recovery-run.mjs";
+
+test("committed publication selects 401faeb, 36 appends, seven reopens, and exactly 27 R metrics without changing legacy", () => {
+  const groups = plan(PUBLICATION_CARD), schedule = continuousSchedule(PUBLICATION_CARD);
+  assert.equal(PUBLICATION_CARD.baseline, "401faeb");
+  assert.equal(groups.length, 6); assert.equal(groups.reduce((n, row) => n + row.ordinary.length + row.continuous, 0), 36);
+  assert.equal(groups.reduce((n, row) => n + row.reopens, 0), 7);
+  assert.deepEqual(groups.map(row => `${row.label}/${row.variant}`), plan(LEGACY_CARD).map(row => `${row.label}/${row.variant}`));
+  assert.equal(schedule.durationMs, 90_000); assert.equal(schedule.appendCount, 18); assert.equal(PUBLICATION_CARD.drainMs, 60_000);
+  assert.deepEqual(schedule.events.map(row => [row.atMs, row.kind]), Array.from({ length: 18 }, (_, i) => [i * 5000, i % 2 ? "dsh" : "codex"]));
+  assert.equal(comparePair(measurement(), measurement(), PUBLICATION_CARD).timings.length * 3, 27);
+  assert.equal(comparePair(measurement(), measurement(), LEGACY_CARD).timings.length, 12);
+  assert.equal(continuousSchedule(LEGACY_CARD).durationMs, 180_000); assert.equal(continuousSchedule(LEGACY_CARD).appendCount, 36);
+});
+
+test("the new-root CLI plan is read-only and accepts the shared driver's root admission", async () => {
+  const script = path.join(path.dirname(path.dirname(PUBLICATION_CARD.root)), "experiments/architecture-20261101/live-source-recovery-run.mjs");
+  const { stdout } = await promisify(execFile)(process.execPath, [script, "plan"], {
+    env: { ...process.env, WINDOWS_CLOSEOUT_ROOT: PUBLICATION_CARD.root }, windowsHide: true, timeout: 10_000,
+  });
+  const result = JSON.parse(stdout);
+  assert.equal(result.root, PUBLICATION_CARD.root); assert.equal(result.baseline, "401faeb");
+  assert.equal(result.appends, 36); assert.equal(result.reopens, 7); assert.equal(result.continuous.drainMs, 60_000);
+});
+
+test("final summaries retain a known R regression alongside missing evidence and all resource verdicts", () => {
+  const groups = plan(PUBLICATION_CARD).map(row => ({ ...measurement(), ...row, status: "incomplete", completed: true,
+    appends: row.ordinary.length + row.continuous, reopens: row.reopens,
+    resource: { checks: [{ id: `${row.label}/cpu-io-storage-cost`, status: "incomplete" }] } }));
+  groups[1].metrics["append-dsh"] = 1101; delete groups[1].metrics["startup-all"];
+  const result = summarizeGroups(groups, PUBLICATION_CARD);
+  assert.equal(result.status, "failed"); assert.equal(result.passed, false);
+  assert.equal(result.pairs[0].status, "failed");
+  assert.equal(result.pairs[0].timings.find(row => row.key === "startup-all").status, "incomplete");
+  assert.equal(result.workload.appends, 36); assert.equal(result.workload.reopens, 7);
+  assert.equal(result.groups[0].resource.checks[0].status, "incomplete");
+});
+
+test("publication timing keeps all failed verdicts, including exact last-input drain and both live sources", () => {
+  const start = 1_000_000, inputs = continuous().slice(0, 18), last = inputs.at(-1).landedAtMs;
+  assert.equal(publicationTiming(inputs, start, start + 90_000, last + 60_000).passed, true);
+  assert.equal(publicationTiming(inputs, start, start + 90_000, last + 60_001).passed, false);
+  const stalled = inputs.map(row => ({ ...row, paintedAtMs: last + 61_000, usageVersion: "one" }));
+  const result = publicationTiming(stalled, start, start + 90_000, last + 61_000);
+  assert.deepEqual(result.checks.filter(row => row.status === "failed").map(row => row.id),
+    ["writer-versions", "writer-progress-codex", "writer-progress-dsh", "autonomous-drain"]);
+  assert.throws(() => assertContinuous(stalled, start, start + 90_000, PUBLICATION_CARD), /two completed versions/);
+});
+
+async function continuousDriver(t, { lateDrain = false, lateSlot = false, unsafe = false, slowTab = false } = {}) {
+  const directory = await testDirectory(t), start = 1_000_000;
+  let now = start, polls = 0;
+  t.mock.method(Date, "now", () => now);
+  const context = createContext({ directory, ledger: { appendCount: 3, entries: [] } }), calls = [];
+  const d = {
+    async dispatch(c, event) {
+      calls.push(event.type);
+      if (event.type === "tabs-open") {
+        c.pages = Array.from({ length: 3 }, (_, index) => ({ isClosed: () => false,
+          evaluate: async () => ({ total: 123, busy: slowTab && index === 2 && now < start + 170_000 }) }));
+        c.bodies = c.pages.map((_, page) => ({ page, preset: "all", total: 123, usageVersion: "final", body: {} }));
+      }
+      if (event.type === "tabs-close") c.pages = c.pages.slice(0, 1);
+      if (event.type === "append") {
+        c.ledger.appendCount++; c.inputs.push({ ...event, eventId: event.id, operation: "append", landedAtMs: now,
+          ...(!lateDrain ? { paintedAtMs: now + 100, usageVersion: `v${event.ordinal}` } : {}) });
+      }
+    },
+    async pollBrowser(c) {
+      if (polls++) now += lateSlot && polls === 2 ? 10_000 : 5000;
+      if (lateDrain && now >= start + 150_000) for (const input of c.inputs) Object.assign(input, { paintedAtMs: now, usageVersion: "drained" });
+    },
+    async pollResources() { if (unsafe && polls > 2) throw Error("Service tree exceeded 512 MiB"); },
+    visibleInputs(c) { return { entries: c.ledger.entries }; },
+    async verifyFull(c, name) { calls.push(name); assert.ok(c.inputs.every(row => row.paintedAtMs)); return { passed: true }; },
+    async idleAndReopen(c, name) { calls.push(`${name}-reopen`); return { wallMs: 123 }; },
+  };
+  return { context, d, calls, directory };
+}
+
+test("a late drain records failure before full oracle and extra reopen, retaining the timing failure", async t => {
+  const f = await continuousDriver(t, { lateDrain: true });
+  const result = await runContinuous(f.d, f.context, PUBLICATION_CARD);
+  assert.equal(result.passed, false); assert.equal(result.completed, true); assert.equal(result.inputs.length, 18);
+  assert.ok(result.timingFailures.some(row => row.id === "autonomous-drain"));
+  assert.deepEqual(f.calls.slice(-3), ["tabs-close", "continuous-final", "continuous-reopen"]);
+  const disk = JSON.parse(await fs.readFile(path.join(f.directory, "continuous.json"), "utf8"));
+  assert.equal(disk.passed, false); assert.equal(disk.oracle.passed, true); assert.equal(disk.reopen.wallMs, 123);
+  const events = (await fs.readFile(path.join(f.directory, "events.ndjson"), "utf8")).trim().split("\n").map(JSON.parse);
+  assert.ok(events.some(row => row.type === "timing-failure" && row.atMs < result.drainCompletedAtMs));
+});
+
+test("successful publication still requires the final oracle and extra reopen", async t => {
+  const f = await continuousDriver(t);
+  const result = await runContinuous(f.d, f.context, PUBLICATION_CARD);
+  assert.equal(result.passed, true); assert.equal(result.completed, true); assert.equal(result.timing.passed, true);
+  assert.equal(result.inputs.length, 18); assert.equal(f.context.pages.length, 1);
+  assert.deepEqual(f.calls.slice(-3), ["tabs-close", "continuous-final", "continuous-reopen"]);
+});
+
+test("first paint timing stays fixed while other tabs finish before oracle admission", async t => {
+  const f = await continuousDriver(t, { slowTab: true });
+  const result = await runContinuous(f.d, f.context, PUBLICATION_CARD);
+  assert.equal(result.passed, true);
+  assert.ok(result.tabsSettled.atMs > result.drainCompletedAtMs + 10_000);
+  assert.ok(result.tabsSettled.pages.every(row => row.complete && !row.busy));
+  assert.ok(result.drainCompletedAtMs <= result.lastInputAtMs + 60_000);
+  assert.deepEqual(f.calls.slice(-3), ["tabs-close", "continuous-final", "continuous-reopen"]);
+});
+
+test("a stale tab cannot be closed to manufacture a completed continuous check", async t => {
+  const f = await continuousDriver(t);
+  await f.d.dispatch(f.context, { type: "tabs-open" });
+  f.context.bodies[2].body.updatePending = true;
+  await assert.rejects(settlePublicationTabs(f.d, f.context, Date.now() + 10_000), /fixed deadline/);
+  assert.equal(f.context.pages.length, 3);
+  assert.equal(f.calls.includes("tabs-close"), false);
+});
+
+test("a missed slot stops injection without bunching, but still performs safe closeout", async t => {
+  const f = await continuousDriver(t, { lateSlot: true });
+  const result = await runContinuous(f.d, f.context, PUBLICATION_CARD);
+  assert.equal(result.inputs.length, 1); assert.equal(result.completed, true); assert.equal(result.passed, false);
+  assert.ok(result.timing.checks.some(row => row.id === "writer-workload" && row.status === "failed"));
+  assert.ok(f.calls.includes("continuous-final")); assert.ok(f.calls.includes("continuous-reopen"));
+});
+
+test("a real memory failure stops load and oracle immediately while preserving continuous failure evidence", async t => {
+  const f = await continuousDriver(t, { unsafe: true });
+  await assert.rejects(runContinuous(f.d, f.context, PUBLICATION_CARD), /512 MiB/);
+  assert.equal(f.calls.includes("continuous-final"), false); assert.equal(f.calls.includes("continuous-reopen"), false);
+  const result = JSON.parse(await fs.readFile(path.join(f.directory, "continuous.json"), "utf8"));
+  assert.equal(result.passed, false); assert.match(result.failure.message, /512 MiB/);
+});
+
+test("CPU/storage incompleteness remains incomplete and permits unrelated groups; correctness, memory and live processes do not", () => {
+  const analysis = { completed: true, reliability: { passed: true }, evidence: [], resource: { checks: [
+    { id: "current/active-memory", status: "passed" }, { id: "current/cpu-io-storage-cost", status: "incomplete" },
+    { id: "current/normal-close-primary-wal", status: "incomplete", evidence: { finalSample: { serviceProcessCount: 0, sqlite: { complete: false } } } },
+  ] } };
+  const original = structuredClone(analysis); assert.equal(canContinueGroup(analysis), true); assert.deepEqual(analysis, original);
+  analysis.reliability.passed = false; assert.equal(canContinueGroup(analysis), false); analysis.reliability.passed = true;
+  analysis.resource.checks[0].status = "incomplete"; assert.equal(canContinueGroup(analysis), false);
+  analysis.resource.checks[0].status = "failed"; assert.equal(canContinueGroup(analysis), false);
+  analysis.resource.checks[0].status = "passed";
+  analysis.resource.checks[2].evidence.finalSample.serviceProcessCount = 1; assert.equal(canContinueGroup(analysis), false);
+});
+
+test("opt-in sampler summaries keep missing cost fields null even after later complete samples", async () => {
+  let sample = { atUnixMs: Date.now(), service: { processCount: 0, workingSetBytes: 0 }, browser: { workingSetBytes: 0 }, processes: [] };
+  const context = createContext({ preserveMissingCosts: true });
+  context.resourceTails = [{ read: async () => [JSON.stringify(sample)] }];
+  await pollResources(context);
+  assert.equal(context.resourceSummary.cpuSeconds, null); assert.equal(context.resourceSummary.peakStorageBytes, null);
+  sample = { ...sample, service: { ...sample.service, cpuSecondsIncrement: 1, logicalReadBytesIncrement: 2, logicalWriteBytesIncrement: 3 },
+    observer: { cpuSeconds: 1 }, state: { complete: true, observedBytes: 12 }, sqlite: { complete: true, categoryBytes: { wal: 0 } } };
+  await pollResources(context); assert.equal(context.resourceSummary.cpuSeconds, null); assert.equal(context.resourceSummary.peakWalBytes, null);
+});
+
+test("inspection tolerates incomplete groups, preserves multiple failures and never overwrites raw evidence", async t => {
+  const root = await testDirectory(t), directory = path.join(root, "short", "two-years", "candidate");
+  await fs.mkdir(directory, { recursive: true });
+  const file = path.join(directory, "result.json"), raw = JSON.stringify({ label: "two-years", variant: "candidate", passed: false,
+    inputs: [], ordinary: [{ kind: "wrong" }], failure: { message: "original failure" } });
+  await fs.writeFile(file, raw); await fs.writeFile(path.join(directory, "analysis.json"), "original analysis");
+  const analysis = await analyzeGroup(directory, PUBLICATION_CARD);
+  assert.equal(analysis.passed, false); assert.equal(analysis.resource.status, "incomplete");
+  assert.ok(analysis.reliability.checks.filter(row => row.status === "failed").length >= 2);
+  const result = await inspectResults(root, PUBLICATION_CARD);
+  assert.equal(result.groups.length, 6); assert.equal(result.passed, false); assert.equal(result.workload.expectedAppends, 36);
+  assert.equal(await fs.readFile(file, "utf8"), raw); assert.equal(await fs.readFile(path.join(directory, "analysis.json"), "utf8"), "original analysis");
+  assert.deepEqual((await fs.readdir(directory)).sort(), ["analysis.json", "result.json"]);
+});
 
 test("oracle admission waits for every spawned executor and handles PID reuse", () => {
   const rows = [{ event: "executor-spawn", childPid: 1 }, { event: "executor-spawn", childPid: 2 }];
@@ -24,6 +197,26 @@ test("oracle admission waits for every spawned executor and handles PID reuse", 
   assert.deepEqual(activeExecutors(rows), [1]);
   rows.push({ event: "executor-exit", childPid: 1 });
   assert.deepEqual(activeExecutors(rows), []);
+});
+
+test("full-oracle mode rejects a partial committed version and admits the readonly oracle after UI verification", async t => {
+  const directory = await testDirectory(t), kinds = ["codex", "dsh", "claude", "workbuddy", "zcode", "opencode"];
+  const entry = { operation: "append", kind: "codex", expectedDelta: 160, deltaTokens: { input: 140, cached: 30, output: 20, reasoning: 5 } };
+  const context = createContext({ directory, requireCompleteOracle: true, state: "unused", dataset: { home: "unused", expectedSessions: 6,
+    expected: kinds.map(kind => ({ kind, events: 1, total: 10, input: 8, cached: 0, output: 2, reasoning: 0 })) }, ledger: { entries: [entry] } });
+  const body = { metadata: { eventCount: 6, sessionCount: 6, homes: kinds.map(kind => ({ kind, eventCount: 1 })) },
+    periodComparison: { totals: { all: { total: 60 } } }, summary: { totals: { total: 60 }, costEstimate: { totalUsd: 0, totalCny: 0 } },
+    pricingCatalog: { usdToCnyRate: 7 } };
+  context.bodies.push({ preset: "all", body });
+  await assert.rejects(verifyFull(context, "partial"), /all response missing/);
+  body.metadata.eventCount++; body.metadata.homes[0].eventCount++;
+  body.periodComparison.totals.all.total += 160; body.summary.totals.total += 160;
+  const calls = [];
+  context.ui = { page: { waitForFunction: async () => calls.push("ui-verified") } };
+  context.beforeOracle = async () => { calls.push("oracle-admission"); throw Error("fixture stops before spawn"); };
+  await assert.rejects(verifyFull(context, "full"), /fixture stops before spawn/);
+  assert.deepEqual(calls, ["ui-verified", "oracle-admission"]);
+  assert.equal(context.oracleChildren.size, 0);
 });
 
 test("six interleaved groups contain exactly 54 appends and seven reopens; no custom range or long schedule", () => {
@@ -303,6 +496,29 @@ function insert(state) {
   const db = new DatabaseSync(path.join(state, "usage-index.sqlite"));
   try { db.exec("INSERT INTO events VALUES(2,320)"); } finally { db.close(); }
 }
+
+test("finish derives a separate report and cleans only a proven-restored snapshot without rerunning groups", async t => {
+  const f = await fixture(t);
+  await fs.mkdir(path.join(f.output, "preparations"));
+  await fs.writeFile(path.join(f.output, "preparations/current.json"), JSON.stringify(f.prepared));
+  await fs.writeFile(path.join(f.output, "analysis.json"), "original aggregate");
+  const { file, result } = await finishResults(f.output, PUBLICATION_CARD);
+  assert.equal(result.passed, false); assert.equal(result.status, "incomplete");
+  assert.deepEqual(result.cleanup, [{ label: "current", deleted: true }]);
+  assert.ok(path.basename(file).startsWith("analysis-finish-"));
+  assert.equal(await fs.readFile(path.join(f.output, "analysis.json"), "utf8"), "original aggregate");
+  await assert.rejects(fs.stat(f.config.startState), { code: "ENOENT" });
+  await assert.rejects(fs.stat(path.join(f.output, "short")), { code: "ENOENT" });
+});
+
+test("finish retains the snapshot when the shared state has not been restored", async t => {
+  const f = await fixture(t); insert(f.state);
+  await fs.mkdir(path.join(f.output, "preparations"));
+  await fs.writeFile(path.join(f.output, "preparations/current.json"), JSON.stringify(f.prepared));
+  const { result } = await finishResults(f.output, PUBLICATION_CARD);
+  assert.equal(result.status, "failed"); assert.equal(result.cleanup[0].deleted, false);
+  assert.equal((await fs.stat(f.config.startState)).isDirectory(), true);
+});
 
 test("rollback restores facts and files in place, verifies history, and only deletes its own snapshot", async t => {
   const f = await fixture(t), before = await identity(f.state);
