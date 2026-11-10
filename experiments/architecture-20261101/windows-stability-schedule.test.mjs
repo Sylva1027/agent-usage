@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { stabilitySchedule,closeoutSchedule,CLOSEOUT_PROFILE,quantiles,protectionPassed,STABILITY_KINDS } from "./windows-stability-schedule.mjs";
 
+test("source snapshot card fixes six short directed groups and sixteen appends",()=>{
+  const schedules=["current","year","two-years"].flatMap(label=>[0,1].map(()=>closeoutSchedule("closeout-memory",label)));
+  assert.equal(schedules.reduce((n,s)=>n+s.appendCount,0),16);
+  for(const schedule of schedules){
+    assert.equal(schedule.durationMs,180_000);
+    assert.equal(schedule.events.filter(e=>e.type==="scopes").length,1);
+    assert.equal(schedule.events.filter(e=>e.type==="tabs-open").length,1);
+    assert.equal(schedule.events.filter(e=>e.type==="tabs-close").length,1);
+    assert.ok(schedule.events.every(e=>e.atMs<schedule.durationMs));
+    assert.deepEqual(schedule.events.filter(e=>e.type==="append").map(e=>e.kind),schedule.label==="two-years"?STABILITY_KINDS:["codex"]);
+  }
+});
+
 test("closeout has six paired short groups and four independent thirty-minute resource cycles",()=>{
   const shorts=["current","year","two-years"].flatMap(label=>["baseline","candidate"].map(()=>closeoutSchedule("closeout-short",label)));
   assert.equal(shorts.reduce((n,s)=>n+s.appendCount,0),72);

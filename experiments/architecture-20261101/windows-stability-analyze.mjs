@@ -460,6 +460,7 @@ export function classifyInterruptedGatewayQueues(control, events, phases) {
 }
 
 function controlChecks(label, control, events, phases, reliability, interruptedInputs = []) {
+  const memoryCard = phases.length > 0 && phases.every(phase => phase.mode === "closeout-memory");
   const inputs = [...phases.flatMap(phase => phase.inputs), ...interruptedInputs];
   const classifications = interruptedInputs.length ? [...phases, { inputs: interruptedInputs.map(row => ({ ...row, category: `interrupted-endurance:${row.category}` })) }] : phases;
   const sourceRows = control.sources.map(row => ({ ...row, category: classification(row, classifications),
@@ -468,17 +469,18 @@ function controlChecks(label, control, events, phases, reliability, interruptedI
     netAdded: row.method === "reuseSourcePrefix" && row.committed && finite(row.insertedEvents) ? row.insertedEvents : null }));
   const zcode = control.zcode.map(row => ({ ...row, category: classification(row, classifications) }));
   const projections = control.projections.map(row => ({ ...row, category: classification(row, classifications) }));
-  const ordinaryProjection = projections.filter(row => ["ordinary", "interrupted-endurance:ordinary"].includes(row.category));
+  const ordinaryProjection = projections.filter(row => (memoryCard ? ["ordinary", "burst"] : ["ordinary", "interrupted-endurance:ordinary"]).includes(row.category));
   const projectionViolations = ordinaryProjection.filter(row => row.coldCopied > 0 || row.fullRebuild === true);
   check(reliability, `${label}/ordinary-projection-reuse`, verdict(ordinaryProjection.length > 0,
     !projectionViolations.length && ordinaryProjection.every(row => row.coldCopied === 0 && row.fullRebuild === false)), projectionViolations);
-  const ordinaryZcode = inputs.filter(row => row.kind === "zcode" && row.category === "ordinary");
+  const ordinaryZcode = inputs.filter(row => row.kind === "zcode" && (row.category === "ordinary" || memoryCard && row.category === "burst"));
   const zcodeChecks = ordinaryZcode.map(input => {
     const rows = zcode.filter(row => row.sourcePath === input.filePath && row.atMs >= input.landedAtMs && row.atMs <= input.paintedAtMs);
     return { eventId: input.eventId, count: rows.length, netAdded: sum(rows.map(row => row.netAdded)), rows };
   });
-  check(reliability, `${label}/ordinary-zcode-net-added`, verdict(zcodeChecks.length > 0 && zcodeChecks.every(row => row.count > 0),
-    zcodeChecks.every(row => row.netAdded === 1)), zcodeChecks);
+  if (!memoryCard || phases.some(phase => phase.expectedSchedule.events.some(event => event.type === "append" && event.kind === "zcode")))
+    check(reliability, `${label}/ordinary-zcode-net-added`, verdict(zcodeChecks.length > 0 && zcodeChecks.every(row => row.count > 0),
+      zcodeChecks.every(row => row.netAdded === 1)), zcodeChecks);
   for (const phase of phases) {
     const expectedFaults = phase.expectedSchedule.events.filter(row => row.type.startsWith("arm-"));
     for (const expected of expectedFaults) {

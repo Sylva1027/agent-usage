@@ -3,14 +3,26 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { analyzeWindowsStability, streamNdjson } from "./windows-stability-analyze.mjs";
-import { stabilitySchedule, STABILITY_KINDS } from "./windows-stability-schedule.mjs";
+import { analyzeWindowsStability, streamNdjson, controls, controlChecks, gates } from "./windows-stability-analyze.mjs";
+import { stabilitySchedule, closeoutSchedule, STABILITY_KINDS } from "./windows-stability-schedule.mjs";
 import { parseResourceSample } from "./resource-identity-analysis.mjs";
 
 const MiB = 1048576, hour = 3600000, epoch = 1800000000000;
 const save = async (file, value) => { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, JSON.stringify(value)); };
 const ndjson = async (file, rows) => { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, rows.map(row => JSON.stringify(row)).join("\n") + "\n"); };
 const projection = { candidate: null, orphanDatabases: [], walBytes: 0, databaseCount: 1 };
+
+test("directed memory card requires ZCode evidence exactly when ZCode is planned", async t => {
+  const directory = await temporary(t), control = await controls(directory, []);
+  for (const label of ["current", "two-years"]) {
+    const reliability = gates(), expectedSchedule = closeoutSchedule("closeout-memory", label);
+    controlChecks(label, control, { closed: {}, faults: [] }, [{ mode: "closeout-memory", inputs: [],
+      expectedSchedule, result: { passed: true }, schedule: { startedAtMs: 0 } }], reliability);
+    const check = reliability.checks.find(row => row.id.endsWith("ordinary-zcode-net-added"));
+    if (label === "current") assert.equal(check, undefined);
+    else assert.equal(check.status, "incomplete", "planned but missing ZCode evidence must still fail");
+  }
+});
 
 async function temporary(t) {
   const directory = await mkdtemp(path.join(tmpdir(), "windows-stability-analyze-"));

@@ -332,7 +332,8 @@ export async function analyzeCloseoutMatrix(root) {
   }
   finish(protection);
   const appends=groups.reduce((n,row)=>n+row.phase.inputs.filter(input=>input.operation==="append").length,0),revisions=groups.reduce((n,row)=>n+row.phase.inputs.filter(input=>input.operation==="revision").length,0);
-  return {profile:CLOSEOUT_PROFILE,kind:"windows-closeout-matrix",passed:groups.every(row=>row.reliability.passed&&row.resource.passed&&(row.variant==="baseline"||row.performance.passed))&&protection.passed&&appends===72&&revisions===6,appends,revisions,reopens:groups.filter(row=>finite(row.metrics.reopen)).length,protection,groups,statisticalP95Claim:false};
+  const memoryCard=groups.every(row=>row.mode==="closeout-memory");
+  return {profile:CLOSEOUT_PROFILE,kind:"windows-closeout-matrix",passed:groups.every(row=>row.reliability.passed&&row.resource.passed&&(row.variant==="baseline"||row.performance.passed))&&protection.passed&&appends===(memoryCard?16:72)&&revisions===(memoryCard?0:6),appends,revisions,reopens:groups.filter(row=>finite(row.metrics.reopen)).length,protection,groups,statisticalP95Claim:false};
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

@@ -5,11 +5,16 @@ const minute = 60_000;
 export const CLOSEOUT_PROFILE = "windows-parallel-closeout-v1";
 
 export function closeoutSchedule(mode, label = "two-years") {
-  assert.ok(["closeout-short", "closeout-soak"].includes(mode));
+  assert.ok(["closeout-short", "closeout-soak", "closeout-memory"].includes(mode));
   assert.ok(["current", "year", "two-years"].includes(label));
   const events = [], cycles = [];
   const add = (at, type, options = {}) => events.push({ atMs: Math.round(at * minute), type, ...options });
-  if (mode === "closeout-soak") {
+  if (mode === "closeout-memory") {
+    add(0, "tabs-open");
+    for (const kind of label === "two-years" ? STABILITY_KINDS : ["codex"])
+      add(0.5, "append", { kind, inputClass: label === "two-years" ? "burst" : "ordinary" });
+    add(1.8, "scopes"); add(2.5, "tabs-close");
+  } else if (mode === "closeout-soak") {
     assert.equal(label, "two-years");
     for (let cycle = 1; cycle <= 4; cycle++) {
       const offset = (cycle - 1) * 30;
@@ -36,7 +41,7 @@ export function closeoutSchedule(mode, label = "two-years") {
     if (event.type === "append") event.ordinal = ++appendCount;
   }
   return { version: 3, profile: CLOSEOUT_PROFILE, observationVersion: 2, mode, label,
-    durationMs: (mode === "closeout-soak" ? 120 : 13) * minute, appendCount, events, cycles };
+    durationMs: (mode === "closeout-soak" ? 120 : mode === "closeout-memory" ? 3 : 13) * minute, appendCount, events, cycles };
 }
 
 export function stabilitySchedule(mode, label = "two-years") {

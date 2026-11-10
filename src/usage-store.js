@@ -4852,7 +4852,13 @@ export class UsageStore {
     const knownFiles = new Set(files.map((file) => file.filePath));
     const failedHomeIds = new Set(failedHomes.map((home) => home.id));
     const failedHomePaths = new Set(failedHomes.map((home) => home.path));
-    const sourceRowsBefore = plan ? [] : this.database.prepare("SELECT * FROM source_files").all();
+    const sourceRowsBefore = [];
+    if (!plan) {
+      // Rename detection only needs missing paths; keep their pre-sync ownership and ambiguity.
+      for (const row of this.database.prepare("SELECT * FROM source_files").iterate()) {
+        if (!knownFiles.has(row.path)) sourceRowsBefore.push(row);
+      }
+    }
     let publishedFingerprints = {};
     try {
       publishedFingerprints = plan ? {} : JSON.parse(this.readMetaRaw("usage_file_fingerprints") || "{}");
