@@ -131,7 +131,7 @@ export function instrumentStore(prototype) {
     return active.run({ ...parent, sync }, async () => {
       const start = performance.now(), cpu = process.cpuUsage();
       mark("sync-start", { databaseFile: this.databaseFile, certifiedOnly: args[0]?.certifiedOnly === true, ...resources() });
-      let result, error;
+      let result, error, errorCode, errorRetryable;
       try {
         result = await original.apply(this, args);
         if (sync.after) {
@@ -140,11 +140,11 @@ export function instrumentStore(prototype) {
             park(current, { ...details, transaction: this.database.isTransaction, commits: sync.commits, fingerprint: result?.fingerprint });
         }
         return result;
-      } catch (failure) { error = String(failure.stack || failure); throw failure; }
+      } catch (failure) { error = String(failure.stack || failure); errorCode = failure.code; errorRetryable = failure.retryable; throw failure; }
       finally {
         mark("sync-end", { durationMs: performance.now() - start, cpuDelta: process.cpuUsage(cpu),
           commits: sync.commits, updatedFiles: result?.updatedFileCount, fingerprint: result?.fingerprint,
-          acquisitionWork: this.lastAcquisitionWork, error, ...resources() });
+          acquisitionWork: this.lastAcquisitionWork, error, errorCode, errorRetryable, ...resources() });
       }
     });
   });
@@ -153,25 +153,25 @@ export function instrumentStore(prototype) {
     return active.run({ ...context, roundId }, async () => {
       const start = performance.now(), cpu = process.cpuUsage();
       mark("round-start", { databaseFile: this.databaseFile });
-      let result, error;
+      let result, error, errorCode, errorRetryable;
       try { result = await original.apply(this, args); return result; }
-      catch (failure) { error = String(failure.stack || failure); throw failure; }
+      catch (failure) { error = String(failure.stack || failure); errorCode = failure.code; errorRetryable = failure.retryable; throw failure; }
       finally {
         mark("round-end", { durationMs: performance.now() - start, cpuDelta: process.cpuUsage(cpu),
           updatedFiles: result?.updatedFileCount, fingerprint: result?.fingerprint, sourceWork: this.lastSyncSourceWork,
-          rollupWork: this.lastSyncRollupWork, error, ...resources() });
+          rollupWork: this.lastSyncRollupWork, error, errorCode, errorRetryable, ...resources() });
       }
     });
   });
   for (const name of ["reuseSourcePrefix", "replaceFile", "appendFile"]) wrap(prototype, name, async function (original, args) {
     const start = performance.now();
-    let result, error;
+    let result, error, errorCode, errorRetryable;
     try { result = await original.apply(this, args); return result; }
-    catch (failure) { error = String(failure.stack || failure); throw failure; }
+    catch (failure) { error = String(failure.stack || failure); errorCode = failure.code; errorRetryable = failure.retryable; throw failure; }
     finally {
       mark("source-end", { method: name, filePath: args[0].filePath, kind: args[0].source.kind,
         durationMs: performance.now() - start, committed: result?.committed === true, appended: result?.appended,
-        reusedEvents: result?.reusedEvents, insertedEvents: result?.insertedEvents, parsedBytes: result?.parsedBytes, error });
+        reusedEvents: result?.reusedEvents, insertedEvents: result?.insertedEvents, parsedBytes: result?.parsedBytes, error, errorCode, errorRetryable });
     }
   });
 }

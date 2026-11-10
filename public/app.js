@@ -4290,6 +4290,7 @@ let appliedUsageVersion = null;
 let appliedUsageScope = null;
 let usageSyncPending = null;
 let usageReconnectPending = null;
+let cancelUsageRetry = null;
 
 function reloadSyncedUsage(version = null, { skipCheck = true } = {}) {
   if (!state.autoRefreshEnabled || state.snapshotId) return;
@@ -4317,6 +4318,7 @@ function finishUsageLoad(loadId) {
 }
 
 async function loadUsage({ skipCheck = false, freeze = false } = {}) {
+  cancelUsageRetry?.();
   const loadId = ++state.usageLoadId;
   activeUsageLoadId = loadId;
   // Completion follows the rendered usage and any queued wake, independently of optional pricing.
@@ -4328,15 +4330,35 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
   const scope = usageQuery();
 
   try {
-    const response = await fetch(
-      `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
-    );
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = new Error(localizeServerError(data, response.status));
-      error.status = response.status;
-      error.body = data;
-      throw error;
+    let data;
+    while (true) {
+      const response = await fetch(
+        `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
+      );
+      data = await response.json().catch(() => null);
+      if (loadId !== state.usageLoadId) return;
+      if (response.status === 409 && data?.code === "SOURCE_UPDATE_PENDING") {
+        setAutoRefreshStatus("", { busy: true });
+        skipCheck = false;
+        await new Promise((resolve) => {
+          const wake = () => {
+            window.clearTimeout(timer);
+            if (cancelUsageRetry === wake) cancelUsageRetry = null;
+            resolve();
+          };
+          const timer = window.setTimeout(wake, 1000);
+          cancelUsageRetry = wake;
+        });
+        if (loadId !== state.usageLoadId) return;
+        continue;
+      }
+      if (!response.ok) {
+        const error = new Error(localizeServerError(data, response.status));
+        error.status = response.status;
+        error.body = data;
+        throw error;
+      }
+      break;
     }
     if (loadId !== state.usageLoadId) return;
     state.metadata = data.metadata;

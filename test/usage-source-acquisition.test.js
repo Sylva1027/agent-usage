@@ -447,7 +447,7 @@ test("initializing old full-only facts repairs writes before sealing and leaves 
   assert.equal(facts(nativeStore).n, 55);
 });
 
-test("a full-only source change during parsing rolls back its facts and completion", options, async (t) => {
+test("a full-only source change rolls back its failed attempt before completing recovery", options, async (t) => {
   const f = await fixture(t);
   await writeFile(f.dsh, await largeDshFrame());
   await initialize(f.store);
@@ -459,10 +459,25 @@ test("a full-only source change during parsing rolls back its facts and completi
     if (args[0] === f.dsh && !changed) { changed = true; await appendFile(f.dsh, frame([dshRow(4)])); }
     return capture(...args);
   };
-  await assert.rejects(f.store.sync({ certifiedOnly: true }), { code: "LIVE_SOURCE_CHANGED" });
+  const replace = f.store.replaceFile.bind(f.store);
+  let rolledBack = 0;
+  f.store.replaceFile = async (...args) => {
+    try { return await replace(...args); }
+    catch (error) {
+      assert.equal(error.code, "LIVE_SOURCE_CHANGED");
+      assert.equal(error.retryable, true);
+      assert.deepEqual({ ...facts(f.store) }, before);
+      assert.equal(f.store.database.isTransaction, false);
+      rolledBack++;
+      throw error;
+    }
+  };
+  const result = await f.store.sync({ certifiedOnly: true });
   assert.ok(changed);
-  assert.deepEqual({ ...facts(f.store) }, before);
-  assert.equal(f.store.database.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get().ready, 0);
+  assert.equal(rolledBack, 1);
+  assert.ok(result.acquisition);
+  assert.equal(f.store.lastSyncSourceWork.sourceRetries, 1);
+  assert.equal(facts(f.store).n, 55);
   f.store.sourceProof.capture = capture;
   await initialize(f.store);
   assert.equal(facts(f.store).n, 55);

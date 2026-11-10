@@ -134,11 +134,12 @@ export class UsageSummaryCache {
     await this.open();
     const homes = await discoverUsageSources(options);
     const usage = await buildUsageFingerprint({ ...options, homes });
-    const { inputs, routingFingerprint } = await readUsageSourceInputs(options, homes, usage.fingerprint);
+    const { inputs, auxiliary, routingFingerprint } = await readUsageSourceInputs(options, homes, usage.fingerprint);
     const publication = await this.readPublication();
     return {
       ...usage,
       inputs,
+      auxiliary,
       routingFingerprint,
       publication,
       signature: digest(`${inputs}\0${publication?.signature || ""}`),

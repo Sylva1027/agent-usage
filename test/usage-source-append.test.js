@@ -10,7 +10,7 @@ import { UsageSourceProof } from "../src/usage-source-proof.js";
 import { UsageStore } from "../src/usage-store.js";
 
 const START = Date.parse("2026-11-03T01:00:00.000Z");
-const SOURCE_WORK_KEYS = ["appendedFiles", "journalBytes", "parsedBytes", "prefixBytesRead", "replacedFiles"];
+const SOURCE_WORK_KEYS = ["appendedFiles", "journalBytes", "parsedBytes", "prefixBytesRead", "replacedFiles", "sourceRetries"];
 
 class ShaOnlySourceProof extends UsageSourceProof {
   async provider() {
@@ -138,6 +138,7 @@ function assertSourceWork(store, expected) {
   const work = store.lastSyncSourceWork;
   assert.ok(work, "sync must publish lastSyncSourceWork");
   assert.deepEqual(Object.keys(work).sort(), SOURCE_WORK_KEYS);
+  assert.equal(work.sourceRetries, 0, "uncontended source work must not retry");
   for (const key of SOURCE_WORK_KEYS) {
     assert.equal(typeof work[key], "number", `${key} must be an aggregate byte/file count`);
     assert.ok(Number.isFinite(work[key]) && work[key] >= 0, `${key} must be finite and non-negative`);

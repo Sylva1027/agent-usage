@@ -265,9 +265,10 @@ test("Q5 poll collision and append during sync converge before the SSE wake is d
   });
   const server = createUsageServer({ ...fixture.serverOptions, pricingRefreshSchedulerEnabled: false });
   const originalRead = UsageSummaryCache.prototype.readSourceState;
+  const originalCertifiedRead = UsageSummaryCache.prototype.readCertifiedSourceState;
   const entered = deferred();
   const release = deferred();
-  let reads = 0;
+  let held = false;
   let reader;
   let poll;
   let skipped;
@@ -293,14 +294,18 @@ test("Q5 poll collision and append during sync converge before the SSE wake is d
       }
     };
     await next("ready");
-    UsageSummaryCache.prototype.readSourceState = async function (...args) {
-      const source = await originalRead.apply(this, args);
-      if (++reads === 2) {
-        entered.resolve();
-        await release.promise;
-      }
-      return source;
-    };
+    // Both acquisition routes must reach the same pause; a native receipt need not perform two full reads.
+    for (const [name, original] of [["readSourceState", originalRead], ["readCertifiedSourceState", originalCertifiedRead]]) {
+      UsageSummaryCache.prototype[name] = async function (...args) {
+        const source = await original.apply(this, args);
+        if (!held && source && source.fingerprint !== initial.fingerprint) {
+          held = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return source;
+      };
+    }
     const hint = () => {
       callbacks[0]("change", "rollout.jsonl");
       assert.equal(hints.length, 1);
@@ -326,6 +331,7 @@ test("Q5 poll collision and append during sync converge before the SSE wake is d
     release.resolve();
     await Promise.allSettled([poll, skipped]);
     UsageSummaryCache.prototype.readSourceState = originalRead;
+    UsageSummaryCache.prototype.readCertifiedSourceState = originalCertifiedRead;
     await reader?.cancel();
     await server.close();
     t.mock.restoreAll();
@@ -363,7 +369,8 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
   });
   const server = createUsageServer(fixture.serverOptions);
   const originalRead = UsageSummaryCache.prototype.readSourceState;
-  let reads = 0;
+  const originalCertifiedRead = UsageSummaryCache.prototype.readCertifiedSourceState;
+  let fullReadPending = false;
   let completed = 0;
   let reader;
   try {
@@ -377,23 +384,36 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
       assert.equal(hints.length, 1);
       hints.shift()();
     };
-    UsageSummaryCache.prototype.readSourceState = async function (...args) {
-      const source = await originalRead.apply(this, args);
-      reads++;
-      if (reads === 19) {
+    const completedSource = async (source) => {
+      if (completed === 10) {
         entered.resolve();
         await release.promise;
-      } else if (reads % 2 === 0 && reads <= 16) {
+      } else if (completed < 8) {
         completed++;
         if (expected.at(-1) !== source.fingerprint) expected.push(source.fingerprint);
         if (completed < 8) await appendFile(fixture.rolloutFiles[0], usageLine(1));
         hint();
-      } else if (reads > 16) {
+      } else {
         // Quiet rounds can reuse completed acquisition after one source check.
         completed++;
         hint();
       }
       return source;
+    };
+    UsageSummaryCache.prototype.readSourceState = async function (...args) {
+      const source = await originalRead.apply(this, args);
+      if (completed >= 8 || fullReadPending) {
+        fullReadPending = false;
+        return completedSource(source);
+      }
+      fullReadPending = true;
+      return source;
+    };
+    UsageSummaryCache.prototype.readCertifiedSourceState = async function (...args) {
+      const source = await originalCertifiedRead.apply(this, args);
+      if (!source) return source;
+      fullReadPending = false;
+      return completedSource(source);
     };
     await appendFile(fixture.rolloutFiles[0], usageLine(1));
     hint();
@@ -409,6 +429,7 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
   } finally {
     release.resolve();
     UsageSummaryCache.prototype.readSourceState = originalRead;
+    UsageSummaryCache.prototype.readCertifiedSourceState = originalCertifiedRead;
     await reader?.cancel();
     await server.close();
     t.mock.restoreAll();
@@ -443,6 +464,53 @@ async function browser(response) {
   harness.api.startAutoRefresh();
   harness.resetCounts();
   return harness;
+}
+
+for (const switchScope of [false, true]) {
+  test(`source pending keeps the page busy until a real response; switchScope=${switchScope}`, async () => {
+    let pending = false;
+    const harness = await browser((request, payloads) => {
+      if (request.path !== "/api/usage") return;
+      if (pending) return { status: 409, payload: { code: "SOURCE_UPDATE_PENDING", error: "Source update is still pending" } };
+      const payload = app.clone(payloads.today);
+      payload.summary.range.preset = request.params.preset;
+      payload.fingerprint = `complete-${request.params.preset}`;
+      return { payload };
+    });
+    let loading;
+    try {
+      const original = harness.state.fingerprint;
+      pending = true;
+      let completed = false;
+      loading = harness.api.loadUsage({ skipCheck: true }).then(() => { completed = true; });
+      await harness.flush();
+      const retry = harness.timers.timeouts.findLast(row => row.ms === 1000 && !row.cleared);
+      assert.ok(retry);
+      assert.equal(completed, false);
+      assert.equal(harness.state.fingerprint, original);
+      assert.equal(harness.counts.renders, 0);
+      assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), true);
+      pending = false;
+      if (switchScope) {
+        harness.state.preset = "week";
+        await harness.api.loadUsage();
+        assert.equal(retry.cleared, true, "new scope cancels the previous delayed request");
+      } else retry.callback();
+      await loading;
+      await harness.settle();
+      assert.equal(harness.counts.usageSyncs, 2);
+      assert.equal(harness.fetchLog.filter(row => row.path === "/api/usage").at(-1).params.skipCheck, undefined);
+      assert.equal(harness.state.fingerprint, `complete-${switchScope ? "week" : "today"}`);
+      assert.equal(harness.counts.renders, 1);
+      assert.equal(harness.counts.statusErrors, 0);
+      assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), false);
+    } finally {
+      pending = false;
+      for (const retry of harness.timers.timeouts.filter(row => row.ms === 1000 && !row.cleared)) retry.callback();
+      await loading;
+      harness.dispose();
+    }
+  });
 }
 
 test("Q5 SSE during a checked load cannot supersede its fresh response with an older skipCheck read", async () => {

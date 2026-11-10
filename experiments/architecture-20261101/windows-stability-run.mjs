@@ -26,7 +26,7 @@ const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
 export const CLOSEOUT_RESULT=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
-assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110","output/live-source-recovery-20261110","output/live-source-recovery-20261110/validated"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -168,12 +168,29 @@ function matchingControlledExit(context,response,body){
   return [...(context.controlledExits??[])].reverse().find(row=>start<=row.killedAtMs&&Date.now()-row.killedAtMs<=300_000)??null;
 }
 
+export function isSourceUpdatePending(status,body){
+  return status===409&&body!==null&&typeof body==="object"&&!Array.isArray(body)&&
+    body.code==="SOURCE_UPDATE_PENDING"&&!Object.hasOwn(body,"summary")&&!Object.hasOwn(body,"data");
+}
+
+async function recordSourcePending(context,page,response,body){
+  if(context.allowSourceUpdatePending!==true||!isSourceUpdatePending(response.status(),body))return false;
+  // The page observer and foreground waiter see the same response; keep one pending receipt.
+  const recorded=context.pendingUsageResponses??=new WeakMap(),url=new URL(response.url());
+  if(!recorded.has(response))recorded.set(response,log(context,"http-pending",{page:context.pages.indexOf(page),
+    url:url.pathname+url.search,status:response.status(),code:body.code,body,
+    requestStartedAtMs:context.requestStarts?.get(response.request())??null}));
+  await recorded.get(response);return true;
+}
+
 async function waitUsageResponse(context,page,preset,total,timeoutMs=300_000){
   return page.waitForResponse(async response=>{
     const url=new URL(response.url());
     if(url.pathname!=="/api/usage"||url.searchParams.get("preset")!==preset)return false;
     if(response.status()===200)return total===undefined||(await response.json()).summary?.totals?.total===total;
-    const body=await response.json(),fault=matchingControlledExit(context,response,body);
+    const body=await response.json();
+    if(await recordSourcePending(context,page,response,body))return false;
+    const fault=matchingControlledExit(context,response,body);
     assert.ok(fault,JSON.stringify({status:response.status(),body}));
     await log(context,"waiting-for-fault-recovery",{commandId:fault.commandId,pid:fault.pid,preset});return false;
   },{timeout:timeoutMs});
@@ -199,8 +216,10 @@ async function attachPage(context,page) {
     const pending=(async()=>{
       const receivedAtMs=Date.now();
       if(response.status()!==200){
-        const body=await response.json(),fault=matchingControlledExit(context,response,body);
-        await log(context,"http-error",{status:response.status(),code:body.code,url:url.pathname+url.search,
+        const body=await response.json();
+        if(await recordSourcePending(context,page,response,body))return;
+        const fault=matchingControlledExit(context,response,body);
+        await log(context,"http-error",{status:response.status(),code:body?.code,url:url.pathname+url.search,
           requestStartedAtMs:context.requestStarts.get(response.request())??null,controlledFaultId:fault?.commandId??null});
         assert.ok(fault,`Unexpected usage HTTP error: ${JSON.stringify(body)}`);return;
       }
@@ -280,6 +299,7 @@ async function pollBrowser(context) {
 }
 
 async function verifyFull(context,name) {
+  await context.beforeOracle?.(name);
   for(let attempt=0;attempt<3;attempt++){
   await Promise.all(context.responseTasks);
   const row=[...context.bodies].reverse().find(value=>value.preset==="all");assert.ok(row,"all response missing");
@@ -700,18 +720,19 @@ async function runPhase(context,schedule,{resumeOffsetMs=0}={}) {
   return result;
 }
 
-async function idleAndReopen(context) {
+async function idleAndReopen(context,name="final") {
+  assert.ok(["final","continuous"].includes(name),"Unknown reopen name");
   const stoppedInputAtMs=Date.now();await drain(context);
   const idleStarted=Date.now();
   while(Date.now()-idleStarted<120_000){await pollBrowser(context);await checkDeadlines(context);await pause(1000);}
-  await context.ui.page.screenshot({path:path.join(context.directory,"final.png"),fullPage:true});
+  await context.ui.page.screenshot({path:path.join(context.directory,`${name}.png`),fullPage:true});
   const before=projectionStorage(context.state);await context.ui.page.close();await stop(context.server);await context.sampler.stop();
   await pollResources(context);await log(context,"normal-close",{drainMs:idleStarted-stoppedInputAtMs,projection:projectionStorage(context.state)});
   context.ui.page=await context.ui.context.newPage();context.pages=[context.ui.page];await attachPage(context,context.ui.page);
-  const startedAtMs=Date.now();context.server=await launchServer(context,"-final-reopen");context.sampler=await startSampler(context,"-final-reopen");
+  const startedAtMs=Date.now();context.server=await launchServer(context,`-${name}-reopen`);context.sampler=await startSampler(context,`-${name}-reopen`);
   await loadPage(context);await pollBrowser(context);await drain(context);
   const reopen={wallMs:Date.now()-startedAtMs,startedAtMs,endedAtMs:Date.now(),before,after:projectionStorage(context.state)};
-  await save(path.join(context.directory,"final-reopen.json"),reopen);await verifyFull(context,"reopen");return reopen;
+  await save(path.join(context.directory,`${name}-reopen.json`),reopen);await verifyFull(context,name==="final"?"reopen":`${name}-reopen`);return reopen;
 }
 
 async function finishContext(context,{failed=false,retainSources=false}={}) {
@@ -1036,7 +1057,8 @@ async function runAll({smoke=false,resumeYear=false,resumePaint=false,restartEnd
 
 export { visibleInputs,expectedWindow,checkResponse,awaitFault,launchServer,pollResources,correctYearIdle,pollBrowser,mutationSessions,recoverAppendLedger,
   attachPage,loadPage,stabilityScope,waitUsageResponse,registerControlledExit,matchingControlledExit,retainedLedger,multitabSchedule,
-  closeoutEntryCounts,inheritCloseoutLedger,assertCloseoutProjection,registerCloseoutEntry,runCloseout };
+  closeoutEntryCounts,inheritCloseoutLedger,assertCloseoutProjection,registerCloseoutEntry,runCloseout,
+  createContext,startSampler,dispatch,verifyFull,idleAndReopen,finishContext };
 
 if(process.argv[1]&&path.resolve(process.argv[1])===SELF){
   if(process.argv[2]==="closeout-freeze")await freezeCloseoutRuntime(process.argv[3],process.argv[4]);

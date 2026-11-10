@@ -4456,7 +4456,7 @@ export class UsageStore {
           after.ctimeMs !== info.ctimeMs ||
           usageSourceIdentity(after) !== usageSourceIdentity(info)
         ) {
-          throw Object.assign(new Error("Source changed while indexing"), { code: "LIVE_SOURCE_CHANGED" });
+          throw Object.assign(new Error("Source changed while indexing"), { code: "LIVE_SOURCE_CHANGED", retryable: true });
         }
       }
       if (
@@ -4464,7 +4464,7 @@ export class UsageStore {
         (representationFingerprint === null || usageSourceFingerprint(filePath) !== representationFingerprint)
       ) {
         throw Object.assign(new Error("Codex rollout changed during representation indexing"), {
-          code: "LIVE_SOURCE_CHANGED",
+          code: "LIVE_SOURCE_CHANGED", retryable: true,
         });
       }
       database.prepare("DELETE FROM usage_source_reparse WHERE source_path=?").run(filePath);
@@ -4791,6 +4791,10 @@ export class UsageStore {
         return { ...result, ...(receipt ? { acquisition: receipt } : {}) };
       } catch (error) {
         acquisition.invalidate();
+        if (error.code === "LIVE_SOURCE_CHANGED" && error.retryable === true)
+          throw Object.assign(new Error("Source update is still pending"), {
+            code: "SOURCE_UPDATE_PENDING", statusCode: 409, retryable: true,
+          });
         if (plan && error.code === "SOURCE_COVERAGE_UNAVAILABLE")
           return await this.sync({ ...args, certifiedOnly: false, forceFull: true });
         throw error;
@@ -4884,7 +4888,7 @@ export class UsageStore {
     let updatedFileCount = 0;
     let usageDerivedChanged = false;
     let historyVerificationPending = false;
-    const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0 };
+    const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0, sourceRetries: 0 };
     this.lastSyncSourceWork = sourceWork;
     const acceptSource = (file, outcome) => {
       historyVerificationPending ||= Boolean(outcome.historyVerificationPending);
@@ -4906,61 +4910,90 @@ export class UsageStore {
       this.commitStoreRevision(outcome.quotaWritten ? "usage+quota" : "usage");
     };
 
+    const sourceAttempts = new Map();
+    const pendingSource = () => Object.assign(new Error("Source update is still pending"), {
+      code: "SOURCE_UPDATE_PENDING", statusCode: 409, retryable: true,
+    });
+    const retrySource = async (file, work) => {
+      while (true) {
+        const attempt = sourceAttempts.get(file.filePath) || 0;
+        if (attempt >= 3) throw pendingSource();
+        sourceAttempts.set(file.filePath, attempt + 1);
+        const warningCount = warnings.length;
+        try {
+          return await work();
+        } catch (error) {
+          if (error.code !== "LIVE_SOURCE_CHANGED" || error.retryable !== true ||
+            this.database.isTransaction || this.writeTransactionDepth) throw error;
+          warnings.length = warningCount;
+          if (attempt === 2) throw pendingSource();
+          // A failed source transaction has rolled back; other committed sources keep their cursors.
+          file.info = await stat(file.filePath);
+          file.force = true;
+          file.reobserved = true;
+          currentFingerprints.set(file.filePath, usageSourceFingerprint(file.filePath));
+          sourceWork.sourceRetries++;
+        }
+      }
+    };
+
     const readSource = this.database.prepare(
       "SELECT size, mtime_ms, kind, home_id, home_label, home_path FROM source_files WHERE path = ?",
     );
     const readSourceSessions = this.database.prepare("SELECT DISTINCT session_id FROM events WHERE source_path = ?");
     const readReparse = this.database.prepare("SELECT 1 FROM usage_source_reparse WHERE source_path=?");
     for (const file of files) {
-      const existing = readSource.get(file.filePath);
-      const savedProgress = existing ? readUsageSourceProgress(this.database, file.filePath) : null;
-      const unchanged =
-        existing &&
-        Number(existing.size) === file.info.size &&
-        Number(existing.mtime_ms) === file.info.mtimeMs &&
-        existing.kind === (file.source.kind || "codex") &&
-        existing.home_id === file.source.id &&
-        existing.home_label === file.source.label &&
-        existing.home_path === file.source.path &&
-        (publishedFingerprints[file.filePath] === undefined ||
-          publishedFingerprints[file.filePath] === currentFingerprints.get(file.filePath));
-      const earlierFileChanged =
-        existing &&
-        changedSessions.size > 0 &&
-        readSourceSessions.all(file.filePath).some((row) => changedSessions.has(row.session_id));
-      const needsReparse = Boolean(readReparse.get(file.filePath));
-      if (!file.force && unchanged && !earlierFileChanged && !needsReparse) {
-        const proofCurrent =
-          !savedProgress ||
-          ([USAGE_SOURCE_SHA_KIND, "ntfs-usn-v1"].includes(savedProgress.validation.kind) &&
-            savedProgress.validation.identity === usageSourceIdentity(file.info) &&
-            savedProgress.validation.ctimeMs === file.info.ctimeMs);
-        if (proofCurrent || (await this.recertifyUnchangedFile(file, savedProgress))) {
-          nextFingerprints[file.filePath] = currentFingerprints.get(file.filePath);
-          continue;
+      await retrySource(file, async () => {
+        const existing = readSource.get(file.filePath);
+        const savedProgress = existing ? readUsageSourceProgress(this.database, file.filePath) : null;
+        const unchanged =
+          existing &&
+          Number(existing.size) === file.info.size &&
+          Number(existing.mtime_ms) === file.info.mtimeMs &&
+          existing.kind === (file.source.kind || "codex") &&
+          existing.home_id === file.source.id &&
+          existing.home_label === file.source.label &&
+          existing.home_path === file.source.path &&
+          (publishedFingerprints[file.filePath] === undefined ||
+            publishedFingerprints[file.filePath] === currentFingerprints.get(file.filePath));
+        const earlierFileChanged =
+          existing &&
+          changedSessions.size > 0 &&
+          readSourceSessions.all(file.filePath).some((row) => changedSessions.has(row.session_id));
+        const needsReparse = Boolean(readReparse.get(file.filePath));
+        if (!file.force && unchanged && !earlierFileChanged && !needsReparse) {
+          const proofCurrent =
+            !savedProgress ||
+            ([USAGE_SOURCE_SHA_KIND, "ntfs-usn-v1"].includes(savedProgress.validation.kind) &&
+              savedProgress.validation.identity === usageSourceIdentity(file.info) &&
+              savedProgress.validation.ctimeMs === file.info.ctimeMs);
+          if (proofCurrent || (await this.recertifyUnchangedFile(file, savedProgress))) {
+            nextFingerprints[file.filePath] = currentFingerprints.get(file.filePath);
+            return;
+          }
         }
-      }
-      try {
-        const callbacks = {
-          onWarning: (warning) => warnings.push(String(warning)),
-          progress: file.readMode !== "full",
-          reuseHistoryProjection: true,
-        };
-        const outcome =
-          (!earlierFileChanged && !needsReparse && file.readMode !== "full"
-            ? await this.appendFile(file, callbacks)
-            : null) || (await this.replaceFile(file, callbacks));
-        if (!outcome?.committed) {
-          if (plan) throw Object.assign(new Error("Selected source did not commit"), { code: "LIVE_SOURCE_CHANGED" });
-          continue;
+        try {
+          const callbacks = {
+            onWarning: (warning) => warnings.push(String(warning)),
+            progress: file.readMode !== "full",
+            reuseHistoryProjection: true,
+          };
+          const outcome =
+            (!earlierFileChanged && !needsReparse && file.readMode !== "full"
+              ? await this.appendFile(file, callbacks)
+              : null) || (await this.replaceFile(file, callbacks));
+          if (!outcome?.committed) {
+            if (plan) throw Object.assign(new Error("Selected source did not commit"), { code: "LIVE_SOURCE_CHANGED" });
+            return;
+          }
+          acceptSource(file, outcome);
+        } catch (error) {
+          if (plan) throw error;
+          if (needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
+          if (canonicalizeKind(file.source.kind) === "codex" && (Number(error?.errcode) & 0xff) === 19) throw error;
+          warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
         }
-        acceptSource(file, outcome);
-      } catch (error) {
-        if (plan) throw error;
-        if (needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
-        if (canonicalizeKind(file.source.kind) === "codex" && (Number(error?.errcode) & 0xff) === 19) throw error;
-        warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
-      }
+      });
     }
 
     // Dependencies may precede their changed producer in discovery order, or survive a process crash.
@@ -4990,13 +5023,11 @@ export class UsageStore {
       }
       if (!available.length) break;
       for (const file of available) {
-        const outcome = await this.replaceFile(
-          { ...file, info: await stat(file.filePath) },
-          {
-            onWarning: (warning) => warnings.push(String(warning)),
-            progress: file.readMode !== "full",
-          },
-        );
+        file.info = await stat(file.filePath);
+        const outcome = await retrySource(file, () => this.replaceFile(file, {
+          onWarning: (warning) => warnings.push(String(warning)),
+          progress: file.readMode !== "full",
+        }));
         acceptSource(file, outcome);
       }
     }
@@ -5142,6 +5173,14 @@ export class UsageStore {
     const homeSetChanged = previousHomeShape !== nextHomeShape;
     if (homeSetChanged && !usageDerivedChanged) this.commitStoreRevision("home");
 
+    if (sourceWork.sourceRetries) {
+      if (plan) {
+        status.fingerprint = createHash("sha256").update(status.fingerprint)
+          .update(JSON.stringify(files.filter(file => file.reobserved).map(file => [
+            file.filePath, file.info.size, file.info.mtimeMs, file.info.ctimeMs, usageSourceIdentity(file.info),
+          ]))).digest("hex");
+      } else Object.assign(status, await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes }));
+    }
     this.homes = homes;
     this.generatedAt = new Date().toISOString();
     this.fingerprint = status.fingerprint;

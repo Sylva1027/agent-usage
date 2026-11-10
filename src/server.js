@@ -411,6 +411,8 @@ export function createUsageServer(options = {}) {
   let usageEventHeartbeat = null;
   let usageWakePromise = null;
   let usageWakePending = false;
+  let sourceUpdatePending = false;
+  let sourceRetryTimer = null;
   let lastUsageEventVersion = null;
   const snapshots = new Map();
   let snapshotDirectoryCleanup = Promise.resolve();
@@ -674,6 +676,8 @@ export function createUsageServer(options = {}) {
     if (syncPromise) {
       return syncPromise;
     }
+    if (sourceRetryTimer !== null)
+      throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
     if (!check && storeStatus && usageStore.status) return storeStatus;
     if (importContext) {
       syncPromise = usageStore
@@ -757,20 +761,38 @@ export function createUsageServer(options = {}) {
       }
       const status = await usageStore.sync({ options: sourceOptions, sourceHints: hints });
       sourceAcquisitionAvailable = Boolean(status.acquisition);
-      publishedSource =
-        (status.acquisition && (await summaryCache.readCertifiedSourceState(sourceOptions, status))) ||
-        publishedSummarySource(
-          before,
-          await summaryCache.readSourceState({
-            ...currentUsageOptions,
-            importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
-          }),
-        );
+      const source = status.acquisition && (await summaryCache.readCertifiedSourceState(sourceOptions, status));
+      if (source) publishedSource = source;
+      else {
+        const after = await summaryCache.readSourceState(sourceOptions);
+        if (status.fingerprint !== before.fingerprint) {
+          // A recovered source has a new cut; only unchanged auxiliary inputs can bind it to this publication.
+          if (after.fingerprint !== status.fingerprint || after.auxiliary !== before.auxiliary)
+            throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
+          publishedSource = after;
+        } else publishedSource = publishedSummarySource(before, after);
+      }
       synchronizedSource = publishedSource;
       storeStatus = status;
       scheduleUsageDiscovery(usageStore.metadata().harnessModels);
       return status;
-    })().finally(() => {
+    })().then((status) => {
+      sourceUpdatePending = false;
+      return status;
+    }).catch((error) => {
+      if (error.code === "SOURCE_UPDATE_PENDING") {
+        sourceUpdatePending = true;
+        sourceHints.unknown = true;
+        if (!serverClosed && sourceRetryTimer === null) {
+          sourceRetryTimer = setTimeout(() => {
+            sourceRetryTimer = null;
+            void requestUsageWake();
+          }, 1000);
+          sourceRetryTimer.unref?.();
+        }
+      } else sourceUpdatePending = false;
+      throw error;
+    }).finally(() => {
       syncPromise = null;
       releaseAcquisition();
     });
@@ -913,21 +935,22 @@ export function createUsageServer(options = {}) {
   }
 
   function requestUsageWake() {
-    if (serverClosed || !usageEventClients.size) return Promise.resolve();
+    if (serverClosed || (!usageEventClients.size && !sourceUpdatePending) || sourceRetryTimer !== null)
+      return Promise.resolve();
     if (usageWakePromise) {
       usageWakePending = true;
       return usageWakePromise;
     }
     usageWakePromise = (async () => {
       try {
-        while (!serverClosed && usageEventClients.size) {
+        while (!serverClosed && (usageEventClients.size || sourceUpdatePending)) {
           usageWakePending = false;
           const joinedExistingSync = syncPromise !== null;
           let status;
           try {
             status = await loadUsageStore({ check: true });
-          } catch {
-            usageWakePending = false;
+          } catch (error) {
+            usageWakePending = error.code === "SOURCE_UPDATE_PENDING";
             return;
           }
           if (serverClosed || !usageEventClients.size) return;
@@ -939,7 +962,7 @@ export function createUsageServer(options = {}) {
         }
       } finally {
         usageWakePromise = null;
-        if (usageWakePending && !serverClosed && usageEventClients.size) {
+        if (usageWakePending && sourceRetryTimer === null && !serverClosed && usageEventClients.size) {
           queueMicrotask(() => void requestUsageWake());
         }
       }
@@ -1646,6 +1669,8 @@ export function createUsageServer(options = {}) {
   /** @type {(callback?: (err?: Error) => void) => unknown} */
   const closeWithExecutorRelease = (callback) => {
     serverClosed = true;
+    if (sourceRetryTimer !== null) clearTimeout(sourceRetryTimer);
+    sourceRetryTimer = null;
     clearPricingRefreshTimer();
     clearDiscoveryTimer();
     const done = closeUsageEventStreams()

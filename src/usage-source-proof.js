@@ -5,8 +5,8 @@ const CHUNK_BYTES = 1024 * 1024;
 export const USAGE_SOURCE_SHA_KIND = "sha256-prefix-v2";
 const SHA_KIND = USAGE_SOURCE_SHA_KIND;
 
-function changed(message) {
-  return Object.assign(new Error(message), { code: "LIVE_SOURCE_CHANGED" });
+function changed(message, retryable = true) {
+  return Object.assign(new Error(message), { code: "LIVE_SOURCE_CHANGED", retryable });
 }
 
 export function usageSourceIdentity(info) {
@@ -51,7 +51,7 @@ async function withSnapshot(filePath, expected, work) {
   const handle = await open(filePath, "r");
   try {
     const before = await handle.stat();
-    if (!before.isFile() || !Number.isSafeInteger(before.size)) throw changed("Unsupported source file size");
+    if (!before.isFile() || !Number.isSafeInteger(before.size)) throw changed("Unsupported source file size", false);
     assertExpected(before, expected);
     const result = await work(handle, before);
     const after = await handle.stat();
@@ -88,10 +88,10 @@ export async function verifyUsageSourcePrefix(filePath, validation, offset, expe
 /** Recheck the certified prefix after parsing; a hash state alone cannot protect the intervening await. */
 export async function captureUsageSourcePrefix(filePath, offset, expectedInfo, verified = null, parsed = null) {
   return withSnapshot(filePath, expectedInfo, async (handle, info) => {
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > info.size) {
-      throw changed("Parsed source boundary is outside the current file");
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > info.size || (verified && verified.offset > offset)) {
+      throw changed("Parsed source boundary is outside the current file", false);
     }
-    if (verified && (!sameSnapshot(verified.info, info) || verified.offset > offset)) {
+    if (verified && !sameSnapshot(verified.info, info)) {
       throw changed("Source changed after prefix validation");
     }
     const hash = createHash("sha256");
@@ -110,7 +110,7 @@ export async function captureUsageSourcePrefix(filePath, offset, expectedInfo, v
         parsed.offset > info.size ||
         !/^[a-f0-9]{64}$/.test(parsed.digest || "")
       )
-        throw changed("Invalid parsed source digest");
+        throw changed("Invalid parsed source digest", false);
       const parsedHash = hash.copy();
       readBytes += await hashRange(handle, parsedHash, offset, parsed.offset);
       if (parsedHash.digest("hex") !== parsed.digest) throw changed("Source bytes changed after parsing");
@@ -165,6 +165,13 @@ export class UsageSourceProof {
   }
 
   async capture(filePath, offset, expectedInfo, verified = null, parsed = null) {
+    if (!Number.isSafeInteger(offset) || offset < 0 ||
+      (Number.isSafeInteger(expectedInfo?.size) && offset > expectedInfo.size) ||
+      (Number.isSafeInteger(verified?.offset) && verified.offset > offset))
+      throw changed("Parsed source boundary is outside the current file", false);
+    if (parsed && (!Number.isSafeInteger(parsed.offset) || parsed.offset < offset ||
+      (Number.isSafeInteger(expectedInfo?.size) && parsed.offset > expectedInfo.size) ||
+      !/^[a-f0-9]{64}$/.test(parsed.digest || ""))) throw changed("Invalid parsed source digest", false);
     const fence = verified?.kind === "ntfs-usn-v1" ? verified : verified?.nativeFence;
     if (fence) {
       const native = await this.provider();
