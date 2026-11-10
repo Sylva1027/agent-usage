@@ -114,6 +114,17 @@ test("successful publication still requires the final oracle and extra reopen", 
   assert.deepEqual(f.calls.slice(-3), ["tabs-close", "continuous-final", "continuous-reopen"]);
 });
 
+test("four cycles keep unique inputs and can defer the single service reopen", async t => {
+  const f = await continuousDriver(t);
+  const result = await runContinuous(f.d, f.context, PUBLICATION_CARD, { cycle: 1, reopen: false });
+  assert.equal(result.passed, true); assert.equal(result.reopen, undefined);
+  assert.ok(result.inputs.every(row => row.eventId.startsWith("cycle-1-")));
+  assert.ok(f.calls.includes("cycle-1-continuous-final"));
+  assert.equal(f.calls.includes("continuous-reopen"), false);
+  const ids = Array.from({ length: 4 }, (_, i) => continuousSchedule(PUBLICATION_CARD, i + 1).events.map(row => row.id)).flat();
+  assert.equal(new Set(ids).size, 72);
+});
+
 test("first paint timing stays fixed while other tabs finish before oracle admission", async t => {
   const f = await continuousDriver(t, { slowTab: true });
   const result = await runContinuous(f.d, f.context, PUBLICATION_CARD);

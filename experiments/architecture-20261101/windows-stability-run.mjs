@@ -17,6 +17,7 @@ import { prepareStabilityMutations,appendStabilityMutation,reviseStabilityMutati
 import { stabilitySchedule,closeoutSchedule,CLOSEOUT_PROFILE,STABILITY_KINDS,quantiles,protectionPassed } from "./windows-stability-schedule.mjs";
 import { correctResourceIdentity,parseResourceSample,resourceSnapshotRows } from "./resource-identity-analysis.mjs";
 import { measureChild } from "./archive-compaction-packages.mjs";
+import { createResourceCostLedger } from "./resource-cost-accounting.mjs";
 
 const SELF=fileURLToPath(import.meta.url),HERE=path.dirname(SELF);
 const SERVER=path.join(HERE,"windows-stability-server.mjs");
@@ -26,7 +27,7 @@ const COMPACTION=path.join(ROOT,"output/archive-compaction-20261108");
 export const RECOVERY_RESULT=path.join(ROOT,"output/windows-stability-recovery-20261109");
 export const MULTITAB_RESULT=path.join(ROOT,"output/windows-multitab-20261109");
 export const CLOSEOUT_RESULT=path.resolve(process.env.WINDOWS_CLOSEOUT_ROOT??path.join(ROOT,"output/windows-parallel-20261109"));
-assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110","output/live-source-recovery-20261110","output/live-source-recovery-20261110/validated","output/committed-publication-20261110"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
+assert.ok(["output/windows-parallel-20261109","output/archive-request-lifetime-20261110","output/archive-memory-budget-20261110","output/windows-final-acceptance-20261110","output/live-source-recovery-20261110","output/live-source-recovery-20261110/validated","output/committed-publication-20261110","output/windows-closeout-short-20261111"].some(relative=>path.join(ROOT,relative)===CLOSEOUT_RESULT),"Unknown private closeout root");
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fieldNames=["total","input","cached","output","reasoning"];
 const family=kind=>["main","extra","jetbrains"].includes(kind)?"codex":kind;
@@ -499,6 +500,12 @@ async function pollResources(context) {
         if(missing[field])summary[field]=null;
       }
     }
+    if(context.completeCostAccounting){
+      const ledger=context.resourceCostLedger??=createResourceCostLedger();ledger.add(sample);
+      summary.counterCoverage=ledger.result();
+      const totals=summary.counterCoverage.totals;
+      summary.cpuSeconds=totals.cpuSeconds;summary.readBytes=totals.logicalReadBytes;summary.writeBytes=totals.logicalWriteBytes;
+    }
     summary.excluded.push(...corrected.excluded);
     const executorActive=observed.some(row=>row.role==="service"&&row.name?.toLowerCase()==="node.exe"&&row.pid!==tail.servicePid);
     if(executorActive)context.lastActivityAtMs=Math.max(context.lastActivityAtMs,sample.atUnixMs);
@@ -765,6 +772,7 @@ async function finishContext(context,{failed=false,retainSources=false}={}) {
       }catch(error){errors.push(String(error));}
     }
   }
+  if(context.resourceCostLedger)context.resourceSummary.counterCoverage=context.resourceCostLedger.result({closed:true});
   await save(path.join(context.directory,"resource-summary.json"),context.resourceSummary);
   await save(path.join(context.directory,"closed.json"),{failed,errors,rawRestored:!failed&&!retainSources&&!errors.length,
     ...(retainSources?{retainedForNextStage:true}:{}),projection:projectionStorage(context.state),atMs:Date.now()});

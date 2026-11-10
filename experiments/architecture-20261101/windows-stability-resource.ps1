@@ -19,6 +19,8 @@ namespace WindowsStabilityResource {
     public long CreationFileTime, WorkingSet64, PrivateMemorySize64, PeakWorkingSet64, HandleCount;
     public double CPU;
     public long ReadOperationCount, WriteOperationCount, ReadTransferCount, WriteTransferCount;
+    public string Role;
+    public bool FinalCounters;
   }
 
   public static class Snapshot {
@@ -57,6 +59,40 @@ namespace WindowsStabilityResource {
     static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")]
     static extern bool GetProcessTimes(IntPtr handle, out long creation, out long exit, out long kernel, out long user);
+    [StructLayout(LayoutKind.Sequential)]
+    struct IoCounters {
+      public ulong ReadOperations, WriteOperations, OtherOperations, ReadBytes, WriteBytes, OtherBytes;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetProcessIoCounters(IntPtr handle, out IoCounters counters);
+    static readonly Dictionary<string, (IntPtr Handle, ProcessSnapshot Row)> tracked = new();
+
+    public static ProcessSnapshot[] FinalCounters() {
+      var result = new List<ProcessSnapshot>();
+      foreach (var key in new List<string>(tracked.Keys)) {
+        var entry = tracked[key];
+        long creation, exit, kernel, user;
+        if (!GetProcessTimes(entry.Handle, out creation, out exit, out kernel, out user) || exit == 0) continue;
+        var row = entry.Row;
+        IoCounters io;
+        if (creation == row.CreationFileTime && GetProcessIoCounters(entry.Handle, out io)) {
+          row.CPU = (kernel + user) / (double)TimeSpan.TicksPerSecond;
+          row.ReadTransferCount = checked((long)io.ReadBytes);
+          row.WriteTransferCount = checked((long)io.WriteBytes);
+          row.FinalCounters = true;
+          row.ObservedAt = DateTime.UtcNow.ToString("O");
+          result.Add(row);
+        }
+        CloseHandle(entry.Handle);
+        tracked.Remove(key);
+      }
+      return result.ToArray();
+    }
+
+    public static void CloseTracked() {
+      foreach (var entry in tracked.Values) CloseHandle(entry.Handle);
+      tracked.Clear();
+    }
 
     static Snapshot() {
       if (RuntimeInformation.ProcessArchitecture != Architecture.X64 || Marshal.SizeOf<ProcessInfo>() != 256 ||
@@ -67,7 +103,7 @@ namespace WindowsStabilityResource {
         throw new PlatformNotSupportedException("Uncalibrated SYSTEM_PROCESS_INFORMATION layout");
     }
 
-    public static string Confirm(ProcessSnapshot row) {
+    public static string Confirm(ProcessSnapshot row, string role = null) {
       if (row.CreationFileTime <= 0) return "missing";
       IntPtr handle = OpenProcess(0x1000, false, row.Id);
       if (handle == IntPtr.Zero) return Marshal.GetLastWin32Error() == 87 ? "exited" : "missing";
@@ -75,8 +111,16 @@ namespace WindowsStabilityResource {
         long creation, exit, kernel, user;
         if (!GetProcessTimes(handle, out creation, out exit, out kernel, out user)) return "missing";
         if (creation != row.CreationFileTime) return "pid-reused";
+        if (exit == 0 && role == "service") {
+          string key = row.Id + "|" + row.CreationFileTime;
+          if (!tracked.ContainsKey(key)) {
+            row.Role = role;
+            tracked.Add(key, (handle, row));
+            handle = IntPtr.Zero;
+          }
+        }
         return exit == 0 ? "live" : "exited";
-      } finally { CloseHandle(handle); }
+      } finally { if (handle != IntPtr.Zero) CloseHandle(handle); }
     }
 
     public static ProcessSnapshot[] Capture() {
@@ -138,8 +182,8 @@ function Set-ResourceBinding {
   return $Source.Replace($Before,$After)
 }
 
-function Get-WindowsResourceProcessState($Process) {
-  return [WindowsStabilityResource.Snapshot]::Confirm($Process)
+function Get-WindowsResourceProcessState($Process,$Role) {
+  return [WindowsStabilityResource.Snapshot]::Confirm($Process,$Role)
 }
 
 function New-ResourceIdentityEvidence($Process,[long]$Ticks) {
@@ -163,7 +207,7 @@ $source=Set-ResourceBinding $source '    [Parameter(Mandatory = $true)][hashtabl
     [Collections.Generic.List[object]]$Tombstones = [Collections.Generic.List[object]]::new()
 '@
 $source=Set-ResourceBinding $source '    $cpuSeconds = $null' @'
-    $processState = Get-WindowsResourceProcessState $process
+    $processState = Get-WindowsResourceProcessState $process $role
     if ($processState -in @('exited','pid-reused')) {
       $Tombstones.Add([pscustomobject][ordered]@{
         status='tombstone'; reason=$processState; pid=$id; role=$role; name=$process.ProcessName
@@ -207,6 +251,17 @@ $source=Set-ResourceBinding $source @'
 $source=Set-ResourceBinding $source '      $processMap = Get-LiveProcessMap' @'
       $processMap = Get-LiveProcessMap
       $sampleTombstones = [Collections.Generic.List[object]]::new()
+      $sampleCostFinals = [Collections.Generic.List[object]]::new()
+      foreach ($final in [WindowsStabilityResource.Snapshot]::FinalCounters()) {
+        $sampleCostFinals.Add([pscustomobject]@{
+          pid=$final.Id; role=$final.Role; name=$final.ProcessName
+          confirmedAt=$final.ObservedAt; confirmationSource='retained handle/GetProcessTimes/GetProcessIoCounters'
+          identityEvidence=(New-ResourceIdentityEvidence $final $final.StartTime.Ticks)
+          startTimeUtc=$final.StartTime.ToString('O'); finalCounters=$true
+          cpuSeconds=$final.CPU; logicalReadBytes=$final.ReadTransferCount; logicalWriteBytes=$final.WriteTransferCount
+          cpuAvailable=$true; ioAvailable=$true
+        })
+      }
       $snapshotParents = @{}
       foreach ($process in $processMap.Values) {
         $snapshotParents[[string]$process.Id] = $process.ParentProcessId
@@ -235,6 +290,7 @@ $source=Set-ResourceBinding $source '    $rows.Add([pscustomobject][ordered]@{' 
 $source=Set-ResourceBinding $source '        processes = $rows' @'
         processes = $rows
         tombstones = @($sampleTombstones)
+        costFinals = @($sampleCostFinals)
 '@
 $source=Set-ResourceBinding $source '      processes = @($processPeaks.Values | Sort-Object firstSeenAt, pid)' @'
       processes = @($processPeaks.Values | Sort-Object firstSeenAt, pid)
@@ -256,4 +312,5 @@ $source=$source.Replace('Get-Process PeakWorkingSet64','SystemProcessInformation
 $source=$source.Replace('Get-Process CPU','SystemProcessInformation UserTime + KernelTime')
 $source=$source.Replace('GetProcessIoCounters transfer','SystemProcessInformation I/O transfer')
 $source=$source.Replace('from GetProcessIoCounters','from SystemProcessInformation')
-& ([scriptblock]::Create($source)) @PSBoundParameters
+try { & ([scriptblock]::Create($source)) @PSBoundParameters }
+finally { [WindowsStabilityResource.Snapshot]::CloseTracked() }

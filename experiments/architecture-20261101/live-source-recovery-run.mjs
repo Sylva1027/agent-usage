@@ -52,10 +52,10 @@ export function plan(card = CARD) {
       continuous: label === "two-years" && variant === "candidate" ? card.appendCount : 0 })));
 }
 
-export function continuousSchedule(card = CARD) {
+export function continuousSchedule(card = CARD, cycle = 0) {
   return { profile: CLOSEOUT_PROFILE, mode: "live-source-continuous", label: "two-years", durationMs: card.durationMs,
     appendCount: card.appendCount, cycles: [], events: Array.from({ length: card.appendCount }, (_, i) => ({
-      id: `continuous-${String(i + 1).padStart(2, "0")}`, type: "append", atMs: i * 5000,
+      id: `${cycle ? `cycle-${cycle}-` : ""}continuous-${String(i + 1).padStart(2, "0")}`, type: "append", atMs: i * 5000,
       kind: i % 2 ? "dsh" : "codex", ordinal: i + 1, category: "continuous", inputClass: "continuous",
     })) };
 }
@@ -357,8 +357,8 @@ export async function settlePublicationTabs(d, context, deadline) {
   return result;
 }
 
-export function publicationTiming(inputs, startedAtMs, stoppedAtMs, drainCompletedAtMs) {
-  const timing = gates(), schedule = continuousSchedule(PUBLICATION_CARD), lastInputAtMs = inputs.at(-1)?.landedAtMs ?? null;
+export function publicationTiming(inputs, startedAtMs, stoppedAtMs, drainCompletedAtMs, cycle = 0) {
+  const timing = gates(), schedule = continuousSchedule(PUBLICATION_CARD, cycle), lastInputAtMs = inputs.at(-1)?.landedAtMs ?? null;
   const during = inputs.filter(row => row.paintedAtMs >= startedAtMs && row.paintedAtMs < lastInputAtMs && row.usageVersion);
   const versions = [...new Set(during.map(row => row.usageVersion))];
   const paintsComplete = inputs.length > 0 && inputs.every(row => Number.isFinite(row.paintedAtMs) && row.usageVersion);
@@ -378,18 +378,18 @@ export function publicationTiming(inputs, startedAtMs, stoppedAtMs, drainComplet
   return { ...finish(timing), lastInputAtMs, drainedAtMs, drainMs: drainedAtMs === null ? null : drainedAtMs - lastInputAtMs, versions };
 }
 
-async function runPublicationContinuous(d, context) {
+async function runPublicationContinuous(d, context, { cycle = 0, reopen = true } = {}) {
   context.allowSourceUpdatePending = true;
   await d.dispatch(context, { id: "continuous-tabs", type: "tabs-open" });
   assert.equal(context.pages.filter(page => !page.isClosed()).length, 3);
-  const schedule = continuousSchedule(PUBLICATION_CARD), first = context.inputs.length;
+  const schedule = continuousSchedule(PUBLICATION_CARD, cycle), first = context.inputs.length, prefix = cycle ? `cycle-${cycle}-` : "";
   const result = context.continuous = { passed: false, startedAtMs: Date.now(), inputs: [], timingFailures: [] };
   const recordTiming = async (id, message) => {
     const failure = { id, message, atMs: Date.now() }; result.timingFailures.push(failure);
     await log(context, "timing-failure", failure);
   };
   context.ordinalOffset = context.ledger.appendCount;
-  await save(path.join(context.directory, "schedule-continuous.json"), { ...schedule, startedAtMs: result.startedAtMs });
+  await save(path.join(context.directory, `${prefix}schedule-continuous.json`), { ...schedule, startedAtMs: result.startedAtMs });
   try {
     for (const event of schedule.events) {
       const slot = result.startedAtMs + event.atMs;
@@ -405,7 +405,7 @@ async function runPublicationContinuous(d, context) {
     if (result.inputs.length === schedule.appendCount)
       await observeUntil(d, context, () => Date.now() >= result.startedAtMs + schedule.durationMs, lastInputAtMs + 60_000);
     result.stoppedAtMs = Date.now();
-    for (const row of publicationTiming(result.inputs, result.startedAtMs, result.stoppedAtMs).checks)
+    for (const row of publicationTiming(result.inputs, result.startedAtMs, result.stoppedAtMs, undefined, cycle).checks)
       if (row.id.startsWith("writer-") && row.status === "failed") await recordTiming(row.id, JSON.stringify(row.evidence));
     // Only passive browser/resource observation may help the autonomous drain.
     if (!await observeUntil(d, context, () => drained(context), lastInputAtMs + 60_000, true)) {
@@ -417,24 +417,24 @@ async function runPublicationContinuous(d, context) {
     // First paint is not evidence that the other tabs' admitted queries have finished.
     result.tabsSettled = await settlePublicationTabs(d, context, lastInputAtMs + 300_000);
     await d.dispatch(context, { id: "continuous-tabs-close", type: "tabs-close" });
-    const oracleStarted = Date.now(); result.oracle = await d.verifyFull(context, "continuous-final");
+    const oracleStarted = Date.now(); result.oracle = await d.verifyFull(context, `${prefix}continuous-final`);
     result.oracleWallMs = Date.now() - oracleStarted;
-    result.reopen = await d.idleAndReopen(context, "continuous");
+    if (reopen) result.reopen = await d.idleAndReopen(context, "continuous");
     result.completed = true;
   } catch (error) { result.failure = errorRecord(error); throw error; }
   finally {
     result.inputs = context.inputs.slice(first);
-    result.timing = publicationTiming(result.inputs, result.startedAtMs, result.stoppedAtMs, result.drainCompletedAtMs);
+    result.timing = publicationTiming(result.inputs, result.startedAtMs, result.stoppedAtMs, result.drainCompletedAtMs, cycle);
     const { lastInputAtMs, drainedAtMs, drainMs, versions } = result.timing;
     Object.assign(result, { lastInputAtMs, drainedAtMs, drainMs, versions });
     result.passed = result.completed === true && result.timing.passed && !result.timingFailures.length;
-    await save(path.join(context.directory, "continuous.json"), result);
+    await save(path.join(context.directory, `${prefix}continuous.json`), result);
   }
   return result;
 }
 
-export async function runContinuous(d, context, card = CARD) {
-  if (card === PUBLICATION_CARD) return runPublicationContinuous(d, context);
+export async function runContinuous(d, context, card = CARD, options) {
+  if (card === PUBLICATION_CARD) return runPublicationContinuous(d, context, options);
   context.allowSourceUpdatePending = true;
   await d.dispatch(context, { id: "continuous-tabs", type: "tabs-open" });
   assert.equal(context.pages.filter(page => !page.isClosed()).length, 3);
@@ -478,7 +478,7 @@ export function activeExecutors(rows) {
   return [...active];
 }
 
-async function waitForOracleIdle(context, name) {
+export async function waitForOracleIdle(context, name) {
   const startedAtMs = Date.now();
   const file = path.join(context.control, `events-${context.server.child.pid}.ndjson`);
   // The independent readonly oracle must not pin WAL while the product's writer is closing.
@@ -531,7 +531,7 @@ async function beforeContinuous(context, result) {
     "Ordinary resource failure; continuous segment cancelled");
 }
 
-async function stopOwned(d, context, failed) {
+export async function stopOwned(d, context, failed) {
   let failure;
   try { await d.finishContext(context, { failed, retainSources: true }); }
   catch (error) { failure = error; }
@@ -546,7 +546,7 @@ async function stopOwned(d, context, failed) {
   if (failure) throw failure;
 }
 
-async function recover(prepared, directory) {
+export async function recover(prepared, directory, outputRoot = ROOT) {
   const started = Date.now(), errors = [];
   const base = path.join(directory, "base-ledger.json");
   if (await exists(base)) {
@@ -555,7 +555,7 @@ async function recover(prepared, directory) {
     try { await restoreStabilityMutations(await read(base)); } catch (error) { errors.push(errorRecord(error)); }
   }
   let receipt;
-  try { receipt = await restoreSnapshot(prepared); } catch (error) { errors.push(errorRecord(error)); }
+  try { receipt = await restoreSnapshot(prepared, outputRoot); } catch (error) { errors.push(errorRecord(error)); }
   if (errors.length) {
     await save(path.join(directory, `restoration-failed-${Date.now()}.json`), { errors, wallMs: Date.now() - started });
     throw Error(JSON.stringify(errors));
