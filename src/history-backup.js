@@ -9,7 +9,6 @@ import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./
 import { STORE_SCHEMA_VERSION } from "./usage-store.js";
 
 export const HISTORY_BACKUP_FORMAT_VERSION = 1;
-export const HISTORY_BACKUP_SCHEMA_VERSION = STORE_SCHEMA_VERSION;
 
 const PROGRAM_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 

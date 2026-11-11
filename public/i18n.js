@@ -7,43 +7,7 @@ const ENGLISH = new Map(
     自动刷新: "Auto Refresh",
     开: "On",
     关: "Off",
-    历史归档: "History Archives",
-    "展开 / 收起": "Expand / collapse",
-    "正在读取归档状态…": "Loading archive status…",
-    已登记归档段: "Registered archive segments",
-    已登记事件: "Registered events",
-    归档段: "Archive segment",
-    归档带: "Archive band",
-    事件数不可用: "Event count unavailable",
-    "封存时数据（UTC 日统计）": "Sealed data (UTC daily totals)",
-    "原始封存版本，不含当前覆盖层。": "Original sealed version; current overlays are not included.",
-    "展开后读取封存日统计。": "Expand to load sealed daily totals.",
-    "正在读取封存日统计…": "Loading sealed daily totals…",
-    封存日统计不可用: "Sealed daily totals unavailable",
-    "封存日统计不可用。": "Sealed daily totals unavailable.",
-    封存日统计格式无效: "Invalid sealed daily totals response",
-    "没有封存日统计。": "No sealed daily totals.",
-    "展开后读取原始封存事件。": "Expand to load original sealed events.",
-    "正在读取原始封存事件…": "Loading original sealed events…",
-    原始封存事件不可用: "Original sealed events unavailable",
-    原始封存事件格式无效: "Invalid sealed events response",
-    "没有原始封存事件。": "No original sealed events.",
-    下一页: "Next page",
-    "正在读取下一页…": "Loading next page…",
-    事件时间: "Event time",
     事件数: "Event count",
-    "Token 总量": "Total tokens",
-    "Token 输入": "Input tokens",
-    "Token 缓存": "Cached tokens",
-    "Token 输出": "Output tokens",
-    "Token 推理": "Reasoning tokens",
-    "已登记（仅表示文件存在，未验证内容）": "Registered (file existence only; contents not verified)",
-    "文件缺失（范围保留，事件数不可用）": "File missing (range retained; event count unavailable)",
-    "文件不可读（范围保留，事件数不可用）": "File unreadable (range retained; event count unavailable)",
-    "归档状态未知（事件数不可用）": "Unknown archive status (event count unavailable)",
-    归档状态不可用: "Archive status unavailable",
-    归档响应格式无效: "Invalid archive response",
-    "没有已登记的归档段。": "No registered archive segments.",
     "上次：尚无": "Last check: none yet",
     "异常 · 详情 ›": "Error · Details ›",
     错误详情: "Error details",
@@ -482,7 +446,6 @@ const ENGLISH_PATTERNS = [
   [/^已导入 (.+)，正在刷新\.\.\.$/, (_, name) => `Imported ${name}. Refreshing…`],
   [/^导入失败：(.+)$/, (_, error) => `Import failed: ${englishText(error)}`],
   [/^加载失败：(.+)$/, (_, error) => `Could not load usage: ${englishText(error)}`],
-  [/^归档状态不可用：(.+)$/, (_, error) => `Archive status unavailable: ${englishText(error)}`],
   [
     /^检查失败：(.+)；下次继续尝试$/,
     (_, error) => `Update check failed: ${englishText(error)}. Retrying at the next interval.`,
@@ -559,10 +522,6 @@ export function localizeText(value, locale = activeLocale) {
     }
   }
   return input;
-}
-
-export function englishCopyEntries() {
-  return [...ENGLISH.entries()];
 }
 
 export function canonicalRecentValue(value) {

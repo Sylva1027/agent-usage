@@ -414,8 +414,3 @@ export const SKIN_PALETTES = {
     },
   },
 };
-
-/** 仅用于让类型信息在纯 JS 项目里可被引用；无运行时作用。 */
-export const SKIN_PALETTE_DOCS = Object.freeze({
-  /** @type {PaletteTokens} */ example: {},
-});

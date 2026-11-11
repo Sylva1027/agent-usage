@@ -440,10 +440,3 @@ export function installSkinTestHook(runtime, picker) {
     isPickerOpen: () => picker?.isOpen() ?? false,
   };
 }
-
-export const SKIN_RUNTIME_CONSTANTS = Object.freeze({
-  DECORATION_LAYER_ID,
-  SKIN_STORAGE_KEY,
-  VIEW_ORDER,
-  DEFAULT_OPACITY,
-});

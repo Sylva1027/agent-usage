@@ -30,8 +30,6 @@ for (const op of ["INSERT", "UPDATE", "DELETE"]) {
   ]);
 }
 
-export const USAGE_HISTORY_PROJECTION_TABLE_NAMES = Object.freeze([STATE, BATCHES]);
-
 function transaction(database, work) {
   database.exec("SAVEPOINT history_projection_inputs");
   try {
