@@ -29,7 +29,7 @@
 
 结果：3293 tests，3209 pass，15 fail，69 skipped，0 cancelled，330.3 秒。所有失败均出现在生产/测试代码改动之前。完整日志保存在本机忽略目录 `output/simplification-20261111/baseline.log`；本轮环境为 Node 26，仓库 CI 矩阵为 Node 22/24，不能把本机结果称为 CI 矩阵通过。
 
-原有失败分布：history-period-executor 的 publication gate（database locked）；history-rollup-store 的重试更新计数及 Shanghai 子进程；q4-bulk-build 的 initial build 两项；refresh-sync-regressions 的 indexed_at 对比；skin-palette-detail-bar-paint-browser 的 Edge 场景；SQLite 来源 WAL 回归中的 ZCode/OpenCode；usage-store 的 source warnings、scan failure 和 metadata warnings；v1-autorefresh；w1-executor 的 crash 后 skipCheck。最终按测试名称逐项比较，不用降低断言或跳过用例消除失败。
+原有失败分布：history-period-executor 的 publication gate（database locked）；history-rollup-store 的重试更新计数及 Shanghai 子进程；q4-bulk-build 的 initial build 两项；refresh-sync-regressions 的 indexed_at 对比；skin-palette-quality 的 Edge 场景；SQLite 来源 WAL 回归中的 ZCode/OpenCode；usage-metadata-store-integration 的 source warnings、usage-store 的 scan failure 和 metadata warnings；v1-autorefresh；w1-executor 的 crash 后 skipCheck。最终按测试名称逐项比较，不用降低断言或跳过用例消除失败。
 
 ## 分批实施
 
@@ -38,3 +38,9 @@
 删除 `public/history-archives-ui.js` 及专属测试（14 个顶层用例），依据是 2026-10-26 的明确退场记录与运行入口核查。移除独占翻译，保留仍有其他用途的「事件数」；删除 englishCopyEntries、SKIN_PALETTE_DOCS、SKIN_RUNTIME_CONSTANTS、HISTORY_BACKUP_SCHEMA_VERSION 和 USAGE_HISTORY_PROJECTION_TABLE_NAMES。后端归档接口与共享样式继续保留。
 
 验证：i18n、skins、app-render、app-autorefresh、history-backup、history-projection-*、history-archive-api，共 186 项通过，0 失败、0 跳过。遗漏引用扫描与 git diff --check 通过。
+
+### 02：退出调用链的焦点测量
+
+删除 measureFocusOutlinePixels、analyzeFocusOutlinePixels 及独占的读取、差分、恢复和 envelope 辅助代码；删除 9 个旧算法顶层测试，保留 6 个 adjacent 顶层测试及全部子断言。现行独立几何夹具只生成需要的 focused 帧。工具/测试净减少 630 行。
+
+验证：focus-outline-browser、focus-outline-pixels、skin-palette-quality 共 517 项，516 通过、1 个原有失败、0 跳过。唯一失败与基线同名、同位置、同断言（quality:9275，搜索 x 得到空结果）；没有新增失败。现行焦点测量及释放、异常传播场景通过。未改历史源码哈希。

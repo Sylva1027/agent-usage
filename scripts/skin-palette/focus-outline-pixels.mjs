@@ -4,7 +4,6 @@ const THRESHOLD = 3;
 const DISTANCE = 4;
 const CORE_EDGE_TOLERANCE = 1 - 0.5;
 const CORE_CORNER_TOLERANCE = 1 - Math.SQRT1_2;
-const ENVELOPE_TOLERANCE = 1 + Math.SQRT1_2;
 const ADJACENT_DISTANCE_MIN = 6;
 const ADJACENT_DISTANCE_MAX = 7;
 const GEOMETRY_EPSILON = 1e-9;
@@ -30,31 +29,10 @@ function requireFinite(value, name) {
   return value;
 }
 
-function emptyRegions() {
-  return Object.fromEntries(REGION_IDS.map((id) => [id, { core: 0, envelope: 0 }]));
-}
-
 function emptyAdjacentRegions() {
   return Object.fromEntries(
     REGION_IDS.map((id) => [id, { core: 0, background: 0, minRatio: null, worstBackground: null }]),
   );
-}
-
-function unmeasured(reason, diagnostics = {}) {
-  return {
-    result: "unmeasured",
-    ratio: null,
-    threshold: THRESHOLD,
-    reason,
-    corePixelCount: 0,
-    envelopePixelCount: 0,
-    regions: emptyRegions(),
-    coreMinRatio: null,
-    conservativeMinRatio: null,
-    worstCore: null,
-    worstEnvelope: null,
-    diagnostics,
-  };
 }
 
 function adjacentUnmeasured(reason, diagnostics = {}) {
@@ -126,19 +104,6 @@ function readAdjacentInput(input) {
   return { width, height, focused, ...readOutlineGeometry(input) };
 }
 
-function readInput(input) {
-  const { width, height, expectedLength } = readPixelDimensions(input);
-  const { focused, withoutOutline, restored } = input;
-  const buffers = { focused, withoutOutline, restored };
-  for (const [name, buffer] of Object.entries(buffers)) {
-    if (!(buffer instanceof Uint8Array) && !(buffer instanceof Uint8ClampedArray)) {
-      throw new TypeError(`${name} 必须是 Uint8Array 或 Uint8ClampedArray`);
-    }
-    if (buffer.length !== expectedLength) throw new TypeError(`${name} 长度必须为 width × height × 4`);
-  }
-  return { width, height, buffers, ...readOutlineGeometry(input) };
-}
-
 function regionFor(x, y, rect, radius) {
   const leftCenter = rect.x + radius;
   const rightCenter = rect.x + rect.width - radius;
@@ -167,22 +132,6 @@ function signedDistance(x, y, rect, radius) {
 
 function pixelRgba(buffer, offset) {
   return [buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]];
-}
-
-function differentBytes(left, right, offset) {
-  for (let channel = 0; channel < 4; channel += 1) {
-    if (left[offset + channel] !== right[offset + channel]) return true;
-  }
-  return false;
-}
-
-function recordDifference(diagnostic, x, y, left, right, offset) {
-  diagnostic.mismatchPixels += 1;
-  diagnostic.firstMismatch ??= {
-    pixel: { x, y },
-    left: pixelRgba(left, offset),
-    right: pixelRgba(right, offset),
-  };
 }
 
 function contrastSample(color, background, x, y) {
@@ -341,214 +290,5 @@ export function analyzeFocusOutlineAdjacentPixels(input) {
     ratio: worstBackground.ratio,
     reason: "adjacent-background-pass",
     diagnostics: { ...diagnostics, reasons: [] },
-  };
-}
-
-/**
- * Classify only the observed solid 2px / offset 3px / radius 11px opaque outline.
- * The clip is compared in full outside the rounded border shape; the interior is ignored.
- */
-export function analyzeFocusOutlinePixels(input) {
-  const { width, height, buffers, rect, outline } = readInput(input);
-  const result = unmeasured("analysis-not-complete");
-  const clipExtent = DISTANCE + ENVELOPE_TOLERANCE;
-  const requiredBounds = {
-    left: rect.x - clipExtent,
-    top: rect.y - clipExtent,
-    right: rect.x + rect.width + clipExtent,
-    bottom: rect.y + rect.height + clipExtent,
-  };
-  result.diagnostics = {
-    clip: {
-      complete:
-        requiredBounds.left >= -GEOMETRY_EPSILON &&
-        requiredBounds.top >= -GEOMETRY_EPSILON &&
-        requiredBounds.right <= width + GEOMETRY_EPSILON &&
-        requiredBounds.bottom <= height + GEOMETRY_EPSILON,
-      requiredBounds,
-    },
-    coreOutlineColor: { checkedPixels: 0, mismatchPixels: 0, firstMismatch: null },
-    envelopeAlpha: {
-      checkedPixels: 0,
-      nonOpaquePixels: 0,
-      channels: { focused: 0, withoutOutline: 0, restored: 0 },
-      firstNonOpaque: null,
-    },
-    restoreOutsideRoundedShape: { checkedPixels: 0, mismatchPixels: 0, firstMismatch: null },
-    focusedOutsideEnvelope: { checkedPixels: 0, mismatchPixels: 0, firstMismatch: null },
-  };
-
-  if (outline.width !== 2) return unmeasured("unsupported-outline-width", result.diagnostics);
-  if (outline.offset !== 3) return unmeasured("unsupported-outline-offset", result.diagnostics);
-  if (outline.radius !== 11) return unmeasured("unsupported-outline-radius", result.diagnostics);
-  if (outline.color[3] !== 255) return unmeasured("unsupported-outline-alpha", result.diagnostics);
-  if (!result.diagnostics.clip.complete) return unmeasured("clip-does-not-contain-envelope", result.diagnostics);
-
-  const regions = emptyRegions();
-  let corePixelCount = 0;
-  let envelopePixelCount = 0;
-  let coreMinRatio = null;
-  let conservativeMinRatio = null;
-  let worstCore = null;
-  let worstEnvelope = null;
-  let envelopeOpaque = true;
-  const restore = result.diagnostics.restoreOutsideRoundedShape;
-  const outside = result.diagnostics.focusedOutsideEnvelope;
-  const outlineColor = outline.color;
-  const coreColor = result.diagnostics.coreOutlineColor;
-  const envelopeAlpha = result.diagnostics.envelopeAlpha;
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const centerX = x + 0.5;
-      const centerY = y + 0.5;
-      const distance = signedDistance(centerX, centerY, rect, outline.radius);
-      const distanceFromCenterline = Math.abs(distance - DISTANCE);
-      const inEnvelope = distanceFromCenterline <= ENVELOPE_TOLERANCE + GEOMETRY_EPSILON;
-      const region = regionFor(centerX, centerY, rect, outline.radius);
-      const inCore =
-        region !== null &&
-        distanceFromCenterline <=
-          (region.includes("Left") || region.includes("Right") ? CORE_CORNER_TOLERANCE : CORE_EDGE_TOLERANCE) +
-            GEOMETRY_EPSILON;
-      const offset = (y * width + x) * 4;
-
-      if (distance > 0) {
-        restore.checkedPixels += 1;
-        if (differentBytes(buffers.focused, buffers.restored, offset)) {
-          recordDifference(restore, x, y, buffers.focused, buffers.restored, offset);
-        }
-      }
-
-      if (!inEnvelope && distance > 0) {
-        outside.checkedPixels += 1;
-        if (differentBytes(buffers.focused, buffers.withoutOutline, offset)) {
-          recordDifference(outside, x, y, buffers.focused, buffers.withoutOutline, offset);
-        }
-      }
-
-      if (!inEnvelope || region === null) continue;
-      envelopePixelCount += 1;
-      regions[region].envelope += 1;
-      envelopeAlpha.checkedPixels += 1;
-      const alpha = {
-        focused: buffers.focused[offset + 3],
-        withoutOutline: buffers.withoutOutline[offset + 3],
-        restored: buffers.restored[offset + 3],
-      };
-      let pixelOpaque = true;
-      for (const [name, value] of Object.entries(alpha)) {
-        if (value !== 255) {
-          envelopeAlpha.channels[name] += 1;
-          pixelOpaque = false;
-        }
-      }
-      if (!pixelOpaque) {
-        envelopeAlpha.nonOpaquePixels += 1;
-        envelopeAlpha.firstNonOpaque ??= { pixel: { x, y }, alpha };
-        envelopeOpaque = false;
-      }
-      const background = pixelRgba(buffers.withoutOutline, offset);
-      if (pixelOpaque) {
-        const sample = contrastSample(outlineColor, background, x, y);
-        conservativeMinRatio =
-          conservativeMinRatio === null ? sample.ratio : Math.min(conservativeMinRatio, sample.ratio);
-        worstEnvelope = keepWorst(worstEnvelope, sample);
-      }
-
-      if (!inCore) continue;
-      corePixelCount += 1;
-      regions[region].core += 1;
-      coreColor.checkedPixels += 1;
-      const focused = pixelRgba(buffers.focused, offset);
-      const restored = pixelRgba(buffers.restored, offset);
-      if (
-        focused.some((channel, index) => channel !== outlineColor[index]) ||
-        restored.some((channel, index) => channel !== outlineColor[index])
-      ) {
-        coreColor.mismatchPixels += 1;
-        coreColor.firstMismatch ??= { pixel: { x, y }, focused, restored, expected: [...outlineColor] };
-      }
-      if (pixelOpaque) {
-        const sample = contrastSample(outlineColor, background, x, y);
-        coreMinRatio = coreMinRatio === null ? sample.ratio : Math.min(coreMinRatio, sample.ratio);
-        worstCore = keepWorst(worstCore, sample);
-      }
-    }
-  }
-
-  if (!envelopeOpaque) {
-    coreMinRatio = null;
-    conservativeMinRatio = null;
-    worstCore = null;
-    worstEnvelope = null;
-  }
-  const missingCoreRegions = REGION_IDS.filter((id) => regions[id].core === 0);
-  const reasons = [];
-  if (missingCoreRegions.length > 0 || corePixelCount === 0) reasons.push("core-region-missing");
-  if (envelopeAlpha.nonOpaquePixels > 0) reasons.push("envelope-pixel-not-opaque");
-  if (coreColor.mismatchPixels > 0) reasons.push("core-outline-color-mismatch");
-  if (restore.mismatchPixels > 0) reasons.push("restoration-outside-rounded-shape-mismatch");
-  if (outside.mismatchPixels > 0) reasons.push("focused-state-drift-outside-envelope");
-  if (envelopePixelCount === 0 || conservativeMinRatio === null || coreMinRatio === null) {
-    reasons.push("contrast-samples-incomplete");
-  }
-  if (reasons.length > 0) {
-    return {
-      ...result,
-      reason: reasons[0],
-      corePixelCount,
-      envelopePixelCount,
-      regions,
-      coreMinRatio,
-      conservativeMinRatio,
-      worstCore,
-      worstEnvelope,
-      diagnostics: { ...result.diagnostics, missingCoreRegions },
-    };
-  }
-  if (coreMinRatio < THRESHOLD) {
-    return {
-      ...result,
-      result: "fail",
-      ratio: coreMinRatio,
-      reason: "core-contrast-below-threshold",
-      corePixelCount,
-      envelopePixelCount,
-      regions,
-      coreMinRatio,
-      conservativeMinRatio,
-      worstCore,
-      worstEnvelope,
-      diagnostics: { ...result.diagnostics, missingCoreRegions },
-    };
-  }
-  if (conservativeMinRatio < THRESHOLD) {
-    return {
-      ...result,
-      reason: "boundary-contrast-uncertain",
-      corePixelCount,
-      envelopePixelCount,
-      regions,
-      coreMinRatio,
-      conservativeMinRatio,
-      worstCore,
-      worstEnvelope,
-      diagnostics: { ...result.diagnostics, missingCoreRegions },
-    };
-  }
-  return {
-    ...result,
-    result: "pass",
-    ratio: conservativeMinRatio,
-    reason: "conservative-envelope-pass",
-    corePixelCount,
-    envelopePixelCount,
-    regions,
-    coreMinRatio,
-    conservativeMinRatio,
-    worstCore,
-    worstEnvelope,
-    diagnostics: { ...result.diagnostics, missingCoreRegions },
   };
 }

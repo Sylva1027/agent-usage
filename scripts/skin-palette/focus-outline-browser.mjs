@@ -1,4 +1,4 @@
-import { analyzeFocusOutlineAdjacentPixels, analyzeFocusOutlinePixels } from "./focus-outline-pixels.mjs";
+import { analyzeFocusOutlineAdjacentPixels } from "./focus-outline-pixels.mjs";
 
 const SELECTORS = new Set(["#addImportButton", "#pricingSearch"]);
 
@@ -59,10 +59,6 @@ const probe = (element, selector) => {
   };
 };
 
-async function paint(page) {
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-}
-
 function rgba(color) {
   const match = /^rgba?\(\s*([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/.exec(color);
   if (!match) return null;
@@ -98,12 +94,6 @@ function unsupported(state) {
   }
   if (state.rect.width < 22 || state.rect.height < 22) return "unsupported-target-dimensions";
   return null;
-}
-
-function stableState(state) {
-  const { color: _color, ...outline } = state.outline;
-  const { hadStyle: _hadStyle, value: _value, priority: _priority, ...inline } = state.inline;
-  return JSON.stringify({ ...state, outline, inline });
 }
 
 async function decode(page, png) {
@@ -276,117 +266,4 @@ export async function measureFocusOutlineAdjacentPixels({ page, selector }) {
   });
   if (failure) throw failure;
   return outcome ?? reject(reason ?? "analysis-not-complete");
-}
-
-export async function measureFocusOutlinePixels({ page, selector }) {
-  if (!SELECTORS.has(selector)) throw new TypeError(`不支持的焦点目标：${selector}`);
-  const diagnostics = { selector, probes: {}, restoration: { attempted: false, verified: false } };
-  const captures = { clip: null, focused: null, withoutOutline: null, restored: null };
-  const reject = (reason) => ({
-    analysis: { result: "unmeasured", ratio: null, threshold: 3, reason },
-    diagnostics,
-    captures,
-  });
-  const handles = await page.$$(selector);
-  if (handles.length !== 1) {
-    await Promise.all(handles.map((handle) => handle.dispose()));
-    return reject("target-not-unique");
-  }
-  const target = handles[0];
-  let primaryError = null;
-  let restorationError = null;
-  let changed = false;
-  let reason = null;
-  let before = null;
-  try {
-    before = await target.evaluate(probe, selector);
-    diagnostics.probes.before = before;
-    reason = unsupported(before);
-    if (reason) return reject(reason);
-    const { rect, viewport } = before;
-    const clip = clipFor(rect);
-    captures.clip = clip;
-    if (clip.x < 0 || clip.y < 0 || clip.x + clip.width > viewport.width || clip.y + clip.height > viewport.height)
-      return reject("clip-outside-viewport");
-    const screenshot = () => page.screenshot({ type: "png", fullPage: false, scale: "css", caret: "initial", clip });
-    try {
-      captures.focused = await screenshot();
-      diagnostics.probes.afterFocused = await target.evaluate(probe, selector);
-      if (JSON.stringify(before) !== JSON.stringify(diagnostics.probes.afterFocused)) {
-        reason = "focused-capture-state-drift";
-      } else {
-        changed = true;
-        await target.evaluate((element) => element.style.setProperty("outline-color", "transparent", "important"));
-        await paint(page);
-        diagnostics.probes.hidden = await target.evaluate(probe, selector);
-        if (
-          rgba(diagnostics.probes.hidden.outline.color)?.[3] !== 0 ||
-          stableState(before) !== stableState(diagnostics.probes.hidden)
-        ) {
-          reason = "outline-isolation-state-mismatch";
-        } else {
-          captures.withoutOutline = await screenshot();
-          diagnostics.probes.afterWithoutOutline = await target.evaluate(probe, selector);
-          if (JSON.stringify(diagnostics.probes.hidden) !== JSON.stringify(diagnostics.probes.afterWithoutOutline))
-            reason = "hidden-capture-state-drift";
-        }
-      }
-    } catch (error) {
-      primaryError = error;
-    } finally {
-      if (changed) {
-        diagnostics.restoration.attempted = true;
-        try {
-          await target.evaluate((element, inline) => {
-            if (inline.value) element.style.setProperty("outline-color", inline.value, inline.priority);
-            else element.style.removeProperty("outline-color");
-            if (!inline.hadStyle && element.style.length === 0) element.removeAttribute("style");
-          }, before.inline);
-          await paint(page);
-          diagnostics.probes.restored = await target.evaluate(probe, selector);
-          diagnostics.restoration.verified = JSON.stringify(before) === JSON.stringify(diagnostics.probes.restored);
-          if (!diagnostics.restoration.verified)
-            restorationError = new Error("焦点轮廓恢复后的节点、样式、焦点或几何不一致");
-        } catch (error) {
-          restorationError = error;
-        }
-      }
-    }
-    if (primaryError || restorationError) {
-      const error =
-        primaryError && restorationError
-          ? new AggregateError([primaryError, restorationError], "焦点截图失败且恢复失败")
-          : (primaryError ?? restorationError);
-      error.focusOutlineEvidence = { diagnostics, captures };
-      throw error;
-    }
-    if (reason) return reject(reason);
-    captures.restored = await screenshot();
-    diagnostics.probes.afterRestored = await target.evaluate(probe, selector);
-    if (JSON.stringify(before) !== JSON.stringify(diagnostics.probes.afterRestored))
-      return reject("restored-capture-state-drift");
-    const decoded = await Promise.all(
-      [captures.focused, captures.withoutOutline, captures.restored].map((png) => decode(page, png)),
-    );
-    diagnostics.decoded = decoded.map(({ width, height }) => ({ width, height }));
-    if (decoded.some(({ width, height }) => width !== clip.width || height !== clip.height))
-      throw new Error("三帧 PNG 尺寸与同一 clip 不匹配");
-    diagnostics.probes.afterDecode = await target.evaluate(probe, selector);
-    if (JSON.stringify(before) !== JSON.stringify(diagnostics.probes.afterDecode)) return reject("decode-state-drift");
-    const analysis = analyzeFocusOutlinePixels({
-      width: clip.width,
-      height: clip.height,
-      focused: new Uint8Array(decoded[0].data),
-      withoutOutline: new Uint8Array(decoded[1].data),
-      restored: new Uint8Array(decoded[2].data),
-      rect: { ...rect, x: rect.x - clip.x, y: rect.y - clip.y },
-      outline: { width: 2, offset: 3, radius: 11, color: rgba(before.outline.color) },
-    });
-    return { analysis, diagnostics, captures };
-  } catch (error) {
-    error.focusOutlineEvidence ??= { diagnostics, captures };
-    throw error;
-  } finally {
-    await target.dispose();
-  }
 }
