@@ -6,7 +6,7 @@ import { createUsageServer } from "../src/server.js";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
 
-test("detail growth, diagonal quota control and theme transitions work in the real dashboard", async (t) => {
+test("detail growth, uncut quota control and theme transitions work in the real dashboard", async (t) => {
   const runtime = await resolveBrowserRuntime();
   if (!runtime) {
     assert.ok(!process.env.CI, "CI requires a browser runtime");
@@ -67,7 +67,7 @@ test("detail growth, diagonal quota control and theme transitions work in the re
   assert.equal(geometry.height, geometry.chartHeight);
   assert.equal(geometry.scrolls, true);
   assert.equal(geometry.thumb, "8px");
-  assert.notEqual(geometry.quotaClip, "none");
+  assert.equal(geometry.quotaClip, "none");
   await mkdir(new URL("../output/additions-ui/", import.meta.url), { recursive: true });
   await page.screenshot({
     path: fileURLToPath(new URL("../output/additions-ui/layout.png", import.meta.url)),
