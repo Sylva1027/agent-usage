@@ -70,6 +70,76 @@ body {
   font-variant-numeric: lining-nums;
 }
 
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-old(root) {
+  animation: none;
+}
+
+::view-transition-new(root) {
+  animation: theme-fade-in 1s linear;
+  mix-blend-mode: normal;
+}
+
+::view-transition-group(root) {
+  animation-duration: 1s;
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)::-webkit-scrollbar,
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog) *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+:is(
+  .detail-panel,
+  .period-comparison-table,
+  #importDialog,
+  #pricingDialog,
+  #modelPricingDialog
+)::-webkit-scrollbar-track,
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)
+  *::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--track) 35%, transparent);
+}
+
+:is(
+  .detail-panel,
+  .period-comparison-table,
+  #importDialog,
+  #pricingDialog,
+  #modelPricingDialog
+)::-webkit-scrollbar-thumb,
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)
+  *::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+
+:is(
+  .detail-panel,
+  .period-comparison-table,
+  #importDialog,
+  #pricingDialog,
+  #modelPricingDialog
+)::-webkit-scrollbar-thumb:hover,
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)
+  *::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
 button,
 input,
 select {
@@ -619,26 +689,42 @@ label {
 }
 
 #presetButtons > .quota-preset-toggle {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   box-sizing: border-box;
   flex: 0 0 76px;
   width: 76px;
   padding: 0;
   overflow: hidden;
-  gap: 6px;
+  gap: 0;
   white-space: nowrap;
 }
 
 #presetButtons > .quota-preset-toggle .quota-preset-mode {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   min-width: 0;
   font: inherit;
   color: var(--ink);
+}
+
+#presetButtons > .quota-preset-toggle .quota-preset-mode::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: polygon(0 0, 58% 0, 42% 100%, 0 100%);
+  background: linear-gradient(145deg, var(--ceramic-top), var(--ceramic-bottom));
+  pointer-events: none;
+}
+
+#presetButtons > .quota-preset-toggle .quota-preset-mode[data-quota-mode="quota_week"]::before {
+  clip-path: polygon(58% 0, 100% 0, 100% 100%, 42% 100%);
 }
 
 #presetButtons > .quota-preset-toggle.active .quota-preset-mode:not(.is-selected) {
@@ -650,12 +736,18 @@ label {
   font-weight: 650;
 }
 
+#presetButtons > .quota-preset-toggle .quota-preset-mode.is-selected::before {
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset-small);
+}
+
 #presetButtons > .quota-preset-toggle .quota-preset-divider {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font: inherit;
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(57% 0, 59% 0, 43% 100%, 41% 100%);
+  background: linear-gradient(to right, var(--ceramic-rim), var(--ceramic-shade));
+  font-size: 0;
+  pointer-events: none;
 }
 
 .quota-preset-status {
@@ -1169,7 +1261,7 @@ html[lang="en-US"] #repositoryComparisonSearch {
 
 .comparison-table-scroll {
   /* 固定高度的滚动区 + 独立的合计行：合计始终钉在框体底部。 */
-  height: 460px;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1416,6 +1508,7 @@ select {
   flex-direction: column;
   height: auto;
   min-height: 320px;
+  max-height: calc(var(--main-panel-stable-height) * 2);
   overflow: hidden;
 }
 
@@ -1450,7 +1543,7 @@ details.panel:not([open]) > .panel-heading {
 }
 
 .detail-panel .bar-list {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   align-content: start;
   overflow: auto;
@@ -2732,6 +2825,12 @@ button:disabled {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(root) {
+    animation: none;
+  }
+
   /* !important 必须保留：覆盖此前定义的所有过渡与按压动效。 */
   button,
   input,
@@ -2750,6 +2849,8 @@ button:disabled {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
   border: 0;
   border-radius: 16px;
   /* The footer exposes the panel's continuous surface, including its gradient. */
@@ -3425,7 +3526,7 @@ main.shell > .main-grid {
 
 @media (min-width: 721px) {
   main.shell > .main-grid {
-    height: var(--main-panel-stable-height);
+    grid-template-rows: minmax(var(--main-panel-stable-height), auto);
   }
 }
 
@@ -3501,7 +3602,7 @@ main.shell .period-comparison-panel {
 main.shell .period-comparison-table {
   height: var(--period-comparison-slot-height);
   min-height: var(--period-comparison-slot-height);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 main.shell .period-comparison-table > .empty {
