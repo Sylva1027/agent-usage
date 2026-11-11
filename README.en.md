@@ -20,6 +20,18 @@ node src/cli.js run
 
 Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.0.0.1` by default. Press `Ctrl+C` to stop it.
 
+Current source builds two editions at the same version: `agent-usage-v0.8.5.zip` is Standard, with the dashboard and light/dark themes but no skin controls, modules, artwork, or studio. `agent-usage-v0.8.5-waifu.zip` includes Waifu. Both share the same statistics and pricing core. Standard ignores existing skin preferences and preserves them for a later return to Waifu. Skin screenshots and features below describe Waifu; running from source also defaults to Waifu.
+
+Package on Windows with PowerShell 7, without adding npm dependencies:
+
+```powershell
+npm.cmd run native:check
+npm.cmd run package:release -- output/releases
+npm.cmd run package:check -- output/releases --browser
+```
+
+Run `npm.cmd run native:build` first if the matching helper is missing. Output contains both ZIPs, per-file SHA-256 hashes, and acceptance results. The destination must be new; choose another child of `output/` to rebuild. Browser checks reuse the existing Playwright/Edge environment; see [release packaging](docs/15-delivery-upgrade.md#双版本运行包) for configuration and HTTP-only checks. Local packaging does not update GitHub release assets.
+
 ## Dashboard
 
 - **Time and Trends:** Explore Today, This Week, This Month, All Time, custom dates, and recent ranges. View the timeline by source, model, or estimated cost. Longer All Time, custom, and recent ranges automatically merge daily bars into weekly or monthly bars; the subtitle and tooltips show the grouping and covered dates. This Week follows the calendar week.

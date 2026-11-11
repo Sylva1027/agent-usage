@@ -22,6 +22,18 @@ node src/cli.js run
 
 本轮重构的当前已测性能已被接收，发布版链接仍指向此前的v0.8.5。Windows从新源码交付时，使用`npm.cmd run native:build`和`npm.cmd run native:check`准备配套助手；助手缺失时程序仍自动回退。完整构建、保留历史升级与回滚步骤见[交付与升级](docs/15-delivery-upgrade.md)。
 
+当前源码支持同版本双包：`agent-usage-v0.8.5.zip` 为普通版，保留主界面与深浅主题，不含皮肤入口、模块、图片或工作室；`agent-usage-v0.8.5-waifu.zip` 保留 Waifu 功能。两版统计与计价核心相同；普通版忽略并保留已有皮肤偏好，切回 waifu 版可继续恢复。下方皮肤截图与功能说明对应 waifu 版，源码运行也默认使用 waifu 版。
+
+Windows 下使用 PowerShell 7 打包，无需增加 npm 依赖：
+
+```powershell
+npm.cmd run native:check
+npm.cmd run package:release -- output/releases
+npm.cmd run package:check -- output/releases --browser
+```
+
+助手尚未构建时先运行 `npm.cmd run native:build`。输出包含两个 ZIP、逐文件 SHA-256 清单和验收记录；目标目录必须全新，重新生成时换一个 `output/` 子目录。浏览器验收复用现有 Playwright/Edge 环境，配置和仅 HTTP 验收入口见[双版本运行包](docs/15-delivery-upgrade.md#双版本运行包)。本地打包不会更新 GitHub 发布资产。
+
 ## 看板功能
 
 - **时间与趋势：** 支持今日、本周、本月、全部、自定义日期及最近范围。“本周”按自然周计算。时间分布可按渠道、模型或估算花销查看；较长的“全部”、自定义和最近范围会自动从日柱合并为周柱或月柱，副标题和悬浮提示会标出合并粒度与覆盖日期。

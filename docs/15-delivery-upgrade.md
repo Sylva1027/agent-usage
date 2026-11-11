@@ -69,9 +69,37 @@ npm.cmd run native:check -- -OutputDirectory output/native-candidate/bin
 
 编译失败保留原产物和回执；成功后以临时文件替换，避免暴露复制到一半的exe。两份文件应一起分发，交付前再次执行check。程序使用中的exe可能被Windows锁定，升级采用新程序目录。
 
+## 双版本运行包
+
+在同一份集成源码上执行，版本取 `package.json`（当前 0.8.5）：
+
+```powershell
+npm.cmd run native:check
+node --test test/package-release.test.js
+npm.cmd run package:release -- output/releases
+npm.cmd run package:check -- output/releases --browser
+```
+
+`scripts/package-release.mjs` 使用 Node 标准库和 PowerShell 7 `Compress-Archive` 生成 ZIP，系统 `tar` 检查目录并解压逐文件核验。无需生产 npm 依赖。助手及回执必须先准备好；脚本只读运行 `native:check` 的同一检查，不调用 Cargo。缺少或不匹配时停止，先显式 `native:build` 后再打包。
+
+- `agent-usage-v0.8.5.zip`：普通版，将五个 `waifu:start/end` 区块裁掉，根节点改为 `data-edition="standard"`，排除全部皮肤专属文件和工作室，保留原 `styles.css` 与共享主界面模块。
+- `agent-usage-v0.8.5-waifu.zip`：waifu 版，保留源码页面、皮肤模块、工作室和 40 张运行 WebP。
+- `release-manifest.json`：两个 ZIP 的 SHA-256、各自逐文件 SHA-256 和共同核心摘要。共同核心包含全部相同运行文件，仅排除两版 HTML 差异及皮肤专属文件。
+- `acceptance-http.json` / `acceptance-browser.json`：实际解包后的核验结果；仅 HTTP 运行不会标记浏览器通过。浏览器启动受环境限制或断言失败时记录原因并以非零退出。
+
+允许交付的输入仅为 `src/**/*.js`、列明的 `public` 核心与皮肤文件、`public/assets/skins/**/*.webp`、`package.json`、`LICENSE`，以及 `native/windows-source-proof` 的 Cargo 清单／锁文件、`build.ps1`、Rust 源码、`bin` 中的 exe／回执。不会把 `.gitignore`、Cargo target、作者 PNG、开发依赖、实验、测试资料、用户数据或历史文档装入运行包。waifu 先取得一份文件快照，普通版从同批字节派生；两包共同核心逐文件相等才生成摘要。打包时仍需在最终集成后重新生成候选，不能把并行修改期间的包当成最终版。
+
+输出路径必须位于当前工作区 `output/` 内的全新子目录，拒绝越界、符号链接／junction 和已有目标；不会覆盖旧包，也不会递归删除用户指定目录。脚本只回收自己新建的 `.package-*` / `.check-*` 暂存目录和 palette 合成夹具。重复生成可使用 `output/releases-final` 等新目录，候选 ZIP、清单和验收回执保留在输出目录。
+
+`scripts/check-release.mjs` 从实际 ZIP 解压，校验清单、摘要、版本和原生回执，执行 CLI help，再从两份包各自导入服务器，以现有 `test-support/skin-palette-fixture.mjs` 隔离数据和 `listen(0, "127.0.0.1")` 分配端口。检查主样式／工作室交付边界、固定 242800 Token 及两包统计总计、模型／渠道分组与费用摘要一致。`--browser` 还复用 `resolveBrowserRuntime`：普通版预置旧 waifu 偏好，检查首屏、刷新、主题、无皮肤入口／配色／资源请求与 Tab/Escape；waifu 版检查偏好、入口、选择器和深浅角色图片。覆盖中文桌面及英文窄窗口。
+
+浏览器沿用维护环境，可在 PowerShell 设置 `AGENT_USAGE_PLAYWRIGHT_MODULE`（现有 Playwright 的 `index.mjs` 完整路径）和可选 `AGENT_USAGE_EDGE_PATH`。省略 `--browser` 可单独运行 ZIP／原生／HTTP 检查。若本地 sandbox 拒绝 Edge 启动，保留失败记录，由允许启动浏览器的主线程或 CI 重跑同一命令，不把该次标为通过。CI 在 Windows / Node 24 上构建配套助手、生成并验收双包，作为构建 artifact 保存；Node 22 继续现有测试矩阵。
+
+2026-11-11 的 C 阶段候选位于 `output/r2-c-candidate-20261111/`（并行修改期间快照，最终须重建）：普通包 67 文件、waifu 包 116 文件，共同核心 SHA-256 为 `55aff2ad86ef39fa1b96f667e3c386279590254a59a08da770f7e7bbb4187119`。四项打包测试通过；实际 ZIP 目录／解压后逐文件摘要、CLI help、两包助手回执和隔离 HTTP 检查通过，两包各 242800 Token。浏览器已尝试，sandbox Edge 报 `0x80070005`／crashpad 管道错误，在进入页面前退出；`acceptance-browser.json` 保留失败日志，普通版旧偏好隔离与 waifu 恢复的真实浏览器断言待主线程重跑。暂存、解包和合成数据目录已释放，不涉及在用安装或真实用户数据。
+
 ## 保留历史的升级顺序
 
-1. **准备新程序目录。** 保留旧程序目录，在新目录构建并校验助手。预构建运行包应包含`src/`、`public/`、`package.json`、`LICENSE`和完整`native/windows-source-proof/`，后者包含源码、脚本、exe及回执；不带用户日志、索引、配置、`node_modules`、Cargo target或实验输出。
+1. **准备新程序目录。** 保留旧程序目录，解压所选普通／waifu 运行包并校验助手。运行包包含`src/`、相应版本的`public/`、`package.json`、`LICENSE`和`native/windows-source-proof/`所需源码、构建脚本、exe及回执；不带用户日志、索引、配置、`node_modules`、Cargo target或实验输出。
 2. **停止对应的旧实例。** 前台用原终端Ctrl+C；后台使用旧程序的`node src/cli.js stop`，若原来传了`--state-file`，停止时继续传同一个路径。`stop`会停止该注册文件内的全部实例，仅在这些实例均计划停止时使用。确认旧实例实际退出后再操作数据；若报告`still running`，先确认该实例的退出状态，暂不进行覆盖或切换。
 3. **完整保留状态。** 停稳后把原`~/.codex-usage/`复制到新的备份目录，包括SQLite、仍存在的WAL/SHM、汇总库、价目和导入配置。自定义数据库/配置路径也一起保留；有外置冷历史时保留完整目录及相邻manifest，以及已有压实的 `compaction.json` 和新旧包。冷热投影可重建，但保留副本有助于按原状态重开。不能只备份还能找到的原始会话日志：已被上游清理的历史可能只剩索引事实。
 4. **从新目录按原参数启动。** 使用原`--home-dir`、`--state-file`和端口等参数，保持原数据位置。数据库打开过程执行迁移、补齐索引及派生结构，已有事实继续使用；不要删除索引、手改`user_version`或用空库重建代替升级。第一次派生准备可能较慢。

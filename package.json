@@ -16,6 +16,8 @@
     "format": "biome format --write .",
     "native:build": "pwsh -NoProfile -File native/windows-source-proof/build.ps1",
     "native:check": "pwsh -NoProfile -File native/windows-source-proof/build.ps1 -Check",
+    "package:release": "node scripts/package-release.mjs",
+    "package:check": "node scripts/check-release.mjs",
     "skins:prepare": "node scripts/prepare-skin-assets.mjs prepare",
     "skins:check": "node scripts/prepare-skin-assets.mjs check",
     "skins:check:sources": "node scripts/prepare-skin-assets.mjs check-sources",
