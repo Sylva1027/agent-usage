@@ -3076,7 +3076,7 @@ export class UsageStore {
 
   async registerHistoryArchiveCandidate(candidateFile, manifestFile = undefined) {
     await this.open();
-    // Dynamic import avoids store -> archive -> backup -> store initialization cycles.
+    // Keep archive verification lazy for normal index startup.
     const { assertHistoryArchiveSourceMatches, verifyHistoryArchiveCandidate } = await import("./history-archive.js");
     const verified = await verifyHistoryArchiveCandidate(candidateFile, manifestFile);
     if (!verified.ok || !verified.candidate) {

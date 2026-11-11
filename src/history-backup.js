@@ -6,7 +6,6 @@ import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { getPricingCatalog, validatePricingCatalog } from "./pricing.js";
 import { serviceTierEvidenceFromSnapshot, serviceTierEvidenceSnapshot } from "./service-tier-evidence.js";
-import { STORE_SCHEMA_VERSION } from "./usage-store.js";
 
 export const HISTORY_BACKUP_FORMAT_VERSION = 1;
 

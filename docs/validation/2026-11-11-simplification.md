@@ -53,7 +53,7 @@
 
 app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋势计算、metadata 推导。独立逐事件参考迁至 test-support/summary-reference.js；只保留现行测试消费的计算，metadata 对照缩为 modelActivityFromReport。参考函数体与原版本逐项 AST 打印比较一致。所有调用方已迁移；渲染测试直接设置现有 state，纯范围断言迁到 app-summary。统计测试名称改为 reference，避免称为真实浏览器覆盖。
 
-时间轴直接复用 period-comparison 的日初/周初；页面仍使用的 addCalendarDays 等辅助保留。第 05 卡随旧生产统计链删除关闭，不合并独立参考算法与被测后端。
+最终保留时间轴本地的日初/周初与页面 addCalendarDays：依赖复查发现，复用 period-comparison 会让浏览器额外加载 period-comparison 和 usage-fields 两个模块，仅减少 14 行函数不值得扩大加载链。timeline-utils 已恢复为基线原文。第 05 卡随旧生产统计链删除关闭，不合并独立参考算法与被测后端。
 
 验证：12 个相关文件（页面渲染/刷新、timeline、recent、usage-core/store、quota、Claude 计价与统计对拍）共 255 项，253 通过、2 个原有 usage-store warnings 失败、0 跳过。两项失败名称/位置/断言与基线一致；没有新增失败。差异和遗漏引用检查通过。
 
@@ -72,3 +72,33 @@ app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋�
 ### 08：有意保留的局部重复
 
 五份 deepFreeze 和短路径/事务辅助保持原样，没有引入 contracts 依赖或新生产依赖。
+
+### 09：入口核查收尾
+
+复查 UsageStore 全部 102 个方法的引用。除下述两个维护/测试入口外，均找到其他产品引用；私有 rebuildHistoryRollupsTransaction 另外核对了两个直接调用。registerHistoryArchiveCandidate 用于归档夹具、注册冲突/重叠校验及 architecture 的 b3-history-benchmark；mergeHistoryArchiveEventsForRange 是现行冷热并集测试使用的两行 rows 包装。保留这两项，避免为了移动少量入口扩大约百处测试/复现改动。它们与已有明确退场记录的 UI 不同，没有删除其校验职责。
+
+最终代码文件分类（JS/MJS/CJS/RS/PS1/CSS/HTML）：src 46、public 20、scripts 41、native 3、test 242、test-support 11；五个实验分别为 architecture 253、node-index 16、node-startup 17、rust-integration 22、rust-parsing 8；docs 136（含历史复现/图示）、.claude 2、.archify 1。文档/历史图示不作为产品入口，也不因没有普通 import 删除。全部文件按入口、测试/复现、历史证据归类；关键路径与删除候选的检查范围如上表。
+
+集成静态检查发现 schema 别名删除后留下 STORE_SCHEMA_VERSION import，已清理；同时纠正过时的循环依赖注释。typecheck 通过；lint 回到基线 51 warning、3 info，无新增诊断。全仓 format:check 剩 40 个格式不合规文件，逐个取 5d93578 原文对照 formatter，确认全部为原有问题；未进行全仓格式重写。
+
+最终复核：8 个生产/工具文件中保留的 326 个函数体，与基线 AST 打印结果相同。第一次集成全量出现 Q8 重启及 quota-recovery 两个 fetch failed，Q8 进程在清理时停滞；确认无子进程后仅结束该测试进程。单独 Q8 6 项通过，最后依赖调整后 Q8、quota-recovery、timeline、recent 共 32 项全部通过。保留第一次集成日志（final.log），重新运行全量于 final-recheck.log，不将该次瞬时失败隐藏为首次通过。
+
+## 最终差异与验证边界
+
+最终完整验证（final-recheck.log）：3264 项，3180 通过、15 失败、69 跳过、0 取消，319.0 秒。逐项比较失败名称，与实施前 15 项完全相同，**没有新增失败**。Q8 与 quota-recovery 的两项瞬时 fetch 失败在本次完整运行中均通过。
+
+| 检查 | 实施前 | 最终 |
+| --- | --- | --- |
+| 完整测试 | 3293 项：3209 通过、15 失败、69 跳过 | 3264 项：3180 通过、相同 15 失败、69 跳过 |
+| typecheck | 通过 | 通过 |
+| lint | 51 warning、3 info | 51 warning、3 info，无新增 |
+| format:check | 以基线原文逐文件对照 | 40 个原有格式问题；本轮新增格式问题已清除 |
+| git diff --check | — | 通过 |
+
+相对 `5d93578`，生产代码净减少 1,431 行、工具代码净减少 383 行、测试及支持代码净减少 704 行，合计 2,518 行（不含文档）。主页面可达 JS 源码在统一 LF 后减少 30,658 bytes；这是源码体积变化，没有据此声称启动或请求速度提升。没有新增 npm 依赖，数据 schema、SQL、页面 CSS 和生产计算函数体保持原样。
+
+归档 UI 删除 14 个顶层测试；旧焦点算法删除 9 个顶层测试及 7 个子测试；来源边界新增 1 项。原有独立统计对照和现行焦点算法断言保留，测试总数因此从 3293 变为 3264。
+
+未运行 Node 22/24 CI 矩阵、Rust 编译/测试、真实大数据库性能矩阵或部署；未逐行证明所有历史实验无冗余。本轮使用 Windows/Node 26 的现有完整测试、包含其中的真实浏览器场景，以及定向回归和静态检查。历史皮肤评审证据保留原哈希，未重新发布为新源码的证据。
+
+已提交批次：`1c60bb7` 归档 UI、`b274a24` 焦点测量、`a9c9ca7` 计价死代码、`f1385f6` 统计参考迁移、`2abdace` Token 解析、`9def697` 测试夹具；最终收尾提交包含依赖复核修正及本记录。活动数据与服务未变更。
