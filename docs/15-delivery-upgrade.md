@@ -2,7 +2,7 @@
 
 **实际启用状态（2026-11-11）：已在本机切换到新安装并保留真实历史及升级前备份。** 地址为 <http://127.0.0.1:3765/>；[启用核对与恢复位置](validation/2026-11-11-activation/README.md)记录本次兼容修复、96 项定向检查、历史逐条核对及临时数据清理。下段为启用前的冻结交付状态，后续实际安装以本次启用记录为准。
 
-更新：2026-11-11。现有实现继续使用浏览器、Node.js和SQLite；本页是交付操作入口。冻结生产候选为 `811718a`，版本0.8.5。来源暂态冲突恢复、已提交批次持续发布已修复，最新两年四轮短循环的72追加、6次独立核对、最终重开及资源收敛通过，见[收尾结果、标准及边界](../experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)。必要技术验收与本地交付收尾完成，当前DSH刷新／all切换、一年首次today／all、两年today切换这5项性能偏差仍待用户签收；历史失败保留，1秒刷新／200ms切换为后续目标。构建／升级入口不变，119项运行文件和助手配套已核对；没有替换在用服务或助手，不声明八小时稳定性或跨平台全面通过。
+更新：2026-11-11。现有实现继续使用浏览器、Node.js和SQLite；本页是交付操作入口。冻结生产候选为 `811718a`，版本0.8.5。来源暂态冲突恢复、已提交批次持续发布已修复，最新两年四轮短循环的72追加、6次独立核对、最终重开及资源收敛通过，见[收尾结果、标准及边界](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)。必要技术验收与本地交付收尾完成，当前DSH刷新／all切换、一年首次today／all、两年today切换这5项性能偏差仍待用户签收；历史失败保留，1秒刷新／200ms切换为后续目标。构建／升级入口不变，119项运行文件和助手配套已核对；没有替换在用服务或助手，不声明八小时稳定性或跨平台全面通过。
 
 ## 本轮已有改造
 
@@ -32,7 +32,7 @@
 
 归档校验复用依赖有效租约，助手协议为 `windows-archive-read-lock-v2`，保护数据库、manifest 及完整父路径。该租约不要求启用 NTFS journal；来源追加证明使用现有 journal，是另一项能力。助手缺失、协议旧或租约不可用时，普通查询保留完整内容校验回退；显式压实须取得所需租约，否则拒绝切换，保留原历史。
 
-较早测量见[Q10报告](../experiments/architecture-20261101/Q10-REFRESH-REOPEN-REPORT.md)；后续状态见[多标签报告](../experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)与[最后验收计划](plans/2026-11-10-windows-final-acceptance.md)。1秒刷新／200ms切换已转后续目标，当前custom既有偏差获用户接受；原八小时及本次两小时资源收敛均未完成。Linux/macOS专项适配仍另行安排。
+较早测量见[Q10报告](archive/2026-11-11-experiments/architecture-20261101/Q10-REFRESH-REOPEN-REPORT.md)；后续状态见[多标签报告](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)与[最后验收计划](plans/2026-11-10-windows-final-acceptance.md)。1秒刷新／200ms切换已转后续目标，当前custom既有偏差获用户接受；原八小时及本次两小时资源收敛均未完成。Linux/macOS专项适配仍另行安排。
 
 ## 运行与开发环境
 
@@ -117,9 +117,9 @@ node src/cli.js history compact "E:/usage-staging/source.sqlite" "E:/usage-stagi
 
 2026-11-09交付核验采用生产基线 `6fcc95d`，串行完成一套运行包和四个小夹具场景：有效／缺失／旧协议助手分别启动页面并真实刷新；双冷包完成已有索引打开→导出／导入→压实→追加与旧值修订→压实回滚→重开。旧schema升级及已删来源保留在三态HTTP夹具验证；四个压实中断点和两种指定旧版投影兼容检查也通过。这些是对应版本的历史通过证据，不是当前冻结版重新跑过完整三态或双冷包整链。
 
-2026-11-11核对当前119项文件及助手配套，按实际实现差异复用未变迁移／格式／构建核心证据，并针对后来改动补6项小夹具：缺失来源保留3项、WAL备份／跨进程恢复2项、压实后写入／回滚及精确费用／额度保留1项，全部通过。当前两年四轮72追加、6次独立核对及最终重开也通过；完整三态整链、八小时和跨平台未新增验证声明，见[本轮统一结果](../experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)。
+2026-11-11核对当前119项文件及助手配套，按实际实现差异复用未变迁移／格式／构建核心证据，并针对后来改动补6项小夹具：缺失来源保留3项、WAL备份／跨进程恢复2项、压实后写入／回滚及精确费用／额度保留1项，全部通过。当前两年四轮72追加、6次独立核对及最终重开也通过；完整三态整链、八小时和跨平台未新增验证声明，见[本轮统一结果](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)。
 
-包内核对 `src/`、`public/`、`package.json`、`LICENSE`、原生源码／构建脚本及 exe／回执；排除用户数据、开发依赖、Cargo target 和实验输出。现有冻结工具还包含 `package-lock.json`。核对源码与运行副本摘要、执行 `native:check` 并记录最终 exe 摘要；本轮没有新增安装器。精确命令、已有覆盖与小夹具缺口见[收尾记录的新阶段](../experiments/architecture-20261101/DELIVERY-HANDOFF-REPORT.md#2026-11-09-windows并行收尾待集中验收)。
+包内核对 `src/`、`public/`、`package.json`、`LICENSE`、原生源码／构建脚本及 exe／回执；排除用户数据、开发依赖、Cargo target 和实验输出。现有冻结工具还包含 `package-lock.json`。核对源码与运行副本摘要、执行 `native:check` 并记录最终 exe 摘要；本轮没有新增安装器。精确命令、已有覆盖与小夹具缺口见[收尾记录的新阶段](archive/2026-11-11-experiments/architecture-20261101/DELIVERY-HANDOFF-REPORT.md#2026-11-09-windows并行收尾待集中验收)。
 
 ## 收尾清理
 
@@ -135,4 +135,4 @@ $env:AGENT_USAGE_TEST_NATIVE_BUILD = '1'
 node --test test/windows-source-build.test.js
 ```
 
-构建用例只在`output/`下的临时副本编译，验证路径含空格、回执缺失、源码变化、产物损坏及编译失败保留旧文件；默认测试环境未明确启用时标注跳过。原生行为测试可显式设置`Q6_TEST_HELPER`指向隔离exe。交付核对结果见[本轮收尾记录](../experiments/architecture-20261101/DELIVERY-HANDOFF-REPORT.md)。
+构建用例只在`output/`下的临时副本编译，验证路径含空格、回执缺失、源码变化、产物损坏及编译失败保留旧文件；默认测试环境未明确启用时标注跳过。原生行为测试可显式设置`Q6_TEST_HELPER`指向隔离exe。交付核对结果见[本轮收尾记录](archive/2026-11-11-experiments/architecture-20261101/DELIVERY-HANDOFF-REPORT.md)。

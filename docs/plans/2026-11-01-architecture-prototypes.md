@@ -295,8 +295,8 @@ token、费用与精确分位数，不通过额外容差或近似算法过关。
 
 ### 9.2 实现与验证安排
 
-- 当前 [产品 CI](../../.github/workflows/ci.yml)和[原型手动验证流程](../../.github/workflows/architecture-prototypes.yml)均以 Windows 为目标。
-- 旧 [native-dsh 实验](../../experiments/rust-integration-20261030/native-dsh/README.md)依赖 Windows `raw-dylib` 与本机 `zstd.dll`。若后续重构采用相关实现，跨平台替换或适配在 S6 处理。
+- 当前 [产品 CI](../../.github/workflows/ci.yml)和[原型手动验证流程](../archive/2026-11-11-experiments/README.md#恢复归档)均以 Windows 为目标。
+- 旧 [native-dsh 实验](../archive/2026-11-11-experiments/rust-integration-20261030/native-dsh/README.md)依赖 Windows `raw-dylib` 与本机 `zstd.dll`。若后续重构采用相关实现，跨平台替换或适配在 S6 处理。
 
 当前按 Windows 实际需求实现和验证，保留可复现的依赖、构建及测量记录。现有可移植依赖和统一启动器可以继续使用，不为未来平台提前增加适配层或抽象。
 
@@ -314,7 +314,7 @@ token、费用与精确分位数，不通过额外容差或近似算法过关。
 
 复用资源：
 
-- [现有 benchmark.mjs](../../experiments/rust-integration-20261030/benchmark.mjs) 的业务结果比较能力。
+- [现有 benchmark.mjs](../archive/2026-11-11-experiments/README.md#恢复归档) 的业务结果比较能力。
 - 现有 matrix、summary-parity 实验经验。
 - `test/` 中已有业务契约与夹具。
 
@@ -355,7 +355,7 @@ P1 可以胜出，SQLite 可以保留。若四个都不达标，就交付剩余�
 
 ## 13. 本轮实施记录（2026-11-01）
 
-代码与运行命令见 [四原型 README](../../experiments/architecture-20261101/README.md)。本轮使用 pinned-workers 技能，3 名 worker 的创建参数均明确指定 `model=group/deepseek`、`reasoning_effort=max`，主代理负责共享契约、整合和独立验收；创建返回记录见 [审计文件](../../experiments/architecture-20261101/worker-model-audit.json)。
+代码与运行命令见 [四原型 README](../archive/2026-11-11-experiments/architecture-20261101/README.md)。本轮使用 pinned-workers 技能，3 名 worker 的创建参数均明确指定 `model=group/deepseek`、`reasoning_effort=max`，主代理负责共享契约、整合和独立验收；创建返回记录见 [审计文件](../archive/2026-11-11-experiments/README.md#恢复归档)。
 
 ### 已交付
 
@@ -381,11 +381,11 @@ P1 可以胜出，SQLite 可以保留。若四个都不达标，就交付剩余�
 
 ## 14. Windows 真实看板初筛（2026-11-02）
 
-下一步已执行，详细结果见 [Markdown 实测报告](../../experiments/architecture-20261101/WINDOWS-REPORT.md)。只修改实验与说明，正式源码和活动库保持原样。没有新增第五、第六个原型；Linux/macOS 继续后置。
+下一步已执行，详细结果见 [Markdown 实测报告](../archive/2026-11-11-experiments/architecture-20261101/WINDOWS-REPORT.md)。只修改实验与说明，正式源码和活动库保持原样。没有新增第五、第六个原型；Linux/macOS 继续后置。
 
 - 四后端增加同一版本的来源 changes feed。共享 gateway 首次全量，此后先薄版本检查，变化后再取来源替换；普通范围实际使用后端基础汇总。
 - 业务视图缓存覆盖版本、筛选、价目与安全时钟边界；并发请求捕获不可变版本；同事实版本的不同冻结视图有独立时间、价目及 ID。保留 legacy 全量路径作为诊断入口。
-- 三名 DeepSeek worker 按不重叠 owner 和顺序修正卡完成，主代理审查、真实数据对拍及串行测量。三名 worker 已关闭，当前记录见 [审计文件](../../experiments/architecture-20261101/product-phase-worker-audit.json)。
+- 三名 DeepSeek worker 按不重叠 owner 和顺序修正卡完成，主代理审查、真实数据对拍及串行测量。三名 worker 已关闭，当前记录见 [审计文件](../archive/2026-11-11-experiments/README.md#恢复归档)。
 - Node 后端 23 项、Rust release/all-features 28 项、gateway 14 项，共 65 项测试通过；四后端的小夹具与 159,610 条真实历史完整业务对拍通过。
 - 四原型各完成 3 次冷服务启动、100 次重复范围切换、100 次页面重载、100 次小来源修订到原页面指标显示，逐次验证精确 token 数和修订。B0 完成 3 次冷启动及 100 次切换后，在隔离导入模式重载时触发默认执行器 OOM，失败与未完成场景单列。
 - P1/P2/P3/P4 的切换 p95 为 672/134/128/171 ms；更新到指标显示 p95 为 2,638/3,212/3,097/5,134 ms。三个 Rust 候选满足重复切换 200 ms 目标；四候选均未达到更新 1 秒目标，没有直接进入 S5 的合格胜者。
@@ -395,7 +395,7 @@ P1 可以胜出，SQLite 可以保留。若四个都不达标，就交付剩余�
 
 ## 15. 来源增量发布与业务视图复测（2026-11-02）
 
-本阶段已完成来源级持久提交/发布、业务贡献预计算及同份真实数据/原页面复测。完整记录见 [增量复测报告](../../experiments/architecture-20261101/INCREMENTAL-REPORT.md)，未增加新的技术候选，也未修改正式源码或活动库。
+本阶段已完成来源级持久提交/发布、业务贡献预计算及同份真实数据/原页面复测。完整记录见 [增量复测报告](../archive/2026-11-11-experiments/architecture-20261101/INCREMENTAL-REPORT.md)，未增加新的技术候选，也未修改正式源码或活动库。
 
 - Rust commit_delta不再全库hydrate；发布态共享不可变来源块，只处理变化来源，不再重建全局事件向量。Node/Rust未变化context不读写或重传，contextSince为兼容旧调用的可选参数。
 - 新默认incremental网关按来源复用业务贡献并合成完整视图。基础统计直接来自同一事实的业务视图，旧published与legacy路径保留作对照。费用、会话身份、分组、timeline、周期对比、metadata均有对拍，未改价目口径。

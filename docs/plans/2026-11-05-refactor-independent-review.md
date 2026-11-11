@@ -49,7 +49,7 @@
 - Q6 前序提交：`5e3acd0`；Q5 对照提交：`04aadc2`。
 - 业务源码在最新提交后没有新修改；本次新增的是审阅材料。已有未跟踪的其他文档和实验保留，不纳入本卡。
 - Q6／Q7 尚未部署到在用服务。新版原生助手在隔离实验中编译使用；安装中的助手保持原样。没有活动实验服务或 worker。
-- 可视化概览：[项目架构与改造位置](../../.archify/architecture-project-progress-20261105-163120/project-progress.html)。图件是本地总结，不代替下面的证据和源码。
+- 可视化概览：[项目架构与改造位置](../archive/2026-11-11-experiments/README.md#恢复归档)。图件是本地总结，不代替下面的证据和源码。
 
 ```text
 浏览器 ──HTTP／SSE── Node 本地服务
@@ -75,20 +75,20 @@
 
 | 阶段 | 解决／发现的问题 | 有效结果及未完成部分 | 原始报告 |
 | --- | --- | --- | --- |
-| 四原型与完整启动调查 | 比较 Node＋SQLite、Rust＋SQLite／redb／DuckDB；补齐真实采集成本 | 原型早期“三秒”是预建索引读取，不是完整初始化。相同来源 gate 下原型没有胜出；原型共用正式解析，不能推论原生解析／语言的固有上限。 | [完整启动](../../experiments/architecture-20261101/FULL-STARTUP-REPORT.md)、[Windows 原型](../../experiments/architecture-20261101/WINDOWS-REPORT.md) |
-| A：累计查询索引 | 同一会话／home／时间累计查询反复扫大范围 | 加入 `(session_id, home_id, timestamp_ms)` 索引，1,493 次累计查询约 29.641→0.0181 秒；正式重建诊断约 53.629 秒，事实一致。早期历史对照非同轮排名。 | [索引报告](../../experiments/architecture-20261101/INDEX-STAGE-REPORT.md) |
-| A：DSH 单遍导入 | 同一压缩来源重复解析 | 单遍读取，必要投影有界暂存／落盘，原顺序消费；三对重建中位 58.506→51.203 秒，事实一致。 | [DSH 报告](../../experiments/architecture-20261101/DSH-STAGE-REPORT.md) |
-| A：增长基线 | 默认堆下的大历史容量故障 | 1× 成功；5×／10× 各三次在事实导入后 OOM。事实可落库，失败不等于 SQLite 容不下，也不是成功首屏。 | [增长基线](../../experiments/architecture-20261101/GROWTH-BASELINE-REPORT.md) |
-| B1：有界查询 | 额度全量对象与去重等吃满堆；纪录与成员随历史增长 | 改为磁盘事实、索引化窗口、持久纪录与精确成员、有界暂存；1×／5×／10× 默认堆重建均成功。10× 首屏约 380.2 秒。I/O 和首次派生成本增加，长期全链路未通过。 | [B1](../../experiments/architecture-20261101/B1-REPORT.md) |
-| B2：来源级增量 | Codex 行边界、DSH 帧边界、累计状态和跨文件依赖 | 检查点、追加、旧修订、精确替换及提交前后恢复接入。单个长日志原生追加很快，但整页仍需 33–36 秒／23–24 秒；不是解析完成就表示整页快。 | [B2](../../experiments/architecture-20261101/B2-REPORT.md) |
-| Q0：整页归因 | 找出新记录解析之外的全历史计算 | 10× 代表样本主摘要约 15.389 秒、额度 6.740 秒、周期 4.132 秒；报价载体约 120.94 MiB。是诊断内分段，父子时间不可重复相加。 | [归因报告](../../experiments/architecture-20261101/B2-COST-ATTRIBUTION.md) |
-| Q1：主摘要持久增量 | 每次追加重算 all、生成逐事件报价载体 | 普通追加主摘要维护约 12–22 ms、只计价 1 条；读取约 4 ms，报价大缓冲消失。整页仍约 Codex 26.54 秒／DSH 11.34 秒。首次构建、旧修订后缀重放不是免费。 | [Q1](../../experiments/architecture-20261101/Q1-ALL-SUMMARY-REPORT.md) |
-| Q2：元数据／周期持久增量 | 全局计数、成员、首尾日重复扫描 | 元数据约 2 ms、周期约 94 ms；本轮 10× 整页 Codex 21.20→14.06 秒、DSH 9.32→2.49 秒。新增持久结构约 82 MiB，空库构建未改善。 | [Q2](../../experiments/architecture-20261101/Q2-METADATA-PERIOD-REPORT.md) |
-| Q3：额度增量／导入索引时机 | Codex 更新额度仍重算；新增视图拖慢首次构建 | 额度准备约 6739→5.50 ms，本轮 10× Codex 整页 11.959→5.206 秒；重建 469.956→456.871 秒，但相对本轮 Q2 前对照仍未过 5% 门。补齐解析字节与最终证明绑定。 | [Q3](../../experiments/architecture-20261101/Q3-QUOTA-REBUILD-REPORT.md) |
-| Q4：有界批量构建 | 逐事件 SQL 和首次派生重复工作 | 批量事实写入、一次初始化日汇总等；本轮 10× 重建 474.243→372.071 秒，通过当轮 400 秒门；没有加堆。 | [Q4](../../experiments/architecture-20261101/Q4-BULK-BUILD-REPORT.md) |
-| Q5：交付／校验开销 | 同步／通知／请求重叠；SHA 小块调用多 | 通知与并发闭环加强，完整 SHA 读取块加大。10× 实际绘制 SHA Codex 7.840→5.945 秒；原生 2.458→2.935 秒，未过 2 秒；本轮重建 429.745 秒，未过 400 秒。不能用跨轮差异直接认定回归原因。 | [Q5](../../experiments/architecture-20261101/Q5-REFRESH-DELIVERY-REPORT.md) |
-| Q6：采集组织与目录覆盖 | 每次全来源发现／指纹；文件提示只是唤醒；大帧阻止全局认证 | 完整区间和目录身份清单接入原事实与发布。修复 full-only 文件阻止清单发布、固定截点初始化等；同轮 10× 原生刷新 Codex 1.713→0.803 秒、DSH 1.432→0.777 秒。初始化与文件数增长仍退化。 | [Q6 修复与性能](../../experiments/architecture-20261101/Q6-FILE-CAPABILITY-REPORT.md)；能力、并发闭环和正式接入报告见该文及主计划 |
-| Q7：已有索引重开 | 无变化检查也同步，反复让持久响应失效 | 核验来源／依赖后复用；原生重开 11.178→3.237 秒。原生约 0.8 秒刷新保住；SHA Codex 慢 13.1%，10% 线未过。 | [Q7](../../experiments/architecture-20261101/Q7-INDEX-REOPEN-REPORT.md) |
+| 四原型与完整启动调查 | 比较 Node＋SQLite、Rust＋SQLite／redb／DuckDB；补齐真实采集成本 | 原型早期“三秒”是预建索引读取，不是完整初始化。相同来源 gate 下原型没有胜出；原型共用正式解析，不能推论原生解析／语言的固有上限。 | [完整启动](../archive/2026-11-11-experiments/architecture-20261101/FULL-STARTUP-REPORT.md)、[Windows 原型](../archive/2026-11-11-experiments/architecture-20261101/WINDOWS-REPORT.md) |
+| A：累计查询索引 | 同一会话／home／时间累计查询反复扫大范围 | 加入 `(session_id, home_id, timestamp_ms)` 索引，1,493 次累计查询约 29.641→0.0181 秒；正式重建诊断约 53.629 秒，事实一致。早期历史对照非同轮排名。 | [索引报告](../archive/2026-11-11-experiments/architecture-20261101/INDEX-STAGE-REPORT.md) |
+| A：DSH 单遍导入 | 同一压缩来源重复解析 | 单遍读取，必要投影有界暂存／落盘，原顺序消费；三对重建中位 58.506→51.203 秒，事实一致。 | [DSH 报告](../archive/2026-11-11-experiments/architecture-20261101/DSH-STAGE-REPORT.md) |
+| A：增长基线 | 默认堆下的大历史容量故障 | 1× 成功；5×／10× 各三次在事实导入后 OOM。事实可落库，失败不等于 SQLite 容不下，也不是成功首屏。 | [增长基线](../archive/2026-11-11-experiments/architecture-20261101/GROWTH-BASELINE-REPORT.md) |
+| B1：有界查询 | 额度全量对象与去重等吃满堆；纪录与成员随历史增长 | 改为磁盘事实、索引化窗口、持久纪录与精确成员、有界暂存；1×／5×／10× 默认堆重建均成功。10× 首屏约 380.2 秒。I/O 和首次派生成本增加，长期全链路未通过。 | [B1](../archive/2026-11-11-experiments/architecture-20261101/B1-REPORT.md) |
+| B2：来源级增量 | Codex 行边界、DSH 帧边界、累计状态和跨文件依赖 | 检查点、追加、旧修订、精确替换及提交前后恢复接入。单个长日志原生追加很快，但整页仍需 33–36 秒／23–24 秒；不是解析完成就表示整页快。 | [B2](../archive/2026-11-11-experiments/architecture-20261101/B2-REPORT.md) |
+| Q0：整页归因 | 找出新记录解析之外的全历史计算 | 10× 代表样本主摘要约 15.389 秒、额度 6.740 秒、周期 4.132 秒；报价载体约 120.94 MiB。是诊断内分段，父子时间不可重复相加。 | [归因报告](../archive/2026-11-11-experiments/architecture-20261101/B2-COST-ATTRIBUTION.md) |
+| Q1：主摘要持久增量 | 每次追加重算 all、生成逐事件报价载体 | 普通追加主摘要维护约 12–22 ms、只计价 1 条；读取约 4 ms，报价大缓冲消失。整页仍约 Codex 26.54 秒／DSH 11.34 秒。首次构建、旧修订后缀重放不是免费。 | [Q1](../archive/2026-11-11-experiments/architecture-20261101/Q1-ALL-SUMMARY-REPORT.md) |
+| Q2：元数据／周期持久增量 | 全局计数、成员、首尾日重复扫描 | 元数据约 2 ms、周期约 94 ms；本轮 10× 整页 Codex 21.20→14.06 秒、DSH 9.32→2.49 秒。新增持久结构约 82 MiB，空库构建未改善。 | [Q2](../archive/2026-11-11-experiments/architecture-20261101/Q2-METADATA-PERIOD-REPORT.md) |
+| Q3：额度增量／导入索引时机 | Codex 更新额度仍重算；新增视图拖慢首次构建 | 额度准备约 6739→5.50 ms，本轮 10× Codex 整页 11.959→5.206 秒；重建 469.956→456.871 秒，但相对本轮 Q2 前对照仍未过 5% 门。补齐解析字节与最终证明绑定。 | [Q3](../archive/2026-11-11-experiments/architecture-20261101/Q3-QUOTA-REBUILD-REPORT.md) |
+| Q4：有界批量构建 | 逐事件 SQL 和首次派生重复工作 | 批量事实写入、一次初始化日汇总等；本轮 10× 重建 474.243→372.071 秒，通过当轮 400 秒门；没有加堆。 | [Q4](../archive/2026-11-11-experiments/architecture-20261101/Q4-BULK-BUILD-REPORT.md) |
+| Q5：交付／校验开销 | 同步／通知／请求重叠；SHA 小块调用多 | 通知与并发闭环加强，完整 SHA 读取块加大。10× 实际绘制 SHA Codex 7.840→5.945 秒；原生 2.458→2.935 秒，未过 2 秒；本轮重建 429.745 秒，未过 400 秒。不能用跨轮差异直接认定回归原因。 | [Q5](../archive/2026-11-11-experiments/architecture-20261101/Q5-REFRESH-DELIVERY-REPORT.md) |
+| Q6：采集组织与目录覆盖 | 每次全来源发现／指纹；文件提示只是唤醒；大帧阻止全局认证 | 完整区间和目录身份清单接入原事实与发布。修复 full-only 文件阻止清单发布、固定截点初始化等；同轮 10× 原生刷新 Codex 1.713→0.803 秒、DSH 1.432→0.777 秒。初始化与文件数增长仍退化。 | [Q6 修复与性能](../archive/2026-11-11-experiments/architecture-20261101/Q6-FILE-CAPABILITY-REPORT.md)；能力、并发闭环和正式接入报告见该文及主计划 |
+| Q7：已有索引重开 | 无变化检查也同步，反复让持久响应失效 | 核验来源／依赖后复用；原生重开 11.178→3.237 秒。原生约 0.8 秒刷新保住；SHA Codex 慢 13.1%，10% 线未过。 | [Q7](../archive/2026-11-11-experiments/architecture-20261101/Q7-INDEX-REOPEN-REPORT.md) |
 
 阶段名 B3／C 与后来的 Q 卡曾交错使用：**Q7 收口不代表原长期计划的 B3／C 已完成。** 不应按编号推算整体完成比例。
 
@@ -256,7 +256,7 @@ Q7 实际做了 2 次诊断＋11 次正式／修复复测重开、18 次追加�
 | --- | --- | --- |
 | 1 | `src/usage-source-acquisition.js`，尤其197–249、251–385行 | 完整覆盖、来源清单初始化、每条写入、固定截点、最终认证与回退 |
 | 1 | `src/server.js` 649行起；`src/usage-summary-cache.js`；`src/usage-executor.js` | 无变化检查、已发布响应、外部提交与并发读取保护；Q7有没有新重复路径 |
-| 1 | [Q7 报告](../../experiments/architecture-20261101/Q7-INDEX-REOPEN-REPORT.md)、[Q6 对照](../../experiments/architecture-20261101/Q6-FILE-CAPABILITY-REPORT.md) | 当前成立的收益、初始化退化、SHA失败、有效／无效实验边界 |
+| 1 | [Q7 报告](../archive/2026-11-11-experiments/architecture-20261101/Q7-INDEX-REOPEN-REPORT.md)、[Q6 对照](../archive/2026-11-11-experiments/architecture-20261101/Q6-FILE-CAPABILITY-REPORT.md) | 当前成立的收益、初始化退化、SHA失败、有效／无效实验边界 |
 | 2 | `src/usage-store.js` 的syncRound、appendFile／replaceFile、prepare*Projection及bulk入口 | 采集与事实／依赖／视图的真实调用成本，是否仍有全局扫描 |
 | 2 | `src/usage-all-summary-store.js`、`usage-metadata-store.js`、`usage-rollups.js`、`usage-quota-store.js`、`usage-record-store.js` | 增量适用范围、历史修订最坏成本、构建恢复、浮点顺序和精确成员 |
 | 2 | `src/usage-store.js` 6211行起的trySqlHistoryDashboard及6320行起的dashboardHistory；`src/history-archive.js` | 多冷分片是否仍有全量载体／长快照／重复完整性读取 |

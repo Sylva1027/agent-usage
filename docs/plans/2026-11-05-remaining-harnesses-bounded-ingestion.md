@@ -2,7 +2,7 @@
 
 本卡从 `3f0c7b2` 开始，覆盖 Claude Code、WorkBuddy、ZCode、OpenCode。完成本地提交后停止，等待反馈。
 
-**已完成本卡，停止等待反馈。** [结果、标准与剩余范围](../../experiments/architecture-20261101/REMAINING-HARNESSES-INGESTION-REPORT.md)。容量与正确性检查通过；Claude 10 万消息的单次解析耗时及 RSS 略有增加，不标记为全面性能改善。
+**已完成本卡，停止等待反馈。** [结果、标准与剩余范围](../archive/2026-11-11-experiments/architecture-20261101/REMAINING-HARNESSES-INGESTION-REPORT.md)。容量与正确性检查通过；Claude 10 万消息的单次解析耗时及 RSS 略有增加，不标记为全面性能改善。
 
 ## 本卡交付
 

@@ -55,7 +55,7 @@ foreach ($preset in @('today', 'month', 'all', 'quota_week')) {
 
 ## Rust 的实际收益与判断
 
-独立 Rust release 实验见[实验源码与结果](../../../experiments/rust-parsing-20261029/README.md)。160 个真实 DSH 文件，约 626 MB 解压内容；三轮交替暖运行中位，正式 V8 参数下纯解压与完整 JSON 解析由 Node **4.31 秒 / 173.02 MiB 工作集**降至 Rust **2.90 秒 / 48.20 MiB**，约 **1.49x**。Node 调 Rust helper 为 **2.94 秒**，进程树峰约 **111.43 MiB**。
+独立 Rust release 实验见[实验源码与结果](../../archive/2026-11-11-experiments/rust-parsing-20261029/README.md)。160 个真实 DSH 文件，约 626 MB 解压内容；三轮交替暖运行中位，正式 V8 参数下纯解压与完整 JSON 解析由 Node **4.31 秒 / 173.02 MiB 工作集**降至 Rust **2.90 秒 / 48.20 MiB**，约 **1.49x**。Node 调 Rust helper 为 **2.94 秒**，进程树峰约 **111.43 MiB**。
 
 包含递归语义摘要与 SHA 的另一基准为 3.70x；它主要放大摘要遍历差异，不能拿来声称解析或整个项目提速 3.70x。Node 使用真实 async generator，Rust 使用同步循环，尚未分离语言与 reader 调度成本。两种模式的逐文件计数、聚合、告警一致，摘要模式的全部 digest 也一致；主代理另复验坏帧、坏 JSON 和 UTF-8 合成夹具。
 

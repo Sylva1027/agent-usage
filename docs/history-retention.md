@@ -98,7 +98,7 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 
 压实需要额外保存新包和临时工作文件；不会删除旧包腾空间。`compaction.json` 记录新旧路径，返回结果的 `retainedFiles` 列出保留的旧包。只有确认新包正常、回滚窗口已结束，且其他数据库登记、导出包或冻结快照不再引用旧路径后，才考虑人工回收。本命令不自动清理。
 
-压实阶段原有安全、恢复、延迟结果见[归档压实报告](../experiments/architecture-20261101/ARCHIVE-COMPACTION-REPORT.md)，保留其中失败和后续补证。更新的 Windows 多标签门及未完成项见[多标签报告](../experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)；11月9日的新候选验收尚未执行，不能沿用旧结果冒充通过。
+压实阶段原有安全、恢复、延迟结果见[归档压实报告](archive/2026-11-11-experiments/architecture-20261101/ARCHIVE-COMPACTION-REPORT.md)，保留其中失败和后续补证。更新的 Windows 多标签门及未完成项见[多标签报告](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)；11月9日的新候选验收尚未执行，不能沿用旧结果冒充通过。
 
 ## HTTP 与页面
 
@@ -124,7 +124,7 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 
 ## 工程与性能状态
 
-10月历史保留阶段的固定交付记录为 18/20，不将后续小规模检查改记为该阶段整项通过。当前、一年、两年冷热数据已有后续报告；原100次／20次统计矩阵和原八小时验收仍未完成。本次六组短对照正确性及资源门通过，9项相对速度退化导致候选未采纳、两小时未启动；最终交付核验完成。范围与欠项见[本次计划](plans/2026-11-09-windows-parallel-closeout.md)及[结果表](../experiments/architecture-20261101/WINDOWS-PARALLEL-CLOSEOUT-REPORT.md)。
+10月历史保留阶段的固定交付记录为 18/20，不将后续小规模检查改记为该阶段整项通过。当前、一年、两年冷热数据已有后续报告；原100次／20次统计矩阵和原八小时验收仍未完成。本次六组短对照正确性及资源门通过，9项相对速度退化导致候选未采纳、两小时未启动；最终交付核验完成。范围与欠项见[本次计划](plans/2026-11-09-windows-parallel-closeout.md)及[结果表](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-PARALLEL-CLOSEOUT-REPORT.md)。
 
 本轮重型测量串行执行，网关512MiB、执行器224+4MiB堆保持不变；服务树RSS及补充估计按512MiB门记录，浏览器分开。Node堆限制和采样不能替代原资源受限整机诊断，该覆盖仍未补齐。在用数据写入、生产部署和服务重启不属于本轮已执行操作。
 
@@ -135,12 +135,12 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 现成入口如下，默认模式只做盘点：
 
 ```powershell
-pwsh -NoProfile -File experiments/architecture-20261101/windows-closeout-cleanup.ps1 -Mode Inventory
-pwsh -NoProfile -File experiments/architecture-20261101/windows-closeout-cleanup.ps1 -Mode SelfTest
+pwsh -NoProfile -File scripts/windows-closeout-cleanup.ps1 -Mode Inventory
+pwsh -NoProfile -File scripts/windows-closeout-cleanup.ps1 -Mode SelfTest
 # Main 编辑盘点生成的 manifest-template 副本，列出绝对 targets/path、reason 和释放证据
-pwsh -NoProfile -File experiments/architecture-20261101/windows-closeout-cleanup.ps1 -Mode Preview -Manifest output/windows-parallel-20261109/cleanup-approved.json
+pwsh -NoProfile -File scripts/windows-closeout-cleanup.ps1 -Mode Preview -Manifest output/windows-parallel-20261109/cleanup-approved.json
 # 仅在最终计时结束、依赖已释放时由 Main 执行
-pwsh -NoProfile -File experiments/architecture-20261101/windows-closeout-cleanup.ps1 -Mode Delete -Manifest output/windows-parallel-20261109/cleanup-approved.json
+pwsh -NoProfile -File scripts/windows-closeout-cleanup.ps1 -Mode Delete -Manifest output/windows-parallel-20261109/cleanup-approved.json
 ```
 
 盘点覆盖项目 output、截图／preview、dist、依赖与已知构建缓存；用户历史、根源码／public／.git 和无关工作不在清理范围。脚本保护 tracked 与非忽略的未跟踪工作，拒绝越界、父子目标重叠、链接路径及目录内重解析点；删除前重新核对绝对后代路径、元数据身份和仍保留的依赖。`dependencies` 中活动输入与基线必须明确释放并填写 `releaseEvidence`，`retainedPaths` 保留仍需的证据、唯一 raw／capture 和权威历史，不能因旧计划结束就整根推断为可删。只有生成副本可作为目标。

@@ -12,7 +12,7 @@
 
 ## 1. 10× 到底增长了什么
 
-依据：[数据生成器](../../experiments/architecture-20261101/growth-dataset.mjs)、[行格式生成器](../../experiments/architecture-20261101/growth-line-inputs.mjs)、[SQLite 格式生成器](../../experiments/architecture-20261101/growth-sqlite-inputs.mjs)及私有数据集 manifest。
+依据：[数据生成器](../archive/2026-11-11-experiments/README.md#恢复归档)、[行格式生成器](../archive/2026-11-11-experiments/README.md#恢复归档)、[SQLite 格式生成器](../archive/2026-11-11-experiments/README.md#恢复归档)及私有数据集 manifest。
 
 - 初始 1× 为 **146,412** 个事件，10× 为 **1,464,120** 个事件；额度观察分别为 71,153、711,530 条。
 - 两档都固定 **6 类/6 个来源实例、1,968 个来源文件、1,729 个会话**，同一来源布局及会话身份，增加行数、事件和输入字节。
@@ -34,7 +34,7 @@ B1 已有 365/730 天的事实库后派生诊断，但那不是 B2 的真实来�
 
 ## 2. 当前时间、内存和 I/O 的证据
 
-主要测量依据：[B2 原页面诊断](../../experiments/architecture-20261101/B2-PAGE-DIAGNOSTIC.md)、[B2 单源增长诊断](../../experiments/architecture-20261101/B2-GROWTH-DIAGNOSTIC.md)及 [B2 总报告](../../experiments/architecture-20261101/B2-REPORT.md)。以下数字是已有观察，不是本轮新基准。
+主要测量依据：[B2 原页面诊断](../archive/2026-11-11-experiments/architecture-20261101/B2-PAGE-DIAGNOSTIC.md)、[B2 单源增长诊断](../archive/2026-11-11-experiments/architecture-20261101/B2-GROWTH-DIAGNOSTIC.md)及 [B2 总报告](../archive/2026-11-11-experiments/architecture-20261101/B2-REPORT.md)。以下数字是已有观察，不是本轮新基准。
 
 ### 2.1 已经测到的成本
 

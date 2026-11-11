@@ -1,12 +1,12 @@
 # OpenCode 启动与刷新退化定位／修复计划
 
-状态：**实施、6 组定位、8 组正式验收与收尾核验完成；随本卡本地提交后停止等反馈。** 见[统一对照、标准与限制](../../experiments/architecture-20261101/OPENCODE-REGRESSION-REPORT.md)。正式 32 项延迟比较均过门、业务逐值一致，ZCode 当前收益保住。OpenCode 5 项旧退化在 AB／BA 未复现，原因未定；Claude 竞争有真实记录与确定性反例，已补齐来源提示等待期间的执行器持有。保留原回调时机、价格隔离和 200 ms 空闲退出。最终全套 2,901 通过／60 跳过／两项已知旧失败。证据根 `output/opencode-regression-20261106/`，DeepSeek/max 独立审查 worker 已验收关闭；不自动继续新性能组或部署。
+状态：**实施、6 组定位、8 组正式验收与收尾核验完成；随本卡本地提交后停止等反馈。** 见[统一对照、标准与限制](../archive/2026-11-11-experiments/architecture-20261101/OPENCODE-REGRESSION-REPORT.md)。正式 32 项延迟比较均过门、业务逐值一致，ZCode 当前收益保住。OpenCode 5 项旧退化在 AB／BA 未复现，原因未定；Claude 竞争有真实记录与确定性反例，已补齐来源提示等待期间的执行器持有。保留原回调时机、价格隔离和 200 ms 空闲退出。最终全套 2,901 通过／60 跳过／两项已知旧失败。证据根 `output/opencode-regression-20261106/`，DeepSeek/max 独立审查 worker 已验收关闭；不自动继续新性能组或部署。
 
 目标：优先处理 OpenCode 的首次打开、后续追加、旧历史修订、today／week 切换 5 项退化，随后收口 Claude 后续追加 1 项；保住 ZCode 已有收益。只推进一张修复卡，不重新扩展语言、数据库、客户端或多年容量路线。实施完成后本地提交，按统一对照表汇报并停止等待反馈，不部署。
 
 ## 已有证据限定了排查顺序
 
-基于 [上一卡正式报告](../../experiments/architecture-20261101/ZCODE-FIRST-PREFIX-REPORT.md)和私有证据 `output/zcode-first-prefix-20261106/`。以下均为同轮旧／新观测，**嵌套阶段不能相加**。
+基于 [上一卡正式报告](../archive/2026-11-11-experiments/architecture-20261101/ZCODE-FIRST-PREFIX-REPORT.md)和私有证据 `output/zcode-first-prefix-20261106/`。以下均为同轮旧／新观测，**嵌套阶段不能相加**。
 
 | 场景 | 总耗时增加 | 已知分段差异 | 对下一步的含义 |
 | --- | ---: | --- | --- |

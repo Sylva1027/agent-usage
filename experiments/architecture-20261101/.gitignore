@@ -1,4 +1,0 @@
-native/target/
-*.sqlite*
-*.redb
-*.duckdb*
