@@ -4,6 +4,8 @@
 
 ## 当前功能
 
+waifu 版部分角色形象来自 [ZipZipPipe](https://space.bilibili.com/4168597)，感谢其创作。
+
 选择器开放 ChatGPT、Claude、GLM、Gemini、DeepSeek、Kimi、Qwen、Grok、Muse、Mimo 十款及简洁模式。每款支持浅／深主题、角色显示与透明度，偏好保存在本机；桌面选择器为五列两行，缩小窗口时保持操作可达。
 
 独立工作室入口为 `/skin-palette-studio.html`，使用现行页面与工具进行配色预览。它不是主页面内的任意颜色编辑器，也不恢复旧 HTML 导出。产品行为详见[看板说明](12-dashboard.md#界面风格与角色)。

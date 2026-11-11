@@ -2,7 +2,7 @@
 
 **实际启用状态（2026-11-11）：已在本机切换到新安装并保留真实历史及升级前备份。** 地址为 <http://127.0.0.1:3765/>；[启用核对与恢复位置](validation/2026-11-11-activation/README.md)记录该次兼容修复、96 项定向检查、历史逐条核对及临时数据清理。
 
-更新：2026-11-11。主程序继续使用浏览器、Node.js 和 SQLite，版本以 `package.json` 为准（当前 0.8.5）。本页维护交付操作；[实际启用记录](validation/2026-11-11-activation/README.md)说明已安装版本与历史兼容结果，[精简和修复记录](validation/2026-11-11-simplification.md)说明之后的源码验证。源码提交不自动更新在用安装。
+更新：2026-11-11。主程序继续使用浏览器、Node.js 和 SQLite，发布版本以 `package.json` 的 `releaseVersion` 为准（当前 `0.85a`；npm 版本为 `0.8.5-a`）。本页维护交付操作；[实际启用记录](validation/2026-11-11-activation/README.md)说明已安装版本与历史兼容结果，[精简和修复记录](validation/2026-11-11-simplification.md)说明之后的源码验证。源码提交不自动更新在用安装。
 
 ## 本轮已有改造
 
@@ -71,7 +71,7 @@ npm.cmd run native:check -- -OutputDirectory output/native-candidate/bin
 
 ## 双版本运行包
 
-在同一份集成源码上执行，版本取 `package.json`（当前 0.8.5）：
+在同一份集成源码上执行，发布名取 `package.json` 的 `releaseVersion`（当前 `0.85a`）：
 
 ```powershell
 npm.cmd run native:check
@@ -82,8 +82,8 @@ npm.cmd run package:check -- output/releases --browser
 
 `scripts/package-release.mjs` 使用 Node 标准库和 PowerShell 7 `Compress-Archive` 生成 ZIP，系统 `tar` 检查目录并解压逐文件核验。无需生产 npm 依赖。助手及回执必须先准备好；脚本只读运行 `native:check` 的同一检查，不调用 Cargo。缺少或不匹配时停止，先显式 `native:build` 后再打包。
 
-- `agent-usage-v0.8.5.zip`：普通版，将五个 `waifu:start/end` 区块裁掉，根节点改为 `data-edition="standard"`，排除全部皮肤专属文件和工作室，保留原 `styles.css` 与共享主界面模块。
-- `agent-usage-v0.8.5-waifu.zip`：waifu 版，保留源码页面、皮肤模块、工作室和 40 张运行 WebP。
+- `0.85a.zip`：普通版，将五个 `waifu:start/end` 区块裁掉，根节点改为 `data-edition="standard"`，排除全部皮肤专属文件和工作室，保留原 `styles.css` 与共享主界面模块。
+- `0.85a-waifu.zip`：waifu 版，保留源码页面、皮肤模块、工作室和 40 张运行 WebP。
 - `release-manifest.json`：两个 ZIP 的 SHA-256、各自逐文件 SHA-256 和共同核心摘要。共同核心包含全部相同运行文件，仅排除两版 HTML 差异及皮肤专属文件。
 - `acceptance-http.json` / `acceptance-browser.json`：实际解包后的核验结果；仅 HTTP 运行不会标记浏览器通过。浏览器启动受环境限制或断言失败时记录原因并以非零退出。
 

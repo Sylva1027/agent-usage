@@ -189,14 +189,15 @@ export async function packageRelease(output = "output/releases") {
       );
     }
     await nativeCheck(waifu);
-    const { version } = JSON.parse(await readFile(path.join(waifu, "package.json"), "utf8"));
+    const { version, releaseVersion } = JSON.parse(await readFile(path.join(waifu, "package.json"), "utf8"));
     assert.match(version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/);
+    assert.match(releaseVersion, /^\d+\.\d+[a-z]?$/);
     const variants = {};
     for (const [edition, stage] of [
       ["standard", standard],
       ["waifu", waifu],
     ]) {
-      const filename = `agent-usage-v${version}${edition === "waifu" ? "-waifu" : ""}.zip`;
+      const filename = `${releaseVersion}${edition === "waifu" ? "-waifu" : ""}.zip`;
       const zip = path.join(directory, filename);
       await exec(
         "pwsh",
@@ -215,6 +216,7 @@ export async function packageRelease(output = "output/releases") {
     const core = commonHashes(variants.standard.files, variants.waifu.files);
     const manifest = {
       version,
+      releaseVersion,
       createdAt: new Date().toISOString(),
       coreSha256: sha256(JSON.stringify(core)),
       core,
@@ -224,6 +226,7 @@ export async function packageRelease(output = "output/releases") {
     return {
       directory,
       version,
+      releaseVersion,
       coreSha256: manifest.coreSha256,
       archives: Object.values(variants).map(({ filename }) => filename),
     };

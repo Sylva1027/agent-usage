@@ -4,13 +4,13 @@
 
 Agent Usage is a local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
 
-Current release: [v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5). TPS research is archived; the current app does not provide model-speed statistics.
+Current release: [0.85a](https://github.com/Sylva1027/codex-usage/releases/tag/0.85a), available in Standard and Waifu editions. TPS research is archived; the current app does not provide model-speed statistics.
 
 ![DeepSeek light dashboard, 16:9, with sample data](docs/images/dashboard-deepseek-light.png)
 
 ## Quick Start
 
-Requires **Node.js 23.8 or later**; check with `node -v`. Download and extract the [v0.8.5 ZIP](https://github.com/Sylva1027/codex-usage/releases/download/v0.8.5/agent-usage-v0.8.5.zip), or run:
+Requires **Node.js 23.8 or later**; check with `node -v`. Download [0.85a Standard](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a.zip) or [0.85a-waifu](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a-waifu.zip), extract it, and run `node src/cli.js run`. To run from source:
 
 ```bash
 git clone https://github.com/Sylva1027/codex-usage.git
@@ -20,7 +20,11 @@ node src/cli.js run
 
 Open [http://127.0.0.1:3765/](http://127.0.0.1:3765/). The server binds to `127.0.0.1` by default. Press `Ctrl+C` to stop it.
 
-Current source builds two editions at the same version: `agent-usage-v0.8.5.zip` is Standard, with the dashboard and light/dark themes but no skin controls, modules, artwork, or studio. `agent-usage-v0.8.5-waifu.zip` includes Waifu. Both share the same statistics and pricing core. Standard ignores existing skin preferences and preserves them for a later return to Waifu. Skin screenshots and features below describe Waifu; running from source also defaults to Waifu.
+Both editions share the same version: `0.85a.zip` is Standard, with the dashboard and light/dark themes but no skin controls, modules, artwork, or studio. `0.85a-waifu.zip` includes Waifu. Both share the same statistics and pricing core. Standard ignores existing skin preferences and preserves them for a later return to Waifu. Skin screenshots and features below describe Waifu; running from source also defaults to Waifu.
+
+**Artwork credit: some character designs in the Waifu edition come from [ZipZipPipe](https://space.bilibili.com/4168597). Thank you for your work.**
+
+This release corrects Gemini Argon model registration and free pricing for hy4free. Light/dark changes crossfade for one second and block repeated toggles until complete. Timeline details grow to twice their default height before scrolling internally. Lists and dialogs share refined scrollbars, and the 5h/7d control uses a central diagonal split.
 
 Package on Windows with PowerShell 7, without adding npm dependencies:
 
@@ -83,7 +87,7 @@ Automatic results live in `~/.codex-usage/pricing-auto.json`; manual changes liv
 
 ## Commands
 
-The measured performance of the current refactor has been accepted; the release links still refer to the earlier v0.8.5. For a Windows build from current source, run `npm run native:build` and `npm run native:check` to prepare the matching optional helper. Runtime falls back automatically when native proof is unavailable. See [delivery, data-preserving upgrades, and rollback](docs/15-delivery-upgrade.md) (Simplified Chinese).
+0.85a includes the refactor, code simplification, and dashboard additions. Windows release packages include the matching optional helper. For a build from source, run `npm run native:build` and `npm run native:check`. Runtime falls back automatically when native proof is unavailable. See [delivery, data-preserving upgrades, and rollback](docs/15-delivery-upgrade.md) (Simplified Chinese).
 
 ```bash
 node src/cli.js summary       # Terminal summary

@@ -4,13 +4,13 @@
 
 Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode、Claude Code 与 WorkBuddy 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
 
-当前版本：[v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5)。TPS 研究已封存，当前版本不提供模型速度统计。
+当前版本：[0.85a](https://github.com/Sylva1027/codex-usage/releases/tag/0.85a)。提供普通版和 waifu 版；TPS 研究已封存，当前版本不提供模型速度统计。
 
 ![DeepSeek 浅色皮肤看板，16:9，示例数据](docs/images/dashboard-deepseek-light.png)
 
 ## 快速开始
 
-需要 **Node.js 23.8 或更新版本**，可用 `node -v` 检查。下载 [v0.8.5 ZIP](https://github.com/Sylva1027/codex-usage/releases/download/v0.8.5/agent-usage-v0.8.5.zip) 并解压，或运行：
+需要 **Node.js 23.8 或更新版本**，可用 `node -v` 检查。下载 [0.85a 普通版](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a.zip) 或 [0.85a-waifu 版](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a-waifu.zip)，解压后运行 `node src/cli.js run`；也可从源码启动：
 
 ```bash
 git clone https://github.com/Sylva1027/codex-usage.git
@@ -20,9 +20,13 @@ node src/cli.js run
 
 打开 [http://127.0.0.1:3765/](http://127.0.0.1:3765/)。服务默认只监听 `127.0.0.1`；在终端按 `Ctrl+C` 停止。
 
-本轮重构的当前已测性能已被接收，发布版链接仍指向此前的v0.8.5。Windows从新源码交付时，使用`npm.cmd run native:build`和`npm.cmd run native:check`准备配套助手；助手缺失时程序仍自动回退。完整构建、保留历史升级与回滚步骤见[交付与升级](docs/15-delivery-upgrade.md)。
+0.85a 包含本轮重构、代码精简与追加功能。Windows 运行包已包含配套助手；从源码构建时使用 `npm.cmd run native:build` 和 `npm.cmd run native:check`，助手不可用时程序自动回退。保留历史升级与回滚步骤见[交付与升级](docs/15-delivery-upgrade.md)。
 
-当前源码支持同版本双包：`agent-usage-v0.8.5.zip` 为普通版，保留主界面与深浅主题，不含皮肤入口、模块、图片或工作室；`agent-usage-v0.8.5-waifu.zip` 保留 Waifu 功能。两版统计与计价核心相同；普通版忽略并保留已有皮肤偏好，切回 waifu 版可继续恢复。下方皮肤截图与功能说明对应 waifu 版，源码运行也默认使用 waifu 版。
+同版本双包：`0.85a.zip` 为普通版，保留主界面与深浅主题，不含皮肤入口、模块、图片或工作室；`0.85a-waifu.zip` 保留 Waifu 功能。两版统计与计价核心相同；普通版忽略并保留已有皮肤偏好，切回 waifu 版可继续恢复。下方皮肤截图与功能说明对应 waifu 版，源码运行也默认使用 waifu 版。
+
+**形象来源：waifu 版部分角色形象来自 [ZipZipPipe](https://space.bilibili.com/4168597)，感谢其创作。**
+
+本次更新修正 Gemini Argon 模型登记和 hy4free 免费计价；深浅主题以 1 秒渐变切换，完成前锁定再次切换；时间分布详情最高为默认高度的两倍，超出后在框体内滚动；统一列表与弹窗滚动条，并更新 5h/7d 的中央斜分外观。
 
 Windows 下使用 PowerShell 7 打包，无需增加 npm 依赖：
 

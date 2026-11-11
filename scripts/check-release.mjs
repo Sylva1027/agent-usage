@@ -31,11 +31,18 @@ assert.ok(
 );
 const directory = await releaseDirectory(ROOT, positional[0] || "output/releases");
 const manifest = JSON.parse(await readFile(path.join(directory, "release-manifest.json"), "utf8"));
+assert.match(manifest.releaseVersion, /^\d+\.\d+[a-z]?$/);
 const core = commonHashes(manifest.variants.standard.files, manifest.variants.waifu.files);
 assert.deepEqual(core, manifest.core);
 assert.equal(sha256(JSON.stringify(core)), manifest.coreSha256);
 const work = await mkdtemp(path.join(directory, ".check-"));
-const report = { version: manifest.version, coreSha256: manifest.coreSha256, browser: "not-run", editions: {} };
+const report = {
+  version: manifest.version,
+  releaseVersion: manifest.releaseVersion,
+  coreSha256: manifest.coreSha256,
+  browser: "not-run",
+  editions: {},
+};
 let browser;
 
 async function checkPage(browser, url, edition, locale, viewport) {
@@ -158,7 +165,7 @@ try {
   // Check both real archives before launching a browser, so an environment block still leaves HTTP evidence.
   for (const edition of ["standard", "waifu"]) {
     const variant = manifest.variants[edition];
-    const expectedName = `agent-usage-v${manifest.version}${edition === "waifu" ? "-waifu" : ""}.zip`;
+    const expectedName = `${manifest.releaseVersion}${edition === "waifu" ? "-waifu" : ""}.zip`;
     assert.equal(variant.filename, expectedName);
     const zip = path.join(directory, expectedName);
     assert.equal(sha256(await readFile(zip)), variant.sha256);
@@ -167,6 +174,7 @@ try {
     await nativeCheck(unpacked);
     const packaged = JSON.parse(await readFile(path.join(unpacked, "package.json"), "utf8"));
     assert.equal(packaged.version, manifest.version);
+    assert.equal(packaged.releaseVersion, manifest.releaseVersion);
     await exec(process.execPath, ["src/cli.js", "--help"], { cwd: unpacked });
   }
   for (const edition of ["standard", "waifu"]) {

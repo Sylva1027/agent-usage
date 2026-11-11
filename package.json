@@ -1,6 +1,7 @@
 {
   "name": "codex-usage",
-  "version": "0.8.5",
+  "version": "0.8.5-a",
+  "releaseVersion": "0.85a",
   "private": true,
   "license": "MIT",
   "type": "module",
