@@ -3,6 +3,9 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const cachedLogs = new Map();
+export function invalidateServiceTierLog(filePath) {
+  cachedLogs.delete(filePath);
+}
 const TIER_FIELD =
   /^service_tier: (None|Some\(None\)|Some\(Some\("(fast|priority|default|standard)"\)\)), collaboration_mode:/;
 const SUBMISSION = /Submission sub=Submission \{ id: "[^"]+", op: (TurnInput|ThreadSettings) \{/;

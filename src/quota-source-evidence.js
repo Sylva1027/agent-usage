@@ -15,6 +15,9 @@ const AUTH_UNQUOTED =
 const AUTH_QUOTED = /(?:^|[\s:])auth_mode="(Chatgpt|ApiKey|OpenaiApiKey)"(?=$|[\s,}])/;
 const RESPONSES_REQUEST = /\bRequest (?:started|completed|failed) method=(?:POST|GET) url=([^\s]+)/;
 const cachedLogs = new Map();
+export function invalidateQuotaSourceLog(filePath) {
+  cachedLogs.delete(filePath);
+}
 const resolverEntries = new WeakMap();
 
 export const QUOTA_SOURCE_EVIDENCE_SNAPSHOT_FORMAT_VERSION = 1;

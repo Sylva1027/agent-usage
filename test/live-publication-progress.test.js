@@ -198,6 +198,34 @@ for (const kind of ["codex", "dsh"]) {
     await assertCanonical(f, latest);
   });
 
+  test(`${kind}: unrelated Codex diagnostics after collection do not block publication`, {
+    timeout: 25_000,
+  }, async (t) => {
+    const f = await publicationFixture(t, kind);
+    const database = new DatabaseSync(path.join(f.root, ".codex", "logs_2.sqlite"));
+    f.cleanup.push(() => database.close());
+    database.exec(`PRAGMA journal_mode=WAL;
+      CREATE TABLE logs(id INTEGER PRIMARY KEY, ts INTEGER, ts_nanos INTEGER,
+        target TEXT, feedback_log_body TEXT, thread_id TEXT)`);
+    const insert = database.prepare(
+      "INSERT INTO logs(ts,ts_nanos,target,feedback_log_body,thread_id) VALUES(?,?,?,?,?)",
+    );
+    insert.run(1793491200, 0, "unrelated", "diagnostic", "recovery-codex");
+    await f.listen();
+    f.initial = await f.success();
+    f.trace.length = 0;
+    await f.append(kind, 37);
+    const expected = await captureGeneration(f);
+    let writes = 0;
+    f.handler = async (event) => {
+      if (event.stage === "round-done") {
+        insert.run(1793491201 + writes++, 0, "unrelated", "diagnostic", "recovery-codex");
+      }
+    };
+    assertGeneration(success(f, await bounded(f.get(), "publication while diagnostics continue")), expected);
+    assert.equal(writes, 1, "irrelevant logs do not cause repeated collection");
+  });
+
   test(`4 ${kind}: three tabs and duplicate wakes share bounded sync while a slow response cannot block collection`, {
     timeout: 25_000,
   }, async (t) => {
@@ -428,8 +456,11 @@ for (const kind of ["codex", "dsh"]) {
       );
       assert.ok(
         f.trace.some(
-          (event) => event.stage === "source-commit" && event.file === f.paths[kind] &&
-            event.method === "replaceFile" && event.observedAt > captured.observedAt,
+          (event) =>
+            event.stage === "source-commit" &&
+            event.file === f.paths[kind] &&
+            event.method === "replaceFile" &&
+            event.observedAt > captured.observedAt,
         ),
         "automatic continuation validates old bytes and reparses the changed source",
       );
@@ -446,16 +477,19 @@ for (const kind of ["codex", "dsh"]) {
       await f.append(kind, 37);
       let changed = false;
       f.handler = async (event) => {
-        const syncBoundary = injection === "round-done"
-          ? event.stage === "round-done" && event.pid !== process.pid
-          : event.stage === "executor-result" && event.request?.type === "sync" && event.ok;
+        const syncBoundary =
+          injection === "round-done"
+            ? event.stage === "round-done" && event.pid !== process.pid
+            : event.stage === "executor-result" && event.request?.type === "sync" && event.ok;
         if (syncBoundary && !changed) {
           changed = event;
           const db = new DatabaseSync(f.options.databaseFile);
           try {
             const progress = db.prepare("SELECT * FROM usage_source_progress WHERE source_path=?");
             assert.ok(progress.get(f.paths[kind]), "the committed source starts with a durable checkpoint");
-            assert.ok(db.prepare("UPDATE events SET project=project WHERE source_path=?").run(f.paths[kind]).changes > 0);
+            assert.ok(
+              db.prepare("UPDATE events SET project=project WHERE source_path=?").run(f.paths[kind]).changes > 0,
+            );
             assert.equal(progress.get(f.paths[kind]), undefined, "the external event write invalidates its checkpoint");
           } finally {
             db.close();
@@ -490,17 +524,17 @@ for (const kind of ["codex", "dsh"]) {
           "foreign-commit recovery",
         );
       }
-      const recovery = f.trace.find(
-        (event) => event.stage === "round-done" && event.observedAt > changed.observedAt,
-      );
+      const recovery = f.trace.find((event) => event.stage === "round-done" && event.observedAt > changed.observedAt);
       assert.equal(
         recovery.snapshot.progress.some((row) => row.source_path === f.paths[kind]),
         false,
         "unchanged raw input leaves the invalid checkpoint absent",
       );
       assert.equal(
-        f.trace.some((event) => event.stage === "source-commit" && event.file === f.paths[kind] &&
-          event.observedAt > changed.observedAt),
+        f.trace.some(
+          (event) =>
+            event.stage === "source-commit" && event.file === f.paths[kind] && event.observedAt > changed.observedAt,
+        ),
         false,
         "the no-op recovery cannot reuse the invalid checkpoint to ingest source data",
       );

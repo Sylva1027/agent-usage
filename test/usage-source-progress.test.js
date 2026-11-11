@@ -237,6 +237,32 @@ test("known baseline bounds and conservative legacy dependencies survive the ups
   });
 });
 
+test("only a matching recorded baseline can exclude equal-time or mixed-session dependencies", () => {
+  fixture(db => {
+    const paths = ["known-equal", "known-later", "legacy-equal", "mixed", "other-home"];
+    for (const source of paths) {
+      db.prepare("INSERT INTO source_files VALUES (?,'codex','home','label','/home',100,1)").run(source);
+      db.prepare("INSERT INTO events VALUES (?,1,'home','shared',?)").run(source, source === "legacy-equal" ? 5 : 1);
+    }
+    db.exec("INSERT INTO events VALUES ('mixed',1,'home','other',2); BEGIN");
+    writeUsageSourceBaseline(db, "known-equal", { homeId: "home", sessionId: "shared", beforeMs: 5 });
+    writeUsageSourceBaseline(db, "known-later", { homeId: "home", sessionId: "shared", beforeMs: 10 });
+    writeUsageSourceBaseline(db, "mixed", { homeId: "home", sessionId: "other", beforeMs: 2 });
+    writeUsageSourceBaseline(db, "other-home", { homeId: "other", sessionId: "shared", beforeMs: 2 });
+    for (const source of paths) save(db, source);
+    markUsageSourceDependents(db, "a", [{ homeId: "home", sessionId: "shared", minimumMs: 5 }]);
+    db.exec("COMMIT");
+    assert.deepEqual(
+      db.prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path").all().map(row => row.source_path),
+      ["known-later", "legacy-equal", "mixed", "other-home"],
+    );
+    assert.ok(readUsageSourceProgress(db, "known-equal"), "timestamp < beforeMs excludes an equal-time change");
+    for (const source of paths.filter(source => source !== "known-equal")) {
+      assert.equal(readUsageSourceProgress(db, source), null);
+    }
+  });
+});
+
 test("a legacy fact writer invalidates the recorded baseline in the same transaction", () => {
   fixture(db => {
     db.exec("BEGIN");

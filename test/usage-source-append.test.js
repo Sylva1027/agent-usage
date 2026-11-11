@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 
-import { discoverUsageSources } from "../src/usage-core.js";
+import { discoverUsageSources, streamUsageFileEvents } from "../src/usage-core.js";
 import { UsageSourceProof } from "../src/usage-source-proof.js";
 import { UsageStore } from "../src/usage-store.js";
 
@@ -605,7 +605,44 @@ test("bounded sourceProof injection covers append, verification fallback, and tr
   }
 });
 
-test("missing cumulative dependencies block publication and resume after the retained source returns", async (t) => {
+test("retained event timestamps cannot bound an unknown legacy cumulative baseline", async (t) => {
+  const fixture = await codexFixture(t);
+  const changedAt = "2026-11-03T04:02:00.000Z";
+  const before = "2026-11-03T04:03:00.000Z";
+  for (const timestamp of ["2026-11-03T04:01:00.000Z", changedAt]) {
+    const row = tokenRow(timestamp, 200, 100);
+    delete row.payload.info.last_token_usage;
+    await writeFile(fixture.filePath, jsonl([
+      codexMeta("2026-11-03T04:00:00.000Z", "legacy-boundary"),
+      turnContext("gpt-5.1-codex"),
+      { type: "event_msg", timestamp: before, payload: { type: "token_count" } },
+      row,
+    ]));
+    const parse = async total => {
+      const events = [];
+      await streamUsageFileEvents(fixture.filePath, { id: "main", kind: "codex", label: "Codex" },
+        event => events.push(event), {
+          repositoryResolver: deterministicRepository,
+          previousCumulativeForSession: (session, at) => {
+            assert.equal(session, "legacy-boundary");
+            assert.equal(at, before);
+            return { usage: { total, input: total, cached: 0, output: 0, reasoning: 0 },
+              detailMask: 31, cacheWrite: { tokens: 0, known: true } };
+          },
+        });
+      return events;
+    };
+    const original = await parse(100);
+    const repaired = await parse(150);
+    assert.equal(original.length, 1);
+    assert.equal(original[0].timestampMs, Date.parse(timestamp));
+    assert.equal(original[0].usage.total, 100);
+    assert.equal(repaired[0].usage.total, 50, "an earlier/equal retained timestamp does not exclude a real dependency");
+  }
+});
+
+for (const legacy of [false, true]) {
+test(`missing cumulative dependencies block publication and resume after the retained source returns (legacy=${legacy})`, async (t) => {
   const root = await tempRoot(t, "source-dependency-unavailable-");
   const directory = path.join(root, ".codex", "sessions");
   await mkdir(directory, { recursive: true });
@@ -626,6 +663,7 @@ test("missing cumulative dependencies block publication and resume after the ret
   try {
     await store.sync();
     assert.equal(store.summarize({ preset: "all" }).totals.total, 200);
+    if (legacy) store.database.exec("DELETE FROM usage_source_progress; DELETE FROM usage_source_baselines");
     await rm(downstream);
     await writeFile(upstream, text(150, 1, 150));
     await assert.rejects(store.sync(), pending);
@@ -653,3 +691,4 @@ test("missing cumulative dependencies block publication and resume after the ret
     store.close();
   }
 });
+}

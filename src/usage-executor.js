@@ -530,7 +530,12 @@ async function runExecutorProcess() {
             missingSources: store.sourceState().missingSources,
           };
         }
-        postState({ includeHomes: true });
+        try {
+          postState({ includeHomes: true });
+        } catch (error) {
+          // A live writer must open to repair an interrupted sync; no partial metadata is published.
+          if (message.frozen || message.imported || error.code !== "SOURCE_DEPENDENCY_PENDING") throw error;
+        }
         return message.frozen || message.imported ? storeStatus : { opened: true };
       }
       case "checkSources": {

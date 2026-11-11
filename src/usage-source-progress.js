@@ -100,11 +100,13 @@ export function markUsageSourceDependents(database, sourcePath, changes) {
   const known = database.prepare(`INSERT OR IGNORE INTO usage_source_reparse
     SELECT source_path FROM usage_source_baselines
     WHERE home_id=? AND session_id=? AND before_ms>? AND source_path<>?`);
+  // Zero-usage rows can load a later baseline than every retained event; only a matching baseline bounds it.
   const legacy = database.prepare(`INSERT OR IGNORE INTO usage_source_reparse
     SELECT DISTINCT e.source_path FROM events e JOIN source_files s ON s.path=e.source_path
     WHERE e.home_id=? AND e.session_id=? AND e.source_path<>?
       AND s.kind IN ('main','extra','jetbrains','codex')
-      AND NOT EXISTS(SELECT 1 FROM usage_source_baselines b WHERE b.source_path=e.source_path)`);
+      AND NOT EXISTS(SELECT 1 FROM usage_source_baselines b WHERE b.source_path=e.source_path
+        AND b.home_id=e.home_id AND b.session_id=e.session_id)`);
   for (const change of changes) {
     known.run(change.homeId, change.sessionId, change.minimumMs, sourcePath);
     legacy.run(change.homeId, change.sessionId, sourcePath);

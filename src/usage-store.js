@@ -1244,6 +1244,28 @@ class UsageReplacementFacts {
     return { previousCount, currentCount };
   }
 
+  coversRelocated(table, previousPath, currentPath) {
+    if (!this.database) return true;
+    this.database.exec("CREATE TABLE relocation(digest TEXT PRIMARY KEY,remaining INTEGER) WITHOUT ROWID");
+    try {
+      // price_version is stamped by the local catalog, not read from the rollout; retain its old value in replaced facts.
+      const excluded = table === "events" ? ["id", "price_version"] : [];
+      const insert = this.database.prepare(`INSERT INTO relocation VALUES (?,?)
+        ON CONFLICT(digest) DO UPDATE SET remaining=remaining+excluded.remaining`);
+      for (const row of this.database.prepare("SELECT payload,previous_count FROM facts WHERE fact_table=? AND source_path=?").iterate(table, previousPath)) {
+        insert.run(historyPayloadDigest(canonicalFactPayload(JSON.parse(String(row.payload)), excluded)), row.previous_count);
+      }
+      const consume = this.database.prepare("UPDATE relocation SET remaining=remaining-1 WHERE digest=? AND remaining>0");
+      for (const row of this.sourceDatabase.prepare(`SELECT * FROM ${table} WHERE source_path=?`).iterate(currentPath)) {
+        const payload = canonicalFactPayload({ ...row, source_path: previousPath }, excluded);
+        consume.run(historyPayloadDigest(payload));
+      }
+      return !this.database.prepare("SELECT 1 FROM relocation WHERE remaining>0 LIMIT 1").get();
+    } finally {
+      this.database.exec("DROP TABLE relocation");
+    }
+  }
+
   close() {
     this.database?.close();
     this.database = null;
@@ -4074,8 +4096,8 @@ export class UsageStore {
    * @param {any} file
    * @param {{ onWarning?: (warning: string) => void, progress?: boolean, reuseHistoryProjection?: boolean }} [options]
    */
-  async replaceFile({ filePath, source, info }, { onWarning, progress = true, reuseHistoryProjection = false } = {}) {
-    const reused = await this.reuseSourcePrefix({ filePath, source, info }, { onWarning });
+  async replaceFile({ filePath, source, info, relocatedFrom }, { onWarning, progress = true, reuseHistoryProjection = false } = {}) {
+    const reused = !relocatedFrom && await this.reuseSourcePrefix({ filePath, source, info }, { onWarning });
     if (reused) return reused;
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
@@ -4098,7 +4120,7 @@ export class UsageStore {
     const oldCumulative = createHash("sha256"),
       nextCumulative = createHash("sha256");
     const parserWarnings = [];
-    const siblingPath = filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`;
+    const siblingPath = relocatedFrom || (filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`);
     const representationFingerprint = codexThreaded ? usageSourceFingerprint(filePath) : undefined;
     const insertSource = database.prepare(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
@@ -4299,6 +4321,13 @@ export class UsageStore {
       );
       insertEvent.flush();
       insertRateLimitObservation.flush();
+      if (relocatedFrom && (!previousSiblingSource || !hot ||
+        !replacementFacts.coversRelocated("events", relocatedFrom, filePath) ||
+        !replacementFacts.coversRelocated("rate_limit_observations", relocatedFrom, filePath))) {
+        throw Object.assign(new Error("Archived rollout does not preserve its indexed history"), {
+          code: "SOURCE_RELOCATION_MISMATCH",
+        });
+      }
       let coldRevisionStateChanged = false;
       for (const prefix of coldReparsePrefixes) {
         const revision = historyArchiveColdRevisionForRows(prefix);
@@ -4474,6 +4503,16 @@ export class UsageStore {
           code: "LIVE_SOURCE_CHANGED", retryable: true,
         });
       }
+      if (relocatedFrom) {
+        try {
+          await stat(relocatedFrom);
+          throw Object.assign(new Error("Original rollout returned during relocation"), {
+            code: "LIVE_SOURCE_CHANGED", retryable: true,
+          });
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
       database.prepare("DELETE FROM usage_source_reparse WHERE source_path=?").run(filePath);
       for (const warning of parserWarnings) onWarning?.(warning);
       if (projectionBefore)
@@ -4502,7 +4541,7 @@ export class UsageStore {
       database.exec("ROLLBACK");
       this.rollbackReplaceFileTransaction();
       if (progressEligible && error.code === "SOURCE_PROGRESS_UNSUPPORTED") {
-        return this.replaceFile({ filePath, source, info }, { onWarning, progress: false });
+        return this.replaceFile({ filePath, source, info, relocatedFrom }, { onWarning, progress: false });
       }
       throw error;
     } finally {
@@ -4869,6 +4908,36 @@ export class UsageStore {
       for (const row of this.database.prepare("SELECT * FROM source_files").iterate()) {
         if (!knownFiles.has(row.path)) sourceRowsBefore.push(row);
       }
+      if (!this.database.prepare("SELECT 1 FROM archive_segments LIMIT 1").get()) {
+        // Codex moves rollouts between these roots, sometimes compressing them in the same operation.
+        const identity = (filePath, homePath) => {
+          const relative = path.relative(homePath, plainRolloutPath(filePath));
+          const root = relative.split(path.sep)[0];
+          const name = path.basename(relative);
+          return ["sessions", "archived_sessions"].includes(root) &&
+            /^rollout-.*-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(name)
+            ? { root, name } : null;
+        };
+        for (const file of files) {
+          if (canonicalizeKind(file.source.kind) !== "codex") continue;
+          const next = identity(file.filePath, file.source.path);
+          if (!next) continue;
+          const candidates = sourceRowsBefore.filter(old => {
+            const prior = identity(String(old.path), String(old.home_path));
+            return old.home_id === file.source.id && canonicalizeKind(old.kind) === "codex" &&
+              !failedHomeIds.has(old.home_id) && !failedHomePaths.has(old.home_path) &&
+              prior?.name === next.name && prior.root !== next.root;
+          });
+          if (candidates.length !== 1 || files.filter(other => other.source.id === file.source.id &&
+            identity(other.filePath, other.source.path)?.name === next.name).length !== 1) continue;
+          try { await stat(String(candidates[0].path)); }
+          catch (error) {
+            if (error.code !== "ENOENT") throw error;
+            file.relocatedFrom = String(candidates[0].path);
+            file.force = true;
+          }
+        }
+      }
     }
     let publishedFingerprints = {};
     try {
@@ -4898,6 +4967,7 @@ export class UsageStore {
     const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0, sourceRetries: 0 };
     this.lastSyncSourceWork = sourceWork;
     const acceptSource = (file, outcome) => {
+      delete file.relocatedFrom;
       historyVerificationPending ||= Boolean(outcome.historyVerificationPending);
       updatedFileCount += 1;
       committedPaths.add(file.filePath);
@@ -4986,7 +5056,7 @@ export class UsageStore {
             reuseHistoryProjection: true,
           };
           const outcome =
-            (!earlierFileChanged && !needsReparse && file.readMode !== "full"
+            (!file.relocatedFrom && !earlierFileChanged && !needsReparse && file.readMode !== "full"
               ? await this.appendFile(file, callbacks)
               : null) || (await this.replaceFile(file, callbacks));
           if (!outcome?.committed) {
@@ -4996,7 +5066,7 @@ export class UsageStore {
           acceptSource(file, outcome);
         } catch (error) {
           if (plan) throw error;
-          if (needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
+          if (file.relocatedFrom || needsReparse || error.code === "LIVE_SOURCE_CHANGED") throw error;
           if (canonicalizeKind(file.source.kind) === "codex" && (Number(error?.errcode) & 0xff) === 19) throw error;
           warnings.push(`无法索引 ${file.filePath}: ${error.message}`);
         }
