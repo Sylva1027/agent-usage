@@ -142,3 +142,23 @@ Windows / Node v26.13.0 / TZ=Asia/Shanghai，测试并发 4，单项超时 72000
 第一批：删除 usage-core 测试未使用的 rm 导入；为配色求解器测试保留前两个参数的位置并标记为未使用；三处 JSON 文本拼接改为模板字符串，保持结尾换行。四个相关测试文件 114 项全部通过，文件 lint（含 error-on-warnings）、格式和 diff --check 通过。日志：output/lint-cleanup-20261111/test-cleanup.log。
 
 第二批：将减少动态效果规则中两条既有 noImportantStyles 注释，从选择器上方移到其对应声明上方，保留无障碍覆盖所需的 !important。去掉注释与空白后，样式表文本与批次前完全相同；格式及 diff --check 通过。全仓诊断降为 44 warning、0 info，剩余均为选择器顺序；没有改动 lint 配置或新增抑制规则。日志：after-comment-placement.json。
+
+第三批：调整通用样式与具体覆盖规则的顺序，拆分混用不同优先级的共享选择器组，并同步移动图表和导入弹窗的窄屏覆盖。选择器、优先级、声明值和媒体条件均保留。浏览器 CSSOM 展开后，改前/改后的 766 条选择器/声明/条件记录多重集合完全一致。现有样式与皮肤契约测试 122 项全部通过；减少动态效果的两处 !important 及隐藏状态规则保持。
+
+真实 Edge 156.0.4314.58 使用隔离配色夹具，对浅色/深色、390/640/720/1020/1179/1280/1600px 宽度，逐一比较主页面、悬停、焦点、近期菜单、来源弹窗、计价弹窗、模型计价与皮肤弹窗；连同动态效果场景共 116 组，计算样式及元素几何全部相同。另以真实键盘和按住按钮激活 :focus-visible / :active，独立复核两种主题、390/1280px 的 8 组交互状态，全部一致；减少动态效果下明确断言 transitionDuration=0s、transform=none。四组主页面截图（两主题 × 390/1280px）逐字节相同。证据位于 output/playwright/lint-cleanup-20261111/ 和 output/playwright/lint-cleanup-20261111-input/，日志为 cascade-browser.log、input-browser.log。
+
+### lint 清理后的完整验证
+
+Windows / Node v26.13.0 / TZ=Asia/Shanghai，完整测试并发 4：**3264 项，3195 通过、0 失败、69 个原有跳过、0 取消**，283.4 秒。与本轮起点相比，测试总数、通过数和跳过数均不变。
+
+| 检查 | 清理前 | 清理后 |
+| --- | --- | --- |
+| lint | 51 warning、3 info | 0 error、0 warning、0 info，351 个文件 |
+| format:check | 通过 | 通过，348 个文件 |
+| typecheck | 通过 | 通过 |
+| 完整测试 | 3195 通过、0 失败、69 跳过 | 3195 通过、0 失败、69 跳过 |
+| diff --check | 通过 | 通过 |
+
+第一批提交 e943872，第二批提交 66104e6；第三批样式调整与本记录一同提交。生产变化只在 public/styles.css；其余修改为四个测试文件及本记录，没有新增依赖或更改 lint 配置。未操作真实使用数据、数据库结构或已安装服务。本轮未运行 Node 22/24 CI 矩阵、Rust 编译、真实大数据库性能矩阵或部署。
+
+本轮日志根目录为 output/lint-cleanup-20261111/：final-tests.log、final-lint.json、typecheck.log、format.log；浏览器证据路径见上。final-lint.json 来自完整诊断且启用了 error-on-warnings，未通过缩减扫描范围或诊断数量清零。
