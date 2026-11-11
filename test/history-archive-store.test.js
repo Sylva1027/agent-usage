@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { codexTokenLine } from "../test-support/codex-log-fixture.mjs";
 
 import { createHistoryArchiveCandidate, verifyHistoryArchiveCandidate } from "../src/history-archive.js";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
@@ -410,32 +411,6 @@ function canonicalEventPayload(row) {
       .sort()
       .map((key) => [key, row[key]]),
   );
-}
-
-function codexTokenLine(timestamp, total, lastTotal) {
-  return JSON.stringify({
-    timestamp,
-    type: "event_msg",
-    payload: {
-      type: "token_count",
-      info: {
-        total_token_usage: {
-          total_tokens: total,
-          input_tokens: total - 20,
-          cached_input_tokens: 0,
-          output_tokens: 20,
-          reasoning_output_tokens: 0,
-        },
-        last_token_usage: {
-          total_tokens: lastTotal,
-          input_tokens: lastTotal - 10,
-          cached_input_tokens: 0,
-          output_tokens: 10,
-          reasoning_output_tokens: 0,
-        },
-      },
-    },
-  });
 }
 
 function codexSessionPrefix(codexHome) {
@@ -1029,7 +1004,12 @@ test("summarizeHistory pins the no-authority marker and hot summary against an e
 
     DatabaseSync.prototype.prepare = function patchedPrepare(sql, ...args) {
       const statement = originalPrepare.call(this, sql, ...args);
-      if (this !== store.database || !this.isTransaction || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
+      if (
+        this !== store.database ||
+        !this.isTransaction ||
+        !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")
+      )
+        return statement;
       return {
         get(...params) {
           const result = statement.get(...params);
@@ -1244,7 +1224,12 @@ test("periodComparisonHistory pins the no-authority marker and period read again
 
     DatabaseSync.prototype.prepare = function patchedPrepare(sql, ...args) {
       const statement = originalPrepare.call(this, sql, ...args);
-      if (this !== store.database || !this.isTransaction || !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")) return statement;
+      if (
+        this !== store.database ||
+        !this.isTransaction ||
+        !String(sql).includes("SELECT 1 FROM store_meta WHERE key = ?")
+      )
+        return statement;
       return {
         get(...params) {
           const result = statement.get(...params);

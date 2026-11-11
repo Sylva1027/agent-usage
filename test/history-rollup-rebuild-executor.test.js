@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { codexTokenLine as tokenLine } from "../test-support/codex-log-fixture.mjs";
 
 import { createHistoryArchiveCandidate } from "../src/history-archive.js";
 import { createUsageExecutor } from "../src/usage-executor.js";
@@ -18,32 +19,6 @@ const ROLLUP_TABLES = [
   ["usage_rollup_sessions", "day_key, home_id, session_id"],
   ["usage_rollup_days", "day_key"],
 ];
-
-function tokenLine(timestamp, total, lastTotal) {
-  return JSON.stringify({
-    timestamp,
-    type: "event_msg",
-    payload: {
-      type: "token_count",
-      info: {
-        total_token_usage: {
-          total_tokens: total,
-          input_tokens: total - 20,
-          cached_input_tokens: 0,
-          output_tokens: 20,
-          reasoning_output_tokens: 0,
-        },
-        last_token_usage: {
-          total_tokens: lastTotal,
-          input_tokens: lastTotal - 10,
-          cached_input_tokens: 0,
-          output_tokens: 10,
-          reasoning_output_tokens: 0,
-        },
-      },
-    },
-  });
-}
 
 function sourcePrefix(codexHome) {
   return [

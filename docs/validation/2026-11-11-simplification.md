@@ -62,3 +62,13 @@ app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋�
 四份 knownToken 函数体逐字核对相同后移到已有 usage-fields.js，调用者沿用既有依赖；删除无入口的 zcodeHomeLooksUsable。加入通过 OpenCode 适配器验证缓存写入零值、数值字符串、缺失、非有限数和负数的表驱动用例。
 
 八个文件共 83 项，原有 82 项通过；新增用例最初缺少常量 import，补齐后单独重跑 OpenCode 全部 17 项通过。本批所有 83 个用例均已通过，没有未解决失败。
+
+### 07：字面量测试夹具
+
+14 个日志构造器合并到无依赖的 codex-log-fixture.mjs，两个测试文件的三种供应商页面复用 pricing-official-fixture.mjs。合并前逐函数比较源码，并验证生成文本逐字节相同；各测试临时目录、故障注入与断言保留。
+
+16 个测试文件共 106 项：104 通过、1 个原有 publication gate/database locked 失败、1 跳过，没有新增失败。
+
+### 08：有意保留的局部重复
+
+五份 deepFreeze 和短路径/事务辅助保持原样，没有引入 contracts 依赖或新生产依赖。

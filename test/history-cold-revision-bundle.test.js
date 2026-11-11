@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { codexTokenLine } from "../test-support/codex-log-fixture.mjs";
 
 import {
   createHistoryArchiveCandidate,
@@ -16,32 +17,6 @@ import { UsageStore } from "../src/usage-store.js";
 
 const ARCHIVE_AUTHORITY_META = "history_archive_event_authority";
 const REVISION_META = "history_archive_event_revisions";
-
-function codexTokenLine(timestamp, total, lastTotal) {
-  return JSON.stringify({
-    timestamp,
-    type: "event_msg",
-    payload: {
-      type: "token_count",
-      info: {
-        total_token_usage: {
-          total_tokens: total,
-          input_tokens: total - 20,
-          cached_input_tokens: 0,
-          output_tokens: 20,
-          reasoning_output_tokens: 0,
-        },
-        last_token_usage: {
-          total_tokens: lastTotal,
-          input_tokens: lastTotal - 10,
-          cached_input_tokens: 0,
-          output_tokens: 10,
-          reasoning_output_tokens: 0,
-        },
-      },
-    },
-  });
-}
 
 function codexCumulativePrefix(codexHome, timestamp, total) {
   return [
