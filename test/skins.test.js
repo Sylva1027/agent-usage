@@ -188,8 +188,8 @@ test("source asset descriptions match the committed file naming rules", () => {
     assert.ok(entry.sourceName.endsWith(".png"), "sources stay PNG");
     assert.ok(entry.expectedName.endsWith(`.${PUBLIC_ASSET_EXTENSION}`), "public copies are the decided format");
     assert.equal(skinAssetUrl(entry.skinId, entry.mode, entry.view), entry.publicUrl);
-    // Only the public copy must exist in every tree: `.gitattributes`
-    // export-ignores `lineart assets/`, so release archives ship without the
+    // Only the public copy must exist in every tree: `.gitignore`
+    // keeps `lineart assets/` local, so fresh clones ship without the
     // authoring PNGs. The source binding is covered below, in a sandbox.
     assert.ok(existsSync(path.join(root, entry.publicPath)), `missing copy ${entry.publicPath}`);
   }

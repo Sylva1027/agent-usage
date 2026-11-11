@@ -54,7 +54,6 @@
 | 2026-10-02-skin-face-centering | [2026-10-02 · 页面两侧立绘随留白居中](2026-10-02-skin-face-centering/README.md) |
 | 2026-10-02-skin-dialog-refinement | [皮肤视觉修改：0—R8 验证](2026-10-02-skin-dialog-refinement/README.md) |
 | 2026-10-02-model-character-skins | [模型角色皮肤 P0 基线 + P1 骨架验证](2026-10-02-model-character-skins/README.md) |
-| 2026-10-02-gpt-skin-preview | [2026-10-02 ChatGPT 双侧角色预览](2026-10-02-gpt-skin-preview/README.md) |
 | 2026-10-02-frame-spotlight | [主界面框体 SpotlightCard：实施与专项验证](2026-10-02-frame-spotlight/README.md) |
 | 2026-10-01-title-centering | [2026-10-01 标题最终居中验收](2026-10-01-title-centering/README.md) |
 | 2026-10-01-release | [2026-10-01 v0.5.0 发布](2026-10-01-release/README.md) |

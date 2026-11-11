@@ -75,7 +75,7 @@ node --test --test-reporter=spec --test-concurrency=4 --test-timeout=720000 "tes
 
 原生助手行为测试可显式设置 `Q6_TEST_HELPER`；构建测试由 `AGENT_USAGE_TEST_NATIVE_BUILD=1` 启用。仅改文档时检查链接、命令与证据，不为文字调整重新构建助手。
 
-源码 ZIP 会通过 `.gitattributes` 排除多数日期证据及作者 PNG；依赖它们的用例会显式跳过。`skins:check` 验证发布资源，`skins:check:sources` 才额外检查作者源图，缺源图时报告 SKIP。完整素材验收使用作者工作树。
+Git 保留运行所需的 WebP，作者 PNG 仅在本地保存。源码 ZIP 另通过 `.gitattributes` 排除多数日期证据；依赖本地素材和证据的用例会显式跳过。`skins:check` 验证发布资源，`skins:check:sources` 才额外检查作者源图，缺源图时报告 SKIP。完整素材验收使用作者工作树。
 
 ## 文档维护
 

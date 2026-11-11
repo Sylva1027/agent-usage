@@ -18,7 +18,7 @@
 
 开始前读取 [开发约定](../../../03-development.md)、[静态导出约定](../../../03-development.md#旧-html-导出与历史验证)，检查当前适用的 `AGENTS.md`、`git status --short` 和 `git diff`。保留用户的素材移动与其他工作，不回滚、不批量删除、不整仓格式化。
 
-历史证据：保存点曾通过 323 项测试，见 [保存点检查](../../../validation/2026-10-02-pre-skin-checkpoint.md)。ChatGPT [探索预览](../../../validation/2026-10-02-gpt-skin-preview/README.md)通过过 22 项检查，但使用过缩窄看板、80% 透明度及遮罩着色，**不符合当前布局与素材契约**。不能复制该预览作为正式实现，也不能把历史结果当本轮验收。
+历史证据：保存点曾通过 323 项测试，见 [保存点检查](../../../validation/2026-10-02-pre-skin-checkpoint.md)。ChatGPT 探索预览通过过 22 项检查，但使用过缩窄看板、80% 透明度及遮罩着色，**不符合当前布局与素材契约**。该废弃预览及作者源图仅在本地保存。
 
 交给其他环境实施时，一并提供最新项目文件、本文、TODOs 和 `lineart assets/light/`、`lineart assets/dark/`；只发送提交号或 Markdown 无法提供全部素材。
 

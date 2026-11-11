@@ -14,8 +14,8 @@
  *     manifest (with expected hashes) and the synchronous bootstrap script.
  *   - `check` verifies only what a release archive contains: the registry
  *     contract, the 40 committed WebP copies against the recorded hashes, the
- *     manifest and the bootstrap. `.gitattributes` export-ignores
- *     `lineart assets/`, so this command must pass in a tree without the
+ *     manifest and the bootstrap. `.gitignore` keeps
+ *     `lineart assets/` local, so this command must pass in a tree without the
  *     authoring PNGs.
  *   - `check-sources` runs the same checks and additionally binds every public
  *     copy to its source PNG. A changed source fails here instead of being
@@ -253,7 +253,7 @@ async function checkPublicTree(tree, sources, registryUrls) {
 
 /**
  * Bind each committed copy to the source PNG it was generated from. Only runs
- * in an authoring checkout: `lineart assets/` is export-ignored.
+ * in an authoring checkout: `lineart assets/` is local and untracked.
  */
 async function checkSourceBinding(tree, sources) {
   const problems = [];

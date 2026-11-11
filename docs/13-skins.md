@@ -18,7 +18,7 @@ waifu 版部分角色形象来自 [ZipZipPipe](https://space.bilibili.com/416859
 | `public/skins.js` | 注册表、资源定位、显示几何与配色派生接口 |
 | `public/skin-ui.js`、`skin-picker.js`、`skins.css` | 角色运行时、选择器、主题及交互 |
 | `public/skin-palette-studio.*` | 独立工作室 |
-| `lineart assets/` | 作者源 PNG，保留用于重生成和来源校验 |
+| `lineart assets/` | 本地作者源 PNG，不纳入 Git；用于重生成和来源校验 |
 | `public/assets/skins/` | 运行时 WebP 资源 |
 | `public/skin-bootstrap.js`、`skin-assets.json` | 生成物，不能手工维护第二份色源或摘要 |
 | `scripts/skin-palette/` | 候选生成、实际页面测量、截图、评审与证据核验 |

@@ -8,7 +8,3 @@
 /docs/validation/*/** export-ignore
 # Validation fixtures read by tests must stay in the archive.
 /docs/validation/2026-10-02-model-character-skins/ink-bounds.json -export-ignore
-# Authoring PNGs. The page loads only the committed WebP copies under
-# public/assets/skins/; `npm run skins:check:sources` verifies them in an
-# authoring checkout, where these files exist.
-"lineart assets/**" export-ignore

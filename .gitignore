@@ -27,6 +27,20 @@ pnpm-debug.log*
 /archived_sessions/
 /state_*.sqlite
 
+# Local assistant settings, memories, and workspace tools
+/.claude/
+/.workbuddy-ai/
+/.zcode/
+/.ct/
+/CLAUDE.md
+/.zcodeignore
+/.dsh-probe.mjs
+/clear/
+
+# Local authoring originals; the app uses public/assets/skins/*.webp
+/lineart assets/
+/docs/validation/2026-10-02-gpt-skin-preview/
+
 # Local-only archived handoff notes (not approved for publication)
 /docs/archive/2026-09-27/code-review/
 /docs/archive/2026-09-27/quota-window-execution-plan.md
