@@ -7,7 +7,13 @@ import { DatabaseSync } from "node:sqlite";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { UsageSourceRows, indexedSourceSessions } from "./usage-source-rows.js";
-import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
+import {
+  USAGE_DETAIL_MASK,
+  knownToken,
+  emptyUsage,
+  isZeroUsage,
+  validateUsageDetails,
+} from "../public/usage-fields.js";
 
 // 相对 ZCode home 目录的数据库位置，按顺序探测。
 const ZCODE_DB_RELATIVE_PATHS = [
@@ -35,10 +41,6 @@ export async function zcodeDatabaseFile(homePath) {
   return "";
 }
 
-export async function zcodeHomeLooksUsable(homePath) {
-  return Boolean(await zcodeDatabaseFile(homePath));
-}
-
 export async function zcodeSourceStat(dbFile) {
   // ZCode 运行时新写入先落在 WAL 文件里，增量检测必须把 -wal 也算进指纹。
   const main = await stat(dbFile);
@@ -64,12 +66,6 @@ function openZcodeDatabase(dbFile) {
     // 崩溃残留的 WAL 需要恢复后才能只读打开，这种情况下退回普通打开。
     return new DatabaseSync(dbFile);
   }
-}
-
-function knownToken(value) {
-  const number = Number(value);
-  const known = value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0;
-  return { tokens: known ? number : 0, known };
 }
 
 function usageFromRow(row) {

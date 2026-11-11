@@ -49,3 +49,9 @@ export function validateUsageDetails(usage, detailMask) {
   }
   return { detailMask: mask, reconciliationGap: gap };
 }
+
+export function knownToken(value) {
+  const number = Number(value);
+  const known = value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0;
+  return { tokens: known ? number : 0, known };
+}

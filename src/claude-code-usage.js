@@ -19,7 +19,13 @@ import { readRolloutLines } from "./codex-rollout.js";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { UsageSourceRows } from "./usage-source-rows.js";
-import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
+import {
+  USAGE_DETAIL_MASK,
+  knownToken,
+  emptyUsage,
+  isZeroUsage,
+  validateUsageDetails,
+} from "../public/usage-fields.js";
 
 const PROJECTS_DIR = "projects";
 const SUBAGENTS_DIR = "subagents";
@@ -32,12 +38,6 @@ async function exists(filePath) {
   } catch {
     return false;
   }
-}
-
-function knownToken(value) {
-  const number = Number(value);
-  const known = value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0;
-  return { tokens: known ? number : 0, known };
 }
 
 function truncateName(value) {

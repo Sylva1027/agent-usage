@@ -18,7 +18,7 @@ import { readRolloutLines } from "./codex-rollout.js";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { UsageSourceRows } from "./usage-source-rows.js";
-import { USAGE_DETAIL_MASK, emptyUsage } from "../public/usage-fields.js";
+import { USAGE_DETAIL_MASK, knownToken, emptyUsage } from "../public/usage-fields.js";
 
 export const WORKBUDDY_KIND = "workbuddy";
 export const WORKBUDDY_CHANNEL = "WorkBuddy";
@@ -49,12 +49,6 @@ async function directoryEntries(target) {
   } catch {
     return [];
   }
-}
-
-function knownToken(value) {
-  const number = Number(value);
-  const known = value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0;
-  return { tokens: known ? number : 0, known };
 }
 
 function trimmed(value) {

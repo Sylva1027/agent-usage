@@ -6,7 +6,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
 import { estimateEventCost } from "../src/pricing.js";
-import { USAGE_DETAIL_INCONSISTENT, validateUsageDetails } from "../public/usage-fields.js";
+import { USAGE_DETAIL_INCONSISTENT, USAGE_DETAIL_MASK, validateUsageDetails } from "../public/usage-fields.js";
 import {
   opencodeDatabaseFiles,
   opencodeHomeLooksUsable,
@@ -145,6 +145,26 @@ test("opencodeUsageFromTokens 把互不重叠的拆分重构成超集", () => {
     const validation = validateUsageDetails(mapped.usage, mapped.detailMask);
     assert.equal(validation.reconciliationGap, 0);
     assert.ok(!(validation.detailMask & USAGE_DETAIL_INCONSISTENT));
+  }
+});
+
+test("缓存写入保留零值、缺失标记和既有数值转换", () => {
+  for (const [value, tokens, known] of [
+    [0, 0, true],
+    ["0", 0, true],
+    [" 12 ", 12, true],
+    [null, 0, false],
+    [undefined, 0, false],
+    ["", 0, false],
+    ["invalid", 0, false],
+    [Number.NaN, 0, false],
+    [Infinity, 0, false],
+    [-1, 0, false],
+  ]) {
+    const result = opencodeUsageFromTokens({ input: 10, cache: { read: 0, write: value }, output: 2, reasoning: 0 });
+    assert.deepEqual(result.cacheWrite, { tokens, known }, String(value));
+    assert.equal(result.usage.total, 12 + tokens);
+    assert.equal(Boolean(result.detailMask & USAGE_DETAIL_MASK.cacheWrite), known);
   }
 });
 

@@ -56,3 +56,9 @@ app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋�
 时间轴直接复用 period-comparison 的日初/周初；页面仍使用的 addCalendarDays 等辅助保留。第 05 卡随旧生产统计链删除关闭，不合并独立参考算法与被测后端。
 
 验证：12 个相关文件（页面渲染/刷新、timeline、recent、usage-core/store、quota、Claude 计价与统计对拍）共 255 项，253 通过、2 个原有 usage-store warnings 失败、0 跳过。两项失败名称/位置/断言与基线一致；没有新增失败。差异和遗漏引用检查通过。
+
+### 06：四来源 Token 解析
+
+四份 knownToken 函数体逐字核对相同后移到已有 usage-fields.js，调用者沿用既有依赖；删除无入口的 zcodeHomeLooksUsable。加入通过 OpenCode 适配器验证缓存写入零值、数值字符串、缺失、非有限数和负数的表驱动用例。
+
+八个文件共 83 项，原有 82 项通过；新增用例最初缺少常量 import，补齐后单独重跑 OpenCode 全部 17 项通过。本批所有 83 个用例均已通过，没有未解决失败。

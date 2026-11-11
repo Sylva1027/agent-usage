@@ -13,19 +13,19 @@ import { DatabaseSync } from "node:sqlite";
 import { LONG_CONTEXT_INPUT_THRESHOLD, pricingVersionForTimestamp } from "./pricing.js";
 import { createRepositoryResolver } from "./repository-identity.js";
 import { UsageSourceRows, indexedSourceSessions } from "./usage-source-rows.js";
-import { USAGE_DETAIL_MASK, emptyUsage, isZeroUsage, validateUsageDetails } from "../public/usage-fields.js";
+import {
+  USAGE_DETAIL_MASK,
+  knownToken,
+  emptyUsage,
+  isZeroUsage,
+  validateUsageDetails,
+} from "../public/usage-fields.js";
 
 // session_message 表的必需列。缺列说明 schema 又变了，整来源跳过并给出可诊断的警告。
 const SESSION_MESSAGE_REQUIRED_COLUMNS = ["id", "session_id", "type", "seq", "time_created", "data"];
 // 只支持 v2 语义（output 为可见输出、不含 reasoning）。旧语义折叠会重复计数。
 const OPENCODE_SUPPORTED_SESSION_MAJOR = 2;
 const SESSION_TITLE_LIMIT = 120;
-
-function knownToken(value) {
-  const number = Number(value);
-  const known = value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0;
-  return { tokens: known ? number : 0, known };
-}
 
 // 上游 tokens 是互不重叠的拆分，重构成看板要求的超集口径：
 // cached + cacheWrite ⊆ input（DSH 式的并列陷阱），reasoning ⊆ output。
