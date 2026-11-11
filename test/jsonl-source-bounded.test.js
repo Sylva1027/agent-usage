@@ -7,6 +7,7 @@ import test from "node:test";
 import { streamClaudeSessionEvents } from "../src/claude-code-usage.js";
 import { UsageSourceRows } from "../src/usage-source-rows.js";
 import { streamWorkbuddySessionEvents } from "../src/workbuddy-usage.js";
+import { API_PRICING_VERSION } from "../src/pricing.js";
 
 const HOME = { id: "bounded-home", label: "Bounded home", path: "/unused" };
 const TIME = 1793836800000;
@@ -251,6 +252,11 @@ test("forced spill exactly matches independent frozen JSONL adapters including -
   ]) {
     await fixture(rows, async (file) => {
       const expected = await capture(baseline[kind], file);
+      // The frozen parser keeps its old pricing revision; extraction and amounts remain independent.
+      for (const event of expected.events) {
+        assert.equal(event.priceVersion, "2026-10-12");
+        event.priceVersion = API_PRICING_VERSION;
+      }
       await withBudget(2048, async () => assert.deepEqual(await capture(stream, file), expected));
     });
   }

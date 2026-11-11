@@ -8,6 +8,7 @@ import test from "node:test";
 import { parseOpencodeDb, streamOpencodeDbEvents } from "../src/opencode-usage.js";
 import { UsageSourceRows } from "../src/usage-source-rows.js";
 import { parseZcodeDb, streamZcodeDbEvents } from "../src/zcode-usage.js";
+import { API_PRICING_VERSION } from "../src/pricing.js";
 
 const TIME = Date.parse("2026-10-20T12:00:00Z");
 const adapters = {
@@ -116,6 +117,15 @@ async function frozen(kind) {
     : { stream: module.streamOpencodeDbEvents, parse: module.parseOpencodeDb };
 }
 
+function currentPriceRevision(result) {
+  // Keep the frozen extraction/amount oracle while accounting for the intentional catalog revision.
+  for (const event of result.events) {
+    assert.equal(event.priceVersion, "2026-10-12");
+    event.priceVersion = API_PRICING_VERSION;
+  }
+  return result;
+}
+
 async function assertParity(kind, input) {
   const actual = await collect(adapters[kind].stream, input);
   const actualWarnings = [];
@@ -127,14 +137,16 @@ async function assertParity(kind, input) {
   assert.equal(parsed.events.length, actual.events.length);
   if (frozenAvailable) {
     const old = await frozen(kind);
-    assert.deepEqual(actual, await collect(old.stream, input));
+    assert.deepEqual(actual, currentPriceRevision(await collect(old.stream, input)));
     const oldWarnings = [];
     assert.deepEqual(
       parsed,
-      await old.parse(input.file, input.source, {
-        repositoryResolver,
-        onWarning: (warning) => oldWarnings.push(warning),
-      }),
+      currentPriceRevision(
+        await old.parse(input.file, input.source, {
+          repositoryResolver,
+          onWarning: (warning) => oldWarnings.push(warning),
+        }),
+      ),
     );
     assert.deepEqual(actualWarnings, oldWarnings);
   }
@@ -436,7 +448,8 @@ for (const kind of Object.keys(adapters)) {
         [165, 165, 215],
       );
       assert.deepEqual(after.warnings, []);
-      if (frozenAvailable) assert.deepEqual(after, await collect((await frozen(kind)).stream, input));
+      if (frozenAvailable)
+        assert.deepEqual(after, currentPriceRevision(await collect((await frozen(kind)).stream, input)));
       const checkpoint = input.database.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
       assert.equal(checkpoint.busy, 0, "snapshot must release its WAL reader");
     });
