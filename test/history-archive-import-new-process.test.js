@@ -23,6 +23,7 @@ const EVENT_AUTHORITY_KEY = "history_archive_event_authority";
 const CODEX_BASE_MS = Date.parse("2026-10-04T12:00:00.000Z");
 
 const CHILD_SOURCE = `
+const { listenOnFetchPort } = await import(${JSON.stringify(new URL("../test-support/fetch-port.mjs", import.meta.url).href)});
 const { loadPricingFile } = await import(process.env.PRICING_STORE_MODULE_URL);
 const { getPricingCatalog } = await import(process.env.PRICING_MODULE_URL);
 const { createHistoryArchiveImportServer } = await import(process.env.SERVER_MODULE_URL);
@@ -43,10 +44,7 @@ try {
     pricingFile: process.env.PRICING_B_FILE,
     automaticDiscoveryEnabled: false,
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
+  await listenOnFetchPort(server);
   const address = server.address();
   console.log(\`A20_READY \${JSON.stringify({
     pid: process.pid,

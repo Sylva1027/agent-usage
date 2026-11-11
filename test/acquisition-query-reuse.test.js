@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import childProcess from "node:child_process";
 import { once } from "node:events";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
@@ -96,7 +97,7 @@ async function fixture(t, { direct = false, idleTimeoutMs = 60_000 } = {}) {
     await client.sync({ options: input.serverOptions });
   } else {
     server = createUsageServer(input.serverOptions);
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     base = `http://127.0.0.1:${server.address().port}`;
     await request(query);
   }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -41,7 +42,7 @@ test("a complete cached server response survives restart and a later append stil
   const query = "/api/usage?preset=all&bucket=day&calendarZone=utc&view=dashboard";
   async function start() {
     server = createUsageServer(fixture.serverOptions);
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     return `http://127.0.0.1:${server.address().port}`;
   }
   try {
@@ -180,7 +181,7 @@ test("publication changed during a request is never attached to its cached resul
       return originalPublish.apply(this, args);
     };
     server = createUsageServer({ ...fixture.serverOptions, pricingRefreshSchedulerEnabled: false });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const url = `http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`;
     const first = await fetch(url);
     assert.equal(first.status, 200);

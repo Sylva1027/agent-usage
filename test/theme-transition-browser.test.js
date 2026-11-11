@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import test from "node:test";
 import { SKIN_PREFERENCE_KEY } from "../public/skins.js";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
@@ -40,7 +41,7 @@ test("theme frames preserve the old scene and fade in both directions, including
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await fixture.close();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
 
   for (const fallback of [false, true]) {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFileSync, mkdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ function installExecutorPreload(root, fileName, source) {
 }
 
 async function listen(server) {
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   return `http://127.0.0.1:${server.address().port}`;
 }
 

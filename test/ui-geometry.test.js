@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -673,10 +674,7 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       )
       .join("\n")}\n`,
   );
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
+  await listenOnFetchPort(server);
   browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
   const url = `http://127.0.0.1:${server.address().port}/`;
   const catalog = await fetch(`${url}api/pricing`).then((response) => response.json());

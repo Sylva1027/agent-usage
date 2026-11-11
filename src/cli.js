@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { homedir, platform } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -443,12 +444,24 @@ async function openDashboard(args) {
 async function requestServiceShutdown(service) {
   if (service.shutdownToken && service.url) {
     try {
-      const response = await fetch(new URL("/internal/shutdown", service.url), {
-        method: "POST",
-        headers: { "x-codex-usage-shutdown-token": service.shutdownToken },
-        signal: AbortSignal.timeout(1500),
+      // The OS can assign a listening port that fetch forbids, even for local shutdown.
+      return await new Promise((resolve, reject) => {
+        const request = httpRequest(
+          new URL("/internal/shutdown", service.url),
+          {
+            method: "POST",
+            headers: { "x-codex-usage-shutdown-token": service.shutdownToken },
+            signal: AbortSignal.timeout(1500),
+          },
+          (response) => {
+            response.once("error", reject);
+            response.once("end", () => resolve(response.statusCode === 202));
+            response.resume();
+          },
+        );
+        request.once("error", reject);
+        request.end();
       });
-      return response.status === 202;
     } catch {
       return false;
     }

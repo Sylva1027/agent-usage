@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import childProcess from "node:child_process";
 import { once } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
@@ -82,7 +83,7 @@ async function fixture(t, { direct = false, server: serve = false, probe = "", i
     });
     t.mock.method(UsageSummaryCache.prototype, "publish", async () => {});
     server = createUsageServer(options);
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     base = `http://127.0.0.1:${server.address().port}`;
   } else if (direct) {
     client = createUsageExecutor(options);

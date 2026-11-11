@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
@@ -39,10 +40,7 @@ async function fixture(t) {
     setPricingCatalog(pricing);
     input.close();
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
+  await listenOnFetchPort(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   async function get(url = query) {
     const response = await fetch(base + url);

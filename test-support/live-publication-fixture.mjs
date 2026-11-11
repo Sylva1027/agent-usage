@@ -18,6 +18,7 @@ import { buildUsageReport, summarizeUsage, summarizePeriodComparison } from "../
 import { UsageSummaryCache } from "../src/usage-summary-cache.js";
 import { clean } from "../test-support/history-compaction-fixture.mjs";
 import { installRecoveryHooks } from "../test-support/live-source-recovery-hook.mjs";
+import { listenOnFetchPort } from "./fetch-port.mjs";
 
 const DAY = 86_400_000;
 const START = Date.parse("2026-11-01T00:00:00Z");
@@ -354,16 +355,7 @@ async function fixture(t, target, { hotOnly = HOT_ONLY, publication = false } = 
         syncBuiltinESMExports();
       }
       server = createUsageServer(options);
-      // Ephemeral Windows ports can fall on fetch's blocked-port list.
-      for (let attempt = 0; ; attempt++) {
-        try {
-          server.listen(20_000 + Math.floor(Math.random() * 10_000), "127.0.0.1");
-          await once(server, "listening");
-          break;
-        } catch (error) {
-          if (error.code !== "EADDRINUSE" || attempt >= 20) throw error;
-        }
-      }
+      await listenOnFetchPort(server);
       f.base = `http://127.0.0.1:${server.address().port}`;
       return server;
     },

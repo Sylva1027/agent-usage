@@ -330,6 +330,50 @@ test("cli stop waits for accepted shutdown cleanup beyond five seconds", async (
   }
 });
 
+test("cli stop shuts down a service on a port blocked by fetch", async () => {
+  const homeDir = await makeFixtureHome();
+  const stateFile = path.join(homeDir, "services.json");
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { createServer } from 'node:http';
+       const ports = [1720, 6000, 6665, 6666, 6667, 6668, 6669, 10080];
+       const server = createServer((request, response) => {
+         if (request.method !== 'POST' || request.url !== '/internal/shutdown' ||
+             request.headers['x-codex-usage-shutdown-token'] !== 'fixture-token') {
+           response.writeHead(403).end();
+           return;
+         }
+         response.writeHead(202).end();
+         server.close(() => process.exit(0));
+       });
+       const listen = () => server.listen(ports.shift(), '127.0.0.1');
+       server.on('error', (error) => {
+         if (error.code === 'EADDRINUSE' && ports.length) listen();
+         else throw error;
+       });
+       server.on('listening', () => console.log('http://127.0.0.1:' + server.address().port));
+       listen();`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const exited = waitForExit(child);
+  try {
+    const url = await waitForServerUrl(child);
+    await assert.rejects(fetch(url), (error) => error.cause?.message === "bad port");
+    await writeServices(stateFile, [{ pid: child.pid, url, shutdownToken: "fixture-token" }]);
+    const output = await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));
+    assert.match(output, /Stopped 1 Agent Usage service/);
+    assert.equal(await exited, 0);
+    assert.deepEqual(await readServices(stateFile), []);
+  } finally {
+    if (child.exitCode === null && !child.killed) child.kill();
+    await exited;
+  }
+});
+
 test("cli restart stops existing services and starts a new gateway", async () => {
   const homeDir = await makeFixtureHome();
   const stateFile = path.join(homeDir, "services.json");

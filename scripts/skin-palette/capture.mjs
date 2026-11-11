@@ -3447,6 +3447,11 @@ async function ensureCalendarDayVisible(page, selector, stateTimeoutMs, record) 
   record.calendar = { target, from: view, clicks: actions.length, actions };
 }
 
+export const USAGE_RENDER_READY_WAIT_SOURCE = `(async () => {
+  await (await import("/app.js")).activeUsageLoadDone;
+  return true;
+})()`;
+
 /** 就绪判定的一次性求值（入口“已在状态中”检查；异常按未就绪处理）。 */
 async function evaluateReady(page, ready) {
   if (!ready) return null;
@@ -3464,14 +3469,7 @@ export async function waitStateReady(page, ready, timeout) {
   try {
     await page.waitForFunction(buildStateReadyWaitSource(ready), undefined, { timeout });
     // Selection styling can change before the requested dashboard has rendered.
-    await page.waitForFunction(
-      async () => {
-        await (await import("/app.js")).activeUsageLoadDone;
-        return true;
-      },
-      undefined,
-      { timeout },
-    );
+    await page.waitForFunction(USAGE_RENDER_READY_WAIT_SOURCE, undefined, { timeout });
     return { ok: true, kind: ready.kind, selector: ready.selector, ms: Date.now() - started };
   } catch (error) {
     return {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -139,7 +140,7 @@ test("folder picker admits one request and releases it when the client leaves", 
       }),
   });
   servers.set(t, server);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   const url = `http://127.0.0.1:${server.address().port}/api/pick-directory`;
   const controller = new AbortController();
   const pending = fetch(url, { method: "POST", signal: controller.signal }).catch((error) => error);
@@ -154,7 +155,7 @@ test("folder picker admits one request and releases it when the client leaves", 
 
 async function listen(t, options) {
   const server = createUsageServer(options);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   servers.set(t, server);
   const base = `http://127.0.0.1:${server.address().port}`;
   return async (route, body) => {

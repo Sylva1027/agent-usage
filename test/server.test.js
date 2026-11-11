@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { glmPricingPage, stepfunPricingPage, kimiPricingPage } from "../test-support/pricing-official-fixture.mjs";
 
 import { createUsageServer as createUsageServerBase, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
@@ -195,10 +196,10 @@ async function makeFixtureHome() {
 test("server serves the dashboard and usage API", async () => {
   const { homeDir, importStoreFile, databaseFile } = await makeFixtureHome();
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+
     const baseUrl = `http://127.0.0.1:${port}`;
     const page = await fetch(`${baseUrl}/`);
     const api = await fetch(`${baseUrl}/api/usage`);
@@ -272,10 +273,10 @@ test("usage responses carry one exact pricing catalog and frozen snapshots stay 
   const fixture = await makeFixtureHome();
   const originalPricing = getPricingCatalog();
   const server = createUsageServer(fixture);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const catalogWithStatus = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     const expected = {
       checkedAt: catalogWithStatus.checkedAt,
@@ -361,10 +362,10 @@ test("snapshot captures pricing before backup and discovery leaves the request s
       return fetchPricing(url);
     },
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const catalogA = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     pendingLiveCatalog = {
       checkedAt: "2026-10-27",
@@ -418,8 +419,8 @@ test("server accepts named recent reset windows and calendar ranges", async () =
     ]),
   );
   const server = createUsageServer(fixture);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
+    await listenOnFetchPort(server);
     for (const [value, bucket, slots] of [
       ["上一个5h", "quota_30m", null],
       ["上周", "day", null],
@@ -454,10 +455,10 @@ test("server reports unsupported stored imports instead of hiding them", async (
   await writeFile(importStoreFile, JSON.stringify({ imports: [{ path: unsupportedPath }] }));
 
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+
     const imports = await fetch(`http://127.0.0.1:${port}/api/imports`).then((response) => response.json());
 
     assert.equal(imports.imports[0].type, "unsupported");
@@ -476,11 +477,11 @@ test("server keeps full detail reports behind the documented 512MB heap budget",
 test("server reports status changes and refreshes cached usage reports", async () => {
   const { homeDir, importStoreFile, sessionFile } = await makeFixtureHome();
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
     const firstUsage = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     const unchanged = await fetch(`${baseUrl}/api/status?since=${firstUsage.fingerprint}`).then((response) =>
       response.json(),
@@ -529,7 +530,7 @@ test("local Magpie ledgers never affect native HTTP publication or frozen snapsh
   const ledgerFile = path.join(options.homeDir, ".config", "magpie", "usage.jsonl");
   const server = createUsageServer(options);
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const get = async (query) => {
       const response = await fetch(`${baseUrl}/api/${query}`);
@@ -606,7 +607,7 @@ test("imported runtime stays bound to its database and ignores local Magpie ledg
       ...options,
       importContext: { pricingCatalog: structuredClone(getPricingCatalog()), serviceTierEvidenceSnapshot: null },
     });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const before = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     assert.equal(before.summary.totals.total, 123);
@@ -633,10 +634,10 @@ test("imported runtime stays bound to its database and ignores local Magpie ledg
 test("paused usage keeps the same indexed data across range changes", async () => {
   const { homeDir, importStoreFile, databaseFile, sessionFile } = await makeFixtureHome();
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const paused = await fetch(`${baseUrl}/api/usage?preset=all&freeze=1`).then((response) => response.json());
     assert.equal(paused.summary.totals.total, 123);
     assert.ok(paused.snapshotId);
@@ -733,10 +734,10 @@ test("quota API forces its server bucket, returns capability state, and keeps sn
     ]),
   );
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const liveResponse = await fetch(`${baseUrl}/api/usage?preset=quota_5h&bucket=month&detail=full`);
     const live = await liveResponse.json();
     assert.equal(liveResponse.status, 200);
@@ -804,11 +805,11 @@ test("server imports project usage log directories and refreshes usage data", as
   );
 
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
     const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     const imported = await fetch(`${baseUrl}/api/imports`, {
       method: "POST",
@@ -924,11 +925,11 @@ test("server imports a DSH home and labels it as DSH", async () => {
   );
 
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
     const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     const imported = await fetch(`${baseUrl}/api/imports`, {
       method: "POST",
@@ -1009,11 +1010,11 @@ test("server imports an OpenCode data dir and labels it as OpenCode", async () =
   }
 
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
     const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     const imported = await fetch(`${baseUrl}/api/imports`, {
       method: "POST",
@@ -1086,11 +1087,11 @@ test("server imports a Claude Code home and labels it as Claude Code", async () 
   );
 
   const server = createUsageServer({ homeDir, importStoreFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
     const before = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     const imported = await fetch(`${baseUrl}/api/imports`, {
       method: "POST",
@@ -1141,10 +1142,10 @@ test("server returns a picked directory from the local directory picker", async 
     // Tests inject the picker so they never open an OS dialog.
     pickDirectory: async () => pickedPath,
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+
     const response = await fetch(`http://127.0.0.1:${port}/api/pick-directory`, {
       method: "POST",
     });
@@ -1274,7 +1275,7 @@ test("pricing refresh endpoint updates cached values and rejects an outdated edi
     },
   });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     let original = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     const manualRate = structuredClone(original);
@@ -1356,7 +1357,7 @@ test("pricing refresh API targets one model and keeps concurrent targets indepen
     },
   });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     await fetch(`${baseUrl}/api/pricing`);
     const matched = await fetch(`${baseUrl}/api/pricing/refresh`, {
@@ -1418,7 +1419,7 @@ test("pricing mutations keep a manual FX lock across save and refresh races", as
     pricingFetcher: r07PricingFetcher({ calls, models: ["gpt-6-sol"], rate: () => rate }),
   });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     await fetch(`${baseUrl}/api/pricing/refresh`, {
       method: "POST",
@@ -1499,7 +1500,7 @@ test("imported pricing runtime rejects saves and refreshes", async () => {
     importContext: { pricingCatalog: catalog, serviceTierEvidenceSnapshot: null },
   });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const pricing = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     assert.equal(pricing.automatic, null);
@@ -1530,7 +1531,7 @@ test("failed pricing writes keep the prior effective catalog", async () => {
   let refreshServer = null;
   try {
     saveServer = createUsageServer({ homeDir: saveHome, automaticDiscoveryEnabled: false });
-    await new Promise((resolve) => saveServer.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(saveServer);
     const saveBase = `http://127.0.0.1:${saveServer.address().port}`;
     const beforeSave = await fetch(`${saveBase}/api/pricing`).then((response) => response.json());
     const pricingPath = path.join(saveHome, ".codex-usage", "pricing.json");
@@ -1553,7 +1554,7 @@ test("failed pricing writes keep the prior effective catalog", async () => {
       automaticDiscoveryEnabled: false,
       pricingFetcher: r07PricingFetcher({ calls: [], models: ["gpt-6-sol"], rate: 6.9 }),
     });
-    await new Promise((resolve) => refreshServer.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(refreshServer);
     const refreshBase = `http://127.0.0.1:${refreshServer.address().port}`;
     const beforeRefresh = await fetch(`${refreshBase}/api/pricing`).then((response) => response.json());
     const failedRefresh = await fetch(`${refreshBase}/api/pricing/refresh`, {
@@ -1591,7 +1592,7 @@ test("pricing model activity keeps historical rates and honors a frozen usage sn
   await writeFile(log, jsonl([row("retired-missing-model", now - 45 * 86400000), row("gpt-6-sol", now - 1000)]));
   const server = createUsageServer({ ...fixture, importDirs: [projectRoot], automaticDiscoveryEnabled: false });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     const paused = await fetch(`${base}/api/usage?preset=all&freeze=1`).then((response) => response.json());
     assert.ok(paused.metadata.harnessModels.Codex.includes("retired-missing-model"));
@@ -1633,7 +1634,7 @@ test("pricing coverage waits for the usage index and lists missing models", asyn
   );
   const server = createUsageServer({ ...fixture, importDirs: [projectRoot] });
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const before = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     assert.equal(before.usageCoverage.ready, false);
@@ -1750,11 +1751,11 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
       return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
     },
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
   let closePromise = null;
   const closeDiscoveries = [];
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const waiting = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     assert.equal(waiting.usageCoverage.ready, false);
     const beforeUsageRefresh = await fetch(`${baseUrl}/api/pricing/refresh`, {
@@ -1929,7 +1930,7 @@ test("pricing API validates, persists, and reprices indexed history", async () =
   const options = { ...fixture, importDirs: [projectRoot] };
   let server = createUsageServer(options);
   const listen = async () => {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     return `http://127.0.0.1:${server.address().port}`;
   };
   const close = async () => new Promise((resolve) => server.close(resolve));
@@ -2030,10 +2031,10 @@ test("pricing API validates, persists, and reprices indexed history", async () =
 test("usage API 按 exclude 参数过滤数据来源", async () => {
   const { homeDir, importStoreFile, databaseFile } = await makeFixtureHome();
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-
   try {
+    await listenOnFetchPort(server);
+    const { port } = server.address();
+
     const baseUrl = `http://127.0.0.1:${port}`;
     const base = await fetch(`${baseUrl}/api/usage`).then((response) => response.json());
     assert.equal(base.summary.totals.total, 123);
@@ -2116,9 +2117,10 @@ test("D3 · quota API 的时刻语义：过期/新鲜随 asOf 现算，freeze �
     ]),
   );
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const live1 = await fetch(`${baseUrl}/api/usage?preset=quota_5h&bucket=month`).then((response) => response.json());
     const window1 = live1.quota.windows.quota_5h;
     assert.equal(window1.state, "available");
@@ -2207,9 +2209,10 @@ test("D4 · 周期 API 的 asOf 仍新鲜 + 改数据立即失效（server，先
   const lock = await acquireD3ServerLock("d4-period-freshness");
   const { homeDir, importStoreFile, databaseFile, sessionFile } = await makeFixtureHome();
   const server = createUsageServer({ homeDir, importStoreFile, databaseFile });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
   try {
+    await listenOnFetchPort(server);
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
     const first = await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     const p1 = first.periodComparison;
     assert.ok(p1.totals.all.total > 0, "夹具的事件计入 all 周期");

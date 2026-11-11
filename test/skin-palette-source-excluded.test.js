@@ -5,6 +5,7 @@ import {
   withSourceExcludedState,
   STATE_MATRIX_GROUPS,
   buildFixedMatrixFixtureBindings,
+  USAGE_RENDER_READY_WAIT_SOURCE,
 } from "../scripts/skin-palette/capture.mjs";
 import { ROLE_CATALOG, STATE_CATALOG } from "../scripts/skin-palette/roles.mjs";
 import { getPaletteFixtureHash, getTimelineWarningFixtureHash } from "../test-support/skin-palette-fixture.mjs";
@@ -97,6 +98,11 @@ function createHarness({
       return new Promise((resolve) => waiters.push({ predicate, resolve }));
     },
     waitForFunction: async (source, argument, options) => {
+      // The fake dashboard updates synchronously and has no pending usage request.
+      if (source === USAGE_RENDER_READY_WAIT_SOURCE) {
+        events.push("usage-render-ready");
+        return true;
+      }
       if (typeof source === "string" && source.includes("#sourcePicker .home-excluded")) {
         events.push("ready-check");
         if (!dialogOpen || checked || !badgePresent) throw new Error("排除状态尚未就绪");
@@ -258,6 +264,8 @@ test("D12-A2 成功：回调仅在排除态运行，原测量结果透传，随�
     [true, false],
   );
   assert.deepEqual(harness.events.indexOf("measure-callback") < harness.events.indexOf("check"), true);
+  assert.ok(harness.events.indexOf("usage-render-ready") >= 0);
+  assert.ok(harness.events.indexOf("usage-render-ready") < harness.events.indexOf("measure-callback"));
   assert.equal(harness.trace.sourceExcluded.initiallyChecked, true);
   assert.equal(harness.trace.sourceExcluded.filter.responseUrl, "http://127.0.0.1/api/usage?exclude=home-1");
   assert.equal(harness.trace.sourceExcluded.restore.responseUrl, "http://127.0.0.1/api/usage");

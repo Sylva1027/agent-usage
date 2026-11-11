@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { mkdtemp, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -109,7 +110,7 @@ test("cold dashboard shares one verified carrier and preserves existing componen
     assert.deepEqual(await store.dashboardHistory(filters), individual);
     store.close();
     server = createUsageServer(options);
-    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    await listenOnFetchPort(server);
     const url = `http://127.0.0.1:${server.address().port}/api/summary?preset=all`;
     const response = await fetch(url);
     const payload = await response.json();

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -65,10 +66,7 @@ test("one certified result drives concurrent requests, notifications, scope chan
   const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
   async function listen() {
     server = createUsageServer({ ...options, shutdownToken: randomUUID() });
-    await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
+    await listenOnFetchPort(server);
     return `http://127.0.0.1:${server.address().port}`;
   }
   async function get(base, url) {

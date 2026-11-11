@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -192,7 +193,7 @@ test("the original HTTP path repairs an interrupted archive move after restart",
   store.close();
   const server = createUsageServer(options);
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`);
     const body = await response.json();
     assert.equal(response.status, 200, JSON.stringify(body));

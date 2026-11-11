@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import test from "node:test";
 import { resolveBrowserRuntime } from "../scripts/skin-palette/capture.mjs";
 import { createUsageServer } from "../src/server.js";
@@ -73,7 +74,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await fixture.close();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
   await page.route(

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -34,7 +35,7 @@ test("detail growth, uncut quota control and theme transitions work in the real 
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await fixture.close();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await context.addInitScript(() => {

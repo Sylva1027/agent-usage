@@ -6,6 +6,7 @@ import {
   captureHomeSourceExcludedEvidence,
   readHomeSourceBinding,
   withHomeSourceExcludedState,
+  USAGE_RENDER_READY_WAIT_SOURCE,
 } from "../scripts/skin-palette/capture.mjs";
 import { ROLE_CATALOG } from "../scripts/skin-palette/roles.mjs";
 
@@ -226,6 +227,11 @@ function createHomeLifecycleHarness({
   };
   fixture.page.waitForFunction = async (source, argument, options) => {
     events.push(`wait-function:${options.timeout}`);
+    // The fake dashboard updates synchronously and has no pending usage request.
+    if (source === USAGE_RENDER_READY_WAIT_SOURCE) {
+      events.push("usage-render-ready");
+      return true;
+    }
     const result =
       typeof source === "function"
         ? runInNewContext(`(${source.toString()})(argument)`, {
@@ -485,6 +491,8 @@ test("A7-2: 只在主页同源排除态调用回调，随后按顺序恢复来�
     "restore-dialog-closed",
   ]);
   assert.ok(harness.events.indexOf("checkbox-uncheck:target") < harness.events.indexOf("callback"));
+  assert.ok(harness.events.indexOf("usage-render-ready") >= 0);
+  assert.ok(harness.events.indexOf("usage-render-ready") < harness.events.indexOf("callback"));
   assert.ok(harness.events.indexOf("step:restore:#cancelImportButton") < harness.events.indexOf("callback"));
   assert.ok(harness.events.indexOf("callback") < harness.events.indexOf("checkbox-check:target"));
   assert.equal(harness.sourceChecked(), true);

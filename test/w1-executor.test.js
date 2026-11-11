@@ -1,4 +1,5 @@
 // W1-a：唯一数据库持有者（执行器）的契约测试。
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 //
 // 覆盖 W1 的三条根因对应的**可观测契约**（不重复 server.test.js 的端到端期望）：
 //   1. 执行器独占 `DatabaseSync`：主线程客户端**没有** `database`，只有读侧快照；
@@ -89,7 +90,7 @@ test("dashboard skipCheck reinitializes the executor after a crash", async () =>
   };
   const server = createUsageServer(options);
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const url = `http://127.0.0.1:${server.address().port}/api/usage?preset=all&view=dashboard`;
     const before = await fetch(url);
     const expected = await before.json();
@@ -295,7 +296,7 @@ test("W1 · /api/status 在主线程就地应答：执行器在飞时仍快速�
   const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const server = createUsageServer(options);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const inFlight = fetch(`${base}/api/usage?preset=all`).then((response) => response.json());
@@ -472,7 +473,7 @@ test("W1-b · 家族②：/api/status 只读已发布快照，不与执行器的
   const server = createUsageServer(options);
   let heavy;
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     // 超时只作卡死上限；契约由 IPC 请求数和放行前后的完成顺序证明。
     const signal = AbortSignal.timeout(10_000);
@@ -525,7 +526,7 @@ test("W1-b · 家族③：两轮并发 sync 必须合并成一次（syncPromise 
     return originalEmit.call(this, event, ...args);
   };
   const server = createUsageServer(options);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     // 从同一冷窗口同时发出两个重请求 ⇒ 只允许跑一次 sync（同一逻辑快照 + 只有一条 sync 状态）。
@@ -555,7 +556,7 @@ test("W1-b · 收口：server.close() 无回调时返回 Promise，且只有执�
   const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
   const server = createUsageServer(options);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   await fetch(`http://127.0.0.1:${server.address().port}/api/usage?preset=all`).then((r) => r.json());
   const closed = server.close();
   assert.ok(closed instanceof Promise, "server.close() 无回调时必须返回 Promise（显式 flush 语义）");

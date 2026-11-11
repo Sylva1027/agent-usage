@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
@@ -44,7 +45,7 @@ test("Q5 cache miss cannot label a newer dashboard with the previous source fing
   let held = false;
   let reading;
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     const before = await json(base, `/api/usage?${QUERY}`);
     UsageSummaryCache.prototype.get = async function (...args) {
@@ -87,7 +88,7 @@ for (const check of ["status", "unchanged-sync", "unchanged-sync-miss", "append"
     let reads = 0;
     const signatures = new Set();
     try {
-      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      await listenOnFetchPort(server);
       const base = `http://127.0.0.1:${server.address().port}`;
       await json(base, `/api/usage?${QUERY}`);
       await json(base, `/api/usage?${QUERY}&skipCheck=1`);
@@ -168,7 +169,7 @@ for (const stage of ["cache", "dashboard"]) {
     const delayed = [];
     let deliveryError;
     try {
-      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      await listenOnFetchPort(server);
       const base = `http://127.0.0.1:${server.address().port}`;
       await json(base, `/api/usage?${QUERY}`);
       const appendBoth = async () => {
@@ -279,7 +280,7 @@ test("Q5 poll collision publishes an admitted batch and retains the later append
   let poll;
   let skipped;
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     const initial = await json(base, `/api/usage?${QUERY}`);
     const stream = await fetch(`${base}/api/usage-events`);
@@ -385,7 +386,7 @@ test("Q5 continuous hints deliver each changed commit before a quiet round and d
   let completed = 0;
   let reader;
   try {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     await json(base, `/api/usage?${QUERY}`);
     reader = (await fetch(`${base}/api/usage-events`)).body.getReader();

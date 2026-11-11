@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -108,7 +109,7 @@ async function createFixtureServer(options = {}, automaticState = null, beforeLi
     ...options,
   });
   await beforeListen?.(server);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   return { homeDir, server };
 }
 
@@ -313,7 +314,7 @@ test("hourly metadata discovery uses the ready usage scope without forcing six-s
     pricingRefreshNow: () => now,
     pricingFetcher: pricingFetcher({ calls }),
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
 
   try {
     await waitUntil(() => scheduler.timers.length === 1, "startup check did not schedule the next timer");
@@ -453,7 +454,7 @@ test("terminal and untimed discovery results do not requeue the fake discovery t
       timer.cancelled = true;
     },
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
 
   try {
     const baseUrl = `http://127.0.0.1:${server.address().port}`;

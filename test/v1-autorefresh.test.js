@@ -27,6 +27,7 @@
  */
 
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { appendFileSync, existsSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -132,7 +133,7 @@ function indexCounts(databaseFile) {
 async function withServer(fixture, run) {
   // Source stability needs fixed pricing inputs, including during the first request.
   const server = createUsageServer({ ...fixture.serverOptions, pricingRefreshSchedulerEnabled: false });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   const get = async (url) => {
     const response = await fetch(`${base}${url}`);

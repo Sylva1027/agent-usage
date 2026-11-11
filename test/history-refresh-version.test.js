@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import childProcess from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -219,7 +220,7 @@ async function serverFixture(t) {
   const catalog = getPricingCatalog();
   // Keep publication assertions in one executor lifetime; idle exit has separate coverage below.
   const server = createUsageServer({ ...input.serverOptions, executorIdleTimeoutMs: 60_000 });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
     await server.close();
@@ -555,7 +556,7 @@ for (const change of [
       return publish.apply(this, args);
     });
     server = createUsageServer(options);
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     const base = `http://127.0.0.1:${server.address().port}`;
     const get = async (url) => {
       const response = await fetch(base + url);

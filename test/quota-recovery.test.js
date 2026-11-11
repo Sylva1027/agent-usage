@@ -1,4 +1,5 @@
 import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -70,7 +71,7 @@ test("missing native boundaries recover once and persist identically in SQL, rep
   };
   let server = createUsageServer({ ...options, readOfficialCodexQuota });
   const start = async () => {
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     return `http://127.0.0.1:${server.address().port}`;
   };
   let base = await start();

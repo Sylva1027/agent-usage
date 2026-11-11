@@ -1,4 +1,5 @@
 import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -35,7 +36,7 @@ const TIMELINE_WARNING_MESSAGE = "Time range exceeds 2000 timeline slots.";
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 async function listen(server) {
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOnFetchPort(server);
   return `http://127.0.0.1:${server.address().port}`;
 }
 

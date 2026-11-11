@@ -1,4 +1,5 @@
 import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -160,7 +161,7 @@ test("local quota sources, finite cycles and trends agree across memory, SQLite 
     const last = store.summarize({ preset: "recent", recentValue: "上一个5h", now: asOf });
     assert.equal(last.range.windowEndExclusive, "2026-10-07T23:00:00.000Z");
     const server = createUsageServer({ homeDir, databaseFile, env: {}, pricingRefreshSchedulerEnabled: false });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenOnFetchPort(server);
     try {
       const query = new URLSearchParams({ preset: "recent", recentValue: "上一个5h", calendarZone: "utc" });
       const base = `http://127.0.0.1:${server.address().port}/api/usage?${query}`;
