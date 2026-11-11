@@ -112,3 +112,5 @@ app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋�
 第二批：修复执行器崩溃恢复。只有客户端仍持有已发布状态时才允许来源未变化的快捷检查；崩溃清空状态后，先通过同步重新发布完整元数据。原有 W1 崩溃测试从 HTTP 500 恢复为 200，统计、模型与指纹断言均保持。W1 与来源认证/新增来源用例共 43 项，16 通过、27 个需显式 native helper 的用例跳过、0 失败；typecheck、该文件格式和 diff --check 通过。日志：output/regressions-20261111/executor-recovery.log。
 
 第三批：修复 SQLite WAL 变化漏检。来源认证前复用既有联合指纹读取器核对 ZCode/OpenCode 的主文件与非空 WAL；变化时回到完整扫描，仍允许混合来源中未变的 SQLite 源复用认证。原有真实 WAL 测试保持解析次数、历史删除可恢复、独立解析结果及费用对照，并增加 checkSources 不得认证变化 WAL 的断言。SQLite 与两个适配器共 35 项通过；显式启用仓库 native helper 后，来源认证及新增来源共 27 项全部通过、无跳过。typecheck、格式和 diff --check 通过。日志：sqlite-wal.log、native-acquisition.log。
+
+第四批：修复汇总失败重试。来源目录中的指纹现在绑定该来源的 indexed_at；全量回退仅接受仍与已提交来源相符的目录条目，避免汇总失败后旧目录覆盖新提交的指纹。保留汇总故障触发器、双日历回滚、事件缓存失效与重试零更新断言。汇总、原生来源认证/新增、SQLite 共 55 项，53 通过、2 个时区子进程包装内部跳过、0 失败；typecheck、格式和 diff --check 通过。日志：rollup-retry.log。

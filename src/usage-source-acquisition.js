@@ -550,6 +550,8 @@ export class UsageSourceAcquisition {
         supported,
         seal: seal.seal,
         fingerprint: file.acquisitionFingerprint,
+        indexedAt: this.store.database.prepare("SELECT indexed_at FROM source_files WHERE path=?").get(file.filePath)
+          ?.indexed_at,
         readMode,
         covered,
       },

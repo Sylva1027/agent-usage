@@ -4985,10 +4985,13 @@ export class UsageStore {
       // The committed usage rows remain authoritative if this small scan cache is unavailable.
     }
     if (!plan) {
+      const indexedSource = this.database.prepare("SELECT indexed_at FROM source_files WHERE path=?");
       for (const row of this.database.prepare("SELECT payload FROM usage_source_catalog WHERE role='file'").iterate()) {
         try {
           const saved = JSON.parse(String(row.payload));
-          if (saved.fingerprint) publishedFingerprints[saved.filePath] = saved.fingerprint;
+          // Failed publication can leave the catalog older than already committed source facts.
+          if (saved.fingerprint && saved.indexedAt === indexedSource.get(saved.filePath)?.indexed_at)
+            publishedFingerprints[saved.filePath] = saved.fingerprint;
         } catch {
           /* Rebuildable catalog; full source verification remains authoritative. */
         }
