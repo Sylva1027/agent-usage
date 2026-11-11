@@ -79,7 +79,8 @@ test("Q5 cache miss cannot label a newer dashboard with the previous source fing
 for (const check of ["status", "unchanged-sync", "unchanged-sync-miss", "append"]) {
   test(`Q5 a read finishes without chasing repeated ${check} checks`, async () => {
     const fixture = createCodexIntegrationFixture();
-    const server = createUsageServer(fixture.serverOptions);
+    // These checks vary publications, not executor lifetime.
+    const server = createUsageServer({ ...fixture.serverOptions, executorIdleTimeoutMs: 60_000 });
     const original = UsageSummaryCache.prototype.get;
     let targetKey;
     let checking = false;

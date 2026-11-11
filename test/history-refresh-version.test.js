@@ -217,7 +217,8 @@ const line = (total) =>
 async function serverFixture(t) {
   const input = createCodexIntegrationFixture();
   const catalog = getPricingCatalog();
-  const server = createUsageServer(input.serverOptions);
+  // Keep publication assertions in one executor lifetime; idle exit has separate coverage below.
+  const server = createUsageServer({ ...input.serverOptions, executorIdleTimeoutMs: 60_000 });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
