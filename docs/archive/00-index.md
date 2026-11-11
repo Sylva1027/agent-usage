@@ -6,7 +6,7 @@
 
 | 资料 | 内容 |
 | --- | --- |
-| [旧实验与研究结论](2026-11-11-experiments/README.md) | 五组实验报告、外部源码归档、恢复方式与现用工具迁移 |
+| [旧实验与研究结论](2026-11-11-experiments/README.md) | 五组实验报告、Git 历史入口、现用工具迁移与外部副本清理 |
 | [旧计划与提案](2026-11-11/README.md) | 已结束、被替代或暂停的施工计划；按主题索引 |
 | [TPS 独立研究盒子](2026-11-01-tps-research.md) | 退役前实现、上游补丁、离线测试及已知缺口 |
 
@@ -22,8 +22,8 @@
 
 ## 保留与恢复
 
-原始截图、JSON、日志和哈希绑定夹具继续在原路径保留，从[验证索引](../validation/00-index.md)查找。旧报告命令依赖原 revision 时，使用相应 Git 提交或外部源码归档，不在当前程序中恢复已退役模块。
+原始截图、JSON、日志和哈希绑定夹具继续在原路径保留，从[验证索引](../validation/00-index.md)查找。旧报告命令依赖原 revision 时，使用相应 Git 提交，不在当前程序中恢复已退役模块。
 
-本轮文档整理前的 346 份 Markdown 已在本机外部归档 `E:\12 AI\ccusage\project-archives\2026-11-11-cleanup\documents-before-cleanup.zip` 中逐文件校验；`documents-manifest.json` 保存原路径、大小和 SHA-256。压缩包 SHA-256 为 `d9504311f4d7878e3143a0fc5a114ce58e36e50e969dc926cc698d1bcbb3d933`。
+文档整理前的 346 份受版本控制 Markdown 可从 `4c14934` 查看；旧实验源码基线为 `3a395c0`。先前额外创建的 `project-archives/2026-11-11-cleanup` 已按用户要求删除以释放空间，不再依赖其中的 ZIP 或清单。TPS 待实施离线维护所需的独立研究资料只保留一份 ZIP，入口见[TPS 封存记录](2026-11-01-tps-research.md)。
 
 归档不表示旧清单全部完成，也不把旧授权延续成新的施工任务。当前仍待实施的两份方案位于[计划入口](../plans/README.md)。

@@ -62,7 +62,7 @@ test("one certified result drives concurrent requests, notifications, scope chan
     server = createUsageServer({ ...options, shutdownToken: randomUUID() });
     await new Promise((resolve, reject) => {
       server.once("error", reject);
-      server.listen(49152 + (process.pid % 8192), "127.0.0.1", resolve);
+      server.listen(0, "127.0.0.1", resolve);
     });
     return `http://127.0.0.1:${server.address().port}`;
   }

@@ -354,22 +354,9 @@ async function fixture(t, target, { hotOnly = HOT_ONLY, publication = false } = 
         syncBuiltinESMExports();
       }
       server = createUsageServer(options);
-      // Match the acquisition-server fixture's range, above Fetch's blocked ports.
-      for (let attempt = 0; attempt < 32; attempt++) {
-        try {
-          await new Promise((resolve, reject) => {
-            const onError = (error) => reject(error);
-            server.once("error", onError);
-            server.listen(49152 + process.pid % 8192 + attempt, "127.0.0.1", () => {
-              server.off("error", onError);
-              resolve();
-            });
-          });
-          break;
-        } catch (error) {
-          if (error.code !== "EADDRINUSE" || attempt === 31) throw error;
-        }
-      }
+      // Let the OS avoid reserved ports instead of deriving one from the process ID.
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
       f.base = `http://127.0.0.1:${server.address().port}`;
       return server;
     },

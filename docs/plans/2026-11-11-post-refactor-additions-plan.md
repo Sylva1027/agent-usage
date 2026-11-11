@@ -77,18 +77,18 @@ CSS 修改按精简后的规则位置落地，不在文件尾追加一整套重�
 
 ### TPS 离线维护
 
-当前产品已移除 TPS，见[研究封存与移除记录](../archive/2026-11-11/plans/2026-11-01-tps-removal-release-plan.md)和 [test/no-tps-ui.test.js](../../test/no-tps-ui.test.js)。已定位的封存源码为：
+当前产品已移除 TPS，见[研究封存与移除记录](../archive/2026-11-11/plans/2026-11-01-tps-removal-release-plan.md)和 [test/no-tps-ui.test.js](../../test/no-tps-ui.test.js)。封存资料只保留 `E:\12 AI\ccusage\tps-research-box\2026-11-01\tps-research-box-20261101.zip`；重复解压目录已清理。实施 R7 时先解压到独立维护目录，所需包内路径为：
 
 ```text
-E:\12 AI\ccusage\tps-research-box\2026-11-01\box\source\public\perf-ui.js
-E:\12 AI\ccusage\tps-research-box\2026-11-01\box\source\public\i18n.js
-E:\12 AI\ccusage\tps-research-box\2026-11-01\box\source\public\styles.css
-E:\12 AI\ccusage\tps-research-box\2026-11-01\box\source\test\perf-ui.test.js
+source/public/perf-ui.js
+source/public/i18n.js
+source/public/styles.css
+source/test/perf-ui.test.js
 ```
 
 R7 从封存源码生成可复用补丁，在独立维护副本验证文案、tooltip/无障碍文本及中英文输出，保留原封存快照和清单。维护结果不加入普通版或 waifu 版运行导入链，主项目继续通过无 TPS 检查。
 
-封存测试所需的旧 `englishCopyEntries` 等依赖仅使用其同版本副本；不为运行封存测试恢复主项目已删除的导出。历史实验的源码和证据仍按原位置保留。
+封存测试所需的旧 `englishCopyEntries` 等依赖仅使用 ZIP 中的同版本副本；不为运行封存测试恢复主项目已删除的导出。其他旧实验的受版本控制源码从 Git 历史查看，证据入口见[归档索引](../archive/00-index.md)。
 
 ## 3. 智能体分工与文件归属
 
