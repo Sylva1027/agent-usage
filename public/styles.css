@@ -2744,14 +2744,14 @@ button:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   /* !important 必须保留：覆盖此前定义的所有过渡与按压动效。 */
-  /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win over every other transition rule */
   button,
   input,
   select {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win over every other transition rule */
     transition: none !important;
   }
-  /* biome-ignore lint/complexity/noImportantStyles: same reduced-motion override for the active press transform */
   button:active {
+    /* biome-ignore lint/complexity/noImportantStyles: same reduced-motion override for the active press transform */
     transform: none !important;
   }
 }

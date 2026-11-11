@@ -140,3 +140,5 @@ Windows / Node v26.13.0 / TZ=Asia/Shanghai，测试并发 4，单项超时 72000
 用户授权继续修复 51 warning 和 3 info，起点 f9c9298。完整 JSON 诊断保存在 output/lint-cleanup-20261111/baseline.json：测试代码 3 warning、3 info；public/styles.css 44 个选择器顺序诊断、2 个减少动态效果的 !important 诊断和2 个位置不正确的既有抑制注释诊断。
 
 第一批：删除 usage-core 测试未使用的 rm 导入；为配色求解器测试保留前两个参数的位置并标记为未使用；三处 JSON 文本拼接改为模板字符串，保持结尾换行。四个相关测试文件 114 项全部通过，文件 lint（含 error-on-warnings）、格式和 diff --check 通过。日志：output/lint-cleanup-20261111/test-cleanup.log。
+
+第二批：将减少动态效果规则中两条既有 noImportantStyles 注释，从选择器上方移到其对应声明上方，保留无障碍覆盖所需的 !important。去掉注释与空白后，样式表文本与批次前完全相同；格式及 diff --check 通过。全仓诊断降为 44 warning、0 info，剩余均为选择器顺序；没有改动 lint 配置或新增抑制规则。日志：after-comment-placement.json。
