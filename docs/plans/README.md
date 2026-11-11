@@ -4,7 +4,7 @@
 
 | 计划 | 当前状态 |
 | --- | --- |
-| [重构后追加需求](2026-11-11-post-refactor-additions-plan.md) | 精简后复审版；七个工作包待实施 |
+| [重构后追加需求](2026-11-11-post-refactor-additions-plan.md) | 工作区清理后复审版，基线 `f95bc64`；七个工作包待实施 |
 | [分享图片](2026-10-03-mobile-share-card-consolidated-plan.md) | 设计阶段，尚未实施 |
 
 旧施工卡、已完成修复、暂停研究及被替代方案见[历史计划索引](../archive/2026-11-11/README.md)。
