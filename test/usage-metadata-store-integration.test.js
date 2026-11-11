@@ -279,7 +279,7 @@ test("source warnings, home shape changes, and removed unique-index guards stay 
       warnings: ["metadata integration warning"],
       failedHomes: homes.map(({ id, path: homePath }) => ({ id, path: homePath })),
     });
-    await store.sync({ options: fixture.options });
+    await store.sync({ options: fixture.options, forceFull: true });
     const warned = store.metadata(AS_OF);
     assert.ok(warned.warnings.includes("metadata integration warning"));
     assert.deepEqual(warned, await legacyMetadata(store, fixture, AS_OF));

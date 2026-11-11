@@ -422,7 +422,7 @@ test("UsageStore preserves indexed data when a source scan fails", async () => {
       failedHomes: homes.map(({ id, path }) => ({ id, path })),
     });
 
-    const result = await store.sync();
+    const result = await store.sync({ forceFull: true });
 
     assert.equal(result.updatedFileCount, 0);
     assert.equal(store.metadata().eventCount, 1);
@@ -3087,7 +3087,7 @@ test("D4 · metadata 的 warnings 按自身语义更新（静态缓存保留但�
       warnings: ["D4 simulated source scan warning"],
       failedHomes: homes.map(({ id, path: homePath }) => ({ id, path: homePath })),
     });
-    await store.sync();
+    await store.sync({ forceFull: true });
     counts.reset();
     const warned = store.metadata(new Date(asOf));
     assert.match(store.warnings[0], /D4 simulated source scan warning/);

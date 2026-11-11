@@ -222,7 +222,7 @@ test("executor keeps the published dashboard pinned until sync publication compl
 
 test("period executor publication gate runs in a child with NODE_OPTIONS", { skip: GATE_CHILD }, () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "history-period-executor-preload-"));
-  const preloadFile = path.join(root, "sync-round-gate.mjs");
+  const preloadFile = path.join(root, "sync-gate.mjs");
   const gateReadyFile = path.join(root, "sync-gate-ready");
   const gateReleaseFile = path.join(root, "sync-gate-release");
   const usageStoreUrl = pathToFileURL(
@@ -237,9 +237,9 @@ if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "f
   const gateReadyFile = process.env.HISTORY_PERIOD_EXECUTOR_GATE_READY;
   const gateReleaseFile = process.env.HISTORY_PERIOD_EXECUTOR_GATE_RELEASE;
   if (!gateReadyFile || !gateReleaseFile) throw new Error("missing executor gate environment");
-  const originalSyncRound = UsageStore.prototype.syncRound;
+  const originalSync = UsageStore.prototype.sync;
   let rounds = 0;
-  UsageStore.prototype.syncRound = async function (...args) {
+  UsageStore.prototype.sync = async function (...args) {
     rounds += 1;
     if (rounds === 2) {
       writeFileSync(gateReadyFile, "ready");
@@ -247,7 +247,7 @@ if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1" && typeof process.send === "f
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
     }
-    return Reflect.apply(originalSyncRound, this, args);
+    return Reflect.apply(originalSync, this, args);
   };
 }
 `,

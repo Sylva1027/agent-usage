@@ -114,3 +114,5 @@ app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋�
 第三批：修复 SQLite WAL 变化漏检。来源认证前复用既有联合指纹读取器核对 ZCode/OpenCode 的主文件与非空 WAL；变化时回到完整扫描，仍允许混合来源中未变的 SQLite 源复用认证。原有真实 WAL 测试保持解析次数、历史删除可恢复、独立解析结果及费用对照，并增加 checkSources 不得认证变化 WAL 的断言。SQLite 与两个适配器共 35 项通过；显式启用仓库 native helper 后，来源认证及新增来源共 27 项全部通过、无跳过。typecheck、格式和 diff --check 通过。日志：sqlite-wal.log、native-acquisition.log。
 
 第四批：修复汇总失败重试。来源目录中的指纹现在绑定该来源的 indexed_at；全量回退仅接受仍与已提交来源相符的目录条目，避免汇总失败后旧目录覆盖新提交的指纹。保留汇总故障触发器、双日历回滚、事件缓存失效与重试零更新断言。汇总、原生来源认证/新增、SQLite 共 55 项，53 通过、2 个时区子进程包装内部跳过、0 失败；typecheck、格式和 diff --check 通过。日志：rollup-retry.log。
+
+第五批：更新五个过期的测试边界。三项扫描告警测试显式 forceFull，确保故障注入实际执行；发布冻结测试将门闩移到 sync 入口，先暂停再写入来源认证状态，仍验证旧 130/新 230 的发布隔离；恢复同内容文件允许其 indexed_at 在安全重解析后更新，但全部事件、来源字段、其他文件时间及重命名/FK 断言保持。四个文件 64 项中 63 通过、1 个内部子进程场景跳过。初跑新增比较因 SQLite null-prototype 行对象失败，统一两边对象原型后 refresh 三项重跑全部通过。格式及 diff --check 通过。日志：scan-fixtures.log、refresh-fixture-recheck.log。

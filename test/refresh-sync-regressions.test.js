@@ -56,7 +56,17 @@ test("refresh sync retains missing paths until return or rename", async () => {
     utimesSync(missingPath, originalInfo.atime, originalInfo.mtime);
     const returned = await store.sync({ options: fixture.reportOptions });
     assert.deepEqual(returned.missingSources, []);
-    assert.deepEqual(publishedFacts(store), before);
+    const afterReturn = publishedFacts(store);
+    assert.deepEqual(afterReturn.events, before.events);
+    assert.equal(afterReturn.sourceFiles.length, before.sourceFiles.length);
+    for (const [index, source] of afterReturn.sourceFiles.entries()) {
+      const prior = before.sourceFiles[index];
+      if (source.path === missingPath) {
+        // A recreated file has a new identity; verifying it may refresh only its index timestamp.
+        assert.ok(Date.parse(source.indexed_at) >= Date.parse(prior.indexed_at));
+        assert.deepEqual({ ...source, indexed_at: prior.indexed_at }, { ...prior });
+      } else assert.deepEqual(source, prior);
+    }
     assert.equal((await store.sync({ options: fixture.reportOptions })).updatedFileCount, 0);
 
     const renameTo = path.join(path.dirname(renameFrom), "renamed-rollout.jsonl");
