@@ -32,6 +32,8 @@ pnpm-debug.log*
 /.workbuddy-ai/
 /.zcode/
 /.ct/
+/.archify/
+/.playwright-cli/
 /CLAUDE.md
 /.zcodeignore
 /.dsh-probe.mjs
