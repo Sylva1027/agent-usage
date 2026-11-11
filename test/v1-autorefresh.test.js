@@ -15,7 +15,7 @@
  *      且 `events` / `source_files` 行数**不得增长**（证明没有重复发布 / 重复累积）；源真变后的那一周期必须发布新版本，
  *      之后再次稳定。
  *
- * 源检查现由轻量服务完成，checkedAt 跟随服务时钟；重型计算由独立进程完成。
+ * 源检查可由服务或独立执行器完成；测试为两者提供同一可推进时钟。
  *   2. 夹具 `createCodexIntegrationFixture()` 的 codex 数据基准是 `2026-10-04T12:00:00.000Z`，
  *      落在 `preset=today` 窗口**之外**（today 返回 `groups: 0`）⇒ 承载"源检查/发布"语义
  *      用 `preset=all`；`today` 的真隔离输入覆盖见 `V1/verify-v1.mjs` 的 A/F 项。
@@ -27,10 +27,11 @@
  */
 
 import assert from "node:assert/strict";
-import { appendFileSync, existsSync, readFileSync, readdirSync, statSync, utimesSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { createUsageServer } from "../src/server.js";
 import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
@@ -65,10 +66,27 @@ function maskWhitelisted(value, keyPath = "") {
 
 const masked = (body) => JSON.stringify(maskWhitelisted(body));
 
-/** 固定时钟：`new Date()` / `Date.now()` 走可控值（**只影响主线程**，见文件头⚠️1）。 */
-function installClock(isoStart) {
+/** 固定时钟：服务与执行器的 `new Date()` / `Date.now()` 使用同一可控值。 */
+function installClock(isoStart, root) {
   const RealDate = Date;
   let current = Date.parse(isoStart);
+  const clockFile = path.join(root, "test-clock.txt");
+  const preloadFile = path.join(root, "test-clock.mjs");
+  const originalExecArgv = [...process.execArgv];
+  writeFileSync(clockFile, String(current));
+  writeFileSync(
+    preloadFile,
+    `import { readFileSync } from "node:fs";
+if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1") {
+  const now = () => Number(readFileSync(${JSON.stringify(clockFile)}, "utf8"));
+  globalThis.Date = class extends Date {
+    constructor(...args) { super(...(args.length ? args : [now()])); }
+    static now() { return now(); }
+  };
+}
+`,
+  );
+  process.execArgv.push("--import", pathToFileURL(preloadFile).href);
   class FixedDate extends RealDate {
     constructor(...args) {
       if (args.length === 0) super(current);
@@ -83,10 +101,12 @@ function installClock(isoStart) {
   return {
     advance(ms) {
       current += ms;
+      writeFileSync(clockFile, String(current));
       return current;
     },
     restore() {
       globalThis.Date = RealDate;
+      process.execArgv = originalExecArgv;
     },
   };
 }
@@ -145,7 +165,7 @@ const QUOTA_QUERIES = {
 
 test("V1/K 自动刷新：固定时钟下多周期确定性等价，稳定源不重复发布（计数不增长）", async () => {
   const fixture = createCodexIntegrationFixture();
-  const clock = installClock(FIXED_NOW_ISO);
+  const clock = installClock(FIXED_NOW_ISO, fixture.serverOptions.homeDir);
   try {
     appendFileSync(
       fixture.rolloutFiles[0],
@@ -248,7 +268,7 @@ test("V1/K 自动刷新：固定时钟下多周期确定性等价，稳定源不
 
 test("V1/K 自动刷新：源真变后的周期必须发布新版本，其后再次稳定且计数不增长", async () => {
   const fixture = createCodexIntegrationFixture();
-  const clock = installClock(FIXED_NOW_ISO);
+  const clock = installClock(FIXED_NOW_ISO, fixture.serverOptions.homeDir);
   try {
     await withServer(fixture, async ({ get }) => {
       const rollouts = [];

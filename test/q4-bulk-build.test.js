@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +18,22 @@ import {
 
 const zoneIdentity = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const tables = ["daily", "models", "repositories", "sessions", "days", "progress", "progress_days", "dirty_days"];
+
+function bulkTest(name, run) {
+  test(name, async (t) => {
+    if (process.platform !== "win32" || process.env.TZ === "UTC") return run(t);
+    // Windows SQLite uses the CRT timezone; launch with UTC so it agrees with Node's ICU calendar.
+    const env = { ...process.env, TZ: "UTC" };
+    delete env.NODE_TEST_CONTEXT;
+    const result = spawnSync(
+      process.execPath,
+      ["--test", "--test-reporter=tap", `--test-name-pattern=^${name}$`, import.meta.filename],
+      { env, encoding: "utf8", timeout: 60_000, windowsHide: true },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /# pass 1\b/);
+  });
+}
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "q4-build-"));
@@ -74,7 +91,7 @@ function snapshot(db) {
   );
 }
 
-test("Q4 initial aggregate matches independent per-day construction and later appends exactly", async (t) => {
+bulkTest("Q4 initial aggregate matches independent per-day construction and later appends exactly", async (t) => {
   const candidate = await fixture(t),
     reference = await fixture(t);
   put(candidate);
@@ -97,7 +114,7 @@ test("Q4 initial aggregate matches independent per-day construction and later ap
   assert.deepEqual(snapshot(candidate.database), snapshot(reference.database));
 });
 
-test("Q4 initial build rolls both calendars back on failure and can retry", async (t) => {
+bulkTest("Q4 initial build rolls both calendars back on failure and can retry", async (t) => {
   const store = await fixture(t);
   put(store);
   const before = snapshot(store.database),

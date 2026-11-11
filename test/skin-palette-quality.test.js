@@ -9268,6 +9268,8 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       await page.waitForFunction(() => document.activeElement?.id === "pricingSearch");
       await page.locator("#usdToCnyRate").fill("");
       const searchInput = page.locator("#pricingSearch");
+      // The fixed historical fixture belongs to all models, independent of today's recent-usage window.
+      await page.locator('[data-pricing-scope="all"]').click();
       await searchInput.fill("x");
       await searchInput.scrollIntoViewIfNeeded();
       const { snapshot: searchFilledState, stableFrames } = await waitForStablePricingLayout();
