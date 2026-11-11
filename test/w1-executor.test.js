@@ -11,10 +11,11 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { ChildProcess } from "node:child_process";
+import childProcess, { ChildProcess } from "node:child_process";
 
 import { createUsageExecutor } from "../src/usage-executor.js";
 import { createUsageServer } from "../src/server.js";
@@ -427,28 +428,83 @@ test("W1-b · 家族②：读侧快照要么为空、要么完整 —— 绝不�
   }
 });
 
-test("W1-b · 家族②：/api/status 只读已发布快照，不与执行器的重活竞争", async () => {
+test("W1-b · 家族②：/api/status 只读已发布快照，不与执行器的重活竞争", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "w1-status-snapshot-"));
   const fixture = createCodexIntegrationFixture();
   const options = isolatedOptions(root, fixture);
+  const entered = Promise.withResolvers();
+  const released = Promise.withResolvers();
+  const requests = [];
+  const completed = [];
+  const fork = childProcess.fork;
+  let held = false;
+  t.mock.method(childProcess, "fork", (...args) => {
+    const child = fork(...args);
+    const send = child.send;
+    const emit = child.emit;
+    let syncId;
+    t.mock.method(child, "send", function (message, ...rest) {
+      requests.push(message.type);
+      if (message.type === "sync") syncId = message.id;
+      return send.call(this, message, ...rest);
+    });
+    t.mock.method(child, "emit", function (event, ...rest) {
+      const message = rest[0];
+      if (
+        !held &&
+        event === "message" &&
+        message.type === "response" &&
+        message.id === syncId &&
+        message.ok &&
+        message.result?.fingerprint
+      ) {
+        // 保留真实同步与状态发布，只扣住 IPC 应答，使 HTTP 重请求持续在途。
+        held = true;
+        entered.resolve();
+        void released.promise.then(() => emit.call(this, event, ...rest));
+        return true;
+      }
+      return emit.call(this, event, ...rest);
+    });
+    return child;
+  });
+  syncBuiltinESMExports();
   const server = createUsageServer(options);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
+  let heavy;
   try {
-    // 先做一次冷同步（重活），再由执行器持续承担重请求；期间 `/api/status` 必须每个都很轻。
-    const heavy = [fetch(`${base}/api/usage?preset=all`).then((r) => r.json())];
-    const latencies = [];
-    for (let index = 0; index < 10; index += 1) {
-      const started = performance.now();
-      const status = await fetch(`${base}/api/status`).then((r) => r.json());
-      latencies.push(performance.now() - started);
-      assert.ok(status.fingerprint, "/api/status 必须由主线程算指纹（不依赖执行器）");
-    }
-    await Promise.all(heavy);
-    const worst = Math.max(...latencies);
-    assert.ok(worst < 250, `/api/status 必须就地应答（最差 ${worst.toFixed(1)} ms）`);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    // 超时只作卡死上限；契约由 IPC 请求数和放行前后的完成顺序证明。
+    const signal = AbortSignal.timeout(10_000);
+    heavy = settledWithin(
+      fetch(`${base}/api/usage?preset=all`, { signal }).then(async (response) => {
+        const body = await response.json();
+        completed.push("usage");
+        assert.equal(response.status, 200, JSON.stringify(body));
+        return body;
+      }),
+      10_000,
+    );
+    assert.equal((await settledWithin(entered.promise, 10_000)).state, "resolved", "必须扣住真实 sync 应答");
+    const beforeStatus = [...requests];
+    const response = await fetch(`${base}/api/status`, { signal });
+    const status = await response.json();
+    completed.push("status");
+    assert.equal(response.status, 200, JSON.stringify(status));
+    assert.ok(status.fingerprint, "/api/status 必须由主线程算指纹（不依赖执行器）");
+    assert.deepEqual(requests, beforeStatus, "/api/status 不得向执行器发送请求");
+    assert.deepEqual(completed, ["status"], "重请求未放行时，只有 status 完成");
+    released.resolve();
+    const outcome = await heavy;
+    assert.equal(outcome.state, "resolved", outcome.error?.message ?? "放行后重请求必须完成");
+    assert.ok(outcome.value.fingerprint);
+    assert.deepEqual(completed, ["status", "usage"]);
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    released.resolve();
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    await heavy;
+    await server.close();
     fixture.close();
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

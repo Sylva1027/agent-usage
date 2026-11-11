@@ -18851,6 +18851,22 @@ test("B79：私有 resolver 绑定原 UA 文本并保留 quads、offset 与原�
   );
 });
 
+test("B79：Chromium input client 指标已含 padding 偏移时不重复扣减内容框", async () => {
+  const fixture = createInputPlaceholderResolverFixture();
+  const client = { left: 11, top: 1, width: 158, height: 34 };
+  Object.assign(fixture.host, {
+    clientLeft: client.left,
+    clientTop: client.top,
+    clientWidth: client.width,
+    clientHeight: client.height,
+  });
+  const result = JSON.parse(JSON.stringify(await fixture.resolve({ expectedNode: { ...B79_EXPECTED_NODE, client } })));
+  assert.equal(result.status, "resolved", result.reason);
+  assert.deepEqual(result.contentRect, { x: 31, y: 1044.015625, width: 158, height: 18 });
+  assert.deepEqual(result.rawQuad, B79_RAW_QUAD);
+  assert.deepEqual(result.offset, { x: 11, y: 9, width: 64, height: 17 });
+});
+
 test("B79：候选缺失、非 UA 文本或不唯一时保持 unmeasured", async (t) => {
   await t.test("缺失", async () => {
     const result = await createInputPlaceholderResolverFixture({

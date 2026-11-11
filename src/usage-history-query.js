@@ -37,7 +37,7 @@ export class UsageHistoryQuery {
     this.rows = 0;
     try {
       this.database.exec(
-        `PRAGMA cache_size=-2048; PRAGMA temp_store=FILE;
+        `PRAGMA busy_timeout=5000; PRAGMA cache_size=-2048; PRAGMA temp_store=FILE;
         PRAGMA journal_mode=${this.persistent ? "WAL" : "OFF"};
         PRAGMA synchronous=${this.persistent ? "FULL" : "OFF"}`,
       );

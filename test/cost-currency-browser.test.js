@@ -128,6 +128,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await showAll();
   await assertCurrency(page, "CNY");
   await page.locator("#updatePricingButton").click();
+  await page.locator("#pricingDialog").waitFor({ state: "visible" });
   assert.equal(Number(await rate.inputValue()), initial.rate, "cancel discards the FX draft");
   for (const invalid of ["Infinity", "NaN", "0", "-1", "0x10", "0b111", "0o10"]) {
     const before = requests.filter((request) => request.method === "PUT").length;
@@ -174,6 +175,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await assertCurrency(page, "USD");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#updatePricingButton").click();
+  await page.locator("#pricingDialog").waitFor({ state: "visible" });
   const layout = await page.evaluate(() => {
     const dialog = document.querySelector("#pricingDialog .dialog");
     const controls = document.querySelector(".pricing-controls");

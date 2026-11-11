@@ -40,12 +40,15 @@ test("source dialog scans without importing and only completes after the dashboa
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript((key) => {
     localStorage.setItem("codexUsageAutoRefresh", "off");
+    if (!localStorage.getItem("codexUsageLocale")) localStorage.setItem("codexUsageLocale", "zh-CN");
     localStorage.setItem("codexUsageTheme", "light");
     localStorage.setItem(key, JSON.stringify({ version: 1, skinId: "deepseek", showCharacters: true, opacity: 0.5 }));
   }, SKIN_PREFERENCE_KEY);
   const base = `http://127.0.0.1:${server.address().port}`;
-  await page.goto(base);
-  await page.waitForResponse((response) => response.url().includes("/api/usage?") && response.status() === 200);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/usage?") && response.status() === 200),
+    page.goto(base),
+  ]);
   await page.locator("#addImportButton").click();
   await page.waitForSelector("#importCandidates input");
   assert.equal(await page.locator("#manualImportArea").isVisible(), false);

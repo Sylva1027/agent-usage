@@ -3073,6 +3073,12 @@ button:disabled {
   filter: var(--button-icon-glow);
 }
 
+.date-range-button:not(:disabled):is(:active, [aria-expanded="true"]) .date-range-icon {
+  border-color: transparent;
+  background: var(--ceramic-well);
+  box-shadow: var(--neo-inset-small);
+}
+
 .date-range-controls .date-picker-popover {
   width: min(324px, calc(100vw - 72px));
 }

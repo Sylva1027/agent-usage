@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { Worker } from "node:worker_threads";
 
 import { UsageHistoryQuery } from "../src/usage-history-query.js";
 import { UsageSourceRows } from "../src/usage-source-rows.js";
@@ -141,6 +143,38 @@ test("existing mode reopens only a completed file without reading source or crea
   assert.throws(() => new UsageHistoryQuery(null, canonical, { databaseFile: missing, existing: true }), /missing/);
   assert.equal(existsSync(missing), false);
   assert.throws(() => new UsageHistoryQuery(null, canonical, { existing: true }), /missing/);
+});
+
+test("reopening a persistent query waits for another connection's temporary exclusive lock", async (t) => {
+  const input = fixture(t, [fact("hot")]);
+  input.query.finish(columns);
+  const before = events(input.query);
+  input.query.close();
+  input.query = null;
+  const worker = new Worker(
+    `const { parentPort, workerData } = require('node:worker_threads');
+    const { DatabaseSync } = require('node:sqlite');
+    const database = new DatabaseSync(workerData);
+    database.exec('PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE');
+    parentPort.postMessage('locked');
+    parentPort.once('message', () => setTimeout(() => {
+      database.exec('COMMIT');
+      database.close();
+      parentPort.close();
+    }, 300));`,
+    { eval: true, workerData: input.file },
+  );
+  try {
+    const exited = once(worker, "exit");
+    assert.deepEqual(await once(worker, "message"), ["locked"]);
+    worker.postMessage("release");
+    input.query = new UsageHistoryQuery(null, canonical, { databaseFile: input.file, existing: true });
+    assert.deepEqual(events(input.query), before);
+    assert.equal(input.query.database.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
+    assert.deepEqual(await exited, [0]);
+  } finally {
+    await worker.terminate();
+  }
 });
 
 test("initial event indexes survive an interrupted bulk build and are installed with its facts", (t) => {

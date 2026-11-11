@@ -354,9 +354,16 @@ async function fixture(t, target, { hotOnly = HOT_ONLY, publication = false } = 
         syncBuiltinESMExports();
       }
       server = createUsageServer(options);
-      // Let the OS avoid reserved ports instead of deriving one from the process ID.
-      server.listen(0, "127.0.0.1");
-      await once(server, "listening");
+      // Ephemeral Windows ports can fall on fetch's blocked-port list.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          server.listen(20_000 + Math.floor(Math.random() * 10_000), "127.0.0.1");
+          await once(server, "listening");
+          break;
+        } catch (error) {
+          if (error.code !== "EADDRINUSE" || attempt >= 20) throw error;
+        }
+      }
       f.base = `http://127.0.0.1:${server.address().port}`;
       return server;
     },

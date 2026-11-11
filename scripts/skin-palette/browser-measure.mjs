@@ -4329,17 +4329,26 @@ function inputPlaceholderAxisAlignedRect(quads) {
 }
 
 function inputPlaceholderContentRect(snapshot) {
-  const values = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].map((key) =>
-    Number.parseFloat(snapshot?.style?.[key]),
-  );
+  const values = [
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+  ].map((key) => Number.parseFloat(snapshot?.style?.[key]));
   if (!values.every(Number.isFinite)) return null;
-  const [paddingTop, paddingRight, paddingBottom, paddingLeft] = values;
-  const width = snapshot.client.width - paddingLeft - paddingRight;
-  const height = snapshot.client.height - paddingTop - paddingBottom;
+  const [paddingTop, paddingRight, paddingBottom, paddingLeft, borderTop, borderRight, borderBottom, borderLeft] =
+    values;
+  // Chromium input 的 client 指标可能已包含 padding 偏移，内容框统一从 border box 换算。
+  const width = snapshot.rect.width - borderLeft - borderRight - paddingLeft - paddingRight;
+  const height = snapshot.rect.height - borderTop - borderBottom - paddingTop - paddingBottom;
   if (!(width > 0 && height > 0)) return null;
   return {
-    x: snapshot.rect.x + snapshot.client.left + paddingLeft,
-    y: snapshot.rect.y + snapshot.client.top + paddingTop,
+    x: snapshot.rect.x + borderLeft + paddingLeft,
+    y: snapshot.rect.y + borderTop + paddingTop,
     width,
     height,
   };

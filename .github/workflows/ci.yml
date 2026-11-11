@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [22, 24]
+        node-version: [24, 26]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,18 +41,17 @@ jobs:
           npm.cmd install --prefix "$env:RUNNER_TEMP/agent-usage-browser" --no-package-lock --no-save playwright@1.62.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "AGENT_USAGE_PLAYWRIGHT_MODULE=$env:AGENT_USAGE_PLAYWRIGHT_MODULE" >> $env:GITHUB_ENV
+      - name: Build matching Windows helper
+        run: |
+          npm.cmd run native:build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd run native:check
       - name: Run full Windows suite
         timeout-minutes: 20
         run: node --test --test-reporter=spec --test-concurrency=4 --test-timeout=720000 "test/**/*.test.js"
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      - name: Build matching Windows helper
-        if: matrix.node-version == 24
-        run: |
-          npm.cmd run native:build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm.cmd run native:check
       - name: Package and accept both release ZIPs
         if: matrix.node-version == 24
         timeout-minutes: 10
