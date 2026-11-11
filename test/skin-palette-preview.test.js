@@ -3674,7 +3674,11 @@ test("M4.3 menu-recent-open：打开和恢复不触发延迟筛选响应污染�
   await page.click('#presetButtons button[data-preset="all"]');
   await page.waitForFunction(async (total) => {
     const { state } = await import("/app-state.js");
-    return state.summary?.totals.total === total;
+    return (
+      state.summary?.range.preset === "all" &&
+      state.summary.totals.total === total &&
+      document.querySelector("#totalTokens").textContent === "0.24M"
+    );
   }, FIXTURE_TOTAL_TOKENS);
   await page.evaluate(() => document.fonts.ready);
   const baselineTotal = await page.locator("#totalTokens").textContent();
