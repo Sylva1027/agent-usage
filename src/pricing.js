@@ -693,14 +693,6 @@ export function runWithoutPricingCatalog(operation) {
 // read-only minimum-rate result; catalog replacement invalidates the whole map.
 const minimumRatesCache = new Map();
 
-export const API_TOKEN_PRICES = Object.freeze(
-  Object.fromEntries(
-    Object.entries(MODEL_PRICES)
-      .filter(([, rates]) => (rates.currency || "USD") === "USD")
-      .map(([model, rates]) => [model, rates.short]),
-  ),
-);
-
 export function getPricingCatalog() {
   const pricing = currentPricing();
   return {
@@ -1066,37 +1058,6 @@ function peakWindowsHit(entry, weekdayIndex, minutes) {
     }
   }
   return false;
-}
-
-/**
- * W4-b1 / D4：与改动前**等价的朴素实现**，只作等价性判据（不进产品路径）。
- * @param {any} entry
- * @param {number} weekdayIndex
- * @param {number} minutes
- */
-function peakWindowsHitNaive(entry, weekdayIndex, minutes) {
-  return entry.peakWindows.some(
-    (window) =>
-      (window.days || []).includes(weekdayIndex === 0 ? 7 : weekdayIndex) &&
-      (window.ranges || []).some((range) => {
-        const start = timeOfDayMinutes(range[0]);
-        const end = timeOfDayMinutes(range[1]);
-        return start !== null && end !== null && minutes >= start && minutes < end;
-      }),
-  );
-}
-
-/**
- * W4-b1 / D4：**改动前**的逐事件 ICU 实现，保留为等价性判据（只被测试引用，不进产品路径）。
- * @param {any} entry
- * @param {number} timestampMs
- */
-export function isPeakPricingTimeExact(entry, timestampMs) {
-  if (!entry?.offPeakMultiplier || !Array.isArray(entry.peakWindows)) return true;
-  if (!Number.isFinite(timestampMs)) return true;
-  const { weekdayIndex, minutes } = peakLocalTupleExact(entry.peakTimezone || "Asia/Shanghai", timestampMs);
-  if (weekdayIndex < 0 || !Number.isFinite(minutes)) return true;
-  return peakWindowsHitNaive(entry, weekdayIndex, minutes);
 }
 
 // ── W4-b1 / D4：本地时区格式化的**复用**（R3："逐事件一次 ICU"） ─────────────────────────────────

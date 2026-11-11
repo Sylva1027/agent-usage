@@ -44,3 +44,7 @@
 删除 measureFocusOutlinePixels、analyzeFocusOutlinePixels 及独占的读取、差分、恢复和 envelope 辅助代码；删除 9 个旧算法顶层测试，保留 6 个 adjacent 顶层测试及全部子断言。现行独立几何夹具只生成需要的 focused 帧。工具/测试净减少 630 行。
 
 验证：focus-outline-browser、focus-outline-pixels、skin-palette-quality 共 517 项，516 通过、1 个原有失败、0 跳过。唯一失败与基线同名、同位置、同断言（quality:9275，搜索 x 得到空结果）；没有新增失败。现行焦点测量及释放、异常传播场景通过。未改历史源码哈希。
+
+### 03：无消费者的计价入口
+
+删除 API_TOKEN_PRICES 派生表、isPeakPricingTimeExact 及其专属 peakWindowsHitNaive；时区校准使用的 peakLocalTupleExact 保留。pricing、claude-pricing、w4-event-cost-memo 共 59 项全部通过，0 跳过；没有更改计价规则或边界断言。
