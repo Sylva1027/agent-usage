@@ -131,7 +131,7 @@ worker 可同时拥有自己来源的采集文件、reader 与对应测试。共
 
 ### 本轮已交付的 OpenCode 子集
 
-主代理实现本地插件（原路径：`../../../../scripts/opencode-output-capture.mjs`）及目录入口（原路径：`../../../../scripts/opencode-plugin/index.js`），复用已有有界 Response pump，不使用无界 clone tee、不等待正文读完才返回 hook、不替换全局 fetch。公共观测校验、OpenCode 标量 reader、memory/store 指纹均已接通；只有最终 DB 的 session、模型/provider 与唯一 responseId 精确匹配时才使用观测。安装配置见[本地采集安装](../../../10-data-sources.md#本地采集安装)。本阶段没有原生响应 ID、ID 冲突、旧历史与 WebSocket 继续保留现有用量；下文续修记录补充了后续实现的路径。
+主代理实现本地插件（原路径：`../../../../scripts/opencode-output-capture.mjs`）及目录入口（原路径：`../../../../scripts/opencode-plugin/index.js`），复用已有有界 Response pump，不使用无界 clone tee、不等待正文读完才返回 hook、不替换全局 fetch。公共观测校验、OpenCode 标量 reader、memory/store 指纹均已接通；只有最终 DB 的 session、模型/provider 与唯一 responseId 精确匹配时才使用观测。原安装配置见[研究盒子中的安装资料](../../2026-11-01-tps-research.md)。本阶段没有原生响应 ID、ID 冲突、旧历史与 WebSocket 继续保留现有用量；下文续修记录补充了后续实现的路径。
 
 实际原版 `opencode-cli 2.0.20` localhost 对照确认：Responses 驱动一次 500 后重试，成功流 ID 与最终 `providerState.responseId` 完全一致；1400 字符分三批到达，首 900 个参考 token 为基线，后 500 个参考 token 的实测窗口为 311 ms。provider 原始 output 为 1403，未被参考计数替换。正式 reader → 内存、SQLite、重开均为 `v8/n=1`，用量一致；这些是合成传输对照，不是实际模型速度跑分。
 
@@ -245,4 +245,4 @@ localhost 不替代真实渠道字段语义证明。如果仍有本地无法回�
 
 纯本地、官方原版、不做转发、不依赖 Magpie 遥测、不加 UI 说明、保留 RANGE 及其 200 ms idle 退出不变。每次 Desktop 重启先协调；部署与 release 更新仍不在当前授权内。当前已进入实施，commit＋push 仍须满足上面的实际支持与检查门槛。
 
-Codex 现有启用/查询/撤销命令和私有恢复状态见[来源与安装](../../../10-data-sources.md#本地采集安装)与[官方 DLC 验收](../../../validation/2026-10-31-codex-dlc-gaps/README.md)，不在本轮重做该步骤。
+Codex 当时的启用/查询/撤销命令和私有恢复状态见[研究盒子中的安装资料](../../2026-11-01-tps-research.md)与[官方 DLC 验收](../../../validation/2026-10-31-codex-dlc-gaps/README.md)，不在本轮重做该步骤。

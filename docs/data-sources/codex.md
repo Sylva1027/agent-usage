@@ -24,7 +24,7 @@
 
 Codex rate-limit 观察值提供当前窗口和重置边界，限额统计冻结相应时点的观察值；缺失可靠数据时不猜测。服务档位可由记录或独立证据解析，不改写原始 Token。
 
-Codex home kinds 是限额资格的判据。ZCode、DSH、OpenCode 和项目日志即使使用同名模型也不会进入 Codex 限额窗口。
+Codex home kinds 是限额资格的判据。ZCode、DSH、OpenCode、Claude Code、WorkBuddy 和项目日志即使使用同名模型也不会进入 Codex 限额窗口。
 
 ## 实现与回归
 

@@ -19,4 +19,6 @@ E:\12 AI\ccusage\tps-research-box\2026-11-01
 
 盒子入口为 `box/README.md`，完整文件清单与 hash 为 `box/manifest.json`。核心离线复现使用盒子内的源码、依赖和合成 fixture，不借用当前工作区。DSH 热启停等未解决项及各 harness 的实际支持范围保留在盒子内，源码存在不表示完整支持。
 
-研究盒子不随 `v0.9.0` 发布或上传。当前公开 release 仍为 `v0.8.0`；当前无 TPS 工作树版本为 `0.9.0`，尚未发布。
+封存当时拟用 `v0.9.0`，该版本号属于旧发行计划。后续实际无 TPS 发行与切换采用 `v0.8.5`，见[发行验收](../validation/2026-11-01-no-tps-cutover/README.md)；当前版本与安装方式以[README](../../README.md)和[交付说明](../15-delivery-upgrade.md)为准。研究盒子继续独立保留，不随运行包交付。
+
+2026-11-11 复查清理了主仓库遗留的 `test-support/codex-generation-fake-process.cs`。它只供已退役的 TPS 引擎测试使用，现行代码和测试没有消费者；原文件与盒子目录及 ZIP 中的 `source/test-support/codex-generation-fake-process.cs` 均逐字节一致（5,164 bytes，SHA-256：`8b2f8f2e362395eaf1ac92eb8c2c55ab72cc08a9a8489c961191870302fc4c47`）。原安装说明仍在盒子的 `source/docs/10-data-sources.md` 中，不能作为当前项目安装步骤。

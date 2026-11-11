@@ -145,8 +145,7 @@ foreach ($name in @('output','dist','node_modules','.ct','.playwright-cli','.tmp
 foreach ($item in Get-ChildItem -LiteralPath $Workspace -Directory -Force -Filter '.codex-ui-preview*') {
     $generated.Add($item.FullName)
 }
-foreach ($relative in @('native/windows-source-proof/target','experiments/architecture-20261101/native/target',
-    'experiments/rust-parsing-20261029/target','experiments/rust-integration-20261030/native-perf/target',
+foreach ($relative in @('native/windows-source-proof/target',
     '.codex-usage/tps-batch-20261030','.codex-usage/tps-aligned-20261030',
     '.codex-usage/codex-release-20261029','.codex-usage/no-tps-cutover-20261101',
     '.codex-usage/tps-deepseek-audit-20261030','.codex-usage/tps-v4-implementation-20261029/codex',

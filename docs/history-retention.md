@@ -73,7 +73,7 @@ try {
 node src/cli.js history archive "E:/retention-staging/source.sqlite" --commit "E:/retention-staging/cold.sqlite" --backup "E:/retention-staging/precommit-bundle" --home-dir "E:/retention-staging/home"
 ```
 
-正式入口重新准备和校验候选，创建并验证一个新的完整前置备份，然后在同一写事务登记段、授权并删除对应热事实。支持的 ZCode、Codex tps-v2 样本及依赖按已验证集合提交；NULL 时间、段外和不支持的事实留热。旧候选缺少原生能力证据时只提交 events，不授予 perf 权威。重放仍须使用新的备份目标。
+正式入口重新准备和校验候选，创建并验证一个新的完整前置备份，然后在同一写事务登记段、事件授权并删除对应热事实。提交对象是候选范围内、经来源和内容核对的普通用量事件；NULL 时间与段外事件留在主库。当前入口不采集或授予 TPS 样本权威。重放仍须使用新的备份目标。
 
 冷段文件及相邻 manifest 是历史的一部分。移走或损坏实际段时，完整查询明确失败；不会返回不完整热统计或把缺段显示成零。恢复原文件后可重试。
 

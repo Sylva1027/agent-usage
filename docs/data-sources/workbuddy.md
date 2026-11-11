@@ -17,7 +17,7 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ### 分类顺序（内容判别）
 
-`~/.workbuddy-ai/projects/<slug>/*.jsonl` 会同时满足 `claudeHomeLooksUsable`（只看 `projects/*/*.jsonl` 存在），所以**不能靠目录结构区分**。判据是内容：`projects/<slug>/*.jsonl` 的前 64 KiB 里出现 `"type":"session-meta"` 或 `"type":"function_call"`（最多探测 3 个文件）。
+`~/.workbuddy-ai/projects/<slug>/*.jsonl` 会同时满足 `claudeHomeLooksUsable`（只看 `projects/*/*.jsonl` 存在），所以**不能靠目录结构区分**。判据是内容：`projects/<slug>/*.jsonl` 的前 64 KiB 里出现 `"type":"session-meta"`、`"type":"function_call"` 或 `"__codebuddyLocal"`（最多探测 3 个文件）。
 
 `classifyImportDirectory` 里 **WorkBuddy 判定必须排在 Claude Code 之前**；同时不能挪到 ZCode/DSH/OpenCode 之前（那三个判据更具体）。`test/workbuddy-core.test.js` 用"同一夹具删掉内容行后不再判为 workbuddy-home"和"纯 Claude home 仍判 claude-home"两条钉住顺序与判据。
 
@@ -43,7 +43,7 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 
 ### 输入口径是反的
 
-与 Claude Code 相反，当前安装版本（`5.8.4` / bundle `37.10.3-42`）的 Chat Completions 适配路径中，WorkBuddy 的 `usage.inputTokens` **已包含缓存**、`outputTokens` **已包含 reasoning**：
+与 Claude Code 相反，2026-10-21 所验版本（`5.8.4` / bundle `37.10.3-42`）的 Chat Completions 适配路径中，WorkBuddy 的 `usage.inputTokens` **已包含缓存**、`outputTokens` **已包含 reasoning**：
 
 | 看板字段 | 来源 | 说明 |
 |---|---|---|
@@ -52,11 +52,11 @@ WorkBuddy 没有 Codex 那样的限额存储，因此**不参与** Codex 的 5 �
 | `output` | `providerData.usage.outputTokens` | 含 reasoning |
 | `reasoning` | `outputTokensDetails[0].reasoning_tokens` | |
 | `total` | `usage.totalTokens` | 实测等于 `input + output` |
-| `requestInputTokens` | `usage.input` | 与 Claude 相反，这里本身就是请求侧总量 |
-| `cacheWriteTokens` | `rawUsage.cache_creation_input_tokens` | 本机恒 0 |
+| `requestInputTokens` | `providerData.usage.inputTokens`（归一化后的 `usage.input`） | 与 Claude 相反，这里本身就是请求侧总量 |
+| `cacheWriteTokens` | `providerData.rawUsage.cache_creation_input_tokens` | 上述本机样本为 0；读取时保留实际值和已知状态 |
 | `detailMask` | 四位齐全 ⇒ `15` | bit1 input / bit2 cached / bit4 output / bit8 reasoning |
 
-`providerData.usage`、`providerData.rawUsage`、`message.usage` 三份冗余**只取第一份**，不做交叉校验、不累加（`test/workbuddy-usage.test.js` 用"改第二份的值不改变输出"钉住）。
+普通输入、输出、缓存命中和推理取 `providerData.usage`，不叠加 `message.usage` 或 `rawUsage` 中的重复计数；缓存写入另取 `providerData.rawUsage.cache_creation_input_tokens`。来源字段与归一化后的 `usage.input` 不混用，缺失值按适配器的已知状态处理。
 
 依据不是字段名或样本猜测：安装包 `main/netdrive-env-route.js` 将 Agent SDK usage 写入 `providerData`；`@openai/agents-openai` 的 Chat Completions 适配器把 `outputTokens` 设为 `completion_tokens`，把 `reasoning_tokens` 放入独立 detail；同包 OpenAI 类型文档明确 reasoning 类 token 仍计入 completion 总量。该认证只覆盖当前安装的 Chat Completions 路径，不外推到未来版本或违反该契约的兼容 provider。
 

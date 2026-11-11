@@ -1768,7 +1768,7 @@ test("C5 · failed event transaction rolls back and retries on the next sync", a
 });
 
 // ── D1 卡：实例修订（自身提交）/ 外部提交（同连接 `PRAGMA data_version`）/ 回滚 ─────────────────────
-// 卡面：`docs/plans/2026-10-09-dashboard-refresh-performance-implementation-plan.md:240-245`。
+// 原施工卡见 docs/archive/2026-11-11/plans/2026-10-09-dashboard-refresh-performance-implementation-plan.md。
 // 判据全部是**确定性计数/引用**，不用墙钟做判定（时刻字段只用来证明"它确实被每轮写了"）。
 
 function d1ProjectLog(sessionId, total, timestamp) {

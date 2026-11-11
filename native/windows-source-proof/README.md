@@ -112,5 +112,5 @@ node --test test/history-archive-native-lock.test.js
 - The helper is not a service. It starts with the writer's bridge instance and
   stops on `close()`, timeout, protocol failure, or child failure.
 
-See `experiments/architecture-20261101/B2-NATIVE-PROOF.md` for the tested
-mechanism, evidence, and remaining proof obligations.
+See the [archived W3 report](../../docs/archive/2026-11-11-experiments/architecture-20261101/B2-NATIVE-PROOF.md)
+for the tested mechanism, evidence, and remaining proof obligations at that revision.
