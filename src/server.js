@@ -727,7 +727,8 @@ export function createUsageServer(options = {}) {
           if (sourceAcquisitionAvailable) usageStore.restoreState(startupRetained);
         }
       }
-      if (sourceAcquisitionAvailable && (startupRetained || storeStatus?.acquisition)) {
+      // A crashed executor needs a full publication before unchanged-source checks can serve its state.
+      if (sourceAcquisitionAvailable && usageStore.status && (startupRetained || storeStatus?.acquisition)) {
         const checked = await usageStore.checkSources(sourceOptions);
         const source = checked && (await summaryCache.readCertifiedSourceState(sourceOptions, checked));
         if (source && (!startupRetained || (await summaryCache.stateFor(source)))) {
