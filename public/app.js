@@ -2716,7 +2716,8 @@ async function refreshPricingAutomatically(force = false) {
     if (!response.ok) throw new Error(localizeServerError(result, response.status));
     if (state.pricingCatalog) state.pricingCatalog.automatic = result;
     if (result.changed || result.statusChanged) {
-      if (state.pricingCatalog) {
+      // A background refresh may finish after the user has begun editing the dialog.
+      if (force && state.pricingCatalog) {
         const catalogResponse = await fetch(pricingActivityUrl());
         if (!catalogResponse.ok) throw new Error(`HTTP ${catalogResponse.status}`);
         const catalog = await catalogResponse.json();

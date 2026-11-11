@@ -64,8 +64,11 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   }
   const fixture = await createPaletteFixture();
   const server = createUsageServer(createPaletteServerOptions(fixture));
+  const startupRefresh = Promise.withResolvers();
+  const startupRefreshReady = Promise.withResolvers();
   let browser;
   t.after(async () => {
+    startupRefresh.resolve();
     await browser?.close();
     if (server.listening) await new Promise((resolve) => server.close(resolve));
     await fixture.close();
@@ -73,6 +76,17 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+  await page.route(
+    "**/api/pricing/refresh",
+    async (route) => {
+      const response = await route.fetch();
+      const result = await response.json();
+      startupRefreshReady.resolve();
+      await startupRefresh.promise;
+      await route.fulfill({ response, json: { ...result, statusChanged: true } });
+    },
+    { times: 1 },
+  );
   const errors = [],
     requests = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -103,6 +117,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   assert.ok(initial.estimate.totalUsd > 0 && initial.estimate.totalCny > 0, "fixture covers both native currencies");
   await page.locator("#updatePricingButton").click();
   const rate = page.locator("#usdToCnyRate");
+  await startupRefreshReady.promise;
   assert.equal(await rate.getAttribute("type"), "text");
   assert.equal(await rate.getAttribute("inputmode"), "decimal");
   await rate.fill("6.6652");
@@ -110,6 +125,8 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await rate.press("ArrowDown");
   await rate.hover();
   await page.mouse.wheel(0, 100);
+  startupRefresh.resolve();
+  await page.waitForFunction(() => !document.querySelector("#refreshPricingButton").disabled);
   assert.equal(await rate.inputValue(), "6.6652");
   const beforeSwitch = requests.length;
   await page.locator('[data-display-currency="CNY"]').click();
@@ -189,5 +206,23 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   assert.equal(layout.overflow, 0);
   assert.equal(layout.controlOverflow, 0);
   assert.ok(layout.currencyHeight < layout.scopeHeight);
+  await page.route(
+    /\/api\/pricing(?:\?|$)/,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), usdToCnyRate: 7.25 } });
+    },
+    { times: 1 },
+  );
+  await page.route(
+    "**/api/pricing/refresh",
+    (route) => {
+      assert.equal(route.request().postDataJSON().force, true);
+      return route.fulfill({ json: { changed: false, statusChanged: true } });
+    },
+    { times: 1 },
+  );
+  await page.locator("#refreshPricingButton").click();
+  await page.waitForFunction(() => document.querySelector("#usdToCnyRate").value === "7.25");
   assert.deepEqual(errors, []);
 });

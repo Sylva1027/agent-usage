@@ -31,6 +31,7 @@ import {
   MATRIX_UNTESTED,
   STATE_MATRIX_GROUPS,
   adaptRoleCatalogForMeasurement,
+  applyStateStep,
   assertCaptureOutputDir,
   buildPreferenceSeedSource,
   buildResourceBlockers,
@@ -49,12 +50,14 @@ import {
   buildCharactersReadySource,
   describeMatrixCoverage,
   diffPaletteDeclarations,
+  measurementErrorTrace,
   parseMetricNumber,
   planMonthNavigation,
   planResume,
   resolveBrowserRuntime,
   resumeDigestsMatch,
 } from "../scripts/skin-palette/capture.mjs";
+import { captureStableFullPage } from "../scripts/skin-palette/browser-measure.mjs";
 import { REQUIRED_SOURCE_FILES } from "../scripts/skin-palette/assess.mjs";
 import { ROLE_CATALOG, ROLES_VERSION, STATE_CATALOG } from "../scripts/skin-palette/roles.mjs";
 import { SKIN_PALETTES } from "../public/skin-palettes.js";
@@ -3638,6 +3641,82 @@ function runtimeFailingFirstImportRestore(runtime) {
   };
 }
 
+test("M4.3 menu-recent-open：打开和恢复不触发延迟筛选响应污染截图", async (t) => {
+  const runtime = await resolveBrowserRuntime();
+  if (!runtime) {
+    t.skip("浏览器运行时不可用（ENVIRONMENT_BLOCKED）：不伪造真机捕获");
+    return;
+  }
+  const fixture = await createPaletteFixture();
+  let preview;
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    await preview?.close();
+    await fixture.close();
+  });
+  preview = await startCandidatePreview({ candidate: previewCandidate(), fixture });
+  browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    locale: "zh-CN",
+    timezoneId: "Asia/Shanghai",
+    reducedMotion: "reduce",
+  });
+  await context.addInitScript(buildPreferenceSeedSource({ theme: "light", skinId: "chatgpt", showCharacters: false }));
+  context.setDefaultTimeout(10000);
+  const page = await context.newPage();
+  await page.route(/\/api\/pricing\/refresh(?:\?|$)/, (route) =>
+    route.fulfill({ json: { changed: false, statusChanged: false } }),
+  );
+  await page.goto(preview.url);
+  await page.waitForFunction(() => Boolean(window.__skinTestHook));
+  await page.click('#presetButtons button[data-preset="all"]');
+  await page.waitForFunction(async (total) => {
+    const { state } = await import("/app-state.js");
+    return state.summary?.totals.total === total;
+  }, FIXTURE_TOTAL_TOKENS);
+  await page.evaluate(() => document.fonts.ready);
+  const baselineTotal = await page.locator("#totalTokens").textContent();
+  const pending = [];
+  let filterRequests = 0;
+  await page.route(/\/api\/usage\?/, (route) => {
+    filterRequests += 1;
+    pending.push(route);
+  });
+  const screenshot = page.screenshot.bind(page);
+  page.screenshot = async (options) => {
+    // 将误触发的筛选响应精确放在几何快照与截图之间，不依赖 runner 快慢。
+    for (const route of pending.splice(0)) {
+      const response = await route.fetch();
+      const data = await response.json();
+      await route.fulfill({ response });
+      await page.waitForFunction(async (total) => {
+        const { state } = await import("/app-state.js");
+        return state.summary?.totals.total === total;
+      }, data.summary.totals.total);
+    }
+    return screenshot(options);
+  };
+  const state = STATE_CATALOG.find((entry) => entry.id === "menu-recent-open");
+  for (const step of state.steps) {
+    assert.equal((await applyStateStep(page, step, { stateTimeoutMs: 5000 })).ok, true);
+  }
+  await page.waitForFunction(buildStateReadyWaitSource(state.ready));
+  const shot = await captureStableFullPage(page).catch((error) => {
+    assert.fail(JSON.stringify(measurementErrorTrace(error)));
+  });
+  assert.equal(pngDimensions(shot).width, 1920);
+  assert.equal(await page.locator("#recentRangeMenu").isVisible(), true, "截图后菜单保持展开");
+  for (const step of state.restore) {
+    assert.equal((await applyStateStep(page, step, { stateTimeoutMs: 5000, phase: "restore" })).ok, true);
+  }
+  assert.equal(await page.locator("#recentRangeMenu").isHidden(), true, "恢复步骤必须真正关闭菜单");
+  assert.equal(filterRequests, 0, "菜单打开和恢复都不得发起 usage 筛选请求");
+  assert.equal(await page.locator('#presetButtons button[data-preset="all"]').getAttribute("class"), "active");
+  assert.equal(await page.locator("#totalTokens").textContent(), baselineTotal, "菜单操作不得改变看板数据");
+});
+
 test("M4.3 真机矩阵：light 模式 S1/S2/S6 全覆盖、恢复无旧色残留、未测项与摘要齐备", async (t) => {
   const runtime = await resolveBrowserRuntime();
   if (!runtime) {
@@ -3662,6 +3741,13 @@ test("M4.3 真机矩阵：light 模式 S1/S2/S6 全覆盖、恢复无旧色残�
       groups: ["S1", "S2", "S6"],
     });
     const mode = result.modes.light;
+    for (const [unitId, state] of Object.entries(mode.states)) {
+      if (state.status !== "failed") continue;
+      for (let attempt = 1; attempt <= state.attempts; attempt += 1) {
+        const evidence = await unitState(result.outDir, "light", `${unitId}/attempt-${attempt}`);
+        t.diagnostic(JSON.stringify({ unitId, attempt, failure: evidence.trace?.measurementFailure }));
+      }
+    }
     const expectedUnits = ["S1", "S2", "S6"].flatMap((id) =>
       STATE_MATRIX_GROUPS.find((g) => g.id === id).units.map((u) => u.id),
     );

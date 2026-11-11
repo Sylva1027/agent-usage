@@ -1503,9 +1503,10 @@ export const STATE_CATALOG = Object.freeze([
   {
     id: "menu-recent-open",
     label: "近期范围菜单展开",
-    steps: [{ action: "click", selector: "#presetButtons .recent-segment" }],
+    // 容器点击会冒泡触发异步范围筛选；专用按钮只切换菜单，不在截图期间重画看板。
+    steps: [{ action: "click", selector: "#recentMenuButton" }],
     ready: { kind: "visible", selector: "#recentRangeMenu:not([hidden])", description: "菜单展开" },
-    restore: [{ action: "click", selector: "#presetButtons .recent-segment" }],
+    restore: [{ action: "click", selector: "#recentMenuButton" }],
     expectedRoleIds: ["menu.item-selected", "button.secondary"],
   },
   {
