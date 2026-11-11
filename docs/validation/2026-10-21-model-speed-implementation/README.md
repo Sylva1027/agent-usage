@@ -1,6 +1,6 @@
 # 模型速度视图实施账本
 
-2026-10-21。状态：**实现与本轮独立验收完成，现有服务尚未激活新后端**。用户本轮明确指定 TPS-worker-A、TPS-worker-B 并要求开始；按[工作计划](../../plans/2026-10-21-model-speed-implementation-plan.md)与[产品方案](../../plans/2026-10-20-model-speed-view-plan.md)执行，采用计划第 2 节规则。
+2026-10-21。状态：**实现与本轮独立验收完成，现有服务尚未激活新后端**。用户本轮明确指定 TPS-worker-A、TPS-worker-B 并要求开始；按[工作计划](../../archive/2026-11-11/plans/2026-10-21-model-speed-implementation-plan.md)与[产品方案](../../archive/2026-11-11/plans/2026-10-20-model-speed-view-plan.md)执行，采用计划第 2 节规则。
 
 ## 当前分工
 

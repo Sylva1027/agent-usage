@@ -86,7 +86,7 @@ ZCode 内存补充值略升、Claude／WorkBuddy 整组 CPU 略升，均保留�
 
 开始首组时，工具缺少私有 `working-state` 目录而在启动服务前退出，已保留为 `formal/invalid-initialization-claude-baseline`，零页面／变更，不并入正式 8 组。最初受限环境的文件替换测试、冻结旧版缺少 package 路径的无效复测和分析器单调用假设失败日志也保留；最终分析按实际两次核对统计，不重跑或替换计时样本。
 
-计划：[本卡范围与预定标准](../../../plans/2026-11-06-source-prefix-publication.md)。工具：`source-prefix-publish-{prepare,telemetry,analyze}.mjs`，页面驱动复用 `remaining-harness-delivery-run.mjs`，只增加可选采样模块入口。私有证据：`output/source-prefix-publish-20261106/` 下的 `matrix.json`、`formal/`、`analysis.json`、`publication-analysis.json`、`verification.json`、`process-cleanup.json` 和各回归日志。
+计划：[本卡范围与预定标准](../../2026-11-11/plans/2026-11-06-source-prefix-publication.md)。工具：`source-prefix-publish-{prepare,telemetry,analyze}.mjs`，页面驱动复用 `remaining-harness-delivery-run.mjs`，只增加可选采样模块入口。私有证据：`output/source-prefix-publish-20261106/` 下的 `matrix.json`、`formal/`、`analysis.json`、`publication-analysis.json`、`verification.json`、`process-cleanup.json` 和各回归日志。
 
 复跑先设置 `REMAINING_DELIVERY_ROOT` 为 workspace/output 内的新证据根，从约定基线保存生产文件至其 `baseline/` 并保存清单，保留上一卡原始数据副本与 `seed-state`。依次运行新 prepare、原驱动的 `matrix`、新 analyze。工具拒绝覆盖既有组，应使用独立证据目录，不能复用旧结果冒充新测量。
 

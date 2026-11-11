@@ -4,7 +4,7 @@
 
 Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode、Claude Code 与 WorkBuddy 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
 
-当前版本：[v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5)。TPS 功能回炉重造中。
+当前版本：[v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5)。TPS 研究已封存，当前版本不提供模型速度统计。
 
 ![DeepSeek 浅色皮肤看板，16:9，示例数据](docs/images/dashboard-deepseek-light.png)
 

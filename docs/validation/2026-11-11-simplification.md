@@ -1,6 +1,6 @@
 # 项目精简实施记录
 
-基线：`5d93578`；实施计划：[复审版](../plans/2026-11-11-project-simplification-plan.md)。使用当前工作区、Windows、Node 26.13.0、`TZ=Asia/Shanghai`。提交按批次独立回退；不操作活动数据库或已安装服务。
+基线：`5d93578`；实施计划：[复审版](../archive/2026-11-11/plans/2026-11-11-project-simplification-plan.md)。使用当前工作区、Windows、Node 26.13.0、`TZ=Asia/Shanghai`。提交按批次独立回退；不操作活动数据库或已安装服务。
 
 ## 入口核查
 

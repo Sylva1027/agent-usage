@@ -91,7 +91,7 @@ I/O 是已观察进程累计高水位之和，仍为下界，不是完整物理�
 
 ## 证据与停止点
 
-[本卡计划](../../../plans/2026-11-06-sqlite-empty-wal-stability.md)。工具复用 `remaining-harness-delivery-run.mjs`、`source-prefix-publish-telemetry.mjs`，prepare 增加 `--sqlite-stability`，分析器按本卡 15% 目标和一次读取标准判定。私有证据在 `output/sqlite-refresh-stability-20261106/`，包括 `real-probe.log`、`formal/`、`analysis.json`、`publication-analysis.json`、`first-update-diagnostic.json`、完整／定向／旧版回归日志、`verification.json` 和 `process-cleanup.json`。后台请求与原始响应保持私有。
+[本卡计划](../../2026-11-11/plans/2026-11-06-sqlite-empty-wal-stability.md)。工具复用 `remaining-harness-delivery-run.mjs`、`source-prefix-publish-telemetry.mjs`，prepare 增加 `--sqlite-stability`，分析器按本卡 15% 目标和一次读取标准判定。私有证据在 `output/sqlite-refresh-stability-20261106/`，包括 `real-probe.log`、`formal/`、`analysis.json`、`publication-analysis.json`、`first-update-diagnostic.json`、完整／定向／旧版回归日志、`verification.json` 和 `process-cleanup.json`。后台请求与原始响应保持私有。
 
 复跑先设置 `REMAINING_DELIVERY_ROOT` 为 workspace/output 内的新目录，放入 `7f95811` 的生产快照及清单，保留上一卡数据与共同索引。依次运行 prepare 的 `--sqlite-stability`、页面驱动 `matrix`、source-prefix 分析器。既有组拒绝覆盖，诊断样本不能冒充正式样本。
 

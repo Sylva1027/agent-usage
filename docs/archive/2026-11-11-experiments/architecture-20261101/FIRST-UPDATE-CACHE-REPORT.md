@@ -88,7 +88,7 @@ I/O 为已观察进程累计高水位之和，旧版有短命进程缺测，仍�
 - 额外有 **2 组原版定位、1 组早期候选验证**，合计另 6 追加／3 修订／3 重开，不并入正式 16／8／8。早期候选验证在最终生命周期修正之前，不能当作最终版本计时。
 - 104 个冻结生产文件、两份运行时（候选 115 条目）、1,973 原始捕获、1,969 非可变副本及 4 个独立可变副本核验通过。22 份资源报告、354 个 PID＋精确创建时间身份清理审计，存活／未知均为 0；两个复用 PID 按名称排除，未终止无关程序。普通 worker 已验收关闭，无 pinned worker。
 
-[本卡计划](../../../plans/2026-11-06-first-update-cache.md)。私有证据根 `output/first-update-cache-20261106/`，包含 `analysis.json`、`publication-analysis.json`、`controlled-proof.json`、`verification.json`、`process-cleanup.json`、`formal/` 和各次回归日志；来源内容、模型使用细节、HTTP 响应不提交。
+[本卡计划](../../2026-11-11/plans/2026-11-06-first-update-cache.md)。私有证据根 `output/first-update-cache-20261106/`，包含 `analysis.json`、`publication-analysis.json`、`controlled-proof.json`、`verification.json`、`process-cleanup.json`、`formal/` 和各次回归日志；来源内容、模型使用细节、HTTP 响应不提交。
 
 工具复用已有 prepare／driver／analyzer：prepare 增加 `--first-update-cache`，新 `first-update-telemetry.mjs` 固定价格检查时序并记录同步轮数。后续复跑使用 workspace/output 内的新目录与新冻结清单，不能覆盖本轮证据；原页面驱动 `matrix` 后运行 source-prefix 分析器。
 

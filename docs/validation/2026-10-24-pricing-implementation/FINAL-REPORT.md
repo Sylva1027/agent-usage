@@ -1,5 +1,7 @@
 # A/B 价目联合验收
 
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
 更新：2026-10-25。**G1/G2/G3在隔离副本通过，产品尚未合回共享源码；G4未完成。** A原交付的实际缺陷已修正，A01–A11接受，A12行级刷新保持关闭。用户指定的两位worker均已停在卡间。
 
 交付为 [A+B补丁](../../../output/pricing-implementation-20261024/pricing-AB-reviewed.patch)和[37文件前后像清单](../../../output/pricing-implementation-20261024/pricing-AB-reviewed-files.json)。最终源码固定在 `output/pricing-implementation-20261024/reviews/G2-final`，基于包含当时未提交工作的308文件baseline，不是旧HEAD。根目录 `git apply --check --whitespace=nowarn`通过，未应用。早期B-only补丁是历史里程碑，不能再与新补丁叠加。
@@ -22,7 +24,7 @@
 
 `format:check`剩余14项，文件清单与baseline完全一致；只修正本次新增的八个文件格式问题，没有批量格式化其他施工线。
 
-真实浏览器使用临时synthetic home和离线fetcher。验证普通模型新增/保存/撤销取消、两条线路分别保存、移除互不影响、409草稿保留、英文与Escape；无控制台错误。金额卡和说明明确“已定价部分合计”。[截图](../../../output/pricing-implementation-20261024/reports/G2-browser.png)；A原始缺陷与修正详情见[独立报告](../../../output/pricing-implementation-20261024/reports/A-acceptance.md)。原共享fixture误用的记录已排除，独立新home重跑作为证据。
+真实浏览器使用临时synthetic home和离线fetcher。验证普通模型新增/保存/撤销取消、两条线路分别保存、移除互不影响、409草稿保留、英文与Escape；无控制台错误。金额卡和说明明确“已定价部分合计”。截图（原路径：`../../../output/pricing-implementation-20261024/reports/G2-browser.png`）；A原始缺陷与修正详情见[独立报告](../../../output/pricing-implementation-20261024/reports/A-acceptance.md)。原共享fixture误用的记录已排除，独立新home重跑作为证据。
 
 ## 容量与剩余边界
 

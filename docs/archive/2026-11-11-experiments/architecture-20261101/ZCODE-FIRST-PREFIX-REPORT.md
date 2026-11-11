@@ -100,6 +100,6 @@
 - 冻结 104 个生产文件、两份运行时（候选 115 条目）、1,973 原始捕获、1,969 非可变副本及 4 个独立可变副本核验通过。18 份正式／诊断资源报告、255 个精确进程身份清理审计，存活／未知均为 0。
 - 使用 [pinned-workers](C:/Users/Silver/.codex/skills/pinned-workers/SKILL.md)，用户已取消旧 hy4 约定，显式恢复 `model:"group/deepseek"`、`reasoning_effort:"max"`、`fork_context:false`。Raman `01a1b091-5165-77d0-8384-22a6b0084230` 的测试与只读审查均验收并关闭。创建回执仅证明请求参数／启动结果，不证明路由后的物理模型；本地技能和默认提示词本来就是 DeepSeek，无 hy4 残留文件需改写。
 
-[本卡计划](../../../plans/2026-11-06-zcode-first-prefix.md)。私有证据为 `output/zcode-first-prefix-20261106/` 中的 `matrix.json`、`analysis.json`、`publication-analysis.json`、`verification-final.json`、`process-cleanup.json`、`worker-audit.json`、`formal/` 和回归日志。来源正文、HTTP 原响应、敏感路径和截图不提交。prepare 新增 `--zcode-first-prefix`；driver 补首次服务打开总时间；分析器强制两次 ZCode 追加各只写 1 条，并把首次打开纳入同一防退化门。
+[本卡计划](../../2026-11-11/plans/2026-11-06-zcode-first-prefix.md)。私有证据为 `output/zcode-first-prefix-20261106/` 中的 `matrix.json`、`analysis.json`、`publication-analysis.json`、`verification-final.json`、`process-cleanup.json`、`worker-audit.json`、`formal/` 和回归日志。来源正文、HTTP 原响应、敏感路径和截图不提交。prepare 新增 `--zcode-first-prefix`；driver 补首次服务打开总时间；分析器强制两次 ZCode 追加各只写 1 条，并把首次打开纳入同一防退化门。
 
 **本地提交后停止，等待反馈。** 未部署、推送、切换在用来源／数据库／服务或安装助手。未测空库完整重建、多年／文件数增长、原生模式、多冷分片、长时间尾延迟或跨平台；6 项性能失败与元数据文件启动失败原因仍未收口，不自动继续调查或扩大实施范围。

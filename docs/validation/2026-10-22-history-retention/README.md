@@ -2,7 +2,7 @@
 
 日期：2026-10-22。主审维护；worker 分别维护 A-report.md、B-report.md、C-report.md。
 
-施工入口：[Implementation Plan](../../plans/2026-10-22-history-retention-implementation-plan.md)。研究基线见其 §2；原第二稿不是施工契约。
+施工入口：[Implementation Plan](../../archive/2026-11-11/plans/2026-10-22-history-retention-implementation-plan.md)。研究基线见其 §2；原第二稿不是施工契约。
 
 ## 当前状态
 

@@ -1,6 +1,8 @@
 # 模型归并、覆盖与汇率：实施验收
 
-日期：2026-10-26。按[双 worker 计划](../../plans/2026-10-26-pricing-two-worker-implementation-plan.md)，现有 Price-worker-A / Price-worker-B 完成并经主审接受 **21/23 卡（R01–R10、V01–V11）**；没有切换 worker 或启用新的 subagents。
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
+日期：2026-10-26。按[双 worker 计划](../../archive/2026-11-11/plans/2026-10-26-pricing-two-worker-implementation-plan.md)，现有 Price-worker-A / Price-worker-B 完成并经主审接受 **21/23 卡（R01–R10、V01–V11）**；没有切换 worker 或启用新的 subagents。
 
 **后端已按 RETENSION 文件窗口分批合入根目录。界面完成隔离联合验收，但尚未合根：UI 主线仍在施工，app/index/i18n 文件窗口未释放。** G1/G2 的完整交互因此目前只在隔离副本通过；G3 后台调度已合根。没有重启正式服务。
 
@@ -24,7 +26,7 @@
 
 真实浏览器使用独立回环实例 `127.0.0.1:13380`、10 条合成事件和离线价格 fetcher，验证中英文、模型与图例归并、官方条目 Escape/取消、单行终态、手动 FX 与恢复取消、暂停保存、新状态与 409 草稿保留；控制台无错误。修正了复核发现的草稿覆盖、旧 snapshot 状态回读及旧 UI 文案回流。临时服务、home 与浏览器标签已清理。
 
-![离线合成数据验收](../../../output/pricing-official-20261026/reports/V11-browser-models.png)
+!离线合成数据验收（原路径：`../../../output/pricing-official-20261026/reports/V11-browser-models.png`）
 
 截图中的 `$2.22` 来自故意设置的合成测试费率，用于证明暂停后确实重算，不代表真实用量或官方单价。
 

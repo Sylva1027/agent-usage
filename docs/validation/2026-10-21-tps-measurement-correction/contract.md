@@ -2,7 +2,7 @@
 
 revision：`timing-contract-1`。日期：2026-10-21。维护者：主审。第一波接口已固定；来源 producer 是否已认证是另一项 G1 结论，不由接口名称冒充。
 
-规格：[修订方案](../../plans/2026-10-21-tps-measurement-correction-plan.md)；执行：[三 worker 执行单](../../plans/2026-10-21-tps-measurement-parallel-execution.md)。
+规格：[修订方案](../../archive/2026-11-11/plans/2026-10-21-tps-measurement-correction-plan.md)；执行：[三 worker 执行单](../../archive/2026-11-11/plans/2026-10-21-tps-measurement-parallel-execution.md)。
 
 ## 1. 规范计时证据（A 校验、C 持久化）
 

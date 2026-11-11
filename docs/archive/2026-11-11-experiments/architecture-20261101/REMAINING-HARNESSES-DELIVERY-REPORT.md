@@ -64,7 +64,7 @@ CPU 为本组全部 Node 生命周期累计核秒，包含初始打开、三次�
 
 ## 证据与复跑
 
-[计划与标准](../../../plans/2026-11-05-remaining-harnesses-delivery-validation.md)。工具为同目录的 `remaining-harness-delivery-{prepare,run,fixture,telemetry,analyze}.mjs`，私有证据在 `output/remaining-harness-delivery-20261105/`：`matrix.json`、`seed/`、`formal/<来源>-<版本>/`、`analysis.json`、完整及旧版失败日志、`verification.json`、`process-cleanup.json`。截图与原始业务响应保持私有。
+[计划与标准](../../2026-11-11/plans/2026-11-05-remaining-harnesses-delivery-validation.md)。工具为同目录的 `remaining-harness-delivery-{prepare,run,fixture,telemetry,analyze}.mjs`，私有证据在 `output/remaining-harness-delivery-20261105/`：`matrix.json`、`seed/`、`formal/<来源>-<版本>/`、`analysis.json`、完整及旧版失败日志、`verification.json`、`process-cleanup.json`。截图与原始业务响应保持私有。
 
 复跑需保留既有捕获及冻结基线。设置 `REMAINING_DELIVERY_ROOT` 为 workspace/output 内的新目录，再依次运行 prepare、run 的 seed / matrix、analyze；默认旧目录拒绝覆盖。原始样本仅一套，无补跑替换；分析方法修正后可以重新生成派生分析。
 

@@ -100,8 +100,7 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 
 ## 增量索引
 
-单个数据目录下可能有多个数据库，`UsageStore.usageFiles()` 按目录展开逐个纳入，
-各自按 `size + mtime`（含 `-wal`，见 `opencodeSourceStat`）判定是否重解析。
+一个数据目录可包含多个数据库，逐库加入来源清单。指纹联合主库与 WAL；WAL 有已提交变化时，不能被原生“来源未变”证明覆盖。读取前后核对来源稳定性，无法证明可复用时使用完整扫描。统一规则见[增量索引](../10-data-sources.md#增量索引与版本)。
 
 ## 隐私口径
 
@@ -121,6 +120,6 @@ OpenCode 没有限额/配额存储，因此**不参与** Codex 的 5 小时与�
 | `src/usage-store.js` | SQLite 增量索引（含 `-wal` 的多库展开） |
 | `src/server.js` | 导入标签 |
 | `test/opencode-usage.test.js` | 单元与语义测试 |
-| `test/three-path-parity.test.js` | 内存 / SQLite / 静态快照三路一致 |
+| `test/three-path-parity.test.js` | 内存 / SQLite / 独立测试参考三路一致 |
 
 TPS 及其 OpenCode 插件已退役；封存实现见[研究盒子说明](../archive/2026-11-01-tps-research.md)。

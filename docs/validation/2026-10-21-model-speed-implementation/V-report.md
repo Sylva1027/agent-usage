@@ -1,5 +1,7 @@
 # 模型速度视图主审记录
 
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
 历史日志已于2026-11-11清理。
 
 2026-10-21。结论：本轮数据、独立界面、隔离生产链路及收尾检查通过；现有服务激活与重启后真实页面验收不在本轮已测范围。本稿不借用旧 TPS G4。
@@ -20,7 +22,7 @@
 - 检查 classic 和当前五款 picker 皮肤的深浅主题，所有新填充为实色；双语切换，1920×1080、2560×1440、1440×1080、1024×900、720×900 CSS 视口。未把 CSS 视口当作实际系统缩放/浏览器缩放。
 - 除初始五行/等高/条形对齐外，每次边界选择都检查两栏高度、内容边界、标签无碰撞；同行四个单元格的底线必须对齐。实际整页截图已阅读，新增区域位于周期比较之后、扫描目录之前。
 
-证据：[浏览器聚合](V/browser-evidence.json)、日志、[classic 浅色整页](V/page-classic-light-1920.png)、[DeepSeek 深色整页](V/page-deepseek-dark-1920.png)、[1024 窄窗口](V/page-1024.png)、[相近端点](V/near-endpoints-model.png)、[长模型名](V/long-model-name-with-separate-effor.png)。
+证据：[浏览器聚合](V/browser-evidence.json)、日志、classic 浅色整页（原路径：`V/page-classic-light-1920.png`）、DeepSeek 深色整页（原路径：`V/page-deepseek-dark-1920.png`）、1024 窄窗口（原路径：`V/page-1024.png`）、相近端点（原路径：`V/near-endpoints-model.png`）、长模型名（原路径：`V/long-model-name-with-separate-effor.png`）。
 
 ### 发现并修正
 

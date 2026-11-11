@@ -1,6 +1,8 @@
 # Codex TPS 后续改进执行记录
 
-2026-10-21。对应[计划](../../plans/2026-10-21-codex-tps-followup-plan.md)。本轮完成 A 调查及 B 确定性反例；没有足够证据接入原生计时或缩小活跃变化阻断范围，因此不改运行时代码，C 跳过。这是调查收口，不是两项能力已交付。
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
+2026-10-21。对应[计划](../../archive/2026-11-11/plans/2026-10-21-codex-tps-followup-plan.md)。本轮完成 A 调查及 B 确定性反例；没有足够证据接入原生计时或缩小活跃变化阻断范围，因此不改运行时代码，C 跳过。这是调查收口，不是两项能力已交付。
 
 ## A：当前原始记录不能替代已审核计时
 
@@ -8,7 +10,7 @@
 
 - 两文件共 1,194 条 `token_usage_record`，其 payload 顶层均未出现 start/duration/latency 字段；请求身份字段为 `response_id`。
 - 文件中有 task/item 起止字段，但没有观察到可证明对应单次完整请求的起点。task_started 只有 14 + 12 条，不能给 489 + 705 个请求逐一计时。
-- 对照 [codex-jsonl.js](../../../src/perf-sources/codex-jsonl.js)：usage 投影保留 response ID、请求/轮输出与时间戳；目标 item 保留 item ID 和起止；task_complete 保留轮终态字段；task_started 被忽略。把它投影出来也不能凭空建立逐请求边界。未发现可以直接恢复使用的请求时长字段。
+- 对照 codex-jsonl.js（原路径：`../../../src/perf-sources/codex-jsonl.js`）：usage 投影保留 response ID、请求/轮输出与时间戳；目标 item 保留 item ID 和起止；task_complete 保留轮终态字段；task_started 被忽略。把它投影出来也不能凭空建立逐请求边界。未发现可以直接恢复使用的请求时长字段。
 
 结论限于这两份 rollout 的已检查结构，不声称所有 Codex 版本、嵌套扩展字段或其他日志均不含计时。未认证候选，故不做无依据的时长误差/P99/pooled 对比；不使用相邻 usage 差值、item span 或整轮减工具时间。未独立覆盖重试，也未扩展主/子线程矩阵。
 

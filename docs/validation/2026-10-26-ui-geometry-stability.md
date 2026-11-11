@@ -1,8 +1,10 @@
 # UI 几何稳定性施工验收
 
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
 部分历史运行附件已于 2026-11-11 清理，原验收结论保留。
 
-2026-10-26，15 张施工任务卡与 UI 专项验收完成，最后一项报告字段契约失败也已修复。报告相关 17 项与计价快照 1 项定向测试全部通过；完整工程首轮及后续复测分别保留，具体结果见下文。任务与交付范围见[实施计划](../plans/2026-10-26-ui-geometry-stability-implementation-plan.md)。
+2026-10-26，15 张施工任务卡与 UI 专项验收完成，最后一项报告字段契约失败也已修复。报告相关 17 项与计价快照 1 项定向测试全部通过；完整工程首轮及后续复测分别保留，具体结果见下文。任务与交付范围见[实施计划](../archive/2026-11-11/plans/2026-10-26-ui-geometry-stability-implementation-plan.md)。
 
 ## 起点与执行
 
@@ -45,7 +47,7 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 - 计价列表 240px / 行 52px，匹配、缺价、免费、长名、搜索及范围切换通过。截图复核发现必要费率被 `max-width: 46%` 二次收窄，已改为按内容分配费率列，加入单行及完整可读断言；重匹配按钮补回既有陶瓷材质。
 - 原生模型弹窗实际进入 `:modal`，关闭后高度为 0。中英文编辑、非法值禁用应用、503 保存反馈、真实 PUT 保存重算、后端读取和复开输入值一致均通过。固定历史样本通过“全部模型”入口检查，不依赖样本仍处于近期窗口。
 
-最终截图在 A7 修正后重新生成：八组 × 主页面及四个弹窗，共 40 张；代表中文深色、英文浅色实际图像已复核。入口为[中文深色整页](../../output/ui-geometry-implementation/final/1920-zh-CN-dark-page.png)、[中文计价弹窗](../../output/ui-geometry-implementation/final/1920-zh-CN-dark-pricing.png)、[英文计价弹窗](../../output/ui-geometry-implementation/final/2560-en-US-light-pricing.png)及[矩形读数](../../output/ui-geometry-implementation/final/readings.json)。正常截图使用原组合 fixture；额外免费/长名样本仅在正式测试临时目录通过真实日志及计价 API 接入。
+最终截图在 A7 修正后重新生成：八组 × 主页面及四个弹窗，共 40 张；代表中文深色、英文浅色实际图像已复核。入口为中文深色整页（原路径：`../../output/ui-geometry-implementation/final/1920-zh-CN-dark-page.png`）、中文计价弹窗（原路径：`../../output/ui-geometry-implementation/final/1920-zh-CN-dark-pricing.png`）、英文计价弹窗（原路径：`../../output/ui-geometry-implementation/final/2560-en-US-light-pricing.png`）及[矩形读数](../../output/ui-geometry-implementation/final/readings.json)。正常截图使用原组合 fixture；额外免费/长名样本仅在正式测试临时目录通过真实日志及计价 API 接入。
 
 ## 工程检查与失败归因
 
@@ -63,13 +65,13 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 ## 真实服务页面复核
 
-本次跟进通过 `http://127.0.0.1:3765/` 的实际日期控件选择 2026-10-19 至 2026-10-25，展示用户真实数据及当前深色角色皮肤。对比卡已无日期/会话补充行，速度区前已无计时覆盖说明；图表与详情、速度表与详情及两张周期表对齐。保留可操作的实际页面，截图见[主页面](../../output/playwright/ui-final-live/dashboard.png)与[速度及周期区](../../output/playwright/ui-final-live/dashboard-lower.png)。这些截图是实际服务展示，前述隔离矩阵仍作为几何回归证据。
+本次跟进通过 `http://127.0.0.1:3765/` 的实际日期控件选择 2026-10-19 至 2026-10-25，展示用户真实数据及当前深色角色皮肤。对比卡已无日期/会话补充行，速度区前已无计时覆盖说明；图表与详情、速度表与详情及两张周期表对齐。保留可操作的实际页面，截图见主页面（原路径：`../../output/playwright/ui-final-live/dashboard.png`）与速度及周期区（原路径：`../../output/playwright/ui-final-live/dashboard-lower.png`）。这些截图是实际服务展示，前述隔离矩阵仍作为几何回归证据。
 
 ## 费用估算常显修正
 
 用户指出“估算详情”悬停时光影异常，并明确框内详情不应折叠。已移除费用区 `details` / `summary`、专属折叠样式及无用翻译，原有费用内容和计价入口直接展示。配色取证沿用状态 ID，但改为检查常显内容，不再点击已移除的入口；角色版本同步为 40。主方案和施工计划已注明这一展现要求。
 
-修后真实 UI 几何回归 16 项通过、0 失败、0 跳过，覆盖既有八组合；费用内容在正常加载后无需点击即可见，框内无折叠控件。实际 3765 页面也已复核：标题指针反馈开启面板聚光，移入正文凹槽后退出聚光，两次框体均为 710×195px，正文槽均为 111px。记录见[标题光影](../../output/playwright/ui-final-live/cost-note-title-light.png)、[正文效果](../../output/playwright/ui-final-live/cost-note.png)、[实际读数](../../output/playwright/ui-final-live/cost-note-readings.json)及16 项 UI 回归。相关文件 Biome 检查通过，CSS 保留既有 54 条 warning。
+修后真实 UI 几何回归 16 项通过、0 失败、0 跳过，覆盖既有八组合；费用内容在正常加载后无需点击即可见，框内无折叠控件。实际 3765 页面也已复核：标题指针反馈开启面板聚光，移入正文凹槽后退出聚光，两次框体均为 710×195px，正文槽均为 111px。记录见标题光影（原路径：`../../output/playwright/ui-final-live/cost-note-title-light.png`）、正文效果（原路径：`../../output/playwright/ui-final-live/cost-note.png`）、[实际读数](../../output/playwright/ui-final-live/cost-note-readings.json)及16 项 UI 回归。相关文件 Biome 检查通过，CSS 保留既有 54 条 warning。
 
 翻译与配色契约/预览相关检查首轮 163 项中 152 项通过；11 项因 Windows 沙盒无法启动 Edge 或创建临时目录联接失败，换到可执行对应操作的环境后仅复测这 11 项，全部通过、0 跳过。两次日志分别保留：首轮、11 项复测。本次未重跑全仓测试。
 
@@ -81,7 +83,7 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 修后18 项真实浏览器回归全部通过、0 失败、0 跳过，包括新增浅深主题整页指针扫查：顶部和工具栏、12 张指标卡、3 张对比卡、图表/详情、速度表/详情、两张周期表及合计行、目录/费用、归档开合、最近范围/时区菜单、日历及三个外层弹窗。检查每次只有正确宿主发光，凹槽和弹窗不误触主页光影；速度文字层级、归档开合后的遮罩、现有展开状态和主框体几何同时验证。61 项相关测试、类型检查及相关文件 Biome 检查通过，CSS 仍为既有 54 条 warning。
 
-本次复核中 3765 已拒绝连接，未启动或重启它。视觉复核使用正式前端与现成隔离 fixture，预览地址和进程见[预览记录](../../output/hover-lighting/preview-address.json)。人工复核截图：[浅色顶部](../../output/hover-lighting/light-top.png)、[深色顶部](../../output/hover-lighting/dark-top.png)、[合计行](../../output/hover-lighting/footer-after.png)、[速度详情](../../output/hover-lighting/speed-after.png)、[收起归档](../../output/hover-lighting/archive-after.png)；[读数](../../output/hover-lighting/readings.json)确认收起归档无遮罩缺口，速度文字层级为 1、光影层为 0。
+本次复核中 3765 已拒绝连接，未启动或重启它。视觉复核使用正式前端与现成隔离 fixture，预览地址和进程见[预览记录](../../output/hover-lighting/preview-address.json)。人工复核截图：浅色顶部（原路径：`../../output/hover-lighting/light-top.png`）、深色顶部（原路径：`../../output/hover-lighting/dark-top.png`）、合计行（原路径：`../../output/hover-lighting/footer-after.png`）、速度详情（原路径：`../../output/hover-lighting/speed-after.png`）、收起归档（原路径：`../../output/hover-lighting/archive-after.png`）；[读数](../../output/hover-lighting/readings.json)确认收起归档无遮罩缺口，速度文字层级为 1、光影层为 0。
 
 本轮未发布、未重启用户的 3765 服务，未执行用户真实数据导入或重新计价，未重跑全仓测试。专项范围是桌面 CSS 视口与既有皮肤；没有追加手机适配、全皮肤全状态组合或真实 OS 缩放验收。
 
@@ -93,7 +95,7 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 既有真实浏览器测试增加顶部三框间距、图表/速度/周期内槽左右留边、速度框上下留边及五行槽位断言。首轮新增断言发现桌面断点仍覆盖间距，同时测量函数未兼容空态无内槽，均已修正；首轮日志保留。修后 18 项界面回归和39 项速度视图测试全部通过，0 失败、0 跳过；包括浅深主题整页悬停及既有八组桌面/语言/主题矩阵。相关文件 Biome 检查通过，CSS 保留既有 54 条 warning。
 
-现有 4415 隔离样本预览已刷新，实际测得两道顶部缝隙均为 20px；图表、速度表、两张周期表左右留边均为 21px（20px 内边距加 1px 边线），速度框四边均为 21px。见[顶部截图](../../output/frame-spacing/top-after.png)、[速度与周期表截图](../../output/frame-spacing/speed-period-after.png)及[修后读数](../../output/frame-spacing/after-readings.json)。这些图片使用现成样本数据，未重启用户 3765 服务，未重跑全仓测试。
+现有 4415 隔离样本预览已刷新，实际测得两道顶部缝隙均为 20px；图表、速度表、两张周期表左右留边均为 21px（20px 内边距加 1px 边线），速度框四边均为 21px。见顶部截图（原路径：`../../output/frame-spacing/top-after.png`）、速度与周期表截图（原路径：`../../output/frame-spacing/speed-period-after.png`）及[修后读数](../../output/frame-spacing/after-readings.json)。这些图片使用现成样本数据，未重启用户 3765 服务，未重跑全仓测试。
 
 历史归档区本次仅核实用途，展现保持原样：列出已登记封存段的范围、状态和事件数，支持展开读取 UTC 日统计及分页原始事件，内容为封存版本。当前样本没有已登记归档段；该区定位为历史数据核查入口，当前 UI 未提供创建归档、导出或恢复操作。
 
@@ -105,7 +107,7 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 既有18 项真实 UI 回归全部通过、0 失败、0 跳过，新增五道顶部纵缝、按钮顺序、归档框缺席、页尾留白及无归档后台请求的断言；整页悬停、语言/主题/皮肤及各弹窗交互继续通过。已删除归档框专属的开合/悬停检查，目录列表增长仍检查真实页尾留白。85 项相关测试及类型检查通过，相关文件 Biome 检查通过，CSS 保留既有 54 条 warning。
 
-4415 隔离样本预览已刷新并保留：见[标题与按钮截图](../../output/header-cleanup/top-after.png)、[归档移除后的页尾](../../output/header-cleanup/bottom-after.png)及[实际读数](../../output/header-cleanup/readings.json)。实测顶部五道纵缝均为 20px、归档框为 0 个、页尾留白为 40px。看板行为和历史操作文档已同步；本次未重跑全仓测试、未启动或重启用户 3765 服务。
+4415 隔离样本预览已刷新并保留：见标题与按钮截图（原路径：`../../output/header-cleanup/top-after.png`）、归档移除后的页尾（原路径：`../../output/header-cleanup/bottom-after.png`）及[实际读数](../../output/header-cleanup/readings.json)。实测顶部五道纵缝均为 20px、归档框为 0 个、页尾留白为 40px。看板行为和历史操作文档已同步；本次未重跑全仓测试、未启动或重启用户 3765 服务。
 
 ## 五处视觉反馈跟进
 
@@ -117,7 +119,7 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 18 项真实 UI 回归、186 项相关测试及类型检查全部通过，0 失败、0 跳过。UI 回归覆盖既有八组桌面/语言/主题矩阵、整页悬停、新标题/凹槽对齐、新身份行距、局部圆角及中英文错误详情的可读高度、返回与焦点恢复。首轮仅新增英文错误正文断言误用了原始 fixture 文案，按现有 HTTP 503 本地化文案修正后通过，保留首轮记录。相关文件 Biome 与差异空白检查通过，CSS 保留既有 54 条 warning。
 
-4415 样本预览实测三标题同高同位，三凹槽同高同位；见[实际读数](../../output/ui-five-refinements/readings.json)、[深色顶部](../../output/ui-five-refinements/dark-top.png)、[浅色顶部](../../output/ui-five-refinements/light-top.png)及[浅色速度区](../../output/ui-five-refinements/light-speed.png)。本次未重跑全仓测试、完整配色截图矩阵或真实 OS 缩放验收，未启动或重启用户 3765 服务。
+4415 样本预览实测三标题同高同位，三凹槽同高同位；见[实际读数](../../output/ui-five-refinements/readings.json)、深色顶部（原路径：`../../output/ui-five-refinements/dark-top.png`）、浅色顶部（原路径：`../../output/ui-five-refinements/light-top.png`）及浅色速度区（原路径：`../../output/ui-five-refinements/light-speed.png`）。本次未重跑全仓测试、完整配色截图矩阵或真实 OS 缩放验收，未启动或重启用户 3765 服务。
 
 ## 加载时保留趋势对比框体
 
@@ -125,16 +127,16 @@ A4 主页面几何与 B4 四个弹窗的结构/文案已整合。主审真实 fi
 
 19 项真实 UI 回归、72 项渲染与翻译测试及类型检查通过，0 失败、0 跳过。新增回归实际阻塞 app 模块，验证脚本执行前已有三张可见卡；另阻塞用量请求，检查等待、错误及数据返回后的卡片位置和尺寸，容差仍为 0.5px。加载取证见[脚本加载前](../../output/comparison-loading/first-paint-zh-CN-dark.png)、[中文浅色接口等待](../../output/comparison-loading/loading-zh-CN-light.png)及[英文深色接口等待](../../output/comparison-loading/loading-en-US-dark.png)。
 
-4415 样本预览已刷新并保留，三张卡高均为 77px，上下间距均为 20px，见[样板页](../../output/comparison-loading/preview-after.png)及[实际读数](../../output/comparison-loading/preview-readings.json)。相关 JavaScript 的 Biome 与差异空白检查通过。本次未重跑全仓测试，未启动或重启用户 3765 服务。
+4415 样本预览已刷新并保留，三张卡高均为 77px，上下间距均为 20px，见样板页（原路径：`../../output/comparison-loading/preview-after.png`）及[实际读数](../../output/comparison-loading/preview-readings.json)。相关 JavaScript 的 Biome 与差异空白检查通过。本次未重跑全仓测试，未启动或重启用户 3765 服务。
 
 ## 底部标题与按钮对齐
 
 根据用户反馈，统一扫描目录、费用估算两处标题行的排版。此前编辑按钮仅设最小高度，计价标准按钮单独设固定高度；现两处按钮共用 30px 高度、标题行的 21px 行高及 inline-flex 文字居中，桌面标题行按文字基线对齐。规则仅作用于底部标题行，费用正文继续常显。
 
-19 项真实 UI 回归全部通过，0 失败、0 跳过；既有八组桌面视口、语言和主题组合及混合字体检查新增标题、按钮外框与四段实际文字矩形的对齐断言。相关文件 Biome 和差异空白检查通过。4415 样本预览已刷新，[实际读数](../../output/bottom-heading-alignment/after-readings.json)确认两按钮同为 30px 高，标题和按钮文字均位于相同纵坐标，见[修后截图](../../output/bottom-heading-alignment/after.png)。本次未重跑全仓测试。
+19 项真实 UI 回归全部通过，0 失败、0 跳过；既有八组桌面视口、语言和主题组合及混合字体检查新增标题、按钮外框与四段实际文字矩形的对齐断言。相关文件 Biome 和差异空白检查通过。4415 样本预览已刷新，[实际读数](../../output/bottom-heading-alignment/after-readings.json)确认两按钮同为 30px 高，标题和按钮文字均位于相同纵坐标，见修后截图（原路径：`../../output/bottom-heading-alignment/after.png`）。本次未重跑全仓测试。
 
 ## 2026-10-28 速度详情数量与日期清理
 
 按用户批注永久移除速度详情中的样本日期及日期范围，包括正常、缺少耗时和溢出状态；删除相应日期格式化函数与无用翻译。Codex 的 turn 中文单位改为“轮次”，数量移到来源所在首行的右端，同高、右对齐；缺少耗时状态沿用既有用量记录数量。模型身份、速度数值、分位带、统计字段和后台数据不变。
 
-110 项相关测试和19 项真实 UI 回归通过，0 失败、0 跳过；新增各状态日期缺席断言，以及八组桌面/语言/主题组合中数量与来源同高、右边缘对齐及不碰撞 provider 的检查。相关文件 Biome 与差异空白检查通过。3765 实际服务已刷新，来源和“35 个轮次”的纵坐标均为 924px，数量右边缘与首行右边缘一致，详情无日期文字；见[实际页面](../../output/perf-count-header/live-page.png)和[读数](../../output/perf-count-header/live-readings.json)。本次未重启服务、未重跑全仓测试。
+110 项相关测试和19 项真实 UI 回归通过，0 失败、0 跳过；新增各状态日期缺席断言，以及八组桌面/语言/主题组合中数量与来源同高、右边缘对齐及不碰撞 provider 的检查。相关文件 Biome 与差异空白检查通过。3765 实际服务已刷新，来源和“35 个轮次”的纵坐标均为 924px，数量右边缘与首行右边缘一致，详情无日期文字；见实际页面（原路径：`../../output/perf-count-header/live-page.png`）和[读数](../../output/perf-count-header/live-readings.json)。本次未重启服务、未重跑全仓测试。

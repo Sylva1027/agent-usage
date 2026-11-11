@@ -1,6 +1,6 @@
 # TPS 计量范围调查
 
-2026-10-21。只读调查完成，产品修复未实施。推荐方案与实施卡见[TPS 计量口径修订与历史恢复方案](../../plans/2026-10-21-tps-measurement-correction-plan.md)。
+2026-10-21。只读调查完成，产品修复未实施。推荐方案与实施卡见[TPS 计量口径修订与历史恢复方案](../../archive/2026-11-11/plans/2026-10-21-tps-measurement-correction-plan.md)。
 
 - [audit.mjs](audit.mjs)：读取本机既有 SQLite 候选与脱敏投影，复用 Codex ownership 证明；只读账本 GET，不写上游数据、不调用索引同步、不扫描原始目录。含顺序区间及请求去重的断言自检。
 - [evidence.json](evidence.json)：同一索引事务的时间/版本、各来源缓存数量、今天所有模型/强度结构核查及六轮账本匹配。该次 238 个轮次均完成单文件顺序检查；四个非自动复核组出现共 70 个零目标条目区间，39,863 token。Windows 投影键是大小写规范路径，SQL 按 lower(path) 关联依赖，避免误判为没有投影。

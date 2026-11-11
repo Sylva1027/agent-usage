@@ -74,7 +74,7 @@ ZCode、OpenCode 在同一只读快照中读取会话与用量。唯一 BINARY/T
 - 最终一次定向门：280 通过 / 1 跳过；随后串行原生采集 16/16，避免与历史硬链接测试互相干扰。新增及集成用例共 46 项，包含索引／回退两路径的并发修改、较小新 ID、修订删除、负零、Unicode 并列排序、超大单条记录及异常释放。新 checkout 不依赖私有基线即可运行语义断言。
 - 原计划 16 项；初版速度回退未接受。修正后各自复测 8 个候选项，旧版不反复重跑，另 2 项实际大文件落盘，共 42 次独立采集进程。最终表只使用 capacity-final 候选与 capacity-a 原始对照；中间失败与未采用候选完整保留。
 - 103 个冻结基线文件、104 个最终 src/public 文件逐项核对；所有夹具哈希保持一致。42 份资源报告、173 个进程号＋精确创建时间身份核对，存活／未知均为 0。普通 worker 两张卡均验收关闭，未用 pinned workers。
-- 可复跑工具：[remaining-harness-capacity.mjs](../README.md#恢复归档)；实施范围：[本卡计划](../../../plans/2026-11-05-remaining-harnesses-bounded-ingestion.md)。私有结果为 `output/remaining-harnesses-20261105/{analysis.json,capacity-a,capacity-b,capacity-c,capacity-final,stress-final,process-cleanup.json}`。
+- 可复跑工具：[remaining-harness-capacity.mjs](../README.md#恢复归档)；实施范围：[本卡计划](../../2026-11-11/plans/2026-11-05-remaining-harnesses-bounded-ingestion.md)。私有结果为 `output/remaining-harnesses-20261105/{analysis.json,capacity-a,capacity-b,capacity-c,capacity-final,stress-final,process-cleanup.json}`。
 
 工具使用已经冻结的 `baseline/` 与哈希清单，不会把当前源码重新冒充旧版；新一轮必须使用新结果标签，原始结果禁止覆盖。`prepare` 生成固定夹具，`run <新标签>` 跑双版本，`refine <新标签> <旧对照标签>` 仅重跑候选，`stress` 执行两项 30 万消息压力验证。
 

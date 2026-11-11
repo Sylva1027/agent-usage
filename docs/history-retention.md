@@ -1,6 +1,6 @@
 # 历史保留与转移操作
 
-更新：2026-11-09。当前实现保留已成功索引的历史，来源消失后仍可查询。本文操作没有切换正式服务，自动封存默认关闭。下面以独立 staging 副本为例；新备份、导入与压实目标文件或目录必须使用新路径。
+更新：2026-11-11。当前实现保留已成功索引的历史，来源消失后仍可查询。自动封存默认关闭。下面以独立 staging 副本为例；新备份、导入与压实目标文件或目录必须使用新路径。实际安装与历史兼容结果见[启用记录](validation/2026-11-11-activation/README.md)。
 
 ## 历史由哪些文件保存
 
@@ -98,7 +98,7 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 
 压实需要额外保存新包和临时工作文件；不会删除旧包腾空间。`compaction.json` 记录新旧路径，返回结果的 `retainedFiles` 列出保留的旧包。只有确认新包正常、回滚窗口已结束，且其他数据库登记、导出包或冻结快照不再引用旧路径后，才考虑人工回收。本命令不自动清理。
 
-压实阶段原有安全、恢复、延迟结果见[归档压实报告](archive/2026-11-11-experiments/architecture-20261101/ARCHIVE-COMPACTION-REPORT.md)，保留其中失败和后续补证。更新的 Windows 多标签门及未完成项见[多标签报告](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)；11月9日的新候选验收尚未执行，不能沿用旧结果冒充通过。
+压实阶段原有安全、恢复、延迟结果见[归档压实报告](archive/2026-11-11-experiments/architecture-20261101/ARCHIVE-COMPACTION-REPORT.md)，保留其中失败和后续补证。Windows 多标签结果见[多标签报告](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-MULTITAB-ACCEPTANCE-REPORT.md)，后续已测范围与长期限制见[最终短验收](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)。
 
 ## HTTP 与页面
 
@@ -114,7 +114,7 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 
 ## 修订、恢复与已证范围
 
-同源冷事件值修订、迟到新增，以及 project-log 非空纯删除已有恢复与故障重试证据。纯删除保留缩水诊断。ZCode/Codex tps-v2 的已声明修订范围已验证；其他来源的破坏性删除、身份迁移和未支持的依赖集合继续拒绝或留热。普通 sync 的事实事务与后续汇总事务分别提交，不宣称整轮 sync 原子。
+同源冷事件值修订、迟到新增，以及 project-log 非空纯删除已有恢复与故障重试证据。纯删除保留缩水诊断。旧验收中的 ZCode/Codex tps-v2 修订证据属于退役前版本；其他来源的破坏性删除、身份迁移和未支持的依赖集合继续拒绝或留热。普通 sync 的事实事务与后续汇总事务分别提交，不宣称整轮 sync 原子。
 
 恢复完整状态时，把前置完整包导入另一个新目录，采用其冻结上下文核对，再另行决定服务切换。不要覆盖正在使用的主库或手工修改 `user_version`；旧 schema 兼容沿用现有验证与迁移入口。
 
@@ -124,13 +124,13 @@ node src/cli.js history compact "E:/retention-staging/source.sqlite" "E:/retenti
 
 ## 工程与性能状态
 
-10月历史保留阶段的固定交付记录为 18/20，不将后续小规模检查改记为该阶段整项通过。当前、一年、两年冷热数据已有后续报告；原100次／20次统计矩阵和原八小时验收仍未完成。本次六组短对照正确性及资源门通过，9项相对速度退化导致候选未采纳、两小时未启动；最终交付核验完成。范围与欠项见[本次计划](plans/2026-11-09-windows-parallel-closeout.md)及[结果表](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-PARALLEL-CLOSEOUT-REPORT.md)。
+已有热／冷历史、修订、导入与回滚检查按日期保留，当前工程回归见[精简与修复记录](validation/2026-11-11-simplification.md)。性能、长期稳定性与大数据边界见[最终短验收](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-CLOSEOUT-SHORT-REPORT.md)；较早失败与未完成范围不因后续局部通过而抹去。
 
-本轮重型测量串行执行，网关512MiB、执行器224+4MiB堆保持不变；服务树RSS及补充估计按512MiB门记录，浏览器分开。Node堆限制和采样不能替代原资源受限整机诊断，该覆盖仍未补齐。在用数据写入、生产部署和服务重启不属于本轮已执行操作。
+原始事实、外置冷包、manifest、压实映射和恢复副本共同决定可恢复范围。未定性历史差额与旧阶段未跑完的验收仍按[旧历史保留计划](archive/2026-11-11/plans/2026-10-22-history-retention-implementation-plan.md)及其记录追溯，不据此自动扩大当前实施范围。
 
 ## 收尾存储盘点与清理
 
-用户最新授权允许清理本次及此前计划已经无用的大型生成物，包括成功和失败副本，覆盖旧计划“仅列清单”的限制。Main 结束计时和核对、释放消费者后才执行删除。准备阶段只读扫描生成物的文件元数据，不打开数据库、不读取大来源正文做摘要。
+按明确清单清理已确认可重建且没有现用依赖的产物。结束计时和核对、释放消费者后才执行删除。准备阶段只读扫描生成物的文件元数据，不打开数据库、不读取大来源正文做摘要。
 
 现成入口如下，默认模式只做盘点：
 
@@ -149,4 +149,4 @@ pwsh -NoProfile -File scripts/windows-closeout-cleanup.ps1 -Mode Delete -Manifes
 
 逻辑大小按每个路径的长度统计，硬链接会重复计入；`UniqueAllocatedBytes` 用卷／文件 ID 去重，并以 `GetCompressedFileSize` 记录分配量估计；`ReclaimableAllocatedEstimateBytes` 只计该目标包含全部硬链接的文件。不同目标合并删除可能释放更多共享分配，估计不等于实际回收；打开句柄、共享 extent、目录元数据和同时写入也会影响结果。只有删除回执的卷空闲首尾差是该窗口实测净增，不能累加旧回执或把逻辑 TB 当成物理回收。原回执中已经删除的路径须查当前存在性，若重建则视为新候选。
 
-本轮盘点、既有回执核对和最终删除回执统一保存在私有 `output/windows-parallel-20261109/cleanup/`。已删除4962目标，逻辑786.505GB，E／C删除窗口净增617.574／46.106GB，合计663.681GB；按核准盘点含6827份旧截图／图像副本。35份保留SQLite均存在、两处关键库quick_check正常，13个当前／一年／两年压实包及原始输入／历史保留。948MB旧轨迹已验证压缩至约55MB，原失败判定与小证据保留；旧派生工作库需重建后才能再次计时。原八小时与长期资源欠项没有因清理而变为通过。
+较早的大型生成物清理结果见[Windows 收尾报告](archive/2026-11-11-experiments/architecture-20261101/WINDOWS-PARALLEL-CLOSEOUT-REPORT.md)，原回执保存在私有 `output/windows-parallel-20261109/cleanup/`。其中容量与数据库核对属于该次操作，不作为本轮释放量。本轮只清理 12 个旧浏览器缓存目录，结果与保留范围见[工作区清理记录](validation/2026-11-11-workspace-cleanup.md)。

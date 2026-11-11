@@ -1,6 +1,6 @@
 # Codex 增量可见等待与 TPS：实施与验收
 
-2026-10-27。**入选范围实施与复测完成，3 s 可见等待目标仍未达到。** Codex 后台追加 p95 4.92→3.96 s，today/month 暖查询改善；40 个真实周期的 tokens/TPS 数值与目标帧全部正确，新鲜度全部达标，浏览器 p95 仍为 Codex 6.01 s、ledger-only TPS 3.87 s。规格、入选裁定与后续卡片见[本阶段计划](../../plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)，完整聚合见 [summary.json](evidence/summary.json)。
+2026-10-27。**入选范围实施与复测完成，3 s 可见等待目标仍未达到。** Codex 后台追加 p95 4.92→3.96 s，today/month 暖查询改善；40 个真实周期的 tokens/TPS 数值与目标帧全部正确，新鲜度全部达标，浏览器 p95 仍为 Codex 6.01 s、ledger-only TPS 3.87 s。规格、入选裁定与后续卡片见[本阶段计划](../../archive/2026-11-11/plans/2026-10-27-codex-incremental-visibility-and-tps-plan.md)，完整聚合见 [summary.json](evidence/summary.json)。
 
 本阶段产品新增改动仅在 src/usage-core.js 与 src/usage-store.js：大 home 的完整前缀采集由串行 sync 有界并行，非 all 查询沿已有 timeline 融合分组；没有新依赖、schema、持久证据格式、轮询变更或 TPS 算法变更。旧未提交修改保留，本阶段没有切换生产或提交/推送。
 

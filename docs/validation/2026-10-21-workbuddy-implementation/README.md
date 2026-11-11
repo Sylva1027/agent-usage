@@ -1,6 +1,6 @@
 # WorkBuddy 数据源接入验收（2026-10-21）
 
-规格见[数据源专题](../../data-sources/workbuddy.md)，决策与数据事实见[接入计划](../../plans/2026-10-21-workbuddy-source-plan.md)，施工拆卡见[实施计划](../../plans/2026-10-21-workbuddy-implementation-plan.md)。
+规格见[数据源专题](../../data-sources/workbuddy.md)，决策与数据事实见[接入计划](../../archive/2026-11-11/plans/2026-10-21-workbuddy-source-plan.md)，施工拆卡见[实施计划](../../archive/2026-11-11/plans/2026-10-21-workbuddy-implementation-plan.md)。
 
 **结论：W1 / C1–C3 / S1–S4 / P1–P3 / U1 / V1–V3 全部完成，本机真实来源已验收。** 三路一致（内存 / SQLite / HTTP）与真机冒烟均通过，全仓工程门禁通过；一处既有浏览器用例在完整套件中偶发失败，单独复跑通过，与本改动无关（见 §6）。
 

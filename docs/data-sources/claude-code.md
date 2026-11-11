@@ -107,9 +107,9 @@ Claude 的三个输入计数是**并列**的（`input_tokens` 不含缓存），
 
 ## 增量索引
 
-`UsageStore.usageFiles()` 对 `kind === "claude"` 的 home 展开 `claudeSessionFiles()`，每个 JSONL 各自按 `size + mtime` 判定是否重解析。主转录变化会按会话级联到同会话的子代理文件（C5 的 `earlierFileChanged` 语义），这是预期行为。
+`UsageStore` 将主转录与子代理 JSONL 纳入来源清单，并保留同会话依赖修复。追加、修订和替换按当前来源凭据与稳定性校验决定增量或重读；不以单独的 size／mtime 代替内容证明。
 
-**迁移只在进程启动时执行。** v15→v16 的标脏发生在打开索引时，已在运行的旧进程不会自行重扫，界面会继续显示 `requestedModel` 身份。升级后需重启看板服务（`node src/cli.js restart`）才会重读 Claude 转录；重启后 `PRAGMA user_version` 为 16，`events` 中 `home_id` 属 Claude 的行不应再有 `mythos-magpie-*` 或 `claude-haiku-5-5`。
+历史模型映射迁移在打开索引时执行；旧 v15→v16 是历史迁移阶段，不是当前 schema。当前版本、已有历史保留和升级顺序见[统一索引规则](../10-data-sources.md#增量索引与版本)及[交付说明](../15-delivery-upgrade.md)。
 
 ## 隐私口径
 
@@ -129,9 +129,9 @@ Claude 的 TPS 候选、计时采集与历史兼容读取已退役；研究实�
 |---|---|
 | `src/claude-code-usage.js` | 解析与归一化 |
 | `src/usage-core.js` | 发现、分类、指纹、索引、report 接线 |
-| `src/usage-store.js` | SQLite 增量索引（v16）与 harness 归组 |
+| `src/usage-store.js` | SQLite 增量索引、迁移与 harness 归组 |
 | `src/server.js` | 导入标签（`Claude Code <name>`） |
 | `public/timeline-utils.js` | `sourceGroup` / 限额按钮排除 |
 | `public/app.js` | `HARNESS_ORDER` / `bucketForChannel` |
 | `test/claude-code-usage.test.js` | 单元与语义测试 |
-| `test/three-path-parity.test.js` | 内存 / SQLite / 静态快照三路一致 |
+| `test/three-path-parity.test.js` | 内存 / SQLite / 独立测试参考三路一致 |

@@ -4,7 +4,7 @@
 
 Agent Usage is a local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
 
-Current release: [v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5). TPS is being reworked.
+Current release: [v0.8.5](https://github.com/Sylva1027/codex-usage/releases/tag/v0.8.5). TPS research is archived; the current app does not provide model-speed statistics.
 
 ![DeepSeek light dashboard, 16:9, with sample data](docs/images/dashboard-deepseek-light.png)
 

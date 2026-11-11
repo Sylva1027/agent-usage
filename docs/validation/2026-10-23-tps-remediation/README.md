@@ -2,7 +2,7 @@
 
 日期：2026-10-23，Asia/Shanghai。用户已授权开始实施，并要求进度使用“任务已完成 X/Y”格式。
 
-计划：[双 worker 实施计划](../../plans/2026-10-23-tps-audit-remediation-implementation-plan.md)。
+计划：[双 worker 实施计划](../../archive/2026-11-11/plans/2026-10-23-tps-audit-remediation-implementation-plan.md)。
 
 ## 进度口径
 

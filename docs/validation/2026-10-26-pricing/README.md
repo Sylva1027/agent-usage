@@ -1,6 +1,6 @@
 # 官方模型价、覆盖与 FX 执行记录
 
-开工：2026-10-26。用户已授权按[双 worker 计划](../../plans/2026-10-26-pricing-two-worker-implementation-plan.md)开始工作，并明确授权 PRICE 向现有 RETENSION chat 协调文件窗口。
+开工：2026-10-26。用户已授权按[双 worker 计划](../../archive/2026-11-11/plans/2026-10-26-pricing-two-worker-implementation-plan.md)开始工作，并明确授权 PRICE 向现有 RETENSION chat 协调文件窗口。
 
 ## 工作基线
 

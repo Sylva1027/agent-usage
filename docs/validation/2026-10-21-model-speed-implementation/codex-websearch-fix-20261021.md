@@ -1,5 +1,7 @@
 # Codex TPS 缺失修复
 
+> 部分历史附件不在当前工作区，原链接已保留为路径文字；这不表示缺失证据已补齐。
+
 历史日志已于2026-11-11清理。
 
 2026-10-21。WebSearch 兼容及旧缓存恢复已修复，实际 3765 服务已加载；页面显示 Codex 模型及详情。
@@ -27,7 +29,7 @@
 
 恢复服务后仍观察到一次追加引起的隐藏，补齐有界重试再重启。当前 gateway 的堆上限为 2048MB（此前 512MB）；这是本次运行参数，没有修改 CLI 默认值。较大堆回填成功并不单独证明 LIVE_SOURCE_CHANGED 的原因是内存。
 
-最终 [两次正常服务查询](V/codex-websearch-fix/live-api-final.json)均为 HTTP 200、ready、零告警；今日 223 个有效 Codex 样本、5 个分组，请求耗时约 5.1s / 2.7s。页面真实刷新完成后出现 5 条 Codex 行，选中 `gpt-6.1-sol medium` 展示约 123.5 tok/s，[实际截图](V/codex-websearch-fix/live-page.png)。截图来自当前真实服务，无夹具注入；五行滚动区已滚到包含 medium/high/max 的位置。
+最终 [两次正常服务查询](V/codex-websearch-fix/live-api-final.json)均为 HTTP 200、ready、零告警；今日 223 个有效 Codex 样本、5 个分组，请求耗时约 5.1s / 2.7s。页面真实刷新完成后出现 5 条 Codex 行，选中 `gpt-6.1-sol medium` 展示约 123.5 tok/s，实际截图（原路径：`V/codex-websearch-fix/live-page.png`）。截图来自当前真实服务，无夹具注入；五行滚动区已滚到包含 medium/high/max 的位置。
 
 浏览器初次点击等待曾超过连接器的单次等待期限；随后读取已完成页面确认行存在再点击取证，未把等待超时解释为数据解析失败。早期误裁到时间图或截到瞬时失败状态的截图已由最终实际 TPS 截图替换。
 

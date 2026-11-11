@@ -1,6 +1,6 @@
 # WorkBuddy 数据源
 
-更新：2026-11-01。本文维护 WorkBuddy 普通用量会话转录（JSONL）的读取规则；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)，施工与验收见[实施计划](../plans/2026-10-21-workbuddy-implementation-plan.md)与[验收目录](../validation/2026-10-21-workbuddy-implementation/README.md)。
+更新：2026-11-01。本文维护 WorkBuddy 普通用量会话转录（JSONL）的读取规则；共同规则见[数据来源](../10-data-sources.md)，计价见[计价规则](../11-pricing.md)，施工与验收见[实施计划](../archive/2026-11-11/plans/2026-10-21-workbuddy-implementation-plan.md)与[验收目录](../validation/2026-10-21-workbuddy-implementation/README.md)。
 
 > 结构结论来自 2026-10-21 的本机样本（4 个会话文件、453 条带 `providerData.usage` 的记录、7 条 Auto）。不代表未来版本。
 

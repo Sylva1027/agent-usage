@@ -2,7 +2,7 @@
 
 2026-10-21。主审维护。A/B/C 实现及三路接线已完成专项复核；原六轮真实历史临时索引/API/页面验收通过。最终全仓 2,792/3/20，失败均在皮肤浏览器两个用例（包含父用例失败计数），正式切换未执行。当前完整结论见[整合记录](review/final-integration/README.md)。
 
-规格：[计量修订](../../plans/2026-10-21-tps-measurement-correction-plan.md)；分工：[三 worker 执行单](../../plans/2026-10-21-tps-measurement-parallel-execution.md)；接口：[timing-contract-1](contract.md)；调查：[R0 证据](../2026-10-21-tps-scope-audit/README.md)。
+规格：[计量修订](../../archive/2026-11-11/plans/2026-10-21-tps-measurement-correction-plan.md)；分工：[三 worker 执行单](../../archive/2026-11-11/plans/2026-10-21-tps-measurement-parallel-execution.md)；接口：[timing-contract-1](contract.md)；调查：[R0 证据](../2026-10-21-tps-scope-audit/README.md)。
 
 ## 当前任务
 

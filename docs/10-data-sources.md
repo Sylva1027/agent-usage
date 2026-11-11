@@ -1,6 +1,6 @@
 # 数据来源与统计口径
 
-更新：2026-11-01（TPS 退役）。本文维护普通用量、费用、限额与来源读取的共同规则；各来源的字段映射分别见下方专题。
+更新：2026-11-11。本文维护普通用量、费用、限额与来源读取的共同规则；各来源的字段映射分别见下方专题。
 
 ## 来源与导入
 
@@ -26,11 +26,11 @@ WorkBuddy 的判定必须排在 Claude Code 之前：两者都是 `projects/<cwd
 
 `validateUsageDetails()` 校验明细与总量关系；不一致时撤销不可信明细并保留差额标记。费用端随后选择适用估算，见[计价](11-pricing.md)。这不是把缺失数据补零或从正文估算 Token 的许可。
 
-DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都完整满足输入超集关系”作为已验收事实，见[任务清单](02-tasks.md)。
+DSH 的非零缓存写入已核实，见[DSH 专题](data-sources/dsh.md#非零缓存写入已核实)；ZCode 的缓存包含关系和来源未持久化的 TTL 继续按各自已知边界处理。
 
 ## 已封存的模型速度研究
 
-2026-11-01 起，当前运行项目不再提供模型速度，也不读取速度样本、运行采集器、安装客户端插件或配置调试日志。普通用量、费用、RANGE、限额、来源发现/导入、刷新、冻结与历史读取不依赖这些模块。迁移边界见[TPS 退役计划](plans/2026-11-01-tps-removal-release-plan.md)，独立实现、测试与证据见[研究盒子封存说明](archive/2026-11-01-tps-research.md)。
+2026-11-01 起，当前运行项目不再提供模型速度，也不读取速度样本、运行采集器、安装客户端插件或配置调试日志。普通用量、费用、RANGE、限额、来源发现/导入、刷新、冻结与历史读取不依赖这些模块。迁移边界见[TPS 退役计划](archive/2026-11-11/plans/2026-11-01-tps-removal-release-plan.md)，独立实现、测试与证据见[研究盒子封存说明](archive/2026-11-01-tps-research.md)。
 
 ## 统计范围与限额
 
@@ -46,11 +46,11 @@ DSH 当前非零缓存写入边界尚待核实，不能把“所有适配器都�
 
 ## 增量索引与版本
 
-默认索引位于 `~/.codex-usage/usage-index.sqlite`。JSONL/zstd 按文件大小和修改时间检测变化；ZCode/OpenCode 的指纹包含主库和 `-wal`。DSH 按日志文件展开，OpenCode 按数据目录下的多个数据库展开，Claude Code 按 `projects/**/*.jsonl`（含 subagents）展开，WorkBuddy 按 `projects/**/*.jsonl`（跳过 `tool-results/`）展开。
+默认索引位于 `~/.codex-usage/usage-index.sqlite`。JSONL/zstd 的文件元数据参与变化检测，复用还依赖来源凭据与稳定性校验；ZCode/OpenCode 的指纹包含主库和 `-wal`。DSH 按日志文件展开，OpenCode 按数据目录下的多个数据库展开，Claude Code 按 `projects/**/*.jsonl`（含 subagents）展开，WorkBuddy 按 `projects/**/*.jsonl`（跳过 `tool-results/`）展开。
 
-变化来源通过 `replaceFile` 替换对应事件，未变化来源保留索引。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude、WorkBuddy 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
+变化来源按已验证的增量条件追加或替换对应事实，未变化来源保留索引；六来源的实际复用范围见[交付说明](15-delivery-upgrade.md#本轮已有改造)。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude、WorkBuddy 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
 
-当前工作树版本为 `0.9.0`，`STORE_SCHEMA_VERSION` 为 24，摘要缓存格式为 6。schema 23 升级到 24 只更新普通索引版本，不创建或维护 TPS 表、不回填速度数据；旧库中的相关残留不再被查询。升级保留普通事件、报价、限额、来源状态和历史数据。该无 TPS 版本尚未发布。
+应用版本以 `package.json` 为准，索引版本与迁移以 `src/usage-store.js` 的 `STORE_SCHEMA_VERSION` 为准。普通索引升级保留事件、价目、限额、来源状态和历史事实；TPS 表不再被产品维护或查询。来源判定结合现行指纹、WAL、增量凭据和前后稳定性校验，不能仅凭大小／修改时间断言内容未变。升级与恢复操作见[交付说明](15-delivery-upgrade.md)。
 
 ## 读取与数据边界
 

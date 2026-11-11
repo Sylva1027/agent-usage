@@ -31,6 +31,6 @@ Codex home kinds 是限额资格的判据。ZCode、DSH、OpenCode 和项目日�
 - [usage-core.js](../../src/usage-core.js)：发现、日志解析、增量与内存报告。
 - [usage-store.js](../../src/usage-store.js)：文件索引、限额观察值和查询。
 - [service-tier-evidence.js](../../src/service-tier-evidence.js)：服务档位证据。
-- [usage-core 测试](../../test/usage-core.test.js)、[usage-store 测试](../../test/usage-store.test.js)、[三路一致测试](../../test/three-path-parity.test.js)：请求增量、旧版本重扫及内存/SQLite/导出一致性。
+- [usage-core 测试](../../test/usage-core.test.js)、[usage-store 测试](../../test/usage-store.test.js)、[三路一致测试](../../test/three-path-parity.test.js)：请求增量、旧版本重扫及内存／SQLite／独立测试参考一致性。
 
 TPS 及其 Codex 采集、定制引擎和日志配置已退役；研究实现与证据见[封存说明](../archive/2026-11-01-tps-research.md)。

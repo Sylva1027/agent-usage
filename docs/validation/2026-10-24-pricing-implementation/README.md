@@ -1,6 +1,6 @@
 # 价目实施：派工与独立验收
 
-开工：2026-10-24；收口更新：2026-10-25。用户授权的[B计划](../../plans/2026-10-24-pricing-implementation-B.md)已与外部[A交付](../../plans/2026-10-24-pricing-implementation-A.md)联合完成隔离副本G1/G2/G3验收，G4等待来源证据；未合回共享源码。
+开工：2026-10-24；收口更新：2026-10-25。用户授权的[B计划](../../archive/2026-11-11/plans/2026-10-24-pricing-implementation-B.md)已与外部[A交付](../../archive/2026-11-11/plans/2026-10-24-pricing-implementation-A.md)联合完成隔离副本G1/G2/G3验收，G4等待来源证据；未合回共享源码。
 
 本轮结果与交付入口见[最终报告](FINAL-REPORT.md)，下文保留各卡独立复核历史。
 

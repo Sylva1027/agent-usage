@@ -6,7 +6,7 @@
 
 日期：2026-11-05。状态：**本卡实现和正确性验证完成，停止等待反馈；第三卡性能验收未开始。**
 
-接续[实施计划](../../../plans/2026-11-04-source-acquisition-publication-plan.md)和[第一卡闭环](Q6-INITIALIZATION-CLOSURE-REPORT.md)。本轮由主代理直接实施，未使用 worker。对照起点仍为 Q5 `04aadc250eac4fa84f29907791bb812613b9b201`，修改前的 108 个已跟踪运行文件保存在忽略目录 `output/architecture-20261104/q6-implementation/baseline/`，附逐文件哈希和 receipt。
+接续[实施计划](../../2026-11-11/plans/2026-11-04-source-acquisition-publication-plan.md)和[第一卡闭环](Q6-INITIALIZATION-CLOSURE-REPORT.md)。本轮由主代理直接实施，未使用 worker。对照起点仍为 Q5 `04aadc250eac4fa84f29907791bb812613b9b201`，修改前的 108 个已跟踪运行文件保存在忽略目录 `output/architecture-20261104/q6-implementation/baseline/`，附逐文件哈希和 receipt。
 
 ## 完成的改造
 

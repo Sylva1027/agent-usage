@@ -16,7 +16,7 @@
 
 ## 1. 范围与测量方法
 
-沿用 [B2 原页面诊断](B2-PAGE-DIAGNOSTIC.md)、[来源增长诊断](B2-GROWTH-DIAGNOSTIC.md)及[历史年龄评估](../../../proposals/2026-11-03-age-tiered-history-query-assessment.md)。复用同一冻结生成规则：六来源、1,968 文件、1,729 会话、90 天；初始事件 1× 为 146,412、10× 为 1,464,120。本轮仍不能证明一年/三年或多冷分片容量。
+沿用 [B2 原页面诊断](B2-PAGE-DIAGNOSTIC.md)、[来源增长诊断](B2-GROWTH-DIAGNOSTIC.md)及[历史年龄评估](../../2026-11-11/proposals/2026-11-03-age-tiered-history-query-assessment.md)。复用同一冻结生成规则：六来源、1,968 文件、1,729 会话、90 天；初始事件 1× 为 146,412、10× 为 1,464,120。本轮仍不能证明一年/三年或多冷分片容量。
 
 - 核心矩阵为 **1×/10× × SHA/活动 journal，共四格**。每格一次未插桩对照，随后每种来源三次插桩追加，共 **32 次核心普通追加**，均通过正确总量、API 事件数及绘制核验。
 - 使用原 Chromium 页面、原 SSE、默认 60 秒补查、相同业务规则。gateway old-space 512 MiB，executor old-space 224 MiB、semi-space 4 MiB，未加堆。

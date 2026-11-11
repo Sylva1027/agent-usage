@@ -2,7 +2,7 @@
 
 日期：2026-11-11，**精简后复审版**。状态：**计划已更新，待实施；当前不启动实施。** 用户要求先保存计划、不实施，本次追加要求是根据精简后的项目重新评估。复审基线为 `982dbaf`（完整提交 `982dbafb7d7a8d0d67f43c40767ea844f8fb9a2f`）；实际开工时再记录当时的 HEAD 和已有改动。
 
-本批以用户最后一份需求清单为范围，七个工作包与优先级保持不变。建议采用 **1 个主智能体 + 最多 3 个执行智能体，错峰加入**：A/B 先开展数据和前端工作，B0 的发行接线完成后 C 再加入打包。前置依据为[精简计划](2026-11-11-project-simplification-plan.md)及[实施记录](../validation/2026-11-11-simplification.md)；采用实施记录中后续失败修复、lint 清理后的最终状态。重构收尾记录保留为历史，追加功能以当前精简后的源码为基线。
+本批以用户最后一份需求清单为范围，七个工作包与优先级保持不变。建议采用 **1 个主智能体 + 最多 3 个执行智能体，错峰加入**：A/B 先开展数据和前端工作，B0 的发行接线完成后 C 再加入打包。前置依据为[精简计划](../archive/2026-11-11/plans/2026-11-11-project-simplification-plan.md)及[实施记录](../validation/2026-11-11-simplification.md)；采用实施记录中后续失败修复、lint 清理后的最终状态。重构收尾记录保留为历史，追加功能以当前精简后的源码为基线。
 
 本批不恢复性能优化或 TPS 功能。Linux/macOS 可用性检查未列入最后一份清单，不纳入本计划。
 
@@ -77,7 +77,7 @@ CSS 修改按精简后的规则位置落地，不在文件尾追加一整套重�
 
 ### TPS 离线维护
 
-当前产品已移除 TPS，见[研究封存与移除记录](2026-11-01-tps-removal-release-plan.md)和 [test/no-tps-ui.test.js](../../test/no-tps-ui.test.js)。已定位的封存源码为：
+当前产品已移除 TPS，见[研究封存与移除记录](../archive/2026-11-11/plans/2026-11-01-tps-removal-release-plan.md)和 [test/no-tps-ui.test.js](../../test/no-tps-ui.test.js)。已定位的封存源码为：
 
 ```text
 E:\12 AI\ccusage\tps-research-box\2026-11-01\box\source\public\perf-ui.js
