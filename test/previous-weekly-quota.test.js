@@ -1,9 +1,10 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { setSummaryFilters, summarize, rangeLabel } from "../public/app.js";
+import { rangeLabel } from "../public/app.js";
 import { canonicalRecentValue, displayRecentValue, localizeText } from "../public/i18n.js";
 import {
   buildTimelineRows,
@@ -220,7 +221,7 @@ for (const [minutes, recentValue, bucket] of [
   [10080, "上周", "day"],
   [300, "上一个5h", "quota_30m"],
 ]) {
-  test(`SQLite, memory and browser summaries agree on ${minutes}-minute quota bounds, usage slots, prices and exclusions`, async () => {
+  test(`SQLite, memory and reference summaries agree on ${minutes}-minute quota bounds, usage slots, prices and exclusions`, async () => {
     const homeDir = await mkdtemp(path.join(tmpdir(), "previous-weekly-"));
     const sessions = path.join(homeDir, ".codex", "sessions");
     const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "index.sqlite") });

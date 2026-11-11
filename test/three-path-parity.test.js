@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -7,7 +8,6 @@ import test from "node:test";
 import { backup, DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 
-import { setSummaryFilters, summarize } from "../public/app.js";
 import { getPricingCatalog, resetPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { periodComparisonForReport, pricedReport } from "../test-support/report-projection.js";
 import {
@@ -22,7 +22,7 @@ import { createUsageServer } from "../src/server.js";
 
 const AS_OF = "2026-07-12T12:00:00.000Z";
 
-test("local quota sources, finite cycles and trends agree across memory, SQLite and static snapshots", async () => {
+test("local quota sources, finite cycles and trends agree across memory, SQLite and the reference calculator", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-local-quota-"));
   const databaseFile = path.join(homeDir, "usage-index.sqlite");
   let store = new UsageStore({ homeDir, databaseFile });
@@ -547,7 +547,7 @@ function comparisonFields(comparison) {
   };
 }
 
-test("memory, SQLite, and pure browser statistics agree for local and UTC usage", async () => {
+test("memory, SQLite, and independent reference statistics agree for local and UTC usage", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-parity-"));
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {

@@ -1,3 +1,4 @@
+import { startOfLocalDay as startOfDay, startOfLocalWeek as startOfWeek } from "./period-comparison.js";
 import { canonicalModelName } from "./pricing-models.js";
 
 const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
@@ -336,20 +337,6 @@ function asDate(value) {
   if (!value) return null;
   const date = value instanceof Date ? new Date(value) : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function startOfDay(date, zone = "local") {
-  return zone === "utc"
-    ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function startOfWeek(date, zone = "local") {
-  const start = startOfDay(date, zone);
-  const day = (zone === "utc" ? start.getUTCDay() : start.getDay()) || 7;
-  if (zone === "utc") start.setUTCDate(start.getUTCDate() - day + 1);
-  else start.setDate(start.getDate() - day + 1);
-  return start;
 }
 
 function addCalendarDays(date, days, zone = "local") {

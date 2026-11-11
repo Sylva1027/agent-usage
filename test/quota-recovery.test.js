@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +7,7 @@ import test from "node:test";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
 import { buildUsageIndex, buildUsageReport, summarizeUsage, summarizeUsageIndex } from "../src/usage-core.js";
-import { setSummaryFilters, summarize } from "../public/app.js";
+
 import { pricedReport } from "../test-support/report-projection.js";
 
 test("missing native boundaries recover once and persist identically in SQL, reports and frozen snapshots", async () => {

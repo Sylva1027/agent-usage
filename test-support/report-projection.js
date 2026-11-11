@@ -3,7 +3,7 @@ import { selectQuotaWindows } from "../src/usage-core.js";
 import { summarizePeriodComparison } from "../public/period-comparison.js";
 import { state } from "../public/app-state.js";
 
-// Exercise the pure browser statistics without generating or loading an HTML export.
+// Price events for the independent reference calculator without generating an HTML export.
 export function pricedReport(report, asOf = report.asOf || report.generatedAt) {
   const catalog = getPricingCatalog();
   return {

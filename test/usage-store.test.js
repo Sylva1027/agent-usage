@@ -1,3 +1,4 @@
+import { modelActivityFromReport } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,9 +10,8 @@ import { zstdCompressSync } from "node:zlib";
 import { STORE_SCHEMA_VERSION, UsageStore } from "../src/usage-store.js";
 import { API_PRICING_VERSION, getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { buildUsageIndex, buildUsageReport, summarizeUsageIndex } from "../src/usage-core.js";
-import { metadataFromReport } from "../public/app.js";
 
-test("model activity ages without file changes, agrees with static metadata, and ignores future maxima", async () => {
+test("model activity ages without file changes, agrees with reference metadata, and ignores future maxima", async () => {
   const { homeDir, databaseFile } = await makeStoreFixture();
   const store = new UsageStore({ homeDir, databaseFile });
   try {
@@ -23,7 +23,7 @@ test("model activity ages without file changes, agrees with static metadata, and
     assert.deepEqual(expired.activeHarnessModels.Codex, []);
     assert.deepEqual(expired.harnessModels.Codex, ["gpt-6-sol"]);
     const report = await buildUsageReport({ homeDir });
-    const staticMetadata = metadataFromReport({ ...report, asOf: boundary.toISOString() });
+    const staticMetadata = modelActivityFromReport({ ...report, asOf: boundary.toISOString() });
     assert.deepEqual(staticMetadata.activeHarnessModels, expired.activeHarnessModels);
     assert.deepEqual(staticMetadata.modelLastSeen, expired.modelLastSeen);
     const columns = store.database

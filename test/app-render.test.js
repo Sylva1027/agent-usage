@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildModelActivity } from "../public/pricing-models.js";
-import { HARNESS_ORDER, bucketForChannel, pricingModelNoteParts } from "../public/app.js";
+import { HARNESS_ORDER, pricingModelNoteParts } from "../public/app.js";
 import { sourceGroup } from "../public/timeline-utils.js";
 import { getLocale, setLocale } from "../public/i18n.js";
 
@@ -80,7 +80,6 @@ import {
   getChannelColors,
   getModelColors,
   renderTimelineLegendHtml,
-  getRange,
   maxTimelineValue,
   modelPricingInputsChanged,
   nextComparisonSort,
@@ -108,7 +107,6 @@ import {
   formatAutoRefreshTimestamp,
   usagePricingCoverageText,
   renderPeriodComparisonTableHtml,
-  setSummaryFilters,
   timelineAxisLabels,
   timelineDetailRows,
   timelineSlotRangeTitle,
@@ -652,21 +650,6 @@ test("period comparison includes the union of all four periods and reconciles to
   );
 });
 
-test("event date range handles enough records to exceed argument spread limits", () => {
-  setSummaryFilters({ preset: "all", now: null, startDate: "", endDate: "" });
-  const firstTimestamp = Date.parse("2026-01-01T00:00:00.000Z");
-  const lastTimestamp = firstTimestamp + 124_999 * 1000;
-  const events = Array.from({ length: 125_000 }, (_, index) => ({
-    timestamp: new Date(firstTimestamp + index * 1000).toISOString(),
-  }));
-
-  const range = getRange(events);
-  assert.ok(range.start instanceof Date);
-  assert.ok(range.end instanceof Date);
-  assert.ok(range.start.getTime() <= firstTimestamp);
-  assert.ok(range.end.getTime() >= lastTimestamp);
-});
-
 test("timeline maximum handles enough values to exceed argument spread limits", () => {
   const values = Array(125_000).fill(1);
   values[values.length - 1] = 42;
@@ -1022,7 +1005,7 @@ test("comparison cards keep their frames and use dashes until the selected perio
       ["month", "较上月", "上月 tokens"],
       ["custom", "较上一等长周期", "前一等长区间 tokens"],
     ]) {
-      setSummaryFilters({ preset });
+      Object.assign(state, { preset });
       const html = renderComparisonHtml(null);
       assert.equal((html.match(/<article /g) || []).length, 3);
       assert.equal((html.match(/<strong>—<\/strong>/g) || []).length, 3);
@@ -1032,7 +1015,7 @@ test("comparison cards keep their frames and use dashes until the selected perio
       assert.doesNotMatch(html, /0\.00|加载|暂无对比/);
     }
   } finally {
-    setSummaryFilters({ preset: previousPreset });
+    Object.assign(state, { preset: previousPreset });
   }
 });
 
@@ -1817,17 +1800,12 @@ test("drawTimeline measures the canvas box once, before writing the backing stor
   }
 });
 
-test("WorkBuddy 归组：HARNESS_ORDER 六项，bucketForChannel 与 sourceGroup 都归 WorkBuddy", () => {
+test("WorkBuddy 归组：HARNESS_ORDER 六项，sourceGroup 归 WorkBuddy", () => {
   assert.equal(HARNESS_ORDER.length, 6);
   assert.equal(HARNESS_ORDER.at(-1), "WorkBuddy");
-  assert.equal(bucketForChannel("WorkBuddy"), "WorkBuddy");
-  assert.equal(bucketForChannel("workbuddy-subagent"), "WorkBuddy");
   assert.equal(sourceGroup("WorkBuddy", "workbuddy"), "WorkBuddy");
   // channel 归一化兜底：home kind 缺失时也要归到 WorkBuddy。
   assert.equal(sourceGroup("WorkBuddy", ""), "WorkBuddy");
-  // 既有五个来源的归组不变（回归）。
-  assert.equal(bucketForChannel("Claude Code"), "Claude");
+  // Claude 的既有来源归组不变。
   assert.equal(sourceGroup("Claude Code", "claude"), "Claude");
-  assert.equal(bucketForChannel("ZCode"), "ZCode");
-  assert.equal(bucketForChannel("CLI"), "Codex");
 });

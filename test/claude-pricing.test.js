@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +7,7 @@ import test from "node:test";
 import { zstdCompressSync } from "node:zlib";
 
 import { CLAUDE_MODEL_SNAPSHOTS, resolvePricingModel } from "../public/pricing-models.js";
-import { pricingScenarioNotes, renderPricingSourceLinksHtml, setSummaryFilters, summarize } from "../public/app.js";
+import { pricingScenarioNotes, renderPricingSourceLinksHtml } from "../public/app.js";
 import {
   modelsDevPricePatches,
   MODEL_PRICES_URL,
@@ -309,7 +310,7 @@ test("Claude scenario notes and source links are visible in both supported langu
   assert.match(renderPricingSourceLinksHtml([ANTHROPIC_PRICING_SOURCE], ["USD"]), /Anthropic 定价/);
 });
 
-test("Claude DSH history, manual repricing and TTL notes agree between memory, SQLite and pure browser statistics", async () => {
+test("Claude DSH history, manual repricing and TTL notes agree between memory, SQLite and independent reference statistics", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "claude-three-path-"));
   const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage.sqlite") });
   const asOf = new Date("2026-10-01T12:00:00Z");

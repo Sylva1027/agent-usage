@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -7,7 +8,7 @@ import test from "node:test";
 
 import { createUsageServer, describeImportEntry } from "../src/server.js";
 import { classifyImportDirectory } from "../src/usage-core.js";
-import { setSummaryFilters, summarize } from "../public/app.js";
+
 import { hasSelectedCodexSource } from "../public/timeline-utils.js";
 import {
   FIXTURE_DIRECTORY_PREFIX,
@@ -320,7 +321,7 @@ test("timeline-warning fixture preserves the base rows and hashes the normalized
   for (const root of roots) await assert.rejects(() => stat(root), { code: "ENOENT" });
 });
 
-test("timeline-warning fixture reaches app.summarize through the real usage import API", async () => {
+test("timeline-warning fixture reaches the reference calculator through the real usage import API", async () => {
   const fixture = await createTimelineWarningFixture();
   const fixtureRoot = path.dirname(fixture.homeDir);
   const previousTimeZone = process.env.TZ;

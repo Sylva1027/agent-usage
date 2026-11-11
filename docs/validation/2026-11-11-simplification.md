@@ -48,3 +48,11 @@
 ### 03：无消费者的计价入口
 
 删除 API_TOKEN_PRICES 派生表、isPeakPricingTimeExact 及其专属 peakWindowsHitNaive；时区校准使用的 peakLocalTupleExact 保留。pricing、claude-pricing、w4-event-cost-memo 共 59 项全部通过，0 跳过；没有更改计价规则或边界断言。
+
+### 04/05：旧前端统计链与日期重复
+
+app.js 删除 694 行没有运行入口的范围解析、分组、费用与趋势计算、metadata 推导。独立逐事件参考迁至 test-support/summary-reference.js；只保留现行测试消费的计算，metadata 对照缩为 modelActivityFromReport。参考函数体与原版本逐项 AST 打印比较一致。所有调用方已迁移；渲染测试直接设置现有 state，纯范围断言迁到 app-summary。统计测试名称改为 reference，避免称为真实浏览器覆盖。
+
+时间轴直接复用 period-comparison 的日初/周初；页面仍使用的 addCalendarDays 等辅助保留。第 05 卡随旧生产统计链删除关闭，不合并独立参考算法与被测后端。
+
+验证：12 个相关文件（页面渲染/刷新、timeline、recent、usage-core/store、quota、Claude 计价与统计对拍）共 255 项，253 通过、2 个原有 usage-store warnings 失败、0 跳过。两项失败名称/位置/断言与基线一致；没有新增失败。差异和遗漏引用检查通过。

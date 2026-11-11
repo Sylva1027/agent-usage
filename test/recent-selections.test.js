@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveDateRange, selectQuotaWindows, summarizeUsage } from "../src/usage-core.js";
@@ -7,7 +8,7 @@ import {
   quotaRecordsForRange,
   quotaRecordValues,
 } from "../public/timeline-utils.js";
-import { setSummaryFilters, summarize, nextRecentState } from "../public/app.js";
+import { nextRecentState } from "../public/app.js";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const observation = (observed, end, minutes = 300, line = 1) => ({
@@ -115,7 +116,7 @@ test("calendar selections respect month/year boundaries and leap years", () => {
   assert.equal(nextRecentState({}, "This Year").bucket, "month");
 });
 
-test("server and browser previous-window summaries agree and exclude the next cycle start", () => {
+test("server and reference previous-window summaries agree and exclude the next cycle start", () => {
   const quota = selectQuotaWindows(observations, now);
   const events = [
     "2026-09-25T01:59:59.999Z",

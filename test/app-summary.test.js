@@ -1,3 +1,4 @@
+import { setSummaryFilters, summarize, getRange } from "../test-support/summary-reference.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -8,8 +9,6 @@ import {
   nextRecentState,
   normalizeRecentValue,
   rangeLabel,
-  setSummaryFilters,
-  summarize,
   timelineChannelSegments,
 } from "../public/app.js";
 import { API_PRICING_CHECKED_AT, API_PRICING_MODE, estimateEventCost } from "../src/pricing.js";
@@ -66,7 +65,7 @@ function quotaSnapshot(asOf, current5h, previous5h = unavailableQuotaWindow) {
   };
 }
 
-test("static UTC date selection agrees with live day boundaries", () => {
+test("reference UTC date selection agrees with live day boundaries", () => {
   setSummaryFilters({
     preset: "custom",
     bucket: "day",
@@ -198,7 +197,7 @@ test("summarize fills a single local day with 24 hourly timeline rows", () => {
   }
 });
 
-test("static quota summary stays at export asOf and applies source exclusions to embedded events", () => {
+test("reference quota summary stays at export asOf and applies source exclusions to embedded events", () => {
   const asOf = "2026-09-25T12:00:00.000Z";
   const start = "2026-09-25T09:37:00.000Z";
   const end = "2026-09-25T14:37:00.000Z";
@@ -271,7 +270,7 @@ test("static quota summary stays at export asOf and applies source exclusions to
   }
 });
 
-test("static quota comparison uses the previous real cycle and the quota-usage filter", () => {
+test("reference quota comparison uses the previous real cycle and the quota-usage filter", () => {
   const asOf = "2026-09-25T12:00:00.000Z";
   const observations = [
     quota5hObservation("2026-09-25T04:00:00.000Z", "2026-09-25T08:00:00.000Z"),
@@ -442,7 +441,7 @@ test("a missing previous quota cycle stays unavailable instead of becoming a zer
   }
 });
 
-test("static summarize preserves a comparison already calculated by the server", () => {
+test("reference summarize preserves a comparison already calculated by the server", () => {
   const comparison = {
     label: "较上一7d",
     previousRange: { start: "2026-09-11T00:00:00.000Z", end: "2026-09-17T23:59:59.999Z" },
@@ -461,7 +460,7 @@ test("static summarize preserves a comparison already calculated by the server",
   }
 });
 
-test("static summarize totals embedded API cost estimates for the selected events", () => {
+test("reference summarize totals embedded API cost estimates for the selected events", () => {
   const costEvent = {
     timestamp: "2026-05-26T01:00:00.000Z",
     sessionId: "cost-session",
@@ -1097,4 +1096,19 @@ test("summarize turns a final timeline merge overflow into the warning payload",
     if (previousTimeZone === undefined) delete process.env.TZ;
     else process.env.TZ = previousTimeZone;
   }
+});
+
+test("event date range handles enough records to exceed argument spread limits", () => {
+  setSummaryFilters({ preset: "all", now: null, startDate: "", endDate: "" });
+  const firstTimestamp = Date.parse("2026-01-01T00:00:00.000Z");
+  const lastTimestamp = firstTimestamp + 124_999 * 1000;
+  const events = Array.from({ length: 125_000 }, (_, index) => ({
+    timestamp: new Date(firstTimestamp + index * 1000).toISOString(),
+  }));
+
+  const range = getRange(events);
+  assert.ok(range.start instanceof Date);
+  assert.ok(range.end instanceof Date);
+  assert.ok(range.start.getTime() <= firstTimestamp);
+  assert.ok(range.end.getTime() >= lastTimestamp);
 });
