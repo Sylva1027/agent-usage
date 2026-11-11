@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { formatUsageTooltip, usageTooltipPosition } from "../public/app.js";
+import { formatUsageTooltip, formatTimelineTooltip, usageTooltipPosition } from "../public/app.js";
+import { state } from "../public/app-state.js";
+import { formatLocalDateTime, setLocale } from "../public/i18n.js";
 
 function sourceBetween(source, startMarker, endMarker) {
   const startIndex = source.indexOf(startMarker);
@@ -104,25 +106,24 @@ test("formatUsageTooltip renders timeline channel breakdowns", () => {
   assert.match(html, /100/);
 });
 
-test("formatTimelineTooltip exposes priced model costs and never labels unpriced usage as free", async () => {
-  const { formatTimelineTooltip } = await import("../public/app.js");
+test("formatTimelineTooltip keeps costs concise and never labels unpriced usage as free", () => {
   const priced = formatTimelineTooltip(
     {
       key: "2026-05-01",
       total: { total: 90, input: 80, cached: 20, output: 10 },
       costByModel: { "gpt-6-luna": { totalUsd: 0.0000001, pricedTokens: 10 } },
       pricedTokens: 10,
-      unpricedTokens: 80,
+      unpricedTokens: 80_000_000,
       serviceTierUnknownTokens: 10,
       cacheWriteUnknownTokens: 80,
     },
     "cost",
   );
   assert.match(priced, /2026-05-01/);
-  assert.match(priced, /费用估算/);
+  assert.match(priced, /估算金额/);
   assert.match(priced, /\$0\.00/);
-  assert.match(priced, /未计价 80 tokens/);
-  assert.match(priced, /缓存写入明细未知/);
+  assert.match(priced, /未计价 tokens<\/span><span class="usage-tooltip-value">80\.00M/);
+  assert.doesNotMatch(priced, /缓存写入明细未知|服务等级未知|usage-tooltip-note|费用估算/);
 
   const unpriced = formatTimelineTooltip(
     {
@@ -135,4 +136,63 @@ test("formatTimelineTooltip exposes priced model costs and never labels unpriced
   );
   assert.match(unpriced, /无可计价费用/);
   assert.doesNotMatch(unpriced, /\$0\.00/);
+});
+
+test("all timeline tooltips use M/B/T token values without changing event and session counts", () => {
+  for (const [value, text] of [
+    [188_483_039, "188.48M"],
+    [1_392_280_000, "1.39B"],
+    [1_395_280_000_000, "1.40T"],
+  ]) {
+    const row = {
+      key: "2026-11-11",
+      count: 17,
+      sessions: 23,
+      total: { total: value, input: value, cached: value, output: value, reasoning: value },
+      models: [{ name: "gpt-6-sol", total: { total: value } }],
+      channels: [{ name: "Codex", total: { total: value } }],
+      pricedTokens: value,
+      costByModel: { "gpt-6-sol": { totalUsd: 12.34, currency: "USD" } },
+    };
+    for (const mode of ["channel", "model", "cost"]) {
+      const html = formatTimelineTooltip(row, mode);
+      assert.ok(html.includes(`>${text}</span>`), `${mode}: ${text}`);
+      assert.ok(!html.includes(value.toLocaleString("en-US")), `${mode}: no exact token count`);
+      if (mode === "channel") {
+        assert.match(html, /事件<\/span>\s*<span class="usage-tooltip-value">17</);
+        assert.match(html, /会话<\/span>\s*<span class="usage-tooltip-value">23</);
+      }
+    }
+  }
+});
+
+test("quota tooltip titles contain only dates and times, with one short note for an unfinished slot", () => {
+  const saved = { preset: state.preset, summary: state.summary, quotaSnapshot: state.quotaSnapshot };
+  const start = new Date(2026, 10, 11, 3, 50, 25);
+  const end = new Date(2026, 10, 12, 3, 50, 25);
+  const asOf = new Date(2026, 10, 12, 1, 35, 26);
+  const row = { slotStartMs: start.getTime(), slotEndExclusiveMs: end.getTime(), total: { total: 188_483_039 } };
+  try {
+    state.summary = null;
+    for (const locale of ["zh-CN", "en-US"]) {
+      setLocale(locale, { persist: false });
+      for (const preset of ["quota_5h", "quota_week"]) {
+        state.preset = preset;
+        for (const partial of [true, false]) {
+          state.quotaSnapshot = { asOf: (partial ? asOf : end).toISOString() };
+          for (const mode of ["channel", "model", "cost"]) {
+            const html = formatTimelineTooltip(row, mode);
+            assert.ok(html.includes(`${formatLocalDateTime(start)} – ${formatLocalDateTime(end)}</div>`));
+            assert.doesNotMatch(html, /UTC|Asia|时间槽|自然日|夏令时|continuous|daylight|Interval/);
+            assert.equal((html.match(/usage-tooltip-note/g) || []).length, partial ? 1 : 0);
+            if (partial)
+              assert.ok(html.includes(`${locale === "zh-CN" ? "统计截至" : "As of"} ${formatLocalDateTime(asOf)}`));
+          }
+        }
+      }
+    }
+  } finally {
+    Object.assign(state, saved);
+    setLocale("zh-CN", { persist: false });
+  }
 });

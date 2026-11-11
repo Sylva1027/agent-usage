@@ -4898,6 +4898,7 @@ export class UsageStore {
     if (historyArchiveAuthorizedSegmentIds(this.database).size > 0) await this.ensureHistoryProjectionTracking();
     const syncOptions = options || this.options;
     this.options = syncOptions;
+    syncOptions.onImportStage?.("reading");
     const homes = plan?.homes || (await discoverUsageSources(syncOptions));
     const quotaObservations = readCodexQuotaObservations({ ...syncOptions, homes });
     if (quotaObservations.length) {
@@ -5201,6 +5202,7 @@ export class UsageStore {
       this.commitStoreRevision("usage-delete");
     }
 
+    syncOptions.onImportStage?.("statistics");
     const publishedFileWarnings = this.publishedFileWarningsForRound();
     if (!plan) {
       const activeSourcePaths = new Set(

@@ -214,6 +214,7 @@ test("D12-A2 成功：回调仅在排除态运行，原测量结果透传，随�
     stateId: "dialog-import-open",
     clipSelector: "#importDialog",
     importControls: true,
+    postSteps: [{ action: "click", selector: "#manualImportButton" }],
   });
   assert.equal(s3.units[2].id, "dialog-import-error");
   assert.deepEqual(role.states, ["dialog-import-source-excluded"]);

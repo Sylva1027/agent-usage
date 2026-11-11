@@ -401,7 +401,8 @@ async function verifyImportAndSkin(page, fixture) {
     assert.equal(await page.locator(selector).isVisible(), false, `${selector} starts hidden`);
   }
   await page.locator("#addImportButton").click();
-  await page.waitForFunction(() => document.activeElement?.id === "importPath");
+  await page.waitForFunction(() => document.activeElement?.id === "cancelImportButton");
+  await page.locator("#manualImportButton").click();
   const empty = await dialogGeometry(page, "#importDialog .dialog");
   assertDialogGeometry(empty, "import");
   const importParts = await page.locator("#importForm").evaluate((form) => {
@@ -419,15 +420,17 @@ async function verifyImportAndSkin(page, fixture) {
       ),
     };
   });
-  near(importParts.feedbackHeight, 0, "empty import feedback occupies no space");
+  near(importParts.feedbackHeight, 21, "scan result occupies one feedback line");
   near(importParts.legendGap, 8, "legend to source list");
   near(importParts.pathGap, 8, "directory label to controls");
   for (const height of importParts.heights) near(height, 36, "import control height");
+  assert.equal(await page.locator("#submitImportButton").isDisabled(), true);
+  await page.locator("#importPath").fill("invalid-relative-directory");
   await page.locator("#submitImportButton").click();
   await page.locator("#importMessage.error").waitFor({ state: "visible" });
   const feedback = await dialogGeometry(page, "#importDialog .dialog");
   assertDialogGeometry(feedback, "import feedback");
-  near(feedback.shell.height - empty.shell.height, 33, "feedback adds its line and one group gap");
+  near(feedback.shell.height - empty.shell.height, 0, "error reuses the scan feedback line");
   near((await page.locator("#importMessage").boundingBox()).height, 21, "feedback line");
   const source = page.locator("#sourcePicker input[data-source-id]").first();
   assert.equal(await source.isChecked(), true);

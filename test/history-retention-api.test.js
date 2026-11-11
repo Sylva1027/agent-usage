@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { getPricingCatalog, setPricingCatalog } from "../src/pricing.js";
 import { createUsageServer } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
+import { sourceId } from "../src/usage-core.js";
 import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 function installExecutorPreload(root, fileName, source) {
@@ -95,6 +96,13 @@ function writeTierRollout(codexHome, { model = "gpt-6-sol", eventTime = tierEven
     },
   ];
   writeFileSync(path.join(sessionDir, "rollout-tier.jsonl"), `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  writeFileSync(
+    path.join(path.dirname(codexHome), "imports.json"),
+    JSON.stringify({
+      version: 2,
+      imports: [{ id: sourceId("main", codexHome), path: codexHome, kind: "main", label: "Main Codex" }],
+    }),
+  );
 }
 
 function writeTierEvidence(codexHome, { id, tier = "priority" }) {

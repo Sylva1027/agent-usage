@@ -8,6 +8,7 @@ import {
   timelineDetailRows,
 } from "../public/app.js";
 import { buildTimelineRows } from "../public/timeline-utils.js";
+import { state } from "../public/app-state.js";
 import { estimateEventCost } from "../src/pricing.js";
 
 const baseEvent = {
@@ -90,24 +91,38 @@ test("single-currency model keeps the existing model-name key and cost shape", (
   assert.equal(row.costByModel["mystery-model"].currency, "CNY");
 });
 
-test("cross-bucket cost detail groups by model and native currency", () => {
-  const rows = timelineDetailRows(
-    {
-      timeline: [
-        { costByModel: { "mystery-model": { totalUsd: 1, currency: "USD", pricedTokens: 10 } } },
-        { costByModel: { "mystery-model": { totalUsd: 2, currency: "CNY", pricedTokens: 20 } } },
-      ],
-    },
-    "cost",
-  );
-  assert.equal(rows.length, 2);
-  assert.deepEqual(Object.fromEntries(rows.map((row) => [row.currency, { name: row.name, totalUsd: row.totalUsd }])), {
-    CNY: { name: "mystery-model", totalUsd: 2 },
-    USD: { name: "mystery-model", totalUsd: 1 },
-  });
+test("cost details convert before merging same-model native currencies and preserve source amounts", () => {
+  const previous = { costScaleTarget: state.costScaleTarget, usdToCnyRate: state.usdToCnyRate };
+  const summary = {
+    timeline: [
+      { costByModel: { "mystery-model": { totalUsd: 1, currency: "USD", pricedTokens: 10 } } },
+      { costByModel: { "mystery-model": { totalUsd: 2, currency: "CNY", pricedTokens: 20 } } },
+      { costByModel: { "usd-only": { totalUsd: 3, currency: "USD", pricedTokens: 30 } } },
+      { costByModel: { "cny-only": { totalUsd: 7, currency: "CNY", pricedTokens: 40 } } },
+      { costByModel: { "mystery-model": { totalUsd: 0.001, currency: "CNY", pricedTokens: 1 } } },
+    ],
+  };
+  const original = structuredClone(summary);
+  try {
+    state.usdToCnyRate = 7;
+    for (const currency of ["USD", "CNY", "USD"]) {
+      state.costScaleTarget = currency;
+      const rows = timelineDetailRows(summary, "cost");
+      const multiplier = currency === "USD" ? 1 : 7;
+      assert.deepEqual(
+        rows.map((row) => row.name),
+        ["usd-only", "mystery-model", "cny-only"],
+      );
+      assert.ok(Math.abs(rows[1].value - (1 + 2.001 / 7) * multiplier) < 1e-12);
+      assert.ok(Math.abs(rows.reduce((sum, row) => sum + row.value, 0) - (4 + 9.001 / 7) * multiplier) < 1e-12);
+      assert.deepEqual(summary, original);
+    }
+  } finally {
+    Object.assign(state, previous);
+  }
 });
 
-test("tooltip and legend reuse the original model name and keep native amounts separate", () => {
+test("tooltip and legend show one model with the selected currency", () => {
   const row = {
     key: "2026-07-01",
     costByModel: {
@@ -128,11 +143,24 @@ test("tooltip and legend reuse the original model name and keep native amounts s
     unpricedTokens: 0,
   };
 
-  const tooltip = formatTimelineTooltip(row, "cost");
-  assert.match(tooltip, /\$1\.00/);
-  assert.match(tooltip, /2\.00/);
-  assert.equal((tooltip.match(/usage-tooltip-label">mystery-model/g) || []).length, 2);
-  assert.equal(tooltip.includes("\u0000"), false);
+  const previous = { costScaleTarget: state.costScaleTarget, usdToCnyRate: state.usdToCnyRate };
+  try {
+    state.usdToCnyRate = 7;
+    for (const [currency, amount, other] of [
+      ["USD", "$1.29", "¥"],
+      ["CNY", "¥9.00", "$"],
+    ]) {
+      state.costScaleTarget = currency;
+      const tooltip = formatTimelineTooltip(row, "cost");
+      assert.equal(tooltip.split(amount).length - 1, 2);
+      assert.equal((tooltip.match(/usage-tooltip-label">mystery-model/g) || []).length, 1);
+      assert.equal(tooltip.includes("\u0000"), false);
+      assert.equal(tooltip.includes(other), false);
+      assert.doesNotMatch(tooltip, /≈/);
+    }
+  } finally {
+    Object.assign(state, previous);
+  }
 
   const legend = renderTimelineLegendHtml(
     { timeline: [row] },

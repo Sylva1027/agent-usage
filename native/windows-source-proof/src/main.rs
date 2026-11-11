@@ -1,3 +1,4 @@
+mod picker;
 mod usn;
 
 use serde::Deserialize;
@@ -221,6 +222,14 @@ fn handle_request(request: Request, archive_locks: &mut usn::ArchiveLocks) -> se
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("pick-directory") {
+        let result = match picker::pick_directory() {
+            Ok(path) => json!({ "path": path }),
+            Err(error) => json!({ "code": "DIRECTORY_PICKER_FAILED", "error": error.to_string() }),
+        };
+        println!("{result}");
+        return;
+    }
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = stdin.lock();

@@ -81,6 +81,19 @@ test("English recent ranges preserve the existing Chinese request values", () =>
 });
 
 test("translated dashboard copy preserves cost and limit semantics", () => {
+  assert.equal(localizeText("计价", "en-US"), "Currency");
+  for (const [label, currency] of [
+    ["美元", "USD"],
+    ["人民币", "CNY"],
+  ]) {
+    assert.match(
+      localizeText(
+        `时间分布，按模型堆叠 API 等价费用估算，${label}为纵轴单位；每个时间槽可查看完整日期和模型费用`,
+        "en-US",
+      ),
+      new RegExp(`stacked by model in ${currency}`),
+    );
+  }
   assert.equal(localizeText("总花销", "en-US"), "Estimated Cost");
   assert.equal(localizeText("缓存读取", "en-US"), "Cache Hit");
   assert.equal(localizeText("本周限额", "en-US"), "Weekly Limit");
@@ -140,7 +153,7 @@ test("dynamic dashboard views have English copy for their rendered labels", () =
     const pieces = [
       renderDatePickerHtml({ viewDate: new Date(2026, 8, 1) }),
       renderBarListHtml([{ name: "CLI", total: usage }]),
-      renderCostDetailHtml([{ name: "gpt-6-sol", totalUsd: 1.23 }]),
+      renderCostDetailHtml([{ name: "gpt-6-sol", value: 1.23 }]),
       renderComparisonHtml(comparison),
       renderComparisonHtml({ label: "暂无对比", previousRange: null }),
       renderPeriodComparisonTableHtml([{ key: "gpt-6-sol", name: "gpt-6-sol", periods: { today: period } }], {
@@ -150,7 +163,13 @@ test("dynamic dashboard views have English copy for their rendered labels", () =
       }),
       renderHomesHtml([home], { canModify: true, excludedIds: [home.id] }),
       renderSourceOptionsHtml([home]),
-      formatUsageTooltip({ name: "CLI", total: usage, count: 4, sessions: 2 }),
+      formatUsageTooltip({
+        name: "CLI",
+        total: usage,
+        count: 4,
+        sessions: 2,
+        channels: [{ name: "Codex", total: usage }],
+      }),
       formatTimelineTooltip(
         { name: "2026-09-26", total: usage, models: [{ name: "gpt-6-sol", total: usage }] },
         "model",

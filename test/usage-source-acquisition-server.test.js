@@ -7,6 +7,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createUsageServer } from "../src/server.js";
 import { UsageSummaryCache } from "../src/usage-summary-cache.js";
+import { discoverUsageSources } from "../src/usage-core.js";
 
 const enabled = Boolean(process.env.Q6_TEST_HELPER && process.env.Q6_TEST_TRACE);
 const jsonl = (total, time) =>
@@ -44,6 +45,10 @@ test("one certified result drives concurrent requests, notifications, scope chan
     automaticDiscoveryEnabled: false,
     pricingRefreshSchedulerEnabled: false,
   };
+  await writeFile(
+    options.importStoreFile,
+    JSON.stringify({ version: 2, imports: await discoverUsageSources(options) }),
+  );
   let server, stream;
   const cacheReads = [];
   const getCached = UsageSummaryCache.prototype.get;

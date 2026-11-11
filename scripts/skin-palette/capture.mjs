@@ -2134,6 +2134,7 @@ const STATE_MATRIX_GROUPS = Object.freeze([
         stateId: "dialog-import-open",
         clipSelector: "#importDialog",
         importControls: true,
+        postSteps: [{ action: "click", selector: "#manualImportButton" }],
       },
       {
         id: "dialog-import-source-excluded",
@@ -2142,7 +2143,20 @@ const STATE_MATRIX_GROUPS = Object.freeze([
         stateId: "dialog-import-source-excluded",
         clipSelector: "#sourcePicker",
       },
-      { id: "dialog-import-error", kind: "catalog", stateId: "dialog-import-error", clipSelector: "#importDialog" },
+      {
+        id: "dialog-import-error",
+        kind: "catalog",
+        stateId: "dialog-import-error",
+        clipSelector: "#importDialog",
+        routeFault: "/api/imports/discover$",
+        stepRewrites: [
+          {
+            matchAction: "click",
+            matchSelector: "#submitImportButton",
+            to: { action: "click", selector: "#rescanImportsButton", until: "#importMessage.error" },
+          },
+        ],
+      },
       {
         id: "home-list-reason",
         kind: "catalog",

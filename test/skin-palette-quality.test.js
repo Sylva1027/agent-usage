@@ -10193,6 +10193,7 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
 
       await page.locator("#addImportButton").click();
       await page.waitForFunction(() => document.querySelector("#importDialog")?.hidden === false);
+      await page.locator("#manualImportButton").click();
       await page.locator("#importPath").fill(syntheticValue);
       const importValue = await runRole({
         mode,

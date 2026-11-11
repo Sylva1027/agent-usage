@@ -9,6 +9,7 @@ import { UsageStore } from "../src/usage-store.js";
 import { buildUsageIndex, buildUsageReport, summarizeUsage, summarizeUsageIndex } from "../src/usage-core.js";
 
 import { pricedReport } from "../test-support/report-projection.js";
+import { discoverUsageSources } from "../src/usage-core.js";
 
 test("missing native boundaries recover once and persist identically in SQL, reports and frozen snapshots", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "quota-recovery-"));
@@ -47,6 +48,10 @@ test("missing native boundaries recover once and persist identically in SQL, rep
         .join("\n")}\n`,
     );
   }
+  await writeFile(
+    options.importStoreFile,
+    JSON.stringify({ version: 2, imports: await discoverUsageSources(options) }),
+  );
   let reads = 0;
   const readOfficialCodexQuota = async () => {
     reads++;

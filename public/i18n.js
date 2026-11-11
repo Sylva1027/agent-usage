@@ -106,6 +106,7 @@ const ENGLISH = new Map(
     时间分布: "Usage Over Time",
     时间分布方式: "Timeline Breakdown",
     按渠道: "By Source",
+    渠道: "Sources",
     按模型: "By Model",
     按花销: "By Cost",
     按仓库: "By Repository",
@@ -141,6 +142,9 @@ const ENGLISH = new Map(
     "单价单位为对应模型的标价货币（USD 美元 / CNY 人民币）每 100 万 tokens。点击模型名编辑费率（含官方单独声明的快速模式价）；汇率只用于混合币种的排序与图表比例，不改变各币种金额。保存后按当天日期记为核对日期并重算历史估算。":
       "Rates are quoted per million tokens in each model's billing currency (USD or CNY). Select a model to edit its rates, including published fast tier rates. The exchange rate affects only sorting and chart proportions when currencies are mixed. Saving records today's review date and recalculates historical estimates.",
     "1 美元 =": "1 USD =",
+    计价: "Currency",
+    计价币种: "Display currency",
+    美元: "USD",
     人民币: "CNY",
     模型范围: "Model Scope",
     在用模型: "Models In Use",
@@ -156,11 +160,7 @@ const ENGLISH = new Map(
     "尚无限额快照，请等待 Codex 写入限额记录。": "No limit snapshot is available yet. Wait for Codex to record one.",
     "等待新的限额记录。": "Waiting for a new limit record.",
     等待新的限额记录: "Waiting for a new limit record",
-    "每个图表时间槽是半小时。": "Each chart interval spans 30 minutes.",
-    "每个图表时间槽是连续 24 小时，不按本地自然日或夏令时拆分。":
-      "Each chart interval spans 24 continuous hours; it does not follow local calendar days or daylight saving changes.",
     统计数据截至: "Data as of",
-    当前时间槽仅统计至: "Current interval includes data through",
     未知: "Unknown",
     未知时间: "Unknown time",
     本地时区: "local time zone",
@@ -239,7 +239,8 @@ const ENGLISH = new Map(
     无模型用量: "No model usage",
     无可计价费用: "No priceable usage",
     估算金额: "Estimated Amount",
-    "已纳入估算 tokens": "Tokens Included In Estimate",
+    "已计价 tokens": "Priced Tokens",
+    "未计价 tokens": "Unpriced Tokens",
     未计价: "Unpriced",
     "服务等级未知，金额按 Standard 情景估算": "Service tier unknown; estimated at Standard rates",
     "请求上下文未知，按可用的较低上下文费率估算":
@@ -275,6 +276,32 @@ const ENGLISH = new Map(
     "没有选择目录。": "No folder selected.",
     "请输入目录路径。": "Enter a directory path.",
     "正在识别目录...": "Checking directory…",
+    发现的记录目录: "Discovered record directories",
+    重新扫描: "Scan again",
+    添加其他位置: "Add another location",
+    记录目录: "Record directory",
+    输入完整目录路径: "Enter a complete directory path",
+    如何找到记录目录: "How to find your records",
+    扫描详情: "Details",
+    导入所选: "Import selected",
+    "正在查找本机记录…": "Finding local records…",
+    "选择需要导入的记录目录。": "Select the record directories to import.",
+    "没有发现新的记录目录。": "No new record directories found.",
+    "已找到记录，部分位置无法访问。": "Records found. Some locations could not be accessed.",
+    "部分位置无法访问，请选择记录目录。": "Some locations could not be accessed. Choose a record directory.",
+    "未找到记录目录，请选择记录所在位置。": "No record directories found. Choose their location.",
+    "正在读取记录…": "Reading records…",
+    "正在建立统计…": "Building statistics…",
+    "正在校验记录…": "Checking records…",
+    "正在更新看板…": "Updating dashboard…",
+    "该目录暂无可统计记录。": "This directory has no usage records yet.",
+    "看板尚未更新，请重试。": "The dashboard has not updated yet. Please retry.",
+    "在文件资源管理器地址栏输入下列位置；选择软件的记录目录，不要选择单个记录文件。":
+      "Enter a location below in the File Explorer address bar. Choose the app's record directory, rather than an individual file.",
+    "在 Finder 按 Command＋Shift＋G，输入下列位置；Command＋Shift＋. 可显示隐藏文件夹。":
+      "In Finder, press Command+Shift+G and enter a location below. Command+Shift+. shows hidden folders.",
+    "在文件管理器中打开下列位置，显示隐藏文件夹后选择记录目录。":
+      "Open a location below in your file manager, show hidden folders, and choose the record directory.",
     "正在移除导入目录...": "Removing imported directory…",
     "已移除导入目录，正在刷新...": "Directory removed. Refreshing…",
     "快照已回收，正在重新冻结…": "Snapshot expired. Creating a new one…",
@@ -397,17 +424,16 @@ const ENGLISH_PATTERNS = [
       `Total ${n} tokens${kind ? `; ${englishText(kind).toLowerCase()}: ${breakdown.replaceAll("，", ", ")}` : ""}`,
   ],
   [
-    /^(.+)，费用估算 (.+)，其中 (.+) tokens 按最低费率估算，未计价 (.+) tokens$/,
-    (_, interval, cost, minimum, unpriced) =>
-      `${englishText(interval)}. Estimated cost ${cost}; ${minimum} tokens use fallback rates; ${unpriced} tokens are unpriced`,
+    /^(.+)，费用估算 (.+?)(?:，未计价 (.+) tokens)?$/,
+    (_, interval, cost, unpriced) =>
+      `${englishText(interval)}. Estimated cost ${cost}${unpriced ? `; ${unpriced} unpriced tokens` : ""}`,
   ],
-  [/^时间槽区间 (.+)；(.+)$/, (_, interval, note) => `Interval ${interval}; ${englishText(note)}`],
   [/^未计价 (.+) tokens$/, (_, n) => `${n} unpriced tokens`],
   [/^其中 (.+) tokens 按最低费率估算$/, (_, n) => `${n} tokens use the lowest applicable rate`],
   [
-    /^时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位(.+)；每个时间槽可查看完整日期、模型费用和最低费率估算部分$/,
-    (_, range) =>
-      `Usage over time, with estimated API-equivalent costs stacked by model in USD${englishText(range)}. Inspect each interval for dates, model costs, and fallback estimates`,
+    /^时间分布，按模型堆叠 API 等价费用估算，(美元|人民币)为纵轴单位(.*)；每个时间槽可查看完整日期和模型费用$/,
+    (_, currency, range) =>
+      `Usage over time, with estimated API-equivalent costs stacked by model in ${currency === "人民币" ? "CNY" : "USD"}${englishText(range)}. Inspect each interval for dates and model costs`,
   ],
   [
     /^时间分布，(.+)堆叠 tokens(.+)；每个时间槽可查看完整日期和明细$/,
@@ -445,6 +471,10 @@ const ENGLISH_PATTERNS = [
   ],
   [/^已导入 (.+)，正在刷新\.\.\.$/, (_, name) => `Imported ${name}. Refreshing…`],
   [/^导入失败：(.+)$/, (_, error) => `Import failed: ${englishText(error)}`],
+  [/^扫描失败：(.+)$/, (_, error) => `Scan failed: ${englishText(error)}`],
+  [/^导入所选（(\d+)）$/, (_, count) => `Import selected (${count})`],
+  [/^已导入 (\d+) 个来源。$/, (_, count) => `Imported ${count} sources.`],
+  [/^已用 (\d+) 秒$/, (_, seconds) => `${seconds}s elapsed`],
   [/^加载失败：(.+)$/, (_, error) => `Could not load usage: ${englishText(error)}`],
   [
     /^检查失败：(.+)；下次继续尝试$/,
@@ -577,6 +607,47 @@ export function formatLocalDateTime(value, locale = activeLocale) {
 }
 
 export function localizeServerError(body, status = 0, locale = activeLocale) {
+  const importErrors = {
+    INVALID_IMPORT_MANIFEST: [
+      "数据来源清单无法读取，请检查配置文件后重试。",
+      "The source manifest could not be read. Check the configuration file and retry.",
+    ],
+    IMPORT_SCAN_FAILED: [
+      "无法读取此位置，请重试或手动选择。",
+      "This location could not be read. Retry or choose it manually.",
+    ],
+    INVALID_IMPORT_PATH: ["请输入完整的目录路径。", "Enter a complete directory path."],
+    INVALID_IMPORT_PATHS: ["请选择 1 至 64 个记录目录。", "Select 1 to 64 record directories."],
+    IMPORT_PATH_NOT_DIRECTORY: [
+      "请选择记录所在的文件夹，不要选择单个文件。",
+      "Choose the containing folder, not an individual file.",
+    ],
+    DIRECTORY_PICKER_FAILED: [
+      "无法打开文件夹选择器，请手动输入目录路径。",
+      "Could not open the folder picker. Enter the directory path manually.",
+    ],
+    DIRECTORY_PICKER_UNAVAILABLE: [
+      "请在此系统上手动输入目录路径。",
+      "Enter the directory path manually on this system.",
+    ],
+    DIRECTORY_PICKER_BUSY: ["文件夹选择器已打开。", "The folder picker is already open."],
+    IMPORT_IN_PROGRESS: ["正在导入，请等待当前导入完成。", "An import is in progress. Wait for it to finish."],
+    SOURCE_UPDATE_PENDING: [
+      "本次记录校验未完成，请重试导入。已读取的记录会保留。",
+      "Record verification did not finish. Retry the import; records already read are retained.",
+    ],
+    EACCES: [
+      "没有权限读取此目录，请选择可访问的记录目录。",
+      "This directory cannot be read. Choose an accessible record directory.",
+    ],
+    EPERM: [
+      "没有权限读取此目录，请选择可访问的记录目录。",
+      "This directory cannot be read. Choose an accessible record directory.",
+    ],
+    ENOENT: ["此目录已不存在，请重新选择。", "This directory no longer exists. Choose another location."],
+    ENOTDIR: ["请选择记录所在的文件夹。", "Choose the folder containing the records."],
+  };
+  if (importErrors[body?.code]) return importErrors[body.code][locale === "en-US" ? 1 : 0];
   if (locale !== "en-US") return body?.error || `API ${status}`;
   const known = {
     INVALID_PRESET: "That time range is not supported.",

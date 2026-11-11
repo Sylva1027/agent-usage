@@ -323,22 +323,38 @@
           <div class="dialog-heading">
             <h2 id="importDialogTitle">数据来源</h2>
           </div>
-          <p class="dialog-copy">勾选统计来源，修改立即生效。</p>
           <fieldset class="source-picker-field">
             <legend>统计来源</legend>
             <div id="sourcePicker" class="source-picker"></div>
           </fieldset>
-          <label>
-            添加目录
+          <fieldset id="importCandidatesField" class="source-picker-field" hidden>
+            <legend>发现的记录目录</legend>
+            <div id="importCandidates" class="source-picker"></div>
+          </fieldset>
+          <div class="import-tools">
+            <button id="rescanImportsButton" class="panel-action" type="button">重新扫描</button>
+            <button id="manualImportButton" class="panel-action" type="button" aria-expanded="false" aria-controls="manualImportArea">添加其他位置</button>
+          </div>
+          <div id="manualImportArea" hidden>
+            <label for="importPath">记录目录</label>
             <div class="path-picker">
-              <input id="importPath" type="text" autocomplete="off" placeholder="/Users/you/project/openai_codex" />
+              <input id="importPath" type="text" autocomplete="off" placeholder="输入完整目录路径" />
               <button id="pickImportDirectoryButton" type="button">选择文件夹</button>
             </div>
-          </label>
-          <p id="importMessage" class="dialog-message" role="status"></p>
+            <details class="import-help">
+              <summary>如何找到记录目录</summary>
+              <p id="importHelp"></p>
+              <ul id="importLocations"></ul>
+            </details>
+          </div>
+          <details id="importDiagnostics" class="import-help" hidden>
+            <summary>扫描详情</summary>
+            <p id="importDiagnosticsText"></p>
+          </details>
+          <p id="importMessage" class="dialog-message" role="status" aria-live="polite"></p>
           <div class="dialog-actions">
             <button id="cancelImportButton" type="button">关闭</button>
-            <button id="submitImportButton" type="submit">导入</button>
+            <button id="submitImportButton" type="submit" disabled>导入所选</button>
           </div>
         </form>
       </section>
@@ -364,15 +380,25 @@
           <div class="pricing-toolbar">
             <input id="pricingSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型" />
             <label class="pricing-rate-label">1 美元 =
-              <input id="usdToCnyRate" type="number" min="0.01" step="any" required />
+              <input id="usdToCnyRate" type="text" inputmode="decimal" required />
               人民币
             </label>
             <button id="restoreAutomaticRateButton" class="panel-action pricing-restore-rate" type="button" data-i18n-en="Restore automatic rate" aria-pressed="false" hidden>恢复自动汇率</button>
           </div>
-          <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
-          <div class="segmented segmented-well pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
-            <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
-            <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>
+          <div class="pricing-controls">
+            <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
+            <div class="segmented segmented-well pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
+              <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
+              <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>
+            </div>
+            <div class="pricing-currency-control">
+              <span>计价</span>
+              <!-- biome-ignore lint/a11y/useSemanticElements: 币种按键组复用分段控件的 div 布局，fieldset 默认样式需整组重置 -->
+              <div class="segmented segmented-well pricing-currency" id="pricingCurrency" role="group" aria-label="计价币种">
+                <button type="button" data-display-currency="USD" aria-pressed="true" title="美元" aria-label="美元">$</button>
+                <button type="button" data-display-currency="CNY" aria-pressed="false" title="人民币" aria-label="人民币">¥</button>
+              </div>
+            </div>
           </div>
           <div id="pricingModelList" class="pricing-model-list"></div>
           <p id="pricingMessage" class="dialog-message" role="status"></p>

@@ -110,7 +110,7 @@
 }
 
 /* Opening the dialog is independent of selecting a character skin. */
-:root[data-skin]:not([data-skin="classic"]) .skin-toggle .skin-icon-accent {
+[data-skin]:not([data-skin="classic"]) .skin-toggle .skin-icon-accent {
   stroke: var(--skin-active-accent, var(--toggle-selected));
   filter: var(--button-icon-glow);
 }

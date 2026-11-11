@@ -247,6 +247,35 @@ test("manual FX takes precedence while the latest automatic quote remains visibl
   }
 });
 
+test("every forced price refresh also fetches FX even with a fresh quote or a manual rate", async () => {
+  const homeDir = await temporaryHome();
+  try {
+    await loadAutomaticCache(homeDir, recentAutomaticState());
+    for (const [index, rate] of [6.9, 6.7, 6.6].entries()) {
+      if (index === 2) {
+        const catalog = getPricingCatalog();
+        catalog.usdToCnyRate = 7.1;
+        await savePricingFile({ homeDir }, catalog);
+      }
+      const calls = [];
+      const result = await refreshAutomaticPricing({
+        homeDir,
+        force: true,
+        now: new Date(`2026-09-28T07:00:0${index + 1}.000Z`),
+        pricingFetcher: pricingFetcher({ calls, rate }),
+      });
+      assert.equal(calls.filter((url) => url === USD_CNY_RATE_URL).length, 1);
+      assert.equal(calls.filter((url) => url === MODEL_PRICES_URL).length, 1);
+      assert.equal(result.exchangeRateUpdated, true);
+      assert.equal(result.automaticUsdToCnyRate, rate);
+      assert.equal(getPricingCatalog().usdToCnyRate, index === 2 ? 7.1 : rate);
+    }
+  } finally {
+    resetPricingCatalog();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("only the exchange rate is fetched when its retry is due", async () => {
   const homeDir = await temporaryHome();
   const calls = [];

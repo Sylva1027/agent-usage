@@ -68,8 +68,11 @@ async function checkPage(browser, url, edition, locale, viewport) {
     if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`);
   });
   page.on("requestfailed", (request) => {
-    if (new URL(request.url()).pathname !== "/api/usage-events")
-      errors.push(`${request.failure()?.errorText} ${request.url()}`);
+    const pathname = new URL(request.url()).pathname;
+    const failure = request.failure()?.errorText;
+    if (pathname === "/api/usage-events") return;
+    if (pathname === "/api/imports/discover" && failure === "net::ERR_ABORTED") return;
+    errors.push(`${failure} ${request.url()}`);
   });
   page.on("request", (request) => {
     if (/\/(?:skin[^/]*\.(?:js|css|json|html)|assets\/skins\/)/.test(new URL(request.url()).pathname))
@@ -89,7 +92,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
         inlineColors: Array.from(root.style).filter((name) => name.startsWith("--")),
         bg: getComputedStyle(root).getPropertyValue("--bg").trim().toLowerCase(),
       }));
-      assert.deepEqual(declarations, { skin: null, inlineColors: [], bg: theme === "dark" ? "#20252b" : "#cfd8e1" });
+      assert.deepEqual(declarations, { skin: null, inlineColors: [], bg: theme === "dark" ? "#15181c" : "#cfd8e1" });
       assert.deepEqual(skinRequests, [], "Standard edition requested skin resources");
     } else {
       assert.equal(await page.locator("#skinToggle").count(), 1);
@@ -154,7 +157,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
     await ready();
     assert.equal(await page.locator("html").getAttribute("lang"), switchedLocale);
     await appearance("light");
-    assert.deepEqual(errors, []);
+    assert.deepEqual(errors, [], `Unexpected browser errors: ${JSON.stringify(errors)}`);
     return { locale, viewport, skinRequests: skinRequests.length, errors: errors.length };
   } finally {
     await context.close();

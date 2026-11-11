@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { automaticPricingFile } from "../src/pricing-store.js";
 import { readServices, writeServices } from "../src/cli.js";
+import { discoverUsageSources } from "../src/usage-core.js";
 
 function jsonl(rows) {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -53,6 +54,10 @@ async function makeFixtureHome() {
       exchangeRateAttemptedAt: timestamp,
       exchangeRateUpdatedAt: timestamp,
     }),
+  );
+  await writeFile(
+    path.join(fakeHome, ".codex-usage", "imports.json"),
+    JSON.stringify({ version: 2, imports: await discoverUsageSources({ homeDir: fakeHome, env: {} }) }),
   );
   return fakeHome;
 }

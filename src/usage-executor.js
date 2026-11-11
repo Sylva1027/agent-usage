@@ -617,7 +617,17 @@ async function runExecutorProcess() {
               dataVersion: Number(store.database.prepare("PRAGMA data_version").get()?.data_version),
             };
           }
-          nextStatus = await syncUsageStore(store, message.options, message.certifiedOnly, message.sourceHints);
+          nextStatus = await syncUsageStore(
+            store,
+            {
+              ...message.options,
+              onImportStage: (stage) => {
+                childProcess.send?.({ type: "import-stage", stage });
+              },
+            },
+            message.certifiedOnly,
+            message.sourceHints,
+          );
         } catch (error) {
           failure = error;
         } finally {
@@ -670,6 +680,10 @@ async function runExecutorProcess() {
       }
       case "publishedUsageEvents": {
         return store.publishedUsageEvents();
+      }
+      case "publishedUsageHomes": {
+        // source_files retains identities when events move into cold archives.
+        return store.publishedUsageHomes();
       }
       case "publishedUsageReport": {
         return store.publishedHistoryUsageReport();
@@ -927,6 +941,7 @@ async function runExecutorProcess() {
         message.type === "historyArchiveEventCommit" ||
         message.type === "historyArchiveImport" ||
         message.type === "publishedUsageEvents" ||
+        message.type === "publishedUsageHomes" ||
         message.type === "publishedUsageReport" ||
         message.type === "close"
           ? await serializeSyncBackup(execute)
@@ -1034,6 +1049,7 @@ export function createUsageExecutor(
     requestTimeoutMs = REQUEST_TIMEOUT_MS,
     idleTimeoutMs = options.executorIdleTimeoutMs ?? IDLE_TIMEOUT_MS,
     pricing = getPricingCatalog,
+    onImportStage = (_stage) => {},
   } = {},
 ) {
   const forwardedOptions = executorOptions(options);
@@ -1200,6 +1216,10 @@ export function createUsageExecutor(
     created.on("message", (rawMessage) => {
       if (worker !== created) return;
       const message = /** @type {any} */ (rawMessage);
+      if (message.type === "import-stage") {
+        onImportStage(message.stage);
+        return;
+      }
       if (message.type === "state") {
         state = { ...state, ...restoreServiceTierEvidenceRecord(message.state) };
         return;
@@ -1389,6 +1409,7 @@ export function createUsageExecutor(
     periodComparison: (args = {}) => request("periodComparison", { args, pricing: pricing() }),
     metadataFor: (asOf) => request("metadata", { asOf: asOf instanceof Date ? asOf.getTime() : asOf }),
     publishedUsageEvents: () => request("publishedUsageEvents"),
+    publishedUsageHomes: () => request("publishedUsageHomes"),
     publishedUsageReport: () => request("publishedUsageReport"),
     snapshot: (payload = {}) => request("snapshot", { ...payload, pricing: pricing() }),
     backupHistory: (databaseFile) => request("backupHistory", { databaseFile, pricing: pricing() }),

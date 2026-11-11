@@ -286,7 +286,7 @@ async function exists(filePath) {
   }
 }
 
-function sourceId(kind, sourcePath) {
+export function sourceId(kind, sourcePath) {
   const normalizedPath = path.resolve(sourcePath).replace(/\\/g, "/");
   const identity = process.platform === "win32" ? normalizedPath.toLowerCase() : normalizedPath;
   const digest = createHash("sha256").update(identity).digest("hex").slice(0, 16);
@@ -445,14 +445,25 @@ export async function discoverCodexHomes(options = {}) {
     });
   }
 
-  await addHome("Main Codex", path.join(homeDir, ".codex"), "main");
+  if (!options.onlyConfiguredSources) {
+    await addHome("Main Codex", path.join(homeDir, ".codex"), "main");
+    if (env.CODEX_HOME) await addHome("Codex", env.CODEX_HOME, "main");
+  }
 
-  for (const jetbrainsRoot of jetBrainsRoots({ homeDir, platform, env })) {
+  for (const jetbrainsRoot of options.onlyConfiguredSources ? [] : jetBrainsRoots({ homeDir, platform, env })) {
     options.sourceCandidates?.push(path.resolve(jetbrainsRoot));
     if (!(await exists(jetbrainsRoot))) {
       continue;
     }
-    for (const entry of await readdir(jetbrainsRoot, { withFileTypes: true })) {
+    let entries;
+    try {
+      entries = await readdir(jetbrainsRoot, { withFileTypes: true });
+    } catch (error) {
+      if (!options.discoveryErrors) throw error;
+      options.discoveryErrors.push({ path: jetbrainsRoot, code: error.code || "IMPORT_SCAN_FAILED" });
+      continue;
+    }
+    for (const entry of entries) {
       if (!entry.isDirectory()) {
         continue;
       }
@@ -499,7 +510,7 @@ export async function discoverZcodeHomes(options = {}) {
     });
   }
 
-  await addHome("Main ZCode", path.join(homeDir, ".zcode"));
+  if (!options.onlyConfiguredSources) await addHome("Main ZCode", path.join(homeDir, ".zcode"));
 
   for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
     await addHome(`ZCode ${path.basename(extraHome) || extraHome}`, extraHome);
@@ -536,7 +547,7 @@ export async function discoverDshHomes(options = {}) {
     });
   }
 
-  await addHome("Main DSH", path.join(homeDir, ".dsh"));
+  if (!options.onlyConfiguredSources) await addHome("Main DSH", path.join(homeDir, ".dsh"));
 
   for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
     await addHome(`DSH ${path.basename(extraHome) || extraHome}`, extraHome);
@@ -548,6 +559,7 @@ export async function discoverDshHomes(options = {}) {
 function opencodeDataDirs({ homeDir, env }) {
   // OpenCode 数据目录因平台而异（Windows 本机实测为 XDG 风格路径），逐个探测。
   const dirs = [path.join(homeDir, ".local", "share", "opencode")];
+  if (env.XDG_DATA_HOME) dirs.push(path.join(env.XDG_DATA_HOME, "opencode"));
   if (env.APPDATA) {
     dirs.push(path.join(env.APPDATA, "opencode"));
   }
@@ -586,7 +598,7 @@ export async function discoverOpencodeHomes(options = {}) {
     });
   }
 
-  for (const dataDir of opencodeDataDirs({ homeDir, env })) {
+  for (const dataDir of options.onlyConfiguredSources ? [] : opencodeDataDirs({ homeDir, env })) {
     await addHome("Main OpenCode", dataDir);
   }
 
@@ -624,9 +636,9 @@ export async function discoverClaudeHomes(options = {}) {
     });
   }
 
-  await addHome("Main Claude Code", path.join(homeDir, ".claude"));
+  if (!options.onlyConfiguredSources) await addHome("Main Claude Code", path.join(homeDir, ".claude"));
   // CLAUDE_CONFIG_DIR 是 Claude Code 自己的 home 覆盖变量，与默认位置并存时都要发现。
-  if (env.CLAUDE_CONFIG_DIR) {
+  if (!options.onlyConfiguredSources && env.CLAUDE_CONFIG_DIR) {
     await addHome(
       `Claude Code ${path.basename(env.CLAUDE_CONFIG_DIR) || env.CLAUDE_CONFIG_DIR}`,
       env.CLAUDE_CONFIG_DIR,
@@ -667,7 +679,7 @@ export async function discoverWorkbuddyHomes(options = {}) {
     });
   }
 
-  await addHome("Main WorkBuddy", path.join(homeDir, ".workbuddy-ai"));
+  if (!options.onlyConfiguredSources) await addHome("Main WorkBuddy", path.join(homeDir, ".workbuddy-ai"));
 
   for (const extraHome of envHomes.split(path.delimiter).filter(Boolean)) {
     await addHome(`WorkBuddy ${path.basename(extraHome) || extraHome}`, extraHome);
@@ -677,6 +689,36 @@ export async function discoverWorkbuddyHomes(options = {}) {
 }
 
 export async function discoverUsageSources(options = {}) {
+  if (Array.isArray(options.confirmedSources)) {
+    const sources = [];
+    for (const source of options.confirmedSources) {
+      options.sourceCandidates?.push(source.path);
+      // Keep the persisted identity, including unavailable homes and historical aliases.
+      // A known Codex home needs only its own probe, not every other parser's directory walk.
+      if (source.kind === "zcode") {
+        const usageLogPath = await zcodeDatabaseFile(source.path);
+        if (usageLogPath) sources.push({ ...source, usageLogPath });
+        continue;
+      }
+      if (source.kind === "project-log") {
+        const usageLogPath = path.join(source.path, PROJECT_USAGE_DIR, PROJECT_USAGE_FILE);
+        if (await exists(usageLogPath)) sources.push({ ...source, usageLogPath });
+        continue;
+      }
+      const probe = {
+        main: codexHomeLooksUsable,
+        codex: codexHomeLooksUsable,
+        extra: codexHomeLooksUsable,
+        jetbrains: codexHomeLooksUsable,
+        dsh: dshHomeLooksUsable,
+        opencode: opencodeHomeLooksUsable,
+        workbuddy: workbuddyHomeLooksUsable,
+        claude: claudeHomeLooksUsable,
+      }[source.kind];
+      if (probe && (await probe(source.path))) sources.push({ ...source });
+    }
+    return sources;
+  }
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
   const seenProjectLogs = new Set();

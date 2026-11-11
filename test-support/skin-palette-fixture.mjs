@@ -1,3 +1,4 @@
+import { discoverUsageSources, sourceId } from "../src/usage-core.js";
 // 皮肤配色重设计的隔离合成 fixture（实现计划 M0.4）。
 // 只在 os.tmpdir() 下创建 skin-palette-fixture- 前缀目录并写入全部状态；
 // 数据通过真实导入链路接入（.codex-usage/usage.jsonl + imports.json），
@@ -302,7 +303,7 @@ async function createFixture(eventSpecs, fixtureHash) {
     // project-log 家目录扫描（server.js usageOptions → UsageStore.sync）。
     await writeFile(
       importStoreFile,
-      `${JSON.stringify({ imports: [{ path: projectDir }, { path: unavailablePath }] }, null, 2)}\n`,
+      `${JSON.stringify({ version: 2, imports: [...(await discoverUsageSources({ homeDir, env: {}, importDirs: [projectDir] })).sort((a, b) => Number(b.kind === "project-log") - Number(a.kind === "project-log")), { path: unavailablePath, id: sourceId("extra", unavailablePath), kind: "extra", label: "Unavailable project", imported: true }] }, null, 2)}\n`,
     );
   } catch (error) {
     try {

@@ -62,9 +62,10 @@ async function assertEmptyCodexSessions(fixture) {
 
 async function readFixtureRows(fixture) {
   const imports = JSON.parse(await readFile(fixture.importStoreFile, "utf8"));
-  assert.equal(imports.imports.length, 2);
-  const projectRoot = imports.imports[0].path;
-  const unavailablePath = imports.imports[1].path;
+  assert.equal(imports.version, 2);
+  assert.equal(imports.imports.length, 3);
+  const projectRoot = imports.imports.find((entry) => entry.kind === "project-log").path;
+  const unavailablePath = imports.imports.find((entry) => entry.path === fixture.unavailablePath).path;
   assert.equal(path.resolve(projectRoot), path.resolve(path.join(path.dirname(fixture.homeDir), "palette-workspace")));
   assert.equal(path.resolve(unavailablePath), path.resolve(fixture.unavailablePath));
   assert.equal((await stat(unavailablePath)).isDirectory(), true);
@@ -84,11 +85,9 @@ async function assertSavedUnsupportedImport(fixture, { imports, homes = [], even
   assert.deepEqual(described, classified, "API 描述必须沿用真实目录分类结果");
   assert.equal(described.type, "unsupported");
   assert.ok(described.reason.trim().length > 0);
-  assert.deepEqual(
-    imports.find((entry) => path.resolve(entry.path) === path.resolve(fixture.unavailablePath)),
-    described,
-    "真实 usage API metadata.imports 必须包含当前分类和 reason",
-  );
+  const saved = imports.find((entry) => path.resolve(entry.path) === path.resolve(fixture.unavailablePath));
+  for (const [key, value] of Object.entries(described)) assert.equal(saved[key], value);
+  assert.equal(saved.kind, "extra");
   assert.equal(
     homes.some((home) => home.path && path.resolve(home.path) === path.resolve(fixture.unavailablePath)),
     false,

@@ -40,6 +40,17 @@ if (typeof document !== "undefined" && document.body) initializeLocale();
 state.locale = getLocale();
 let quotaNoticeTimer = null;
 let importDialogOpener = null;
+const importView = {
+  scan: 0,
+  controller: null,
+  picker: null,
+  scanning: false,
+  submitting: false,
+  task: null,
+  timer: null,
+  poll: false,
+  complete: null,
+};
 
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const QUOTA_PRESETS = ["quota_5h", "quota_week"];
@@ -49,14 +60,12 @@ const QUOTA_UI_COPY = Object.freeze({
   missingSnapshot: "尚无限额快照，请等待 Codex 写入限额记录。",
   waiting: "等待新的限额记录。",
   invalidBoundaries: "限额窗口边界无效。",
-  halfHourSlot: "每个图表时间槽是半小时。",
-  weekSlot: "每个图表时间槽是连续 24 小时，不按本地自然日或夏令时拆分。",
   asOf: "统计数据截至",
-  partialSlot: "当前时间槽仅统计至",
 });
 const THEME_STORAGE_KEY = "codexUsageTheme";
 const AUTO_REFRESH_STORAGE_KEY = "codexUsageAutoRefresh";
 const EXCLUDED_HOMES_STORAGE_KEY = "codexUsageExcludedHomes";
+const DISPLAY_CURRENCY_STORAGE_KEY = "codexUsageDisplayCurrency";
 const formatter = new Intl.NumberFormat("en-US");
 const millionTokenFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -195,6 +204,7 @@ async function toggleTheme() {
       for (const property of colors) {
         if (property.startsWith("--")) snapshot.style.setProperty(property, colors.getPropertyValue(property));
       }
+      snapshot.style.colorScheme = colors.colorScheme;
       const canvases = root.querySelectorAll("canvas");
       snapshot.querySelectorAll("canvas").forEach((canvas, index) => {
         canvas.getContext("2d")?.drawImage(canvases[index], 0, 0);
@@ -205,9 +215,15 @@ async function toggleTheme() {
         zIndex: "2147483647",
         pointerEvents: "none",
         overflow: "hidden",
+        opacity: "0",
       });
       snapshot.style.width = `${root.clientWidth}px`;
-      snapshot.querySelector("body").style.transform = `translate(${-window.scrollX}px, ${-window.scrollY}px)`;
+      // A transform would move fixed character artwork to the bottom of the full document.
+      Object.assign(snapshot.querySelector("body").style, {
+        position: "relative",
+        left: `${-window.scrollX}px`,
+        top: `${-window.scrollY}px`,
+      });
       overlay.inert = true;
       overlay.setAttribute("aria-hidden", "true");
       const stylesReady = Array.from(
@@ -219,8 +235,12 @@ async function toggleTheme() {
           }),
       );
       overlay.attachShadow({ mode: "closed" }).append(snapshot);
+      const frozenStyles = document.createElement("style");
+      frozenStyles.textContent = "*, *::before, *::after { transition: none !important; animation: none !important; }";
+      snapshot.append(frozenStyles);
       document.body.append(overlay);
       await Promise.all(stylesReady);
+      overlay.style.opacity = "1";
       setTheme(theme);
       const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1000;
       await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration, easing: "linear" }).finished;
@@ -265,17 +285,12 @@ function setCurrencyMetric(selector, usd, cny = null) {
     element.title = "";
     return;
   }
-  // 费用卡片统一以美元计价展示：人民币金额按汇率折算后并入，明细仍按原币种展示。
-  const rate = Number(state.usdToCnyRate) > 0 ? Number(state.usdToCnyRate) : 1;
   const usdValue = hasUsd ? Number(usd) : 0;
   const cnyValue = hasCny ? Number(cny) : 0;
-  const total = usdValue + cnyValue / rate;
-  const formatted = formatCostAmount(total, "USD");
+  const total = scaledCost(usdValue, "USD") + scaledCost(cnyValue, "CNY");
+  const formatted = formatCostAmount(total, state.costScaleTarget);
   element.textContent = formatted;
-  element.title =
-    hasUsd && hasCny
-      ? `美元 ${formatPreciseCost(usdValue, "USD")} + 人民币 ${formatPreciseCost(cnyValue, "CNY")}（按汇率 ${rate} 折算）`
-      : formatted;
+  element.title = formatted;
   // Keep monetary values at the same typographic scale as the token row.
   // Very long amounts retain the full value in their existing title tooltip.
   element.style.fontSize = "";
@@ -312,14 +327,15 @@ function usageRowAriaLabel(row, nameOverride = null) {
 export function formatUsageTooltip(row, titleOverride = null, options = {}) {
   const total = row?.total || emptyUsage();
   const tooltipTitle = titleOverride || row?.name || row?.key || "未知";
+  const tokenFormat = options.compactTokens ? formatTokenMillions : formatTokens;
   const details = [
-    ["总 tokens", usageValue(total, "total")],
-    ["总输入", usageValue(total, "input")],
-    ["缓存读取", usageValue(total, "cached")],
-    ["输出", usageValue(total, "output")],
-    ["推理输出", usageValue(total, "reasoning")],
-    ["事件", row?.count || 0],
-    ["会话", row?.sessions || 0],
+    ["总 tokens", tokenFormat(usageValue(total, "total"))],
+    ["总输入", tokenFormat(usageValue(total, "input"))],
+    ["缓存读取", tokenFormat(usageValue(total, "cached"))],
+    ["输出", tokenFormat(usageValue(total, "output"))],
+    ["推理输出", tokenFormat(usageValue(total, "reasoning"))],
+    ["事件", formatTokens(row?.count || 0)],
+    ["会话", formatTokens(row?.sessions || 0)],
   ];
   const channels = row?.channels || [];
   const titleText = options.modelNames === true ? displayModelName(tooltipTitle) : tooltipTitle;
@@ -330,7 +346,7 @@ export function formatUsageTooltip(row, titleOverride = null, options = {}) {
         .map(
           ([label, value]) => `
             <span class="usage-tooltip-label">${label}</span>
-            <span class="usage-tooltip-value">${formatTokens(value)}</span>
+            <span class="usage-tooltip-value">${value}</span>
           `,
         )
         .join("")}
@@ -344,7 +360,7 @@ export function formatUsageTooltip(row, titleOverride = null, options = {}) {
               .map(
                 (channel) => `
                   <span class="usage-tooltip-label">${escapeHtml(channel.name)}</span>
-                  <span class="usage-tooltip-value">${formatTokens(usageValue(channel.total, "total"))}</span>
+                  <span class="usage-tooltip-value">${tokenFormat(usageValue(channel.total, "total"))}</span>
                 `,
               )
               .join("")}
@@ -445,26 +461,25 @@ function timelineAccessibleLabel(row, mode, range = null) {
   const quotaInfo = quotaTimelineSlotInfo(row);
   const english = getLocale() === "en-US";
   const key = quotaInfo
-    ? english
-      ? `${quotaInfo.title}. Interval ${quotaInfo.interval}. ${quotaInfo.note}`
-      : `${quotaInfo.title}，时间槽区间 ${quotaInfo.interval}。${quotaInfo.note}`
+    ? [quotaInfo.title, quotaInfo.note].filter(Boolean).join(english ? ". " : "，")
     : timelineSlotRangeTitle(row, range) || String(row?.key || row?.name || localizeText("未知时间"));
   if (mode === "cost") {
-    const pair = costPairFromSlots(row?.costByModel);
     const amount =
-      Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : localizeText("无可计价费用");
-    if (english)
-      return `${key}. Estimated cost ${amount}; ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens use fallback rates; ${formatTokens(row?.unpricedTokens || 0)} tokens are unpriced.`;
-    return `${key}，费用估算 ${amount}，其中 ${formatTokens(row?.minimumEstimatedTokens || 0)} tokens 按最低费率估算，未计价 ${formatTokens(row?.unpricedTokens || 0)} tokens`;
+      Number(row?.pricedTokens || 0) > 0
+        ? formatCostAmount(timelineValue(row, "cost"), state.costScaleTarget)
+        : localizeText("无可计价费用");
+    const unpriced = Number(row?.unpricedTokens || 0) > 0 ? formatTokenMillions(row.unpricedTokens) : null;
+    if (english) return `${key}. Estimated cost ${amount}${unpriced ? `; ${unpriced} unpriced tokens` : ""}.`;
+    return `${key}，费用估算 ${amount}${unpriced ? `，未计价 ${unpriced} tokens` : ""}`;
   }
   const details = mode === "model" ? row?.models || [] : row?.channels || [];
   const kind = mode === "model" ? "模型" : "渠道";
   const breakdown = details
-    .map((item) => `${item.name} ${formatTokens(usageValue(item.total, "total"))} tokens`)
+    .map((item) => `${item.name} ${formatTokenMillions(usageValue(item.total, "total"))} tokens`)
     .join(english ? ", " : "，");
   if (english)
-    return `${key}. Total ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `; ${mode === "model" ? "models" : "sources"}: ${breakdown}` : ""}.`;
-  return `${key}，总计 ${formatTokens(usageValue(row?.total, "total"))} tokens${breakdown ? `，${kind}：${breakdown}` : ""}`;
+    return `${key}. Total ${formatTokenMillions(usageValue(row?.total, "total"))} tokens${breakdown ? `; ${mode === "model" ? "models" : "sources"}: ${breakdown}` : ""}.`;
+  return `${key}，总计 ${formatTokenMillions(usageValue(row?.total, "total"))} tokens${breakdown ? `，${kind}：${breakdown}` : ""}`;
 }
 
 function showTimelineTooltip(row, anchor) {
@@ -654,9 +669,7 @@ function quotaRangeAccessibleLabel(range) {
       ? `; ${localizeText("仅显示有用量的日期")}`
       : isPreviousQuotaRange(range)
         ? `; ${localizeText("仅显示有用量的半小时")}`
-        : mode === "quota_week"
-          ? `; ${localizeText(QUOTA_UI_COPY.weekSlot)}`
-          : "";
+        : "";
     return `${localizeText(name)} ${interval}${asOf}${weekNote}`;
   }
   const asOf = range?.asOf ? `；${QUOTA_UI_COPY.asOf} ${formatLocalDateTimeWithZone(range.asOf)}` : "";
@@ -664,9 +677,7 @@ function quotaRangeAccessibleLabel(range) {
     ? "；仅显示有用量的日期"
     : isPreviousQuotaRange(range)
       ? "；仅显示有用量的半小时"
-      : mode === "quota_week"
-        ? `；${QUOTA_UI_COPY.weekSlot}`
-        : "";
+      : "";
   return `${name} ${interval}${asOf}${weekNote}`;
 }
 
@@ -677,22 +688,13 @@ function quotaTimelineSlotInfo(row) {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
   const start = new Date(startMs);
   const end = new Date(endMs);
-  const interval = `[${formatLocalDateTimeWithZone(start)}, ${formatLocalDateTimeWithZone(end)})`;
-  const title = `${formatLocalDateTimeWithZone(start)} – ${formatLocalDateTimeWithZone(end)}`;
-  const baseNote = localizeText(
-    state.preset === "quota_week" || (state.preset === "recent" && state.recentValue === "上周")
-      ? QUOTA_UI_COPY.weekSlot
-      : QUOTA_UI_COPY.halfHourSlot,
-  );
+  const title = `${formatLocalDateTime(start)} – ${formatLocalDateTime(end)}`;
   const asOf = asDate(state.summary?.range?.asOf || state.quotaSnapshot?.asOf);
-  const partialNote =
+  const note =
     asOf && asOf.getTime() > startMs && asOf.getTime() < endMs
-      ? getLocale() === "en-US"
-        ? `${localizeText(QUOTA_UI_COPY.partialSlot)} ${formatLocalDateTimeWithZone(asOf)}.`
-        : `${QUOTA_UI_COPY.partialSlot} ${formatLocalDateTimeWithZone(asOf)}。`
+      ? localizeText(`统计截至 ${formatLocalDateTime(asOf)}`)
       : "";
-  const note = [baseNote, partialNote].filter(Boolean).join(" ");
-  return { title, interval, note };
+  return { title, note };
 }
 
 function asDate(value) {
@@ -1066,37 +1068,24 @@ export function timelineDetailRows(summary, mode) {
   if (mode === "model") return summary.models || [];
   const byModel = new Map();
   for (const slot of summary.timeline || []) {
-    for (const [key, cost] of Object.entries(slot.costByModel || {})) {
-      const amount = Number(cost?.totalUsd || 0);
-      if (!Number.isFinite(amount) || amount <= 0) continue;
-      const name = costBucketModelName(key, cost);
-      const currency = cost?.currency || "USD";
-      const bucketKey = `${name}\u0000${currency}`;
-      const entry = byModel.get(bucketKey) || { name, totalUsd: 0, currency };
-      entry.totalUsd += amount;
-      byModel.set(bucketKey, entry);
+    for (const { name, value } of timelineCostSegments(slot)) {
+      byModel.set(name, (byModel.get(name) || 0) + value);
     }
   }
-  return [...byModel.values()]
-    .map((entry) => ({ ...entry, scaleValue: scaledCost(entry.totalUsd, entry.currency) }))
-    .sort(
-      (left, right) =>
-        right.scaleValue - left.scaleValue ||
-        left.name.localeCompare(right.name) ||
-        left.currency.localeCompare(right.currency),
-    );
+  return [...byModel]
+    .map(([name, value]) => ({ name, value }))
+    .sort((left, right) => right.value - left.value || left.name.localeCompare(right.name));
 }
 
 export function renderCostDetailHtml(rows, colorMap = null) {
   if (!rows.length) return '<div class="empty">没有可计价的费用记录</div>';
-  const values = rows.map((row) => row.scaleValue ?? scaledCost(row.totalUsd, row.currency));
-  const max = values[0] || 1;
+  const max = rows[0].value || 1;
   return rows
-    .map((row, index) => {
+    .map((row) => {
       const name = escapeHtml(displayModelName(row.name));
-      const amount = formatPreciseCost(row.totalUsd, row.currency);
+      const amount = formatCostAmount(row.value, state.costScaleTarget);
       const color = safeChartColor(colorMap?.get(row.name) || getModelColor(row.name));
-      const width = Math.max(2, (values[index] / max) * 100);
+      const width = Math.max(2, (row.value / max) * 100);
       return `
       <div class="bar-row" tabindex="0" aria-label="${name}，费用估算 ${amount}">
         <div class="bar-label">
@@ -1429,8 +1418,7 @@ function shortTimelineLabel(key, bucket, range) {
   return text;
 }
 
-// 周/月槽的标题显示覆盖日期区间，首尾槽不满时标注"部分"，
-// 避免把周键（周一日期）或月键（YYYY-MM）误读成某一天。
+// 周/月槽直接显示实际覆盖日期，首尾按所选范围裁剪。
 export function timelineSlotRangeTitle(row, range) {
   const bucket = range?.bucket;
   const key = String(row?.key || "");
@@ -1454,18 +1442,8 @@ export function timelineSlotRangeTitle(row, range) {
   if (!first || !last || Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return null;
   const effectiveStart = rangeStart && first < rangeStart ? rangeStart : first;
   const effectiveEnd = rangeEnd && last > rangeEnd ? rangeEnd : last;
-  const partial = effectiveStart > first || effectiveEnd < last;
   const english = getLocale() === "en-US";
-  const partialLabel = !partial
-    ? ""
-    : english
-      ? bucket === "week"
-        ? " (partial week)"
-        : " (partial month)"
-      : bucket === "week"
-        ? "（部分周）"
-        : "（部分月）";
-  return `${dateKey(effectiveStart, zone)}${english ? " to " : " 至 "}${dateKey(effectiveEnd, zone)}${partialLabel}`;
+  return `${dateKey(effectiveStart, zone)}${english ? " to " : " 至 "}${dateKey(effectiveEnd, zone)}`;
 }
 
 const CALENDAR_BUCKETS = new Set(["day", "week", "month", "hour"]);
@@ -1662,7 +1640,7 @@ function timelineCostSegments(row, modelRows = []) {
     const name = costBucketModelName(key, cost);
     if (!orderedNames.includes(name)) orderedNames.push(name);
     const value = scaledCost(cost.totalUsd, cost.currency);
-    if (value > 0) valuesByName.set(name, (valuesByName.get(name) || 0) + value);
+    if (Number.isFinite(value) && value > 0) valuesByName.set(name, (valuesByName.get(name) || 0) + value);
   }
   return orderedNames.filter((name) => valuesByName.has(name)).map((name) => ({ name, value: valuesByName.get(name) }));
 }
@@ -1737,8 +1715,7 @@ function costBucketModelName(key, cost) {
   return String(cost?.model || key);
 }
 
-// 混合币种的排序与图表比例按汇率折算到同一标尺（含人民币时统一折人民币），
-// 展示金额始终保留各模型的原币种。
+// 原币种金额只在展示时折算，保留完整精度用于汇总与图表比例。
 export function costScaleValue(amount, currency, rate, targetCurrency) {
   const value = Number(amount || 0);
   const safeRate = Number(rate) > 0 ? Number(rate) : 1;
@@ -1753,11 +1730,9 @@ function scaledCost(amount, currency) {
 
 export function formatTimelineTooltip(row, mode = "channel", range = null) {
   const quotaInfo = quotaTimelineSlotInfo(row);
-  const quotaNote = quotaInfo
-    ? `<div class="usage-tooltip-note">${getLocale() === "en-US" ? "Interval" : "时间槽区间"} ${escapeHtml(quotaInfo.interval)}${getLocale() === "en-US" ? "; " : "；"}${escapeHtml(quotaInfo.note)}</div>`
-    : "";
+  const quotaNote = quotaInfo?.note ? `<div class="usage-tooltip-note">${escapeHtml(quotaInfo.note)}</div>` : "";
   const slotTitle = quotaInfo?.title || timelineSlotRangeTitle(row, range);
-  if (mode === "channel") return `${formatUsageTooltip(row, slotTitle)}${quotaNote}`;
+  if (mode === "channel") return `${formatUsageTooltip(row, slotTitle, { compactTokens: true })}${quotaNote}`;
   const title = escapeHtml(slotTitle || row?.name || row?.key || "未知时间");
   if (mode === "model") {
     const models = [...(row?.models || [])]
@@ -1767,40 +1742,27 @@ export function formatTimelineTooltip(row, mode = "channel", range = null) {
       )
       .map(
         (model) =>
-          `<span class="usage-tooltip-label">${escapeHtml(displayModelName(model.name))}</span><span class="usage-tooltip-value">${formatTokens(usageValue(model.total, "total"))}</span>`,
+          `<span class="usage-tooltip-label">${escapeHtml(displayModelName(model.name))}</span><span class="usage-tooltip-value">${formatTokenMillions(usageValue(model.total, "total"))}</span>`,
       )
       .join("");
-    return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokens(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
+    return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">总 tokens</span><span class="usage-tooltip-value">${formatTokenMillions(usageValue(row?.total, "total"))}</span></div><div class="usage-tooltip-subtitle">模型</div><div class="usage-tooltip-grid">${models || `<span class="usage-tooltip-label">无模型用量</span>`}</div>`;
   }
-  const costs = Object.entries(row?.costByModel || {})
-    .filter(([, cost]) => Number(cost.totalUsd || 0) > 0)
-    .sort(
-      (left, right) =>
-        scaledCost(left[1].totalUsd, left[1].currency) - scaledCost(right[1].totalUsd, right[1].currency) ||
-        costBucketModelName(left[0], left[1]).localeCompare(costBucketModelName(right[0], right[1])) ||
-        String(left[1].currency || "USD").localeCompare(String(right[1].currency || "USD")),
-    )
-    .map(([key, cost]) => {
-      const name = costBucketModelName(key, cost);
-      const native = formatPreciseCost(cost.totalUsd, cost.currency);
-      const converted =
-        cost.currency === state.costScaleTarget
-          ? ""
-          : `（≈${formatPreciseCost(scaledCost(cost.totalUsd, cost.currency), state.costScaleTarget)}）`;
-      return `<span class="usage-tooltip-label">${escapeHtml(displayModelName(name))}</span><span class="usage-tooltip-value">${native}${converted}</span>`;
+  const costs = timelineCostSegments(row)
+    .sort((left, right) => left.value - right.value || left.name.localeCompare(right.name))
+    .map(({ name, value }) => {
+      const amount = formatCostAmount(value, state.costScaleTarget);
+      return `<span class="usage-tooltip-label">${escapeHtml(displayModelName(name))}</span><span class="usage-tooltip-value">${amount}</span>`;
     })
     .join("");
-  const pair = costPairFromSlots(row?.costByModel);
-  const amountLabel = Number(row?.pricedTokens || 0) > 0 ? formatCostPair(pair.usd, pair.cny) : "无可计价费用";
-  const caveats = [];
-  caveats.push(...pricingScenarioNotes(row?.scenarioReasons));
-  if (Number(row?.unpricedTokens || 0) > 0) caveats.push(`未计价 ${formatTokens(row.unpricedTokens)} tokens`);
-  if (Number(row?.serviceTierUnknownTokens || 0) > 0) caveats.push("服务等级未知，金额按 Standard 情景估算");
-  if (Number(row?.contextUnknownTokens || 0) > 0) caveats.push("请求上下文未知，按可用的较低上下文费率估算");
-  if (Number(row?.minimumEstimatedTokens || 0) > 0)
-    caveats.push(`其中 ${formatTokens(row.minimumEstimatedTokens)} tokens 按最低费率估算`);
-  if (Number(row?.cacheWriteUnknownTokens || 0) > 0) caveats.push("缓存写入明细未知，相关未知部分按最低费率估算");
-  return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-subtitle">费用估算</div><div class="usage-tooltip-grid"><span class="usage-tooltip-label">估算金额</span><span class="usage-tooltip-value">${amountLabel}</span><span class="usage-tooltip-label">已纳入估算 tokens</span><span class="usage-tooltip-value">${formatTokens(row?.pricedTokens || 0)}</span></div>${costs ? `<div class="usage-tooltip-subtitle">按模型</div><div class="usage-tooltip-grid">${costs}</div>` : ""}${caveats.length ? `<div class="usage-tooltip-note">${caveats.map(escapeHtml).join("；")}</div>` : ""}`;
+  const amountLabel =
+    Number(row?.pricedTokens || 0) > 0
+      ? formatCostAmount(timelineValue(row, "cost"), state.costScaleTarget)
+      : "无可计价费用";
+  const unpriced =
+    Number(row?.unpricedTokens || 0) > 0
+      ? `<span class="usage-tooltip-label">未计价 tokens</span><span class="usage-tooltip-value">${formatTokenMillions(row.unpricedTokens)}</span>`
+      : "";
+  return `<div class="usage-tooltip-title">${title}</div>${quotaNote}<div class="usage-tooltip-grid"><span class="usage-tooltip-label">估算金额</span><span class="usage-tooltip-value">${amountLabel}</span><span class="usage-tooltip-label">已计价 tokens</span><span class="usage-tooltip-value">${formatTokenMillions(row?.pricedTokens || 0)}</span>${unpriced}</div>${costs ? `<div class="usage-tooltip-subtitle">按模型</div><div class="usage-tooltip-grid">${costs}</div>` : ""}`;
 }
 
 function updateTimelineModeButtons() {
@@ -1889,9 +1851,9 @@ export function drawTimeline(
   const rangeLabelText = startLabel && endLabel ? `，统计范围 ${startLabel} 至 ${endLabel}` : "";
   const baseAriaLabel =
     getLocale() === "en-US"
-      ? `Usage over time, ${mode === "cost" ? "estimated API-equivalent cost by model, with USD on the vertical axis" : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates, model costs, and fallback estimates" : "dates and details"}.`
+      ? `Usage over time, ${mode === "cost" ? `estimated API-equivalent cost by model, with ${state.costScaleTarget} on the vertical axis` : `tokens stacked ${mode === "model" ? "by model" : "by source"}`}${startLabel && endLabel ? `, from ${startLabel} to ${endLabel}` : ""}. Inspect each interval for ${mode === "cost" ? "dates and model costs" : "dates and details"}.`
       : mode === "cost"
-        ? `时间分布，按模型堆叠 API 等价费用估算，美元为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期、模型费用和最低费率估算部分`
+        ? `时间分布，按模型堆叠 API 等价费用估算，${state.costScaleTarget === "CNY" ? "人民币" : "美元"}为纵轴单位${rangeLabelText}；每个时间槽可查看完整日期和模型费用`
         : `时间分布，${modeLabel}堆叠 tokens${rangeLabelText}；每个时间槽可查看完整日期和明细`;
   canvas.dataset.chartAriaLabel = localizeText(baseAriaLabel);
   canvas.setAttribute?.("aria-label", localizeText(baseAriaLabel));
@@ -2551,7 +2513,7 @@ const PRICING_FIELDS = [
 
 function setPricingMessage(message, isError = false) {
   const element = $("#pricingMessage");
-  element.textContent = message;
+  element.textContent = localizeText(message);
   element.classList.toggle("error", isError);
 }
 
@@ -3088,6 +3050,14 @@ function updatePricingScopeButtons() {
   }
 }
 
+function updateDisplayCurrencyButtons() {
+  for (const button of document.querySelectorAll("[data-display-currency]")) {
+    const selected = button.dataset.displayCurrency === state.costScaleTarget;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+}
+
 function openModelPricing(model) {
   const entry = state.pricingCatalog?.models?.[model];
   if (!entry) return;
@@ -3141,6 +3111,7 @@ async function openPricingDialog() {
     $("#pricingSearch").value = "";
     $("#usdToCnyRate").value = String(catalog.usdToCnyRate ?? 6.72);
     updatePricingScopeButtons();
+    updateDisplayCurrencyButtons();
     renderPricingModelList();
     setPricingMessage("");
     $("#pricingDialog").hidden = false;
@@ -3185,8 +3156,9 @@ function restoreAutomaticExchangeRateDraft() {
 async function submitPricing(event) {
   event.preventDefault();
   if (!state.pricingCatalog) return;
-  const usdToCnyRate = Number($("#usdToCnyRate").value);
-  if (!(usdToCnyRate > 0)) {
+  const rateText = $("#usdToCnyRate").value.trim();
+  const usdToCnyRate = Number(rateText);
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(rateText) || !Number.isFinite(usdToCnyRate) || !(usdToCnyRate > 0)) {
     setPricingMessage("请填写大于 0 的美元兑人民币汇率。", true);
     return;
   }
@@ -3224,25 +3196,32 @@ async function submitPricing(event) {
 }
 
 async function pickImportDirectory() {
+  const sequence = importView.scan;
+  const controller = new AbortController();
+  importView.picker = controller;
   const pickButton = $("#pickImportDirectoryButton");
   pickButton.disabled = true;
   setImportMessage("正在打开文件夹选择器...");
   try {
-    const response = await fetch("/api/pick-directory", { method: "POST" });
+    const response = await fetch("/api/pick-directory", { method: "POST", signal: controller.signal });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(localizeServerError(data, response.status));
     }
+    if (sequence !== importView.scan || $("#importDialog").hidden || importBusy()) return;
     if (data.path) {
       $("#importPath").value = data.path;
+      updateImportButton();
       setImportMessage("已选择目录，可继续导入。");
     } else {
       setImportMessage("没有选择目录。");
     }
   } catch (error) {
+    if (sequence !== importView.scan || controller.signal.aborted) return;
     setImportMessage(`选择失败：${error.message}，也可以手动输入路径。`, true);
   } finally {
-    pickButton.disabled = false;
+    if (importView.picker === controller) importView.picker = null;
+    pickButton.disabled = importBusy();
   }
 }
 
@@ -3272,14 +3251,214 @@ function saveExcludedHomes() {
   }
 }
 
+function importBusy() {
+  return importView.submitting || ["running", "ready", "published"].includes(importView.task?.status);
+}
+
+function selectedImportPaths() {
+  const selected = [...document.querySelectorAll("#importCandidates input:checked")].map((input) => input.value);
+  const manual = $("#manualImportArea").hidden ? "" : $("#importPath").value.trim();
+  return [...new Set([...selected, ...(manual ? [manual] : [])])];
+}
+
+function updateImportButton() {
+  const busy = importBusy();
+  const count = selectedImportPaths().length;
+  $("#submitImportButton").disabled = busy || importView.scanning || !count;
+  $("#submitImportButton").textContent = localizeText(count ? `导入所选（${count}）` : "导入所选");
+  for (const control of document.querySelectorAll(
+    "#importCandidates input, #importPath, #pickImportDirectoryButton, #manualImportButton, #rescanImportsButton",
+  ))
+    control.disabled = busy;
+  $("#rescanImportsButton").disabled = busy || importView.scanning;
+  $("#manualImportButton").disabled = busy || importView.scanning;
+}
+
+function showManualImport(show) {
+  $("#manualImportArea").hidden = !show;
+  $("#manualImportButton").setAttribute("aria-expanded", String(show));
+  updateImportButton();
+}
+
+function renderImportHelp(data) {
+  const windows = data.platform === "win32";
+  const mac = data.platform === "darwin";
+  $("#importHelp").textContent = localizeText(
+    windows
+      ? "在文件资源管理器地址栏输入下列位置；选择软件的记录目录，不要选择单个记录文件。"
+      : mac
+        ? "在 Finder 按 Command＋Shift＋G，输入下列位置；Command＋Shift＋. 可显示隐藏文件夹。"
+        : "在文件管理器中打开下列位置，显示隐藏文件夹后选择记录目录。",
+  );
+  const root = windows ? "%USERPROFILE%" : "~";
+  const separator = windows ? "\\" : "/";
+  const locations = [
+    ["Codex", ".codex"],
+    ["Claude Code", ".claude"],
+    ["DSH", ".dsh"],
+    ["ZCode", ".zcode"],
+    ["WorkBuddy", ".workbuddy-ai"],
+    ["OpenCode", ".local/share/opencode"],
+  ];
+  $("#importLocations").innerHTML = locations
+    .map(
+      ([name, directory]) =>
+        `<li>${name} · <code>${escapeHtml(root + separator + directory.replaceAll("/", separator))}</code></li>`,
+    )
+    .join("");
+  $("#importPath").placeholder = windows ? "%USERPROFILE%\\.codex" : "~/.codex";
+}
+
+async function scanImportDirectories() {
+  const sequence = ++importView.scan;
+  importView.controller?.abort();
+  importView.picker?.abort();
+  const controller = new AbortController();
+  importView.controller = controller;
+  importView.scanning = true;
+  $("#importCandidatesField").hidden = true;
+  $("#importCandidates").innerHTML = "";
+  $("#importDiagnostics").hidden = true;
+  showManualImport(false);
+  setImportMessage("正在查找本机记录…");
+  updateImportButton();
+  try {
+    const response = await fetch("/api/imports/discover", { signal: controller.signal });
+    const data = await response.json();
+    if (sequence !== importView.scan || $("#importDialog").hidden) return;
+    if (!response.ok) throw new Error(localizeServerError(data, response.status));
+    renderImportHelp(data);
+    const candidates = data.candidates.filter((source) => !source.confirmed);
+    $("#importCandidatesField").hidden = !candidates.length;
+    $("#importCandidates").innerHTML = candidates
+      .map(
+        (source) =>
+          `<label class="source-option"><input type="checkbox" value="${escapeHtml(source.path)}" checked /><span class="source-option-text"><span class="source-option-label"><strong>${escapeHtml(source.label)}</strong></span><span class="source-option-path" title="${escapeHtml(source.path)}">${escapeHtml(source.path)}</span></span></label>`,
+      )
+      .join("");
+    const errors = data.errors || [];
+    $("#importDiagnostics").hidden = !errors.length;
+    $("#importDiagnosticsText").textContent = errors
+      .map((error) => `${error.path}: ${localizeServerError(error)}`)
+      .join("\n");
+    showManualImport(!data.candidates.length);
+    if (!data.candidates.length) $("#importPath").focus();
+    setImportMessage(
+      candidates.length
+        ? errors.length
+          ? "已找到记录，部分位置无法访问。"
+          : "选择需要导入的记录目录。"
+        : data.candidates.length
+          ? "没有发现新的记录目录。"
+          : errors.length
+            ? "部分位置无法访问，请选择记录目录。"
+            : "未找到记录目录，请选择记录所在位置。",
+      !data.candidates.length && errors.length > 0,
+    );
+  } catch (error) {
+    if (sequence !== importView.scan || error.name === "AbortError") return;
+    showManualImport(true);
+    $("#importPath").focus();
+    setImportMessage(`扫描失败：${error.message}`, true);
+  } finally {
+    if (sequence === importView.scan) {
+      importView.scanning = false;
+      updateImportButton();
+    }
+  }
+}
+
+function renderImportProgress() {
+  const task = importView.task;
+  if (!task || importView.complete === task.id) return;
+  const labels = {
+    reading: "正在读取记录…",
+    statistics: "正在建立统计…",
+    settling: "正在校验记录…",
+    dashboard: "正在更新看板…",
+  };
+  const seconds = Math.max(0, Math.floor(((task.finishedAt || Date.now()) - task.startedAt) / 1000));
+  const message = localizeText(labels[task.stage] || labels.reading);
+  const node = $("#importMessage");
+  if (node.firstChild?.textContent !== message || !node.lastElementChild) {
+    setImportMessage(message);
+    const elapsed = document.createElement("span");
+    elapsed.setAttribute("aria-hidden", "true");
+    node.append(elapsed);
+    setAutoRefreshStatus(message);
+  }
+  node.lastElementChild.textContent = ` · ${localizeText(`已用 ${seconds} 秒`)}`;
+}
+
+async function pollImportTask(restore = false) {
+  if (importView.poll) return;
+  importView.poll = true;
+  try {
+    const response = await fetch(restore ? "/api/imports" : "/api/status");
+    const data = await response.json();
+    if (!response.ok) throw new Error(localizeServerError(data, response.status));
+    const task = data.importTask;
+    if (!task || importView.complete === task.id) return;
+    if (task.status === "published" && !importView.task) return;
+    importView.task = task;
+    updateImportButton();
+    if (task.status === "failed") throw new Error(localizeServerError({ ...task.error, error: task.error?.message }));
+    renderImportProgress();
+    if (!importView.timer)
+      importView.timer = window.setInterval(() => {
+        renderImportProgress();
+        void pollImportTask();
+      }, 1000);
+    if (["ready", "published"].includes(task.status)) {
+      state.snapshotId = null;
+      const result = await loadUsage({ live: true, requiredSourceVersion: task.sourceVersion });
+      if (!result) return;
+      importView.complete = task.id;
+      window.clearInterval(importView.timer);
+      importView.timer = null;
+      importView.task = null;
+      $("#importCandidatesField").hidden = true;
+      $("#importCandidates").innerHTML = "";
+      $("#importPath").value = "";
+      renderSourceOptions();
+      const hasRecords = result.metadata.homes.some((home) => task.sourceIds.includes(home.id) && home.eventCount > 0);
+      const message = hasRecords ? `已导入 ${task.count} 个来源。` : "该目录暂无可统计记录。";
+      setImportMessage(message);
+      setAutoRefreshStatus(localizeText(message));
+      if (task.warnings?.length) {
+        $("#importDiagnostics").hidden = false;
+        $("#importDiagnosticsText").textContent = task.warnings.join("\n");
+      }
+    }
+  } catch (error) {
+    if (restore && !importView.task) return;
+    window.clearInterval(importView.timer);
+    importView.timer = null;
+    if (importView.task) importView.task.status = "failed";
+    setImportMessage(`导入失败：${error.message}`, true);
+    setAutoRefreshStatus(`导入失败：${error.message}`, { error: true });
+  } finally {
+    importView.poll = false;
+    updateImportButton();
+  }
+}
+
 function openImportDialog() {
   const dialog = $("#importDialog");
   importDialogOpener = document.activeElement;
   dialog.hidden = false;
-  $("#importPath").value = "";
-  setImportMessage("");
   renderSourceOptions();
-  window.requestAnimationFrame(() => $("#importPath").focus());
+  renderImportHelp({
+    platform: navigator.platform.startsWith("Win")
+      ? "win32"
+      : navigator.platform.startsWith("Mac")
+        ? "darwin"
+        : "linux",
+  });
+  if (importBusy()) renderImportProgress();
+  else void scanImportDirectories();
+  void pollImportTask();
+  window.requestAnimationFrame(() => $("#cancelImportButton").focus());
 }
 
 function renderSourceOptions() {
@@ -3305,6 +3484,10 @@ function setSourceOption(id, checked) {
 }
 
 function closeImportDialog() {
+  importView.scan++;
+  importView.controller?.abort();
+  importView.picker?.abort();
+  importView.scanning = false;
   $("#importDialog").hidden = true;
   setImportMessage("");
   importDialogOpener?.focus({ preventScroll: true });
@@ -3326,32 +3509,28 @@ function trapDialogFocus(event, dialog) {
 
 async function submitImportDirectory(event) {
   event.preventDefault();
-  const importPath = $("#importPath").value.trim();
-  if (!importPath) {
-    setImportMessage("请输入目录路径。", true);
-    return;
-  }
-
-  const submitButton = $("#submitImportButton");
-  submitButton.disabled = true;
+  const paths = selectedImportPaths();
+  if (importBusy() || !paths.length) return;
+  importView.submitting = true;
+  updateImportButton();
   setImportMessage("正在识别目录...");
   try {
     const response = await fetch("/api/imports", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: importPath }),
+      body: JSON.stringify({ paths }),
     });
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(localizeServerError(data, response.status));
-    }
-    closeImportDialog();
-    setAutoRefreshStatus(`已导入 ${data.import.label}，正在刷新...`);
-    await loadUsage();
+    if (!response.ok)
+      throw new Error(`${localizeServerError(data, response.status)}${data.path ? ` · ${data.path}` : ""}`);
+    importView.task = data.importTask;
+    renderImportProgress();
+    void pollImportTask();
   } catch (error) {
     setImportMessage(`导入失败：${error.message}`, true);
   } finally {
-    submitButton.disabled = false;
+    importView.submitting = false;
+    updateImportButton();
   }
 }
 
@@ -3681,7 +3860,7 @@ function finishUsageLoad(loadId) {
   complete(pending ? reloadSyncedUsage(pending.version, pending) : undefined);
 }
 
-async function loadUsage({ skipCheck = false, freeze = false } = {}) {
+async function loadUsage({ skipCheck = false, freeze = false, live = false, requiredSourceVersion = null } = {}) {
   cancelUsageRetry?.();
   const loadId = ++state.usageLoadId;
   activeUsageLoadId = loadId;
@@ -3695,13 +3874,15 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
 
   try {
     let data;
+    let pendingAttempts = 0;
     while (true) {
       const response = await fetch(
-        `/api/usage${usageQuery({ skipCheck, freeze: freeze || (!state.autoRefreshEnabled && !state.snapshotId) })}`,
+        `/api/usage${usageQuery({ skipCheck, freeze: !live && (freeze || (!state.autoRefreshEnabled && !state.snapshotId)) })}`,
       );
       data = await response.json().catch(() => null);
       if (loadId !== state.usageLoadId) return;
       if (response.status === 409 && data?.code === "SOURCE_UPDATE_PENDING") {
+        if (++pendingAttempts >= 30) throw new Error(localizeServerError(data, response.status));
         setAutoRefreshStatus("", { busy: true });
         skipCheck = false;
         await new Promise((resolve) => {
@@ -3724,6 +3905,8 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
       }
       break;
     }
+    if (requiredSourceVersion && data.sourceVersion !== requiredSourceVersion)
+      throw new Error(localizeText("看板尚未更新，请重试。"));
     if (loadId !== state.usageLoadId) return;
     state.metadata = data.metadata;
     state.summary = data.summary;
@@ -3736,11 +3919,10 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
     state.snapshotId = data.snapshotId || null;
     const costEstimate = data.summary?.costEstimate;
     if (Number(costEstimate?.usdToCnyRate) > 0) state.usdToCnyRate = Number(costEstimate.usdToCnyRate);
-    state.costScaleTarget = (costEstimate?.currencies || []).includes("CNY") ? "CNY" : "USD";
     if (data.checkedAt) state.lastSuccessfulCheck = data.checkedAt;
     const previousPreset = state.preset;
     reconcileQuotaSourceSelection();
-    if (previousPreset !== state.preset) return loadUsage({ skipCheck: true });
+    if (previousPreset !== state.preset) return loadUsage({ skipCheck: true, live, requiredSourceVersion });
     renderAutoRefreshControls();
     updateQuotaPresetButton();
     render();
@@ -3761,7 +3943,9 @@ async function loadUsage({ skipCheck = false, freeze = false } = {}) {
         }
       } catch {}
     }
+    return data;
   } catch (error) {
+    if (requiredSourceVersion) throw error;
     if (loadId === state.usageLoadId && error.status === 410 && state.snapshotId && !state.autoRefreshEnabled) {
       state.snapshotId = null;
       setAutoRefreshStatus("", { busy: true });
@@ -3805,6 +3989,10 @@ async function checkForUpdates() {
     const response = await fetch(`/api/status${since ? `?since=${encodeURIComponent(since)}` : ""}`);
     if (!response.ok) throw new Error(`API ${response.status}`);
     const status = await response.json();
+    if (status.importTask && ["running", "ready"].includes(status.importTask.status)) {
+      void pollImportTask();
+      return;
+    }
     if (!state.autoRefreshEnabled || runId !== state.autoRefreshRunId) return;
     state.lastSuccessfulCheck = status.checkedAt || new Date().toISOString();
     setAutoRefreshStatus("");
@@ -4157,6 +4345,12 @@ function setupFrameSpotlight(root) {
 
 async function bootDashboard() {
   try {
+    state.costScaleTarget = window.localStorage.getItem(DISPLAY_CURRENCY_STORAGE_KEY) === "CNY" ? "CNY" : "USD";
+  } catch {
+    state.costScaleTarget = "USD";
+  }
+  updateDisplayCurrencyButtons();
+  try {
     state.calendarZone = window.localStorage.getItem("codexUsageCalendarZoneV2") === "utc" ? "utc" : "local";
   } catch {
     state.calendarZone = "local";
@@ -4366,6 +4560,19 @@ async function bootDashboard() {
     updatePricingScopeButtons();
     renderPricingModelList();
   });
+  $("#pricingCurrency").addEventListener("click", (event) => {
+    const currency = event.target.closest("[data-display-currency]")?.dataset.displayCurrency;
+    if (!["USD", "CNY"].includes(currency) || currency === state.costScaleTarget) return;
+    state.costScaleTarget = currency;
+    try {
+      window.localStorage.setItem(DISPLAY_CURRENCY_STORAGE_KEY, currency);
+    } catch {
+      // Browsers that disable storage still allow changing the current display.
+    }
+    updateDisplayCurrencyButtons();
+    hideUsageTooltip();
+    render();
+  });
   $("#pricingModelList").addEventListener("click", (event) => {
     if (event.target.closest("[data-pricing-rematch]")) {
       void refreshPricingAutomatically(true);
@@ -4438,6 +4645,13 @@ async function bootDashboard() {
     });
   });
   $("#importForm").addEventListener("submit", submitImportDirectory);
+  $("#rescanImportsButton").addEventListener("click", () => void scanImportDirectories());
+  $("#manualImportButton").addEventListener("click", () => {
+    showManualImport($("#manualImportArea").hidden);
+    if (!$("#manualImportArea").hidden) $("#importPath").focus();
+  });
+  $("#importCandidates").addEventListener("change", updateImportButton);
+  $("#importPath").addEventListener("input", updateImportButton);
   $("#pickImportDirectoryButton").addEventListener("click", pickImportDirectory);
   $("#sourcePicker").addEventListener("change", (event) => {
     const input = event.target.closest("input[data-source-id]");
@@ -4513,6 +4727,7 @@ async function bootDashboard() {
   state.excludedHomes = readExcludedHomes();
   initializeAutoRefresh();
   updateRecentControls();
+  void pollImportTask(true);
   void loadUsage().then(() => {
     startAutoRefresh();
     void refreshPricingAutomatically();

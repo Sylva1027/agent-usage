@@ -430,8 +430,8 @@ test("timeline details follow channel, model, and cost modes", () => {
   assert.equal(timelineDetailRows(summary, "channel"), channels);
   assert.equal(timelineDetailRows(summary, "model"), models);
   assert.deepEqual(timelineDetailRows(summary, "cost"), [
-    { name: "gpt-6-luna", totalUsd: 0.6, currency: "USD", scaleValue: 0.6 },
-    { name: "gpt-6-sol", totalUsd: 0.5, currency: "USD", scaleValue: 0.5 },
+    { name: "gpt-6-luna", value: 0.6 },
+    { name: "gpt-6-sol", value: 0.5 },
   ]);
   assert.deepEqual(timelineDetailRows({ ...summary, timelineError: "too many slots" }, "cost"), []);
 });
@@ -441,9 +441,9 @@ test("cost details show model amounts and escape model names", () => {
   globalThis.document = { documentElement: { dataset: { theme: "light" } } };
   try {
     const html = renderCostDetailHtml([
-      { name: '<img src=x onerror="alert(1)">', totalUsd: 1.25 },
-      { name: "gpt-6-sol", totalUsd: 0.5 },
-      { name: "gpt-6-luna", totalUsd: 1.256 },
+      { name: '<img src=x onerror="alert(1)">', value: 1.25 },
+      { name: "gpt-6-sol", value: 0.5 },
+      { name: "gpt-6-luna", value: 1.256 },
     ]);
     assert.match(html, /\$1\.25/);
     assert.match(html, /\$0\.50/);
@@ -786,9 +786,7 @@ test("light overflow chart colors meet the derived surfaces and keep fixed/dark 
           for (const background of candidateBackgrounds) assert.ok(contrastRatio(color, background) >= 3);
         }
 
-        const fallbackHtml = renderCostDetailHtml([
-          { name: "overflow-hash-232", totalUsd: 1, currency: "USD", scaleValue: 1 },
-        ]);
+        const fallbackHtml = renderCostDetailHtml([{ name: "overflow-hash-232", value: 1 }]);
         const fallbackColor = /background: (#[0-9a-f]{6});/i.exec(fallbackHtml)?.[1];
         assert.equal(fallbackColor, "#7e7e16");
         for (const background of candidateBackgrounds) assert.ok(contrastRatio(fallbackColor, background) >= 3);
@@ -802,9 +800,7 @@ test("light overflow chart colors meet the derived surfaces and keep fixed/dark 
       } else {
         assert.equal(modelColors.get(overflowNames[1]), "hsl(17 70% 64%)");
         assert.equal(modelColors.get(overflowNames[2]), "hsl(154.508 70% 64%)");
-        const fallbackHtml = renderCostDetailHtml([
-          { name: "overflow-hash-232", totalUsd: 1, currency: "USD", scaleValue: 1 },
-        ]);
+        const fallbackHtml = renderCostDetailHtml([{ name: "overflow-hash-232", value: 1 }]);
         assert.match(fallbackHtml, /background: hsl\(60 70% 64%\);/);
       }
     }
@@ -1640,10 +1636,7 @@ test("model names render lowercase while data keys, colors, and non-model labels
   assert.match(modelBarHtml, /background: #123456/);
   assert.match(renderBarListHtml([{ name: "CLI", total: { total: 5 } }]), /title="CLI">CLI</);
 
-  const costDetailHtml = renderCostDetailHtml(
-    [{ name: mixed, totalUsd: 1.5, currency: "USD", scaleValue: 1.5 }],
-    modelColors,
-  );
+  const costDetailHtml = renderCostDetailHtml([{ name: mixed, value: 1.5 }], modelColors);
   assert.match(costDetailHtml, /title="glm-4\.7-air">glm-4\.7-air</);
   assert.match(costDetailHtml, /background: #123456/);
 
@@ -1717,13 +1710,13 @@ test("timelineSlotRangeTitle expands week and month keys into covered date range
     { key: "2026-03-09" },
     { bucket: "week", start: "2026-03-11T00:00:00", end: "2026-09-01T23:59:59.999" },
   );
-  assert.equal(weekClippedStart, "2026-03-11 至 2026-03-15（部分周）");
+  assert.equal(weekClippedStart, "2026-03-11 至 2026-03-15");
 
   const weekClippedEnd = timelineSlotRangeTitle(
     { key: "2026-03-09" },
     { bucket: "week", start: "2026-03-09T00:00:00", end: "2026-03-12T23:59:59.999" },
   );
-  assert.equal(weekClippedEnd, "2026-03-09 至 2026-03-12（部分周）");
+  assert.equal(weekClippedEnd, "2026-03-09 至 2026-03-12");
 
   const monthFull = timelineSlotRangeTitle(
     { key: "2026-04" },
@@ -1735,7 +1728,7 @@ test("timelineSlotRangeTitle expands week and month keys into covered date range
     { key: "2026-03" },
     { bucket: "month", start: "2026-03-15T00:00:00", end: "2026-09-01T23:59:59.999" },
   );
-  assert.equal(monthPartial, "2026-03-15 至 2026-03-31（部分月）");
+  assert.equal(monthPartial, "2026-03-15 至 2026-03-31");
 
   const dayBucket = timelineSlotRangeTitle(
     { key: "2026-03-15" },

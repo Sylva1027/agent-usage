@@ -1687,6 +1687,34 @@ details.panel:not([open]) > .panel-heading {
   color: var(--ink);
 }
 
+#importDialog [hidden] {
+  display: none;
+}
+.import-tools {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.import-help {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+#importDialog .import-help summary {
+  cursor: pointer;
+}
+.import-help ul {
+  padding-left: 20px;
+}
+.import-help code {
+  font: inherit;
+}
+#importCandidates {
+  max-height: min(220px, 30vh);
+}
+
 .source-picker {
   display: grid;
   gap: 6px;
@@ -2202,12 +2230,12 @@ details.panel:not([open]) > .panel-heading {
 
 [data-theme="dark"],
 .skin-preview-scope[data-preview-theme="dark"] {
-  --bg: #20252b;
-  --panel: #1b2229;
-  --control: #1b2229;
-  --track: #252e37;
-  --neo-surface: #292f35;
-  --neo-glow: #3c454e;
+  --bg: #15181c;
+  --panel: #1e2227;
+  --control: #1e2227;
+  --track: #161a1e;
+  --neo-surface: #1e2227;
+  --neo-glow: #30363d;
   --neo-edge: rgba(255, 255, 255, 0.045);
   --neo-raised: 0 6px 14px rgba(0, 0, 0, 0.22);
   --neo-raised-small: 0 3px 8px rgba(0, 0, 0, 0.24);
@@ -2370,6 +2398,7 @@ select:focus-visible {
 
 .recent-range-menu button[aria-selected="true"],
 .date-picker-day.selected,
+#manualImportButton[aria-expanded="true"],
 .ceramic-toggle[aria-pressed="true"],
 .ceramic-toggle:not(:disabled):active {
   border-color: transparent;
@@ -2444,12 +2473,12 @@ select:focus-visible {
 }
 [data-theme="dark"],
 .skin-preview-scope[data-preview-theme="dark"] {
-  --ceramic-top: #343c43;
-  --ceramic-bottom: #272e34;
-  --ceramic-well: #232b32;
-  --ceramic-light: #47515a65;
-  --ceramic-shade: #11161cb8;
-  --ceramic-rim: #6d7b8766;
+  --ceramic-top: #262a2f;
+  --ceramic-bottom: #191d21;
+  --ceramic-well: #161a1e;
+  --ceramic-light: #3a404665;
+  --ceramic-shade: #080b0fb8;
+  --ceramic-rim: #4a515866;
   --ink: #edf3f7;
   --muted: #b1becb;
   --blue: #6cdae2;
@@ -3675,9 +3704,14 @@ main.shell .period-comparison-table > .empty {
   line-height: var(--dialog-body-line-height);
 }
 
-#importForm > label {
+#manualImportArea {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+#manualImportArea > label {
+  display: grid;
   line-height: var(--dialog-body-line-height);
 }
 
@@ -3830,6 +3864,14 @@ main.shell .period-comparison-table > .empty {
   line-height: var(--dialog-body-line-height);
 }
 
+#pricingForm .pricing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--dialog-gap);
+}
+
 #pricingForm .pricing-scope {
   width: min(100%, 320px);
   min-height: calc(var(--dialog-control-height) + 16px);
@@ -3838,6 +3880,41 @@ main.shell .period-comparison-table > .empty {
 #pricingForm .pricing-scope > button {
   min-height: var(--dialog-control-height);
   line-height: var(--dialog-body-line-height);
+}
+
+#pricingForm .pricing-currency-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#pricingForm .pricing-currency {
+  flex-wrap: nowrap;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 12px;
+}
+
+#pricingForm .pricing-currency > button {
+  min-width: 30px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+@media (max-width: 620px) {
+  #pricingForm .pricing-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  #pricingForm #pricingSearch {
+    flex: 1 0 100%;
+  }
 }
 
 #pricingForm .pricing-model-list {

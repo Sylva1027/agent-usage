@@ -10,6 +10,7 @@ import { glmPricingPage, stepfunPricingPage, kimiPricingPage } from "../test-sup
 
 import { createUsageServer as createUsageServerBase, isFullDetailHeapAvailable, readJsonBody } from "../src/server.js";
 import { UsageStore } from "../src/usage-store.js";
+import { discoverUsageSources } from "../src/usage-core.js";
 import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 import {
   getDefaultPricingCatalog,
@@ -175,6 +176,12 @@ async function makeFixtureHome() {
         },
       },
     ]),
+  );
+  const importStoreFile = path.join(fakeHome, ".codex-usage", "imports.json");
+  await mkdir(path.dirname(importStoreFile), { recursive: true });
+  await writeFile(
+    importStoreFile,
+    JSON.stringify({ version: 2, imports: await discoverUsageSources({ homeDir: fakeHome, env: {} }) }),
   );
   return {
     homeDir: fakeHome,
@@ -816,7 +823,7 @@ test("server imports project usage log directories and refreshes usage data", as
     assert.equal(imported.import.path, projectRoot);
     assert.deepEqual(
       imports.imports.map((entry) => entry.path),
-      [projectRoot],
+      [path.join(homeDir, ".codex"), projectRoot],
     );
     assert.equal(after.summary.totals.total, 200);
     assert.deepEqual(

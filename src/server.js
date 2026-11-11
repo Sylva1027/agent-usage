@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,6 +20,7 @@ import {
   toPublicUsageReport,
   USAGE_PRESETS,
 } from "./usage-core.js";
+import { createSourceImports, importPathIdentity, normalizeImportPath } from "./source-imports.js";
 import { createUsageExecutor } from "./usage-executor.js";
 import { UsageSummaryCache, publishedSummarySource, summaryCacheKey } from "./usage-summary-cache.js";
 import { recoverCodexQuota } from "./codex-quota-cache.js";
@@ -47,7 +48,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 const MIN_FULL_DETAIL_HEAP_BYTES = 512 * 1024 * 1024;
 const PRICING_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-const DEFAULT_IMPORT_STORE_FILE = path.join(os.homedir(), ".codex-usage", "imports.json");
 const execFileAsync = promisify(execFile);
 
 const MIME_TYPES = new Map([
@@ -143,57 +143,6 @@ export function isFullDetailHeapAvailable(heapSizeLimitBytes = v8.getHeapStatist
   return heapSizeLimitBytes >= MIN_FULL_DETAIL_HEAP_BYTES;
 }
 
-function configuredImportDirs(options = {}) {
-  if (Array.isArray(options.importDirs)) {
-    return options.importDirs;
-  }
-  if (typeof options.importDirs === "string") {
-    return options.importDirs.split(path.delimiter).filter(Boolean);
-  }
-  return [];
-}
-
-function importStoreFile(options = {}) {
-  return options.importStoreFile || DEFAULT_IMPORT_STORE_FILE;
-}
-
-function normalizeImportEntries(entries = []) {
-  const seen = new Set();
-  const normalized = [];
-  for (const entry of entries) {
-    const rawPath = typeof entry === "string" ? entry : entry?.path;
-    if (!rawPath) {
-      continue;
-    }
-    const resolved = path.resolve(rawPath);
-    if (seen.has(resolved)) {
-      continue;
-    }
-    seen.add(resolved);
-    normalized.push({ path: resolved });
-  }
-  return normalized;
-}
-
-async function readImportEntries(options = {}) {
-  try {
-    const text = await readFile(importStoreFile(options), "utf8");
-    const parsed = JSON.parse(text);
-    return normalizeImportEntries(Array.isArray(parsed) ? parsed : parsed.imports);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function writeImportEntries(options, entries) {
-  const filePath = importStoreFile(options);
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify({ imports: normalizeImportEntries(entries) }, null, 2)}\n`);
-}
-
 export async function describeImportEntry(importPath) {
   const classified = await classifyImportDirectory(importPath);
   if (classified.type === "unsupported") {
@@ -221,21 +170,6 @@ export async function describeImportEntry(importPath) {
     ...(classified.usageLogPath ? { usageLogPath: classified.usageLogPath } : {}),
     ...(classified.dbFile ? { dbFile: classified.dbFile } : {}),
   };
-}
-
-async function listImportEntries(options = {}) {
-  const storedEntries = await readImportEntries(options);
-  const described = [];
-  for (const entry of storedEntries) {
-    described.push(await describeImportEntry(entry.path));
-  }
-  return described;
-}
-
-async function usageOptions(options = {}) {
-  const storedEntries = await readImportEntries(options);
-  const importDirs = [...configuredImportDirs(options), ...storedEntries.map((entry) => entry.path)];
-  return { ...options, importDirs };
 }
 
 function clientFingerprint(sourceFingerprint, pricingVersion = pricingVersionForTimestamp(), asOf = null) {
@@ -302,30 +236,44 @@ export async function readJsonBody(request, { maxBytes = 16_384 } = {}) {
   }
 }
 
-async function pickDirectoryWithSystemDialog() {
-  // The browser cannot expose absolute local paths, so the local server opens
-  // the native macOS folder picker and returns only the selected path.
+async function pickDirectoryWithSystemDialog(signal) {
+  if (process.platform === "win32") {
+    const helper = path.resolve(__dirname, "../native/windows-source-proof/bin/windows-source-proof.exe");
+    try {
+      const { stdout } = await execFileAsync(helper, ["pick-directory"], {
+        windowsHide: true,
+        encoding: "utf8",
+        signal,
+      });
+      const result = JSON.parse(stdout);
+      if (typeof result.path !== "string") throw new Error(result.error || "Invalid picker result.");
+      return result.path;
+    } catch (error) {
+      throw httpError(500, error.message, "DIRECTORY_PICKER_FAILED");
+    }
+  }
   if (process.platform !== "darwin") {
-    throw new Error("Directory picker is only available on macOS; enter the path manually.");
+    throw httpError(400, "Enter the directory path manually on this system.", "DIRECTORY_PICKER_UNAVAILABLE");
   }
 
   try {
-    const { stdout } = await execFileAsync("osascript", [
-      "-e",
-      'POSIX path of (choose folder with prompt "选择要导入的 Agent Usage 目录")',
-    ]);
+    const { stdout } = await execFileAsync(
+      "osascript",
+      ["-e", 'POSIX path of (choose folder with prompt "选择要导入的 Agent Usage 目录")'],
+      { signal },
+    );
     return stdout.trim();
   } catch (error) {
     if (error.code === 1 && String(error.stderr || "").includes("-128")) {
       return "";
     }
-    throw error;
+    throw httpError(500, error.message, "DIRECTORY_PICKER_FAILED");
   }
 }
 
-function pickDirectory(options = {}) {
+function pickDirectory(options = {}, signal) {
   // Tests and future desktop shells can inject a picker without changing routes.
-  return options.pickDirectory ? options.pickDirectory() : pickDirectoryWithSystemDialog();
+  return options.pickDirectory ? options.pickDirectory({ signal }) : pickDirectoryWithSystemDialog(signal);
 }
 
 async function serveStatic(requestPath, response) {
@@ -372,11 +320,40 @@ export function createUsageServer(options = {}) {
   const localPricingCatalog = () => importContext?.pricingCatalog || getPricingCatalog();
   const liveAutomaticPricingStatus = () =>
     importContext ? (importContext.automaticPricingStatus ?? null) : getAutomaticPricingStatus();
-  const usageStore = createUsageExecutor(options, { pricing: localPricingCatalog });
+  let importTask = null;
+  let directoryPicker = null;
+  const usageStore = createUsageExecutor(options, {
+    pricing: localPricingCatalog,
+    onImportStage: (stage) => {
+      if (importTask?.status === "running") importTask.stage = stage;
+    },
+  });
   const summaryCache = new UsageSummaryCache(options);
   const runtimeDatabaseFile = path.resolve(
     options.databaseFile || path.join(options.homeDir || os.homedir(), ".codex-usage", "usage-index.sqlite"),
   );
+  const sourceImports = createSourceImports(options, async () => {
+    try {
+      await stat(runtimeDatabaseFile);
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    return usageStore.publishedUsageHomes();
+  });
+  let sourceVersion = null;
+  async function usageOptions() {
+    if (importContext) return options;
+    const confirmedSources = await sourceImports.list();
+    sourceVersion = createHash("sha256").update(JSON.stringify(confirmedSources)).digest("hex");
+    return { ...options, confirmedSources, importStoreFile: sourceImports.file };
+  }
+  async function listImportEntries() {
+    if (importContext) return [];
+    return Promise.all(
+      (await sourceImports.list()).map(async (entry) => ({ ...(await describeImportEntry(entry.path)), ...entry })),
+    );
+  }
   const runtimeSummaryCacheFile = path.resolve(summaryCache.file);
   const runtimeSegmentDirectory = `${runtimeDatabaseFile}.segments`;
   const runtimeGeneratedFiles = [
@@ -396,6 +373,40 @@ export function createUsageServer(options = {}) {
   let pricingRefreshPending = null;
   let pricingMutationTail = Promise.resolve();
   let pricingRefreshTimer = null;
+  let importAdmission = Promise.resolve();
+  function admitImport(task) {
+    const result = importAdmission.then(task);
+    importAdmission = result.catch(() => {});
+    return result;
+  }
+  async function runImport(task) {
+    const releaseWorker = usageStore.retainWorker();
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await loadUsageStore({ check: true });
+          break;
+        } catch (error) {
+          if (serverClosed || error.code !== "SOURCE_UPDATE_PENDING" || attempt >= 29) throw error;
+          task.stage = "settling";
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+      task.status = "ready";
+      task.stage = "dashboard";
+      task.warnings = [...usageStore.warnings];
+    } catch (error) {
+      task.status = "failed";
+      task.error = { code: error.code || "IMPORT_FAILED", message: error.message };
+      task.finishedAt = Date.now();
+      if (sourceRetryTimer !== null) clearTimeout(sourceRetryTimer);
+      sourceRetryTimer = null;
+      sourceUpdatePending = usageWakePending = false;
+    } finally {
+      releaseWorker();
+      for (const client of usageEventClients) writeUsageEvent(client, "import", { importTask: task });
+    }
+  }
   let storeStatus = null;
   let syncPromise = null;
   let publishedSource = null;
@@ -648,7 +659,7 @@ export function createUsageServer(options = {}) {
         cleanupDirectory: frozen.cleanupDirectory ? `${databaseFile}.segments` : null,
         status: { ...(frozen.status || status), checkedAt: frozen.checkedAt || status.checkedAt },
         asOf,
-        metadata: { ...frozen.metadata, imports: await listImportEntries(options) },
+        metadata: { ...frozen.metadata, imports: await listImportEntries() },
         databaseFile,
         fingerprintSource: importContext
           ? status.fingerprint
@@ -674,7 +685,7 @@ export function createUsageServer(options = {}) {
   }
 
   function scheduleSourceRetry() {
-    if (serverClosed || sourceRetryTimer !== null) return;
+    if (serverClosed || importTask?.status === "failed" || sourceRetryTimer !== null) return;
     sourceRetryTimer = setTimeout(() => {
       sourceRetryTimer = null;
       void requestUsageWake();
@@ -711,11 +722,13 @@ export function createUsageServer(options = {}) {
     }
     const releaseAcquisition = usageStore.retainWorker();
     let laterInputs = false;
+    let acquiredSourceVersion = null;
     syncPromise = (async () => {
-      const currentUsageOptions = await usageOptions(options);
+      const currentUsageOptions = await usageOptions();
+      acquiredSourceVersion = sourceVersion;
       const sourceOptions = {
         ...currentUsageOptions,
-        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+        importStoreFile: sourceImports.file,
       };
       const hints = sourceHints;
       sourceHints = { paths: [], unknown: false };
@@ -759,7 +772,7 @@ export function createUsageServer(options = {}) {
       }
       const before = await summaryCache.readSourceState({
         ...currentUsageOptions,
-        importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+        importStoreFile: sourceImports.file,
       });
       // Acquisition can be complete before a dashboard response has been cached.
       if (
@@ -827,13 +840,14 @@ export function createUsageServer(options = {}) {
       return status;
     })()
       .then((status) => {
+        storeStatus = { ...status, sourceVersion: acquiredSourceVersion };
         pendingAfterPublication = laterInputs;
         sourceUpdatePending = laterInputs;
         if (laterInputs) {
           sourceHints.unknown = true;
           scheduleSourceRetry();
         }
-        return status;
+        return storeStatus;
       })
       .catch((error) => {
         pendingAfterPublication = false;
@@ -852,8 +866,11 @@ export function createUsageServer(options = {}) {
   }
 
   async function discoverUsageWatchRoots() {
-    const currentOptions = await usageOptions(options);
-    const sources = storeStatus?.acquisition?.homes || (await discoverUsageSources(currentOptions));
+    const currentOptions = await usageOptions();
+    const sources =
+      currentOptions.confirmedSources ||
+      storeStatus?.acquisition?.homes ||
+      (await discoverUsageSources(currentOptions));
     const roots = [];
     for (const source of sources) {
       const sourceRoot = path.resolve(source.path);
@@ -870,7 +887,7 @@ export function createUsageServer(options = {}) {
         }
       }
     }
-    const storeFile = importStoreFile(options);
+    const storeFile = sourceImports.file;
     roots.push({
       path: path.dirname(storeFile),
       filename: path.basename(storeFile),
@@ -987,7 +1004,12 @@ export function createUsageServer(options = {}) {
   }
 
   function requestUsageWake() {
-    if (serverClosed || (!usageEventClients.size && !sourceUpdatePending) || sourceRetryTimer !== null)
+    if (
+      serverClosed ||
+      importTask?.status === "failed" ||
+      (!usageEventClients.size && !sourceUpdatePending) ||
+      sourceRetryTimer !== null
+    )
       return Promise.resolve();
     if (usageWakePromise) {
       usageWakePending = true;
@@ -1146,10 +1168,21 @@ export function createUsageServer(options = {}) {
       }
 
       if (url.pathname === "/api/status") {
-        const currentOptions = await usageOptions(options);
+        if (importTask?.status === "running" || importTask?.status === "ready" || importTask?.status === "failed") {
+          sendJson(response, 200, {
+            importTask,
+            sourceVersion,
+            changed: importTask.status === "ready",
+            fingerprint: null,
+            usageVersion: null,
+            checkedAt: new Date().toISOString(),
+          });
+          return;
+        }
+        const currentOptions = await usageOptions();
         const sourceOptions = {
           ...currentOptions,
-          importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+          importStoreFile: sourceImports.file,
         };
         // Revalidate raw sources before reusing the committed acquisition's identity.
         const checked =
@@ -1173,6 +1206,8 @@ export function createUsageServer(options = {}) {
           usageVersion: usageVersion(status.fingerprint, importContext ? null : status, catalog, asOf),
           changed: since ? fingerprint !== since : true,
           checkedAt: status.checkedAt,
+          importTask,
+          sourceVersion,
         });
         return;
       }
@@ -1327,47 +1362,89 @@ export function createUsageServer(options = {}) {
         return;
       }
 
+      if (url.pathname === "/api/imports/discover" && request.method === "GET") {
+        sendJson(response, 200, await sourceImports.discover());
+        return;
+      }
+
       if (url.pathname === "/api/imports") {
         if (request.method === "GET") {
-          sendJson(response, 200, { imports: await listImportEntries(options) });
+          sendJson(response, 200, { imports: await listImportEntries(), importTask });
           return;
         }
 
+        if (importContext) throw httpError(409, "Sources are fixed for this runtime.", "IMPORT_RUNTIME_READ_ONLY");
         if (request.method === "POST") {
           const body = await readJsonBody(request);
-          if (!body.path) {
-            sendJson(response, 400, { code: "MISSING_IMPORT_PATH", error: "Missing import directory path." });
-            return;
-          }
-          const entry = await describeImportEntry(body.path);
-          if (entry.type === "unsupported") {
-            sendJson(response, 400, {
-              code: "INVALID_IMPORT_DIRECTORY",
-              error: "reason" in entry ? entry.reason : "Unsupported import directory.",
-              path: entry.path,
-            });
-            return;
-          }
-          const entries = normalizeImportEntries([...(await readImportEntries(options)), entry]);
-          await writeImportEntries(options, entries);
-          await summaryCache.invalidate();
-          storeStatus = null;
-          void usageSourceWatcher.refresh();
-          sendJson(response, 200, {
-            import: entry,
-            imports: await listImportEntries(options),
+          if (!body || typeof body !== "object")
+            throw httpError(400, "Select directory paths.", "INVALID_IMPORT_PATHS");
+          const paths = body.paths ?? (body.path !== undefined ? [body.path] : []);
+          if (
+            (body.paths !== undefined && body.path !== undefined) ||
+            !Array.isArray(paths) ||
+            !paths.length ||
+            paths.length > 64 ||
+            paths.some((value) => typeof value !== "string" || !value.trim())
+          )
+            throw httpError(400, "Select between 1 and 64 directory paths.", "INVALID_IMPORT_PATHS");
+          const result = await admitImport(async () => {
+            if (["running", "ready"].includes(importTask?.status)) {
+              const selected = new Set();
+              for (const value of paths) {
+                const directory = normalizeImportPath(value, options);
+                const classified = await classifyImportDirectory(directory);
+                selected.add(await importPathIdentity(classified.path || directory));
+              }
+              const active = await Promise.all(importTask.paths.map(importPathIdentity));
+              if (selected.size !== active.length || active.some((directory) => !selected.has(directory)))
+                throw httpError(409, "Import is in progress.", "IMPORT_IN_PROGRESS");
+              return { imports: await listImportEntries(), importTask };
+            }
+            if (syncPromise) await syncPromise.catch(() => {});
+            const added = await sourceImports.add(paths);
+            await usageOptions();
+            await summaryCache.invalidate();
+            storeStatus = null;
+            publishedSource = synchronizedSource = null;
+            if (sourceRetryTimer !== null) {
+              clearTimeout(sourceRetryTimer);
+              sourceRetryTimer = null;
+            }
+            importTask = {
+              id: randomUUID(),
+              status: "running",
+              stage: "reading",
+              startedAt: Date.now(),
+              sourceVersion,
+              paths: added.selected.map((entry) => entry.path),
+              sourceIds: added.selected.map((entry) => entry.id),
+              count: added.selected.length,
+            };
+            void runImport(importTask);
+            void usageSourceWatcher.refresh();
+            return {
+              import: await describeImportEntry(added.selected[0].path),
+              imports: await listImportEntries(),
+              importTask,
+            };
           });
+          sendJson(response, 200, result);
           return;
         }
 
         if (request.method === "DELETE") {
-          const targetPath = path.resolve(url.searchParams.get("path") || "");
-          const entries = (await readImportEntries(options)).filter((entry) => entry.path !== targetPath);
-          await writeImportEntries(options, entries);
-          await summaryCache.invalidate();
-          storeStatus = null;
+          await admitImport(async () => {
+            if (["running", "ready"].includes(importTask?.status))
+              throw httpError(409, "Import is in progress.", "IMPORT_IN_PROGRESS");
+            if (syncPromise) await syncPromise.catch(() => {});
+            await sourceImports.remove(url.searchParams.get("path"));
+            await summaryCache.invalidate();
+            storeStatus = null;
+            publishedSource = synchronizedSource = null;
+            importTask = null;
+          });
           void usageSourceWatcher.refresh();
-          sendJson(response, 200, { imports: await listImportEntries(options) });
+          sendJson(response, 200, { imports: await listImportEntries() });
           return;
         }
 
@@ -1396,7 +1473,18 @@ export function createUsageServer(options = {}) {
           return;
         }
 
-        sendJson(response, 200, { path: await pickDirectory(options) });
+        if (directoryPicker) throw httpError(409, "A directory picker is already open.", "DIRECTORY_PICKER_BUSY");
+        const controller = new AbortController();
+        directoryPicker = controller;
+        const cancel = () => controller.abort();
+        response.once("close", cancel);
+        try {
+          const directory = await pickDirectory(options, controller.signal);
+          if (!controller.signal.aborted) sendJson(response, 200, { path: directory });
+        } finally {
+          response.off("close", cancel);
+          if (directoryPicker === controller) directoryPicker = null;
+        }
         return;
       }
 
@@ -1452,7 +1540,7 @@ export function createUsageServer(options = {}) {
             }
 
             const indexedStatus = await loadUsageStore({ check });
-            const currentUsageOptions = await usageOptions(options);
+            const currentUsageOptions = await usageOptions();
             const status = await buildUsageFingerprint(currentUsageOptions);
             const fullReport = await buildUsageReport({
               ...currentUsageOptions,
@@ -1494,7 +1582,7 @@ export function createUsageServer(options = {}) {
                 sessionCount: fullReport.sessions.length,
                 homeCount: fullReport.homes.length,
                 homes: fullReport.homes,
-                imports: await listImportEntries(options),
+                imports: await listImportEntries(),
                 warnings: fullReport.warnings,
               },
               report: { ...toPublicUsageReport(report), pricingCatalog },
@@ -1554,10 +1642,10 @@ export function createUsageServer(options = {}) {
                 usageStore.dashboard(filters, { includeDetails }),
               );
               if (source && result.status?.fingerprint === source.fingerprint) {
-                const currentOptions = await usageOptions(options);
+                const currentOptions = await usageOptions();
                 const readOptions = {
                   ...currentOptions,
-                  importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
+                  importStoreFile: sourceImports.file,
                 };
                 const afterRead = source.acquisition
                   ? await summaryCache.readCertifiedSourceState(readOptions, {
@@ -1630,7 +1718,12 @@ export function createUsageServer(options = {}) {
           }
           const responseCatalog = result.pricingCatalog || pricingCatalog;
           const published = result.status || usage;
+          if (importTask?.status === "ready" && importTask.sourceVersion === usage.sourceVersion) {
+            importTask.status = "published";
+            importTask.finishedAt = Date.now();
+          }
           sendJson(response, 200, {
+            sourceVersion: usage.sourceVersion,
             fingerprint: clientFingerprint(
               source?.routingFingerprint || published.fingerprint,
               responseCatalog.version,
@@ -1650,7 +1743,7 @@ export function createUsageServer(options = {}) {
             checkedAt: source?.checkedAt || published.checkedAt,
             updatePending: pendingAfterPublication || Boolean(syncPromise),
             snapshotId: requestedSnapshotId || null,
-            metadata: { ...result.metadata, imports: await listImportEntries(options) },
+            metadata: { ...result.metadata, imports: await listImportEntries() },
             pricingCatalog: responseCatalog,
             summary: result.summary,
             quota: result.summary.quota,
@@ -1707,6 +1800,7 @@ export function createUsageServer(options = {}) {
       sendJson(response, statusCode, {
         ...(error.code ? { code: error.code } : {}),
         error: error.message,
+        ...(error.path ? { path: error.path } : {}),
         ...(error.quota ? { quota: error.quota } : {}),
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
       });
@@ -1746,6 +1840,7 @@ export function createUsageServer(options = {}) {
   /** @type {(callback?: (err?: Error) => void) => unknown} */
   const closeWithExecutorRelease = (callback) => {
     serverClosed = true;
+    directoryPicker?.abort();
     if (sourceRetryTimer !== null) clearTimeout(sourceRetryTimer);
     sourceRetryTimer = null;
     clearPricingRefreshTimer();

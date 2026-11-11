@@ -130,7 +130,8 @@ function indexCounts(databaseFile) {
 }
 
 async function withServer(fixture, run) {
-  const server = createUsageServer({ ...fixture.serverOptions });
+  // Source stability needs fixed pricing inputs, including during the first request.
+  const server = createUsageServer({ ...fixture.serverOptions, pricingRefreshSchedulerEnabled: false });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const get = async (url) => {

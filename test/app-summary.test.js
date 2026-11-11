@@ -551,7 +551,7 @@ test("quota preset toggle remembers the last mode independently of availability"
   });
 });
 
-test("quota headings show local window boundaries and tooltip intervals include timezone", () => {
+test("quota headings show local boundaries and tooltip intervals keep only dates and times", () => {
   const start = new Date(2026, 8, 25, 22, 0, 0);
   const fiveHourEnd = new Date(2026, 8, 26, 3, 0, 0);
   const fiveHour = {
@@ -607,10 +607,9 @@ test("quota headings show local window boundaries and tooltip intervals include 
       },
       "channel",
     );
-    assert.match(tooltip, /时间槽区间 \[2026-/);
-    assert.match(tooltip, /Asia|UTC/);
-    assert.match(tooltip, /连续 24 小时/);
-    assert.match(tooltip, /当前时间槽仅统计至/);
+    assert.match(tooltip, /usage-tooltip-title">2026年/);
+    assert.doesNotMatch(tooltip, /时间槽区间|Asia|UTC|连续 24 小时|自然日|夏令时/);
+    assert.match(tooltip, /统计截至/);
   } finally {
     setSummaryFilters({
       preset: "all",

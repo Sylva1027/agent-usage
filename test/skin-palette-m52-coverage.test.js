@@ -184,7 +184,7 @@ test("B2-1：renderBarListHtml 与 renderCostDetailHtml 共用 .bar-name/.bar-va
   assert.match(modelHtml, /<span class="bar-value" title="[^"]+">3\.40M<\/span>/);
 
   const costHtml = renderCostDetailHtml(
-    [{ name: "gpt-5.2-codex", totalUsd: 12.34, currency: "USD" }],
+    [{ name: "gpt-5.2-codex", value: 12.34 }],
     new Map([["gpt-5.2-codex", "#007d91"]]),
   );
   assert.match(costHtml, /<div class="bar-row"[^>]*>[\s\S]*<div class="bar-label">/);
