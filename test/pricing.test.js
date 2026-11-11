@@ -691,6 +691,84 @@ test("codex-auto-review is free despite stale rates, missing details, and Fast m
   }
 });
 
+test("hy4free overrides stale paid rates without changing other models' minimum estimates", () => {
+  const catalog = getPricingCatalog();
+  const unknownEvents = ["OpenCode", "DSH"].map((channel) => ({
+    model: "unknown-billable",
+    channel,
+    detailMask: 15,
+    cacheWriteTokens: 0,
+    cacheWriteKnown: true,
+    serviceTier: "standard",
+    contextLevel: "short",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  }));
+  const unknownCosts = unknownEvents.map(estimateEventCost);
+  try {
+    for (const currency of [null, "USD", "CNY"]) {
+      const models = structuredClone(catalog.models);
+      if (currency) {
+        models.hy4free = {
+          currency,
+          short: { input: 0.000001, cachedInput: 0.000001, cacheWrite: 0.000001, output: 0.000001 },
+          fast: { short: { input: 10, cachedInput: 10, cacheWrite: 10, output: 10 } },
+        };
+      }
+      setPricingCatalog({ ...catalog, models });
+      for (const [index, event] of unknownEvents.entries()) {
+        assert.equal(estimateEventCost(event).totalUsd, unknownCosts[index].totalUsd);
+      }
+      if (currency) {
+        const stale = { ...getPricingCatalog(), models: { ...models, HY4FREE: models.hy4free } };
+        assert.throws(() => setPricingCatalog(stale), /Invalid model name: HY4FREE/);
+        runWithPricingCatalog({ ...stale, version: `uppercase-hy4free-${currency}` }, () => {
+          for (const [index, event] of unknownEvents.entries()) {
+            assert.equal(estimateEventCost(event).totalUsd, unknownCosts[index].totalUsd);
+          }
+        });
+      }
+      for (const model of ["hy4free", " HY4FREE "]) {
+        for (const details of [
+          { total: { total: 100 } },
+          { total: { total: 100 }, serviceTier: "fast", contextLevel: "unknown" },
+          { total: { total: 100, input: 80, cached: 20, output: 20 }, cacheWriteTokens: 0, cacheWriteKnown: true },
+        ]) {
+          const event = { model, ...details };
+          const estimate = estimateEventCost(event);
+          assert.equal(estimate.totalUsd, 0);
+          assert.equal(estimate.pricedTokens, 100);
+          assert.equal(estimate.pricingStatus, "estimated");
+          for (const field of [
+            "inputUsd",
+            "cachedInputUsd",
+            "cacheWriteInputUsd",
+            "outputUsd",
+            "unpricedTokens",
+            "minimumEstimatedTokens",
+            "serviceTierUnknownTokens",
+            "contextUnknownTokens",
+            "cacheWriteUnknownTokens",
+          ])
+            assert.equal(estimate[field], 0, field);
+          assert.deepEqual(estimate.minimumRateModels, []);
+          assert.deepEqual(estimate.unpricedModels, []);
+          assert.deepEqual(estimate.unpricedReasons, []);
+          assert.equal(estimate.priceSource, "");
+          const summary = estimateCostForEvents([event]);
+          assert.equal(summary.totalUsd, 0);
+          assert.equal(summary.pricedRecords, 1);
+          assert.equal(summary.minimumEstimatedRecords, 0);
+          assert.equal(summary.unpricedRecords, 0);
+        }
+      }
+      assert.equal(estimateEventCost({ model: "hy4free", total: { total: 0 } }).totalUsd, 0);
+      assert.ok(estimateEventCost({ ...unknownEvents[0], model: "hy4free-other" }).totalUsd > 0);
+    }
+  } finally {
+    setPricingCatalog(catalog);
+  }
+});
+
 test("-free 后缀的未收录模型按零费率估算", () => {
   const build = (model, extra = {}) => ({
     model,

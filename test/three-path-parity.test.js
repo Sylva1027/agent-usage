@@ -19,6 +19,7 @@ import {
 } from "../src/usage-core.js";
 import { UsageStore } from "../src/usage-store.js";
 import { createUsageServer } from "../src/server.js";
+import { createPricingPolicyFixture } from "../test-support/pricing-official-fixture.mjs";
 
 const AS_OF = "2026-07-12T12:00:00.000Z";
 
@@ -1281,6 +1282,69 @@ test("three paths agree on week-bucket escalation for a half-year all-time range
     });
     store.close();
     await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini identity and hy4free costs agree across memory, SQLite, and reference summaries", async () => {
+  const fixture = createPricingPolicyFixture();
+  const catalog = getPricingCatalog();
+  const store = new UsageStore(fixture.options);
+  try {
+    await store.sync();
+    const report = await buildUsageReport(fixture.options);
+    const rawEvents = JSON.stringify(report.events);
+    assert.equal(report.events.length, 6);
+    assert.equal(report.events[0].model, "opencode-go/gemini-4-argon-contributor");
+    for (const pricedGemini of [false, true]) {
+      setPricingCatalog({
+        ...catalog,
+        models: {
+          ...catalog.models,
+          hy4free: fixture.models.hy4free,
+          ...(pricedGemini ? fixture.models : {}),
+        },
+      });
+      const memory = summarizeUsage(report, fixture.filters);
+      const indexed = store.summarize(fixture.filters);
+      const compact = summarizeUsageIndex(await buildUsageIndex(fixture.options), fixture.filters);
+      setSummaryFilters({ ...fixture.filters, excludedHomes: [], startDate: "", endDate: "", recentValue: "" });
+      const reference = summarize(pricedReport(report, fixture.filters.now));
+      for (const summary of [memory, indexed, compact, reference]) {
+        assert.deepEqual(summaryFields(summary), summaryFields(memory));
+        assert.equal(summary.models.length, 2);
+        assert.equal(summary.totals.total, 1200);
+        assert.equal(summary.models.find((row) => row.name === "gemini-4-argon-contributor").total.total, 600);
+        const free = summary.models.find((row) => row.name === "hy4free");
+        assert.equal(free.total.total, 600);
+        if (pricedGemini) assert.ok(Math.abs(summary.costEstimate.totalUsd - 0.00216) < 1e-12);
+        else assert.equal(summary.costEstimate.minimumEstimatedTokens, 600);
+        for (const bucket of summary.timeline) {
+          assert.deepEqual(bucket.models.map((row) => row.name).sort(), ["gemini-4-argon-contributor", "hy4free"]);
+          const freeCost = bucket.costByModel.hy4free;
+          assert.equal(freeCost.totalUsd, 0);
+          assert.equal(freeCost.minimumEstimatedTokens, 0);
+          assert.equal(freeCost.unpricedTokens, 0);
+        }
+      }
+      const period = store.periodComparison(fixture.filters);
+      assert.deepEqual(
+        comparisonFields(period),
+        comparisonFields(
+          summarizePeriodComparison(report.events, {
+            ...fixture.filters,
+            pricingModels: getPricingCatalog().models,
+          }),
+        ),
+      );
+      assert.equal(period.models.length, 2);
+      assert.equal(period.models.find((row) => row.name === "gemini-4-argon-contributor").periods.all.total, 600);
+    }
+    assert.equal(JSON.stringify(report.events), rawEvents);
+  } finally {
+    store.close();
+    setPricingCatalog(catalog);
+    setSummaryFilters({ preset: "today", bucket: "hour", calendarZone: "local", now: null, excludedHomes: [] });
+    fixture.close();
   }
 });
 

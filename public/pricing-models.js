@@ -140,6 +140,7 @@ export function canonicalModelName(rawModel, models) {
   const original = String(rawModel ?? "").trim();
   const normalized = original.toLowerCase();
   if (!normalized) return original;
+  if (normalized === "opencode-go/gemini-4-argon-contributor") return "gemini-4-argon-contributor";
 
   const index = modelIndex(models);
   const alias = aliasTarget(normalized);
@@ -163,8 +164,8 @@ export function resolvePricingModel(rawModel, models) {
   const originalAliasKey = originalAlias && modelIndex(models).get(originalAlias);
   const canonicalModel = canonicalModelName(original, models);
   const normalized = canonicalModel.toLowerCase();
-  // ChatGPT auto-review is exempt from billing, including stale local rates.
-  if (isCodexAutoReview(normalized)) {
+  // Explicit free policies override stale local rates.
+  if (isCodexAutoReview(normalized) || original.toLowerCase() === "hy4free") {
     return { rawModel: original, canonicalModel, catalogKey: null, matchType: "free" };
   }
   const index = modelIndex(models);

@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 export const DEEPSEEK_RAW_MODELS = Object.freeze([
   "deepseek-v4.1-flash",
   "opendesign/deepseek-v4.1-flash",
@@ -98,6 +102,55 @@ export function createPricingOfficialReport() {
     sessions: [],
     rateLimitObservations: [],
     warnings: [],
+  };
+}
+
+export function createPricingPolicyFixture() {
+  const root = mkdtempSync(path.join(tmpdir(), "pricing-policy-"));
+  const logDirectory = path.join(root, ".codex-usage");
+  mkdirSync(logDirectory, { recursive: true });
+  const rows = ["2026-07-11", "2026-07-12"].flatMap((day) =>
+    ["opencode-go/gemini-4-argon-contributor", "gemini-4-argon-contributor", "hy4free"].map((model, index) => ({
+      schema_version: "codex-usage.project-log.v1",
+      timestamp: `${day}T02:00:00.000Z`,
+      source: "test",
+      channel: "OpenCode",
+      project_root: root,
+      cwd: root,
+      session_id: `${day}-${index}`,
+      model,
+      service_tier: index === 2 ? "fast" : "standard",
+      usage:
+        index === 2
+          ? { total: 300 }
+          : {
+              total: (index + 1) * 100,
+              input: (index + 1) * 80,
+              cached: 0,
+              output: (index + 1) * 20,
+              cache_write_input_tokens: 0,
+            },
+    })),
+  );
+  const usageFile = path.join(logDirectory, "usage.jsonl");
+  writeFileSync(usageFile, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  return {
+    usageFile,
+    options: { homeDir: root, databaseFile: path.join(root, "usage.sqlite"), env: {}, importDirs: [root] },
+    filters: { preset: "all", bucket: "day", calendarZone: "utc", now: "2026-07-12T12:00:00.000Z" },
+    models: {
+      "gemini-4-argon-contributor": {
+        currency: "USD",
+        short: { input: 2, cachedInput: 0.2, cacheWrite: 0, output: 10 },
+      },
+      hy4free: {
+        currency: "USD",
+        short: { input: 0.000001, cachedInput: 0.000001, cacheWrite: 0.000001, output: 0.000001 },
+      },
+    },
+    close() {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    },
   };
 }
 

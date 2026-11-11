@@ -148,6 +148,47 @@ test("auto-review policy overrides old catalog entries and counts as covered fre
   assert.deepEqual(coverage.missingUsedModels, []);
 });
 
+test("hy4free is an exact free policy even with a stale catalog entry", () => {
+  for (const models of [{}, { hy4free: {} }]) {
+    assert.deepEqual(resolvePricingModel(" HY4FREE ", models), {
+      rawModel: "HY4FREE",
+      canonicalModel: Object.hasOwn(models, "hy4free") ? "hy4free" : "HY4FREE",
+      catalogKey: null,
+      matchType: "free",
+    });
+    assert.deepEqual(buildUsagePricingCoverage({ OpenCode: ["hy4free", "HY4FREE"] }, models), {
+      ready: true,
+      usedModelCount: 1,
+      matchedUsedModelCount: 1,
+      freeRuleUsedModelCount: 1,
+      missingUsedModels: [],
+    });
+    for (const other of ["hy4free-other", "other-hy4free", "vendor/hy4free"]) {
+      assert.notEqual(resolvePricingModel(other, models).matchType, "free", other);
+    }
+  }
+});
+
+test("the specified Gemini route keeps one identity with missing, current, and stale catalog keys", () => {
+  const raw = "opencode-go/gemini-4-argon-contributor";
+  const canonical = "gemini-4-argon-contributor";
+  for (const models of [{}, { [raw]: {} }, { [canonical]: {} }, { [raw]: {}, [canonical]: {} }]) {
+    for (const name of [raw, ` ${raw.toUpperCase()} `, canonical]) {
+      assert.equal(canonicalModelName(name, models), canonical);
+      const resolved = resolvePricingModel(name, models);
+      assert.equal(resolved.canonicalModel, canonical);
+      assert.equal(resolved.catalogKey, Object.hasOwn(models, canonical) ? canonical : null);
+      assert.equal(resolved.matchType, Object.hasOwn(models, canonical) ? "exact" : "missing");
+    }
+    const coverage = buildUsagePricingCoverage({ OpenCode: [raw, canonical] }, models);
+    assert.equal(coverage.usedModelCount, 1);
+    assert.deepEqual(
+      coverage.missingUsedModels,
+      Object.hasOwn(models, canonical) ? [] : [{ model: canonical, harnesses: ["OpenCode"] }],
+    );
+  }
+});
+
 test("all DeepSeek naming variants converge before a stale same-name catalog entry", () => {
   const models = {
     "deepseek-flash": {},
@@ -205,7 +246,7 @@ test("usage coverage resolves provider prefixes against the supplied catalog on 
     OpenCode: ["opencode-go/gemini-4-argon-contributor", "sensenova-6.8-flash-lite", "Unknown model"],
   };
   const expectedMissingA = [
-    { model: "opencode-go/gemini-4-argon-contributor", harnesses: ["OpenCode"] },
+    { model: "gemini-4-argon-contributor", harnesses: ["OpenCode"] },
     { model: "sensenova-6.8-flash-lite", harnesses: ["OpenCode"] },
   ];
 
@@ -231,7 +272,12 @@ test("provider prefixes only merge when the remaining model resolves", () => {
   const models = { "gpt-6.1-sol": {}, "deepseek-flash": {} };
   assert.equal(canonicalModelName("codex/GPT-6.1-SOL", models), "gpt-6.1-sol");
   assert.equal(resolvePricingModel("codex/GPT-6.1-SOL", models).catalogKey, "gpt-6.1-sol");
-  for (const unresolved of ["opencode-go/gemini-4-argon-contributor", "sensenova-6.8-flash-lite", "Unknown model"]) {
+  for (const unresolved of [
+    "vendor/unknown-model",
+    "opencode-go/gemini-4-other",
+    "sensenova-6.8-flash-lite",
+    "Unknown model",
+  ]) {
     assert.equal(canonicalModelName(unresolved, models), unresolved);
     assert.deepEqual(resolvePricingModel(unresolved, models), {
       rawModel: unresolved,
