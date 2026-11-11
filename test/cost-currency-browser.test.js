@@ -110,12 +110,16 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
     await page.locator('[data-timeline-mode="cost"]').click();
     await page.locator("#detailList .bar-row").first().waitFor();
   };
+  const openPricing = async () => {
+    await page.locator("#updatePricingButton").click();
+    await page.waitForFunction(() => document.activeElement === document.querySelector("#pricingSearch"));
+  };
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.locator("#homeList .home-row").first().waitFor();
   await showAll();
   const initial = await assertCurrency(page, "USD");
   assert.ok(initial.estimate.totalUsd > 0 && initial.estimate.totalCny > 0, "fixture covers both native currencies");
-  await page.locator("#updatePricingButton").click();
+  await openPricing();
   const rate = page.locator("#usdToCnyRate");
   await startupRefreshReady.promise;
   assert.equal(await rate.getAttribute("type"), "text");
@@ -144,8 +148,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await page.locator("#homeList .home-row").first().waitFor();
   await showAll();
   await assertCurrency(page, "CNY");
-  await page.locator("#updatePricingButton").click();
-  await page.locator("#pricingDialog").waitFor({ state: "visible" });
+  await openPricing();
   assert.equal(Number(await rate.inputValue()), initial.rate, "cancel discards the FX draft");
   for (const invalid of ["Infinity", "NaN", "0", "-1", "0x10", "0b111", "0o10"]) {
     const before = requests.filter((request) => request.method === "PUT").length;
@@ -178,7 +181,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   );
   await page.locator('[data-preset="month"]').click();
   await pending;
-  await page.locator("#updatePricingButton").click();
+  await openPricing();
   await page.locator('[data-display-currency="USD"]').click();
   release();
   await page.waitForFunction(async () => (await import("/app-state.js")).state.summary?.range.preset === "month");
@@ -191,8 +194,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await showAll();
   await assertCurrency(page, "USD");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator("#updatePricingButton").click();
-  await page.locator("#pricingDialog").waitFor({ state: "visible" });
+  await openPricing();
   const layout = await page.evaluate(() => {
     const dialog = document.querySelector("#pricingDialog .dialog");
     const controls = document.querySelector(".pricing-controls");
