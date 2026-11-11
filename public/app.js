@@ -173,6 +173,65 @@ function setTheme(theme, { persist = true } = {}) {
   render();
 }
 
+async function toggleTheme() {
+  const button = $("#themeToggle");
+  if (button.disabled) return;
+  const root = document.documentElement;
+  const theme = state.theme === "dark" ? "light" : "dark";
+  button.disabled = true;
+  root.dataset.themeTransition = "running";
+  let overlay;
+  try {
+    if (document.startViewTransition) {
+      await document.startViewTransition(() => setTheme(theme)).finished;
+    } else {
+      // Preserve the old canvas pixels as well as the old palette during the fade.
+      overlay = document.createElement("div");
+      const snapshot = root.cloneNode(true);
+      snapshot.querySelectorAll("script").forEach((script) => {
+        script.remove();
+      });
+      const colors = getComputedStyle(root);
+      for (const property of colors) {
+        if (property.startsWith("--")) snapshot.style.setProperty(property, colors.getPropertyValue(property));
+      }
+      const canvases = root.querySelectorAll("canvas");
+      snapshot.querySelectorAll("canvas").forEach((canvas, index) => {
+        canvas.getContext("2d")?.drawImage(canvases[index], 0, 0);
+      });
+      Object.assign(overlay.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "2147483647",
+        pointerEvents: "none",
+        overflow: "hidden",
+      });
+      snapshot.style.width = `${root.clientWidth}px`;
+      snapshot.querySelector("body").style.transform = `translate(${-window.scrollX}px, ${-window.scrollY}px)`;
+      overlay.inert = true;
+      overlay.setAttribute("aria-hidden", "true");
+      const stylesReady = Array.from(
+        snapshot.querySelectorAll('link[rel="stylesheet"]'),
+        (link) =>
+          new Promise((resolve) => {
+            link.onload = resolve;
+            link.onerror = resolve;
+          }),
+      );
+      overlay.attachShadow({ mode: "closed" }).append(snapshot);
+      document.body.append(overlay);
+      await Promise.all(stylesReady);
+      setTheme(theme);
+      const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1000;
+      await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration, easing: "linear" }).finished;
+    }
+  } finally {
+    overlay?.remove();
+    delete root.dataset.themeTransition;
+    button.disabled = false;
+  }
+}
+
 function usageValue(usage, field = "total") {
   return usage?.[field] || 0;
 }
@@ -4413,7 +4472,7 @@ async function bootDashboard() {
     }
   });
   $("#themeToggle").addEventListener("click", () => {
-    setTheme(state.theme === "dark" ? "light" : "dark");
+    void toggleTheme();
   });
   let resizeRenderQueued = false;
   const scheduleResizeRender = () => {

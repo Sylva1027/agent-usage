@@ -9263,7 +9263,11 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
     for (const mode of ["light", "dark"]) {
       const pressed = (await page.locator("#themeToggle").getAttribute("aria-pressed")) === "true";
       if (pressed !== (mode === "dark")) await page.locator("#themeToggle").click();
-      await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, mode);
+      await page.waitForFunction(
+        (expected) =>
+          document.documentElement.dataset.theme === expected && !document.documentElement.dataset.themeTransition,
+        mode,
+      );
       await page.locator("#updatePricingButton").click();
       await page.waitForFunction(() => document.activeElement?.id === "pricingSearch");
       await page.locator("#usdToCnyRate").fill("");
@@ -10156,7 +10160,11 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
     const setTheme = async (mode) => {
       const pressed = (await page.locator("#themeToggle").getAttribute("aria-pressed")) === "true";
       if (pressed !== (mode === "dark")) await page.locator("#themeToggle").click();
-      await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, mode);
+      await page.waitForFunction(
+        (expected) =>
+          document.documentElement.dataset.theme === expected && !document.documentElement.dataset.themeTransition,
+        mode,
+      );
     };
     const openPricing = async () => {
       await page.locator("#updatePricingButton").click();
@@ -10390,7 +10398,9 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
     if ((await page.locator("#themeToggle").getAttribute("aria-pressed")) !== "true") {
       await page.locator("#themeToggle").click();
     }
-    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.theme === "dark" && !document.documentElement.dataset.themeTransition,
+    );
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.evaluate(async () => {
       const canvas = document.querySelector("#timelineChart");

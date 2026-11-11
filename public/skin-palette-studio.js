@@ -423,6 +423,9 @@ const preview = {
     const doc = frame.contentDocument;
     if (!doc) return;
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      while (doc.documentElement.dataset.themeTransition === "running") {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       if ((doc.documentElement.dataset.theme || "light") === state.activeMode) return;
       doc.getElementById("themeToggle")?.click();
       await new Promise((resolve) => setTimeout(resolve, 80));

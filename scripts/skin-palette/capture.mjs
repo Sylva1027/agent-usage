@@ -3283,6 +3283,9 @@ async function applyThemeViaToggle(page, value, stateTimeoutMs, record) {
   const readTheme = () => page.evaluate(() => document.documentElement.dataset.theme ?? null);
   let clicks = 0;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.waitForFunction(() => !document.documentElement.dataset.themeTransition, null, {
+      timeout: stateTimeoutMs,
+    });
     if ((await readTheme()) === value) {
       record.theme = value;
       record.themeClicks = clicks;
@@ -3290,6 +3293,14 @@ async function applyThemeViaToggle(page, value, stateTimeoutMs, record) {
     }
     await page.click("#themeToggle", { timeout: stateTimeoutMs });
     clicks += 1;
+  }
+  await page.waitForFunction(() => !document.documentElement.dataset.themeTransition, null, {
+    timeout: stateTimeoutMs,
+  });
+  if ((await readTheme()) === value) {
+    record.theme = value;
+    record.themeClicks = clicks;
+    return;
   }
   throw new Error(`setTheme 两次点击后 data-theme 仍为 ${await readTheme()}（期望 ${value}）`);
 }
