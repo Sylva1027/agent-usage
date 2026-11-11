@@ -1,5 +1,7 @@
 # 模型速度视图主审记录
 
+历史日志已于2026-11-11清理。
+
 2026-10-21。结论：本轮数据、独立界面、隔离生产链路及收尾检查通过；现有服务激活与重启后真实页面验收不在本轮已测范围。本稿不借用旧 TPS G4。
 
 ## 范围与独立复核
@@ -18,7 +20,7 @@
 - 检查 classic 和当前五款 picker 皮肤的深浅主题，所有新填充为实色；双语切换，1920×1080、2560×1440、1440×1080、1024×900、720×900 CSS 视口。未把 CSS 视口当作实际系统缩放/浏览器缩放。
 - 除初始五行/等高/条形对齐外，每次边界选择都检查两栏高度、内容边界、标签无碰撞；同行四个单元格的底线必须对齐。实际整页截图已阅读，新增区域位于周期比较之后、扫描目录之前。
 
-证据：[浏览器聚合](V/browser-evidence.json)、[日志](V/browser.log)、[classic 浅色整页](V/page-classic-light-1920.png)、[DeepSeek 深色整页](V/page-deepseek-dark-1920.png)、[1024 窄窗口](V/page-1024.png)、[相近端点](V/near-endpoints-model.png)、[长模型名](V/long-model-name-with-separate-effor.png)。
+证据：[浏览器聚合](V/browser-evidence.json)、日志、[classic 浅色整页](V/page-classic-light-1920.png)、[DeepSeek 深色整页](V/page-deepseek-dark-1920.png)、[1024 窄窗口](V/page-1024.png)、[相近端点](V/near-endpoints-model.png)、[长模型名](V/long-model-name-with-separate-effor.png)。
 
 ### 发现并修正
 
@@ -37,13 +39,13 @@
 
 ## V3 工程门禁
 
-完整运行结果：**2,607 通过、3 失败、30 跳过**，原始记录保留在 [test.log](V/test.log)；不能写成一次全仓零失败。3 项均是临时 HOME 下无法自动定位 Playwright：E1c、E1d 和 D8u11。显式指定已有 bundled runtime 后，E1c/E1d 通过；14 项补测中的唯一失败发生于 M3.2 Edge 启动阶段（尚未进入测量）。保留 Edge 原始启动环境的两条 fixture 浏览器用例最终 **8/8 通过**，包含 M3.2 与 D8u11。对应日志为 [环境补测](V/browser-environment-followup.log)、[启动环境复核](V/browser-gate-original-env.log)，不重写全仓原记录。30 项跳过仍保留，不宣称这些路径已测。
+完整运行结果：**2,607 通过、3 失败、30 跳过**，当时的原始日志为 test.log；不能写成一次全仓零失败。3 项均是临时 HOME 下无法自动定位 Playwright：E1c、E1d 和 D8u11。显式指定已有 bundled runtime 后，E1c/E1d 通过；14 项补测中的唯一失败发生于 M3.2 Edge 启动阶段（尚未进入测量）。保留 Edge 原始启动环境的两条 fixture 浏览器用例最终 **8/8 通过**，包含 M3.2 与 D8u11。对应日志为 环境补测、启动环境复核，不重写全仓原记录。30 项跳过仍保留，不宣称这些路径已测。
 
-首次全仓还发现本轮三个 D 文件格式不符，以及 UI 测试 fake classList 的两项 forEach 返回值 lint 错误，已分别交原 owner 修正。修后数据 **6/6**、执行器定向 **2/2**、UI **22/22** 通过；主审重新执行全仓 typecheck/lint/format 均 exit 0。lint 仍有 54 warnings、4 infos，无 error。原 run 的 skins:check、skins:palette、diff-check 也均 exit 0。最终结论见 [final-checks.json](V/final-checks.json)，新日志为 [typecheck](V/typecheck-final.log)、[lint](V/lint-final.log)、[format](V/format-final.log)。
+首次全仓还发现本轮三个 D 文件格式不符，以及 UI 测试 fake classList 的两项 forEach 返回值 lint 错误，已分别交原 owner 修正。修后数据 **6/6**、执行器定向 **2/2**、UI **22/22** 通过；主审重新执行全仓 typecheck/lint/format 均 exit 0。lint 仍有 54 warnings、4 infos，无 error。原 run 的 skins:check、skins:palette、diff-check 也均 exit 0。最终结论见 [final-checks.json](V/final-checks.json)，新日志为 typecheck、lint、format。
 
 完整工程运行前后 **231 个文件摘要一致**，见 [start](V/engineering-start.json)、[end](V/engineering-end.json)。之后仅三项格式化及一项测试 callback 修正；最终摘要见 [final-code-hashes.json](V/final-code-hashes.json)。浏览器证据绑定格式化前统计源与最终 public 字节；格式化后统计逻辑未变且已做定向复核，没有重复全仓或重复浏览器来制造新计数。
 
-测试隔离的首轮不完整记录保留为 [test-first-incomplete.log](V/test-first-incomplete.log)：确认部分旧执行器测试 sync 参数会覆盖完整 discovery options 后主动停止。后续整个测试子进程 HOME/USERPROFILE/AppData 指向临时目录，移除额外 homes 与 CLAUDE_CONFIG_DIR，不修改父进程环境。A 首次漏隔离测试曾实际混入真实来源，已在 D 报告如实记录；没有把它称作受控真实数据验收。
+测试隔离的首轮不完整运行当时记录于 test-first-incomplete.log：确认部分旧执行器测试 sync 参数会覆盖完整 discovery options 后主动停止。后续整个测试子进程 HOME/USERPROFILE/AppData 指向临时目录，移除额外 homes 与 CLAUDE_CONFIG_DIR，不修改父进程环境。A 首次漏隔离测试曾实际混入真实来源，已在 D 报告如实记录；没有把它称作受控真实数据验收。
 
 当前验收结论：D1–D3、U1–U4、V1 通过；V2 隔离整页视觉及有界旧服务检查完成，重启后的真实数据页面仍未测；V3 的本轮错误已修正、环境失败已定向闭合。现有服务仍为旧后端，不在未重启时宣称新功能已上线。
 

@@ -1,5 +1,7 @@
 # 持久冷热投影：V14 实施与验收报告
 
+部分历史运行附件已于 2026-11-11 清理，原验收结论保留。
+
 **本卡既定硬门全部通过：analysis-final-v14 的 passed=true、frontGatePassed=true，8组均通过、issues=[]；费用／顺序、当前与一年适用速度门、≤512 MiB内存、持久复用、固定事实增量工作及恢复门通过。** 明显限制仍在：两年混合追加68.400–128.697 s，重开171.877101 s明显慢；两年无绝对时间SLA，不能据此称速度全面达标或使用流畅。
 
 V14 冻结117个 runtime 文件，指纹 6ec92bc788b3ad3a0ac29e1125b367bc6b866570f0e722119e5a22c8ccaa397d；相对 V12／V13 唯一变化的生产文件为 history-backup.js。验收依据为[目标计划](<E:/12 AI/ccusage/codex-usage/docs/plans/2026-11-07-persistent-mixed-history-projection.md>)；V12失败只作历史，非两年 C1 发布版速度基线。
@@ -234,8 +236,8 @@ E: 卷沿用 SHA 回退与真实完整校验；两版保持1.1 s受控无价格�
 | 用途 | 证据 |
 | --- | --- |
 | 八组统一分析／选组 | [analysis-final-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/analysis-final-v14.json>)：passed／frontGatePassed=true，8组，issues=[]；[selection-final-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/selection-final-v14.json>)；本报告场景数值以该分析的原始毫秒、measured与work为准 |
-| 冻结与验证 | [manifest-two-years-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/manifest-two-years-v14.json>)；[validation-candidate-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/validation-candidate-v14.json>)；[hash-regression-v14.log](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/hash-regression-v14.log>) |
-| 既有原始导入／归档／容量 | [rebuild/result.json](<E:/12 AI/ccusage/codex-usage/output/c1-long-history-20261107/datasets/two-years/rebuild/result.json>)；[导入资源](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/two-years-rebuild-resources-v12.json>)；[archive-build/result.json](<E:/12 AI/ccusage/codex-usage/output/c1-long-history-20261107/datasets/two-years/archive-build/result.json>)；[capacity-proof.json](<E:/12 AI/ccusage/codex-usage/output/c1-long-history-20261107/datasets/two-years/capacity-proof.json>) |
+| 冻结与验证 | [manifest-two-years-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/manifest-two-years-v14.json.gz>)；[validation-candidate-v14.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/validation-candidate-v14.json>)；hash-regression-v14.log |
+| 既有原始导入／归档／容量 | rebuild/result.json；[导入资源](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/two-years-rebuild-resources-v12.json>)；archive-build/result.json；capacity-proof.json |
 | 进程清理 | [process-cleanup.json](<E:/12 AI/ccusage/codex-usage/output/persistent-mixed-history-20261107/process-cleanup.json>)：83份报告、1465个PID＋创建时间身份，live=[]、unknown=[] |
 
 ## 旧失败与 invalid 尝试保留

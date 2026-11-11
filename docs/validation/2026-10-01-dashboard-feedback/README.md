@@ -1,6 +1,8 @@
 # 2026-10-01 模型列表与连续顶部框体反馈修正
 
-受测版本：`28568ef` 加前一批及本次未提交工作区修改。对应 [Implementation Plan 的追加要求](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-implementation-plan.md#用户追加要求优先于原-r1) 与 [TODO 22–26](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-todos.md#m6-用户追加反馈修正)。前批截图和 104 项结果保留在[原验收](../2026-10-01-dashboard-corrections/README.md)，不覆盖成当前版本。
+历史截图与日志已于2026-11-11清理。
+
+受测版本：`28568ef` 加前一批及本次未提交工作区修改。对应 [Implementation Plan 的追加要求](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-implementation-plan.md#用户追加要求优先于原-r1) 与 [TODO 22–26](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-todos.md#m6-用户追加反馈修正)。前批 104 项结果保留在[原验收](../2026-10-01-dashboard-corrections/README.md)，不覆盖成当前版本。
 
 ## 原因与修复
 
@@ -12,12 +14,12 @@
 
 ## 最终证据
 
-- 测试 **312/312**：[test.log](test.log)。新增旧契约、混合字段、明确空名单与最后使用时间重建回归；原月边界/退出检查仍通过。
-- 类型、Lint、格式退出 0：[typecheck.log](typecheck.log)、[lint.log](lint.log)、[format.log](format.log)。Lint 为 38 条 CSS 警告，无新增错误。
-- 隔离浏览器 **137/137**：[results.json](results.json)、[browser.log](browser.log)、[脚本](browser-audit.mjs)。沿用前批合成 fixture，新增 32 种标题字形中心检查和旧 API 契约列表检查。
+- 测试 **312/312**：test.log。新增旧契约、混合字段、明确空名单与最后使用时间重建回归；原月边界/退出检查仍通过。
+- 类型、Lint、格式退出 0：typecheck.log、lint.log、format.log。Lint 为 38 条 CSS 警告，无新增错误。
+- 隔离浏览器 **137/137**：[results.json](results.json)、browser.log、[脚本](browser-audit.mjs)。沿用前批合成 fixture，新增 32 种标题字形中心检查和旧 API 契约列表检查。
 - 真实旧服务的隔离只读页面：**21 个可见模型行、4 个来源分组、0 个页面异常**，见 [live-contract.json](live-contract.json)。不保存个人模型名、用量、路径或截图；GET 用量带 skipCheck=1，阻断外部请求，不保存任何编辑或修改真实服务。
 
-截图抽查：[桌面深色](online-1440-dark-zh-CN-top.png)、[手机浅色](online-390-light-en-US-top.png)、[旧响应恢复列表](legacy-used-models.png)。除真实检查的计数文件外，截图与 fixture 都是合成数据。
+截图抽查：桌面深色、手机浅色、旧响应恢复列表。除真实检查的计数文件外，截图与 fixture 都是合成数据。
 
 ## 环境与重跑
 
@@ -35,4 +37,4 @@ node docs/validation/2026-10-01-dashboard-feedback/browser-audit.mjs
 
 ## 标题验收纠错
 
-本页“上移 6px”及基线标记/Canvas 中心断言为历史结果。用户后续截图确认标题主体偏上，代理包含下伸笔画，不能证明主体视觉居中。已取消固定上移；最终实现、48 组真实像素验证与重跑回归见[标题最终验收](../2026-10-01-title-centering/README.md)。本目录原日志与截图保留，不作为最终标题居中的证据。
+本页“上移 6px”及基线标记/Canvas 中心断言为历史结果。用户后续截图确认标题主体偏上，代理包含下伸笔画，不能证明主体视觉居中。已取消固定上移；最终实现、48 组真实像素验证与重跑回归见[标题最终验收](../2026-10-01-title-centering/README.md)。本轮历史结果不作为最终标题居中的证据。

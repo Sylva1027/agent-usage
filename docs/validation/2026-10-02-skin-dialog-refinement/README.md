@@ -1,5 +1,7 @@
 # 皮肤视觉修改：0—R8 验证
 
+历史截图与日志已于2026-11-11清理。
+
 日期：2026-10-02。受测基底 HEAD：`0042e182bd0e62bc976393c6b664f6c4ad8c87c3` 加当前未提交的 P1／P2／P3 与计划工作区。用户按 [施工计划](../../archive/2026-10-03/plans/2026-10-02-skin-dialog-refinement-implementation-plan.md) 分阶段执行第 0 节—R8；各阶段完成后停下。本记录不表示 P4 已完成。唯一进度见 [TODOs](../../archive/2026-10-03/plans/2026-10-01-model-character-skin-todos.md)。
 
 ## 第 0 节：当前基线
@@ -26,9 +28,9 @@
 
 已查看截图确认深色描边更清楚、浅色及 390px 排列正常：
 
-- [深色修改前，1440px](before-dark-1440.png)／[修改后](after-dark-1440.png)。
-- [浅色修改前，1440px](before-light-1440.png)／[修改后](after-light-1440.png)。
-- [深色修改后，390px](after-dark-390.png)／[浅色修改后](after-light-390.png)。
+- 深色修改前，1440px／修改后。
+- 浅色修改前，1440px／修改后。
+- 深色修改后，390px／浅色修改后。
 
 执行命令：
 
@@ -41,7 +43,7 @@ npx.cmd --no-install biome check public/index.html public/skins.css
 git diff --check -- public/index.html public/skins.css
 ```
 
-上述命令均 exit 0；Biome 检查 2 文件通过且无需自动修复。R1 时点只修改静态图标 class 与描边，未重跑全产品测试或正式离线导出。后续 R2 的新增验证见下节；原基线、截图和报告均保留。
+上述命令均 exit 0；Biome 检查 2 文件通过且无需自动修复。R1 时点只修改静态图标 class 与描边，未重跑全产品测试或正式离线导出。后续 R2 的新增验证见下节；当时未覆盖原基线、截图和报告。
 
 ## R2：横杠选择状态与主题微光
 
@@ -60,7 +62,7 @@ git diff --check -- public/index.html public/skins.css
 - 从固定空报告生成真实单文件 HTML，在 `file://` 禁网检查点亮、明暗切换、刷新与回退，无外部请求。
 - 在线各状态几何与 R1 同模式基线一致；离线控件本就与在线不同，独立比较快照自己的 classic／角色／切换几何，不混用两种基线。零浏览器脚本异常。
 
-已查看 [深色角色选中截图](r2-active-dark.png)；另保留 [浅色选中](r2-active-light.png)、[深色 classic](r2-classic-dark.png)、[浅色 classic](r2-classic-light.png)，横杠微光可见而衣服轮廓保持中性。
+已查看 深色角色选中截图；当时另检查了浅色选中、深色 classic、浅色 classic，横杠微光可见而衣服轮廓保持中性。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r2-indicator-audit.mjs
@@ -72,9 +74,9 @@ npm.cmd run skins:check
 npm.cmd run skins:palette
 ```
 
-上述检查均通过。串行测试 **351／351**，见 [实际输出](r2-tests-serial.log)；Lint exit 0，保留原有 41 条 warnings，见 [Lint 输出](r2-lint.log)。生成、40 素材一致性、格式、类型与配色校验通过，仍为 0／20 真实模式槽填色。
+上述检查均通过。串行测试 **351／351**，当时记录于 实际输出；Lint exit 0，保留原有 41 条 warnings，当时记录于 Lint 输出。生成、40 素材一致性、格式、类型与配色校验通过，仍为 0／20 真实模式槽填色。
 
-先前并行全测出现过两次不同的失败：[首次](r2-tests-first.log) 为服务端测试的临时端口被 Node fetch 判为 bad port；[重试](r2-tests-retry.log) 为 CLI restart 停止服务的时序失败。未修改相关服务逻辑，改为串行实测全套通过；不能把前两次执行记为成功。浏览器审计开发时也修正了“app 尚未初始化即查询语言选中标记”和“离线对照在线几何”的验证假设，最终结果来自修正后的完整重跑。
+先前并行全测出现过两次不同的失败：首次 为服务端测试的临时端口被 Node fetch 判为 bad port；重试 为 CLI restart 停止服务的时序失败。未修改相关服务逻辑，改为串行实测全套通过；不能把前两次执行记为成功。浏览器审计开发时也修正了“app 尚未初始化即查询语言选中标记”和“离线对照在线几何”的验证假设，最终结果来自修正后的完整重跑。
 
 以上为 R2 时点的记录；随后单独授权并完成的 R3 见下节。
 
@@ -95,7 +97,7 @@ npm.cmd run skins:palette
 - 打开／选择不改变主页面几何；Escape 关闭并将焦点归还入口。窄屏选中 Mimo 后重新打开，最后一张卡片可见且获得焦点。
 - 从固定空报告生成单文件 HTML，`file://` 禁网打开十卡五列两行，二十张正视缩略图均为 data URL 且实际解码；选择／恢复可用，无外部请求，零浏览器脚本异常。
 
-已查看 [深色 1440px 总览](r3-dark-1440.png)、[浅色 1024px 总览](r3-light-1024.png)、[深色 390px](r3-dark-390.png)。另保留相反模式对应截图，原 P2／P3、0／R1／R2 的截图和 JSON 未覆盖。首次视觉检查发现返回 classic 后窄屏会保留列表中段滚动位置，已修复并完整重跑本阶段审计。
+已查看 深色 1440px 总览、浅色 1024px 总览、深色 390px。当时另采集了相反模式对应截图，未覆盖原 P2／P3、0／R1／R2 的截图和 JSON。首次视觉检查发现返回 classic 后窄屏会保留列表中段滚动位置，已修复并完整重跑本阶段审计。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r3-picker-audit.mjs
@@ -107,7 +109,7 @@ npm.cmd run format:check
 npm.cmd run skins:check
 ```
 
-相关 [41 项测试](r3-tests.log) 全部通过，局部 Biome 无警告；全项目 [Lint](r3-lint.log) exit 0，仍为既有 41 条 warnings。类型、全局格式与 40 素材／生成物校验通过；对照 R1 哈希的 108 个不属于 R2／R3 允许改动范围的文件全部不变，包含真实配色、全部原图与公开资源。未重跑全产品测试，此阶段以相关模块测试、实际在线／离线 UI 和布局测量为依据。
+相关 41 项测试 全部通过，局部 Biome 无警告；全项目 Lint exit 0，仍为既有 41 条 warnings。类型、全局格式与 40 素材／生成物校验通过；对照 R1 哈希的 108 个不属于 R2／R3 允许改动范围的文件全部不变，包含真实配色、全部原图与公开资源。未重跑全产品测试，此阶段以相关模块测试、实际在线／离线 UI 和布局测量为依据。
 
 旧 `p2-matrix-audit.mjs`／`p2-picker-audit.mjs` 中的十一卡、Classic 首卡和 5＋5＋1 要求已被新规格替代；其历史通过报告保留，本阶段入口使用上面的新审计。不能要求把纯注册表 11 状态的测试改成 10 状态。
 
@@ -128,7 +130,7 @@ R3 已完成并停下，R4—R8 待后续授权。
 - 聚焦圈用**真实 Tab 导航**验证（脚本 `focus()` 不触发 `:focus-visible`，首版审计因此误报，已改用 Tab 到达后再断言）。
 - 开弹窗、选择、拖动前后主页面几何逐项不变，无横向溢出；离线 `file://` 重置、默认 50% 与键盘步进一致，零外部请求、全程零页面异常。
 
-已查看 [浅色截图](r4-slider-light.png)／[深色截图](r4-slider-dark.png)：填充为主题青、滑块为陶瓷凸起、未填充段为槽底色，标签与百分比无输入框外壳，两模式材质与弹窗一致。
+已查看 浅色截图／深色当时截图：填充为主题青、滑块为陶瓷凸起、未填充段为槽底色，标签与百分比无输入框外壳，两模式材质与弹窗一致。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r4-slider-audit.mjs
@@ -162,7 +164,7 @@ R4 已完成并停下，R5—R8 待后续授权。
 - 对齐：十卡同一高度（≤2px），预览顶部与色组底部在卡内相对位置逐卡一致（≤1px）。
 - 几何与回归：开弹窗/选择/恢复 classic 前后主页面几何逐项不变；390px 双列在井内滚动、弹窗本体不滚、控制行常驻可见、无横向溢出；离线 `file://` 井结构与连续性一致，零外部请求；全程零页面异常。
 
-已查看 [浅色 1440](r5-light-1440.png)／[深色 1440](r5-dark-1440.png)／[浅色 390](r5-light-390.png)：「弹窗外壳 → 大凹槽 → 十张小卡」三层级在浅深两模式下均清楚可读，槽底在两行间连续，阴影方向与主页面一致。
+已查看 浅色 1440／深色 1440／浅色 390：「弹窗外壳 → 大凹槽 → 十张小卡」三层级在浅深两模式下均清楚可读，槽底在两行间连续，阴影方向与主页面一致。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r5-gallery-audit.mjs
@@ -189,7 +191,7 @@ R5 已完成并停下，R6—R8 待后续授权。
 
 **修复**：把 14px（≤720px 为 12px）间距从 `.skin-gallery-well` 移入 `.skin-grid` 自身 `padding`——滚动视口内的 padding 带就是阴影的着墨空间，卡到井边的视觉距离不变，总高度预算不变（移动而非叠加），R3 的 1024×768 零溢出结论不受影响。滚动中途阴影在滚动口边缘自然淡出，与看板滚动区行为一致。
 
-**复核**：R5 审计更新（padding 断言移到网格、几何检查按新 padding）后 9 状态复跑通过；R3（49 状态）／R4（21 状态）复跑通过；串行 351／351 与 typecheck／lint（41 warnings 基线）／format／skins:check／skins:palette／git diff --check 全部 exit 0。另对用户指出的三处位置做放大裁切目检（浅深 × [ChatGPT 左上角](r5-fix-light-chatgpt-corner.png)／[Mimo 右下角](r5-fix-light-mimo-corner.png)／[DeepSeek–Mimo 列](r5-fix-light-last-column.png) 及深色对应三张）：尖形、截断与缝隙右缘伪影全部消失，阴影自然落入槽底。
+**复核**：R5 审计更新（padding 断言移到网格、几何检查按新 padding）后 9 状态复跑通过；R3（49 状态）／R4（21 状态）复跑通过；串行 351／351 与 typecheck／lint（41 warnings 基线）／format／skins:check／skins:palette／git diff --check 全部 exit 0。另对用户指出的三处位置做放大裁切目检（浅深 × ChatGPT 左上角／Mimo 右下角／DeepSeek–Mimo 列 及深色对应三张）：尖形、截断与缝隙右缘伪影全部消失，阴影自然落入槽底。
 
 ## R6：缩略图右侧构图与人物辨识度
 
@@ -197,20 +199,20 @@ R5 已完成并停下，R6—R8 待后续授权。
 
 示意界面占左侧 40%，仍保留标题、两条文字、三根图表柱和按钮样本；去除 `backdrop-filter`，不再模糊人物。图片仍先于示意界面绘制，未通过提高图层覆盖配色样本。每个模式的 `.skin-preview` 自己裁切并隔离绘制，裙摆／尾巴等装饰允许裁掉，不能越过模式标签、相邻模式或卡片。舞台宽度的 `390cqw` 高度上限在窄屏自动降低放大比例，避免脸部和主干被右边缘裁切；104px 舞台高度、比较透明度 50% 均保持。
 
-先查看 [十张原始正视图的布局参考](r6-source-fronts.png)，再逐张目检实际缩略图。以下每张局部截图同时包含浅深两模式，桌面与 390px 窄屏共四十张实际预览均已查看：
+当时先查看十张原始正视图的布局参考，再逐张目检实际缩略图。以下每张局部截图同时包含浅深两模式，桌面与 390px 窄屏共四十张实际预览均已查看：
 
-- ChatGPT：[桌面](r6-preview-chatgpt.png)／[390px](r6-preview-chatgpt-390.png)
-- Claude：[桌面](r6-preview-claude.png)／[390px](r6-preview-claude-390.png)
-- GLM：[桌面](r6-preview-glm.png)／[390px](r6-preview-glm-390.png)
-- Gemini：[桌面](r6-preview-gemini.png)／[390px](r6-preview-gemini-390.png)
-- DeepSeek：[桌面](r6-preview-deepseek.png)／[390px](r6-preview-deepseek-390.png)
-- Kimi：[桌面](r6-preview-kimi.png)／[390px](r6-preview-kimi-390.png)
-- Qwen：[桌面](r6-preview-qwen.png)／[390px](r6-preview-qwen-390.png)
-- Grok：[桌面](r6-preview-grok.png)／[390px](r6-preview-grok-390.png)
-- Muse：[桌面](r6-preview-muse.png)／[390px](r6-preview-muse-390.png)
-- Mimo：[桌面](r6-preview-mimo.png)／[390px](r6-preview-mimo-390.png)
+- ChatGPT：桌面／390px
+- Claude：桌面／390px
+- GLM：桌面／390px
+- Gemini：桌面／390px
+- DeepSeek：桌面／390px
+- Kimi：桌面／390px
+- Qwen：桌面／390px
+- Grok：桌面／390px
+- Muse：桌面／390px
+- Mimo：桌面／390px
 
-总览：[浅色 1440](r6-light-1440.png)／[深色 1440](r6-dark-1440.png)、[浅色 1024](r6-light-1024.png)／[深色 1024](r6-dark-1024.png)、[浅色 390](r6-light-390.png)／[深色 390](r6-dark-390.png)。脸部及身体主干清楚露出，左右构图与原先完整全身居中相比更易辨识；部分头发、道具和裙摆在模式舞台边缘裁切，符合本轮取景优先级。
+总览：浅色 1440／深色 1440、浅色 1024／深色 1024、浅色 390／深色 390。脸部及身体主干清楚露出，左右构图与原先完整全身居中相比更易辨识；部分头发、道具和裙摆在模式舞台边缘裁切，符合本轮取景优先级。
 
 [R6 浏览器审计](r6-preview-audit.mjs) 与 [结果](r6-results.json) 使用隔离空报告、无头 Edge 和真实单文件导出。浏览器插件仍因 Windows 沙箱启动失败而无法连接，采用与前述阶段相同的独立 Playwright 回退，不修改用户真实浏览器或业务数据。覆盖浅深 × 中英 × 1440×900／1280×800／1024×768／1023×768／768×1024／390×844／360×800，加浅深两种禁网 `file://`，共 **30 个场景、58 个构图状态、1,160 个预览检查**：
 
@@ -254,7 +256,7 @@ R6 已完成并停下，R7—R8 待后续授权。
 - 三档桌面依旧五列两行且零纵向滚动，窄屏网格单独滚动、控制区及底部按钮常驻；无横向溢出。开窗／选择／简洁模式前后主看板几何相同。
 - 在线／两模式离线零页面异常，离线零网络请求。R5 接手哈希与本轮相比只有 R6／R7 的上述四个生产文件改变，其余 108 个生产／素材文件不变，包含主页面立绘参数、配色槽、全部原图与 WebP、bootstrap／manifest 和导出器。
 
-已目检 [浅色 1024](r7-light-1024.png)／[深色 1440](r7-dark-1440.png)／[深色 390](r7-dark-390.png)；同时保存浅深 × 1440／1024／390 六张总览。底部按钮共同形状与陶瓷材质、窄屏固定操作区清楚可见，R5 凹槽及 R6 人物构图保持。
+已目检 浅色 1024／深色 1440／深色 390；当时还采集了浅深 × 1440／1024／390 六张总览。底部按钮共同形状与陶瓷材质、窄屏固定操作区清楚可见，R5 凹槽及 R6 人物构图保持。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r7-actions-audit.mjs
@@ -278,7 +280,7 @@ R7 已完成并停下；R8 与 P4 待后续授权。新增“页面两侧脸部�
 
 皮肤名称、浅深模式标签、配色待定、百分比、无障碍标题保持；数据来源与计价弹窗的两段说明逐字不变。未改主页面布局、缩略图构图、角色资源、配色输入或交互逻辑。
 
-[R8 浏览器审计](r8-copy-audit.mjs)／[结果](r8-results.json) 共 **30 个场景、120 次关闭与焦点恢复通过**：浅深 × 中英 × 1440×900／1280×800／1024×768／1023×768／768×1024／390×844／360×800，另加浅深两种禁网 `file://`。沿用 R7 的按钮／键盘／偏好回归步骤，使用另存的脚本、截图与结果，保留 R7 历史证据。
+[R8 浏览器审计](r8-copy-audit.mjs)／[结果](r8-results.json) 共 **30 个场景、120 次关闭与焦点恢复通过**：浅深 × 中英 × 1440×900／1280×800／1024×768／1023×768／768×1024／390×844／360×800，另加浅深两种禁网 `file://`。沿用 R7 的按钮／键盘／偏好回归步骤，当时另存脚本、截图与结果，未覆盖 R7 记录。
 
 - 段落与专属翻译均消失，皮肤样式内无失效 `.dialog-copy`；其它弹窗原说明与数量保持。
 - 四区段的实际边缘间距均等于弹窗有效 gap，没有删除文本后的留白占位；标题的无障碍关联与二十个模式标识仍有效。
@@ -286,7 +288,7 @@ R7 已完成并停下；R8 与 P4 待后续授权。新增“页面两侧脸部�
 - 共同按钮材质、单一 radio Tab 停靠点、方向键／Home／End／Enter／Space、Tab 限制、关闭／遮罩／Escape、焦点恢复及 35%／0% 偏好恢复通过；搜索条件保留，比较透明度仍为 50%。
 - 在线／离线零页面异常，两模式真实离线导出零外部请求。与 [接手 R7 时的哈希](r8-before-hashes.json) 比较，112 个生产／素材文件仅上述三文件改变，其余 **109 个不变**。其余弹窗说明的修改前基线保存在 [r8-before-copy.json](r8-before-copy.json)。
 
-已目检 [浅色 1024](r8-light-1024.png)／[深色 1440](r8-dark-1440.png)／[深色 390](r8-dark-390.png)，同时保存浅深 × 1440／1024／390 六张总览。标题下直接显示控制行，整体阅读顺序紧凑，共享槽底、卡片构图与底部按钮材质保持。
+已目检 浅色 1024／深色 1440／深色 390，当时还采集了浅深 × 1440／1024／390 六张总览。标题下直接显示控制行，整体阅读顺序紧凑，共享槽底、卡片构图与底部按钮材质保持。
 
 ```powershell
 node docs/validation/2026-10-02-skin-dialog-refinement/r8-copy-audit.mjs
@@ -317,7 +319,7 @@ R8 后用户要求立即调整按钮位置与选中外观。首版 R7 给按钮�
 - 三档桌面保持 5＋5，窄屏操作区可访问，无横向溢出；主看板几何、35%／0% 偏好及搜索条件保留。在线与离线零页面异常，离线零外部请求。
 - 与 [修改前哈希](simple-button-before-hashes.json) 比较，112 个生产／素材文件仅上述三文件改变，其余 109 个不变。
 
-已目检 [浅色 1024](simple-button-light-1024.png)／[深色 1440](simple-button-dark-1440.png)／[深色 390](simple-button-dark-390.png)，另存浅深 × 1440／1024／390 六张总览。右上角按钮已使用共同凸起形态与主题文字微光。
+已目检 浅色 1024／深色 1440／深色 390，另存浅深 × 1440／1024／390 六张总览。右上角按钮已使用共同凸起形态与主题文字微光。
 
 验证命令：运行本节浏览器审计；串行运行 test/skins.test.js、test/static-export.test.js、test/i18n.test.js（41／41）；对三个生产文件运行 Biome；typecheck、lint、format:check、skins:check、skins:palette、git diff --check 均通过。项目 lint 保持原有 41 warnings、零 error，无新增诊断。本阶段未重复完整业务测试。
 
@@ -331,6 +333,6 @@ R8 后用户要求立即调整按钮位置与选中外观。首版 R7 给按钮�
 
 当前入口：[simple-inset-audit.mjs](simple-inset-audit.mjs)／[结果](simple-inset-results.json)。30 个浅深／中英／视窗／双模式离线场景、120 次关闭与焦点恢复通过。选中背景、边缘、阴影、圆角、字重及微光直接与真实“上个月”已选菜单项比较；独立按钮高度、padding、字号继续与关闭比较。额外两模式真实 mouse-down 验证凹陷在激活前已生效，松开激活后保持，选回角色后恢复普通表面。零页面异常、离线零网络请求。
 
-与 [修改前哈希](simple-inset-before-hashes.json) 比较，112 个保护文件仅 styles.css 改变，其余 111 个不变。默认透明度、偏好、主看板几何及十角色预览保持；已目检 [深色 1440](simple-inset-dark-1440.png)、[浅色 1024](simple-inset-light-1024.png)、[深色 390](simple-inset-dark-390.png)，按钮内凹与截图参考一致。
+与 [修改前哈希](simple-inset-before-hashes.json) 比较，112 个保护文件仅 styles.css 改变，其余 111 个不变。默认透明度、偏好、主看板几何及十角色预览保持；已目检 深色 1440、浅色 1024、深色 390，按钮内凹与截图参考一致。
 
 本节浏览器审计、串行 41 项皮肤／导出／语言测试、lint（原有 41 warnings、零 error）、format:check 与 git diff --check 通过。仅更新本轮当前规格／状态，保留上一版历史审计和结果。

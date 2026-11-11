@@ -1,24 +1,26 @@
 # 2026-10-01 看板九项修正验收
 
+历史截图与日志已于2026-11-11清理。
+
 受测版本：`28568ef` 加本批工作区修改，未创建提交。保留了实施前已有的文档重组和其他未提交内容。需求与拆分见 [Implementation Plan](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-implementation-plan.md) 和 [TODOs](../../archive/2026-10-03/plans/2026-10-01-dashboard-corrections-todos.md)。
 
 ## 最终结果
 
-- 完整测试 **311/311**：[test.log](test.log)。渠道归组、原字段/费用保留、SQL 会话去重、三路一致、日历月边界、未来时间排除、模型退出/回归、冻结覆盖率、Git 最高优先和静态导出均通过。
-- 类型检查退出 0：[typecheck.log](typecheck.log)。
-- Lint 退出 0，38 条 CSS 警告：[lint.log](lint.log)。对 HEAD 样式单独运行相同工具，基线为 39 条；没有将新增错误当作已有警告忽略。
-- 格式检查退出 0：[format.log](format.log)。只格式化本批修改的源码/测试。
-- 浏览器 **104/104**：[results.json](results.json)、[browser.log](browser.log)、[可重跑脚本](browser-audit.mjs)。
+- 完整测试 **311/311**：test.log。渠道归组、原字段/费用保留、SQL 会话去重、三路一致、日历月边界、未来时间排除、模型退出/回归、冻结覆盖率、Git 最高优先和静态导出均通过。
+- 类型检查退出 0：typecheck.log。
+- Lint 退出 0，38 条 CSS 警告：lint.log。对 HEAD 样式单独运行相同工具，基线为 39 条；没有将新增错误当作已有警告忽略。
+- 格式检查退出 0：format.log。只格式化本批修改的源码/测试。
+- 浏览器 **104/104**：[results.json](results.json)、browser.log、[可重跑脚本](browser-audit.mjs)。
 
 浏览器覆盖在线/离线 × 1440/1280/1024/390px × 浅色/深色 × 中文/英文，共 32 种布局组合。验证无横向溢出、标题同色/字号/字重、独立框体阴影、桌面三框上下边缘一致、刷新内凹槽和开关邻接、范围文字容纳。交互覆盖时区方向键/Home/End/Enter/Escape/Tab、选择持久化、外部点击、焦点恢复、扫描目录来源入口、计价与时间分布共享凹槽和选中材质、60 秒轮询失败换行、静态禁用变更和离线时区重算。额外验证普通范围四产品合并、Codex 限额 CLI/Exec 分列、Git 在四周期三态下始终首位、过期模型退出在用并保留于全部模型，以及八种桌面/手机主题/语言计价弹窗的等分按钮和文字容纳。无页面运行异常或外部请求。
 
 ## 截图抽查
 
-- 桌面：[浅色中文](online-1440-light-zh-CN-top.png)、[深色中文](online-1440-dark-zh-CN-top.png)。
-- 手机：[浅色英文](online-390-light-en-US-top.png)、[离线深色中文](offline-390-dark-zh-CN-top.png)。
-- 控件：[时区菜单](timezone-menu.png)、[计价共享凹槽](pricing-shared-well.png)、[手机英文计价](pricing-390-dark-en-US.png)、[刷新异常换行](refresh-error-mobile.png)。
+- 桌面：浅色中文、深色中文。
+- 手机：浅色英文、离线深色中文。
+- 控件：时区菜单、计价共享凹槽、手机英文计价、刷新异常换行。
 
-所有矩阵截图与几何/计算样式数据位于本目录。已人工抽查桌面、手机、深浅主题与计价弹窗；具体日期和字体/浏览器环境见结构化结果。
+几何/计算样式数据位于本目录。已人工抽查桌面、手机、深浅主题与计价弹窗；具体日期和字体/浏览器环境见结构化结果。
 
 ## 环境与重跑
 

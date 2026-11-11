@@ -100,7 +100,7 @@ D8k 官方 ChatGPT/light `badge.record` 的 3.1361:1 与 12/12 覆盖仍保留�
 
 主管已接受 D8j 限定接线与纯 Node 回归（独立 21/21、六摘要一致）；真实恢复与颜色不在其接受范围。D8k 已按授权完成，暂无下一张卡授权；不重跑、不启动 dark/矩阵/M6。D8i 继续作为旧接线下的历史阻断记录。
 
-当前结论：D8k 的测量器内部恢复诊断未发现 style/rect/canvas/scroll 差异，整页像素一致；外层严格快照比较仍捕获布局位移与 `inlineStyle`（`null`→空字符串）差异。full-page 截图前后 viewport 内可用宽度从 1905 变为 1920，12 个徽标 x 同步移动 7.5px。该证据仅定位到调用边界，不确定根因。D8k 结果与全部时点见 [单元 JSON](../integration/m52-c-d8k-offset-probe/result-r1/light/metric-record-visible/unit.json)。
+当前结论：D8k 的测量器内部恢复诊断未发现 style/rect/canvas/scroll 差异，整页像素一致；外层严格快照比较仍捕获布局位移与 `inlineStyle`（`null`→空字符串）差异。full-page 截图前后 viewport 内可用宽度从 1905 变为 1920，12 个徽标 x 同步移动 7.5px。该证据仅定位到调用边界，不确定根因。D8k 结果与全部时点见 [单元 JSON](../integration/m52-c-d8k-offset-probe/result-r1/light/metric-record-visible/unit.json.gz)。
 
 D8i 保持 `NEEDS_REVIEW`：light 通过日期/ready/API 核验，但测量器返回 `unmeasured`，12 个徽标测量后 x 坐标统一偏移 7.5px，恢复断言失败，按卡片停止且未启动 dark。无对比度或审美结论。详见 [D8i handoff](M5.2.C-D8i-badge-live.md) 与 [verification](../integration/m52-c-d8i-badge-live/verification.json)。
 
