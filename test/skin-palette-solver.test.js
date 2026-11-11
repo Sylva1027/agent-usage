@@ -1629,7 +1629,7 @@ async function m24Workspace({ skins = ["chatgpt", "grok"] } = {}) {
 const m24SkinGatedRoles = (failingSkinId) =>
   M23_BASELINE_ROLES.map((role) => ({
     ...role,
-    effective: (tokens, mode, skinId) => ({ ratio: skinId === failingSkinId ? 2 : 10 }),
+    effective: (_tokens, _mode, skinId) => ({ ratio: skinId === failingSkinId ? 2 : 10 }),
   }));
 
 test("M2.4：参数解析——固定参数与 all 展开正确，未知/重复/缺值/未知皮肤显式报错", () => {

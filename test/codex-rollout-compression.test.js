@@ -23,14 +23,14 @@ async function usageFixture() {
     await writeFile(file, (await readFile(file, "utf8")).replaceAll("codex-fixture-model", "gpt-6-astra"));
   await appendFile(
     fixture.rolloutFiles[0],
-    JSON.stringify({
+    `${JSON.stringify({
       timestamp: "2026-10-04T12:20:00Z",
       type: "event_msg",
       payload: {
         type: "token_count",
         info: { last_token_usage: { total_tokens: 100, input_tokens: 80, output_tokens: 20 } },
       },
-    }) + "\n",
+    })}\n`,
   );
   return fixture;
 }

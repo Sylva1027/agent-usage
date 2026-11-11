@@ -134,3 +134,9 @@ Windows / Node v26.13.0 / TZ=Asia/Shanghai，测试并发 4，单项超时 72000
 修复批次：02817ff 格式、7302bfa 执行器恢复、af8342d SQLite WAL 检查、482566a 目录指纹时效、b16d5d6 扫描/发布测试边界、7d89d22 日历/时钟/历史搜索夹具。除格式变化外，生产修复只涉及 server.js、usage-source-acquisition.js、usage-store.js，共新增 21 行、删除 2 行；其余为测试与验证记录。没有新增依赖、修改业务数据表结构、操作真实使用数据或已安装服务。
 
 本轮未运行 Node 22/24 CI 矩阵、重新编译 Rust、执行真实大数据库性能矩阵或部署。完整测试中原有 69 项跳过保持不变，其中原生来源认证/新增来源的 27 项已通过显式 helper 的单独运行补验。所有日志位于 output/regressions-20261111/；静态检查日志为 final-typecheck.log、final-lint.log、final-format.log。
+
+## 后续：清理剩余 lint 诊断
+
+用户授权继续修复 51 warning 和 3 info，起点 f9c9298。完整 JSON 诊断保存在 output/lint-cleanup-20261111/baseline.json：测试代码 3 warning、3 info；public/styles.css 44 个选择器顺序诊断、2 个减少动态效果的 !important 诊断和2 个位置不正确的既有抑制注释诊断。
+
+第一批：删除 usage-core 测试未使用的 rm 导入；为配色求解器测试保留前两个参数的位置并标记为未使用；三处 JSON 文本拼接改为模板字符串，保持结尾换行。四个相关测试文件 114 项全部通过，文件 lint（含 error-on-warnings）、格式和 diff --check 通过。日志：output/lint-cleanup-20261111/test-cleanup.log。

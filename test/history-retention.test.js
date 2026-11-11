@@ -312,8 +312,8 @@ test("Claude and WorkBuddy file loss retain ordinary usage", async () => {
   };
   mkdirSync(path.dirname(claudeFile), { recursive: true });
   mkdirSync(path.dirname(workbuddyFile), { recursive: true });
-  writeFileSync(claudeFile, JSON.stringify(claudeRow) + "\n");
-  writeFileSync(workbuddyFile, JSON.stringify(workbuddyRow) + "\n");
+  writeFileSync(claudeFile, `${JSON.stringify(claudeRow)}\n`);
+  writeFileSync(workbuddyFile, `${JSON.stringify(workbuddyRow)}\n`);
 
   const store = new UsageStore({
     homeDir: root,
