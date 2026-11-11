@@ -10473,8 +10473,10 @@ test("M5.2.C-E1d：真实Edge深色dashboard在聚光淡入稳定后取整页基
     });
     const role = ROLE_CATALOG.find((entry) => entry.id === "input.placeholder");
     assert.ok(role?.states.includes("dashboard-default"));
+    // Keep the revealed gradient on one compositing layer through measurement and restoration.
     await page.addStyleTag({
       content: `
+        #detailPanel::after { will-change: opacity; }
         #modelComparisonSearch::placeholder,
         #repositoryComparisonSearch::placeholder {
           color: #232b32 !important;

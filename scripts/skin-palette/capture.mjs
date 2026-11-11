@@ -3458,11 +3458,20 @@ async function evaluateReady(page, ready) {
 }
 
 /** 就绪等待（每状态独立 timeout；命中与否都记录，不抛）。 */
-async function waitStateReady(page, ready, timeout) {
+export async function waitStateReady(page, ready, timeout) {
   if (!ready) return { ok: true, kind: null, selector: null, ms: 0, skipped: true };
   const started = Date.now();
   try {
     await page.waitForFunction(buildStateReadyWaitSource(ready), undefined, { timeout });
+    // Selection styling can change before the requested dashboard has rendered.
+    await page.waitForFunction(
+      async () => {
+        await (await import("/app.js")).activeUsageLoadDone;
+        return true;
+      },
+      undefined,
+      { timeout },
+    );
     return { ok: true, kind: ready.kind, selector: ready.selector, ms: Date.now() - started };
   } catch (error) {
     return {

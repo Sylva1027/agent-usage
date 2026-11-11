@@ -94,15 +94,6 @@ function waitForExit(child) {
   return new Promise((resolve) => child.once("exit", resolve));
 }
 
-function isProcessRunning(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-
 function isolatedEnv(homeDir) {
   // Keep CLI integration tests from reading the developer's real ~/.codex-usage state.
   return { ...process.env, HOME: homeDir };
@@ -342,16 +333,22 @@ test("cli stop waits for accepted shutdown cleanup beyond five seconds", async (
 test("cli restart stops existing services and starts a new gateway", async () => {
   const homeDir = await makeFixtureHome();
   const stateFile = path.join(homeDir, "services.json");
+  // Keep the process identity: Windows can reuse a detached gateway's PID after exit.
+  const first = spawn(
+    process.execPath,
+    ["src/cli.js", "run", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
+    {
+      cwd: path.resolve(import.meta.dirname, ".."),
+      env: isolatedEnv(homeDir),
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const firstExit = waitForExit(first);
 
   try {
-    const startOutput = await runCli(
-      ["gateway", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
-      isolatedEnv(homeDir),
-    );
-    const startMatch = startOutput.match(/(http:\/\/127\.0\.0\.1:\d+).*pid (\d+)/);
-    assert.ok(startMatch, startOutput);
-    const firstPid = Number(startMatch[2]);
-    assert.equal(isProcessRunning(firstPid), true);
+    await waitForServerUrl(first);
+    assert.equal(first.exitCode, null);
+    const [firstService] = await readServices(stateFile);
 
     const restartOutput = await runCli(
       ["restart", "--host", "127.0.0.1", "--port", "0", "--home-dir", homeDir, "--state-file", stateFile],
@@ -365,8 +362,7 @@ test("cli restart stops existing services and starts a new gateway", async () =>
     const restartUrl = restartMatch[1];
     const restartPid = Number(restartMatch[2]);
 
-    assert.notEqual(restartPid, firstPid);
-    assert.equal(isProcessRunning(firstPid), false);
+    assert.equal(first.exitCode, 0, "restart must return after the original service exits normally");
     const usage = await fetch(`${restartUrl}/api/usage`).then((response) => response.json());
     assert.equal(usage.summary.totals.total, 77);
 
@@ -375,7 +371,10 @@ test("cli restart stops existing services and starts a new gateway", async () =>
       state.services.map((service) => service.pid),
       [restartPid],
     );
+    assert.notEqual(state.services[0].shutdownToken, firstService.shutdownToken);
   } finally {
+    if (first.exitCode === null && !first.killed) first.kill("SIGTERM");
+    await firstExit;
     await runCli(["stop", "--state-file", stateFile], isolatedEnv(homeDir));
   }
 });

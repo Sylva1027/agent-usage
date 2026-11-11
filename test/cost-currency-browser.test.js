@@ -104,9 +104,20 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
       return fillText.call(this, text, ...args);
     };
   });
+  const waitForPreset = async (preset) => {
+    const appState = await page.evaluateHandle(async () => (await import("/app-state.js")).state);
+    try {
+      await page.waitForFunction(({ state, preset }) => state.summary?.range.preset === preset, {
+        state: appState,
+        preset,
+      });
+    } finally {
+      await appState.dispose();
+    }
+  };
   const showAll = async () => {
     await page.locator('[data-preset="all"]').click();
-    await page.waitForFunction(async () => (await import("/app-state.js")).state.summary?.range.preset === "all");
+    await waitForPreset("all");
     await page.locator('[data-timeline-mode="cost"]').click();
     await page.locator("#detailList .bar-row").first().waitFor();
   };
@@ -184,7 +195,7 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await openPricing();
   await page.locator('[data-display-currency="USD"]').click();
   release();
-  await page.waitForFunction(async () => (await import("/app-state.js")).state.summary?.range.preset === "month");
+  await waitForPreset("month");
   await page.locator("#cancelPricingButton").click();
   await showAll();
   await assertCurrency(page, "USD");

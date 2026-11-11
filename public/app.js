@@ -3828,7 +3828,7 @@ function usageQuery({ skipCheck = false, freeze = false } = {}) {
 }
 
 let activeUsageLoadId = null;
-let activeUsageLoadDone = Promise.resolve();
+export let activeUsageLoadDone = Promise.resolve();
 let completeUsageLoad = () => {};
 let appliedUsageVersion = null;
 let appliedUsageScope = null;

@@ -56,6 +56,7 @@ import {
   planResume,
   resolveBrowserRuntime,
   resumeDigestsMatch,
+  waitStateReady,
 } from "../scripts/skin-palette/capture.mjs";
 import { captureStableFullPage } from "../scripts/skin-palette/browser-measure.mjs";
 import { REQUIRED_SOURCE_FILES } from "../scripts/skin-palette/assess.mjs";
@@ -3672,14 +3673,17 @@ test("M4.3 menu-recent-open：打开和恢复不触发延迟筛选响应污染�
   await page.goto(preview.url);
   await page.waitForFunction(() => Boolean(window.__skinTestHook));
   await page.click('#presetButtons button[data-preset="all"]');
-  await page.waitForFunction(async (total) => {
-    const { state } = await import("/app-state.js");
-    return (
-      state.summary?.range.preset === "all" &&
-      state.summary.totals.total === total &&
-      document.querySelector("#totalTokens").textContent === "0.24M"
-    );
-  }, FIXTURE_TOTAL_TOKENS);
+  const appState = await page.evaluateHandle(async () => (await import("/app-state.js")).state);
+  await page.waitForFunction(
+    ({ state, total }) => {
+      return (
+        state.summary?.range.preset === "all" &&
+        state.summary.totals.total === total &&
+        document.querySelector("#totalTokens").textContent === "0.24M"
+      );
+    },
+    { state: appState, total: FIXTURE_TOTAL_TOKENS },
+  );
   await page.evaluate(() => document.fonts.ready);
   const baselineTotal = await page.locator("#totalTokens").textContent();
   const pending = [];
@@ -3695,10 +3699,10 @@ test("M4.3 menu-recent-open：打开和恢复不触发延迟筛选响应污染�
       const response = await route.fetch();
       const data = await response.json();
       await route.fulfill({ response });
-      await page.waitForFunction(async (total) => {
-        const { state } = await import("/app-state.js");
-        return state.summary?.totals.total === total;
-      }, data.summary.totals.total);
+      await page.waitForFunction(({ state, total }) => state.summary?.totals.total === total, {
+        state: appState,
+        total: data.summary.totals.total,
+      });
     }
     return screenshot(options);
   };
@@ -3719,6 +3723,37 @@ test("M4.3 menu-recent-open：打开和恢复不触发延迟筛选响应污染�
   assert.equal(filterRequests, 0, "菜单打开和恢复都不得发起 usage 筛选请求");
   assert.equal(await page.locator('#presetButtons button[data-preset="all"]').getAttribute("class"), "active");
   assert.equal(await page.locator("#totalTokens").textContent(), baselineTotal, "菜单操作不得改变看板数据");
+  await t.test("预设选中后等待实际数据渲染，再开始截图", async () => {
+    await page.unroute(/\/api\/usage\?/);
+    page.screenshot = screenshot;
+    const requested = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    t.after(() => release.resolve());
+    await page.route(
+      /\/api\/usage\?/,
+      async (route) => {
+        requested.resolve();
+        await release.promise;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    const preset = STATE_CATALOG.find((entry) => entry.id === "preset-selected");
+    assert.equal((await applyStateStep(page, preset.steps[0], { stateTimeoutMs: 5000 })).ok, true);
+    await requested.promise;
+    let settled = false;
+    const ready = waitStateReady(page, preset.ready, 5000).then((result) => {
+      settled = true;
+      return result;
+    });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(settled, false, "按钮选中不代表数据已渲染");
+    release.resolve();
+    assert.equal((await ready).ok, true);
+    assert.equal(await page.evaluate(async () => (await import("/app-state.js")).state.summary.range.preset), "month");
+    await captureStableFullPage(page);
+  });
+  await appState.dispose();
 });
 
 test("M4.3 真机矩阵：light 模式 S1/S2/S6 全覆盖、恢复无旧色残留、未测项与摘要齐备", async (t) => {
