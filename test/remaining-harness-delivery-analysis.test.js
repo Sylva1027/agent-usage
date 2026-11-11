@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { business, regressed } from "../experiments/architecture-20261101/remaining-harness-delivery-analyze.mjs";
+import { business, regressed } from "../test-support/remaining-harness-delivery-analysis.mjs";
 
 function body(asOf) {
   const now = new Date(asOf).toISOString();

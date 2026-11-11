@@ -12,7 +12,7 @@ import {
   appendChange,
   planChanges,
   reviseChange,
-} from "../experiments/architecture-20261101/remaining-harness-delivery-fixture.mjs";
+} from "../test-support/remaining-harness-delivery-fixture.mjs";
 import { createEventPricing } from "../src/pricing.js";
 import { FIXTURE_TIME, createRemainingHarnessFixture } from "../test-support/remaining-harness-fixture.mjs";
 
