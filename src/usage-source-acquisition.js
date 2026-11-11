@@ -392,6 +392,19 @@ export class UsageSourceAcquisition {
       if (!native) return null;
       const inputs = await readUsageSourceInputs(options, state.homes, "");
       if (inputs.inputs !== state.auxiliary) throw unavailable("auxiliary input changed");
+      // An open SQLite writer can change its WAL without another main-file journal record.
+      const sqliteFiles = this.store.database
+        .prepare("SELECT path FROM source_files WHERE kind IN ('zcode','opencode')")
+        .all()
+        .map((row) => ({ filePath: String(row.path) }));
+      const fingerprints = await this.store.usageFileFingerprints(sqliteFiles);
+      const catalogFile = this.store.database.prepare(
+        "SELECT payload FROM usage_source_catalog WHERE path=? AND role='file'",
+      );
+      for (const [filePath, fingerprint] of fingerprints) {
+        if (!fingerprint || fingerprint !== parse(catalogFile.get(normal(filePath)))?.fingerprint)
+          throw unavailable("SQLite source or WAL changed");
+      }
       const interval = await this.interval(state, native);
       const paths = new Set(interval.dirty);
       for (const row of this.store.database

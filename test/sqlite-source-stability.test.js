@@ -194,6 +194,7 @@ for (const [kind, adapter] of Object.entries(adapters)) {
     await syncCount(store, 0, 2);
     const deleted = facts(store).find((row) => row.session_id === "session-1");
     writer.prepare(`DELETE FROM ${adapter.table} WHERE id='event-1'`).run();
+    assert.equal(await store.checkSources(), null, "an open writer's WAL change cannot certify unchanged data");
     await syncCount(store, 1, 3);
     const retained = store.database
       .prepare("SELECT * FROM history_replaced_facts WHERE fact_table='events'")
