@@ -1,0 +1,146 @@
+diff --git a/public/perf-ui.js b/public/perf-ui.js
+index ed29d81..e1d4713 100644
+--- a/public/perf-ui.js
++++ b/public/perf-ui.js
+@@ -281,8 +281,8 @@ function renderGroupButton(group, index, rank, selectedKey, locale) {
+   const provider = dimension(group.modelProvider, locale);
+   const effort = dimension(group.reasoningEffort, locale);
+   const selected = selectedKey === group.groupKey;
+-  const label = `${group.model || localizeText("模型未知", locale)}, ${localizeText(group.state === "overflow" ? "聚合溢出" : insufficient ? "样本不足" : "排名", locale)} ${rank ?? ""}, p50 ${formatPerfTps(tps, locale)} tok/s, n ${formatPerfNumber(group.n, locale)}`;
+-  return `<button class="perf-model-row${selected ? " selected" : ""}" type="button" data-perf-group-index="${index}" aria-pressed="${selected}" aria-label="${escapeHtml(label)}" title="${model}"><span class="perf-model-name">${model}</span><span class="perf-model-tags"><span>${provider}</span><span>${effort}</span></span><span class="perf-model-result"><span class="perf-rank${insufficient || group.state === "overflow" ? " muted" : ""}">${stateLabel}</span><strong>${escapeHtml(formatPerfTps(tps, locale))} tok/s</strong><span>n=${countCell(group.n, locale)}</span></span></button>`;
++  const label = `${group.model || localizeText("模型未知", locale)}, ${localizeText(group.state === "overflow" ? "聚合溢出" : insufficient ? "样本不足" : "排名", locale)} ${rank ?? ""}, p50 ${formatPerfTps(tps, locale)} token/s, n ${formatPerfNumber(group.n, locale)}`;
++  return `<button class="perf-model-row${selected ? " selected" : ""}" type="button" data-perf-group-index="${index}" aria-pressed="${selected}" aria-label="${escapeHtml(label)}" title="${model}"><span class="perf-model-name">${model}</span><span class="perf-model-tags"><span>${provider}</span><span>${effort}</span></span><span class="perf-model-result"><span class="perf-rank${insufficient || group.state === "overflow" ? " muted" : ""}">${stateLabel}</span><strong>${escapeHtml(formatPerfTps(tps, locale))} token/s</strong><span>n=${countCell(group.n, locale)}</span></span></button>`;
+ }
+ 
+ function renderDiagnosticGroup(bucketKey, bucket, homeLabels, locale) {
+@@ -466,7 +466,7 @@ export function renderPerfDetailHtml(group, coverage, { locale = "zh-CN", homeLa
+   const stats = output
+     .map(([label, value, kind]) => {
+       const formatted =
+-        kind === "duration" ? formatPerfDuration(value, locale) : `${formatPerfTps(value, locale)} tok/s`;
++        kind === "duration" ? formatPerfDuration(value, locale) : `${formatPerfTps(value, locale)} token/s`;
+       return `<div class="perf-detail-stat"><dt>${copy(label, locale)}</dt><dd>${escapeHtml(formatted)}</dd></div>`;
+     })
+     .join("");
+@@ -559,12 +559,12 @@ function renderModelBand(model, locale) {
+   const p10 = formatPerfTps(model.p10, locale);
+   const p90 = formatPerfTps(model.p90, locale);
+   const average = formatPerfTps(model.averageTps, locale);
+-  const summary = `10% ${p10}, ${localizeText("平均", locale)} ${average} tok/s, 90% ${p90} tok/s, ${localizeText("样本数", locale)} ${formatPerfNumber(model.n, locale)}`;
++  const summary = `10% ${p10}, ${localizeText("平均", locale)} ${average} token/s, 90% ${p90} token/s, ${localizeText("样本数", locale)} ${formatPerfNumber(model.n, locale)}`;
+   const endpoints = geometry.same
+     ? bandTickHtml(geometry.p10, model.p10, "10% / 90%", "down", locale)
+     : `${bandTickHtml(geometry.p10, model.p10, "10%", "down", locale)}${bandTickHtml(geometry.p90, model.p90, "90%", "down", locale)}<span class="perf-model-close-endpoints" hidden><span>${copy("10%", locale)} <strong>${escapeHtml(p10)}</strong></span><span>${copy("90%", locale)} <strong>${escapeHtml(p90)}</strong></span></span>`;
+   return `<div class="perf-model-band">
+-  <div class="perf-model-plot" role="img" aria-label="${escapeHtml(summary)}" title="${copy("常见速度区间", locale)} ${escapeHtml(p10)}–${escapeHtml(p90)} tok/s · ${copy("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", locale)}">
++  <div class="perf-model-plot" role="img" aria-label="${escapeHtml(summary)}" title="${copy("常见速度区间", locale)} ${escapeHtml(p10)}–${escapeHtml(p90)} token/s · ${copy("p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。", locale)}">
+     <div class="bar-track perf-model-band-track" aria-hidden="true"><div class="bar-fill perf-model-band-fill" style="left: ${geometry.bandLeft.toFixed(2)}%; width: ${(geometry.p90 - geometry.p10).toFixed(2)}%"></div></div>
+     ${bandTickHtml(geometry.average, model.averageTps, "平均", "up", locale)}
+     ${endpoints}
+@@ -587,7 +587,7 @@ function renderPerfModelRow(model, index, maxAverage, selectedKey, locale) {
+   const speedCell = validAverage
+     ? `<span class="bar-track perf-model-mini-track" aria-hidden="true"><span class="bar-fill perf-model-mini-fill" style="width: ${width.toFixed(2)}%"></span></span><span class="perf-model-speed-value">${escapeHtml(speed)}</span>`
+     : `<span></span><span class="perf-model-speed-value">${dash}</span>`;
+-  const label = `${identity}, ${localizeText("平均", locale)} ${speed} tok/s`;
++  const label = `${identity}, ${localizeText("平均", locale)} ${speed} token/s`;
+   return `<tr class="perf-model-data-row${selected ? " selected" : ""}${model.state === "overflow" ? " is-overflow" : ""}" data-perf-model-index="${index}"><th scope="row"><button class="perf-model-row-action" type="button" data-perf-model-key="${escapeHtml(model.key)}" aria-pressed="${selected}" aria-label="${escapeHtml(label)}" title="${escapeHtml(identity)}"><span class="comparison-row-name"><span class="comparison-row-label perf-model-name">${escapeHtml(modelLabel)}</span>${effort}</span></button></th><td class="perf-model-source" title="${escapeHtml([source, provider].filter(Boolean).join(" · "))}"><span class="perf-model-source-kind">${escapeHtml(source)}</span>${provider ? `<span class="perf-model-source-provider">${escapeHtml(provider)}</span>` : ""}</td><td class="perf-model-speed"><span class="perf-model-speed-cell">${speedCell}</span></td></tr>`;
+ }
+ 
+@@ -603,7 +603,7 @@ export function renderPerfModelTableHtml(perf, { locale = "zh-CN", selectedKey =
+   );
+   const columns =
+     '<colgroup><col class="perf-model-col-model" /><col class="perf-model-col-source" /><col class="perf-model-col-speed" /></colgroup>';
+-  const header = `<thead><tr><th scope="col">${copy("模型", locale)}</th><th scope="col">${copy("来源", locale)}</th><th scope="col">${copy("平均速度 (tok/s)", locale)}</th></tr></thead>`;
++  const header = `<thead><tr><th scope="col">${copy("模型", locale)}</th><th scope="col">${copy("来源", locale)}</th><th scope="col">${copy("平均速度", locale)}</th></tr></thead>`;
+   const rows = models.map((model, index) => renderPerfModelRow(model, index, maxAverage, selectedKey, locale)).join("");
+   return `<section class="panel perf-model-table-panel" aria-label="${copy("模型速度", locale)}"><div class="comparison-table-frame"><div class="comparison-table-scroll perf-model-table-scroll" tabindex="0" role="region" aria-label="${copy("模型速度", locale)}"><table class="comparison-table perf-model-table perf-model-data-table" aria-label="${copy("模型速度", locale)}">${columns}${header}<tbody>${rows}</tbody></table></div></div></section>`;
+ }
+@@ -627,9 +627,9 @@ export function renderPerfModelDetailHtml(model, { locale = "zh-CN" } = {}) {
+     return `<div class="perf-model-detail-head">${title}</div><p class="perf-model-overflow">${copy("聚合溢出", locale)}</p>`;
+   }
+   if (model.state === "missing_duration") {
+-    return `<div class="perf-model-detail-head">${title}</div><div class="perf-model-hero"><strong>${dash}</strong><span class="perf-model-unit">tok/s</span></div>`;
++    return `<div class="perf-model-detail-head">${title}</div><div class="perf-model-hero"><strong>${dash}</strong><span class="perf-model-unit">token/s</span></div>`;
+   }
+-  const hero = `<div class="perf-model-hero"><strong>${escapeHtml(formatPerfTps(model.averageTps, locale))}</strong><span class="perf-model-unit">tok/s</span></div>`;
++  const hero = `<div class="perf-model-hero"><strong>${escapeHtml(formatPerfTps(model.averageTps, locale))}</strong><span class="perf-model-unit">token/s</span></div>`;
+   return `<div class="perf-model-detail-head">${title}</div>${hero}${renderModelBand(model, locale)}`;
+ }
+ 
+diff --git a/public/i18n.js b/public/i18n.js
+index dce82f1..bd4a29b 100644
+--- a/public/i18n.js
++++ b/public/i18n.js
+@@ -143,7 +143,7 @@ const ENGLISH = new Map(
+     "全历史、无法定位日期的记录": "All-history records that cannot be placed in time",
+     不计入当前范围分母: "Excluded from the current-range denominator",
+     "模型 / 推理强度": "Model / Reasoning Effort",
+-    "平均速度 (tok/s)": "Average Speed (tok/s)",
++    "平均速度": "Average Speed",
+     "模型速度历史样本表，最多显示五行，可滚动":
+       "Model speed historical sample table. Up to five rows are visible and the rest can be scrolled.",
+     "模型速度历史样本表：排名、模型与推理强度、来源、平均速度":
+diff --git a/test/perf-ui.test.js b/test/perf-ui.test.js
+index 00fa4df..2998431 100644
+--- a/test/perf-ui.test.js
++++ b/test/perf-ui.test.js
+@@ -327,7 +327,7 @@ test("zero-sample diagnostics explain missing output, duration, and source filte
+   assert.match(html, /缺少时长\/时长无效/);
+   assert.match(html, /源过滤/);
+   assert.match(html, /代理未知/);
+-  assert.doesNotMatch(html, /0\.0 tok\/s/);
++  assert.doesNotMatch(html, /0\.0 token\/s/);
+ });
+ 
+ test("coverage preserves null rates, reports Codex era splits, and never sums overlapping flags", () => {
+@@ -403,7 +403,7 @@ test("Codex estimate details distinguish timing and percentile direction", () =>
+   assert.match(html, /p10（慢端）/);
+   assert.match(html, /p90（快端）/);
+   assert.match(html, /合并样本 TPS 不代表日历时间整体效率/);
+-  assert.match(html, /tok\/s/);
++  assert.match(html, /token\/s/);
+ });
+ 
+ test("degraded, unsupported, long, and hostile source labels remain visible and escaped", () => {
+@@ -779,7 +779,7 @@ test("model overflow rows have no rank, speed, or bar and detail has no stale ba
+   assert.doesNotMatch(overflowRow, /perf-model-mini-fill/);
+   const detail = renderPerfModelDetailHtml(overflow, { locale: "zh-CN" });
+   assert.match(detail, /聚合溢出/);
+-  assert.doesNotMatch(detail, /perf-model-band|tok\/s/);
++  assert.doesNotMatch(detail, /perf-model-band|token\/s/);
+ });
+ 
+ test("small sample rows retain speed and detail count without ranking labels", () => {
+@@ -852,7 +852,7 @@ test("model band keeps a mean outside p10-p90 outside the distribution and handl
+   assert.match(html, /perf-model-band-fill" style="left: 83\.33%; width: 0\.00%"/);
+   assert.match(html, /perf-model-tick is-up" style="left: 16\.67%"/);
+   assert.match(html, /perf-model-tick-value">100\.0<\/span><span class="perf-model-tick-name">10% \/ 90%/);
+-  assert.match(html, /常见速度区间 100\.0–100\.0 tok\/s/);
++  assert.match(html, /常见速度区间 100\.0–100\.0 token\/s/);
+   assert.match(html, /p90 是第 90 百分位，不是最快 10% 的平均值，也不是速度上限。/);
+   assert.doesNotMatch(html, /80%|请求/);
+ 
+@@ -1058,9 +1058,9 @@ test("model speed copy is complete in English and keeps the selected key", () =>
+   const rows = [model(), model({ sourceKind: "dsh", model: "gpt-6-astra", reasoningEffort: "", rank: 2 })];
+   const html = renderPerfModelsHtml({ models: rows }, { locale: "en-US", selectedKey: rows[1].key });
+   assert.match(html, /<th scope="col">Models<\/th>/);
+-  assert.match(html, /Average Speed \(tok\/s\)/);
++  assert.match(html, /Average Speed/);
+   assert.match(html, /207 turns/);
+-  assert.match(html, /Common speed range 58\.2–96\.4 tok\/s/);
++  assert.match(html, /Common speed range 58\.2–96\.4 token\/s/);
+   assert.match(html, /aria-pressed="true"/);
+   assert.match(html, /data-perf-model-key="\[&quot;dsh&quot;,&quot;gpt-6-astra&quot;,&quot;&quot;\]"/);
+ });
+@@ -1283,3 +1283,10 @@ test("perf 来源标签包含 WorkBuddy，未知来源仍是兜底", () => {
+   assert.equal(sourceLabel("codex", "zh-CN"), "Codex");
+   assert.equal(sourceLabel("unsupported", "en-US"), "Unknown source");
+ });
++
++test("TPS copy keeps the table header unitless and uses token/s in details", () => {
++  const source = readFileSync(new URL("../public/perf-ui.js", import.meta.url), "utf8");
++  assert.match(source, /copy\("平均速度", locale\)/);
++  assert.doesNotMatch(source, /tok\/s/);
++  assert.match(source, /perf-model-unit">token\/s/);
++});
+\ No newline at end of file
