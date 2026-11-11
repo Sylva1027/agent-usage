@@ -71,7 +71,9 @@ export function createUsageSourceWatcher(options = /** @type {any} */ ({})) {
         release?.();
         return;
       }
-      Promise.resolve(pending).catch(() => {}).finally(() => release?.());
+      Promise.resolve(pending)
+        .catch(() => {})
+        .finally(() => release?.());
     }, debounceMs);
     debounceTimer?.unref?.();
   }

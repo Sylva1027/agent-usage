@@ -505,7 +505,11 @@ test("randomized persisted and official inputs match both reference algorithms",
 
 test("quota schema exports its owned tables and revisions only on quota mutations", () => {
   const database = createDatabase();
-  assert.deepEqual(USAGE_QUOTA_TABLE_NAMES, ["quota_revision", "usage_quota_window_cache", ...USAGE_QUOTA_PROJECTION_TABLE_NAMES]);
+  assert.deepEqual(USAGE_QUOTA_TABLE_NAMES, [
+    "quota_revision",
+    "usage_quota_window_cache",
+    ...USAGE_QUOTA_PROJECTION_TABLE_NAMES,
+  ]);
   assert.equal(ensureUsageQuotaSchema(database), true);
   assert.equal(ensureUsageQuotaSchema(database), true);
   assert.equal(quotaRevision(database), 0);

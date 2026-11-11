@@ -6,7 +6,13 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { KINDS, accountSource, appendChange, planChanges, reviseChange } from "../experiments/architecture-20261101/remaining-harness-delivery-fixture.mjs";
+import {
+  KINDS,
+  accountSource,
+  appendChange,
+  planChanges,
+  reviseChange,
+} from "../experiments/architecture-20261101/remaining-harness-delivery-fixture.mjs";
 import { createEventPricing } from "../src/pricing.js";
 import { FIXTURE_TIME, createRemainingHarnessFixture } from "../test-support/remaining-harness-fixture.mjs";
 
@@ -21,13 +27,20 @@ const adapters = {
 async function reference(kind, fixture) {
   const [module, method] = adapters[kind];
   const events = [];
-  await (await import(pathToFileURL(path.join(runtimeDirectory, "src", module))))[method](fixture.filePath, fixture.source,
-    (event) => events.push(event), { repositoryResolver: (cwd) => ({ key: cwd, path: cwd, kind: "directory" }) });
+  await (await import(pathToFileURL(path.join(runtimeDirectory, "src", module))))[method](
+    fixture.filePath,
+    fixture.source,
+    (event) => events.push(event),
+    { repositoryResolver: (cwd) => ({ key: cwd, path: cwd, kind: "directory" }) },
+  );
   return events;
 }
 function counts(events) {
-  return { total: events.reduce((sum, event) => sum + event.usage.total, 0), eventCount: events.length,
-    sessionCount: new Set(events.map((event) => event.sessionId)).size };
+  return {
+    total: events.reduce((sum, event) => sum + event.usage.total, 0),
+    eventCount: events.length,
+    sessionCount: new Set(events.map((event) => event.sessionId)).size,
+  };
 }
 const identity = (event) => event.eventId ?? event.messageId;
 const jsonCopy = (value) => JSON.parse(JSON.stringify(value));
@@ -38,7 +51,11 @@ async function temporary(t) {
 }
 function sql(file, action) {
   const db = new DatabaseSync(file);
-  try { return action(db); } finally { db.close(); }
+  try {
+    return action(db);
+  } finally {
+    db.close();
+  }
 }
 async function capturedShape(fixture, kind) {
   if (kind === "claude" || kind === "workbuddy") {
@@ -70,7 +87,11 @@ for (const kind of KINDS) {
     await capturedShape(fixture, kind);
     const beforeBytes = await readFile(fixture.filePath);
     const before = await reference(kind, fixture);
-    const expected = { total: kind === "claude" ? 498 : 483, eventCount: 3, sessionCount: kind === "claude" || kind === "workbuddy" ? 1 : 3 };
+    const expected = {
+      total: kind === "claude" ? 498 : 483,
+      eventCount: 3,
+      sessionCount: kind === "claude" || kind === "workbuddy" ? 1 : 3,
+    };
     assert.deepEqual(counts(before), expected);
     assert.deepEqual(await accountSource({ kind, ...fixture }), expected);
     const args = { kind, ...fixture, runtimeDirectory, appendTimeMs };
@@ -78,14 +99,20 @@ for (const kind of KINDS) {
     assert.deepEqual(jsonCopy(await planChanges(args)), plan);
     assert.deepEqual(await readFile(fixture.filePath), beforeBytes, "planning cannot change the source");
     assert.equal(plan.original.identity, identity(before[0]));
-    if (kind === "claude") assert.equal(plan.original.raw.message.usage.output_tokens, 25, "select the winning duplicate");
-    if (kind === "workbuddy") assert.equal(plan.original.raw.providerData.usage.outputTokens, 20, "select the first eligible row");
+    if (kind === "claude")
+      assert.equal(plan.original.raw.message.usage.output_tokens, 25, "select the winning duplicate");
+    if (kind === "workbuddy")
+      assert.equal(plan.original.raw.providerData.usage.outputTokens, 20, "select the first eligible row");
 
     const copyPath = path.join(root, "copy", path.basename(fixture.filePath));
     await mkdir(path.dirname(copyPath));
     await copyFile(fixture.filePath, copyPath);
     const copyPlan = jsonCopy(await planChanges({ ...args, filePath: copyPath }));
-    assert.deepEqual({ ...copyPlan, filePath: "" }, { ...plan, filePath: "" }, "fresh copies select the same source event and IDs");
+    assert.deepEqual(
+      { ...copyPlan, filePath: "" },
+      { ...plan, filePath: "" },
+      "fresh copies select the same source event and IDs",
+    );
     const receipts = [];
     for (const ordinal of [1, 2]) {
       const start = Date.now();
@@ -104,7 +131,13 @@ for (const kind of KINDS) {
     for (const [index, receipt] of receipts.entries()) {
       const event = afterAppend.find((event) => identity(event) === receipt.identity);
       assert.ok(event);
-      assert.deepEqual(event.usage, { total: 160, input: 140, output: 20, cached: 30, reasoning: kind === "claude" ? 0 : 5 });
+      assert.deepEqual(event.usage, {
+        total: 160,
+        input: 140,
+        output: 20,
+        cached: 30,
+        reasoning: kind === "claude" ? 0 : 5,
+      });
       assert.equal(event.sessionId, before[0].sessionId);
       assert.equal(event.timestampMs, appendTimeMs + (index + 1) * 1000);
       assert.equal(event.detailMask & 15, 15);
@@ -120,7 +153,9 @@ for (const kind of KINDS) {
     const revisionBytes = await readFile(fixture.filePath);
     const start = Date.now();
     const revised = await reviseChange(plan);
-    assert.ok(start <= revised.startedAtMs && revised.startedAtMs <= revised.landedAtMs && revised.landedAtMs <= Date.now());
+    assert.ok(
+      start <= revised.startedAtMs && revised.startedAtMs <= revised.landedAtMs && revised.landedAtMs <= Date.now(),
+    );
     assert.deepEqual([revised.deltaTotal, revised.deltaEvents, revised.deltaSessions], [19, 0, 0]);
     assert.equal(revised.identity, identity(before[0]));
     const final = await reference(kind, fixture);
@@ -128,13 +163,22 @@ for (const kind of KINDS) {
     assert.deepEqual(counts(final), finalCounts);
     assert.deepEqual(await accountSource({ kind, ...fixture }), finalCounts);
     const target = final.find((event) => identity(event) === revised.identity);
-    assert.deepEqual(target, { ...before[0], usage: { ...before[0].usage, output: before[0].usage.output + 19, total: before[0].usage.total + 19 } });
-    assert.deepEqual(final.filter((event) => identity(event) !== revised.identity), afterAppend.filter((event) => identity(event) !== revised.identity));
+    assert.deepEqual(target, {
+      ...before[0],
+      usage: { ...before[0].usage, output: before[0].usage.output + 19, total: before[0].usage.total + 19 },
+    });
+    assert.deepEqual(
+      final.filter((event) => identity(event) !== revised.identity),
+      afterAppend.filter((event) => identity(event) !== revised.identity),
+    );
     if (kind === "claude" || kind === "workbuddy") {
       const afterBytes = await readFile(fixture.filePath);
       const oldLines = revisionBytes.toString("utf8").split("\r\n");
       const newLines = afterBytes.toString("utf8").split("\r\n");
-      assert.deepEqual(newLines.filter((_, index) => index !== plan.original.lineIndex), oldLines.filter((_, index) => index !== plan.original.lineIndex));
+      assert.deepEqual(
+        newLines.filter((_, index) => index !== plan.original.lineIndex),
+        oldLines.filter((_, index) => index !== plan.original.lineIndex),
+      );
       assert.notEqual(newLines[plan.original.lineIndex], oldLines[plan.original.lineIndex]);
       assert.ok(!afterBytes.toString("utf8").endsWith("\n"), "unterminated final line stays unterminated");
     } else {
@@ -178,7 +222,13 @@ for (const totals of ["provider", "none", "null"]) {
     const expected = { total: 321 + 339, eventCount: 4, sessionCount: 2 };
     assert.deepEqual(await accountSource({ kind: "zcode", ...fixture }), expected);
     assert.deepEqual(counts(await reference("zcode", fixture)), expected);
-    if (totals === "null") sql(fixture.filePath, (db) => assert.equal(db.prepare("SELECT provider_total_tokens FROM model_usage WHERE id='event-0'").get().provider_total_tokens, null));
+    if (totals === "null")
+      sql(fixture.filePath, (db) =>
+        assert.equal(
+          db.prepare("SELECT provider_total_tokens FROM model_usage WHERE id='event-0'").get().provider_total_tokens,
+          null,
+        ),
+      );
   });
 }
 
@@ -186,7 +236,11 @@ test("failed SQLite append rolls back and frozen captures cannot be mutated", as
   const root = await temporary(t);
   const fixture = createRemainingHarnessFixture(path.join(root, "source"), "zcode", 1);
   const plan = await planChanges({ kind: "zcode", ...fixture, runtimeDirectory, appendTimeMs });
-  sql(fixture.filePath, (db) => db.exec("CREATE TRIGGER reject_append BEFORE INSERT ON model_usage BEGIN SELECT RAISE(ABORT,'fixture insert rejected'); END"));
+  sql(fixture.filePath, (db) =>
+    db.exec(
+      "CREATE TRIGGER reject_append BEFORE INSERT ON model_usage BEGIN SELECT RAISE(ABORT,'fixture insert rejected'); END",
+    ),
+  );
   await assert.rejects(appendChange(plan, 1), /fixture insert rejected/);
   assert.deepEqual(await accountSource({ kind: "zcode", ...fixture }), { total: 160, eventCount: 1, sessionCount: 1 });
   const frozen = createRemainingHarnessFixture(path.join(root, "capture-20261102"), "claude", 1);
@@ -200,6 +254,9 @@ test("unsupported detail columns fail while planning, before any source mutation
   const fixture = createRemainingHarnessFixture(root, "zcode", 1);
   sql(fixture.filePath, (db) => db.exec("ALTER TABLE model_usage DROP COLUMN cache_creation_input_tokens"));
   const before = await readFile(fixture.filePath);
-  await assert.rejects(planChanges({ kind: "zcode", ...fixture, runtimeDirectory, appendTimeMs }), /unsupported ZCode token columns/);
+  await assert.rejects(
+    planChanges({ kind: "zcode", ...fixture, runtimeDirectory, appendTimeMs }),
+    /unsupported ZCode token columns/,
+  );
   assert.deepEqual(await readFile(fixture.filePath), before);
 });

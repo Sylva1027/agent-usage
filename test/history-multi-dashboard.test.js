@@ -435,21 +435,29 @@ const SHAPES = [
 ];
 
 test("mixed local history recalculates calendar keys retained from another timezone", async () => {
-  const fixture = await createFixture({ archiveDays: [0,1,2,3], revision: true });
+  const fixture = await createFixture({ archiveDays: [0, 1, 2, 3], revision: true });
   try {
     fixture.store.database.exec("UPDATE events SET day_key='1999-01-01',week_key='1998-12-28',month_key='1999-01'");
-    await readDashboardParity(fixture.store, { ...filtersFor("custom"), calendarZone: "local" }, true, { includeDetails: false });
-  } finally {fixture.close();}
+    await readDashboardParity(fixture.store, { ...filtersFor("custom"), calendarZone: "local" }, true, {
+      includeDetails: false,
+    });
+  } finally {
+    fixture.close();
+  }
 });
 
 test("cold pricing uses committed source identity even when the live inventory is empty", async () => {
-  const fixture = await createFixture({ archiveDays: [0,1,2,3], revision: true });
+  const fixture = await createFixture({ archiveDays: [0, 1, 2, 3], revision: true });
   try {
     fixture.store.homes = [];
-    fixture.store.database.exec("UPDATE events SET model='gpt-6.1-sol',context_level='long',request_input_tokens=300001 WHERE home_id='home-codex'");
+    fixture.store.database.exec(
+      "UPDATE events SET model='gpt-6.1-sol',context_level='long',request_input_tokens=300001 WHERE home_id='home-codex'",
+    );
     await readDashboardParity(fixture.store, filtersFor("all"), true, { includeDetails: false });
     await readDashboardParity(fixture.store, filtersFor("custom"), true, { includeDetails: false });
-  } finally {fixture.close();}
+  } finally {
+    fixture.close();
+  }
 });
 
 for (const shape of SHAPES) {

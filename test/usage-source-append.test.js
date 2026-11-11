@@ -10,7 +10,14 @@ import { UsageSourceProof } from "../src/usage-source-proof.js";
 import { UsageStore } from "../src/usage-store.js";
 
 const START = Date.parse("2026-11-03T01:00:00.000Z");
-const SOURCE_WORK_KEYS = ["appendedFiles", "journalBytes", "parsedBytes", "prefixBytesRead", "replacedFiles", "sourceRetries"];
+const SOURCE_WORK_KEYS = [
+  "appendedFiles",
+  "journalBytes",
+  "parsedBytes",
+  "prefixBytesRead",
+  "replacedFiles",
+  "sourceRetries",
+];
 
 class ShaOnlySourceProof extends UsageSourceProof {
   async provider() {
@@ -612,24 +619,34 @@ test("retained event timestamps cannot bound an unknown legacy cumulative baseli
   for (const timestamp of ["2026-11-03T04:01:00.000Z", changedAt]) {
     const row = tokenRow(timestamp, 200, 100);
     delete row.payload.info.last_token_usage;
-    await writeFile(fixture.filePath, jsonl([
-      codexMeta("2026-11-03T04:00:00.000Z", "legacy-boundary"),
-      turnContext("gpt-5.1-codex"),
-      { type: "event_msg", timestamp: before, payload: { type: "token_count" } },
-      row,
-    ]));
-    const parse = async total => {
+    await writeFile(
+      fixture.filePath,
+      jsonl([
+        codexMeta("2026-11-03T04:00:00.000Z", "legacy-boundary"),
+        turnContext("gpt-5.1-codex"),
+        { type: "event_msg", timestamp: before, payload: { type: "token_count" } },
+        row,
+      ]),
+    );
+    const parse = async (total) => {
       const events = [];
-      await streamUsageFileEvents(fixture.filePath, { id: "main", kind: "codex", label: "Codex" },
-        event => events.push(event), {
+      await streamUsageFileEvents(
+        fixture.filePath,
+        { id: "main", kind: "codex", label: "Codex" },
+        (event) => events.push(event),
+        {
           repositoryResolver: deterministicRepository,
           previousCumulativeForSession: (session, at) => {
             assert.equal(session, "legacy-boundary");
             assert.equal(at, before);
-            return { usage: { total, input: total, cached: 0, output: 0, reasoning: 0 },
-              detailMask: 31, cacheWrite: { tokens: 0, known: true } };
+            return {
+              usage: { total, input: total, cached: 0, output: 0, reasoning: 0 },
+              detailMask: 31,
+              cacheWrite: { tokens: 0, known: true },
+            };
           },
-        });
+        },
+      );
       return events;
     };
     const original = await parse(100);
@@ -642,53 +659,53 @@ test("retained event timestamps cannot bound an unknown legacy cumulative baseli
 });
 
 for (const legacy of [false, true]) {
-test(`missing cumulative dependencies block publication and resume after the retained source returns (legacy=${legacy})`, async (t) => {
-  const root = await tempRoot(t, "source-dependency-unavailable-");
-  const directory = path.join(root, ".codex", "sessions");
-  await mkdir(directory, { recursive: true });
-  const upstream = path.join(directory, "a.jsonl"),
-    downstream = path.join(directory, "b.jsonl");
-  const text = (total, minute, last) =>
-    jsonl([
-      codexMeta("2026-11-03T04:00:00.000Z", "retained-dependent"),
-      turnContext("gpt-5.1-codex"),
-      tokenRow(`2026-11-03T04:0${minute}:00.000Z`, total, last),
-    ]);
-  await writeFile(upstream, text(100, 1, 100));
-  const retained = text(200, 2, 100);
-  await writeFile(downstream, retained);
-  const database = path.join(root, "facts.sqlite");
-  let store = createStore(root, database, new ShaOnlySourceProof());
-  const pending = { code: "SOURCE_DEPENDENCY_PENDING" };
-  try {
-    await store.sync();
-    assert.equal(store.summarize({ preset: "all" }).totals.total, 200);
-    if (legacy) store.database.exec("DELETE FROM usage_source_progress; DELETE FROM usage_source_baselines");
-    await rm(downstream);
-    await writeFile(upstream, text(150, 1, 150));
-    await assert.rejects(store.sync(), pending);
-    assert.equal(store.database.prepare("SELECT COUNT(*) n FROM events").get().n, 2, "missing facts stay retained");
-    assert.throws(() => store.metadata(), pending);
-    assert.throws(() => store.summarize({ preset: "all" }), pending);
-    assert.throws(() => store.periodComparison(), pending);
-    assert.throws(() => store.publishedUsageEvents(), pending);
-    await assert.rejects(store.dashboardHistory({ preset: "all" }), pending);
-    store.close();
-    store = createStore(root, database, new ShaOnlySourceProof());
-    await assert.rejects(store.sync(), pending);
+  test(`missing cumulative dependencies block publication and resume after the retained source returns (legacy=${legacy})`, async (t) => {
+    const root = await tempRoot(t, "source-dependency-unavailable-");
+    const directory = path.join(root, ".codex", "sessions");
+    await mkdir(directory, { recursive: true });
+    const upstream = path.join(directory, "a.jsonl"),
+      downstream = path.join(directory, "b.jsonl");
+    const text = (total, minute, last) =>
+      jsonl([
+        codexMeta("2026-11-03T04:00:00.000Z", "retained-dependent"),
+        turnContext("gpt-5.1-codex"),
+        tokenRow(`2026-11-03T04:0${minute}:00.000Z`, total, last),
+      ]);
+    await writeFile(upstream, text(100, 1, 100));
+    const retained = text(200, 2, 100);
     await writeFile(downstream, retained);
-    await store.sync();
-    assert.equal(store.database.prepare("SELECT COUNT(*) n FROM usage_source_reparse").get().n, 0);
-    assert.equal(store.summarize({ preset: "all" }).totals.total, 200);
-    assert.deepEqual(
-      store.database
-        .prepare("SELECT total FROM events ORDER BY timestamp_ms")
-        .all()
-        .map((row) => row.total),
-      [150, 50],
-    );
-  } finally {
-    store.close();
-  }
-});
+    const database = path.join(root, "facts.sqlite");
+    let store = createStore(root, database, new ShaOnlySourceProof());
+    const pending = { code: "SOURCE_DEPENDENCY_PENDING" };
+    try {
+      await store.sync();
+      assert.equal(store.summarize({ preset: "all" }).totals.total, 200);
+      if (legacy) store.database.exec("DELETE FROM usage_source_progress; DELETE FROM usage_source_baselines");
+      await rm(downstream);
+      await writeFile(upstream, text(150, 1, 150));
+      await assert.rejects(store.sync(), pending);
+      assert.equal(store.database.prepare("SELECT COUNT(*) n FROM events").get().n, 2, "missing facts stay retained");
+      assert.throws(() => store.metadata(), pending);
+      assert.throws(() => store.summarize({ preset: "all" }), pending);
+      assert.throws(() => store.periodComparison(), pending);
+      assert.throws(() => store.publishedUsageEvents(), pending);
+      await assert.rejects(store.dashboardHistory({ preset: "all" }), pending);
+      store.close();
+      store = createStore(root, database, new ShaOnlySourceProof());
+      await assert.rejects(store.sync(), pending);
+      await writeFile(downstream, retained);
+      await store.sync();
+      assert.equal(store.database.prepare("SELECT COUNT(*) n FROM usage_source_reparse").get().n, 0);
+      assert.equal(store.summarize({ preset: "all" }).totals.total, 200);
+      assert.deepEqual(
+        store.database
+          .prepare("SELECT total FROM events ORDER BY timestamp_ms")
+          .all()
+          .map((row) => row.total),
+        [150, 50],
+      );
+    } finally {
+      store.close();
+    }
+  });
 }

@@ -1252,11 +1252,20 @@ class UsageReplacementFacts {
       const excluded = table === "events" ? ["id", "price_version"] : [];
       const insert = this.database.prepare(`INSERT INTO relocation VALUES (?,?)
         ON CONFLICT(digest) DO UPDATE SET remaining=remaining+excluded.remaining`);
-      for (const row of this.database.prepare("SELECT payload,previous_count FROM facts WHERE fact_table=? AND source_path=?").iterate(table, previousPath)) {
-        insert.run(historyPayloadDigest(canonicalFactPayload(JSON.parse(String(row.payload)), excluded)), row.previous_count);
+      for (const row of this.database
+        .prepare("SELECT payload,previous_count FROM facts WHERE fact_table=? AND source_path=?")
+        .iterate(table, previousPath)) {
+        insert.run(
+          historyPayloadDigest(canonicalFactPayload(JSON.parse(String(row.payload)), excluded)),
+          row.previous_count,
+        );
       }
-      const consume = this.database.prepare("UPDATE relocation SET remaining=remaining-1 WHERE digest=? AND remaining>0");
-      for (const row of this.sourceDatabase.prepare(`SELECT * FROM ${table} WHERE source_path=?`).iterate(currentPath)) {
+      const consume = this.database.prepare(
+        "UPDATE relocation SET remaining=remaining-1 WHERE digest=? AND remaining>0",
+      );
+      for (const row of this.sourceDatabase
+        .prepare(`SELECT * FROM ${table} WHERE source_path=?`)
+        .iterate(currentPath)) {
         const payload = canonicalFactPayload({ ...row, source_path: previousPath }, excluded);
         consume.run(historyPayloadDigest(payload));
       }
@@ -4096,8 +4105,11 @@ export class UsageStore {
    * @param {any} file
    * @param {{ onWarning?: (warning: string) => void, progress?: boolean, reuseHistoryProjection?: boolean }} [options]
    */
-  async replaceFile({ filePath, source, info, relocatedFrom }, { onWarning, progress = true, reuseHistoryProjection = false } = {}) {
-    const reused = !relocatedFrom && await this.reuseSourcePrefix({ filePath, source, info }, { onWarning });
+  async replaceFile(
+    { filePath, source, info, relocatedFrom },
+    { onWarning, progress = true, reuseHistoryProjection = false } = {},
+  ) {
+    const reused = !relocatedFrom && (await this.reuseSourcePrefix({ filePath, source, info }, { onWarning }));
     if (reused) return reused;
     const database = this.database;
     const codexThreaded = canonicalizeKind(source.kind || "codex") === "codex";
@@ -4120,7 +4132,8 @@ export class UsageStore {
     const oldCumulative = createHash("sha256"),
       nextCumulative = createHash("sha256");
     const parserWarnings = [];
-    const siblingPath = relocatedFrom || (filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`);
+    const siblingPath =
+      relocatedFrom || (filePath.endsWith(".jsonl.zst") ? plainRolloutPath(filePath) : `${filePath}.zst`);
     const representationFingerprint = codexThreaded ? usageSourceFingerprint(filePath) : undefined;
     const insertSource = database.prepare(`
       INSERT INTO source_files (path, kind, home_id, home_label, home_path, size, mtime_ms, indexed_at)
@@ -4321,9 +4334,13 @@ export class UsageStore {
       );
       insertEvent.flush();
       insertRateLimitObservation.flush();
-      if (relocatedFrom && (!previousSiblingSource || !hot ||
-        !replacementFacts.coversRelocated("events", relocatedFrom, filePath) ||
-        !replacementFacts.coversRelocated("rate_limit_observations", relocatedFrom, filePath))) {
+      if (
+        relocatedFrom &&
+        (!previousSiblingSource ||
+          !hot ||
+          !replacementFacts.coversRelocated("events", relocatedFrom, filePath) ||
+          !replacementFacts.coversRelocated("rate_limit_observations", relocatedFrom, filePath))
+      ) {
         throw Object.assign(new Error("Archived rollout does not preserve its indexed history"), {
           code: "SOURCE_RELOCATION_MISMATCH",
         });
@@ -4492,7 +4509,10 @@ export class UsageStore {
           after.ctimeMs !== info.ctimeMs ||
           usageSourceIdentity(after) !== usageSourceIdentity(info)
         ) {
-          throw Object.assign(new Error("Source changed while indexing"), { code: "LIVE_SOURCE_CHANGED", retryable: true });
+          throw Object.assign(new Error("Source changed while indexing"), {
+            code: "LIVE_SOURCE_CHANGED",
+            retryable: true,
+          });
         }
       }
       if (
@@ -4500,14 +4520,16 @@ export class UsageStore {
         (representationFingerprint === null || usageSourceFingerprint(filePath) !== representationFingerprint)
       ) {
         throw Object.assign(new Error("Codex rollout changed during representation indexing"), {
-          code: "LIVE_SOURCE_CHANGED", retryable: true,
+          code: "LIVE_SOURCE_CHANGED",
+          retryable: true,
         });
       }
       if (relocatedFrom) {
         try {
           await stat(relocatedFrom);
           throw Object.assign(new Error("Original rollout returned during relocation"), {
-            code: "LIVE_SOURCE_CHANGED", retryable: true,
+            code: "LIVE_SOURCE_CHANGED",
+            retryable: true,
           });
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
@@ -4839,7 +4861,9 @@ export class UsageStore {
         acquisition.invalidate();
         if (error.code === "LIVE_SOURCE_CHANGED" && error.retryable === true)
           throw Object.assign(new Error("Source update is still pending"), {
-            code: "SOURCE_UPDATE_PENDING", statusCode: 409, retryable: true,
+            code: "SOURCE_UPDATE_PENDING",
+            statusCode: 409,
+            retryable: true,
           });
         if (plan && error.code === "SOURCE_COVERAGE_UNAVAILABLE")
           return await this.sync({ ...args, certifiedOnly: false, forceFull: true });
@@ -4916,22 +4940,35 @@ export class UsageStore {
           const name = path.basename(relative);
           return ["sessions", "archived_sessions"].includes(root) &&
             /^rollout-.*-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(name)
-            ? { root, name } : null;
+            ? { root, name }
+            : null;
         };
         for (const file of files) {
           if (canonicalizeKind(file.source.kind) !== "codex") continue;
           const next = identity(file.filePath, file.source.path);
           if (!next) continue;
-          const candidates = sourceRowsBefore.filter(old => {
+          const candidates = sourceRowsBefore.filter((old) => {
             const prior = identity(String(old.path), String(old.home_path));
-            return old.home_id === file.source.id && canonicalizeKind(old.kind) === "codex" &&
-              !failedHomeIds.has(old.home_id) && !failedHomePaths.has(old.home_path) &&
-              prior?.name === next.name && prior.root !== next.root;
+            return (
+              old.home_id === file.source.id &&
+              canonicalizeKind(old.kind) === "codex" &&
+              !failedHomeIds.has(old.home_id) &&
+              !failedHomePaths.has(old.home_path) &&
+              prior?.name === next.name &&
+              prior.root !== next.root
+            );
           });
-          if (candidates.length !== 1 || files.filter(other => other.source.id === file.source.id &&
-            identity(other.filePath, other.source.path)?.name === next.name).length !== 1) continue;
-          try { await stat(String(candidates[0].path)); }
-          catch (error) {
+          if (
+            candidates.length !== 1 ||
+            files.filter(
+              (other) =>
+                other.source.id === file.source.id && identity(other.filePath, other.source.path)?.name === next.name,
+            ).length !== 1
+          )
+            continue;
+          try {
+            await stat(String(candidates[0].path));
+          } catch (error) {
             if (error.code !== "ENOENT") throw error;
             file.relocatedFrom = String(candidates[0].path);
             file.force = true;
@@ -4964,7 +5001,14 @@ export class UsageStore {
     let updatedFileCount = 0;
     let usageDerivedChanged = false;
     let historyVerificationPending = false;
-    const sourceWork = { appendedFiles: 0, replacedFiles: 0, parsedBytes: 0, prefixBytesRead: 0, journalBytes: 0, sourceRetries: 0 };
+    const sourceWork = {
+      appendedFiles: 0,
+      replacedFiles: 0,
+      parsedBytes: 0,
+      prefixBytesRead: 0,
+      journalBytes: 0,
+      sourceRetries: 0,
+    };
     this.lastSyncSourceWork = sourceWork;
     const acceptSource = (file, outcome) => {
       delete file.relocatedFrom;
@@ -4988,9 +5032,12 @@ export class UsageStore {
     };
 
     const sourceAttempts = new Map();
-    const pendingSource = () => Object.assign(new Error("Source update is still pending"), {
-      code: "SOURCE_UPDATE_PENDING", statusCode: 409, retryable: true,
-    });
+    const pendingSource = () =>
+      Object.assign(new Error("Source update is still pending"), {
+        code: "SOURCE_UPDATE_PENDING",
+        statusCode: 409,
+        retryable: true,
+      });
     const retrySource = async (file, work) => {
       while (true) {
         const attempt = sourceAttempts.get(file.filePath) || 0;
@@ -5000,8 +5047,13 @@ export class UsageStore {
         try {
           return await work();
         } catch (error) {
-          if (error.code !== "LIVE_SOURCE_CHANGED" || error.retryable !== true ||
-            this.database.isTransaction || this.writeTransactionDepth) throw error;
+          if (
+            error.code !== "LIVE_SOURCE_CHANGED" ||
+            error.retryable !== true ||
+            this.database.isTransaction ||
+            this.writeTransactionDepth
+          )
+            throw error;
           warnings.length = warningCount;
           if (attempt === 2) throw pendingSource();
           // A failed source transaction has rolled back; other committed sources keep their cursors.
@@ -5101,10 +5153,12 @@ export class UsageStore {
       if (!available.length) break;
       for (const file of available) {
         file.info = await stat(file.filePath);
-        const outcome = await retrySource(file, () => this.replaceFile(file, {
-          onWarning: (warning) => warnings.push(String(warning)),
-          progress: file.readMode !== "full",
-        }));
+        const outcome = await retrySource(file, () =>
+          this.replaceFile(file, {
+            onWarning: (warning) => warnings.push(String(warning)),
+            progress: file.readMode !== "full",
+          }),
+        );
         acceptSource(file, outcome);
       }
     }
@@ -5252,11 +5306,24 @@ export class UsageStore {
 
     if (sourceWork.sourceRetries) {
       if (plan) {
-        status.fingerprint = createHash("sha256").update(status.fingerprint)
-          .update(JSON.stringify(files.filter(file => file.reobserved).map(file => [
-            file.filePath, file.info.size, file.info.mtimeMs, file.info.ctimeMs, usageSourceIdentity(file.info),
-          ]))).digest("hex");
-      } else Object.assign(status, await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes }));
+        status.fingerprint = createHash("sha256")
+          .update(status.fingerprint)
+          .update(
+            JSON.stringify(
+              files
+                .filter((file) => file.reobserved)
+                .map((file) => [
+                  file.filePath,
+                  file.info.size,
+                  file.info.mtimeMs,
+                  file.info.ctimeMs,
+                  usageSourceIdentity(file.info),
+                ]),
+            ),
+          )
+          .digest("hex");
+      } else
+        Object.assign(status, await buildUsageFingerprint({ ...syncOptions, homes, scannedFiles: files, failedHomes }));
     }
     this.homes = homes;
     this.generatedAt = new Date().toISOString();

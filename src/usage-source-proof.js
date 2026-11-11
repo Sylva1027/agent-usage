@@ -165,13 +165,21 @@ export class UsageSourceProof {
   }
 
   async capture(filePath, offset, expectedInfo, verified = null, parsed = null) {
-    if (!Number.isSafeInteger(offset) || offset < 0 ||
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
       (Number.isSafeInteger(expectedInfo?.size) && offset > expectedInfo.size) ||
-      (Number.isSafeInteger(verified?.offset) && verified.offset > offset))
+      (Number.isSafeInteger(verified?.offset) && verified.offset > offset)
+    )
       throw changed("Parsed source boundary is outside the current file", false);
-    if (parsed && (!Number.isSafeInteger(parsed.offset) || parsed.offset < offset ||
-      (Number.isSafeInteger(expectedInfo?.size) && parsed.offset > expectedInfo.size) ||
-      !/^[a-f0-9]{64}$/.test(parsed.digest || ""))) throw changed("Invalid parsed source digest", false);
+    if (
+      parsed &&
+      (!Number.isSafeInteger(parsed.offset) ||
+        parsed.offset < offset ||
+        (Number.isSafeInteger(expectedInfo?.size) && parsed.offset > expectedInfo.size) ||
+        !/^[a-f0-9]{64}$/.test(parsed.digest || ""))
+    )
+      throw changed("Invalid parsed source digest", false);
     const fence = verified?.kind === "ntfs-usn-v1" ? verified : verified?.nativeFence;
     if (fence) {
       const native = await this.provider();

@@ -308,14 +308,19 @@ test("SHA prefix revision rolls back, survives restart, and repairs on the next 
     }
     await utimes(fixture.sourcePath, FIXED_MTIME_SECONDS, FIXED_MTIME_SECONDS);
 
-    const source = (await discoverUsageSources(fixture.options)).find((home) => fixture.sourcePath.startsWith(home.path));
+    const source = (await discoverUsageSources(fixture.options)).find((home) =>
+      fixture.sourcePath.startsWith(home.path),
+    );
     assert.ok(source);
     // Exercise the failed source transaction before the round-level recovery can retry it.
-    await assert.rejects(store.appendFile({ source, filePath: fixture.sourcePath, info: await stat(fixture.sourcePath) }), (error) => {
-      assert.equal(/** @type {any} */ (error).code, "LIVE_SOURCE_CHANGED");
-      assert.match(/** @type {any} */ (error).message, /Certified prefix changed during suffix parsing/);
-      return true;
-    });
+    await assert.rejects(
+      store.appendFile({ source, filePath: fixture.sourcePath, info: await stat(fixture.sourcePath) }),
+      (error) => {
+        assert.equal(/** @type {any} */ (error).code, "LIVE_SOURCE_CHANGED");
+        assert.match(/** @type {any} */ (error).message, /Certified prefix changed during suffix parsing/);
+        return true;
+      },
+    );
     assert.equal(racingProof.mutateOnVerify, false);
     assert.deepEqual(factSnapshot(store), factsBefore);
     assert.deepEqual(progressRow(store, fixture.sourcePath), progressBefore);

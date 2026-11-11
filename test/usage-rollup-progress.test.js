@@ -51,7 +51,8 @@ function openDatabase() {
 
 function insertEvent(db, event, id) {
   const timestampMs = Date.parse(event.timestamp);
-  const result = db.prepare(`
+  const result = db
+    .prepare(`
     INSERT INTO events (
       ${id === undefined ? "" : "id,"}
       timestamp_ms, day_key, home_id, model, session_id, cwd, repository_key, repository_path, repository_kind,
@@ -60,25 +61,26 @@ function insertEvent(db, event, id) {
       ${id === undefined ? "" : "?,"}
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
-  `).run(
-    ...(id === undefined ? [] : [id]),
-    timestampMs,
-    new Date(timestampMs).toISOString().slice(0, 10),
-    event.homeId || "home-a",
-    event.model || "gpt-6-sol",
-    event.sessionId ?? null,
-    event.cwd || "",
-    event.repositoryKey || "unknown:cwd",
-    event.repositoryPath || "Unknown cwd",
-    event.repositoryKind || "unknown",
-    event.detailMask ?? 0,
-    event.reconciliationGap || 0,
-    event.total,
-    event.input || 0,
-    event.cached || 0,
-    event.output || 0,
-    event.reasoning || 0,
-  );
+  `)
+    .run(
+      ...(id === undefined ? [] : [id]),
+      timestampMs,
+      new Date(timestampMs).toISOString().slice(0, 10),
+      event.homeId || "home-a",
+      event.model || "gpt-6-sol",
+      event.sessionId ?? null,
+      event.cwd || "",
+      event.repositoryKey || "unknown:cwd",
+      event.repositoryPath || "Unknown cwd",
+      event.repositoryKind || "unknown",
+      event.detailMask ?? 0,
+      event.reconciliationGap || 0,
+      event.total,
+      event.input || 0,
+      event.cached || 0,
+      event.output || 0,
+      event.reasoning || 0,
+    );
   return Number(result.lastInsertRowid);
 }
 
@@ -100,12 +102,13 @@ function seedAndCertify(db, events) {
 
 function snapshotRollups(db) {
   return Object.fromEntries(
-    ["usage_rollup_days", "usage_rollup_daily", "usage_rollup_models", "usage_rollup_repositories", "usage_rollup_sessions"].map(
-      (table) => [
-        table,
-        db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2, 3`).all(),
-      ],
-    ),
+    [
+      "usage_rollup_days",
+      "usage_rollup_daily",
+      "usage_rollup_models",
+      "usage_rollup_repositories",
+      "usage_rollup_sessions",
+    ].map((table) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2, 3`).all()]),
   );
 }
 
@@ -141,31 +144,46 @@ function seedDetailEvent(timestamp, overrides = {}) {
 test("model and repository windows reuse every certified run and read only uncovered gaps", () => {
   const { db, directory } = openDatabase();
   try {
-    seedAndCertify(db, [12,14,20].map(day => seedDetailEvent(`2026-07-${day}T01:00:00.000Z`)));
+    seedAndCertify(
+      db,
+      [12, 14, 20].map((day) => seedDetailEvent(`2026-07-${day}T01:00:00.000Z`)),
+    );
     db.exec("DELETE FROM usage_rollup_days WHERE day_key NOT IN ('2026-07-12','2026-07-14','2026-07-20')");
-    const original = db.prepare.bind(db), rawModels = [], rawRepositories = [];
-    db.prepare = sql => {
+    const original = db.prepare.bind(db),
+      rawModels = [],
+      rawRepositories = [];
+    db.prepare = (sql) => {
       const statement = original(sql);
       const text = String(sql);
       if (!text.includes("FROM events") || !text.includes("GROUP BY")) return statement;
-      return { all(...params) {
-        if (text.includes("WITH parts")) rawRepositories.push(params.filter(Number.isSafeInteger));
-        else rawModels.push(params);
-        return statement.all(...params);
-      }};
+      return {
+        all(...params) {
+          if (text.includes("WITH parts")) rawRepositories.push(params.filter(Number.isSafeInteger));
+          else rawModels.push(params);
+          return statement.all(...params);
+        },
+      };
     };
-    const window = {startMs:Date.parse("2026-07-12T00:00:00Z"),endMs:Date.parse("2026-07-21T00:00:00Z")};
+    const window = { startMs: Date.parse("2026-07-12T00:00:00Z"), endMs: Date.parse("2026-07-21T00:00:00Z") };
     try {
-      assert.equal(queryUsageRollupModelsWindow(db,window)[0].total,30);
-      assert.equal(queryUsageRollupRepositoriesWindow(db,window)[0].total,30);
-    } finally {db.prepare = original;}
-    const gaps = [[13,14],[15,20]].map(days => days.map(day => Date.parse(`2026-07-${day}T00:00:00Z`)));
-    assert.deepEqual(rawModels,gaps);
-    assert.deepEqual(rawRepositories,[gaps.flat()]);
+      assert.equal(queryUsageRollupModelsWindow(db, window)[0].total, 30);
+      assert.equal(queryUsageRollupRepositoriesWindow(db, window)[0].total, 30);
+    } finally {
+      db.prepare = original;
+    }
+    const gaps = [
+      [13, 14],
+      [15, 20],
+    ].map((days) => days.map((day) => Date.parse(`2026-07-${day}T00:00:00Z`)));
+    assert.deepEqual(rawModels, gaps);
+    assert.deepEqual(rawRepositories, [gaps.flat()]);
     db.exec("UPDATE events SET total=50 WHERE id=2");
-    assert.equal(queryUsageRollupModelsWindow(db,window)[0].total,70);
-    assert.equal(queryUsageRollupRepositoriesWindow(db,window)[0].total,70);
-  } finally {db.close();rmSync(directory,{recursive:true,force:true});}
+    assert.equal(queryUsageRollupModelsWindow(db, window)[0].total, 70);
+    assert.equal(queryUsageRollupRepositoriesWindow(db, window)[0].total, 70);
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("ordinary append consumes one id and updates all rollup tables without deleting a day", () => {
@@ -199,7 +217,12 @@ test("ordinary append consumes one id and updates all rollup tables without dele
       }),
     );
 
-    for (const table of ["usage_rollup_daily", "usage_rollup_models", "usage_rollup_repositories", "usage_rollup_sessions"]) {
+    for (const table of [
+      "usage_rollup_daily",
+      "usage_rollup_models",
+      "usage_rollup_repositories",
+      "usage_rollup_sessions",
+    ]) {
       db.exec(`
         CREATE TEMP TRIGGER reject_${table}_delete
         BEFORE DELETE ON ${table}
@@ -232,7 +255,12 @@ test("ordinary append consumes one id and updates all rollup tables without dele
     );
 
     const actual = snapshotRollups(db);
-    for (const table of ["usage_rollup_daily", "usage_rollup_models", "usage_rollup_repositories", "usage_rollup_sessions"]) {
+    for (const table of [
+      "usage_rollup_daily",
+      "usage_rollup_models",
+      "usage_rollup_repositories",
+      "usage_rollup_sessions",
+    ]) {
       db.exec(`DROP TRIGGER reject_${table}_delete`);
     }
     rebuildUsageRollups(db, { days: ["2026-07-12"], calendarZone: "utc" });
@@ -265,19 +293,13 @@ test("update, delete, and REPLACE revoke certification and return to dirty-day r
     assert.deepEqual(listDirtyUsageRollupDays(db), ["2026-07-12"]);
     repairDirty(db);
     assert.equal(checkpointUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).certified, true);
-    assert.equal(
-      queryUsageRollupsRange(db, { startDay: "2026-07-12", endDay: "2026-07-12" }).total,
-      70,
-    );
+    assert.equal(queryUsageRollupsRange(db, { startDay: "2026-07-12", endDay: "2026-07-12" }).total, 70);
 
     db.prepare("DELETE FROM events WHERE id = 2").run();
     assert.equal(tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).applied, false);
     repairDirty(db);
     assert.equal(checkpointUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).certified, true);
-    assert.equal(
-      queryUsageRollupsRange(db, { startDay: "2026-07-12", endDay: "2026-07-12" }).eventCount,
-      1,
-    );
+    assert.equal(queryUsageRollupsRange(db, { startDay: "2026-07-12", endDay: "2026-07-12" }).eventCount, 1);
 
     insertEvent(
       db,
@@ -327,15 +349,19 @@ test("cross-day explicit-id REPLACE dirties the old UTC day and does not double 
 
     assert.deepEqual(listDirtyUsageRollupDays(db), ["2026-07-12", "2026-07-13"]);
     assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key IN ('2026-07-12', '2026-07-13')",
-      ).get().count,
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key IN ('2026-07-12', '2026-07-13')",
+        )
+        .get().count,
       0,
     );
     assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'local' AND day_key = '2026-07-13'",
-      ).get().count,
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'local' AND day_key = '2026-07-13'",
+        )
+        .get().count,
       0,
     );
     assert.equal(tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).applied, false);
@@ -442,18 +468,14 @@ test("checkpoint repairs markers and empty gaps, append survives marker deletion
   const { db, directory } = openDatabase();
   const databaseFile = path.join(directory, "index.sqlite");
   try {
-    seedAndCertify(db, [
-      seedDetailEvent("2026-07-12T01:00:00.000Z"),
-      seedDetailEvent("2026-07-14T01:00:00.000Z"),
-    ]);
-    assert.deepEqual(USAGE_ROLLUP_PROGRESS_TABLES, [
-      "usage_rollup_progress",
-      "usage_rollup_progress_days",
-    ]);
+    seedAndCertify(db, [seedDetailEvent("2026-07-12T01:00:00.000Z"), seedDetailEvent("2026-07-14T01:00:00.000Z")]);
+    assert.deepEqual(USAGE_ROLLUP_PROGRESS_TABLES, ["usage_rollup_progress", "usage_rollup_progress_days"]);
     assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM usage_rollup_progress_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-13'",
-      ).get().count,
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM usage_rollup_progress_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-13'",
+        )
+        .get().count,
       1,
     );
 
@@ -461,9 +483,11 @@ test("checkpoint repairs markers and empty gaps, append survives marker deletion
     const checkpoint = checkpointUsageRollups(db, { zoneIdentity: CURRENT_ZONE });
     assert.ok(checkpoint.repairedDays.includes("utc\u00002026-07-12"));
     assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-12'",
-      ).get().count,
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-12'",
+        )
+        .get().count,
       1,
     );
     db.prepare(
@@ -478,9 +502,11 @@ test("checkpoint repairs markers and empty gaps, append survives marker deletion
     insertEvent(db, seedDetailEvent("2026-07-12T03:00:00.000Z", { sessionId: "marker-deleted" }));
     assert.equal(tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).applied, true);
     assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-12'",
-      ).get().count,
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM usage_rollup_days WHERE calendar_zone = 'utc' AND day_key = '2026-07-12'",
+        )
+        .get().count,
       1,
     );
 
@@ -581,7 +607,10 @@ test("progress schema readiness is read-only and partial triggers recover atomic
     writer = new DatabaseSync(databaseFile);
     writer.exec("BEGIN IMMEDIATE");
     reader = new DatabaseSync(databaseFile);
-    assert.doesNotThrow(() => createUsageRollups(reader), "a fixed reader must open while another connection holds BEGIN IMMEDIATE");
+    assert.doesNotThrow(
+      () => createUsageRollups(reader),
+      "a fixed reader must open while another connection holds BEGIN IMMEDIATE",
+    );
     reader.close();
     reader = null;
     writer.exec("ROLLBACK");
@@ -591,11 +620,18 @@ test("progress schema readiness is read-only and partial triggers recover atomic
     db.exec("DROP TRIGGER usage_rollup_progress_invalidate_insert");
     assert.equal(ensureUsageRollupProgressSchema(db), true);
     assert.equal(
-      Number(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'usage_rollup_%'").get().count),
+      Number(
+        db
+          .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'usage_rollup_%'")
+          .get().count,
+      ),
       8,
     );
     assert.deepEqual(listDirtyUsageRollupDays(db), ["2026-07-12"]);
-    assert.equal(Number(db.prepare("SELECT certified FROM usage_rollup_progress WHERE singleton = 1").get().certified), 0);
+    assert.equal(
+      Number(db.prepare("SELECT certified FROM usage_rollup_progress WHERE singleton = 1").get().certified),
+      0,
+    );
     assert.equal(Number(db.prepare("SELECT last_id FROM usage_rollup_progress WHERE singleton = 1").get().last_id), 0);
     assert.deepEqual(tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE }), {
       applied: false,

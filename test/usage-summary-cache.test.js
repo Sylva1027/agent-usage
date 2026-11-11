@@ -53,21 +53,31 @@ test("a complete cached server response survives restart and a later append stil
       first = await response.json();
       if (n === 2) assert.equal(response.headers.get("x-summary-cache"), "hit");
     }
-    await server.close(); server = null;
+    await server.close();
+    server = null;
     base = await start();
     const reopened = await fetch(base + query);
     assert.equal(reopened.status, 200);
     assert.equal(reopened.headers.get("x-summary-cache"), "hit");
     assert.deepEqual((await reopened.json()).summary.totals, first.summary.totals);
-    await appendFile(fixture.rolloutFiles.at(-1), `${JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(),
-      payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000, total_tokens: 1000 } } } })}\n`);
+    await appendFile(
+      fixture.rolloutFiles.at(-1),
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: new Date().toISOString(),
+        payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000, total_tokens: 1000 } } },
+      })}\n`,
+    );
     const changed = await fetch(base + query);
     assert.equal(changed.status, 200);
     assert.equal(changed.headers.get("x-summary-cache"), "miss");
     const fresh = await changed.json();
     assert.equal(fresh.summary.totals.total, first.summary.totals.total + 1000);
     assert.equal(fresh.summary.eventCount, first.summary.eventCount + 1);
-  } finally { await server?.close(); fixture.close(); }
+  } finally {
+    await server?.close();
+    fixture.close();
+  }
 });
 
 test("cached aggregates update trend, quota flags and model activity with the clock", () => {
@@ -124,7 +134,11 @@ test("rolling day bypasses summaries; obsolete state and malformed payload rebui
     );
     payload.completion = "process-local-completion";
     await cache.publish(key, payload, {}, source, now);
-    assert.equal((await cache.get(key, source, now)).completion, undefined, "live completion credentials are never persisted");
+    assert.equal(
+      (await cache.get(key, source, now)).completion,
+      undefined,
+      "live completion credentials are never persisted",
+    );
     cache.database.prepare("UPDATE summaries SET payload = 'broken'").run();
     assert.equal(await cache.get(key, source, now), null);
     await cache.publish(key, payload, {}, source, now);

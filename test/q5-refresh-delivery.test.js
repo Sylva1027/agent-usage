@@ -228,8 +228,11 @@ for (const stage of ["cache", "dashboard"]) {
       };
       const read = await json(base, `/api/usage?${QUERY}&skipCheck=1`);
       assert.ifError(deliveryError);
-      assert.equal(reads, stage === "cache" ? 2 : 1,
-        "an uncaptured miss retries at most once; a completed read does not chase the next commit");
+      assert.equal(
+        reads,
+        stage === "cache" ? 2 : 1,
+        "an uncaptured miss retries at most once; a completed read does not chase the next commit",
+      );
       assert.equal(read.summary.totals.total, stage === "cache" ? 30 : 0);
       if (stage === "dashboard") assert.ok(read.usageVersion, "the captured batch retains its completed identity");
       assert.equal(publications, 0, "a raced dashboard must not be cached with an older source");
@@ -297,7 +300,10 @@ test("Q5 poll collision publishes an admitted batch and retains the later append
     };
     await next("ready");
     // Both acquisition routes must reach the same pause; a native receipt need not perform two full reads.
-    for (const [name, original] of [["readSourceState", originalRead], ["readCertifiedSourceState", originalCertifiedRead]]) {
+    for (const [name, original] of [
+      ["readSourceState", originalRead],
+      ["readCertifiedSourceState", originalCertifiedRead],
+    ]) {
       UsageSummaryCache.prototype[name] = async function (...args) {
         const source = await original.apply(this, args);
         if (!held && source && source.fingerprint !== initial.fingerprint) {
@@ -475,7 +481,8 @@ for (const switchScope of [false, true]) {
     let pending = false;
     const harness = await browser((request, payloads) => {
       if (request.path !== "/api/usage") return;
-      if (pending) return { status: 409, payload: { code: "SOURCE_UPDATE_PENDING", error: "Source update is still pending" } };
+      if (pending)
+        return { status: 409, payload: { code: "SOURCE_UPDATE_PENDING", error: "Source update is still pending" } };
       const payload = app.clone(payloads.today);
       payload.summary.range.preset = request.params.preset;
       payload.fingerprint = `complete-${request.params.preset}`;
@@ -486,9 +493,11 @@ for (const switchScope of [false, true]) {
       const original = harness.state.fingerprint;
       pending = true;
       let completed = false;
-      loading = harness.api.loadUsage({ skipCheck: true }).then(() => { completed = true; });
+      loading = harness.api.loadUsage({ skipCheck: true }).then(() => {
+        completed = true;
+      });
       await harness.flush();
-      const retry = harness.timers.timeouts.findLast(row => row.ms === 1000 && !row.cleared);
+      const retry = harness.timers.timeouts.findLast((row) => row.ms === 1000 && !row.cleared);
       assert.ok(retry);
       assert.equal(completed, false);
       assert.equal(harness.state.fingerprint, original);
@@ -503,14 +512,14 @@ for (const switchScope of [false, true]) {
       await loading;
       await harness.settle();
       assert.equal(harness.counts.usageSyncs, 2);
-      assert.equal(harness.fetchLog.filter(row => row.path === "/api/usage").at(-1).params.skipCheck, undefined);
+      assert.equal(harness.fetchLog.filter((row) => row.path === "/api/usage").at(-1).params.skipCheck, undefined);
       assert.equal(harness.state.fingerprint, `complete-${switchScope ? "week" : "today"}`);
       assert.equal(harness.counts.renders, 1);
       assert.equal(harness.counts.statusErrors, 0);
       assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), false);
     } finally {
       pending = false;
-      for (const retry of harness.timers.timeouts.filter(row => row.ms === 1000 && !row.cleared)) retry.callback();
+      for (const retry of harness.timers.timeouts.filter((row) => row.ms === 1000 && !row.cleared)) retry.callback();
       await loading;
       harness.dispose();
     }
@@ -537,7 +546,9 @@ test("a completed batch paints while later input remains pending, then clears bu
     assert.equal(harness.state.fingerprint, "drained-batch");
     assert.equal(harness.counts.renders, 2);
     assert.equal(harness.dom.byId.get("autoRefreshSpinner").classList.contains("is-loading"), false);
-  } finally { harness.dispose(); }
+  } finally {
+    harness.dispose();
+  }
 });
 
 test("Q5 SSE during a checked load cannot supersede its fresh response with an older skipCheck read", async () => {

@@ -59,7 +59,11 @@ function intervalAssertions(interval, cursor, native) {
   assert.equal(interval.startUsn, cursor.nextUsn);
   assert.ok(interval.journalBytes > 0 && interval.journalBytes <= 4 * 1024 * 1024);
   assert.ok(interval.records.length <= 2048);
-  assert.equal(new Set(interval.records.map((record) => record.id)).size, interval.records.length, "IDs must be unique");
+  assert.equal(
+    new Set(interval.records.map((record) => record.id)).size,
+    interval.records.length,
+    "IDs must be unique",
+  );
   let previous = BigInt(cursor.nextUsn) - 1n;
   for (const record of interval.records) {
     assert.notEqual(record.reason, CLOSE, "pure CLOSE records must remain excluded");
@@ -96,65 +100,87 @@ test("native coalesces 2305 separate appends on 24 objects and retains their lat
   for (const object of objects) assert.equal(targetChange(interval, object).reason & EXTEND, EXTEND);
   const last = await native.changes(root, beforeLastAppend);
   intervalAssertions(last, beforeLastAppend, native);
-  assert.equal(targetChange(interval, objects[0]).usn, targetChange(last, objects[0]).usn, "retain the last, not first, USN");
+  assert.equal(
+    targetChange(interval, objects[0]).usn,
+    targetChange(last, objects[0]).usn,
+    "retain the last, not first, USN",
+  );
   assert.ok(BigInt(targetChange(interval, objects[0]).usn) >= BigInt(beforeLastAppend.nextUsn));
 });
 
-test("native ORs overwrite, append and metadata reasons without certifying a mixed rewrite as append-only", options, async (t) => {
-  const { root, native } = await fixture(t);
-  const file = path.join(root, "mixed.txt");
-  await writeFile(file, Buffer.alloc(4096, 97));
-  const timestamp = new Date("2026-11-05T01:00:00.000Z");
-  await utimes(file, timestamp, timestamp);
-  const before = await stat(file);
-  const object = await native.object(file);
-  assert.ok(object);
-  const fence = await native.begin(file, 0, before);
-  assert.ok(fence);
-  const sealed = await native.advance(file, fence, before.size, before);
-  assert.ok(sealed);
-  assert.ok(await native.verify(file, sealed.validation, before.size, before), "the original prefix must be certifiable");
-  const cursor = await native.journal(root);
-  assert.ok(cursor);
+test(
+  "native ORs overwrite, append and metadata reasons without certifying a mixed rewrite as append-only",
+  options,
+  async (t) => {
+    const { root, native } = await fixture(t);
+    const file = path.join(root, "mixed.txt");
+    await writeFile(file, Buffer.alloc(4096, 97));
+    const timestamp = new Date("2026-11-05T01:00:00.000Z");
+    await utimes(file, timestamp, timestamp);
+    const before = await stat(file);
+    const object = await native.object(file);
+    assert.ok(object);
+    const fence = await native.begin(file, 0, before);
+    assert.ok(fence);
+    const sealed = await native.advance(file, fence, before.size, before);
+    assert.ok(sealed);
+    assert.ok(
+      await native.verify(file, sealed.validation, before.size, before),
+      "the original prefix must be certifiable",
+    );
+    const cursor = await native.journal(root);
+    assert.ok(cursor);
 
-  const writer = await open(file, "r+");
-  try { assert.equal((await writer.write(Buffer.from("b"), 0, 1, 0)).bytesWritten, 1); }
-  finally { await writer.close(); }
-  const split = await native.journal(root);
-  assert.ok(split);
-  const first = await native.changes(root, cursor);
-  intervalAssertions(first, cursor, native);
-  const overwritten = targetChange(first, object);
-  assert.equal(overwritten.reason & OVERWRITE, OVERWRITE);
+    const writer = await open(file, "r+");
+    try {
+      assert.equal((await writer.write(Buffer.from("b"), 0, 1, 0)).bytesWritten, 1);
+    } finally {
+      await writer.close();
+    }
+    const split = await native.journal(root);
+    assert.ok(split);
+    const first = await native.changes(root, cursor);
+    intervalAssertions(first, cursor, native);
+    const overwritten = targetChange(first, object);
+    assert.equal(overwritten.reason & OVERWRITE, OVERWRITE);
 
-  await appendFile(file, "suffix");
-  await utimes(file, before.atime, before.mtime);
-  const after = await stat(file);
-  assert.equal(after.mtimeMs, before.mtimeMs, "restore mtime without hiding the overwrite");
-  const tail = await native.changes(root, split);
-  intervalAssertions(tail, split, native);
-  const appended = targetChange(tail, object);
-  assert.equal(appended.reason & EXTEND, EXTEND);
-  assert.equal(appended.reason & BASIC_INFO_CHANGE, BASIC_INFO_CHANGE);
-  const merged = await native.changes(root, cursor);
-  intervalAssertions(merged, cursor, native);
-  const combined = targetChange(merged, object);
-  assert.equal(combined.reason, (overwritten.reason | appended.reason) >>> 0, "retain the complete reason union");
-  assert.equal(combined.reason & (OVERWRITE | EXTEND), OVERWRITE | EXTEND);
-  assert.equal(combined.usn, appended.usn);
-  assert.equal(await native.verify(file, sealed.validation, before.size, after), null, "mixed writes cannot authorize append reuse");
-});
+    await appendFile(file, "suffix");
+    await utimes(file, before.atime, before.mtime);
+    const after = await stat(file);
+    assert.equal(after.mtimeMs, before.mtimeMs, "restore mtime without hiding the overwrite");
+    const tail = await native.changes(root, split);
+    intervalAssertions(tail, split, native);
+    const appended = targetChange(tail, object);
+    assert.equal(appended.reason & EXTEND, EXTEND);
+    assert.equal(appended.reason & BASIC_INFO_CHANGE, BASIC_INFO_CHANGE);
+    const merged = await native.changes(root, cursor);
+    intervalAssertions(merged, cursor, native);
+    const combined = targetChange(merged, object);
+    assert.equal(combined.reason, (overwritten.reason | appended.reason) >>> 0, "retain the complete reason union");
+    assert.equal(combined.reason & (OVERWRITE | EXTEND), OVERWRITE | EXTEND);
+    assert.equal(combined.usn, appended.usn);
+    assert.equal(
+      await native.verify(file, sealed.validation, before.size, after),
+      null,
+      "mixed writes cannot authorize append reuse",
+    );
+  },
+);
 
 test("native retains both parent fragments and rename reasons when an object moves", options, async (t) => {
   const { root, native } = await fixture(t);
-  const RENAME_OLD = 0x00001000, RENAME_NEW = 0x00002000;
-  const left = path.join(root, "left"), right = path.join(root, "right");
+  const RENAME_OLD = 0x00001000,
+    RENAME_NEW = 0x00002000;
+  const left = path.join(root, "left"),
+    right = path.join(root, "right");
   await mkdir(left);
   await mkdir(right);
-  const oldParent = await native.object(left), newParent = await native.object(right);
+  const oldParent = await native.object(left),
+    newParent = await native.object(right);
   assert.ok(oldParent);
   assert.ok(newParent);
-  const file = path.join(left, "moved.txt"), moved = path.join(right, "moved.txt");
+  const file = path.join(left, "moved.txt"),
+    moved = path.join(right, "moved.txt");
   await writeFile(file, "initial");
   const object = await native.object(file);
   assert.ok(object);
@@ -168,7 +194,10 @@ test("native retains both parent fragments and rename reasons when an object mov
   assert.equal(current.id64, object.id64);
   assert.equal(current.id128, object.id128);
   const interval = await native.changes(root, cursor);
-  assert.ok(interval, `moving an outside object must not reject the interval: ${JSON.stringify(native.lastDirectoryFailure)}`);
+  assert.ok(
+    interval,
+    `moving an outside object must not reject the interval: ${JSON.stringify(native.lastDirectoryFailure)}`,
+  );
   assert.equal(interval.format, 1);
   assert.ok(interval.records.length <= 2048);
   const records = interval.records.filter((record) => record.id === object.id64 || record.id === object.id128);
@@ -185,12 +214,23 @@ test("native retains both parent fragments and rename reasons when an object mov
   assert.ok(BigInt(present.usn) < BigInt(interval.nextUsn));
 });
 
-const token = (total, second) => JSON.stringify({
-  type: "event_msg", timestamp: `2026-11-05T01:00:0${second}.000Z`,
-  payload: { type: "token_count", info: { total_token_usage: {
-    input_tokens: total, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: total,
-  } } },
-});
+const token = (total, second) =>
+  JSON.stringify({
+    type: "event_msg",
+    timestamp: `2026-11-05T01:00:0${second}.000Z`,
+    payload: {
+      type: "token_count",
+      info: {
+        total_token_usage: {
+          input_tokens: total,
+          cached_input_tokens: 0,
+          output_tokens: 0,
+          reasoning_output_tokens: 0,
+          total_tokens: total,
+        },
+      },
+    },
+  });
 
 test("UsageStore remains certified without full enumeration after 2304 outside appends", options, async (t) => {
   const { root, native } = await fixture(t);
@@ -200,12 +240,24 @@ test("UsageStore remains certified without full enumeration after 2304 outside a
   await mkdir(path.dirname(source), { recursive: true });
   await mkdir(outside);
   const files = await ordinaryFiles(outside);
-  await writeFile(source, [
-    JSON.stringify({ type: "session_meta", payload: {
-      id: "coalescing-source", source: "cli", originator: "codex-tui", cwd: root, model_provider: "openai",
-    } }),
-    JSON.stringify({ type: "turn_context", payload: { model: "gpt-5" } }), token(10, 1), "",
-  ].join("\n"));
+  await writeFile(
+    source,
+    [
+      JSON.stringify({
+        type: "session_meta",
+        payload: {
+          id: "coalescing-source",
+          source: "cli",
+          originator: "codex-tui",
+          cwd: root,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({ type: "turn_context", payload: { model: "gpt-5" } }),
+      token(10, 1),
+      "",
+    ].join("\n"),
+  );
   const store = new UsageStore({ homeDir, env: {}, importDirs: [], databaseFile: path.join(root, "index.sqlite") });
   store.sourceProof.provider = async () => native;
   store.sourceProof.close = () => native.close();
@@ -216,7 +268,9 @@ test("UsageStore remains certified without full enumeration after 2304 outside a
     assert.ok(initial.acquisition, JSON.stringify(store.lastAcquisitionWork));
     assert.equal(initial.fileCount, 1);
     assert.deepEqual(facts(), { total: 10, count: 1 });
-    store.usageFiles = () => { assert.fail("certified checks must not enumerate usage sources"); };
+    store.usageFiles = () => {
+      assert.fail("certified checks must not enumerate usage sources");
+    };
     await repeatAppends(files);
     const checked = await store.sync({ certifiedOnly: true });
     assert.ok(checked?.acquisition, JSON.stringify(store.lastAcquisitionWork));
@@ -237,7 +291,13 @@ test("UsageStore remains certified without full enumeration after 2304 outside a
     assert.equal(await store.sync({ certifiedOnly: true }), null, "a managed source move must refuse certified reuse");
     assert.equal(store.lastAcquisitionWork.mode, "fallback");
     assert.match(store.lastAcquisitionWork.reason, /known namespace changed/);
-    assert.deepEqual(store.database.prepare("SELECT * FROM events ORDER BY id").all(), beforeRename, "refusal must retain every fact");
+    assert.deepEqual(
+      store.database.prepare("SELECT * FROM events ORDER BY id").all(),
+      beforeRename,
+      "refusal must retain every fact",
+    );
     assert.deepEqual(facts(), { total: 20, count: 2 });
-  } finally { store.close(); }
+  } finally {
+    store.close();
+  }
 });

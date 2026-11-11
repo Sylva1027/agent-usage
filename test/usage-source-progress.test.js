@@ -37,7 +37,7 @@ function save(db, source = "a", checkpoint = cursor) {
 }
 
 test("source progress requires the facts transaction and rolls back with the facts", () => {
-  fixture(db => {
+  fixture((db) => {
     assert.throws(() => save(db), /facts write transaction/);
     db.exec("BEGIN; INSERT INTO events(source_path,value) VALUES ('a',42)");
     assert.ok(save(db));
@@ -49,31 +49,40 @@ test("source progress requires the facts transaction and rolls back with the fac
 });
 
 test("source progress reuses three statements per database without retaining rows or returned objects", () => {
-  fixture(db => fixture(other => {
-    let prepares = 0;
-    const database = { prepare(sql) { prepares++; return db.prepare(sql); } };
-    assert.equal(readUsageSourceProgress(database, "a"), null);
-    db.exec("BEGIN");
-    save(db);
-    save(db, "b", { ...cursor, adapter: "dsh-v4-zstd" });
-    db.exec("COMMIT");
-    other.exec("BEGIN");
-    save(other, "a", { ...cursor, offset: 80 });
-    other.exec("COMMIT");
-    const result = readUsageSourceProgress(database, "a");
-    assert.deepEqual(result, { checkpoint: cursor, validation: proof });
-    result.checkpoint.state.cumulative = -1;
-    result.validation.prefixBytes = -1;
-    assert.deepEqual(readUsageSourceProgress(database, "a"), { checkpoint: cursor, validation: proof });
-    assert.equal(readUsageSourceProgress(database, "b").checkpoint.adapter, "dsh-v4-zstd");
-    assert.equal(readUsageSourceProgress(other, "a").checkpoint.offset, 80);
-    assert.equal(prepares, 3);
-  }));
+  fixture((db) =>
+    fixture((other) => {
+      let prepares = 0;
+      const database = {
+        prepare(sql) {
+          prepares++;
+          return db.prepare(sql);
+        },
+      };
+      assert.equal(readUsageSourceProgress(database, "a"), null);
+      db.exec("BEGIN");
+      save(db);
+      save(db, "b", { ...cursor, adapter: "dsh-v4-zstd" });
+      db.exec("COMMIT");
+      other.exec("BEGIN");
+      save(other, "a", { ...cursor, offset: 80 });
+      other.exec("COMMIT");
+      const result = readUsageSourceProgress(database, "a");
+      assert.deepEqual(result, { checkpoint: cursor, validation: proof });
+      result.checkpoint.state.cumulative = -1;
+      result.validation.prefixBytes = -1;
+      assert.deepEqual(readUsageSourceProgress(database, "a"), { checkpoint: cursor, validation: proof });
+      assert.equal(readUsageSourceProgress(database, "b").checkpoint.adapter, "dsh-v4-zstd");
+      assert.equal(readUsageSourceProgress(other, "a").checkpoint.offset, 80);
+      assert.equal(prepares, 3);
+    }),
+  );
 });
 
 test("cached progress observes checkpoint changes and pending/clear changes through rollback", () => {
-  fixture(db => {
-    db.exec("BEGIN"); save(db); db.exec("COMMIT");
+  fixture((db) => {
+    db.exec("BEGIN");
+    save(db);
+    db.exec("COMMIT");
     assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
     const checkpoint = { ...cursor, offset: 95 };
     db.exec("BEGIN");
@@ -95,7 +104,7 @@ test("cached progress observes checkpoint changes and pending/clear changes thro
 });
 
 test("cached progress rejects changed bindings and invalid persisted JSON shapes on every read", () => {
-  fixture(db => {
+  fixture((db) => {
     db.exec("BEGIN");
     save(db);
     assert.ok(readUsageSourceProgress(db, "a"));
@@ -119,12 +128,14 @@ test("cached progress rejects changed bindings and invalid persisted JSON shapes
   });
 });
 
-test("cached progress reads external commits within the current SQLite snapshot", t => {
+test("cached progress reads external commits within the current SQLite snapshot", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "usage-source-progress-snapshot-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, "index.sqlite");
-  fixture(db => {
-    db.exec("PRAGMA journal_mode=WAL; BEGIN"); save(db); db.exec("COMMIT");
+  fixture((db) => {
+    db.exec("PRAGMA journal_mode=WAL; BEGIN");
+    save(db);
+    db.exec("COMMIT");
     const writer = new DatabaseSync(file);
     try {
       assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
@@ -144,56 +155,77 @@ test("cached progress reads external commits within the current SQLite snapshot"
       assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint, validation });
       writer.exec("UPDATE usage_source_progress SET source_binding='wrong'");
       assert.equal(readUsageSourceProgress(db, "a"), null);
-      writer.exec("BEGIN"); save(writer); writer.exec("COMMIT; INSERT INTO events(source_path,value) VALUES ('a',1)");
+      writer.exec("BEGIN");
+      save(writer);
+      writer.exec("COMMIT; INSERT INTO events(source_path,value) VALUES ('a',1)");
       assert.equal(readUsageSourceProgress(db, "a"), null);
-    } finally { writer.close(); }
+    } finally {
+      writer.close();
+    }
   }, file);
 });
 
-test("cached progress recovers a finalized statement after reopening the same database object", t => {
+test("cached progress recovers a finalized statement after reopening the same database object", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "usage-source-progress-reopen-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  fixture(db => {
-    db.exec("BEGIN"); save(db); db.exec("COMMIT");
-    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
-    db.close();
-    db.open();
-    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
-    db.close();
-    try {
-      assert.throws(() => readUsageSourceProgress(db, "a"), {
-        code: "ERR_INVALID_STATE", message: "database is not open",
-      });
-    } finally { db.open(); }
-    assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
-  }, path.join(root, "index.sqlite"));
+  fixture(
+    (db) => {
+      db.exec("BEGIN");
+      save(db);
+      db.exec("COMMIT");
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+      db.close();
+      db.open();
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+      db.close();
+      try {
+        assert.throws(() => readUsageSourceProgress(db, "a"), {
+          code: "ERR_INVALID_STATE",
+          message: "database is not open",
+        });
+      } finally {
+        db.open();
+      }
+      assert.deepEqual(readUsageSourceProgress(db, "a"), { checkpoint: cursor, validation: proof });
+    },
+    path.join(root, "index.sqlite"),
+  );
 });
 
 test("cached progress only retries a finalized cache hit once and preserves other database errors", () => {
   const finalized = Object.assign(new Error("statement has been finalized"), { code: "ERR_INVALID_STATE" });
-  fixture(db => {
-    db.exec("BEGIN"); save(db); db.exec("COMMIT");
+  fixture((db) => {
+    db.exec("BEGIN");
+    save(db);
+    db.exec("COMMIT");
     for (const error of [
       Object.assign(new Error("database is locked"), { code: "ERR_SQLITE_ERROR", errcode: 5 }),
       Object.assign(new Error("other invalid state"), { code: "ERR_INVALID_STATE" }),
       finalized,
     ]) {
       for (let failedStatement = 0; failedStatement < 3; failedStatement++) {
-        let prepares = 0, gets = 0, fail = false;
+        let prepares = 0,
+          gets = 0,
+          fail = false;
         const database = {
           prepare(sql) {
             const index = prepares++ % 3;
             const statement = db.prepare(sql);
-            return { get(...parameters) {
-              gets++;
-              if (fail && index === failedStatement) throw error;
-              return statement.get(...parameters);
-            } };
+            return {
+              get(...parameters) {
+                gets++;
+                if (fail && index === failedStatement) throw error;
+                return statement.get(...parameters);
+              },
+            };
           },
         };
         assert.deepEqual(readUsageSourceProgress(database, "a"), { checkpoint: cursor, validation: proof });
         fail = true;
-        assert.throws(() => readUsageSourceProgress(database, "a"), caught => caught === error);
+        assert.throws(
+          () => readUsageSourceProgress(database, "a"),
+          (caught) => caught === error,
+        );
         assert.equal(prepares, error === finalized ? 6 : 3);
         assert.equal(gets, 3 + (failedStatement + 1) * (error === finalized ? 2 : 1));
       }
@@ -202,7 +234,7 @@ test("cached progress only retries a finalized cache hit once and preserves othe
 });
 
 test("a writer that knows nothing about cursors invalidates only the affected source", () => {
-  fixture(db => {
+  fixture((db) => {
     db.exec("BEGIN");
     assert.ok(save(db));
     assert.ok(save(db, "b", { ...cursor, adapter: "dsh-v4-zstd" }));
@@ -228,7 +260,13 @@ test("known baseline bounds and conservative legacy dependencies survive the ups
     save(db, "d");
     markUsageSourceDependents(db, "a", [{ homeId: "home", sessionId: "shared", minimumMs: 5 }]);
     db.exec("COMMIT");
-    assert.deepEqual(db.prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path").all().map(r => r.source_path), ["c", "e"]);
+    assert.deepEqual(
+      db
+        .prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path")
+        .all()
+        .map((r) => r.source_path),
+      ["c", "e"],
+    );
     assert.equal(readUsageSourceProgress(db, "c"), null);
     assert.ok(readUsageSourceProgress(db, "d"));
     assert.deepEqual({ ...readUsageSourceBaseline(db, "c") }, { homeId: "home", sessionId: "shared", beforeMs: 10 });
@@ -238,7 +276,7 @@ test("known baseline bounds and conservative legacy dependencies survive the ups
 });
 
 test("only a matching recorded baseline can exclude equal-time or mixed-session dependencies", () => {
-  fixture(db => {
+  fixture((db) => {
     const paths = ["known-equal", "known-later", "legacy-equal", "mixed", "other-home"];
     for (const source of paths) {
       db.prepare("INSERT INTO source_files VALUES (?,'codex','home','label','/home',100,1)").run(source);
@@ -253,18 +291,21 @@ test("only a matching recorded baseline can exclude equal-time or mixed-session 
     markUsageSourceDependents(db, "a", [{ homeId: "home", sessionId: "shared", minimumMs: 5 }]);
     db.exec("COMMIT");
     assert.deepEqual(
-      db.prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path").all().map(row => row.source_path),
+      db
+        .prepare("SELECT source_path FROM usage_source_reparse ORDER BY source_path")
+        .all()
+        .map((row) => row.source_path),
       ["known-later", "legacy-equal", "mixed", "other-home"],
     );
     assert.ok(readUsageSourceProgress(db, "known-equal"), "timestamp < beforeMs excludes an equal-time change");
-    for (const source of paths.filter(source => source !== "known-equal")) {
+    for (const source of paths.filter((source) => source !== "known-equal")) {
       assert.equal(readUsageSourceProgress(db, source), null);
     }
   });
 });
 
 test("a legacy fact writer invalidates the recorded baseline in the same transaction", () => {
-  fixture(db => {
+  fixture((db) => {
     db.exec("BEGIN");
     writeUsageSourceBaseline(db, "a", { homeId: "home", sessionId: "shared", beforeMs: 10 });
     db.exec("COMMIT; BEGIN; INSERT INTO events(source_path,value) VALUES('a',1)");
@@ -283,32 +324,44 @@ test("many changed sessions spill while retaining exact minimum timestamps", () 
     assert.equal(bounds.entries.size, 0);
     const observed = [...bounds].sort((a, b) => a.minimumMs - b.minimumMs);
     assert.equal(observed.length, 2_000);
-    for (let i = 0; i < 2_000; i++) assert.deepEqual({ ...observed[i] }, { homeId: "home", sessionId: `session-${i}`, minimumMs: i });
-  } finally { bounds.close(); }
+    for (let i = 0; i < 2_000; i++)
+      assert.deepEqual({ ...observed[i] }, { homeId: "home", sessionId: `session-${i}`, minimumMs: i });
+  } finally {
+    bounds.close();
+  }
 });
 
 test("quota-only facts, source rebinding and source deletion invalidate checkpoints", () => {
-  fixture(db => {
+  fixture((db) => {
     for (const sql of [
       "INSERT INTO rate_limit_observations VALUES ('a',1)",
       "INSERT INTO quota_usage_sources VALUES ('a',1)",
       "UPDATE source_files SET home_label='renamed' WHERE path='a'",
     ]) {
-      db.exec("BEGIN"); save(db); db.exec("COMMIT");
+      db.exec("BEGIN");
+      save(db);
+      db.exec("COMMIT");
       db.exec(sql);
       assert.equal(readUsageSourceProgress(db, "a"), null, sql);
     }
-    db.exec("BEGIN"); save(db); db.exec("COMMIT; DELETE FROM source_files WHERE path='a'");
+    db.exec("BEGIN");
+    save(db);
+    db.exec("COMMIT; DELETE FROM source_files WHERE path='a'");
     assert.equal(db.prepare("SELECT COUNT(*) n FROM usage_source_progress").get().n, 0);
   });
 });
 
 test("invalid, oversized and incompatible cursor states cannot advance progress", () => {
-  fixture(db => {
+  fixture((db) => {
     db.exec("BEGIN");
-    for (const checkpoint of [null, { ...cursor, offset: 101 }, { ...cursor, lineNumber: -1 },
-      { ...cursor, format: 2 }, { ...cursor, adapter: "dsh-v4-zstd" },
-      { ...cursor, state: { huge: "x".repeat(65_536) } }]) {
+    for (const checkpoint of [
+      null,
+      { ...cursor, offset: 101 },
+      { ...cursor, lineNumber: -1 },
+      { ...cursor, format: 2 },
+      { ...cursor, adapter: "dsh-v4-zstd" },
+      { ...cursor, state: { huge: "x".repeat(65_536) } },
+    ]) {
       save(db);
       assert.equal(save(db, "a", checkpoint), false);
       assert.equal(readUsageSourceProgress(db, "a"), null);

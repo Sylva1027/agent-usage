@@ -691,8 +691,7 @@ export function createUsageServer(options = {}) {
       clearTimeout(sourceRetryTimer);
       sourceRetryTimer = null;
     }
-    if (sourceRetryTimer !== null)
-      throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
+    if (sourceRetryTimer !== null) throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
     if (!check && storeStatus && usageStore.status) return storeStatus;
     if (importContext) {
       syncPromise = usageStore
@@ -733,8 +732,10 @@ export function createUsageServer(options = {}) {
         const source = checked && (await summaryCache.readCertifiedSourceState(sourceOptions, checked));
         if (source && (!startupRetained || (await summaryCache.stateFor(source)))) {
           storeStatus = checked;
-          publishedSource = { ...source,
-            completion: await usageStore.validateAcquisition(checked.fingerprint, { completion: true }) || null };
+          publishedSource = {
+            ...source,
+            completion: (await usageStore.validateAcquisition(checked.fingerprint, { completion: true })) || null,
+          };
           scheduleUsageDiscovery(usageStore.metadata().harnessModels);
           return checked;
         }
@@ -744,8 +745,10 @@ export function createUsageServer(options = {}) {
         sourceAcquisitionAvailable = Boolean(certified?.acquisition);
         const source = certified && (await summaryCache.readCertifiedSourceState(sourceOptions, certified));
         if (source) {
-          if (!certified.completion ||
-            await usageStore.validateAcquisition(certified.fingerprint, { completion: true }) !== certified.completion)
+          if (
+            !certified.completion ||
+            (await usageStore.validateAcquisition(certified.fingerprint, { completion: true })) !== certified.completion
+          )
             throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
           publishedSource = source;
           storeStatus = certified;
@@ -768,8 +771,10 @@ export function createUsageServer(options = {}) {
           (await usageStore.validateAcquisition(storeStatus.fingerprint)))
       ) {
         storeStatus = { ...storeStatus, checkedAt: before.checkedAt };
-        publishedSource = { ...before,
-          completion: await usageStore.validateAcquisition(storeStatus.fingerprint, { completion: true }) || null };
+        publishedSource = {
+          ...before,
+          completion: (await usageStore.validateAcquisition(storeStatus.fingerprint, { completion: true })) || null,
+        };
         synchronizedSource = publishedSource;
         return storeStatus;
       }
@@ -793,42 +798,55 @@ export function createUsageServer(options = {}) {
             throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
           if (after.fingerprint === status.fingerprint) publishedSource = after;
           else {
-            const completed = await summaryCache.readCompletedSourceState(sourceOptions, status, usageStore.homes, before);
-            if (!completed || await usageStore.validateAcquisition(status.fingerprint, { completion: true }) !== status.completion)
+            const completed = await summaryCache.readCompletedSourceState(
+              sourceOptions,
+              status,
+              usageStore.homes,
+              before,
+            );
+            if (
+              !completed ||
+              (await usageStore.validateAcquisition(status.fingerprint, { completion: true })) !== status.completion
+            )
               throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
             publishedSource = completed;
           }
         } else publishedSource = publishedSummarySource(before, after);
         laterInputs = after.fingerprint !== status.fingerprint;
       }
-      if (!status.completion ||
-        await usageStore.validateAcquisition(status.fingerprint, { completion: true }) !== status.completion)
+      if (
+        !status.completion ||
+        (await usageStore.validateAcquisition(status.fingerprint, { completion: true })) !== status.completion
+      )
         throw httpError(409, "Source update is still pending", "SOURCE_UPDATE_PENDING");
       publishedSource = { ...publishedSource, completion: status.completion ?? null };
       synchronizedSource = publishedSource;
       storeStatus = status;
       scheduleUsageDiscovery(usageStore.metadata().harnessModels);
       return status;
-    })().then((status) => {
-      pendingAfterPublication = laterInputs;
-      sourceUpdatePending = laterInputs;
-      if (laterInputs) {
-        sourceHints.unknown = true;
-        scheduleSourceRetry();
-      }
-      return status;
-    }).catch((error) => {
-      pendingAfterPublication = false;
-      if (error.code === "SOURCE_UPDATE_PENDING") {
-        sourceUpdatePending = true;
-        sourceHints.unknown = true;
-        scheduleSourceRetry();
-      } else sourceUpdatePending = false;
-      throw error;
-    }).finally(() => {
-      syncPromise = null;
-      releaseAcquisition();
-    });
+    })()
+      .then((status) => {
+        pendingAfterPublication = laterInputs;
+        sourceUpdatePending = laterInputs;
+        if (laterInputs) {
+          sourceHints.unknown = true;
+          scheduleSourceRetry();
+        }
+        return status;
+      })
+      .catch((error) => {
+        pendingAfterPublication = false;
+        if (error.code === "SOURCE_UPDATE_PENDING") {
+          sourceUpdatePending = true;
+          sourceHints.unknown = true;
+          scheduleSourceRetry();
+        } else sourceUpdatePending = false;
+        throw error;
+      })
+      .finally(() => {
+        syncPromise = null;
+        releaseAcquisition();
+      });
     return syncPromise;
   }
 
@@ -1133,13 +1151,14 @@ export function createUsageServer(options = {}) {
           importStoreFile: options.importStoreFile || DEFAULT_IMPORT_STORE_FILE,
         };
         // Revalidate raw sources before reusing the committed acquisition's identity.
-        const checked = !importContext && !syncPromise && sourceAcquisitionAvailable && storeStatus?.acquisition
-          ? await usageStore.checkSources(sourceOptions)
-          : null;
+        const checked =
+          !importContext && !syncPromise && sourceAcquisitionAvailable && storeStatus?.acquisition
+            ? await usageStore.checkSources(sourceOptions)
+            : null;
         const status = importContext
           ? await buildUsageFingerprint(currentOptions)
-          : (checked && !syncPromise && await summaryCache.readCertifiedSourceState(sourceOptions, checked)) ||
-            await summaryCache.readSourceState(sourceOptions);
+          : (checked && !syncPromise && (await summaryCache.readCertifiedSourceState(sourceOptions, checked))) ||
+            (await summaryCache.readSourceState(sourceOptions));
         const since = url.searchParams.get("since") || "";
         const catalog = localPricingCatalog();
         const asOf = new Date();
@@ -1545,8 +1564,11 @@ export function createUsageServer(options = {}) {
                       acquisition: source.acquisition,
                     })
                   : await summaryCache.readSourceState(readOptions);
-                if (result.completion && result.completion === source.completion &&
-                  afterRead?.auxiliary === source.auxiliary) {
+                if (
+                  result.completion &&
+                  result.completion === source.completion &&
+                  afterRead?.auxiliary === source.auxiliary
+                ) {
                   // A completed read remains valid when later raw input or a newer sync arrives.
                   resultSource = source;
                   captured = true;
@@ -1589,9 +1611,15 @@ export function createUsageServer(options = {}) {
               }
             }
             // A captured cache hit is coherent; a miss must not chase an endless stream of commits.
-          } while (!cached && !captured && ++readAttempts < 2 && (syncPromise || source?.signature !== publishedSource?.signature));
+          } while (
+            !cached &&
+            !captured &&
+            ++readAttempts < 2 &&
+            (syncPromise || source?.signature !== publishedSource?.signature)
+          );
           if (
-            !cached && !captured &&
+            !cached &&
+            !captured &&
             (syncPromise ||
               source?.signature !== publishedSource?.signature ||
               source?.fingerprint !== result.status?.fingerprint)

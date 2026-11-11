@@ -23,8 +23,18 @@ export function ensureUsageSourceCatalog(database) {
   ) STRICT;
   CREATE INDEX IF NOT EXISTS usage_source_catalog_id64 ON usage_source_catalog(volume,id64);
   CREATE INDEX IF NOT EXISTS usage_source_catalog_id128 ON usage_source_catalog(volume,id128)`);
-  const installed = Number(database.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name GLOB 'usage_source_catalog_*'").get().n);
-  for (const table of ["source_files", "usage_source_progress", "usage_source_reparse", "rate_limit_observations", "quota_usage_sources"]) {
+  const installed = Number(
+    database
+      .prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name GLOB 'usage_source_catalog_*'")
+      .get().n,
+  );
+  for (const table of [
+    "source_files",
+    "usage_source_progress",
+    "usage_source_reparse",
+    "rate_limit_observations",
+    "quota_usage_sources",
+  ]) {
     for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
       database.exec(`CREATE TRIGGER IF NOT EXISTS usage_source_catalog_${table}_${operation}
         BEFORE ${operation} ON ${table}
@@ -32,7 +42,11 @@ export function ensureUsageSourceCatalog(database) {
         BEGIN UPDATE usage_source_catalog SET ready=0 WHERE path=''; END`);
     }
   }
-  for (const [operation, condition] of [["INSERT", "NEW.path<>''"], ["UPDATE", "OLD.path<>'' OR NEW.path<>''"], ["DELETE", "OLD.path<>''"]]) {
+  for (const [operation, condition] of [
+    ["INSERT", "NEW.path<>''"],
+    ["UPDATE", "OLD.path<>'' OR NEW.path<>''"],
+    ["DELETE", "OLD.path<>''"],
+  ]) {
     database.exec(`CREATE TRIGGER IF NOT EXISTS usage_source_catalog_inventory_${operation}
       BEFORE ${operation} ON usage_source_catalog WHEN ${condition}
       BEGIN UPDATE usage_source_catalog SET ready=0 WHERE path='' AND ready=1; END`);
@@ -46,11 +60,17 @@ function context(options) {
 }
 
 function revision(store) {
-  return Number(store.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton=1").get().revision);
+  return Number(
+    store.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton=1").get().revision,
+  );
 }
 
 function parse(row) {
-  try { return row ? JSON.parse(String(row.payload)) : null; } catch { return null; }
+  try {
+    return row ? JSON.parse(String(row.payload)) : null;
+  } catch {
+    return null;
+  }
 }
 
 function progressSeal(store, file) {
@@ -61,7 +81,10 @@ function progressSeal(store, file) {
 
 /** Rebuildable identities only. Facts and parser checkpoints remain in their existing tables. */
 export class UsageSourceAcquisition {
-  constructor(store) { this.store = store; this.work = null; }
+  constructor(store) {
+    this.store = store;
+    this.work = null;
+  }
 
   async provider() {
     const native = await this.store.sourceProof.provider?.();
@@ -75,22 +98,37 @@ export class UsageSourceAcquisition {
   state(options) {
     const row = this.store.database.prepare("SELECT * FROM usage_source_catalog WHERE path='' AND ready=1").get();
     const state = parse(row);
-    return state?.format === 1 && state.directoryCoverage === 1 && Array.isArray(state.watchedParents) &&
-      Array.isArray(state.homes) && state.homes.every((home) =>
-      home && [home.id, home.path, home.label, home.kind].every((field) => typeof field === "string")) &&
-      Array.isArray(state.warnings) && Array.isArray(state.missingSources) &&
-      Array.isArray(state.scopes) && state.scopes.length > 0 && state.scopes.every((root) => typeof root === "string") &&
-      Array.isArray(state.volumes) && state.volumes.length > 0 && state.volumes.every((cursor) =>
-        cursor && [cursor.volume, cursor.path, cursor.journalId, cursor.nextUsn].every((field) => typeof field === "string")) &&
-      state.context === context(options) && state.revision === revision(this.store) &&
-      state.fingerprint === this.store.readMetaRaw("fingerprint") ? state : null;
+    return state?.format === 1 &&
+      state.directoryCoverage === 1 &&
+      Array.isArray(state.watchedParents) &&
+      Array.isArray(state.homes) &&
+      state.homes.every(
+        (home) => home && [home.id, home.path, home.label, home.kind].every((field) => typeof field === "string"),
+      ) &&
+      Array.isArray(state.warnings) &&
+      Array.isArray(state.missingSources) &&
+      Array.isArray(state.scopes) &&
+      state.scopes.length > 0 &&
+      state.scopes.every((root) => typeof root === "string") &&
+      Array.isArray(state.volumes) &&
+      state.volumes.length > 0 &&
+      state.volumes.every(
+        (cursor) =>
+          cursor &&
+          [cursor.volume, cursor.path, cursor.journalId, cursor.nextUsn].every((field) => typeof field === "string"),
+      ) &&
+      state.context === context(options) &&
+      state.revision === revision(this.store) &&
+      state.fingerprint === this.store.readMetaRaw("fingerprint")
+      ? state
+      : null;
   }
 
   async beginFull(options) {
     if (this.store.database.isTransaction || this.store.writeTransactionDepth) return null;
     const native = await this.provider();
     if (!native) return null;
-    if (!await native.journal(options.homeDir || os.homedir())) return null;
+    if (!(await native.journal(options.homeDir || os.homedir()))) return null;
     const candidates = [];
     const homes = await discoverUsageSources({ ...options, sourceCandidates: candidates });
     const auxiliary = await readUsageSourceInputs(options, homes, "");
@@ -103,7 +141,10 @@ export class UsageSourceAcquisition {
     for (const scope of scopes) {
       let existing = scope;
       while (true) {
-        try { await stat(existing); break; } catch (error) {
+        try {
+          await stat(existing);
+          break;
+        } catch (error) {
           if (error.code !== "ENOENT") throw error;
           const parent = path.dirname(existing);
           if (parent === existing) return null;
@@ -118,36 +159,63 @@ export class UsageSourceAcquisition {
         if (!cursor || cursor.volume !== object.volume) return null;
         volumes.set(object.volume, { path: existing, ...cursor });
       }
-      for (let directory = existing;; directory = path.dirname(directory)) {
+      for (let directory = existing; ; directory = path.dirname(directory)) {
         guards.add(directory);
         if (path.dirname(directory) === directory) break;
       }
     }
     this.invalidate();
-    return { format: 1, context: context(options), scopes, volumes: [...volumes.values()], guards: [...guards], homes,
+    return {
+      format: 1,
+      context: context(options),
+      scopes,
+      volumes: [...volumes.values()],
+      guards: [...guards],
+      homes,
       watchedParents: [...watchedParents],
-      auxiliary: auxiliary.inputs, dataVersion: Number(this.store.database.prepare("PRAGMA data_version").get().data_version) };
+      auxiliary: auxiliary.inputs,
+      dataVersion: Number(this.store.database.prepare("PRAGMA data_version").get().data_version),
+    };
   }
 
   find(volume, id) {
     const column = id.length === 16 ? "id64" : "id128";
-    return this.store.database.prepare(`SELECT * FROM usage_source_catalog WHERE volume=? AND ${column}=? AND path<>''`).get(volume, id);
+    return this.store.database
+      .prepare(`SELECT * FROM usage_source_catalog WHERE volume=? AND ${column}=? AND path<>''`)
+      .get(volume, id);
   }
 
   additionSource(state, filePath, directory) {
     const matches = state.homes.filter((home) => {
       const relative = path.relative(normal(home.path), normal(filePath)).split(path.sep);
-      if (!relative.length || relative.includes("..") || relative.some((part) => [".tmp", "node_modules"].includes(part))) return false;
-      if (home.kind === "dsh") return relative[0] === "sessions" && relative.length <= (directory ? 4 : 5) &&
-        (directory || /^session\.v4\.jsonl\.zstd$/.test(path.basename(filePath)));
-      return ["main", "extra", "jetbrains", "codex"].includes(home.kind) &&
-        ["sessions", "archived_sessions"].includes(relative[0]) && (directory || filePath.endsWith(".jsonl"));
+      if (
+        !relative.length ||
+        relative.includes("..") ||
+        relative.some((part) => [".tmp", "node_modules"].includes(part))
+      )
+        return false;
+      if (home.kind === "dsh")
+        return (
+          relative[0] === "sessions" &&
+          relative.length <= (directory ? 4 : 5) &&
+          (directory || /^session\.v4\.jsonl\.zstd$/.test(path.basename(filePath)))
+        );
+      return (
+        ["main", "extra", "jetbrains", "codex"].includes(home.kind) &&
+        ["sessions", "archived_sessions"].includes(relative[0]) &&
+        (directory || filePath.endsWith(".jsonl"))
+      );
     });
     if (matches.length !== 1) throw unavailable("new source is outside a unique supported home");
     // A nested discovery root may become another harness when its first log appears.
-    const homePath = normal(matches[0].path), candidate = normal(filePath);
-    if (state.scopes.some((root) => root !== homePath && within(root, homePath) &&
-      (within(candidate, root) || within(root, candidate)))) throw unavailable("new source overlaps another discovery scope");
+    const homePath = normal(matches[0].path),
+      candidate = normal(filePath);
+    if (
+      state.scopes.some(
+        (root) => root !== homePath && within(root, homePath) && (within(candidate, root) || within(root, candidate)),
+      )
+    )
+      throw unavailable("new source overlaps another discovery scope");
     return matches[0];
   }
 
@@ -155,13 +223,19 @@ export class UsageSourceAcquisition {
     const deadline = performance.now() + 2000;
     const dirty = new Set();
     const volumes = [];
-    const addedFiles = new Map(), directories = [];
-    let records = 0, journalBytes = 0;
+    const addedFiles = new Map(),
+      directories = [];
+    let records = 0,
+      journalBytes = 0;
     for (const cursor of state.volumes) {
       if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
       const interval = await native.changes(cursor.path, cursor);
-      if (!interval) throw unavailable(`journal interval unavailable${native.lastDirectoryFailure?.operation === "changes"
-        ? `: ${native.lastDirectoryFailure.reason}` : ""}`);
+      if (!interval)
+        throw unavailable(
+          `journal interval unavailable${
+            native.lastDirectoryFailure?.operation === "changes" ? `: ${native.lastDirectoryFailure.reason}` : ""
+          }`,
+        );
       volumes.push({ ...cursor, nextUsn: interval.nextUsn });
       journalBytes += interval.journalBytes;
       const unknown = new Map();
@@ -174,7 +248,8 @@ export class UsageSourceAcquisition {
         if (known && record.reason & TOPOLOGY) throw unavailable("known namespace changed");
         if (record.reason === CLOSE) continue;
         if (known?.role === "file") {
-          if (value?.seal && (!bootstrap || value.covered !== false) && BigInt(record.usn) <= BigInt(value.seal)) continue;
+          if (value?.seal && (!bootstrap || value.covered !== false) && BigInt(record.usn) <= BigInt(value.seal))
+            continue;
           if (!value?.supported) throw unavailable("other source changed");
           dirty.add(String(known.path));
           continue;
@@ -182,11 +257,15 @@ export class UsageSourceAcquisition {
         if (known) throw unavailable("discovery directory changed");
         if (record.reason & 0x10000) throw unavailable("ambiguous hardlink change");
         const previous = unknown.get(record.id);
-        unknown.set(record.id, { ...record, reason: (previous?.reason || 0) | record.reason,
-          moved: previous?.moved || (previous && previous.parent !== record.parent) });
+        unknown.set(record.id, {
+          ...record,
+          reason: (previous?.reason || 0) | record.reason,
+          moved: previous?.moved || (previous && previous.parent !== record.parent),
+        });
       }
       const newDirectories = new Map();
-      let pending = [...unknown.values()], progressed = true;
+      let pending = [...unknown.values()],
+        progressed = true;
       while (pending.length && progressed) {
         progressed = false;
         const remaining = [];
@@ -194,40 +273,68 @@ export class UsageSourceAcquisition {
           if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
           const parent = this.find(cursor.volume, record.parent) || newDirectories.get(record.parent);
           if (parent?.role === "directory") {
-            if (bootstrap || state.directoryCoverage !== 1 || record.moved ||
-              !(record.reason & CREATE) || (record.reason & (TOPOLOGY & ~CREATE)))
+            if (
+              bootstrap ||
+              state.directoryCoverage !== 1 ||
+              record.moved ||
+              !(record.reason & CREATE) ||
+              record.reason & (TOPOLOGY & ~CREATE)
+            )
               throw unavailable("managed directory changed");
             const object = await native.resolve(cursor.path, record.id);
-            if (!object || (record.id.length === 16 ? object.id64 : object.id128) !== record.id ||
-              object.volume !== cursor.volume || object.attributes & 0x400 ||
-              (!(object.attributes & 16) && object.links !== 1)) throw unavailable("new source identity unavailable");
+            if (
+              !object ||
+              (record.id.length === 16 ? object.id64 : object.id128) !== record.id ||
+              object.volume !== cursor.volume ||
+              object.attributes & 0x400 ||
+              (!(object.attributes & 16) && object.links !== 1)
+            )
+              throw unavailable("new source identity unavailable");
             const parentPath = path.dirname(object.path);
             const currentParent = await native.object(parentPath);
             const parentId = record.parent.length === 16 ? currentParent?.id64 : currentParent?.id128;
-            if (!currentParent || currentParent.volume !== cursor.volume || parentId !== record.parent ||
-              currentParent.attributes & 0x400 || normal(parentPath) !== parent.path)
+            if (
+              !currentParent ||
+              currentParent.volume !== cursor.volume ||
+              parentId !== record.parent ||
+              currentParent.attributes & 0x400 ||
+              normal(parentPath) !== parent.path
+            )
               throw unavailable("new source parent identity changed");
             const directory = Boolean(object.attributes & 16);
             const source = this.additionSource(state, object.path, directory);
             const entry = { path: normal(object.path), role: "directory", object };
             if (directory) {
               directories.push(entry);
-              newDirectories.set(object.id64, entry); newDirectories.set(object.id128, entry);
+              newDirectories.set(object.id64, entry);
+              newDirectories.set(object.id128, entry);
             } else {
               const filePath = path.resolve(object.path.replace(/^\\\\\?\\/, ""));
-              if (this.store.database.prepare("SELECT 1 FROM source_files WHERE path=?").get(filePath) ||
+              if (
+                this.store.database.prepare("SELECT 1 FROM source_files WHERE path=?").get(filePath) ||
                 state.missingSources.some((missing) => normal(missing.path) === normal(filePath)) ||
-                (source.kind !== "dsh" && await lstat(`${filePath}.zst`).catch((error) => {
-                  if (error.code === "ENOENT") return undefined; throw error;
-                }))) throw unavailable("returned source or alternate representation requires full verification");
+                (source.kind !== "dsh" &&
+                  (await lstat(`${filePath}.zst`).catch((error) => {
+                    if (error.code === "ENOENT") return undefined;
+                    throw error;
+                  })))
+              )
+                throw unavailable("returned source or alternate representation requires full verification");
               const info = await stat(filePath);
               if (!info.isFile() || info.nlink !== 1) throw unavailable("new source alias changed");
-              addedFiles.set(normal(filePath), { filePath, source, info, force: true, readMode: "incremental", additionIdentity: object });
+              addedFiles.set(normal(filePath), {
+                filePath,
+                source,
+                info,
+                force: true,
+                readMode: "incremental",
+                additionIdentity: object,
+              });
             }
             progressed = true;
           } else if (state.directoryCoverage !== 1 || (parent && state.watchedParents.includes(String(parent.path)))) {
             const object = await native.resolve(cursor.path, record.id);
-            const resolved = object || await native.resolve(cursor.path, record.parent);
+            const resolved = object || (await native.resolve(cursor.path, record.parent));
             if (!resolved || resolved.attributes & 0x400 || resolved.links > 1) throw unavailable("unresolved change");
             const resolvedPath = normal(resolved.path);
             if (state.scopes.some((root) => within(resolvedPath, root) || (object && within(root, resolvedPath))))
@@ -238,11 +345,20 @@ export class UsageSourceAcquisition {
       }
     }
     if (performance.now() > deadline) throw unavailable("change resolution budget exceeded");
-    return { volumes, dirty: [...dirty].sort(), records, journalBytes, addedFiles: [...addedFiles.values()], directories };
+    return {
+      volumes,
+      dirty: [...dirty].sort(),
+      records,
+      journalBytes,
+      addedFiles: [...addedFiles.values()],
+      directories,
+    };
   }
 
   async file(filePath) {
-    const row = this.store.database.prepare("SELECT * FROM usage_source_catalog WHERE path=? AND role='file'").get(normal(filePath));
+    const row = this.store.database
+      .prepare("SELECT * FROM usage_source_catalog WHERE path=? AND role='file'")
+      .get(normal(filePath));
     const value = parse(row);
     if (!value?.supported || typeof value.filePath !== "string" || normal(value.filePath) !== row.path)
       throw unavailable("dependency outside supported sources");
@@ -251,9 +367,18 @@ export class UsageSourceAcquisition {
       throw unavailable("source binding changed");
     const info = await stat(value.filePath);
     if (!info.isFile() || info.nlink !== 1) throw unavailable("source alias changed");
-    return { filePath: value.filePath, source: { id: String(source.home_id), kind: String(source.kind),
-      path: String(source.home_path), label: String(source.home_label) }, info, force: true,
-      readMode: value.readMode || "incremental" };
+    return {
+      filePath: value.filePath,
+      source: {
+        id: String(source.home_id),
+        kind: String(source.kind),
+        path: String(source.home_path),
+        label: String(source.home_label),
+      },
+      info,
+      force: true,
+      readMode: value.readMode || "incremental",
+    };
   }
 
   async prepare(options, hints = null) {
@@ -263,26 +388,41 @@ export class UsageSourceAcquisition {
       const dataVersion = Number(this.store.database.prepare("PRAGMA data_version").get().data_version);
       const state = this.state(options);
       if (state?.warnings.length) throw unavailable("source warnings require full verification");
-      const native = state && await this.provider();
+      const native = state && (await this.provider());
       if (!native) return null;
       const inputs = await readUsageSourceInputs(options, state.homes, "");
       if (inputs.inputs !== state.auxiliary) throw unavailable("auxiliary input changed");
       const interval = await this.interval(state, native);
       const paths = new Set(interval.dirty);
-      for (const row of this.store.database.prepare("SELECT source_path FROM usage_source_reparse LIMIT 2049").iterate())
+      for (const row of this.store.database
+        .prepare("SELECT source_path FROM usage_source_reparse LIMIT 2049")
+        .iterate())
         paths.add(String(row.source_path));
       if (paths.size + interval.addedFiles.length > 2048) throw unavailable("dependency budget exceeded");
       const files = [...interval.addedFiles];
       for (const file of paths) files.push(await this.file(file));
       const preferred = new Set((hints?.paths || []).map((hint) => normal(hint.path)));
       files.sort((a, b) => Number(preferred.has(normal(b.filePath))) - Number(preferred.has(normal(a.filePath))));
-      const plan = { ...state, volumes: interval.volumes, files, dataVersion, directories: interval.directories,
-        fileCount: state.fileCount + interval.addedFiles.length };
-      this.work = { mode: "certified", selectedFiles: files.length, addedFiles: interval.addedFiles.length,
-        addedDirectories: interval.directories.length, records: interval.records, journalBytes: interval.journalBytes };
+      const plan = {
+        ...state,
+        volumes: interval.volumes,
+        files,
+        dataVersion,
+        directories: interval.directories,
+        fileCount: state.fileCount + interval.addedFiles.length,
+      };
+      this.work = {
+        mode: "certified",
+        selectedFiles: files.length,
+        addedFiles: interval.addedFiles.length,
+        addedDirectories: interval.directories.length,
+        records: interval.records,
+        journalBytes: interval.journalBytes,
+      };
       return plan;
     } catch (error) {
-      if (error.code !== "SOURCE_COVERAGE_UNAVAILABLE" && !["ENOENT", "EACCES", "EPERM"].includes(error.code)) throw error;
+      if (error.code !== "SOURCE_COVERAGE_UNAVAILABLE" && !["ENOENT", "EACCES", "EPERM"].includes(error.code))
+        throw error;
       this.work = { mode: "fallback", reason: error.message };
       return null;
     }
@@ -293,14 +433,28 @@ export class UsageSourceAcquisition {
     const plan = await this.prepare(options);
     if (!plan || plan.files.length || plan.directories?.length) return null;
     const input = await readUsageSourceInputs(options, plan.homes, "");
-    if (input.inputs !== plan.auxiliary ||
+    if (
+      input.inputs !== plan.auxiliary ||
       Number(this.store.database.prepare("PRAGMA data_version").get().data_version) !== plan.dataVersion ||
       Number(this.store.database.prepare("SELECT total_changes() n").get().n) !== changes ||
-      this.state(options)?.revision !== plan.revision) return null;
-    const status = { fingerprint: plan.fingerprint, checkedAt: new Date().toISOString(), generatedAt: this.store.generatedAt,
-      fileCount: plan.fileCount, homeCount: plan.homes.length, updatedFileCount: 0, missingSources: plan.missingSources,
-      acquisition: { format: 1, homes: plan.homes, auxiliary: input.inputs,
-        cuts: plan.volumes.map(({ volume, journalId, nextUsn }) => ({ volume, journalId, nextUsn })) } };
+      this.state(options)?.revision !== plan.revision
+    )
+      return null;
+    const status = {
+      fingerprint: plan.fingerprint,
+      checkedAt: new Date().toISOString(),
+      generatedAt: this.store.generatedAt,
+      fileCount: plan.fileCount,
+      homeCount: plan.homes.length,
+      updatedFileCount: 0,
+      missingSources: plan.missingSources,
+      acquisition: {
+        format: 1,
+        homes: plan.homes,
+        auxiliary: input.inputs,
+        cuts: plan.volumes.map(({ volume, journalId, nextUsn }) => ({ volume, journalId, nextUsn })),
+      },
+    };
     // Save progress at half the existing journal budget, without regenerating unchanged facts.
     if (this.work.records >= 1024 || this.work.journalBytes >= 2 * 1024 * 1024) {
       this.store.homes = plan.homes;
@@ -313,15 +467,22 @@ export class UsageSourceAcquisition {
   }
 
   put(filePath, object, role, payload) {
-    this.store.database.prepare(`INSERT OR REPLACE INTO usage_source_catalog
+    this.store.database
+      .prepare(`INSERT OR REPLACE INTO usage_source_catalog
       (path,volume,id64,id128,role,payload) VALUES(?,?,?,?,?,?)`)
       .run(normal(filePath), object.volume, object.id64, object.id128, role, JSON.stringify(payload));
   }
 
   async inventoryDirectory(directory, native) {
-    if (this.store.database.prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'").get(normal(directory))) return;
+    if (
+      this.store.database
+        .prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'")
+        .get(normal(directory))
+    )
+      return;
     const object = await native.object(directory);
-    if (!object || !(object.attributes & 16) || (object.attributes & 0x400)) throw unavailable("directory coverage unavailable");
+    if (!object || !(object.attributes & 16) || object.attributes & 0x400)
+      throw unavailable("directory coverage unavailable");
     this.put(directory, object, "directory", {});
     const entries = await opendir(directory);
     for await (const entry of entries) {
@@ -334,19 +495,24 @@ export class UsageSourceAcquisition {
     const info = await stat(file.filePath);
     const object = await native.object(file.filePath);
     if (object?.links !== 1 || object.attributes & 0x400) throw unavailable("source identity unavailable");
-    if (file.additionIdentity && (object.volume !== file.additionIdentity.volume ||
-      object.id64 !== file.additionIdentity.id64 || object.id128 !== file.additionIdentity.id128))
+    if (
+      file.additionIdentity &&
+      (object.volume !== file.additionIdentity.volume ||
+        object.id64 !== file.additionIdentity.id64 ||
+        object.id128 !== file.additionIdentity.id128)
+    )
       throw unavailable("new source identity changed before publication");
-    const supported = ["main", "extra", "jetbrains", "codex", "dsh"].includes(file.source.kind) &&
+    const supported =
+      ["main", "extra", "jetbrains", "codex", "dsh"].includes(file.source.kind) &&
       (file.source.kind === "dsh" || file.filePath.endsWith(".jsonl"));
     let seal = progressSeal(this.store, file.filePath);
     const progress = supported ? readUsageSourceProgress(this.store.database, file.filePath) : null;
     const readMode = progress ? "incremental" : "full";
     let covered = true;
     if (supported && progress) {
-      if (bootstrap && !await this.store.recertifyUnchangedFile({ ...file, info }, progress)) {
+      if (bootstrap && !(await this.store.recertifyUnchangedFile({ ...file, info }, progress))) {
         // Flush a concurrent append without acknowledging its unparsed bytes.
-        if (!seal || !await native.begin(file.filePath, 0, info))
+        if (!seal || !(await native.begin(file.filePath, 0, info)))
           throw unavailable("source checkpoint cannot be sealed");
       }
       seal = progressSeal(this.store, file.filePath);
@@ -356,15 +522,25 @@ export class UsageSourceAcquisition {
       seal = windowsSourceProofPosition(file.sourceValidation);
     } else {
       const fence = await native.begin(file.filePath, 0, info);
-      const proof = fence && await native.advance(file.filePath, fence, 0, info);
+      const proof = fence && (await native.advance(file.filePath, fence, 0, info));
       if (!proof) throw unavailable("other source cannot be observed");
       seal = windowsSourceProofPosition(proof.validation);
       covered = false;
     }
     if (!seal || seal.volume !== object.volume || seal.id64 !== object.id64 || seal.id128 !== object.id128)
       throw unavailable("source observation identity changed");
-    return { object, value: { filePath: file.filePath, source: file.source, supported, seal: seal.seal,
-      fingerprint: file.acquisitionFingerprint, readMode, covered } };
+    return {
+      object,
+      value: {
+        filePath: file.filePath,
+        source: file.source,
+        supported,
+        seal: seal.seal,
+        fingerprint: file.acquisitionFingerprint,
+        readMode,
+        covered,
+      },
+    };
   }
 
   async complete(options, plan, files, status, bootstrap = false) {
@@ -375,15 +551,20 @@ export class UsageSourceAcquisition {
       // Directory identities and files become authorized only with the final cut.
       for (const directory of plan.directories || []) {
         const current = await native.object(directory.path);
-        if (!current || current.volume !== directory.object.volume || current.id64 !== directory.object.id64 ||
-          current.id128 !== directory.object.id128 || current.attributes & 0x400)
+        if (
+          !current ||
+          current.volume !== directory.object.volume ||
+          current.id64 !== directory.object.id64 ||
+          current.id128 !== directory.object.id128 ||
+          current.attributes & 0x400
+        )
           throw unavailable("new directory changed before publication");
       }
       if (bootstrap) {
         this.store.database.exec("DELETE FROM usage_source_catalog");
         const directories = new Set(plan.guards);
         for (const file of files) {
-          for (let dir = path.dirname(file.filePath);; dir = path.dirname(dir)) {
+          for (let dir = path.dirname(file.filePath); ; dir = path.dirname(dir)) {
             directories.add(dir);
             if (path.dirname(dir) === dir) break;
           }
@@ -395,15 +576,23 @@ export class UsageSourceAcquisition {
         }
         for (const scope of plan.scopes) {
           let info;
-          try { info = await lstat(scope); }
-          catch (error) { if (error.code === "ENOENT") continue; throw error; }
+          try {
+            info = await lstat(scope);
+          } catch (error) {
+            if (error.code === "ENOENT") continue;
+            throw error;
+          }
           if (info.isSymbolicLink()) throw unavailable("reparse source root");
           if (info.isDirectory()) await this.inventoryDirectory(scope, native);
         }
         for (const file of files) {
           // Single-file imports may live outside the discovered home tree.
           const parent = path.dirname(file.filePath);
-          if (!this.store.database.prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'").get(normal(parent))) {
+          if (
+            !this.store.database
+              .prepare("SELECT 1 FROM usage_source_catalog WHERE path=? AND role='directory'")
+              .get(normal(parent))
+          ) {
             const object = await native.object(parent);
             if (!object || object.attributes & 0x400) throw unavailable("source parent unavailable");
             this.put(parent, object, "directory", {});
@@ -422,9 +611,17 @@ export class UsageSourceAcquisition {
         if (interval.dirty.length) {
           const selected = [];
           for (const file of interval.dirty) selected.push(await this.file(file));
-          const repaired = await this.store.syncRound({ options, acquisitionPlan: { ...plan,
-            files: selected, fingerprint: status.fingerprint, fileCount: status.fileCount,
-            missingSources: status.missingSources, warnings: [...this.store.warnings] } });
+          const repaired = await this.store.syncRound({
+            options,
+            acquisitionPlan: {
+              ...plan,
+              files: selected,
+              fingerprint: status.fingerprint,
+              fileCount: status.fileCount,
+              missingSources: status.missingSources,
+              warnings: [...this.store.warnings],
+            },
+          });
           Object.assign(status, repaired);
           for (const file of this.store.acquisitionFiles) {
             const captured = await this.capture(file, native);
@@ -434,28 +631,45 @@ export class UsageSourceAcquisition {
       }
       const inputs = await readUsageSourceInputs(options, this.store.homes, "");
       if (inputs.inputs !== plan.auxiliary) throw unavailable("auxiliary inputs changed while synchronizing");
-      const state = { format: 1, context: context(options), scopes: plan.scopes, volumes: plan.volumes,
-        directoryCoverage: plan.directoryCoverage, watchedParents: plan.watchedParents,
-        homes: this.store.homes, warnings: this.store.warnings, missingSources: status.missingSources,
-        fingerprint: status.fingerprint, fileCount: status.fileCount, revision: revision(this.store), auxiliary: inputs.inputs };
+      const state = {
+        format: 1,
+        context: context(options),
+        scopes: plan.scopes,
+        volumes: plan.volumes,
+        directoryCoverage: plan.directoryCoverage,
+        watchedParents: plan.watchedParents,
+        homes: this.store.homes,
+        warnings: this.store.warnings,
+        missingSources: status.missingSources,
+        fingerprint: status.fingerprint,
+        fileCount: status.fileCount,
+        revision: revision(this.store),
+        auxiliary: inputs.inputs,
+      };
       this.store.database.exec("BEGIN IMMEDIATE");
       try {
         if (Number(this.store.database.prepare("PRAGMA data_version").get().data_version) !== plan.dataVersion)
           throw unavailable("external database commit during acquisition");
         for (const directory of plan.directories || []) this.put(directory.path, directory.object, "directory", {});
-        this.store.database.prepare(`INSERT OR REPLACE INTO usage_source_catalog VALUES('','','','','state',?,1)`)
+        this.store.database
+          .prepare(`INSERT OR REPLACE INTO usage_source_catalog VALUES('','','','','state',?,1)`)
           .run(JSON.stringify(state));
         this.store.database.exec("COMMIT");
       } catch (error) {
         this.store.database.exec("ROLLBACK");
         throw error;
       }
-      return { format: 1, homes: state.homes, auxiliary: inputs.inputs, cuts: state.volumes.map(({ volume, journalId, nextUsn }) =>
-        ({ volume, journalId, nextUsn })) };
+      return {
+        format: 1,
+        homes: state.homes,
+        auxiliary: inputs.inputs,
+        cuts: state.volumes.map(({ volume, journalId, nextUsn }) => ({ volume, journalId, nextUsn })),
+      };
     } catch (error) {
       this.invalidate();
       this.work = { mode: "fallback", reason: error.message };
-      if (error.code !== "SOURCE_COVERAGE_UNAVAILABLE" && !["ENOENT", "EACCES", "EPERM"].includes(error.code)) throw error;
+      if (error.code !== "SOURCE_COVERAGE_UNAVAILABLE" && !["ENOENT", "EACCES", "EPERM"].includes(error.code))
+        throw error;
       return null;
     }
   }

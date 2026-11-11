@@ -6,10 +6,18 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { UsageStore } from "../src/usage-store.js";
-import { REMAINING_HARNESSES, createRemainingHarnessFixture, insertDatabaseEvent, transcriptRows } from "../test-support/remaining-harness-fixture.mjs";
+import {
+  REMAINING_HARNESSES,
+  createRemainingHarnessFixture,
+  insertDatabaseEvent,
+  transcriptRows,
+} from "../test-support/remaining-harness-fixture.mjs";
 
 function facts(store) {
-  return store.database.prepare("SELECT * FROM events ORDER BY id").all().map(({ id: _id, ...row }) => ({ ...row }));
+  return store.database
+    .prepare("SELECT * FROM events ORDER BY id")
+    .all()
+    .map(({ id: _id, ...row }) => ({ ...row }));
 }
 
 function expectedTotal(kind, count) {
@@ -30,7 +38,9 @@ function editSource(fixture, kind) {
     try {
       db.exec("BEGIN");
       if (kind === "zcode") {
-        db.prepare("UPDATE model_usage SET output_tokens=70,computed_total_tokens=210 WHERE session_id='session-1'").run();
+        db.prepare(
+          "UPDATE model_usage SET output_tokens=70,computed_total_tokens=210 WHERE session_id='session-1'",
+        ).run();
         db.prepare("UPDATE session SET directory='/fixture/revised' WHERE id='session-1'").run();
         db.prepare("DELETE FROM model_usage WHERE session_id='session-2'").run();
       } else {
@@ -42,7 +52,9 @@ function editSource(fixture, kind) {
         db.prepare("DELETE FROM session_message WHERE session_id='session-2'").run();
       }
       db.exec("COMMIT");
-    } finally { db.close(); }
+    } finally {
+      db.close();
+    }
   }
 }
 
@@ -64,7 +76,11 @@ for (const kind of REMAINING_HARNESSES) {
         appendFileSync(fixture.filePath, `${transcriptRows(kind, 8).map(JSON.stringify).join("\n")}\n`);
       } else {
         const db = new DatabaseSync(fixture.filePath);
-        try { insertDatabaseEvent(db, kind, 8); } finally { db.close(); }
+        try {
+          insertDatabaseEvent(db, kind, 8);
+        } finally {
+          db.close();
+        }
       }
       await replace();
       assert.equal(facts(store).length, 9);
@@ -83,7 +99,10 @@ for (const kind of REMAINING_HARNESSES) {
       store.database.exec("DROP TRIGGER fail_remaining");
       await replace();
       assert.equal(facts(store).length, 8);
-      assert.equal(store.summarize({ preset: "all" }).totals.total, expectedTotal(kind, 9) - (140 + 22 + (kind === "claude" ? 5 : 0)) + 49);
+      assert.equal(
+        store.summarize({ preset: "all" }).totals.total,
+        expectedTotal(kind, 9) - (140 + 22 + (kind === "claude" ? 5 : 0)) + 49,
+      );
       assert.ok(Number(store.database.prepare("SELECT COUNT(*) AS n FROM history_replaced_facts").get().n) >= 2);
 
       fresh = new UsageStore({ homeDir: root, databaseFile: path.join(root, "fresh.sqlite") });

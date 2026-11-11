@@ -153,22 +153,43 @@ export class UsageSummaryCache {
     const input = await readUsageSourceInputs(options, acquisition.homes, status.fingerprint);
     if (input.auxiliary !== acquisition.auxiliary) return null;
     const publication = await this.readPublication();
-    return { fingerprint: status.fingerprint, checkedAt: status.checkedAt, fileCount: status.fileCount,
-      homeCount: acquisition.homes.length, inputs: input.inputs, auxiliary: input.auxiliary, routingFingerprint: input.routingFingerprint,
-      publication, signature: digest(`${input.inputs}\0${publication?.signature || ""}`), acquisition,
-      completion: status.completion ?? null };
+    return {
+      fingerprint: status.fingerprint,
+      checkedAt: status.checkedAt,
+      fileCount: status.fileCount,
+      homeCount: acquisition.homes.length,
+      inputs: input.inputs,
+      auxiliary: input.auxiliary,
+      routingFingerprint: input.routingFingerprint,
+      publication,
+      signature: digest(`${input.inputs}\0${publication?.signature || ""}`),
+      acquisition,
+      completion: status.completion ?? null,
+    };
   }
 
   async readCompletedSourceState(options, status, homes, before) {
     if (!status.completion) return null;
     const input = await readUsageSourceInputs(options, homes, status.fingerprint);
-    if (input.auxiliary !== before.auxiliary &&
-      (status.fingerprint !== before.fingerprint || input.routingFingerprint !== before.routingFingerprint)) return null;
+    if (
+      input.auxiliary !== before.auxiliary &&
+      (status.fingerprint !== before.fingerprint || input.routingFingerprint !== before.routingFingerprint)
+    )
+      return null;
     const publication = await this.readPublication();
     if (!publication) return null;
-    return { fingerprint: status.fingerprint, checkedAt: status.checkedAt, fileCount: status.fileCount,
-      homeCount: homes.length, inputs: input.inputs, auxiliary: input.auxiliary, routingFingerprint: input.routingFingerprint,
-      publication, signature: digest(`${input.inputs}\0${publication.signature}`), completion: status.completion };
+    return {
+      fingerprint: status.fingerprint,
+      checkedAt: status.checkedAt,
+      fileCount: status.fileCount,
+      homeCount: homes.length,
+      inputs: input.inputs,
+      auxiliary: input.auxiliary,
+      routingFingerprint: input.routingFingerprint,
+      publication,
+      signature: digest(`${input.inputs}\0${publication.signature}`),
+      completion: status.completion,
+    };
   }
 
   async readPublication() {
@@ -278,7 +299,13 @@ export class UsageSummaryCache {
     this.database.exec("BEGIN IMMEDIATE");
     try {
       if (this.readState.get().signature !== source.signature) this.database.exec("DELETE FROM summaries");
-      this.writeEntry.run(key, source.signature, now.getTime(), validUntil, JSON.stringify({ ...payload, completion: undefined }));
+      this.writeEntry.run(
+        key,
+        source.signature,
+        now.getTime(),
+        validUntil,
+        JSON.stringify({ ...payload, completion: undefined }),
+      );
       this.database
         .prepare("UPDATE summary_state SET signature = ?, state = ? WHERE singleton = 1")
         .run(

@@ -35,7 +35,9 @@ test("sync and its dashboard share locked archive bytes; another executor only r
   }
   for (const file of candidates)
     await store.commitHistoryArchiveEvents(await prepareHistoryArchiveCommit(store.database, file));
-  const rawFile = String(store.database.prepare("SELECT path FROM source_files WHERE kind='zcode' ORDER BY path LIMIT 1").get().path);
+  const rawFile = String(
+    store.database.prepare("SELECT path FROM source_files WHERE kind='zcode' ORDER BY path LIMIT 1").get().path,
+  );
   store.close();
   const log = path.join(directory, "verification-work.ndjson");
   writeFileSync(log, "");
@@ -66,7 +68,11 @@ test("sync and its dashboard share locked archive bytes; another executor only r
   await client.sync({ options });
   const next = await client.dashboard(FILTERS, { includeDetails: false });
   assert.equal(next.summary.totals.total, initial.summary.totals.total + 30);
-  assert.equal(rows().filter((row) => row.kind === "hash").length, 4, "two full hashes per package across sync and dashboard");
+  assert.equal(
+    rows().filter((row) => row.kind === "hash").length,
+    4,
+    "two full hashes per package across sync and dashboard",
+  );
   assert.equal(rows().filter((row) => row.kind === "semantic").length, 0);
   for (const file of candidates) {
     const writer = new DatabaseSync(file);

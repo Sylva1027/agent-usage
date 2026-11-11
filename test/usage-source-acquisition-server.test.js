@@ -9,29 +9,52 @@ import { createUsageServer } from "../src/server.js";
 import { UsageSummaryCache } from "../src/usage-summary-cache.js";
 
 const enabled = Boolean(process.env.Q6_TEST_HELPER && process.env.Q6_TEST_TRACE);
-const jsonl = (total, time) => `${JSON.stringify({ type: "event_msg", timestamp: new Date(time).toISOString(),
-  payload: { type: "token_count", info: { total_token_usage: { input_tokens: total, total_tokens: total } } } })}\n`;
+const jsonl = (total, time) =>
+  `${JSON.stringify({
+    type: "event_msg",
+    timestamp: new Date(time).toISOString(),
+    payload: { type: "token_count", info: { total_token_usage: { input_tokens: total, total_tokens: total } } },
+  })}\n`;
 
-test("one certified result drives concurrent requests, notifications, scope changes and a complete server reopen", { skip: !enabled }, async (t) => {
+test("one certified result drives concurrent requests, notifications, scope changes and a complete server reopen", {
+  skip: !enabled,
+}, async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "usage-acquisition-server-"));
   const trace = process.env.Q6_TEST_TRACE;
   const forbid = path.join(trace, "forbid");
   const file = path.join(root, ".codex", "sessions", "source.jsonl");
   await mkdir(path.dirname(file), { recursive: true });
   const start = Date.now() - 1000;
-  await writeFile(file, `${JSON.stringify({ type: "session_meta", timestamp: new Date(start).toISOString(),
-    payload: { id: "server", source: "cli", originator: "codex-tui", cwd: root } })}\n` +
-    `${JSON.stringify({ type: "turn_context", payload: { model: "gpt-5" } })}\n` + jsonl(10, start));
-  const options = { homeDir: root, env: {}, importDirs: [], databaseFile: path.join(root, "index.sqlite"),
-    importStoreFile: path.join(root, "imports.json"), automaticDiscoveryEnabled: false,
-    pricingRefreshSchedulerEnabled: false };
+  await writeFile(
+    file,
+    `${JSON.stringify({
+      type: "session_meta",
+      timestamp: new Date(start).toISOString(),
+      payload: { id: "server", source: "cli", originator: "codex-tui", cwd: root },
+    })}\n` +
+      `${JSON.stringify({ type: "turn_context", payload: { model: "gpt-5" } })}\n` +
+      jsonl(10, start),
+  );
+  const options = {
+    homeDir: root,
+    env: {},
+    importDirs: [],
+    databaseFile: path.join(root, "index.sqlite"),
+    importStoreFile: path.join(root, "imports.json"),
+    automaticDiscoveryEnabled: false,
+    pricingRefreshSchedulerEnabled: false,
+  };
   let server, stream;
   const cacheReads = [];
   const getCached = UsageSummaryCache.prototype.get;
   t.mock.method(UsageSummaryCache.prototype, "get", async function (...args) {
     const result = await getCached.apply(this, args);
-    cacheReads.push({ hit: Boolean(result), expected: args[1].signature,
-      saved: this.readEntry.get(args[0])?.signature, publication: args[1].publication });
+    cacheReads.push({
+      hit: Boolean(result),
+      expected: args[1].signature,
+      saved: this.readEntry.get(args[0])?.signature,
+      publication: args[1].publication,
+    });
     return result;
   });
   const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
@@ -39,7 +62,7 @@ test("one certified result drives concurrent requests, notifications, scope chan
     server = createUsageServer({ ...options, shutdownToken: randomUUID() });
     await new Promise((resolve, reject) => {
       server.once("error", reject);
-      server.listen(49152 + process.pid % 8192, "127.0.0.1", resolve);
+      server.listen(49152 + (process.pid % 8192), "127.0.0.1", resolve);
     });
     return `http://127.0.0.1:${server.address().port}`;
   }
@@ -51,8 +74,11 @@ test("one certified result drives concurrent requests, notifications, scope chan
   }
   function ready() {
     const db = new DatabaseSync(options.databaseFile, { readOnly: true });
-    try { return db.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get()?.ready; }
-    finally { db.close(); }
+    try {
+      return db.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get()?.ready;
+    } finally {
+      db.close();
+    }
   }
   try {
     let base = await listen();
@@ -65,7 +91,10 @@ test("one certified result drives concurrent requests, notifications, scope chan
     for (const result of concurrent) assert.equal(result.summary.totals.total, 20);
     assert.equal(concurrent[0].fingerprint, concurrent[1].fingerprint);
     for (const preset of ["today", "week", "all"])
-      assert.equal((await get(base, `/api/usage?preset=${preset}&view=dashboard&bucket=day&skipCheck=1`)).summary.totals.total, 20);
+      assert.equal(
+        (await get(base, `/api/usage?preset=${preset}&view=dashboard&bucket=day&skipCheck=1`)).summary.totals.total,
+        20,
+      );
     stream = new AbortController();
     const response = await fetch(`${base}/api/usage-events`, { signal: stream.signal });
     assert.equal(response.status, 200);
@@ -80,7 +109,9 @@ test("one certified result drives concurrent requests, notifications, scope chan
           assert.equal(chunk.done, false);
           text += decoder.decode(chunk.value, { stream: true });
         }
-      } finally { clearTimeout(timeout); }
+      } finally {
+        clearTimeout(timeout);
+      }
     }
     await until((value) => value.includes("event: ready"));
     await appendFile(file, jsonl(30, start + 20));

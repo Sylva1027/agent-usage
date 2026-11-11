@@ -57,7 +57,7 @@ test("checkpoint restore preserves the exact floating-point accumulation order",
   expected.add(event(), estimate({ inputUsd: 0.3, totalUsd: 0.3, pricedTokens: 1 }));
   restored.add(event(), estimate({ inputUsd: 0.3, totalUsd: 0.3, pricedTokens: 1 }));
 
-  assert.equal((0.1 + 0.2) + 0.3, 0.6000000000000001);
+  assert.equal(0.1 + 0.2 + 0.3, 0.6000000000000001);
   assert.equal(restored.result().totalUsd, expected.result().totalUsd);
   assert.deepEqual(restored.result(), expected.result());
 });
@@ -171,9 +171,7 @@ test("empty snapshots restart from zero and current metadata stays live", () => 
     checkedAt: "2030-01-02",
     usdToCnyRate: 9.75,
   };
-  const catalogResult = runWithPricingCatalog(catalog, () =>
-    createCostEstimateAccumulator({ state }).result(),
-  );
+  const catalogResult = runWithPricingCatalog(catalog, () => createCostEstimateAccumulator({ state }).result());
   assert.equal(catalogResult.usdToCnyRate, 9.75);
   assert.equal(catalogResult.priceCheckedAt, "2030-01-02");
 

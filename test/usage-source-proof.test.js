@@ -132,11 +132,20 @@ test("invalid parser bounds and digests are never retried by SHA or native captu
   await fixture(async (file) => {
     const info = await stat(file);
     const proof = new UsageSourceProof();
-    proof.provider = async () => { assert.fail("invalid parser output must not reach the native helper"); };
+    proof.provider = async () => {
+      assert.fail("invalid parser output must not reach the native helper");
+    };
     const expected = { code: "LIVE_SOURCE_CHANGED", retryable: false };
-    for (const [offset, parsed] of [[-1, null], [info.size + 1, null], [0, { offset: 0, digest: "bad" }]]) {
+    for (const [offset, parsed] of [
+      [-1, null],
+      [info.size + 1, null],
+      [0, { offset: 0, digest: "bad" }],
+    ]) {
       await assert.rejects(captureUsageSourcePrefix(file, offset, info, null, parsed), expected);
-      await assert.rejects(proof.capture(file, offset, info, { kind: "ntfs-usn-v1", info, offset: 0 }, parsed), expected);
+      await assert.rejects(
+        proof.capture(file, offset, info, { kind: "ntfs-usn-v1", info, offset: 0 }, parsed),
+        expected,
+      );
     }
     await assert.rejects(captureUsageSourcePrefix(file, 0, info, { info, offset: 1 }), expected);
     await assert.rejects(proof.capture(file, 0, info, { kind: "ntfs-usn-v1", info, offset: 1 }), expected);

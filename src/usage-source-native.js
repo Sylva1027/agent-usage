@@ -38,9 +38,18 @@ function hex(value, width) {
 }
 
 function validObject(value) {
-  return value.format === 1 && typeof value.path === "string" && value.path.length > 0 &&
-    hex(value.volume, 16) && hex(value.id64, 16) && hex(value.id128, 32) &&
-    safeInteger(value.links) && safeInteger(value.attributes) && value.attributes <= 0xffffffff && decimal(value.size);
+  return (
+    value.format === 1 &&
+    typeof value.path === "string" &&
+    value.path.length > 0 &&
+    hex(value.volume, 16) &&
+    hex(value.id64, 16) &&
+    hex(value.id128, 32) &&
+    safeInteger(value.links) &&
+    safeInteger(value.attributes) &&
+    value.attributes <= 0xffffffff &&
+    decimal(value.size)
+  );
 }
 
 function bigintValue(value) {
@@ -107,8 +116,15 @@ function proofResult(response, offset, info, includeKind) {
 }
 
 function archiveLockResponse(response, token = response?.token) {
-  return response?.ok === true && response.available === true && response.kind === ARCHIVE_LOCK_KIND &&
-    typeof token === "string" && token.length > 0 && token.length <= MAX_TOKEN_BYTES && response.token === token;
+  return (
+    response?.ok === true &&
+    response.available === true &&
+    response.kind === ARCHIVE_LOCK_KIND &&
+    typeof token === "string" &&
+    token.length > 0 &&
+    token.length <= MAX_TOKEN_BYTES &&
+    response.token === token
+  );
 }
 
 export function windowsSourceProofPosition(validation) {
@@ -146,15 +162,26 @@ export class WindowsSourceProof {
    */
   async lockFiles(paths) {
     return this.#schedule(async () => {
-      if (!Array.isArray(paths) || paths.length === 0 || paths.length > 64 ||
-        paths.some((file) => typeof file !== "string" || !file || file.includes("\0"))) return null;
+      if (
+        !Array.isArray(paths) ||
+        paths.length === 0 ||
+        paths.length > 64 ||
+        paths.some((file) => typeof file !== "string" || !file || file.includes("\0"))
+      )
+        return null;
       const files = paths.map((file) => path.resolve(file));
       const locks = [];
       let child = this.#child;
       let closed = false;
       let closing = null;
-      const alive = () => child && this.#child === child && !this.#closed && !this.#disabled &&
-        !child.killed && child.exitCode === null && child.signalCode === null;
+      const alive = () =>
+        child &&
+        this.#child === child &&
+        !this.#closed &&
+        !this.#disabled &&
+        !child.killed &&
+        child.exitCode === null &&
+        child.signalCode === null;
       const release = async () => {
         for (const lock of locks) {
           if (!alive()) break;
@@ -176,19 +203,20 @@ export class WindowsSourceProof {
         locks.push({ path: file, token: response.token });
       }
       return {
-        check: async () => (await this.#schedule(async () => {
-          if (closed || !alive()) return false;
-          for (const lock of locks) {
-            const response = await this.#request({ op: "archiveCheck", ...lock }, child);
-            if (!archiveLockResponse(response, lock.token) || !alive()) {
-              closed = true;
-              closing = release();
-              await closing;
-              return false;
+        check: async () =>
+          (await this.#schedule(async () => {
+            if (closed || !alive()) return false;
+            for (const lock of locks) {
+              const response = await this.#request({ op: "archiveCheck", ...lock }, child);
+              if (!archiveLockResponse(response, lock.token) || !alive()) {
+                closed = true;
+                closing = release();
+                await closing;
+                return false;
+              }
             }
-          }
-          return !closed && Boolean(alive());
-        })) === true,
+            return !closed && Boolean(alive());
+          })) === true,
         close: async () => {
           if (!closed) {
             closed = true;
@@ -201,10 +229,18 @@ export class WindowsSourceProof {
   }
 
   async journal(filePath) {
-    return this.#directory({ op: "journal", path: path.resolve(filePath) }, (v) =>
-      v.format === 1 && hex(v.volume, 16) && decimal(v.journalId) &&
-      decimal(v.firstUsn) && decimal(v.lowestValidUsn) && decimal(v.nextUsn) &&
-      BigInt(v.nextUsn) >= BigInt(v.firstUsn) && BigInt(v.nextUsn) >= BigInt(v.lowestValidUsn));
+    return this.#directory(
+      { op: "journal", path: path.resolve(filePath) },
+      (v) =>
+        v.format === 1 &&
+        hex(v.volume, 16) &&
+        decimal(v.journalId) &&
+        decimal(v.firstUsn) &&
+        decimal(v.lowestValidUsn) &&
+        decimal(v.nextUsn) &&
+        BigInt(v.nextUsn) >= BigInt(v.firstUsn) &&
+        BigInt(v.nextUsn) >= BigInt(v.lowestValidUsn),
+    );
   }
 
   async object(filePath) {
@@ -218,31 +254,58 @@ export class WindowsSourceProof {
 
   async changes(filePath, cursor) {
     if (!decimal(cursor?.journalId) || !decimal(cursor?.nextUsn)) return null;
-    return this.#directory({ op: "changes", path: path.resolve(filePath),
-      journalId: cursor.journalId, startUsn: cursor.nextUsn }, (v) => {
-      if (v.format !== 1 || v.journalId !== cursor.journalId || v.startUsn !== cursor.nextUsn ||
-        !decimal(v.nextUsn) || BigInt(v.nextUsn) < BigInt(v.startUsn) ||
-        !safeInteger(v.journalBytes) || v.journalBytes > 4 * 1024 * 1024 ||
-        !Array.isArray(v.records) || v.records.length > 2048) return false;
-      let last = BigInt(v.startUsn) - 1n;
-      for (const r of v.records) {
-        if ((!hex(r.id, 16) && !hex(r.id, 32)) || !hex(r.parent, r.id.length) ||
-          !decimal(r.usn) || !safeInteger(r.reason) || r.reason > 0xffffffff ||
-          BigInt(r.usn) <= last || BigInt(r.usn) >= BigInt(v.nextUsn)) return false;
-        last = BigInt(r.usn);
-      }
-      return true;
-    });
+    return this.#directory(
+      { op: "changes", path: path.resolve(filePath), journalId: cursor.journalId, startUsn: cursor.nextUsn },
+      (v) => {
+        if (
+          v.format !== 1 ||
+          v.journalId !== cursor.journalId ||
+          v.startUsn !== cursor.nextUsn ||
+          !decimal(v.nextUsn) ||
+          BigInt(v.nextUsn) < BigInt(v.startUsn) ||
+          !safeInteger(v.journalBytes) ||
+          v.journalBytes > 4 * 1024 * 1024 ||
+          !Array.isArray(v.records) ||
+          v.records.length > 2048
+        )
+          return false;
+        let last = BigInt(v.startUsn) - 1n;
+        for (const r of v.records) {
+          if (
+            (!hex(r.id, 16) && !hex(r.id, 32)) ||
+            !hex(r.parent, r.id.length) ||
+            !decimal(r.usn) ||
+            !safeInteger(r.reason) ||
+            r.reason > 0xffffffff ||
+            BigInt(r.usn) <= last ||
+            BigInt(r.usn) >= BigInt(v.nextUsn)
+          )
+            return false;
+          last = BigInt(r.usn);
+        }
+        return true;
+      },
+    );
   }
 
   async #directory(payload, validate) {
     return this.#schedule(async () => {
       this.lastDirectoryFailure = null;
       const response = await this.#request(payload);
-      if (response?.ok !== true || response.available !== true ||
-        response.kind !== "ntfs-usn-directory-v1" || !response.value || !validate(response.value)) {
-        this.lastDirectoryFailure = { operation: payload.op, reason: typeof response?.reason === "string"
-          ? response.reason.slice(0, 512) : this.#requestFailure || "invalid directory response" };
+      if (
+        response?.ok !== true ||
+        response.available !== true ||
+        response.kind !== "ntfs-usn-directory-v1" ||
+        !response.value ||
+        !validate(response.value)
+      ) {
+        this.lastDirectoryFailure = {
+          operation: payload.op,
+          reason:
+            typeof response?.reason === "string"
+              ? response.reason.slice(0, 512)
+              : this.#requestFailure || "invalid directory response",
+        };
         return null;
       }
       return response.value;

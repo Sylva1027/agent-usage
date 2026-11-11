@@ -94,27 +94,15 @@ function expectedRepositoryPeriods(store, periods, excludeHomes = []) {
     ["inputUnavailableTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 1) = 0 THEN total ELSE 0 END), 0)"],
     ["cached", "COALESCE(SUM(CASE WHEN (detail_mask & 2) != 0 THEN cached ELSE 0 END), 0)"],
     ["cachedUnavailableTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 2) = 0 THEN total ELSE 0 END), 0)"],
-    [
-      "uncachedInput",
-      "COALESCE(SUM(CASE WHEN (detail_mask & 3) = 3 THEN MAX(input - cached, 0) ELSE 0 END), 0)",
-    ],
-    [
-      "uncachedInputUnavailableTokens",
-      "COALESCE(SUM(CASE WHEN (detail_mask & 3) != 3 THEN total ELSE 0 END), 0)",
-    ],
+    ["uncachedInput", "COALESCE(SUM(CASE WHEN (detail_mask & 3) = 3 THEN MAX(input - cached, 0) ELSE 0 END), 0)"],
+    ["uncachedInputUnavailableTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 3) != 3 THEN total ELSE 0 END), 0)"],
     ["cacheRateInput", "COALESCE(SUM(CASE WHEN (detail_mask & 3) = 3 THEN input ELSE 0 END), 0)"],
     ["cacheRateCached", "COALESCE(SUM(CASE WHEN (detail_mask & 3) = 3 THEN cached ELSE 0 END), 0)"],
     ["output", "COALESCE(SUM(CASE WHEN (detail_mask & 4) != 0 THEN output ELSE 0 END), 0)"],
     ["outputUnavailableTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 4) = 0 THEN total ELSE 0 END), 0)"],
     ["reasoning", "COALESCE(SUM(CASE WHEN (detail_mask & 8) != 0 THEN reasoning ELSE 0 END), 0)"],
-    [
-      "reasoningUnavailableTokens",
-      "COALESCE(SUM(CASE WHEN (detail_mask & 8) = 0 THEN total ELSE 0 END), 0)",
-    ],
-    [
-      "unattributedDetailTokens",
-      "COALESCE(SUM(CASE WHEN (detail_mask & 15) != 15 THEN total ELSE 0 END), 0)",
-    ],
+    ["reasoningUnavailableTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 8) = 0 THEN total ELSE 0 END), 0)"],
+    ["unattributedDetailTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 15) != 15 THEN total ELSE 0 END), 0)"],
     ["inconsistentTokens", "COALESCE(SUM(CASE WHEN (detail_mask & 16) != 0 THEN total ELSE 0 END), 0)"],
     ["reconciliationGap", "COALESCE(SUM(reconciliation_gap), 0)"],
   ];
@@ -198,37 +186,39 @@ function insertUsageStoreEvent(
 ) {
   const date = new Date(timestamp);
   const day = date.toISOString().slice(0, 10);
-  store.database.prepare(`
+  store.database
+    .prepare(`
     INSERT INTO events (
       source_path, timestamp_ms, session_id, home_id, home_label, channel, project, cwd, model,
       hour_key, day_key, week_key, month_key, repository_key, repository_path, repository_kind,
       detail_mask, reconciliation_gap, total, input, cached, output, reasoning
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    `/fixture/${homeId === "home-a" ? "a" : "b"}`,
-    Date.parse(timestamp),
-    sessionId,
-    homeId,
-    homeId === "home-a" ? "Home A" : "Home B",
-    "CLI",
-    name,
-    cwd,
-    "gpt-6-sol",
-    `${day} ${String(date.getUTCHours()).padStart(2, "0")}`,
-    day,
-    day,
-    day.slice(0, 7),
-    key,
-    name,
-    kind,
-    detailMask,
-    gap,
-    total,
-    input,
-    cached,
-    output,
-    reasoning,
-  );
+  `)
+    .run(
+      `/fixture/${homeId === "home-a" ? "a" : "b"}`,
+      Date.parse(timestamp),
+      sessionId,
+      homeId,
+      homeId === "home-a" ? "Home A" : "Home B",
+      "CLI",
+      name,
+      cwd,
+      "gpt-6-sol",
+      `${day} ${String(date.getUTCHours()).padStart(2, "0")}`,
+      day,
+      day,
+      day.slice(0, 7),
+      key,
+      name,
+      kind,
+      detailMask,
+      gap,
+      total,
+      input,
+      cached,
+      output,
+      reasoning,
+    );
 }
 
 test("aggregates the 16 repository fields with window-wide cwd and MIN metadata semantics", () => {
@@ -779,10 +769,7 @@ test("upgrades an old rollup format transactionally without reimporting facts", 
     assert.deepEqual(db.prepare("SELECT * FROM events").all(), facts);
 
     rebuildUsageRollups(db, { days: ["2026-07-12"] });
-    assert.equal(
-      db.prepare("SELECT COUNT(*) AS count FROM usage_rollup_repositories").get().count,
-      1,
-    );
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM usage_rollup_repositories").get().count, 1);
     assert.equal(
       queryUsageRollupRepositoriesWindow(db, {
         startMs: Date.parse("2026-07-12T00:00:00.000Z"),

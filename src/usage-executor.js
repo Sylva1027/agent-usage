@@ -496,9 +496,14 @@ async function runExecutorProcess() {
     const receipt = completedAcquisition;
     if (!receipt) return null;
     const guard = store.usageProjectionGuard({ includeHistory: true });
-    return guard && guard.database === receipt.guard.database && guard.identity === receipt.guard.identity &&
-      guard.dataVersion === receipt.guard.dataVersion && guard.evidence === receipt.guard.evidence &&
-      store.usageProjectionChangeKey(undefined, true) === receipt.key ? receipt : null;
+    return guard &&
+      guard.database === receipt.guard.database &&
+      guard.identity === receipt.guard.identity &&
+      guard.dataVersion === receipt.guard.dataVersion &&
+      guard.evidence === receipt.guard.evidence &&
+      store.usageProjectionChangeKey(undefined, true) === receipt.key
+      ? receipt
+      : null;
   };
 
   const handle = async (message) => {
@@ -564,8 +569,13 @@ async function runExecutorProcess() {
                 new Error("Published history projection is unavailable"),
                 "HISTORY_PROJECTION_UNAVAILABLE",
               );
-            publishedReader = { reader, status: storeStatus, users: 0, retired: false,
-              completion: completion && completedPublication()?.token === completion ? completion : null };
+            publishedReader = {
+              reader,
+              status: storeStatus,
+              users: 0,
+              retired: false,
+              completion: completion && completedPublication()?.token === completion ? completion : null,
+            };
             return;
           }
           const reader = new UsageStore({ databaseFile: store.databaseFile });
@@ -579,8 +589,13 @@ async function runExecutorProcess() {
             reader.database.exec("BEGIN");
             reader.database.prepare("SELECT id FROM events LIMIT 1").get();
             if (snapshot) reader.adoptUsageProjection(snapshot);
-            publishedReader = { reader, status: storeStatus, users: 0, retired: false,
-              completion: completion && completedPublication()?.token === completion ? completion : null };
+            publishedReader = {
+              reader,
+              status: storeStatus,
+              users: 0,
+              retired: false,
+              completion: completion && completedPublication()?.token === completion ? completion : null,
+            };
           } catch (error) {
             reader.close();
             throw error;
@@ -678,7 +693,10 @@ async function runExecutorProcess() {
         filters.pricingModels = pricingModels;
         if (filters.now !== undefined) filters.now = new Date(filters.now);
         if (lease) lease.users++;
-        else if (liveReaders++ === 0) liveReadersDone = new Promise(resolve => { releaseLiveReaders = resolve; });
+        else if (liveReaders++ === 0)
+          liveReadersDone = new Promise((resolve) => {
+            releaseLiveReaders = resolve;
+          });
         let dashboard,
           cleanupError = null;
         try {
@@ -692,7 +710,7 @@ async function runExecutorProcess() {
         if (cleanupError) throw cleanupError;
         return {
           status,
-          completion: lease || completion === completedPublication()?.token ? completion ?? null : null,
+          completion: lease || completion === completedPublication()?.token ? (completion ?? null) : null,
           ...dashboard,
           pricingCatalog: getPricingCatalog(),
         };
@@ -874,8 +892,7 @@ async function runExecutorProcess() {
           }
         }
         if (message.type === "releaseHistoryVerification") {
-          if (pendingHistoryVerification?.token === message.historyVerification)
-            await releaseHistoryVerification();
+          if (pendingHistoryVerification?.token === message.historyVerification) await releaseHistoryVerification();
           return null;
         }
         if (message.type === "dashboard") {
@@ -891,7 +908,11 @@ async function runExecutorProcess() {
           }
           return store.withHistoryVerification(work);
         }
-        if (["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(message.type))
+        if (
+          ["historyArchiveEventCommit", "historyArchiveImport", "snapshot", "backupHistory", "close"].includes(
+            message.type,
+          )
+        )
           await releaseHistoryVerification();
         return work();
       };

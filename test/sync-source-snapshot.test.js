@@ -91,7 +91,10 @@ test("full sync retains missing history and removes only a unique renamed source
   unlinkSync(missingPath);
 
   const missing = await sync();
-  assert.deepEqual(missing.missingSources.map((row) => row.path), [missingPath]);
+  assert.deepEqual(
+    missing.missingSources.map((row) => row.path),
+    [missingPath],
+  );
   assert.deepEqual(sourceRows(store), before);
   assert.deepEqual(eventRows(store), events);
 
@@ -100,10 +103,15 @@ test("full sync retains missing history and removes only a unique renamed source
   const renamed = await sync();
   assert.deepEqual(renamed.missingSources, missing.missingSources);
   assert.deepEqual(
-    sourceRows(store).map((row) => row.path).sort(),
+    sourceRows(store)
+      .map((row) => row.path)
+      .sort(),
     [missingPath, renameTo, input.rolloutFiles[2]].sort(),
   );
-  assert.deepEqual(sourceRows(store).find((row) => row.path === missingPath), before.find((row) => row.path === missingPath));
+  assert.deepEqual(
+    sourceRows(store).find((row) => row.path === missingPath),
+    before.find((row) => row.path === missingPath),
+  );
   assert.deepEqual(eventRows(store), events);
   assert.deepEqual(store.database.prepare("PRAGMA foreign_key_check").all(), []);
 });
@@ -130,10 +138,16 @@ test("full sync does not merge two missing paths with the same fingerprint into 
   assert.deepEqual(result.missingSources.map((row) => row.path).sort(), [first, second].sort());
   const after = sourceRows(store);
   for (const old of before.filter((row) => [first, second].includes(row.path))) {
-    assert.deepEqual(after.find((row) => row.path === old.path), old);
+    assert.deepEqual(
+      after.find((row) => row.path === old.path),
+      old,
+    );
   }
   assert.ok(after.some((row) => row.path === replacement));
-  assert.deepEqual(eventRows(store).filter((row) => row.source_path !== replacement), events);
+  assert.deepEqual(
+    eventRows(store).filter((row) => row.source_path !== replacement),
+    events,
+  );
   assert.deepEqual(store.database.prepare("PRAGMA foreign_key_check").all(), []);
 });
 
@@ -169,12 +183,21 @@ test("full sync keeps failed-home paths in rename ambiguity even when they are n
 
   const result = await sync();
   assert.ok(store.warnings.includes("snapshot fixture: failed home"));
-  assert.deepEqual(result.missingSources.map((row) => row.path), [first]);
+  assert.deepEqual(
+    result.missingSources.map((row) => row.path),
+    [first],
+  );
   const after = sourceRows(store);
   for (const old of before.filter((row) => [first, second].includes(row.path))) {
-    assert.deepEqual(after.find((row) => row.path === old.path), old);
+    assert.deepEqual(
+      after.find((row) => row.path === old.path),
+      old,
+    );
   }
   assert.ok(after.some((row) => row.path === replacement));
-  assert.deepEqual(eventRows(store).filter((row) => row.source_path !== replacement), events);
+  assert.deepEqual(
+    eventRows(store).filter((row) => row.source_path !== replacement),
+    events,
+  );
   assert.deepEqual(store.database.prepare("PRAGMA foreign_key_check").all(), []);
 });

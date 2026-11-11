@@ -12,8 +12,12 @@ import { UsageSummaryCache } from "../src/usage-summary-cache.js";
 import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs";
 
 const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
-const line = (total) => `${JSON.stringify({ type: "event_msg", timestamp: "2026-10-04T13:00:00Z",
-  payload: { type: "token_count", info: { last_token_usage: { total_tokens: total, input_tokens: total } } } })}\n`;
+const line = (total) =>
+  `${JSON.stringify({
+    type: "event_msg",
+    timestamp: "2026-10-04T13:00:00Z",
+    payload: { type: "token_count", info: { last_token_usage: { total_tokens: total, input_tokens: total } } },
+  })}\n`;
 
 // Exercise the SHA fallback even on machines with an installed native helper.
 const loader = `import { registerHooks } from 'node:module'; registerHooks({load(url,ctx,next){
@@ -59,16 +63,30 @@ async function fixture(t) {
     syncBuiltinESMExports();
     input.close();
   });
-  return { input, sent, get, append: (total) => appendFile(input.rolloutFiles[0], line(total)),
-    base: () => base, restart: async () => { await server.close(); base = await start(); } };
+  return {
+    input,
+    sent,
+    get,
+    append: (total) => appendFile(input.rolloutFiles[0], line(total)),
+    base: () => base,
+    restart: async () => {
+      await server.close();
+      base = await start();
+    },
+  };
 }
 
 function holdNextRead(t) {
-  const entered = Promise.withResolvers(), released = Promise.withResolvers();
+  const entered = Promise.withResolvers(),
+    released = Promise.withResolvers();
   const original = UsageSummaryCache.prototype.get;
   let held = false;
   t.mock.method(UsageSummaryCache.prototype, "get", async function (...args) {
-    if (!held) { held = true; entered.resolve(); await released.promise; }
+    if (!held) {
+      held = true;
+      entered.resolve();
+      await released.promise;
+    }
     return original.apply(this, args);
   });
   t.after(() => released.resolve());
@@ -86,22 +104,29 @@ test("Q8 concurrent duplicate checks reuse completed acquisition before response
     const duplicate = await Promise.all([f.get(), f.get()]);
     for (const value of duplicate) assert.equal(value.summary.totals.total, 100);
     assert.equal(f.sent.length, 1, "identical checked sources must not trigger a second sync");
-  } finally { gate.release(); await first; }
+  } finally {
+    gate.release();
+    await first;
+  }
 });
 
 test("Q8 a late duplicate watcher hint verifies sources without syncing them again", async (t) => {
-  const watchers = [], timers = [];
+  const watchers = [],
+    timers = [];
   const timeout = globalThis.setTimeout;
   t.mock.method(fs, "watch", (_root, _options, callback) => {
-    watchers.push(callback); return { on() {}, unref() {}, close() {} };
+    watchers.push(callback);
+    return { on() {}, unref() {}, close() {} };
   });
   syncBuiltinESMExports();
   t.mock.method(globalThis, "setTimeout", (callback, ms, ...args) => {
     if (ms !== 75) return timeout(callback, ms, ...args);
-    timers.push(callback); return { unref() {} };
+    timers.push(callback);
+    return { unref() {} };
   });
   const f = await fixture(t);
-  const ready = Promise.withResolvers(), changed = Promise.withResolvers();
+  const ready = Promise.withResolvers(),
+    changed = Promise.withResolvers();
   const write = ServerResponse.prototype.write;
   t.mock.method(ServerResponse.prototype, "write", function (chunk, ...args) {
     if (String(chunk).startsWith("event: ready\n")) ready.resolve();
@@ -111,7 +136,10 @@ test("Q8 a late duplicate watcher hint verifies sources without syncing them aga
   const reader = (await fetch(`${f.base()}/api/usage-events`)).body.getReader();
   try {
     await ready.promise;
-    const hint = () => { watchers[0]("change", "rollout-1.jsonl"); timers.shift()(); };
+    const hint = () => {
+      watchers[0]("change", "rollout-1.jsonl");
+      timers.shift()();
+    };
     f.sent.length = 0;
     await f.append(100);
     hint();
@@ -119,7 +147,9 @@ test("Q8 a late duplicate watcher hint verifies sources without syncing them aga
     hint();
     assert.equal((await f.get()).summary.totals.total, 100);
     assert.equal(f.sent.length, 1, "the late hint may check again, but facts are already synchronized");
-  } finally { await reader.cancel(); }
+  } finally {
+    await reader.cancel();
+  }
 });
 
 test("Q8 a write during the post-sync source check remains pending for the next check", async (t) => {
@@ -128,7 +158,10 @@ test("Q8 a write during the post-sync source check remains pending for the next 
   let reads = 0;
   t.mock.method(UsageSummaryCache.prototype, "readSourceState", async function (...args) {
     const source = await original.apply(this, args);
-    if (++reads === 2) { await f.append(200); return original.apply(this, args); }
+    if (++reads === 2) {
+      await f.append(200);
+      return original.apply(this, args);
+    }
     return source;
   });
   f.sent.length = 0;
@@ -149,7 +182,10 @@ test("Q8 a second write after commit cannot reuse the first acquisition", async 
     await f.append(200);
     assert.equal((await f.get()).summary.totals.total, 300);
     assert.equal(f.sent.length, 2);
-  } finally { gate.release(); await first; }
+  } finally {
+    gate.release();
+    await first;
+  }
 });
 
 test("Q8 external database and auxiliary changes revoke acquisition reuse", async (t) => {
@@ -160,8 +196,11 @@ test("Q8 external database and auxiliary changes revoke acquisition reuse", asyn
   await f.get();
   f.sent.length = 0;
   const db = new DatabaseSync(f.input.serverOptions.databaseFile);
-  try { db.prepare("UPDATE events SET total=total+50,input=input+50").run(); }
-  finally { db.close(); }
+  try {
+    db.prepare("UPDATE events SET total=total+50,input=input+50").run();
+  } finally {
+    db.close();
+  }
   assert.equal((await f.get(`${query}&skipCheck=1`)).summary.totals.total, 150);
   await f.get(`${query}&skipCheck=1`);
   assert.equal((await f.get()).summary.totals.total, 150);

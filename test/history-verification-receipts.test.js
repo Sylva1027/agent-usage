@@ -44,7 +44,9 @@ test("incomplete caller transactions publish no receipts and damaged schema is a
   receipts.add("incomplete");
   database.exec("ROLLBACK");
   assert.equal(receipts.has("incomplete"), false);
-  database.exec("CREATE TABLE usage_history_verification_receipts(proof TEXT); INSERT INTO usage_history_verification_receipts VALUES('forged')");
+  database.exec(
+    "CREATE TABLE usage_history_verification_receipts(proof TEXT); INSERT INTO usage_history_verification_receipts VALUES('forged')",
+  );
   assert.equal(receipts.has("forged"), false);
   receipts.add("completed");
   assert.equal(receipts.has("completed"), true);

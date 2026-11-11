@@ -392,8 +392,11 @@ test("SSE, API and status name the same completed publication", async (t) => {
     callbacks[0]("change", "rollout.jsonl");
     const correction = await next("usage-synced");
     // A certified journal identity can switch to a full-scan identity after an external commit.
-    assert.equal((await buildUsageFingerprint(input.serverOptions)).fingerprint, rawBeforeCorrection.fingerprint,
-      "external corrections keep the raw sources unchanged");
+    assert.equal(
+      (await buildUsageFingerprint(input.serverOptions)).fingerprint,
+      rawBeforeCorrection.fingerprint,
+      "external corrections keep the raw sources unchanged",
+    );
     assert.notEqual(
       correction.usageVersion,
       notification.usageVersion,

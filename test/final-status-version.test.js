@@ -9,11 +9,12 @@ import { createCodexIntegrationFixture } from "../test-support/usage-fixture.mjs
 
 const enabled = process.platform === "win32" && Boolean(process.env.Q6_TEST_HELPER && process.env.Q6_TEST_TRACE);
 const query = "/api/usage?preset=all&view=dashboard&bucket=day&calendarZone=utc";
-const line = (total) => `${JSON.stringify({
-  type: "event_msg",
-  timestamp: "2026-10-04T13:00:00Z",
-  payload: { type: "token_count", info: { last_token_usage: { total_tokens: total, input_tokens: total } } },
-})}\n`;
+const line = (total) =>
+  `${JSON.stringify({
+    type: "event_msg",
+    timestamp: "2026-10-04T13:00:00Z",
+    payload: { type: "token_count", info: { last_token_usage: { total_tokens: total, input_tokens: total } } },
+  })}\n`;
 
 async function fixture(t) {
   const input = createCodexIntegrationFixture();
@@ -54,9 +55,13 @@ async function fixture(t) {
     try {
       return {
         ...db.prepare("SELECT COUNT(*) count, SUM(total) total FROM events").get(),
-        meta: db.prepare("SELECT key,value FROM store_meta WHERE key IN ('fingerprint','generated_at') ORDER BY key").all(),
+        meta: db
+          .prepare("SELECT key,value FROM store_meta WHERE key IN ('fingerprint','generated_at') ORDER BY key")
+          .all(),
       };
-    } finally { db.close(); }
+    } finally {
+      db.close();
+    }
   }
   await appendFile(input.rolloutFiles[0], line(100));
   await get();
@@ -77,7 +82,11 @@ test("status detects an unsynchronized native append without ingesting it", { sk
   const before = f.facts();
   await appendFile(f.input.rolloutFiles[0], line(200));
   const status = await f.get(f.statusUrl);
-  assert.equal(status.changed, true, "status must detect source bytes before any dashboard sync or watcher notification");
+  assert.equal(
+    status.changed,
+    true,
+    "status must detect source bytes before any dashboard sync or watcher notification",
+  );
   assert.notEqual(status.usageVersion, f.initial.usageVersion);
   assert.deepEqual(f.facts(), before, "status may check evidence but must not ingest the pending append");
   assert.equal((await f.get()).summary.totals.total, 300);
@@ -85,7 +94,9 @@ test("status detects an unsynchronized native append without ingesting it", { sk
   assert.equal(current.usageVersion, (await f.get("/api/status")).usageVersion);
 });
 
-test("status falls back when catalog evidence is revoked and exposes the external commit", { skip: !enabled }, async (t) => {
+test("status falls back when catalog evidence is revoked and exposes the external commit", {
+  skip: !enabled,
+}, async (t) => {
   const f = await fixture(t);
   const before = f.facts();
   const db = new DatabaseSync(f.input.serverOptions.databaseFile);
@@ -96,9 +107,18 @@ test("status falls back when catalog evidence is revoked and exposes the externa
     const status = await f.get(f.statusUrl);
     assert.ok(f.fullReads() > fullReads, "lost catalog evidence must use complete source verification");
     assert.equal(typeof status.usageVersion, "string");
-    assert.notEqual(status.usageVersion, f.initial.usageVersion, "an external commit must not reuse the old publication identity");
+    assert.notEqual(
+      status.usageVersion,
+      f.initial.usageVersion,
+      "an external commit must not reuse the old publication identity",
+    );
     assert.deepEqual(f.facts(), before);
-    assert.equal(db.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get()?.ready, 0,
-      "status must not rebuild or reseal unavailable source evidence");
-  } finally { db.close(); }
+    assert.equal(
+      db.prepare("SELECT ready FROM usage_source_catalog WHERE path=''").get()?.ready,
+      0,
+      "status must not rebuild or reseal unavailable source evidence",
+    );
+  } finally {
+    db.close();
+  }
 });

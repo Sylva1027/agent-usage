@@ -231,7 +231,8 @@ test("raw period aggregate preserves all 16 fields and repository metadata for e
       external.exec("PRAGMA busy_timeout = 5000");
       store.database.prepare = (sql) => {
         const statement = snapshotPrepare.call(store.database, sql);
-        if (!sql.includes("AS minimum") || !sql.includes("AS maximum") || !sql.includes("FROM events")) return statement;
+        if (!sql.includes("AS minimum") || !sql.includes("AS maximum") || !sql.includes("FROM events"))
+          return statement;
         return new Proxy(statement, {
           get(target, property) {
             if (property === "get") {

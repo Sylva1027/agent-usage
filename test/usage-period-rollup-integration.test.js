@@ -138,7 +138,8 @@ test("periods retract old facts and preserve an already pinned WAL snapshot", as
 });
 
 test("projection preparation cannot hide an external commit behind warmed response caches", async () => {
-  const f = await fixture(), store = f.store;
+  const f = await fixture(),
+    store = f.store;
   const now = new Date("2026-12-01T12:00:00Z");
   const external = new DatabaseSync(f.options.databaseFile);
   try {
