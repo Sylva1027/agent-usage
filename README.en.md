@@ -4,17 +4,19 @@
 
 Agent Usage is a local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy usage. It reads existing session and usage records to show tokens, cache hits, sessions, and estimated API equivalent costs by time, source, model, and repository. Your logs stay on your computer.
 
-Current release: [0.85a](https://github.com/Sylva1027/codex-usage/releases/tag/0.85a), available in Standard and Waifu editions. TPS research is archived; the current app does not provide model-speed statistics.
+Current release: [0.85a](https://github.com/Sylva1027/agent-usage/releases/tag/0.85a), available in Standard and Waifu editions. TPS research is archived; the current app does not provide model-speed statistics.
 
 ![DeepSeek light dashboard, 16:9, with sample data](docs/images/dashboard-deepseek-light.png)
 
 ## Quick Start
 
-Requires **Node.js 23.8 or later**; check with `node -v`. Download [0.85a Standard](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a.zip) or [0.85a-waifu](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a-waifu.zip), extract it, and run `node src/cli.js run`. To run from source:
+We recommend **Node.js 26 LTS** (the project requires at least 23.8). Open the [official Node.js download page](https://nodejs.org/en/download), select **26 LTS** and your operating system: use the `.msi` installer on Windows or `.pkg` on macOS with the default options; on Linux, follow the installation commands shown there. Reopen your terminal after installation and run `node -v`; a `v26.x.x` result means you are ready.
+
+Download [0.85a Standard](https://github.com/Sylva1027/agent-usage/releases/download/0.85a/0.85a.zip) or [0.85a-waifu](https://github.com/Sylva1027/agent-usage/releases/download/0.85a/0.85a-waifu.zip), extract it, and run `node src/cli.js run`. To run from source:
 
 ```bash
-git clone https://github.com/Sylva1027/codex-usage.git
-cd codex-usage
+git clone https://github.com/Sylva1027/agent-usage.git
+cd agent-usage
 node src/cli.js run
 ```
 

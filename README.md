@@ -4,17 +4,19 @@
 
 Agent Usage 是在本机运行的 Codex、ZCode、DSH、OpenCode、Claude Code 与 WorkBuddy 用量看板。它读取已有的会话和用量记录，让你按时间、渠道、模型与仓库查看 Token 消耗、缓存命中、会话数和 API 等价费用估算。数据保留在本机，无需上传日志。
 
-当前版本：[0.85a](https://github.com/Sylva1027/codex-usage/releases/tag/0.85a)。提供普通版和 waifu 版；TPS 研究已封存，当前版本不提供模型速度统计。
+当前版本：[0.85a](https://github.com/Sylva1027/agent-usage/releases/tag/0.85a)。提供普通版和 waifu 版；TPS 研究已封存，当前版本不提供模型速度统计。
 
 ![DeepSeek 浅色皮肤看板，16:9，示例数据](docs/images/dashboard-deepseek-light.png)
 
 ## 快速开始
 
-需要 **Node.js 23.8 或更新版本**，可用 `node -v` 检查。下载 [0.85a 普通版](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a.zip) 或 [0.85a-waifu 版](https://github.com/Sylva1027/codex-usage/releases/download/0.85a/0.85a-waifu.zip)，解压后运行 `node src/cli.js run`；也可从源码启动：
+推荐安装 **Node.js 26 LTS**（项目最低要求为 23.8）。打开 [Node.js 官方下载页](https://nodejs.org/en/download)，选择 **26 LTS** 和你的操作系统：Windows 下载 `.msi`、macOS 下载 `.pkg`，按默认选项安装；Linux 按页面提供的安装命令操作。安装后重新打开终端，运行 `node -v`，显示 `v26.x.x` 即可继续。
+
+下载 [0.85a 普通版](https://github.com/Sylva1027/agent-usage/releases/download/0.85a/0.85a.zip) 或 [0.85a-waifu 版](https://github.com/Sylva1027/agent-usage/releases/download/0.85a/0.85a-waifu.zip)，解压后运行 `node src/cli.js run`；也可从源码启动：
 
 ```bash
-git clone https://github.com/Sylva1027/codex-usage.git
-cd codex-usage
+git clone https://github.com/Sylva1027/agent-usage.git
+cd agent-usage
 node src/cli.js run
 ```
 
