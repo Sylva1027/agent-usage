@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-edition="waifu">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -29,9 +29,13 @@
         }
       })();
     </script>
+    <!-- waifu:start -->
     <script src="/skin-bootstrap.js"></script>
+    <!-- waifu:end -->
     <link rel="stylesheet" href="/styles.css" />
+    <!-- waifu:start -->
     <link rel="stylesheet" href="/skins.css" />
+    <!-- waifu:end -->
   </head>
   <body>
     <main class="shell">
@@ -41,6 +45,7 @@
           <button class="theme-toggle language-toggle" id="languageToggle" type="button" aria-label="切换语言" aria-pressed="false" title="切换语言">
             <span data-language="zh-CN" aria-hidden="true">文</span><span class="language-divider" aria-hidden="true">/</span><span data-language="en-US" aria-hidden="true">A</span>
           </button>
+          <!-- waifu:start -->
           <button
             class="theme-toggle skin-toggle"
             id="skinToggle"
@@ -56,6 +61,7 @@
               <path class="skin-icon-accent" d="M9.6 8.9h4.8" />
             </svg>
           </button>
+          <!-- waifu:end -->
           <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题" aria-pressed="false">
             <svg viewBox="-1 0 42 24" aria-hidden="true" focusable="false">
               <circle class="theme-sun" cx="11" cy="12" r="4" />
@@ -390,6 +396,7 @@
         <button id="applyModelPricingButton" type="button" disabled>应用</button>
       </div>
     </dialog>
+    <!-- waifu:start -->
     <!-- Skin picker. A sibling of #importDialog / #pricingDialog, never nested
          inside them, and reusing the same backdrop, material and dialog shell. -->
     <div id="skinDialog" class="dialog-backdrop" hidden>
@@ -418,11 +425,14 @@
       </section>
     </div>
 
+    <!-- waifu:end -->
     <div id="usageTooltip" class="usage-tooltip" role="tooltip" hidden></div>
 
+    <!-- waifu:start -->
     <!-- Character skin decoration. Sits outside .shell and out of normal flow so
          it can never consume layout space or reflow the dashboard (plan 4.1). -->
     <div id="skinCharacters" data-skin-characters="off" aria-hidden="true"></div>
+    <!-- waifu:end -->
 
     <script src="/app.js" type="module"></script>
   </body>

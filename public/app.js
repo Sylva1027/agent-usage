@@ -33,7 +33,6 @@ import {
   renderDatePickerHtml,
   selectDateRange,
 } from "./calendar.js";
-import { createSkinPicker, createSkinRuntime, installSkinTestHook, SKINS } from "./skin-ui.js";
 
 export { datePickerMonthModel, renderDatePickerHtml };
 
@@ -4097,7 +4096,7 @@ function setupFrameSpotlight(root) {
   }
 }
 
-function bootDashboard() {
+async function bootDashboard() {
   try {
     state.calendarZone = window.localStorage.getItem("codexUsageCalendarZoneV2") === "utc" ? "utc" : "local";
   } catch {
@@ -4113,28 +4112,31 @@ function bootDashboard() {
   // then re-apply through the DOM path so both entry points agree exactly.
   // Programmatic preference changes (tests, future callers) must reach the
   // picker's slider sync too, not just the decoration layer (refinement R4).
-  state.skinRuntime = createSkinRuntime({
-    registry: SKINS,
-    onChange: (preference, meta) => {
-      state.skinPicker?.syncOpacityControl();
-      // Canvas charts read CSS colours at draw time, so a palette change (the
-      // skin changed) must be followed by one re-render. Opacity and character
-      // visibility recolour nothing, and re-rendering per slider tick would be
-      // wasteful.
-      if (!meta || meta.previousSkinId !== preference.skinId) render();
-    },
-  });
-  state.skinRuntime.restore();
-  state.skinRuntime.apply();
-  state.skinPicker = createSkinPicker({
-    runtime: state.skinRuntime,
-    translate: (key) => localizeText(key, getLocale()),
-    onOpen: () => $("#skinToggle").setAttribute("aria-expanded", "true"),
-    onClose: () => $("#skinToggle").setAttribute("aria-expanded", "false"),
-  });
-  state.skinPicker.bind();
-  installSkinTestHook(state.skinRuntime, state.skinPicker);
-  $("#skinToggle").addEventListener("click", () => state.skinPicker.toggleOpen());
+  if (document.documentElement.dataset.edition === "waifu") {
+    const { createSkinPicker, createSkinRuntime, installSkinTestHook, SKINS } = await import("./skin-ui.js");
+    state.skinRuntime = createSkinRuntime({
+      registry: SKINS,
+      onChange: (preference, meta) => {
+        state.skinPicker?.syncOpacityControl();
+        // Canvas charts read CSS colours at draw time, so a palette change (the
+        // skin changed) must be followed by one re-render. Opacity and character
+        // visibility recolour nothing, and re-rendering per slider tick would be
+        // wasteful.
+        if (!meta || meta.previousSkinId !== preference.skinId) render();
+      },
+    });
+    state.skinRuntime.restore();
+    state.skinRuntime.apply();
+    state.skinPicker = createSkinPicker({
+      runtime: state.skinRuntime,
+      translate: (key) => localizeText(key, getLocale()),
+      onOpen: () => $("#skinToggle").setAttribute("aria-expanded", "true"),
+      onClose: () => $("#skinToggle").setAttribute("aria-expanded", "false"),
+    });
+    state.skinPicker.bind();
+    installSkinTestHook(state.skinRuntime, state.skinPicker);
+    $("#skinToggle").addEventListener("click", () => state.skinPicker.toggleOpen());
+  }
 
   $("#languageToggle").addEventListener("click", () => {
     setLanguage(getLocale() === "en-US" ? "zh-CN" : "en-US");
@@ -4393,7 +4395,9 @@ function bootDashboard() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Tab" && !$("#modelPricingDialog").open) {
-      const dialog = [$("#pricingDialog"), $("#importDialog"), $("#skinDialog")].find((candidate) => !candidate.hidden);
+      const dialog = [$("#pricingDialog"), $("#importDialog"), $("#skinDialog")].find(
+        (candidate) => candidate && !candidate.hidden,
+      );
       if (dialog) trapDialogFocus(event, dialog);
     }
     if (event.key === "Escape") {
@@ -4404,7 +4408,7 @@ function bootDashboard() {
     if (event.key === "Escape" && !$("#importDialog").hidden) {
       closeImportDialog();
     }
-    if (event.key === "Escape" && !$("#skinDialog").hidden) {
+    if (event.key === "Escape" && $("#skinDialog") && !$("#skinDialog").hidden) {
       state.skinPicker?.close();
     }
   });
