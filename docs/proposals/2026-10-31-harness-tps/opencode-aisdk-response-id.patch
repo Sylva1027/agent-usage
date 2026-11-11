@@ -1,0 +1,268 @@
+diff --git a/packages/core/src/aisdk.ts b/packages/core/src/aisdk.ts
+index cb27a55584c650e55f4a383e36bfd268846b814c..3ddf608d4f52ea84b65d7d10d6b4043e3f6a7543 100644
+--- a/packages/core/src/aisdk.ts
++++ b/packages/core/src/aisdk.ts
+@@ -400,7 +400,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
+       LanguageModel.make({ ...input, provider: "provider" in input ? input.provider : providerID, route }),
+     prepareTransport: (body) => Effect.succeed(body),
+     streamPrepared: (prepared, _request, _runtime, options) =>
+-      streamLanguage(language, prepared as LanguageModelV3CallOptions, options?.http),
++      streamLanguage(language, prepared as LanguageModelV3CallOptions, optionKey, options?.http),
+   }
+   return LanguageModel.make({
+     id: info.modelID ?? info.id,
+@@ -705,8 +705,13 @@ function metadataProviderOptions(input: ProviderMetadata | undefined): SharedV3P
+   return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, jsonObject(value)]))
+ }
+ 
+-function streamLanguage(language: LanguageModelV3, options: LanguageModelV3CallOptions, http?: HttpMiddleware) {
+-  const state: StreamState = { step: 0, toolNames: {}, open: {} }
++function streamLanguage(
++  language: LanguageModelV3,
++  options: LanguageModelV3CallOptions,
++  providerMetadataKey: string,
++  http?: HttpMiddleware,
++) {
++  const state: StreamState = { step: 0, toolNames: {}, open: {}, providerMetadataKey }
+   return Stream.concat(
+     Stream.make(LLMEvent.stepStart({ index: state.step })),
+     Stream.unwrap(
+@@ -738,6 +743,8 @@ type StreamState = {
+   step: number
+   toolNames: Record<string, string>
+   open: Partial<Record<Fragment, string>>
++  readonly providerMetadataKey: string
++  responseId?: string
+ }
+ 
+ function streamPartEvents(
+@@ -746,12 +753,14 @@ function streamPartEvents(
+ ): Effect.Effect<ReadonlyArray<LLMEvent>, AIError> {
+   switch (event.type) {
+     case "stream-start":
+-    case "response-metadata":
+     case "raw":
+     case "file":
+     case "source":
+     case "tool-approval-request":
+       return Effect.succeed([])
++    case "response-metadata":
++      state.responseId = event.id || state.responseId
++      return Effect.succeed([])
+     case "text-start":
+       return Effect.succeed(openFragment(state, "text", event.id, providerMetadata(event.providerMetadata)))
+     case "text-delta":
+@@ -835,20 +844,22 @@ function streamPartEvents(
+           providerMetadata: providerMetadata(event.providerMetadata),
+         }),
+       ])
+-    case "finish":
++    case "finish": {
++      const finishMetadata = withResponseId(event.providerMetadata, state.providerMetadataKey, state.responseId)
+       return Effect.succeed([
+         LLMEvent.stepFinish({
+           index: state.step++,
+           reason: { normalized: finishReason(event.finishReason), raw: event.finishReason.raw },
+           usage: usage(event.usage),
+-          providerMetadata: providerMetadata(event.providerMetadata),
++          providerMetadata: finishMetadata,
+         }),
+         LLMEvent.finish({
+           reason: { normalized: finishReason(event.finishReason), raw: event.finishReason.raw },
+           usage: usage(event.usage),
+-          providerMetadata: providerMetadata(event.providerMetadata),
++          providerMetadata: finishMetadata,
+         }),
+       ])
++    }
+     case "error":
+       return Effect.fail(llmError(event.error, "read"))
+   }
+@@ -901,6 +912,18 @@ function providerMetadata(value: unknown) {
+   return Schema.is(ProviderMetadata)(value) ? value : undefined
+ }
+ 
++function withResponseId(value: unknown, key: string, responseId: string | undefined) {
++  const metadata = providerMetadata(value)
++  if (responseId === undefined) return metadata
++  return {
++    ...metadata,
++    [key]: {
++      responseId,
++      ...metadata?.[key],
++    },
++  }
++}
++
+ function jsonObject(input: Record<string, unknown>) {
+   return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, jsonValue(value)]))
+ }
+diff --git a/packages/core/test/aisdk.test.ts b/packages/core/test/aisdk.test.ts
+index f4a2a2cceaf1383c6b3f0d4c4648e7d73cbc75e8..ef4f9833bffd29e59e1d0fc548a25862db917974 100644
+--- a/packages/core/test/aisdk.test.ts
++++ b/packages/core/test/aisdk.test.ts
+@@ -482,6 +482,164 @@ it.effect("normalizes repeated, reopened, and overlapping AI SDK fragment bounda
+   }),
+ )
+ 
++it.effect("persists the response ID from the same AI SDK stream without replacing provider metadata", () =>
++  Effect.gen(function* () {
++    const aisdk = yield* AISDK.Service
++    yield* aisdk.hook.sdk((event) => {
++      event.sdk = {
++        languageModel: () =>
++          streamModel([
++            {
++              type: "response-metadata",
++              id: "chatcmpl-response-1",
++              modelId: "api-model",
++              timestamp: new Date(0),
++            },
++            { type: "text-start", id: "text-0" },
++            { type: "text-delta", id: "text-0", delta: "Complete" },
++            { type: "text-end", id: "text-0" },
++            {
++              type: "finish",
++              finishReason: { unified: "stop", raw: "stop" },
++              usage,
++              providerMetadata: {
++                "test-provider": { reasoning: "opaque", usage: { tier: "priority" } },
++                other: { retained: true },
++              },
++            },
++          ]),
++      }
++    })
++
++    const resolved = yield* aisdk.model(model("@ai-sdk/openai-compatible"))
++    const response = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
++      Effect.provide(client),
++    )
++    const stepFinish = response.events.find(LLMEvent.is.stepFinish)
++    const finish = response.events.find(LLMEvent.is.finish)
++    if (!stepFinish || !finish) return yield* Effect.die("Expected step and terminal finish events")
++
++    for (const event of [stepFinish, finish]) {
++      expect(event.providerMetadata).toEqual({
++        "test-provider": {
++          responseId: "chatcmpl-response-1",
++          reasoning: "opaque",
++          usage: { tier: "priority" },
++        },
++        other: { retained: true },
++      })
++    }
++    expect(stepFinish?.usage).toMatchObject({ inputTokens: 1, outputTokens: 1 })
++    expect(finish?.usage).toMatchObject({ inputTokens: 1, outputTokens: 1 })
++  }),
++)
++
++it.effect("persists the Chat Completions response ID from the real compatible provider parser", () =>
++  Effect.gen(function* () {
++    const aisdk = yield* AISDK.Service
++    const responseId = "chatcmpl-compatible-parser-response"
++    const sse = [
++      `data: ${JSON.stringify({
++        id: responseId,
++        object: "chat.completion.chunk",
++        created: 0,
++        model: "api-model",
++        choices: [{ index: 0, delta: { role: "assistant", content: "Complete" }, finish_reason: null }],
++      })}`,
++      "",
++      `data: ${JSON.stringify({
++        id: responseId,
++        object: "chat.completion.chunk",
++        created: 0,
++        model: "api-model",
++        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
++        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
++      })}`,
++      "",
++      "data: [DONE]",
++      "",
++    ].join("\n")
++    let requests = 0
++    yield* aisdk.hook.sdk((event) => {
++      event.sdk = createOpenAICompatible({
++        ...event.options,
++        name: String(event.options.name),
++        baseURL: "https://compatible.example/v1",
++      })
++    })
++
++    const resolved = yield* aisdk.model(
++      model("@ai-sdk/openai-compatible", {
++        baseURL: "https://compatible.example/v1",
++        fetch: async () => {
++          requests++
++          return new Response(sse, { headers: { "content-type": "text/event-stream" } })
++        },
++      }),
++    )
++    const response = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
++      Effect.provide(client),
++    )
++    const finishEvents = response.events.filter((event) => event.type === "step-finish" || event.type === "finish")
++
++    expect(requests).toBe(1)
++    expect(finishEvents).toHaveLength(2)
++    for (const event of finishEvents) {
++      expect(event.providerMetadata?.["test-provider"]).toMatchObject({ responseId })
++    }
++  }),
++)
++
++it.effect("does not carry a failed AI SDK attempt response ID into a later successful stream", () =>
++  Effect.gen(function* () {
++    const aisdk = yield* AISDK.Service
++    let attempt = 0
++    yield* aisdk.hook.sdk((event) => {
++      event.sdk = {
++        languageModel: () => ({
++          specificationVersion: "v3",
++          provider: "test",
++          modelId: "test",
++          supportedUrls: {},
++          doGenerate: () => Promise.reject(new Error("Unexpected non-streaming request")),
++          doStream: () => {
++            attempt++
++            const events: LanguageModelV3StreamPart[] =
++              attempt === 1
++                ? [
++                    { type: "response-metadata", id: "chatcmpl-failed-attempt" },
++                    { type: "error", error: new Error("Failed attempt") },
++                  ]
++                : [{ type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage }]
++            return Promise.resolve({
++              stream: new ReadableStream({
++                start(controller) {
++                  events.forEach((part) => controller.enqueue(part))
++                  controller.close()
++                },
++              }),
++            })
++          },
++        }),
++      }
++    })
++
++    const resolved = yield* aisdk.model(model("@ai-sdk/openai-compatible"))
++    yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "First" })).pipe(
++      Effect.provide(client),
++      Effect.flip,
++    )
++    const response = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Second" })).pipe(
++      Effect.provide(client),
++    )
++
++    expect(response.events.filter((event) => event.type === "step-finish" || event.type === "finish")).toMatchObject([
++      { type: "step-finish", providerMetadata: undefined },
++      { type: "finish", providerMetadata: undefined },
++    ])
++  }),
++)
++
+ it.effect("projects replay metadata onto AI SDK prompt parts", () =>
+   Effect.gen(function* () {
+     const aisdk = yield* AISDK.Service

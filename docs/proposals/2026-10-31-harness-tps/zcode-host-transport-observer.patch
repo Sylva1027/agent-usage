@@ -1,0 +1,569 @@
+diff --git a/apps/zcode-cli/docs/design/v2/model/stream-error-retry.md b/apps/zcode-cli/docs/design/v2/model/stream-error-retry.md
+index b67d7c1..511a22b 100644
+--- a/apps/zcode-cli/docs/design/v2/model/stream-error-retry.md
++++ b/apps/zcode-cli/docs/design/v2/model/stream-error-retry.md
+@@ -146,6 +146,28 @@ core recovery 的可观测性要求：
+ 
+ 优先级：显式传入 adapter 的 `retry` 选项 > `ZCODE_MODEL_RETRY_*` 环境变量 > 内置默认值。非法环境变量值不会让启动失败；adapter 忽略该变量并回退到下一层默认值，避免一个错误的调试变量让 CLI 完全不可用。日志和状态事件不得输出完整环境变量集合，只能暴露归一化后的 retry budget。
+ 
++## Model transport observation
++
++- 接收观察复用 Adapter 既有 `AiSdkModelExecutionOptions.observeTransport`，不新增第二套 raw body reader、
++  pump 或 observer API。Host 通过该端口接入自己的 collector；collector 的背压、分帧和字节生命周期由 Host
++  负责，App/Core 不依赖具体 collector。
++- Bootstrap `createModelAdapter()` 的公开选项透传同一 `observeTransport` 类型。
++  `ZCodeAppOptions.observeModelTransport` 只用于默认创建的 Adapter；显式传入的 `modelAdapter` 继续优先，
++  不得被 App 静默包装或替换。
++- 未提供观察函数时，不创建包装 transport，不额外读取 `Response.body`，网络配置、认证、endpoint、
++  response、错误和取消行为保持原样。
++- 观察函数位于既有代理/CA 解析之后、endpoint routing 和请求安全包装之前；它只能观测，不替换产品网络策略。
++- 状态身份继续由既有 `model_request_started`、`model_request_completed`、
++  `model_request_failed` 事件流提供。adapter retry 的每个物理请求使用不同 `requestId`。
++- core 在 `modelInvocationContext.metadata` 中仅在存在时透传 `assistantMessageId`；contracts 的 model
++  network status 事件把它作为可选字段携带，同一逻辑模型步骤的全部 attempt 沿用该身份。
++- `requestId` 不是 `model_usage.id`，也不能由时间、公式或 assistant id 推导。未来把成功物理 request
++  精确绑定到最终 usage 行时，必须以唯一键
++  `(sessionId, assistantMessageId, model, provider, querySource)` 完成，并确认只命中一条已完成 usage
++  记录；compact/title 等没有持久化 assistant 的请求不得伪造该字段。该最终绑定和 usage schema/store
++  变更不在本端口范围内。
++- 此接口供 Host 显式注入观察函数，不配置普通用户的插件加载或安装，也不默认启用任何 collector。
++
+ ## 测试覆盖
+ 
+ - 纯签名或空正文 delta 后，仅出现尚未完成的 `tool_input_start` / `tool_input_delta`，随后发生 SSE 503 error chunk、连接重置或 idle timeout 时，应走 adapter retry，且不向 core 泄漏失败 attempt 的签名、空 delta 和工具输入。AI SDK 将提前 EOF 归一为空 completion 时，继续验证既有一次 empty completion retry；本次不扩展 EOF 检测或其预算。
+@@ -187,3 +209,8 @@ core recovery 的可观测性要求：
+ - `modelRetryBudget = single-attempt` 时，429 等瞬态失败不得发布 `model_retry_scheduled`，首次失败即抛出 adapter error，状态事件 `maxAttempts` 为 1；流式与非流式同样适用。
+ - `ZCODE_MODEL_RETRY_BASE_DELAY_MS`、`ZCODE_MODEL_RETRY_BACKOFF_FACTOR`、`ZCODE_MODEL_RETRY_MAX_DELAY_MS` 覆盖指数退避默认值。
+ - 显式 adapter `retry` 选项优先于环境变量；非法环境变量值回退默认值。
++- Bootstrap factory 必须把 `observeTransport` 接到真实网络出口；没有 observer 时仍使用原 transport。
++- App 必须把 `observeModelTransport` 传给默认 Adapter，并证明显式注入的 `modelAdapter` 保持优先、不被改写。
++- 真实本地 HTTP adapter 测试必须覆盖失败 retry 后成功：两个物理 `requestId` 不同，同一持久化
++  `assistantMessageId` 随 started/failed/completed 状态到达，失败 attempt 不记成功，最终成功 usage
++  与 assistant 关联且计费用量不因观察器改变。
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-status.ts b/apps/zcode-cli/packages/adapters/src/model/runner-status.ts
+index 789112f..f79b623 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-status.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-status.ts
+@@ -32,6 +32,7 @@ export {
+ 
+ export interface ModelStatusContext {
+   traceId: TraceId;
++  assistantMessageId?: ModelNetworkStatusEvent["assistantMessageId"];
+   queryId?: QueryId;
+   sessionId?: ModelNetworkStatusEvent["sessionId"];
+   turnId?: ModelNetworkStatusEvent["turnId"];
+@@ -62,8 +63,10 @@ export function createStatusContext(input: {
+ }): ModelStatusContext {
+   const metadata = input.request.metadata ?? {};
+   const querySource = stringMetadata(metadata.querySource);
++  const assistantMessageId = stringMetadata(metadata.assistantMessageId);
+   const resolvedModelCall = resolveModelApiCallObservation(querySource, input.request.modelCall);
+   return {
++    ...(assistantMessageId ? { assistantMessageId } : {}),
+     baseURL: input.resolved.baseURL,
+     maxAttempts: input.maxAttempts,
+     providerId: input.resolved.providerId,
+diff --git a/apps/zcode-cli/packages/adapters/tests/runner-status-fanout.test.ts b/apps/zcode-cli/packages/adapters/tests/runner-status-fanout.test.ts
+index 22f540a..9a97145 100644
+--- a/apps/zcode-cli/packages/adapters/tests/runner-status-fanout.test.ts
++++ b/apps/zcode-cli/packages/adapters/tests/runner-status-fanout.test.ts
+@@ -4,7 +4,11 @@ import {
+   createModelProviderId,
+   type ModelNetworkStatusEvent,
+ } from "@zcode/contracts";
+-import { createStatusContext, publishModelStatus } from "../src/model/runner-status.js";
++import {
++  createAttemptStatusContext,
++  createStatusContext,
++  publishModelStatus,
++} from "../src/model/runner-status.js";
+ 
+ const event: ModelNetworkStatusEvent = {
+   attempt: 1,
+@@ -44,6 +48,44 @@ describe("publishModelStatus", () => {
+     expect(context.streamRecovery).toEqual(streamRecovery);
+   });
+ 
++  it("carries assistant identity across physical attempt ids", () => {
++    const context = createStatusContext({
++      maxAttempts: 2,
++      request: {
++        messages: [],
++        metadata: { assistantMessageId: "assistant-step" },
++      },
++      resolved: {
++        baseURL: "https://api.example.com/v1",
++        providerKind: "anthropic",
++        providerId: event.providerId,
++        modelId: event.modelId,
++      } as never,
++      transport: "sse",
++    });
++    const retry = createAttemptStatusContext(context, 2);
++
++    expect(context.assistantMessageId).toBe("assistant-step");
++    expect(retry.assistantMessageId).toBe("assistant-step");
++    expect(retry.requestId).not.toBe(context.requestId);
++  });
++
++  it("does not fabricate assistant identity when the request has none", () => {
++    const context = createStatusContext({
++      maxAttempts: 1,
++      request: { messages: [] },
++      resolved: {
++        baseURL: "https://api.example.com/v1",
++        providerKind: "anthropic",
++        providerId: event.providerId,
++        modelId: event.modelId,
++      } as never,
++      transport: "sse",
++    });
++
++    expect(context).not.toHaveProperty("assistantMessageId");
++  });
++
+   it("同时投递 request sink 与 adapter telemetry sink", async () => {
+     const requestPublish = vi.fn();
+     const telemetryPublish = vi.fn();
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index e957539..65b9919 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -641,6 +641,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+         modelIoDir,
+         modelIoFullRetentionEnabled: options.modelIoFullRetentionEnabled,
+         executionConfig: modelExecutionConfig,
++        ...(options.observeModelTransport
++          ? { observeTransport: options.observeModelTransport }
++          : {}),
+         statusSink: modelTelemetry.statusSink,
+         streamIdleTimeoutMs: configResult.config.modelStream.idleTimeoutMs,
+       });
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/types.ts b/apps/zcode-cli/packages/bootstrap/src/app/types.ts
+index 1b5301d..8bb0a88 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/types.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/types.ts
+@@ -1,4 +1,4 @@
+-import type { AiSdkModelAdapter } from "@zcode/adapters/model";
++import type { AiSdkModelAdapter, AiSdkModelAdapterOptions } from "@zcode/adapters/model";
+ import type {
+   AgentTelemetryRuntimeOwner,
+   AutomationPort,
+@@ -159,6 +159,8 @@ export interface ZCodeAppOptions {
+   sessionMailboxPort?: SessionMailboxPort;
+   inputHistoryStore?: InputHistoryStorePort;
+   modelAdapter?: AiSdkModelAdapter;
++  /** 复用 Adapter 既有网络出口观测缝；仅作用于默认创建的 Adapter。 */
++  observeModelTransport?: NonNullable<AiSdkModelAdapterOptions["observeTransport"]>;
+   /** Worker 进程拥有的 Registry；App 只借用，不负责释放。 */
+   providerRegistry: ProviderRegistryModelSource;
+   resolveEffectiveModelSelection?: (selection: ModelSelection) => EffectiveModelSelectionResult;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/model-factory.ts b/apps/zcode-cli/packages/bootstrap/src/model-factory.ts
+index b3d0e62..f922213 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/model-factory.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/model-factory.ts
+@@ -3,6 +3,7 @@
+ import {
+   createModelRequestSecurityState,
+   AiSdkModelAdapter,
++  type AiSdkModelAdapterOptions,
+   type AiSdkModelExecutionConfig,
+   type EnvRecord,
+ } from "@zcode/adapters/model";
+@@ -13,6 +14,7 @@ interface CreateModelAdapterBaseOptions {
+   logger?: Logger;
+   modelIoDir?: string;
+   modelIoFullRetentionEnabled?: boolean;
++  observeTransport?: NonNullable<AiSdkModelAdapterOptions["observeTransport"]>;
+   streamIdleTimeoutMs?: number;
+   statusSink?: ModelStatusSink;
+ }
+@@ -35,6 +37,7 @@ export function createModelAdapter(options: CreateModelAdapterOptions): AiSdkMod
+     env: options.env,
+     logger: options.logger,
+     modelIoFullRetentionEnabled: options.modelIoFullRetentionEnabled,
++    ...(options.observeTransport ? { observeTransport: options.observeTransport } : {}),
+     streamIdleTimeoutMs: options.streamIdleTimeoutMs,
+     statusSink: options.statusSink,
+   });
+diff --git a/apps/zcode-cli/packages/bootstrap/tests/model-default-headers-wire.test.ts b/apps/zcode-cli/packages/bootstrap/tests/model-default-headers-wire.test.ts
+index c0e0674..31cb0fe 100644
+--- a/apps/zcode-cli/packages/bootstrap/tests/model-default-headers-wire.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/tests/model-default-headers-wire.test.ts
+@@ -1,4 +1,5 @@
+ import { afterEach, describe, expect, it, vi } from "vitest";
++import type { AiSdkModelAdapterOptions } from "@zcode/adapters/model";
+ import {
+   createSessionId,
+   InMemorySessionEventStore,
+@@ -31,6 +32,7 @@ function createFixture(
+     headers?: Record<string, string>;
+     access?: Record<string, unknown>;
+     env?: Record<string, string | undefined>;
++    observeTransport?: AiSdkModelAdapterOptions["observeTransport"];
+     sourceTitle?: "cli" | "electron";
+     appVersion?: string;
+   } = {},
+@@ -84,7 +86,11 @@ function createFixture(
+     options.env ?? { ZCODE_APP_VERSION: CLIENT_VERSION, ZCODE_ENV: "production" },
+     { sourceTitle: options.sourceTitle ?? "electron", appVersion: options.appVersion },
+   );
+-  const adapter = createModelAdapter({ executionConfig, env: {} });
++  const adapter = createModelAdapter({
++    executionConfig,
++    env: {},
++    ...(options.observeTransport ? { observeTransport: options.observeTransport } : {}),
++  });
+   const bound = adapter.createModel({
+     providerId: "header-provider",
+     modelId: MODEL_ID,
+@@ -173,6 +179,30 @@ async function streamResponseFor(apiType: ApiType) {
+ }
+ 
+ describe("模型请求默认 Header：Bootstrap → Adapter → 真实 SDK", () => {
++  it("Bootstrap 工厂仅在提供 observer 时装配 observeTransport", async () => {
++    const wrappedTransports: Array<typeof fetch> = [];
++    const observeTransport: NonNullable<AiSdkModelAdapterOptions["observeTransport"]> = (
++      transport,
++    ) => {
++      wrappedTransports.push(transport);
++      return (input, init) => transport(input, init);
++    };
++
++    const baseline = createFixture({ apiType: "anthropic-messages" });
++    expect(wrappedTransports).toHaveLength(0);
++    await baseline.model.generateText(requestInput);
++    expect(baseline.requests).toHaveLength(1);
++
++    const { model, requests } = createFixture({
++      apiType: "anthropic-messages",
++      observeTransport,
++    });
++
++    expect(wrappedTransports).toHaveLength(1);
++    await model.generateText(requestInput);
++    expect(requests).toHaveLength(1);
++  });
++
+   for (const apiType of API_TYPES) {
+     for (const stream of [false, true]) {
+       it(`${apiType} / ${stream ? "streamText" : "generateText"} 带来源、版本且不新增设备身份`, async () => {
+diff --git a/apps/zcode-cli/packages/bootstrap/tests/provider-registry-app-runtime.test.ts b/apps/zcode-cli/packages/bootstrap/tests/provider-registry-app-runtime.test.ts
+index 76374ef..176b345 100644
+--- a/apps/zcode-cli/packages/bootstrap/tests/provider-registry-app-runtime.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/tests/provider-registry-app-runtime.test.ts
+@@ -347,11 +347,64 @@ describe("ZCode App Provider Registry runtime", () => {
+ 
+     expect(["completed", "paused"]).toContain(result.status);
+     expect(createModelAdapterMock).toHaveBeenCalledTimes(1);
++    const factoryOptions = createModelAdapterMock.mock.calls[0]?.[0];
++    expect(factoryOptions).toBeDefined();
++    expect(factoryOptions).not.toHaveProperty("observeTransport");
+ 
+     await app.close?.();
+     sessionStore.close();
+     createModelAdapterMock.mockReset();
+   });
++
++  it("App 转发 observeModelTransport，并保持注入 Adapter 优先", async () => {
++    const observeModelTransport = (transport: typeof fetch) => transport;
++    const runtimeConfig = {
++      mcp: { enabled: false },
++      workingDirectory: process.cwd(),
++      modelSelection: {
++        providerId: "provider-a",
++        modelId: "model-a",
++        options: { reasoningLevel: "disabled" },
++      },
++    } as const;
++
++    createModelAdapterMock.mockReturnValue(fakeModelAdapter());
++    const defaultStore = await createSqliteSessionStore({ dbPath: ":memory:" });
++    const defaultApp = await createZCodeApp({
++      env: {},
++      observeModelTransport,
++      providerRegistry: new ProviderRegistry([provider()]),
++      runtimeConfig,
++      sessionStore: defaultStore,
++      skipUserConfig: true,
++    });
++
++    expect(createModelAdapterMock).toHaveBeenCalledOnce();
++    const defaultFactoryOptions = createModelAdapterMock.mock.calls[0]?.[0];
++    expect(defaultFactoryOptions).toBeDefined();
++    expect(defaultFactoryOptions).toMatchObject({
++      observeTransport: observeModelTransport,
++    });
++    await defaultApp.close?.();
++    defaultStore.close();
++    createModelAdapterMock.mockReset();
++
++    const injectedStore = await createSqliteSessionStore({ dbPath: ":memory:" });
++    const injectedApp = await createZCodeApp({
++      env: {},
++      modelAdapter: fakeModelAdapter(),
++      observeModelTransport,
++      providerRegistry: new ProviderRegistry([provider()]),
++      runtimeConfig,
++      sessionStore: injectedStore,
++      skipUserConfig: true,
++    });
++
++    expect(createModelAdapterMock).not.toHaveBeenCalled();
++    await injectedApp.close?.();
++    injectedStore.close();
++    createModelAdapterMock.mockReset();
++  });
+ });
+ 
+ function provider() {
+diff --git a/apps/zcode-cli/packages/contracts/src/model/index.ts b/apps/zcode-cli/packages/contracts/src/model/index.ts
+index 1a6dd19..ef8b389 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/index.ts
+@@ -160,6 +160,8 @@ export type ModelFailureReason = (typeof ModelFailureReason)[keyof typeof ModelF
+ interface ModelNetworkStatusBase {
+   timestamp: string;
+   traceId: TraceId;
++  /** 本次逻辑模型步骤已持久化的 assistant；物理 retry 沿用，compact/title 可为空。 */
++  assistantMessageId?: string;
+   queryId?: QueryId;
+   sessionId?: SessionId;
+   turnId?: TurnId;
+@@ -1059,6 +1061,7 @@ export const modelNetworkStatusEventJsonSchema = {
+     },
+     timestamp: { type: "string", minLength: 1 },
+     traceId: { type: "string", minLength: 1 },
++    assistantMessageId: { type: "string", minLength: 1 },
+     sessionId: { type: "string", minLength: 1 },
+     turnId: { type: "string", minLength: 1 },
+     querySource: { type: "string", minLength: 1 },
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
+index 8782557..5c42257 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
+@@ -87,7 +87,13 @@ export async function runModelTextRequest(
+   // 正常请求传递模型级 effective 预算，Compact 传递 min(effective, 20K) 的 summary
+   // 任务预算；adapter 只做 provider 兼容映射，不再施加独立 global cap。
+   const modelInvocationContext = {
+-    metadata: traceContextToLogContext(projectedOptions.traceContext),
++    metadata: {
++      ...traceContextToLogContext(projectedOptions.traceContext),
++      // 同一逻辑步骤的物理 retry 共用这个已持久化身份；缺失时不得伪造。
++      ...(projectedOptions.assistantMessageId
++        ? { assistantMessageId: projectedOptions.assistantMessageId }
++        : {}),
++    },
+     // 会话类型、重试预算与准入端口由 createRuntimeModel 绑在句柄上
+     // turn step 与工具内部的模型调用同一来源。
+     modelCall: {
+diff --git a/apps/zcode-cli/packages/core/tests/runtime-context-finish-recovery.test.ts b/apps/zcode-cli/packages/core/tests/runtime-context-finish-recovery.test.ts
+index 8bcce0a..2e716a8 100644
+--- a/apps/zcode-cli/packages/core/tests/runtime-context-finish-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/tests/runtime-context-finish-recovery.test.ts
+@@ -1,3 +1,5 @@
++import http, { type Server } from "node:http";
++import type { AddressInfo } from "node:net";
+ import { describe, expect, it, vi } from "vitest";
+ import {
+   SessionEventType,
+@@ -6,7 +8,9 @@ import {
+   createCoreError,
+   createSessionId,
+   getModelUsageTotalTokens,
++  type ModelNetworkStatusEvent,
+   type ModelResult,
++  type ModelUsageRecord,
+   type UsageStorePort,
+ } from "@zcode/contracts";
+ import { createTestSessionEventStore } from "./test-event-store.js";
+@@ -18,7 +22,10 @@ import {
+   stopResult,
+ } from "./runtime-output-token-continuation-test-helpers.js";
+ 
+-import { executeAdapterGenerateText } from "../../adapters/tests/test-adapter-model.js";
++import {
++  executeAdapterGenerateText,
++  executeAdapterStreamText,
++} from "../../adapters/tests/test-adapter-model.js";
+ import {
+   TestAiSdkModelAdapter,
+   TestProviderConfigFixture,
+@@ -305,4 +312,177 @@ describe("context-limit failure recovery", () => {
+     });
+     expect(test.requests.map(({ kind }) => kind)).toEqual(["normal", "compact", "normal"]);
+   });
++
++  it("binds retrying physical requests to the persisted assistant and final usage row", async () => {
++    const requestIds: string[] = [];
++    let assistantPersistedBeforeRequest = false;
++    const sessionStore = {
++      ...createRecordingMessageStore(),
++      recordModelUsage: vi.fn(async (_fact: ModelUsageRecord) => {}),
++      upsertTurnUsage: vi.fn(async () => {}),
++      async upsertToolUsage() {},
++      async pruneUsage() {},
++    };
++    const server = http.createServer((request, response) => {
++      request.resume();
++      requestIds.push(String(request.headers["x-request-id"] ?? ""));
++      if (requestIds.length === 1) {
++        assistantPersistedBeforeRequest = sessionStore.savedMessages.some(
++          (message) => message.role === "assistant",
++        );
++        response.writeHead(529, {
++          "content-type": "application/json",
++          "retry-after": "0",
++        });
++        response.end(JSON.stringify({ error: { code: "1305", message: "retry" } }));
++        return;
++      }
++
++      response.writeHead(200, {
++        "content-type": "text/event-stream; charset=utf-8",
++      });
++      const frame = (delta: Record<string, unknown>, finishReason: string | null = null) =>
++        `data: ${JSON.stringify({
++          id: "chatcmpl-assistant-binding",
++          object: "chat.completion.chunk",
++          created: 1,
++          model: "model",
++          choices: [{ delta, finish_reason: finishReason, index: 0 }],
++        })}\n\n`;
++      response.write(frame({ role: "assistant" }));
++      response.write(frame({ content: "retry-ok" }));
++      response.write(frame({}, "stop"));
++      response.write(
++        `data: ${JSON.stringify({
++          id: "chatcmpl-assistant-binding",
++          object: "chat.completion.chunk",
++          created: 1,
++          model: "model",
++          choices: [],
++          usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
++        })}\n\n`,
++      );
++      response.end("data: [DONE]\n\n");
++    });
++
++    try {
++      const baseURL = await listenServer(server);
++      const statuses: ModelNetworkStatusEvent[] = [];
++      const adapter = new TestAiSdkModelAdapter({
++        network: { noProxy: "127.0.0.1" },
++        registry: new TestProviderConfigFixture({
++          env: {},
++          network: { noProxy: "127.0.0.1" },
++          providers: {
++            test: {
++              apiKey: "fixture-key",
++              baseURL: `${baseURL}/v1`,
++              kind: "openai-compatible",
++            },
++          },
++        }),
++        retry: { baseDelayMs: 0, jitter: false, maxAttempts: 2, maxDelayMs: 0 },
++      });
++      const runtime = createRuntime({
++        id: "assistant-usage-binding",
++        config: {
++          modelStreaming: "on",
++          systemPrompt: "Assistant usage binding test.",
++        },
++        deps: {
++          sessionStore: sessionStore as never,
++        },
++        modelAdapter: {
++          async *streamText(request: {
++            messages: readonly unknown[];
++          }): AsyncIterable<unknown> {
++            const invocation = getCurrentModelInvocationContext();
++            yield* executeAdapterStreamText(adapter, {
++              providerId: "test",
++              modelId: "model",
++              messages: request.messages as never,
++              statusSink: {
++                publish(event) {
++                  statuses.push(event);
++                  return invocation?.statusSink?.publish(event);
++                },
++              },
++              traceContext: invocation?.traceContext,
++              metadata: invocation?.metadata,
++            }) as AsyncIterable<never>;
++          },
++        },
++      });
++
++      const result = await runtime.executeTurn("prove retry binding");
++
++      expect(result.response).toBe("retry-ok");
++      expect(result.usage?.totalTokens).toBe(12);
++      expect(assistantPersistedBeforeRequest).toBe(true);
++      expect(requestIds).toHaveLength(2);
++      expect(new Set(requestIds).size).toBe(2);
++
++      const assistantMessages = sessionStore.savedMessages.filter(
++        (message) => message.role === "assistant",
++      );
++      expect(assistantMessages).toHaveLength(1);
++      const assistantMessageId = String(assistantMessages[0]?.id);
++      expect(
++        statuses
++          .filter(
++            (event) =>
++              event.type === "model_request_started" ||
++              event.type === "model_request_completed" ||
++              event.type === "model_request_failed",
++          )
++          .every((event) => event.assistantMessageId === assistantMessageId),
++      ).toBe(true);
++
++      const started = statuses.filter((event) => event.type === "model_request_started");
++      const failed = statuses.filter((event) => event.type === "model_request_failed");
++      const completed = statuses.filter((event) => event.type === "model_request_completed");
++      expect(started).toHaveLength(2);
++      expect(new Set(started.map((event) => event.requestId)).size).toBe(2);
++      expect(failed).toHaveLength(1);
++      expect(completed).toHaveLength(1);
++
++      expect(sessionStore.recordModelUsage).toHaveBeenCalledOnce();
++      const usage = sessionStore.recordModelUsage.mock.calls[0]?.[0];
++      expect(usage).toMatchObject({
++        assistantMessageID: assistantMessageId,
++        logicalRequestId: assistantMessageId,
++        providerTotalTokens: 12,
++        retryCount: 1,
++        status: "completed",
++      });
++      expect(requestIds).not.toContain(usage?.id);
++    } finally {
++      await closeServer(server);
++    }
++  });
+ });
++
++async function listenServer(server: Server): Promise<string> {
++  await new Promise<void>((resolve, reject) => {
++    server.once("error", reject);
++    server.listen(0, "127.0.0.1", () => {
++      server.off("error", reject);
++      resolve();
++    });
++  });
++  const address = server.address();
++  if (!address || typeof address === "string") {
++    throw new Error("Expected TCP server address");
++  }
++  return `http://127.0.0.1:${(address as AddressInfo).port}`;
++}
++
++async function closeServer(server: Server): Promise<void> {
++  if (!server.listening) return;
++  await new Promise<void>((resolve, reject) => {
++    server.close((error) => {
++      if (error) reject(error);
++      else resolve();
++    });
++  });
++}

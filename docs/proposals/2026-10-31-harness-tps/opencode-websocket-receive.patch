@@ -1,0 +1,535 @@
+diff --git a/packages/ai/src/route/index.ts b/packages/ai/src/route/index.ts
+index 3e840af..1ee351a 100644
+--- a/packages/ai/src/route/index.ts
++++ b/packages/ai/src/route/index.ts
+@@ -47,5 +47,7 @@ export type {
+   WebSocketChannelExecution,
+   WebSocketChannelExecutor,
+   WebSocketConnector,
++  WebSocketReceive,
++  WebSocketReceived,
+   WebSocketRequest,
+ } from "./transport/index.js"
+diff --git a/packages/ai/src/route/transport/index.ts b/packages/ai/src/route/transport/index.ts
+index 9690392..51c9a38 100644
+--- a/packages/ai/src/route/transport/index.ts
++++ b/packages/ai/src/route/transport/index.ts
+@@ -54,5 +54,11 @@ export type {
+   WebSocketChannelExecution,
+   WebSocketChannelExecutor,
+ } from "./websocket-channel.js"
+-export type { WebSocketConnection, WebSocketConnector, WebSocketRequest } from "./websocket.js"
++export type {
++  WebSocketConnection,
++  WebSocketConnector,
++  WebSocketReceive,
++  WebSocketReceived,
++  WebSocketRequest,
++} from "./websocket.js"
+ export { WebSocketTransport } from "./websocket.js"
+diff --git a/packages/ai/src/route/transport/websocket.ts b/packages/ai/src/route/transport/websocket.ts
+index 647c259..290a8c5 100644
+--- a/packages/ai/src/route/transport/websocket.ts
++++ b/packages/ai/src/route/transport/websocket.ts
+@@ -22,10 +22,23 @@ export interface WebSocketRequest {
+   readonly headers: Headers.Headers
+ }
+ 
++export interface WebSocketReceive {
++  readonly clock: "monotonic"
++  readonly atMs: number
++  readonly batchId: number
++}
++
++export interface WebSocketReceived {
++  readonly data: string | Uint8Array
++  readonly receive?: WebSocketReceive
++}
++
+ export interface WebSocketConnection {
+   readonly http?: HttpContext
+   readonly sendText: (message: string) => Effect.Effect<void, AIError>
+   readonly messages: Stream.Stream<string | Uint8Array, AIError>
++  /** Alternate view of the same receive queue. Consume either `messages` or `received`, not both. */
++  readonly received?: Stream.Stream<WebSocketReceived, AIError>
+   readonly close: Effect.Effect<void, never>
+ }
+ 
+@@ -217,7 +230,25 @@ export const fromWebSocket = (
+     yield* waitOpen(ws, input)
+     // The socket pushes frames synchronously and cannot be paused, so the hand-off to the consumer
+     // fiber must absorb whole read buffers. Bun delivers over a thousand small frames in one tick.
+-    const messages = yield* Queue.unbounded<string | Uint8Array, AIError | Cause.Done<void>>()
++    const messages = yield* Queue.unbounded<WebSocketReceived, AIError | Cause.Done<void>>()
++    let receiveBatch: { readonly batchId: number; readonly atMs: number } | undefined
++    let receiveBatchScheduled = false
++    let receiveBatchId = 0
++    const nativeReceive =
++      typeof globalThis.performance?.now === "function" && typeof globalThis.setImmediate === "function"
++        ? () => {
++            const atMs = globalThis.performance.now()
++            receiveBatch ??= { batchId: ++receiveBatchId, atMs }
++            if (!receiveBatchScheduled) {
++              receiveBatchScheduled = true
++              globalThis.setImmediate(() => {
++                receiveBatchScheduled = false
++                receiveBatch = undefined
++              })
++            }
++            return { clock: "monotonic" as const, atMs: receiveBatch.atMs, batchId: receiveBatch.batchId }
++          }
++        : undefined
+ 
+     const oversized = (message: string | Uint8Array) =>
+       typeof message === "string" ? new Blob([message]).size > MAX_FRAME_BYTES : message.byteLength > MAX_FRAME_BYTES
+@@ -238,15 +269,16 @@ export const fromWebSocket = (
+       if (ws.readyState === globalThis.WebSocket.OPEN) ws.close(1009, "Message too large")
+       return true
+     }
+-    const offer = (message: string | Uint8Array) => {
+-      if (rejectOversized(message)) return
+-      Queue.offerUnsafe(messages, message)
++    const offer = (data: string | Uint8Array, receive?: WebSocketReceive) => {
++      if (rejectOversized(data)) return
++      Queue.offerUnsafe(messages, receive ? { data, receive } : { data })
+     }
+ 
+     const onMessage = (event: MessageEvent) => {
+-      if (typeof event.data === "string") return offer(event.data)
++      const receive = nativeReceive?.()
++      if (typeof event.data === "string") return offer(event.data, receive)
+       const binary = binaryMessage(event.data)
+-      if (binary) return offer(binary)
++      if (binary) return offer(binary, receive)
+       Queue.failCauseUnsafe(
+         messages,
+         Cause.fail(
+@@ -299,6 +331,7 @@ export const fromWebSocket = (
+     ws.addEventListener("error", onError)
+     ws.addEventListener("close", onClose)
+ 
++    const received = Stream.fromQueue(messages)
+     return {
+       sendText: (message) =>
+         Effect.suspend(() => {
+@@ -323,7 +356,8 @@ export const fromWebSocket = (
+               }),
+           })
+         }),
+-      messages: Stream.fromQueue(messages),
++      messages: received.pipe(Stream.map((message) => message.data)),
++      received,
+       close: cleanup.pipe(
+         Effect.andThen(
+           Effect.sync(() => {
+diff --git a/packages/ai/test/executor.test.ts b/packages/ai/test/executor.test.ts
+index 473b25a..f6de21e 100644
+--- a/packages/ai/test/executor.test.ts
++++ b/packages/ai/test/executor.test.ts
+@@ -671,6 +671,28 @@ describe("WebSocket channel execution", () => {
+     }),
+   )
+ 
++  it.effect("keeps the original messages view as raw payloads", () =>
++    Effect.gen(function* () {
++      class TestSocket extends EventTarget {
++        readyState = globalThis.WebSocket.OPEN
++        send() {}
++        close() {}
++      }
++      const socket = new TestSocket()
++      const connection = yield* WebSocketTransport.fromWebSocket(
++        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
++        socket as unknown as globalThis.WebSocket,
++        { url: "wss://provider.test/responses", headers: Headers.empty },
++      )
++      socket.dispatchEvent(new MessageEvent("message", { data: "raw-frame" }))
++
++      const messages = Array.from(yield* connection.messages.pipe(Stream.take(1), Stream.runCollect))
++
++      expect(messages).toEqual(["raw-frame"])
++      yield* connection.close
++    }),
++  )
++
+   it.effect("preserves opening event errors and native send exceptions", () =>
+     Effect.gen(function* () {
+       const cause = new Error("native send failed")
+diff --git a/packages/core/src/session/model-request.ts b/packages/core/src/session/model-request.ts
+index 90071ce..2259522 100644
+--- a/packages/core/src/session/model-request.ts
++++ b/packages/core/src/session/model-request.ts
+@@ -377,9 +377,13 @@ export const layer = Layer.effect(
+                   hooks
+                     .trigger("session", "experimental.ws.send", { ...scope, frame })
+                     .pipe(Effect.map((event) => event.frame)),
+-                receive: (frame) =>
++                receive: (frame, receive) =>
+                   hooks
+-                    .trigger("session", "experimental.ws.receive", { ...scope, frame })
++                    .trigger("session", "experimental.ws.receive", {
++                      ...scope,
++                      frame,
++                      ...(receive ? { receive } : {}),
++                    })
+                     .pipe(Effect.map((event) => event.frame)),
+               },
+               model.chunkTimeout,
+diff --git a/packages/core/src/session/model-transport.ts b/packages/core/src/session/model-transport.ts
+index 638ef66..31b9e39 100644
+--- a/packages/core/src/session/model-transport.ts
++++ b/packages/core/src/session/model-transport.ts
+@@ -9,6 +9,8 @@ import {
+   type WebSocketChannelExecutor,
+   type WebSocketConnection,
+   type WebSocketConnector,
++  type WebSocketReceive,
++  type WebSocketReceived,
+ } from "@opencode/ai/route"
+ import { AIError, AIErrorReason, TransportError, type TransportOperation } from "@opencode/ai"
+ import { Hash } from "@opencode/util/hash"
+@@ -32,8 +34,13 @@ const events = Metric.counter("opencode_session_websocket_events_total", {
+ const metric = (event: string, attributes: Record<string, string> = {}) =>
+   Metric.update(events.pipe(Metric.withAttributes({ event, ...attributes })), 1)
+ 
++interface ActiveFrame {
++  readonly data: string
++  readonly receive?: WebSocketReceive
++}
++
+ interface Active {
+-  readonly queue: Queue.Queue<string, AIError>
++  readonly queue: Queue.Queue<ActiveFrame, AIError>
+   delivery: "send-attempted" | "provider-observed" | "terminal"
+ }
+ 
+@@ -69,7 +76,7 @@ export interface Handshake {
+ export interface Interceptor {
+   readonly handshake?: (connect: Handshake) => Effect.Effect<Handshake>
+   readonly send?: (frame: string) => Effect.Effect<string>
+-  readonly receive?: (frame: string) => Effect.Effect<string>
++  readonly receive?: (frame: string, receive?: WebSocketReceive) => Effect.Effect<string>
+ }
+ 
+ export interface Interface {
+@@ -235,7 +242,9 @@ export const makeLayer = (connector: WebSocketConnector) =>
+               closing: false,
+             }
+             owner.channel = channel
+-            channel.reader = yield* connection.messages.pipe(
++            const incoming =
++              connection.received ?? connection.messages.pipe(Stream.map((data): WebSocketReceived => ({ data })))
++            channel.reader = yield* incoming.pipe(
+               Stream.runForEach((message) =>
+                 Effect.gen(function* () {
+                   const active = channel.active
+@@ -247,14 +256,14 @@ export const makeLayer = (connector: WebSocketConnector) =>
+                       phase: "receive",
+                     })
+                   active.delivery = "provider-observed"
+-                  if (typeof message !== "string")
++                  if (typeof message.data !== "string")
+                     return yield* transportError("Unsupported binary WebSocket frame", {
+                       url: exchange.connect.url,
+                       operation: "read",
+                       code: "message",
+                       phase: "receive",
+                     })
+-                  Queue.offerUnsafe(active.queue, message)
++                  Queue.offerUnsafe(active.queue, { data: message.data, receive: message.receive })
+                 }),
+               ),
+               Effect.catch((error) =>
+@@ -381,7 +390,7 @@ export const makeLayer = (connector: WebSocketConnector) =>
+           mode: create.mode,
+         })
+         const active: Active = {
+-          queue: yield* Queue.unbounded<string, AIError>(),
++          queue: yield* Queue.unbounded<ActiveFrame, AIError>(),
+           delivery: "send-attempted",
+         }
+         channel.active = active
+@@ -427,7 +436,9 @@ export const makeLayer = (connector: WebSocketConnector) =>
+                 }),
+               ),
+           }),
+-          Stream.mapEffect((frame) => (interceptor?.receive ? interceptor.receive(frame) : Effect.succeed(frame))),
++          Stream.mapEffect((frame) =>
++            interceptor?.receive ? interceptor.receive(frame.data, frame.receive) : Effect.succeed(frame.data),
++          ),
+           Stream.mapEffect((frame) => exchange.driver.observe(create, frame)),
+           Stream.tap((observation) =>
+             Effect.sync(() => {
+diff --git a/packages/core/test/session-model-request-hooks.test.ts b/packages/core/test/session-model-request-hooks.test.ts
+index 3b7b1d4..5fbecec 100644
+--- a/packages/core/test/session-model-request-hooks.test.ts
++++ b/packages/core/test/session-model-request-hooks.test.ts
+@@ -1,5 +1,6 @@
+ import { describe, expect } from "bun:test"
+ import { OpenAIChat } from "@opencode/ai/protocols"
++import type { WebSocketReceive } from "@opencode/ai/route"
+ import { Agent } from "@opencode/schema/agent"
+ import { Money } from "@opencode/schema/money"
+ import { Session } from "@opencode/schema/session"
+@@ -84,6 +85,8 @@ describe("SessionModelRequest HTTP hooks", () => {
+     Effect.gen(function* () {
+       const hooks = yield* PluginHooks.Service
+       const seen: string[] = []
++      const receive = { clock: "monotonic" as const, atMs: 25.5, batchId: 8 }
++      const receiveMetadata: Array<WebSocketReceive | undefined> = []
+       yield* hooks.register("session", "http.request", () => Effect.sync(() => void seen.push("http.request")))
+       yield* hooks.register("session", "experimental.ws.handshake", (event) =>
+         Effect.sync(() => {
+@@ -101,6 +104,7 @@ describe("SessionModelRequest HTTP hooks", () => {
+       yield* hooks.register("session", "experimental.ws.receive", (event) =>
+         Effect.sync(() => {
+           seen.push(`receive:${event.kind}:${event.frame}`)
++          receiveMetadata.push(event.receive)
+           event.frame = event.frame.toUpperCase()
+         }),
+       )
+@@ -116,7 +120,7 @@ describe("SessionModelRequest HTTP hooks", () => {
+                 yield* interceptor.handshake({ url: "wss://example.test/v1/responses", headers: { "api-key": "k" } }),
+               )
+               frames.push(yield* interceptor.send("create"))
+-              frames.push(yield* interceptor.receive("created"))
++              frames.push(yield* interceptor.receive("created", receive))
+               return { frames: Stream.empty, complete: Effect.void }
+             }),
+         }),
+@@ -146,6 +150,7 @@ describe("SessionModelRequest HTTP hooks", () => {
+       yield* prepared.options.webSocket!.execute({} as never)
+       expect(bound).toEqual([{ url: "wss://example.test/v1/responses", headers: { authorization: "Bearer minted" } }])
+       expect(frames).toEqual(["create+plugin", "CREATED"])
++      expect(receiveMetadata).toEqual([receive])
+       expect(seen).toEqual([
+         "handshake:primary:wss://example.test/v1/responses",
+         "send:primary:create",
+diff --git a/packages/core/test/session-model-transport-receive.test.ts b/packages/core/test/session-model-transport-receive.test.ts
+new file mode 100644
+index 0000000..3fc5d81
+--- /dev/null
++++ b/packages/core/test/session-model-transport-receive.test.ts
+@@ -0,0 +1,87 @@
++import { expect, test } from "bun:test"
++import { AIError } from "@opencode/ai"
++import {
++  WebSocketTransport,
++  type ChannelObservation,
++  type WebSocketChannelExchange,
++  type WebSocketConnector,
++  type WebSocketReceive,
++} from "@opencode/ai/route"
++import { SessionModelTransport } from "@opencode/core/session/model-transport"
++import { Session } from "@opencode/schema/session"
++import { Effect, Stream } from "effect"
++import { Headers } from "effect/unstable/http"
++
++test("keeps native receive batches through a slow loopback WebSocket hook", async () => {
++  const session = Session.ID.make("ses_transport_receive")
++  const connector: WebSocketConnector = {
++    open: (input) => Effect.suspend(() => WebSocketTransport.fromWebSocket(new globalThis.WebSocket(input.url), input)),
++  }
++
++  await Effect.runPromise(
++    Effect.gen(function* () {
++      const server = yield* Effect.acquireRelease(
++        Effect.sync(() =>
++          Bun.serve({
++            hostname: "127.0.0.1",
++            port: 0,
++            fetch(request, server) {
++              if (server.upgrade(request)) return
++              return new Response("WebSocket upgrade required", { status: 426 })
++            },
++            websocket: {
++              message(socket, message) {
++                if (message !== "create") return
++                socket.send("first")
++                socket.send("second")
++                setTimeout(() => socket.send("third"), 25)
++              },
++            },
++          }),
++        ),
++        (server) => Effect.promise(() => server.stop(true)),
++      )
++      const seen: Array<{ frame: string; receive?: WebSocketReceive }> = []
++      let observations = 0
++      const exchange: WebSocketChannelExchange = {
++        id: "receive-batch",
++        connect: {
++          url: server.url.toString().replace(/^http/, "ws"),
++          headers: Headers.empty,
++        },
++        fallback: () => Stream.empty,
++        driver: {
++          create: () => Effect.succeed({ message: "create", mode: "full" }),
++          observe: (_create, frame): Effect.Effect<ChannelObservation, AIError> =>
++            Effect.sync(() => {
++              observations++
++              return observations === 3 ? { type: "completed", frame } : { type: "frame", frame }
++            }),
++        },
++      }
++      const transport = yield* SessionModelTransport.Service
++      const execution = yield* transport
++        .bind(session, {
++          receive: (frame, receive) =>
++            Effect.sleep("20 millis").pipe(
++              Effect.tap(() => Effect.sync(() => seen.push({ frame, receive }))),
++              Effect.as(frame),
++            ),
++        })
++        .execute(exchange)
++      const frames = Array.from(yield* Stream.runCollect(execution.frames))
++
++      expect(frames).toEqual(["first", "second", "third"])
++      expect(seen.map((item) => item.frame)).toEqual(["first", "second", "third"])
++      const first = seen[0]?.receive
++      const second = seen[1]?.receive
++      const third = seen[2]?.receive
++      if (!first || !second || !third) throw new Error("Expected native receive metadata")
++      expect(first.clock).toBe("monotonic")
++      expect(second.atMs).toBe(first.atMs)
++      expect(second.batchId).toBe(first.batchId)
++      expect(third.batchId).not.toBe(first.batchId)
++      expect(third.atMs).toBeGreaterThan(first.atMs)
++    }).pipe(Effect.provide(SessionModelTransport.makeLayer(connector)), Effect.scoped),
++  )
++})
+diff --git a/packages/core/test/session-model-transport.test.ts b/packages/core/test/session-model-transport.test.ts
+index e38c3fd..e59c6b6 100644
+--- a/packages/core/test/session-model-transport.test.ts
++++ b/packages/core/test/session-model-transport.test.ts
+@@ -5,6 +5,8 @@ import type {
+   WebSocketChannelExchange,
+   WebSocketConnection,
+   WebSocketConnector,
++  WebSocketReceive,
++  WebSocketReceived,
+ } from "@opencode/ai/route"
+ import { SessionModelTransport } from "@opencode/core/session/model-transport"
+ import { Session } from "@opencode/schema/session"
+@@ -200,6 +202,7 @@ describe("SessionModelTransport", () => {
+   test("sends the frame the send tap returns and observes the frame the receive tap returns", async () => {
+     const fixture = automatic()
+     const seen: Array<{ tap: "send" | "receive"; frame: string }> = []
++    const receiveMetadata: Array<WebSocketReceive | undefined> = []
+     await run(
+       fixture.connector,
+       Effect.gen(function* () {
+@@ -209,8 +212,9 @@ describe("SessionModelTransport", () => {
+             seen.push({ tap: "send", frame })
+             return Effect.succeed(`${frame}:rewritten`)
+           },
+-          receive: (frame) => {
++          receive: (frame, receive) => {
+             seen.push({ tap: "receive", frame })
++            receiveMetadata.push(receive)
+             return Effect.succeed(`${frame}:observed`)
+           },
+         })
+@@ -223,6 +227,64 @@ describe("SessionModelTransport", () => {
+           { tap: "send", frame: "first" },
+           { tap: "receive", frame: "completed:first:rewritten" },
+         ])
++        expect(receiveMetadata).toEqual([undefined])
++      }),
++    )
++  })
++
++  test("prefers received envelopes and preserves native metadata through a slow receive tap", async () => {
++    const messages = queue<WebSocketReceived, AIError>()
++    const first = { clock: "monotonic" as const, atMs: 12.5, batchId: 4 }
++    const second = { clock: "monotonic" as const, atMs: 14.5, batchId: 5 }
++    const seen: Array<{ frame: string; receive?: WebSocketReceive }> = []
++    const connector: WebSocketConnector = {
++      open: () =>
++        Effect.succeed({
++          sendText: () =>
++            Effect.sync(() => {
++              Queue.offerUnsafe(messages, { data: "first", receive: first })
++              Queue.offerUnsafe(messages, { data: "done", receive: second })
++            }),
++          messages: Stream.die("the legacy messages view must not be consumed"),
++          received: Stream.fromQueue(messages),
++          close: Queue.shutdown(messages).pipe(Effect.asVoid),
++        }),
++    }
++    let observations = 0
++    const item: WebSocketChannelExchange = {
++      ...exchange("received"),
++      driver: {
++        create: () => Effect.succeed({ message: "create", mode: "full" }),
++        observe: (_create, frame): Effect.Effect<ChannelObservation, AIError> =>
++          Effect.sync(() => {
++            observations++
++            return observations === 2 ? { type: "completed", frame } : { type: "frame", frame }
++          }),
++      },
++    }
++
++    await run(
++      connector,
++      Effect.gen(function* () {
++        const transport = yield* SessionModelTransport.Service
++        const frames = yield* collect(
++          transport.bind(session, {
++            receive: (frame, receive) =>
++              Effect.sleep("15 millis").pipe(
++                Effect.tap(() => Effect.sync(() => seen.push({ frame, receive }))),
++                Effect.as(`${frame}:tapped`),
++              ),
++          }),
++          item,
++        )
++
++        expect(frames).toEqual(["first:tapped", "done:tapped"])
++        expect(seen).toEqual([
++          { frame: "first", receive: first },
++          { frame: "done", receive: second },
++        ])
++        expect(seen[0]?.receive).toBe(first)
++        expect(seen[1]?.receive).toBe(second)
+       }),
+     )
+   })
+diff --git a/packages/plugin/src/effect/session.ts b/packages/plugin/src/effect/session.ts
+index bea12a9..2ba743b 100644
+--- a/packages/plugin/src/effect/session.ts
++++ b/packages/plugin/src/effect/session.ts
+@@ -1,5 +1,6 @@
+ import type { SessionApi } from "@opencode/client/effect/api"
+ import type { GenerationOptionsFields, Message, SystemPart } from "@opencode/ai"
++import type { WebSocketReceive } from "@opencode/ai/route"
+ import type { Agent } from "@opencode/schema/agent"
+ import type { Model } from "@opencode/schema/model"
+ import type { PromptInput } from "@opencode/schema/prompt-input"
+@@ -122,6 +123,7 @@ export interface SessionWebSocketReceive {
+   readonly model: Model.Ref
+   readonly kind: SessionRequestKind
+   frame: string
++  readonly receive?: WebSocketReceive
+ }
+ 
+ export type SessionRetryDecision = { retry: false } | { retry: true; delay: number }
+diff --git a/packages/plugin/src/promise/session.ts b/packages/plugin/src/promise/session.ts
+index ac3aa38..6b246c4 100644
+--- a/packages/plugin/src/promise/session.ts
++++ b/packages/plugin/src/promise/session.ts
+@@ -1,5 +1,6 @@
+ import type { SessionApi } from "@opencode/client/promise/api"
+ import type { GenerationOptionsFields, Message, SystemPart } from "@opencode/ai"
++import type { WebSocketReceive } from "@opencode/ai/route"
+ import type { Agent } from "@opencode/schema/agent"
+ import type { Model } from "@opencode/schema/model"
+ import type { PromptInput } from "@opencode/schema/prompt-input"
+@@ -122,6 +123,7 @@ export interface SessionWebSocketReceive {
+   readonly model: Model.Ref
+   readonly kind: SessionRequestKind
+   frame: string
++  readonly receive?: WebSocketReceive
+ }
+ 
+ export type SessionRetryDecision = { retry: false } | { retry: true; delay: number }

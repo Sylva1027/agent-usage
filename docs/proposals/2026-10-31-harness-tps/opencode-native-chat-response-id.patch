@@ -1,0 +1,362 @@
+diff --git a/packages/ai/src/protocols/openai-chat.ts b/packages/ai/src/protocols/openai-chat.ts
+index 10a6a0d..59c3f62 100644
+--- a/packages/ai/src/protocols/openai-chat.ts
++++ b/packages/ai/src/protocols/openai-chat.ts
+@@ -283,6 +283,7 @@ const OpenAIChatError = Schema.StructWithRest(
+ 
+ export const OpenAIChatEvent = Schema.StructWithRest(
+   Schema.Struct({
++    id: Schema.optional(Schema.Unknown),
+     choices: optionalNull(Schema.Array(OpenAIChatChoice)),
+     usage: optionalNull(OpenAIChatUsage),
+     error: optionalNull(OpenAIChatError),
+@@ -303,6 +304,7 @@ interface PendingToolDelta {
+ 
+ export interface ParserState {
+   readonly providerMetadataKey: string
++  readonly responseId?: string | null
+   readonly tools: ToolStream.State<number>
+   readonly pendingTools: Partial<Record<number, PendingToolDelta>>
+   readonly toolCallEvents: ReadonlyArray<LLMEvent>
+@@ -1043,6 +1045,15 @@ const step = (state: ParserState, event: OpenAIChatEvent) =>
+         }),
+       })
+     }
++    const currentResponseId = typeof event.id === "string" && event.id.length > 0 ? event.id : undefined
++    const responseId =
++      state.responseId === null
++        ? null
++        : currentResponseId === undefined
++          ? state.responseId
++          : state.responseId === undefined || state.responseId === currentResponseId
++            ? currentResponseId
++            : null
+     const events: LLMEvent[] = []
+     const choice = event.choices?.[0]
+     // Moonshot (and a few other OpenAI-compatible providers) attach usage to
+@@ -1082,7 +1093,7 @@ const step = (state: ParserState, event: OpenAIChatEvent) =>
+           "OpenAI Chat received content after the finish reason",
+           ProviderShared.encodeJson(event),
+         )
+-      return [{ ...state, usage }, events] as const
++      return [{ ...state, responseId, usage }, events] as const
+     }
+ 
+     const reasoningField = state.reasoningField ?? reasoning?.field
+@@ -1190,6 +1201,7 @@ const step = (state: ParserState, event: OpenAIChatEvent) =>
+     return [
+       {
+         providerMetadataKey: state.providerMetadataKey,
++        responseId,
+         tools: finished?.tools ?? tools,
+         pendingTools,
+         toolCallEvents: finished?.events ?? state.toolCallEvents,
+@@ -1238,6 +1250,15 @@ const finishEvents = Effect.fn("OpenAIChat.finishEvents")(function* (state: Pars
+     state.reasoningField,
+     state.reasoningDetailsObserved ? [...state.reasoningDetails] : undefined,
+   )
++  const providerMetadata =
++    state.responseId === undefined || state.responseId === null
++      ? undefined
++      : {
++          [state.providerMetadataKey]: {
++            responseId: state.responseId,
++            ...metadata[state.providerMetadataKey],
++          },
++        }
+   const started =
+     state.reasoningDetailsObserved && !state.reasoningEmitted
+       ? Lifecycle.reasoningStart(
+@@ -1250,7 +1271,7 @@ const finishEvents = Effect.fn("OpenAIChat.finishEvents")(function* (state: Pars
+   const ended = Lifecycle.reasoningEnd(started, events, "reasoning-0", metadata)
+   const lifecycle = toolCallEvents.length ? Lifecycle.stepStart(ended, events) : ended
+   events.push(...toolCallEvents)
+-  Lifecycle.finish(lifecycle, events, { reason, usage: state.usage })
++  Lifecycle.finish(lifecycle, events, { reason, usage: state.usage, providerMetadata })
+   return events
+ })
+ 
+@@ -1273,6 +1294,7 @@ export const protocol = Protocol.make({
+     event: OpenAIChatStreamEvent,
+     initial: (request) => ({
+       providerMetadataKey: request.model.route.providerMetadataKey ?? String(request.model.provider),
++      responseId: undefined,
+       tools: ToolStream.empty<number>(),
+       pendingTools: {},
+       toolCallEvents: [],
+diff --git a/packages/ai/test/provider/openai-chat.test.ts b/packages/ai/test/provider/openai-chat.test.ts
+index bd7cc28..3b1632c 100644
+--- a/packages/ai/test/provider/openai-chat.test.ts
++++ b/packages/ai/test/provider/openai-chat.test.ts
+@@ -24,7 +24,7 @@ import { ProviderShared } from "../../src/protocols/shared.js"
+ import { Auth, LLMClient } from "../../src/route.js"
+ import { compileRequest } from "../../src/route/client.js"
+ import { it } from "../lib/effect.js"
+-import { dynamicResponse, fixedResponse, systemError, truncatedStream } from "../lib/http.js"
++import { dynamicResponse, fixedResponse, scriptedResponses, systemError, truncatedStream } from "../lib/http.js"
+ import { deltaChunk, usageChunk } from "../lib/openai-chunks.js"
+ import { sseEvents } from "../lib/sse.js"
+ 
+@@ -1000,17 +1000,193 @@ describe("OpenAI Chat route", () => {
+           index: 0,
+           reason: { normalized: "stop", raw: "stop" },
+           usage,
+-          providerMetadata: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+         {
+           type: "finish",
+           reason: { normalized: "stop", raw: "stop" },
+           usage,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+       ])
+     }),
+   )
+ 
++  it.effect("preserves a consistent response id on both finish events", () =>
++    Effect.gen(function* () {
++      const responseId = "chatcmpl-native-consistent"
++      const selected = LanguageModel.update(model, { route: { ...model.route, providerMetadataKey: "vendor" } })
++      const response = yield* LLMClient.generate(LLMRequest.update(request, { model: selected })).pipe(
++        Effect.provide(
++          fixedResponse(
++            sseEvents(
++              {
++                id: responseId,
++                choices: [{ delta: { reasoning: "thinking" }, finish_reason: null }],
++                usage: null,
++              },
++              {
++                id: responseId,
++                choices: [{ delta: { content: "Hello" }, finish_reason: null }],
++                usage: null,
++              },
++              {
++                id: responseId,
++                choices: [{ delta: {}, finish_reason: "stop" }],
++                usage: null,
++              },
++              {
++                id: responseId,
++                choices: [],
++                usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
++              },
++            ),
++          ),
++        ),
++      )
++      const metadata = { vendor: { reasoningField: "reasoning", responseId } }
++      const stepFinish = response.events.find(LLMEvent.is.stepFinish)
++      const finish = response.events.find(LLMEvent.is.finish)
++
++      expect(response.reasoning).toBe("thinking")
++      expect(response.message.content.find((part) => part.type === "reasoning")?.providerMetadata).toEqual({
++        vendor: { reasoningField: "reasoning" },
++      })
++      expect(stepFinish?.providerMetadata).toEqual(metadata)
++      expect(finish?.providerMetadata).toEqual(metadata)
++      expect(stepFinish?.usage).toEqual(response.usage)
++      expect(finish?.usage).toEqual(response.usage)
++      expect(response.usage).toMatchObject({ inputTokens: 5, outputTokens: 2, totalTokens: 7 })
++    }),
++  )
++
++  it.effect("does not synthesize a response id when the stream omits it", () =>
++    Effect.gen(function* () {
++      const response = yield* LLMClient.generate(request).pipe(
++        Effect.provide(
++          fixedResponse(
++            sseEvents(
++              { choices: [{ delta: { content: "Hello" }, finish_reason: null }], usage: null },
++              { choices: [{ delta: {}, finish_reason: "stop" }], usage: null },
++            ),
++          ),
++        ),
++      )
++
++      expect(response.text).toBe("Hello")
++      expect(response.events.find(LLMEvent.is.stepFinish)?.providerMetadata).toBeUndefined()
++      expect(response.events.find(LLMEvent.is.finish)?.providerMetadata).toBeUndefined()
++    }),
++  )
++
++  it.effect("ignores a non-string response id without rejecting the stream", () =>
++    Effect.gen(function* () {
++      const response = yield* LLMClient.generate(request).pipe(
++        Effect.provide(
++          fixedResponse(
++            sseEvents(
++              { id: 42, choices: [{ delta: { content: "Hello" }, finish_reason: null }], usage: null },
++              { id: 42, choices: [{ delta: {}, finish_reason: "stop" }], usage: null },
++              {
++                id: 42,
++                choices: [],
++                usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
++              },
++            ),
++          ),
++        ),
++      )
++
++      expect(response.text).toBe("Hello")
++      expect(response.usage?.totalTokens).toBe(7)
++      expect(response.events.find(LLMEvent.is.stepFinish)?.providerMetadata).toBeUndefined()
++      expect(response.events.find(LLMEvent.is.finish)?.providerMetadata).toBeUndefined()
++    }),
++  )
++
++  it.effect("stops publishing a response id after conflicting ids in one stream", () =>
++    Effect.gen(function* () {
++      const response = yield* LLMClient.generate(request).pipe(
++        Effect.provide(
++          fixedResponse(
++            sseEvents(
++              {
++                id: "chatcmpl-native-first",
++                choices: [{ delta: { content: "Hello" }, finish_reason: null }],
++                usage: null,
++              },
++              {
++                id: "chatcmpl-native-conflict",
++                choices: [{ delta: { content: "!" }, finish_reason: null }],
++                usage: null,
++              },
++              {
++                id: "chatcmpl-native-first",
++                choices: [{ delta: {}, finish_reason: "stop" }],
++                usage: null,
++              },
++              {
++                id: "chatcmpl-native-conflict",
++                choices: [],
++                usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
++              },
++            ),
++          ),
++        ),
++      )
++
++      expect(response.text).toBe("Hello!")
++      expect(response.usage?.totalTokens).toBe(7)
++      expect(response.events.find(LLMEvent.is.stepFinish)?.providerMetadata).toBeUndefined()
++      expect(response.events.find(LLMEvent.is.finish)?.providerMetadata).toBeUndefined()
++    }),
++  )
++
++  it.effect("does not carry a response id from a failed stream into the next attempt", () =>
++    Effect.gen(function* () {
++      const error = yield* LLMClient.generate(request).pipe(Effect.flip)
++      expect(error.message).toBe("first attempt failed")
++
++      const response = yield* LLMClient.generate(request)
++      const stepFinish = response.events.find(LLMEvent.is.stepFinish)
++      const finish = response.events.find(LLMEvent.is.finish)
++
++      expect(response.text).toBe("recovered")
++      expect(stepFinish?.providerMetadata).toEqual({ openai: { responseId: "chatcmpl-native-success" } })
++      expect(finish?.providerMetadata).toEqual({ openai: { responseId: "chatcmpl-native-success" } })
++    }).pipe(
++      Effect.provide(
++        scriptedResponses([
++          sseEvents(
++            {
++              id: "chatcmpl-native-failed",
++              choices: [{ delta: { content: "partial" }, finish_reason: null }],
++              usage: null,
++            },
++            {
++              id: "chatcmpl-native-failed",
++              choices: [],
++              usage: null,
++              error: { code: "server_error", message: "first attempt failed" },
++            },
++          ),
++          sseEvents(
++            {
++              id: "chatcmpl-native-success",
++              choices: [{ delta: { content: "recovered" }, finish_reason: null }],
++              usage: null,
++            },
++            {
++              id: "chatcmpl-native-success",
++              choices: [{ delta: {}, finish_reason: "stop" }],
++              usage: null,
++            },
++          ),
++        ]),
++      ),
++    ),
++  )
++
+   it.effect("finishes at the done sentinel without waiting for response EOF", () =>
+     Effect.gen(function* () {
+       const stream = new ReadableStream<Uint8Array>({
+@@ -1837,9 +2013,14 @@ describe("OpenAI Chat route", () => {
+           index: 0,
+           reason: { normalized: "tool-calls", raw: "tool_calls" },
+           usage: undefined,
+-          providerMetadata: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
++        },
++        {
++          type: "finish",
++          reason: { normalized: "tool-calls", raw: "tool_calls" },
++          usage: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+-        { type: "finish", reason: { normalized: "tool-calls", raw: "tool_calls" }, usage: undefined },
+       ])
+     }),
+   )
+@@ -1951,9 +2132,14 @@ describe("OpenAI Chat route", () => {
+           index: 0,
+           reason: { normalized: "content-filter", raw: "content_filter" },
+           usage: undefined,
+-          providerMetadata: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
++        },
++        {
++          type: "finish",
++          reason: { normalized: "content-filter", raw: "content_filter" },
++          usage: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+-        { type: "finish", reason: { normalized: "content-filter", raw: "content_filter" }, usage: undefined },
+       ])
+       expect(response.toolCalls).toEqual([])
+ 
+@@ -2007,9 +2193,14 @@ describe("OpenAI Chat route", () => {
+           index: 0,
+           reason: { normalized: "length", raw: "length" },
+           usage: undefined,
+-          providerMetadata: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
++        },
++        {
++          type: "finish",
++          reason: { normalized: "length", raw: "length" },
++          usage: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+-        { type: "finish", reason: { normalized: "length", raw: "length" }, usage: undefined },
+       ])
+       expect(response.toolCalls).toEqual([])
+ 
+@@ -2178,9 +2369,14 @@ describe("OpenAI Chat route", () => {
+           index: 0,
+           reason: { normalized: "tool-calls" },
+           usage: undefined,
+-          providerMetadata: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
++        },
++        {
++          type: "finish",
++          reason: { normalized: "tool-calls" },
++          usage: undefined,
++          providerMetadata: { openai: { responseId: "chatcmpl_fixture" } },
+         },
+-        { type: "finish", reason: { normalized: "tool-calls" }, usage: undefined },
+       ])
+     }),
+   )

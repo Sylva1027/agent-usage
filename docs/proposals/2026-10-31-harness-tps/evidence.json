@@ -1,0 +1,175 @@
+{
+  "formatVersion": 1,
+  "checkedAt": "2026-10-31T14:37:48.286Z",
+  "status": "local_upstream_candidates_validated_not_installed",
+  "projectBaseCommit": "9300a78c9535d1e7fe8375b53b1f9852967433ac",
+  "patches": [
+    {
+      "name": "opencode-aisdk-response-id.patch",
+      "bytes": 10296,
+      "sha256": "acaed55b6acfcc4e72b4564650139ca947cdc5d15d71f864f5c6d35f385a9a47",
+      "baseCommit": "84c9be93a56304a108f1a22df0c5d62c26d5b6ca"
+    },
+    {
+      "name": "opencode-websocket-receive.patch",
+      "bytes": 23130,
+      "sha256": "4372e2a5c537f1fff72c5c63312ba96f1e16c1c918dfd61d988ee6a0d8acbb8d",
+      "baseCommit": "84c9be93a56304a108f1a22df0c5d62c26d5b6ca"
+    },
+    {
+      "name": "opencode-native-chat-response-id.patch",
+      "bytes": 14559,
+      "sha256": "c5888a484cf89b733c0a4de3cf787f325d9c9bc1236185687fe5df45a62f086a",
+      "baseCommit": "84c9be93a56304a108f1a22df0c5d62c26d5b6ca"
+    },
+    {
+      "name": "zcode-host-transport-observer.patch",
+      "bytes": 25911,
+      "sha256": "c3c8f5a4e03abad16153eb2e1bce7a4a8b2325b52c4f22cff8cfa3e736f86aba",
+      "baseCommit": "a60ba6a7e5a06742270ca605f5d2cc2766afa7e1"
+    }
+  ],
+  "opencode": {
+    "upstreamTag": "v2.0.20",
+    "baseCommit": "84c9be93a56304a108f1a22df0c5d62c26d5b6ca",
+    "implementation": [
+      "AI SDK response ID retention",
+      "Native Chat response ID retention without rejecting previously accepted payloads",
+      "Native WebSocket receive metadata passed through existing hook"
+    ],
+    "validation": {
+      "aiSdk": {
+        "focusedTestsPassed": 3,
+        "includesActualCompatibleProviderParser": true,
+        "downstreamProviderStateTestsPassed": 1
+      },
+      "nativeChat": {
+        "focusedTestsPassed": 6,
+        "fullFileRun": {
+          "total": 83,
+          "passed": 79,
+          "failed": 4
+        },
+        "failures": "Four stale finish-metadata expectations for fixtures containing a real response ID",
+        "afterExpectationFix": {
+          "failedScopeTestsPassed": 4,
+          "failed": 0
+        },
+        "fullFileRerunAfterFix": false,
+        "counting": "Focused and retry counts overlap the full-file total; do not add them"
+      },
+      "websocket": {
+        "aiTestsPassed": 39,
+        "coreTestsPassed": 36,
+        "nodeCasesPassed": 2,
+        "nodeVersion": "v24.19.0",
+        "wsVersion": "8.21.0",
+        "realLocalhostConnection": true,
+        "slowConsumerAndSameBatchChecked": true,
+        "nodeGlobalWebSocketPatched": false
+      },
+      "typechecks": {
+        "ai": true,
+        "core": true,
+        "plugin": true
+      },
+      "format": {
+        "changedHunksChecked": true,
+        "wholeFileDefaultFormatterPassed": false,
+        "untouchedBaselineDifference": "packages/ai/src/protocols/openai-chat.ts:98"
+      },
+      "finalCombinedPatch": {
+        "applyCheckExit": 0,
+        "applyExit": 0,
+        "filesMatchingTestedSource": 15
+      }
+    },
+    "remaining": [
+      "Official distribution adoption or a supported ordinary-start loading entry",
+      "Normal installed-client collection validation for the newly added paths"
+    ]
+  },
+  "zcode": {
+    "upstreamTag": "v3.17.1",
+    "cliPackageVersion": "0.17.1",
+    "baseCommit": "a60ba6a7e5a06742270ca605f5d2cc2766afa7e1",
+    "installedVersionInspected": "3.16.3.8992",
+    "installedVersionCommitMappingProven": false,
+    "implementation": {
+      "reuseExistingObserveTransport": true,
+      "runtimeLinesAdded": 22,
+      "runtimeLinesReplaced": 2,
+      "persistedAssistantIdentityForwarded": true,
+      "customAdapterPriorityPreserved": true,
+      "newRawPumpIncluded": false
+    },
+    "validation": {
+      "testFilesPassed": 4,
+      "testsPassed": 47,
+      "typecheckedPackages": 4,
+      "affectedPackagesAndDependenciesBuildPassed": true,
+      "lintErrors": 0,
+      "existingMaxLinesWarnings": 2,
+      "nodeVersion": "v24.19.0",
+      "pnpmVersion": "10.33.2",
+      "realLocalhostRetryChecked": true,
+      "distinctPhysicalRequestIds": true,
+      "sharedPersistedAssistantId": true,
+      "oneCompletedUsage": true,
+      "requestIdEqualsUsageId": false,
+      "initialFailuresRetained": [
+        "Sandbox temporary-file EPERM before tests ran",
+        "Fixture scope error fixed before final targeted pass",
+        "Package lint command selected zero files; explicit changed-file lint used"
+      ],
+      "finalPatch": {
+        "applyCheckExit": 0,
+        "applyExit": 0,
+        "filesMatchingTestedSource": 11,
+        "onlyDocumentationChangedAfterOwnerTests": true
+      }
+    },
+    "remaining": [
+      "Official plugin loading or host configuration in ordinary Desktop/CLI",
+      "Reader join from successful attempt and status to the unique completed usage row",
+      "Modes without persistent assistant identity, including compact/title"
+    ]
+  },
+  "closedClients": {
+    "plan": "../../plans/2026-10-31-closed-client-tps-interface.md",
+    "status": "proposal_only_approval_required_before_implementation",
+    "findings": [
+      "History-message timing and character-proportional token estimates do not provide v8 receive windows",
+      "Gateway approaches require forwarding and do not fit current constraints",
+      "Undici receive diagnostics is a local runtime capability lead, not proof of client integration"
+    ],
+    "undiciLocalCapability": {
+      "node": "v24.19.0",
+      "undici": "7.29.0",
+      "receivedChunks": 3,
+      "sameRequest": true,
+      "clientIntegrationImplemented": false
+    }
+  },
+  "preservation": {
+    "filesCompared": 375,
+    "productRuntimeAndTestsUnchangedThisRound": true,
+    "rangeChangesPreserved": true,
+    "uiChanged": false
+  },
+  "actions": {
+    "realModelRequests": 0,
+    "installedClientsModified": false,
+    "liveConfigChanged": false,
+    "desktopRestarted": false,
+    "deployed": false,
+    "committed": false,
+    "pushed": false,
+    "externalIssueOrPrCreated": false
+  },
+  "validationScope": "Targeted upstream parser, transport, observer and identity checks plus final patch application/source comparison. No repeated whole-project suite this round.",
+  "limitations": [
+    "These candidates are not enabled DLC support in ordinary installed clients",
+    "Closed-client search-derived implementation remains unapproved and uninstalled"
+  ]
+}
