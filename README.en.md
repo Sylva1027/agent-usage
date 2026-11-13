@@ -38,9 +38,11 @@ Some character designs in Waifu come from [ZipZipPipe](https://space.bilibili.co
 - **Codex limits:** See usage in the current and previous five-hour and weekly allowance windows.
 - **Usage details:** Inspect input, output, and cache hits; search and sort by model, source, or repository.
 - **Period comparisons:** Compare with the preceding period to spot changes and new records.
-- **Share images:** Select today, this week, or this month, then use the rightmost header button to create a 3:4 card for phone viewing. Copy or save the PNG and customize two extra metrics; your choices are remembered. API cost is hidden by default and can be shown rounded to a whole number. Cards follow the current skin, light/dark mode, and character visibility. Sharing stays available during background refreshes and captures the data at the moment you click.
+- **Share images:** Select today, this week, or this month, then use the rightmost header button to create a 3:4 card for phone viewing. Copy or save the PNG.
 - **Source management:** Automatically scan local logs and confirm before importing, with stages and elapsed time shown. Import other directories, refresh automatically, or pause.
 - **Language and appearance:** Switch between Chinese and English or light and dark themes. Waifu adds ten character skins with visibility and opacity controls.
+
+<img src="docs/images/share-card-deepseek-light.png" alt="Weekly model usage share card with the DeepSeek light theme and sample data" width="360" />
 
 ![Skin picker with ten skins and light/dark previews](docs/images/skin-picker.png)
 
