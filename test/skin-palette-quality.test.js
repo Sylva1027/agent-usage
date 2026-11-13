@@ -10302,17 +10302,23 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
   }
 });
 
-async function captureSettledPage(screenshot, attempts) {
+async function captureSettledPage(screenshot, attempts, now = () => performance.now()) {
+  // Compositor paint can lag the finished CSS transition under load.
+  // Bound elapsed settling time while keeping exact consecutive-frame equality.
+  const deadline = now() + 3000;
   let previous = await screenshot();
-  for (let count = 2; count <= 3; count += 1) {
+  let count = 1;
+  while (now() < deadline) {
     const current = await screenshot();
+    count += 1;
+    if (now() > deadline) break;
     if (previous.equals(current)) {
       attempts.push(count);
       return current;
     }
     previous = current;
   }
-  throw new Error("Screenshot paint did not converge within three captures");
+  throw new Error("Screenshot paint did not converge within 3000ms");
 }
 
 test("E1d：真实截图基准要求连续相同，短暂重绘有界收敛，持续变化拒绝", async () => {
@@ -10320,15 +10326,50 @@ test("E1d：真实截图基准要求连续相同，短暂重绘有界收敛，�
     b = Buffer.from("b"),
     c = Buffer.from("c");
   const attempts = [];
-  const frames = [a, b, b];
-  assert.equal(await captureSettledPage(async () => frames.shift(), attempts), b);
-  assert.deepEqual(attempts, [3]);
-  const unstable = [a, b, c];
-  await assert.rejects(
-    captureSettledPage(async () => unstable.shift(), []),
-    /within three captures/,
+  let elapsed = 0;
+  const now = () => elapsed;
+  const frames = [a, b, c, b, b];
+  assert.equal(
+    await captureSettledPage(
+      async () => {
+        elapsed += 400;
+        return frames.shift();
+      },
+      attempts,
+      now,
+    ),
+    b,
   );
-  assert.equal(unstable.length, 0);
+  assert.deepEqual(attempts, [5], "有界等待允许慢速绘制在第三帧之后稳定");
+  elapsed = 0;
+  let changingFrames = 0;
+  const rejectedAttempts = [];
+  await assert.rejects(
+    captureSettledPage(
+      async () => {
+        elapsed += 1000;
+        return Buffer.from(String(++changingFrames));
+      },
+      rejectedAttempts,
+      now,
+    ),
+    /within 3000ms/,
+  );
+  assert.equal(changingFrames, 3, "持续变化在时间预算耗尽后停止捕获");
+  assert.deepEqual(rejectedAttempts, [], "未收敛的截图不能记录为成功");
+  elapsed = 0;
+  await assert.rejects(
+    captureSettledPage(
+      async () => {
+        elapsed += 1600;
+        return b;
+      },
+      [],
+      now,
+    ),
+    /within 3000ms/,
+    "预算结束后才得到的相同帧也不能通过",
+  );
   const changed = [b, b];
   assert.notDeepEqual(await captureSettledPage(async () => changed.shift(), []), a, "稳定的真实变化不能变回原基准");
 });

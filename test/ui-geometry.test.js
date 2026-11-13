@@ -1095,9 +1095,21 @@ test("UI geometry uses the production app and isolated source fixtures", async (
         }),
       );
       await session.page.screenshot({ path: fileURLToPath(new URL("first-paint-zh-CN-dark.png", loadingScreenshots)) });
+      const firstUsage = session.page.waitForResponse((response) => new URL(response.url()).pathname === "/api/usage");
       release.resolve();
-      await session.page.waitForFunction(() =>
-        Number.isFinite(Number.parseFloat(document.querySelector("#totalTokens")?.textContent)),
+      const response = await firstUsage;
+      assert.equal(response.status(), 200, response.status() === 200 ? undefined : await response.text());
+      const loaded = await session.page.evaluate(async () => {
+        const app = await import("/app.js");
+        await app.activeUsageLoadDone;
+        return {
+          totalTokens: document.querySelector("#totalTokens")?.textContent,
+          status: document.querySelector("#autoRefreshStatus")?.textContent,
+        };
+      });
+      assert.ok(
+        Number.isFinite(Number.parseFloat(loaded.totalTokens)),
+        JSON.stringify({ ...loaded, errors: session.errors }),
       );
       const after = (await geometry(session.page)).comparisonCards;
       for (const [i, card] of after.entries()) {
