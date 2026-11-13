@@ -125,6 +125,8 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript((key) => {
+    // Exercise the minute timer without an independent server-push refresh racing it.
+    window.EventSource = undefined;
     localStorage.setItem("codexUsageAutoRefresh", "off");
     localStorage.setItem("codexUsageTheme", "light");
     localStorage.setItem("codexUsageLocale", "zh-CN");
@@ -149,6 +151,7 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
       };
     };
   }, SKIN_PREFERENCE_KEY);
+  await page.clock.install({ time: fixtureNow });
   await page.clock.setFixedTime(fixtureNow);
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await usageReady(page);
@@ -162,6 +165,68 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
       preset,
     });
   };
+
+  await page.locator("#autoRefreshToggle").click();
+  await usageReady(page);
+  const clickedTotal = (await page.locator("#totalTokens").textContent()).replaceAll(/\s/g, "");
+  const refreshed = Promise.withResolvers();
+  const moduleLoaded = Promise.withResolvers();
+  t.after(() => {
+    refreshed.resolve();
+    moduleLoaded.resolve();
+  });
+  await page.route("**/api/status?*", (route) => route.fulfill({ json: { changed: true } }), { times: 1 });
+  await page.route(
+    "**/api/usage?*",
+    async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      data.summary.totals.total += 5_000_000;
+      data.summary.models[0].total.total += 5_000_000;
+      await refreshed.promise;
+      await route.fulfill({ response, json: data });
+    },
+    { times: 1 },
+  );
+  await page.route("**/share-dialog.js", async (route) => {
+    await moduleLoaded.promise;
+    await route.continue();
+  });
+  const refreshRequested = page.waitForRequest("**/api/usage?*");
+  await page.clock.fastForward(60_000);
+  await refreshRequested;
+  assert.ok(await page.locator("#shareToggle").isEnabled(), "The minute refresh keeps the displayed data shareable");
+  const moduleRequested = page.waitForRequest("**/share-dialog.js");
+  await page.locator("#shareToggle").click();
+  await moduleRequested;
+  refreshed.resolve();
+  await usageReady(page);
+  const refreshedTotal = (await page.locator("#totalTokens").textContent()).replaceAll(/\s/g, "");
+  assert.notEqual(refreshedTotal, clickedTotal);
+  moduleLoaded.resolve();
+  await page.locator("#shareDialog").waitFor({ state: "visible" });
+  await page.unroute("**/share-dialog.js");
+  assert.equal((await imageReady(page)).total, clickedTotal, "Lazy loading must preserve the data at click time");
+  await closeShare(page);
+  assert.equal((await openShare(page)).total, refreshedTotal, "Reopening captures the completed refresh");
+  await closeShare(page);
+
+  const rangeLoaded = Promise.withResolvers();
+  t.after(() => rangeLoaded.resolve());
+  await page.route("**/api/usage?*", async (route) => {
+    await rangeLoaded.promise;
+    await route.continue();
+  });
+  const rangeRequested = page.waitForRequest("**/api/usage?*");
+  await page.locator('[data-preset="week"]').click();
+  await rangeRequested;
+  assert.ok(await page.locator("#shareToggle").isDisabled(), "A different range still waits for its own data");
+  rangeLoaded.resolve();
+  await usageReady(page);
+  await page.unroute("**/api/usage?*");
+  assert.ok(await page.locator("#shareToggle").isEnabled());
+  await page.locator("#autoRefreshToggle").click();
+  await usageReady(page);
 
   for (const [preset, period] of [
     ["today", "今日"],

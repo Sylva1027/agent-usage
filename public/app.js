@@ -2269,21 +2269,23 @@ async function openShareImageDialog() {
   if (openingShare || $("#shareToggle").disabled) return;
   openingShare = true;
   try {
-    const { openShareDialog } = await import("./share-dialog.js");
-    const skins = state.skinRuntime ? await import("./skins.js") : null;
-    updateShareAvailability();
-    if ($("#shareToggle").disabled) return;
-    const preference = state.skinRuntime?.getPreference();
-    const theme = state.theme;
-    const characterUrl = preference?.showCharacters && skins?.skinAssetUrl(preference.skinId, theme, "front");
-    openShareDialog({
+    // Keep the clicked dashboard response even if a refresh finishes during lazy loading.
+    const snapshot = {
       summary: shareSummary,
       preset: state.preset,
       currency: state.costScaleTarget,
       usdToCnyRate: state.usdToCnyRate,
       periodComparison: state.periodComparison,
       locale: getLocale(),
-      theme,
+      theme: state.theme,
+    };
+    const preference = state.skinRuntime?.getPreference();
+    const { openShareDialog } = await import("./share-dialog.js");
+    const skins = preference ? await import("./skins.js") : null;
+    const { theme } = snapshot;
+    const characterUrl = preference?.showCharacters && skins?.skinAssetUrl(preference.skinId, theme, "front");
+    openShareDialog({
+      ...snapshot,
       palette: skins?.paletteDeclarations(preference.skinId, theme) || [],
       character: characterUrl
         ? { url: characterUrl, displayParams: skins.skinDisplayParams(preference.skinId, theme, "front") }
@@ -3893,7 +3895,7 @@ function reloadSyncedUsage(version = null, { skipCheck = true } = {}) {
   }
   if (version && version === appliedUsageVersion && appliedUsageScope === usageQuery()) return;
   setAutoRefreshStatus("", { busy: true });
-  void loadUsage({ skipCheck });
+  void loadUsage({ skipCheck, preserveShare: true });
   return activeUsageLoadDone;
 }
 
@@ -3906,8 +3908,14 @@ function finishUsageLoad(loadId) {
   complete(pending ? reloadSyncedUsage(pending.version, pending) : undefined);
 }
 
-async function loadUsage({ skipCheck = false, freeze = false, live = false, requiredSourceVersion = null } = {}) {
-  shareSummary = null;
+async function loadUsage({
+  skipCheck = false,
+  freeze = false,
+  live = false,
+  requiredSourceVersion = null,
+  preserveShare = false,
+} = {}) {
+  if (!preserveShare) shareSummary = null;
   updateShareAvailability();
   cancelUsageRetry?.();
   const loadId = ++state.usageLoadId;
@@ -4002,7 +4010,7 @@ async function loadUsage({ skipCheck = false, freeze = false, live = false, requ
       return;
     }
     if (loadId === state.usageLoadId) {
-      shareSummary = null;
+      if (!preserveShare) shareSummary = null;
       updateShareAvailability();
       appliedUsageVersion = null;
       appliedUsageScope = null;
