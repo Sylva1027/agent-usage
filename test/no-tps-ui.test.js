@@ -12,7 +12,7 @@ test("dashboard ships without TPS UI dependencies or placeholders", () => {
   const styles = readPublic("styles.css");
 
   assert.equal(existsSync(new URL("../public/perf-ui.js", import.meta.url)), false);
-  assert.doesNotMatch(index, /perfModels|perf-model|模型速度|TPS/i);
+  assert.doesNotMatch(index, /perfModels|perf-model|模型速度|\bTPS\b/i);
   assert.doesNotMatch(app, /perf-ui|perfModels|renderPerf|selectedPerfModelKey|averageTps|summary\.perf/i);
   assert.doesNotMatch(state, /selectedPerfModelKey/);
   assert.doesNotMatch(i18n, /TPS|tok\/s|模型速度|生成速度|性能索引|计时覆盖|平均速度|慢端|快端|合并样本/);

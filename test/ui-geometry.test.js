@@ -195,7 +195,7 @@ async function geometry(page) {
     return {
       locale: document.documentElement.lang,
       theme: document.documentElement.dataset.theme,
-      pageWidth: innerWidth,
+      pageWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
       shell: one("main.shell"),
       actionOrder: [...document.querySelector(".topbar-actions").children].map((node) => node.id),
@@ -675,7 +675,11 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       .join("\n")}\n`,
   );
   await listenOnFetchPort(server);
-  browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
+  browser = await runtime.chromium.launch({
+    executablePath: runtime.executablePath,
+    headless: true,
+    ignoreDefaultArgs: ["--hide-scrollbars"],
+  });
   const url = `http://127.0.0.1:${server.address().port}/`;
   const catalog = await fetch(`${url}api/pricing`).then((response) => response.json());
   catalog.models[LONG_PRICING_MODEL] = structuredClone(catalog.models["claude-sonnet-4-6"]);
@@ -771,6 +775,144 @@ test("UI geometry uses the production app and isolated source fixtures", async (
   });
 
   for (const theme of ["light", "dark"]) {
+    await t.test(`${theme} rounded wells keep their shading off scrollbars and details leave a gap`, async () => {
+      const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", theme);
+      const { page } = session;
+      const failures = [];
+      try {
+        for (const id of ["modelComparisonTable", "repositoryComparisonTable"]) {
+          const scroll = page.locator(`#${id} .comparison-table-scroll`);
+          await scroll.evaluate((node) => {
+            const body = node.querySelector("tbody");
+            while (body.children.length < 30) body.append(body.firstElementChild.cloneNode(true));
+            node.scrollIntoView({ block: "center" });
+          });
+          await hoverSurface(page, `#${id} .comparison-table-footer`, ".period-comparison-panel", failures);
+          // The panel's hover fade shows through the scrollbar's transparent rounded corners.
+          // Finish it before comparing screenshots that differ only in the inset shadow.
+          await scroll.evaluate(async (node) => {
+            const panel = node.closest(".period-comparison-panel");
+            await Promise.all(panel.getAnimations({ subtree: true }).map((animation) => animation.finished));
+          });
+          const geometry = await scroll.evaluate((node) => {
+            const frame = node.parentElement;
+            const cells = (selector) =>
+              [...frame.querySelectorAll(selector)].map((cell) => cell.getBoundingClientRect().right);
+            return {
+              radius: getComputedStyle(node).borderRadius,
+              gutter: node.offsetWidth - node.clientWidth,
+              footerBorder: getComputedStyle(frame.querySelector(".comparison-table-foot")).borderTopWidth,
+              lastBorders: [...node.querySelectorAll("tbody > tr:last-child > *")].map(
+                (cell) => getComputedStyle(cell).borderBottomWidth,
+              ),
+              bodyColumns: cells("thead th"),
+              footerColumns: cells("tfoot > tr > *"),
+            };
+          });
+          assert.equal(geometry.radius, "16px");
+          assert.equal(geometry.gutter, 8, "native scrollbar is present");
+          assert.equal(geometry.footerBorder, "0px");
+          assert.ok(
+            geometry.lastBorders.every((width) => width === "0px"),
+            "no hard baseline crosses rounded corners",
+          );
+          geometry.bodyColumns.forEach((right, i) => {
+            near(right, geometry.footerColumns[i], `${id} column ${i}`);
+          });
+          for (const fraction of [0, 0.5, 1]) {
+            await scroll.evaluate((node, fraction) => {
+              node.scrollTop = (node.scrollHeight - node.clientHeight) * fraction;
+            }, fraction);
+            const box = await scroll.boundingBox();
+            const rail = {
+              x: box.x + box.width - geometry.gutter,
+              y: box.y,
+              width: geometry.gutter,
+              height: box.height,
+            };
+            const corner = { x: box.x, y: box.y + box.height - 16, width: 16, height: 16 };
+            const railWithShadow = await page.screenshot({ clip: rail });
+            const cornerWithShadow = await page.screenshot({ clip: corner });
+            const hidden = await page.addStyleTag({
+              content: `#${id} .comparison-table-frame::after { box-shadow: none; }`,
+            });
+            try {
+              assert.deepEqual(
+                await page.screenshot({ clip: rail }),
+                railWithShadow,
+                `${id} ${fraction}: shadow never paints over scrollbar`,
+              );
+              assert.notDeepEqual(
+                await page.screenshot({ clip: corner }),
+                cornerWithShadow,
+                `${id} ${fraction}: rounded inset shading remains visible`,
+              );
+            } finally {
+              await hidden.evaluate((node) => node.remove());
+            }
+          }
+        }
+        for (const mode of ["channel", "model", "cost"]) {
+          await page.locator(`#timelineModes button[data-timeline-mode="${mode}"]`).click();
+          await page.locator("#detailList .bar-row").first().waitFor();
+          const detail = await page.locator("#detailList").evaluate((list) => {
+            while (list.children.length < 30) list.append(list.firstElementChild.cloneNode(true));
+            const box = list.getBoundingClientRect();
+            const track = list.querySelector(".bar-track").getBoundingClientRect();
+            const value = list.querySelector(".bar-value").getBoundingClientRect();
+            return {
+              leftGap: track.left - box.left,
+              rightGap: box.left + list.clientWidth - track.right,
+              valueGap: box.left + list.clientWidth - value.right,
+              overflow: list.scrollHeight > list.clientHeight,
+              trackBackground: getComputedStyle(list, "::-webkit-scrollbar-track").backgroundColor,
+              cornerBackground: getComputedStyle(list, "::-webkit-scrollbar-corner").backgroundColor,
+              inset: getComputedStyle(list.querySelector(".bar-track")).boxShadow,
+            };
+          });
+          assert.ok(detail.overflow, `${mode}: exercise a scrolling list`);
+          near(detail.leftGap, 8, `${mode} left inset`);
+          near(detail.rightGap, 8, `${mode} gap before scrollbar`);
+          near(detail.valueGap, 8, `${mode} value gap before scrollbar`);
+          assert.equal(detail.trackBackground, "rgba(0, 0, 0, 0)");
+          assert.equal(detail.cornerBackground, "rgba(0, 0, 0, 0)");
+          assert.match(detail.inset, /inset/);
+          await hoverSurface(page, "#detailList .bar-track", "#detailPanel", failures);
+        }
+        const screenshots = new URL("../output/ui-scrollbars/", import.meta.url);
+        await mkdir(screenshots, { recursive: true });
+        for (const width of [960, 480]) {
+          await page.setViewportSize({ width, height: 1000 });
+          const gaps = await page.locator("#detailList").evaluate((list) => {
+            const right = list.getBoundingClientRect().left + list.clientWidth;
+            return [".bar-track", ".bar-value"].map(
+              (selector) => right - list.querySelector(selector).getBoundingClientRect().right,
+            );
+          });
+          gaps.forEach((gap) => {
+            near(gap, 8, `${width} gap before scrollbar`);
+          });
+          await hoverSurface(page, "#detailList .bar-track", "#detailPanel", failures);
+          await page.locator("#detailPanel").screenshot({
+            path: fileURLToPath(new URL(`${width}-${theme}-detail.png`, screenshots)),
+          });
+          for (const id of ["modelComparisonTable", "repositoryComparisonTable"]) {
+            await page.locator(`#${id} .comparison-table-scroll`).evaluate((node) => {
+              node.scrollTop = node.scrollHeight;
+            });
+            await hoverSurface(page, `#${id} .comparison-table-footer`, ".period-comparison-panel", failures);
+            await page.locator(`#${id}`).screenshot({
+              path: fileURLToPath(new URL(`${width}-${theme}-${id}.png`, screenshots)),
+            });
+          }
+        }
+        assert.deepEqual(failures, []);
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.context.close();
+      }
+    });
+
     await t.test(`${theme} whole-page hover lighting preserves surfaces, text and disclosures`, async () => {
       const session = await openDashboard(browser, url, VIEWPORTS[0], "zh-CN", theme);
       const { page } = session;

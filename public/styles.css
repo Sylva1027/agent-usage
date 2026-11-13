@@ -108,11 +108,20 @@ body {
   #importDialog,
   #pricingDialog,
   #modelPricingDialog
+)::-webkit-scrollbar-corner,
+:is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)
+  *::-webkit-scrollbar-corner,
+:is(
+  .detail-panel,
+  .period-comparison-table,
+  #importDialog,
+  #pricingDialog,
+  #modelPricingDialog
 )::-webkit-scrollbar-track,
 :is(.detail-panel, .period-comparison-table, #importDialog, #pricingDialog, #modelPricingDialog)
   *::-webkit-scrollbar-track {
   border-radius: 999px;
-  background: color-mix(in srgb, var(--track) 35%, transparent);
+  background: transparent;
 }
 
 :is(
@@ -477,15 +486,8 @@ label {
   line-height: 1.45;
 }
 
-.pricing-rematch-button {
-  margin-left: auto;
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
 #pickImportDirectoryButton,
 .panel-action,
-#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -501,7 +503,6 @@ label {
 
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
-#pricingForm .pricing-rematch-button:hover,
 .dialog-actions button:hover,
 .ceramic-toggle:hover,
 .segmented > button:hover,
@@ -1251,10 +1252,6 @@ html[lang="en-US"] #repositoryComparisonSearch {
   scrollbar-gutter: stable;
 }
 
-.comparison-table-foot {
-  border-top: 1px solid var(--line);
-}
-
 .comparison-table {
   width: 100%;
   min-width: 0;
@@ -1270,6 +1267,10 @@ html[lang="en-US"] #repositoryComparisonSearch {
   border-bottom: 1px solid var(--line);
   text-align: right;
   white-space: nowrap;
+}
+
+.comparison-table tbody > tr:last-child > :is(th, td) {
+  border-bottom: 0;
 }
 
 .comparison-table thead th {
@@ -1524,6 +1525,7 @@ details.panel:not([open]) > .panel-heading {
   flex: 1 1 auto;
   min-height: 0;
   align-content: start;
+  padding-inline: 8px;
   overflow: auto;
 }
 
@@ -2309,7 +2311,6 @@ details.panel:not([open]) > .panel-heading {
 }
 #pickImportDirectoryButton,
 .panel-action,
-#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -2325,7 +2326,6 @@ details.panel:not([open]) > .panel-heading {
 
 #pickImportDirectoryButton:hover,
 .panel-action:hover,
-#pricingForm .pricing-rematch-button:hover,
 .dialog-actions button:hover,
 .ceramic-toggle:hover,
 .segmented > button:hover,
@@ -2617,7 +2617,6 @@ select:focus-visible {
 .theme-toggle,
 #pickImportDirectoryButton,
 .panel-action,
-#pricingForm .pricing-rematch-button,
 .dialog-actions button,
 .ceramic-toggle,
 .segmented > button,
@@ -2880,6 +2879,8 @@ button:disabled {
   z-index: 4;
   border-radius: inherit;
   box-shadow: var(--neo-inset);
+  /* Keep the inset shading off the native 8px scrollbar. */
+  clip-path: inset(0 8px 0 0);
   pointer-events: none;
 }
 .comparison-table-frame .comparison-table th {
@@ -3987,14 +3988,6 @@ main.shell .period-comparison-table > .empty {
   text-align: right;
   line-height: var(--dialog-body-line-height);
   white-space: nowrap;
-}
-
-#pricingForm .pricing-rematch-button {
-  justify-self: end;
-  height: var(--dialog-control-height);
-  min-height: var(--dialog-control-height);
-  padding: 0 10px;
-  line-height: var(--dialog-body-line-height);
 }
 
 #pricingForm .pricing-model-list > .empty {
