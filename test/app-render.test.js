@@ -55,7 +55,7 @@ test("recent aliases keep a shared catalog key active while retired missing mode
       ),
     };
     assert.deepEqual(pricingHarnessRows().Codex, [
-      { model: "gpt-daybreak-blue-latest", catalogKey: "gpt-5.6-sol", matchType: "alias" },
+      { model: "gpt-5.6-sol", catalogKey: "gpt-5.6-sol", matchType: "alias" },
     ]);
     assert.equal(pricingHarnessRows().ZCode[0].matchType, "free");
     assert.ok(pricingHarnessRows({ all: true }).Codex.some((row) => row.model === "retired-missing"));
@@ -63,7 +63,7 @@ test("recent aliases keep a shared catalog key active while retired missing mode
     assert.equal(pricingUsageModels().recent, true);
     assert.deepEqual(
       pricingHarnessRows().Codex.map((row) => row.model),
-      ["gpt-daybreak-blue-latest"],
+      ["gpt-5.6-sol"],
       "last-seen timestamps reconstruct activity without reviving retired models",
     );
   } finally {
@@ -231,7 +231,7 @@ test("legacy and mixed pricing responses keep observed models visible while expl
   }
 });
 
-test("pricingHarnessRows keeps aliases visible and exposes missing and free usage", () => {
+test("pricingHarnessRows displays canonical identities and exposes missing and free usage", () => {
   const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
   try {
     state.pricingCatalog = {
@@ -250,11 +250,37 @@ test("pricingHarnessRows keeps aliases visible and exposes missing and free usag
     state.metadata.activeHarnessModels = state.metadata.harnessModels;
     const rows = pricingHarnessRows();
     assert.deepEqual(rows.Codex, [
-      { model: "gpt-daybreak-blue-latest", catalogKey: "gpt-5.6-sol", matchType: "alias" },
+      { model: "gpt-5.6-sol", catalogKey: "gpt-5.6-sol", matchType: "alias" },
       { model: "future-model", catalogKey: null, matchType: "missing" },
     ]);
     assert.deepEqual(rows.ZCode, [{ model: "mimo-v2.6-flash-free", catalogKey: null, matchType: "free" }]);
     assert.deepEqual([...pricingHarnessGroups().Codex], ["gpt-5.6-sol"]);
+  } finally {
+    state.metadata = previous.metadata;
+    state.pricingCatalog = previous.pricingCatalog;
+  }
+});
+
+test("pricingHarnessRows merges routed free and missing model names without changing source evidence", () => {
+  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
+  try {
+    state.pricingCatalog = { models: {} };
+    const harnessModels = {
+      OpenCode: [
+        "workbuddy-ai/hy4free",
+        "gateway/HY4FREE",
+        "hy4free",
+        "vendor/long-unknown-model",
+        "long-unknown-model",
+      ],
+    };
+    const evidence = structuredClone(harnessModels);
+    state.metadata = { harnessModels, activeHarnessModels: harnessModels };
+    assert.deepEqual(pricingHarnessRows().OpenCode, [
+      { model: "hy4free", catalogKey: null, matchType: "free" },
+      { model: "long-unknown-model", catalogKey: null, matchType: "missing" },
+    ]);
+    assert.deepEqual(harnessModels, evidence);
   } finally {
     state.metadata = previous.metadata;
     state.pricingCatalog = previous.pricingCatalog;
@@ -372,6 +398,15 @@ test("model pricing Apply requires a valid numeric change and disables again aft
   second.validity.valid = true;
   first.value = "4";
   assert.equal(modelPricingInputsChanged([first, second]), false);
+});
+
+test("missing model rates require complete input and accept an explicitly entered zero", () => {
+  const fields = Array.from({ length: 4 }, () => ({ value: "", defaultValue: "", validity: { valid: true } }));
+  assert.equal(modelPricingInputsChanged(fields), false);
+  fields[0].value = "0";
+  assert.equal(modelPricingInputsChanged(fields), false);
+  for (const field of fields) field.value = "0";
+  assert.equal(modelPricingInputsChanged(fields), true);
 });
 
 test("token values use two decimals with M/B/T units and retain exact hover values", () => {

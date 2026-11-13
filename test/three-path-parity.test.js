@@ -1296,6 +1296,7 @@ test("Gemini identity and hy4free costs agree across memory, SQLite, and referen
     const rawEvents = JSON.stringify(report.events);
     assert.equal(report.events.length, 6);
     assert.equal(report.events[0].model, "opencode-go/gemini-4-argon-contributor");
+    assert.ok(report.events.some((event) => event.model === "workbuddy-ai/hy4free"));
     for (const pricedGemini of [false, true]) {
       setPricingCatalog({
         ...catalog,

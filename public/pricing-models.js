@@ -108,9 +108,11 @@ function modelIndex(models) {
 function aliasTarget(normalized) {
   const routedClaude = normalized.startsWith("anthropic/") ? normalized.slice("anthropic/".length) : null;
   return (
-    PRICING_MODEL_ALIASES[normalized] ||
-    CLAUDE_MODEL_SNAPSHOTS[normalized] ||
-    (routedClaude && (CLAUDE_MODEL_SNAPSHOTS[routedClaude] || (routedClaude.startsWith("claude-") && routedClaude)))
+    (Object.hasOwn(PRICING_MODEL_ALIASES, normalized) && PRICING_MODEL_ALIASES[normalized]) ||
+    (Object.hasOwn(CLAUDE_MODEL_SNAPSHOTS, normalized) && CLAUDE_MODEL_SNAPSHOTS[normalized]) ||
+    (routedClaude &&
+      ((Object.hasOwn(CLAUDE_MODEL_SNAPSHOTS, routedClaude) && CLAUDE_MODEL_SNAPSHOTS[routedClaude]) ||
+        (routedClaude.startsWith("claude-") && routedClaude)))
   );
 }
 
@@ -141,35 +143,27 @@ export function canonicalModelName(rawModel, models) {
   const normalized = original.toLowerCase();
   if (!normalized) return original;
   if (normalized === "opencode-go/gemini-4-argon-contributor") return "gemini-4-argon-contributor";
-
-  const index = modelIndex(models);
-  const alias = aliasTarget(normalized);
-  const aliasKey = alias && index.get(alias);
-  if (aliasKey) return aliasKey;
-
-  const slash = normalized.indexOf("/");
-  if (slash > 0 && slash < normalized.length - 1) {
-    const routed = canonicalCandidate(normalized.slice(slash + 1), index);
-    if (routed?.catalogKey) return routed.name;
-    return original;
-  }
-
-  return canonicalCandidate(normalized, index)?.name || original;
+  const routed = aliasTarget(normalized) || original.slice(original.lastIndexOf("/") + 1) || original;
+  const candidate = aliasTarget(routed.toLowerCase()) || routed;
+  const candidateKey = candidate.toLowerCase();
+  if (isCodexAutoReview(candidateKey) || candidateKey === "hy4free") return candidateKey;
+  return canonicalCandidate(candidateKey, modelIndex(models))?.name || candidate;
 }
 
 /** Resolve an observed model ID against a supplied pricing catalog. */
 export function resolvePricingModel(rawModel, models) {
   const original = String(rawModel ?? "").trim();
-  const originalAlias = aliasTarget(original.toLowerCase());
-  const originalAliasKey = originalAlias && modelIndex(models).get(originalAlias);
+  const index = modelIndex(models);
+  const originalAlias =
+    aliasTarget(original.toLowerCase()) || aliasTarget(original.slice(original.lastIndexOf("/") + 1).toLowerCase());
+  const originalAliasKey = originalAlias && index.get(originalAlias);
   const canonicalModel = canonicalModelName(original, models);
   const normalized = canonicalModel.toLowerCase();
   // Explicit free policies override stale local rates.
-  if (isCodexAutoReview(normalized) || original.toLowerCase() === "hy4free") {
+  if (isCodexAutoReview(normalized) || normalized === "hy4free") {
     return { rawModel: original, canonicalModel, catalogKey: null, matchType: "free" };
   }
-  const index = modelIndex(models);
-  if (!normalized || normalized === "unknown model") {
+  if (!normalized || normalized === "unknown model" || (originalAlias && !originalAliasKey)) {
     return { rawModel: original, canonicalModel, catalogKey: null, matchType: "missing" };
   }
 
@@ -221,15 +215,18 @@ export function buildUsagePricingCoverage(harnessModels, models, ready = true) {
     for (const [harness, names] of Object.entries(harnessModels)) {
       if (!Array.isArray(names)) continue;
       for (const name of names) {
-        const model = canonicalModelName(name, models);
+        const result = resolvePricingModel(name, models);
+        const model = result.canonicalModel;
         const normalized = model.toLowerCase();
         if (!normalized || normalized === "unknown model") continue;
         let item = used.get(normalized);
         if (!item) {
-          item = { model, harnesses: new Set() };
+          item = { model, harnesses: new Set(), missing: false, free: true };
           used.set(normalized, item);
         }
         item.harnesses.add(harness);
+        item.missing ||= result.matchType === "missing";
+        item.free &&= result.matchType === "free";
       }
     }
   }
@@ -238,13 +235,12 @@ export function buildUsagePricingCoverage(harnessModels, models, ready = true) {
   let freeRuleUsedModelCount = 0;
   const missingUsedModels = [];
   for (const [, item] of [...used].sort(([left], [right]) => left.localeCompare(right))) {
-    const result = resolvePricingModel(item.model, models);
-    if (result.matchType === "missing") {
+    if (item.missing) {
       missingUsedModels.push({ model: item.model, harnesses: [...item.harnesses].sort() });
       continue;
     }
     matchedUsedModelCount += 1;
-    if (result.matchType === "free") freeRuleUsedModelCount += 1;
+    if (item.free) freeRuleUsedModelCount += 1;
   }
 
   return {

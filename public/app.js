@@ -2951,7 +2951,7 @@ export function modelPricingInputsChanged(inputs) {
   return (
     fields.length > 0 &&
     fields.every((input) => input.validity.valid && input.value !== "" && Number.isFinite(Number(input.value))) &&
-    fields.some((input) => Number(input.value) !== Number(input.defaultValue))
+    fields.some((input) => input.defaultValue === "" || Number(input.value) !== Number(input.defaultValue))
   );
 }
 
@@ -2966,11 +2966,11 @@ function pricingRowsForNames(names, catalog) {
   for (const raw of names) {
     const resolved = resolvePricingModel(raw, catalog);
     if (resolved.matchType === "missing" && !resolved.rawModel) continue;
-    const normalized = resolved.rawModel.toLowerCase();
+    const normalized = resolved.canonicalModel.toLowerCase();
     const identity = resolved.catalogKey ? `catalog:${resolved.catalogKey}` : `${resolved.matchType}:${normalized}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
-    rows.push({ model: resolved.rawModel, catalogKey: resolved.catalogKey, matchType: resolved.matchType });
+    rows.push({ model: resolved.canonicalModel, catalogKey: resolved.catalogKey, matchType: resolved.matchType });
   }
   return rows;
 }
@@ -3039,10 +3039,9 @@ function renderPricingModelList() {
   const english = getLocale() === "en-US";
   const rowHtml = (row) => {
     if (row.matchType === "missing") {
-      return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
+      return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.model.toLowerCase())}" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
         <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge missing">${english ? "Missing rate" : "缺少费率"}</span></span>
-        <button type="button" class="pricing-rematch-button" data-pricing-rematch>${english ? "Match again" : "重新匹配"}</button>
-      </div>`;
+      </button>`;
     }
     if (row.matchType === "free") {
       return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
@@ -3107,8 +3106,10 @@ function updateDisplayCurrencyButtons() {
 }
 
 function openModelPricing(model) {
-  const entry = state.pricingCatalog?.models?.[model];
-  if (!entry) return;
+  if (!state.pricingCatalog) return;
+  const entry = state.pricingCatalog.models[model] || {
+    short: Object.fromEntries(PRICING_FIELDS.map(([field]) => [field, ""])),
+  };
   state.modelPricingDraft = model;
   $("#modelPricingTitle").innerHTML =
     `${escapeHtml(model)}<span class="currency-badge">${entry.currency === "CNY" ? "CNY" : "USD"}</span>`;
@@ -3129,12 +3130,13 @@ function closeModelPricing() {
 
 function applyModelPricing() {
   const model = state.modelPricingDraft;
-  const entry = state.pricingCatalog?.models?.[model];
   const inputs = $("#modelPricingFields").querySelectorAll("input[data-model]");
-  if (!model || !entry || !modelPricingInputsChanged(inputs)) return;
+  if (!model || !state.pricingCatalog || !modelPricingInputsChanged(inputs)) return;
+  const entry = state.pricingCatalog.models[model] || { currency: "USD", short: {} };
   for (const input of inputs) {
     writePricingField(entry, input.dataset.context, input.dataset.field, Number(input.value));
   }
+  state.pricingCatalog.models = { ...state.pricingCatalog.models, [model]: entry };
   closeModelPricing();
   renderPricingModelList();
 }
@@ -4635,10 +4637,6 @@ async function bootDashboard() {
     render();
   });
   $("#pricingModelList").addEventListener("click", (event) => {
-    if (event.target.closest("[data-pricing-rematch]")) {
-      void refreshPricingAutomatically(true);
-      return;
-    }
     const row = event.target.closest("[data-pricing-model]");
     if (!row) return;
     openModelPricing(row.dataset.pricingModel);

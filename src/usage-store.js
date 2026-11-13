@@ -46,6 +46,7 @@ import {
   USAGE_ROLLUP_PROGRESS_TABLES,
 } from "./usage-rollups.js";
 import {
+  API_PRICING_VERSION,
   createCostEstimateAccumulator,
   createEventPricing,
   createEventCostMemo,
@@ -6733,7 +6734,7 @@ export class UsageStore {
     return {
       database: this.database,
       ...(this.historyPersistentRead ? { mode: "history" } : {}),
-      key,
+      key: `${API_PRICING_VERSION}:${key}`,
       factsKey: String(
         this.database.prepare("SELECT revision FROM usage_business_revision WHERE singleton = 1").get().revision,
       ),
@@ -7933,7 +7934,7 @@ export class UsageStore {
     return {
       database: this.database,
       ...(history ? { mode: "history" } : {}),
-      key,
+      key: `${API_PRICING_VERSION}:${key}`,
       range,
       bucket,
       requestedBucket: filters.bucket || "day",

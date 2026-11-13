@@ -152,7 +152,7 @@ test("hy4free is an exact free policy even with a stale catalog entry", () => {
   for (const models of [{}, { hy4free: {} }]) {
     assert.deepEqual(resolvePricingModel(" HY4FREE ", models), {
       rawModel: "HY4FREE",
-      canonicalModel: Object.hasOwn(models, "hy4free") ? "hy4free" : "HY4FREE",
+      canonicalModel: "hy4free",
       catalogKey: null,
       matchType: "free",
     });
@@ -163,7 +163,7 @@ test("hy4free is an exact free policy even with a stale catalog entry", () => {
       freeRuleUsedModelCount: 1,
       missingUsedModels: [],
     });
-    for (const other of ["hy4free-other", "other-hy4free", "vendor/hy4free"]) {
+    for (const other of ["hy4free-other", "other-hy4free"]) {
       assert.notEqual(resolvePricingModel(other, models).matchType, "free", other);
     }
   }
@@ -268,25 +268,57 @@ test("usage coverage resolves provider prefixes against the supplied catalog on 
   assert.deepEqual(buildUsagePricingCoverage(harnessModels, catalogA), firstA);
 });
 
-test("provider prefixes only merge when the remaining model resolves", () => {
+test("usage coverage preserves missing alias targets when canonical identities merge", () => {
+  const alias = "gateway/gpt-daybreak-blue-latest";
+  const canonical = "gpt-5.6-sol";
+  const incomplete = { "gpt-5.6": {} };
+  assert.equal(resolvePricingModel(alias, incomplete).matchType, "missing");
+  assert.equal(resolvePricingModel(canonical, incomplete).matchType, "suffix");
+  for (const harnessModels of [
+    { Codex: [alias] },
+    { Codex: [alias, canonical] },
+    { Codex: [canonical, alias] },
+    { Codex: [canonical], OpenCode: [alias] },
+    { OpenCode: [alias], Codex: [canonical] },
+  ]) {
+    assert.deepEqual(buildUsagePricingCoverage(harnessModels, incomplete), {
+      ready: true,
+      usedModelCount: 1,
+      matchedUsedModelCount: 0,
+      freeRuleUsedModelCount: 0,
+      missingUsedModels: [{ model: canonical, harnesses: Object.keys(harnessModels).sort() }],
+    });
+    assert.deepEqual(buildUsagePricingCoverage(harnessModels, { ...incomplete, [canonical]: {} }), {
+      ready: true,
+      usedModelCount: 1,
+      matchedUsedModelCount: 1,
+      freeRuleUsedModelCount: 0,
+      missingUsedModels: [],
+    });
+  }
+});
+
+test("routing prefixes are removed independently of catalog coverage", () => {
   const models = { "gpt-6.1-sol": {}, "deepseek-flash": {} };
   assert.equal(canonicalModelName("codex/GPT-6.1-SOL", models), "gpt-6.1-sol");
   assert.equal(resolvePricingModel("codex/GPT-6.1-SOL", models).catalogKey, "gpt-6.1-sol");
-  for (const unresolved of [
-    "vendor/unknown-model",
-    "opencode-go/gemini-4-other",
-    "sensenova-6.8-flash-lite",
-    "Unknown model",
+  for (const [unresolved, canonical] of [
+    ["vendor/unknown-model", "unknown-model"],
+    ["opencode-go/gemini-4-other", "gemini-4-other"],
+    ["gateway/vendor/Muse-Spark-1.3-Contributor", "Muse-Spark-1.3-Contributor"],
+    ["sensenova-6.8-flash-lite", "sensenova-6.8-flash-lite"],
+    ["Unknown model", "Unknown model"],
+    ["vendor/constructor", "constructor"],
   ]) {
-    assert.equal(canonicalModelName(unresolved, models), unresolved);
+    assert.equal(canonicalModelName(unresolved, models), canonical);
     assert.deepEqual(resolvePricingModel(unresolved, models), {
       rawModel: unresolved,
-      canonicalModel: unresolved,
+      canonicalModel: canonical,
       catalogKey: null,
       matchType: "missing",
     });
   }
-  assert.equal(canonicalModelName("vendor/Unknown-Free", models), "vendor/Unknown-Free");
+  assert.equal(canonicalModelName("vendor/Unknown-Free", models), "unknown-free");
   assert.equal(resolvePricingModel("vendor/Unknown-Free", models).matchType, "free");
 
   const explicitFree = { "custom-free": {} };
@@ -297,4 +329,31 @@ test("provider prefixes only merge when the remaining model resolves", () => {
     catalogKey: "custom-free",
     matchType: "exact",
   });
+});
+
+test("routed policy models retain one free identity with missing or obsolete catalog keys", () => {
+  for (const canonical of ["hy4free", "codex-auto-review"]) {
+    const raw = `workbuddy-ai/${canonical}`;
+    for (const models of [{}, { [raw]: {} }, { [canonical]: {} }, { [raw]: {}, [canonical]: {} }]) {
+      for (const name of [raw, ` gateway/${raw.toUpperCase()} `, canonical]) {
+        assert.equal(canonicalModelName(name, models), canonical);
+        assert.deepEqual(resolvePricingModel(name, models), {
+          rawModel: name.trim(),
+          canonicalModel: canonical,
+          catalogKey: null,
+          matchType: "free",
+        });
+      }
+      assert.deepEqual(buildUsagePricingCoverage({ OpenCode: [raw, canonical] }, models), {
+        ready: true,
+        usedModelCount: 1,
+        matchedUsedModelCount: 1,
+        freeRuleUsedModelCount: 1,
+        missingUsedModels: [],
+      });
+    }
+  }
+  assert.equal(canonicalModelName("group/deepseek", {}), "deepseek-flash");
+  assert.equal(resolvePricingModel("group/deepseek", {}).matchType, "missing");
+  assert.equal(canonicalModelName("vendor/muse-spark-1.3-contributor-free", {}), "muse-spark-1.3-contributor-free");
 });

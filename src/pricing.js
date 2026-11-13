@@ -5,7 +5,7 @@ import { canonicalModelName, isCodexAutoReview, resolvePricingModel } from "../p
 // This catalog revision includes a fresh Claude check on 2026-10-01;
 // the date does not claim that every provider entry was rechecked that day.
 export const API_PRICING_CHECKED_AT = "2026-10-01";
-export const API_PRICING_VERSION = "2026-11-11";
+export const API_PRICING_VERSION = "2026-11-13";
 export const MAX_PRICING_MODELS = 256;
 export const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
 export const API_PRICING_MODE = "minimum-fallback-scenario";
@@ -1202,10 +1202,14 @@ function minimumRatesFor(modelKey, contextLevel, currency) {
   const catalogs = modelKey
     ? [pricing.models[modelKey]]
     : Object.entries(pricing.models)
-        .filter(
-          ([model, entry]) =>
-            !isCodexAutoReview(model) && model.toLowerCase() !== "hy4free" && (entry.currency || "USD") === currency,
-        )
+        .filter(([model, entry]) => {
+          const canonical = canonicalModelName(model, pricing.models);
+          return (
+            !isCodexAutoReview(canonical) &&
+            canonical.toLowerCase() !== "hy4free" &&
+            (entry.currency || "USD") === currency
+          );
+        })
         .map(([, entry]) => entry);
   const contexts = contextLevel === "unknown" ? ["short", "long"] : [contextLevel];
   const candidates = catalogs.flatMap((catalog) => contexts.map((context) => catalog?.[context]).filter(Boolean));
@@ -1234,12 +1238,12 @@ function estimateEventCostForModel(event, model) {
   const codexShortContext = model.key === "gpt-6.1-sol" && CODEX_SOURCE_KINDS.has(event.sourceKind);
   const serviceTier = normalizeServiceTier(event.serviceTier ?? event.service_tier);
   // A policy exemption needs no token split, context tier, or fallback price.
-  if (isCodexAutoReview(model.name) || model.name.toLowerCase() === "hy4free") {
+  if (isCodexAutoReview(model.canonicalName) || model.canonicalName.toLowerCase() === "hy4free") {
     return {
       model: model.name,
       currency,
       priceVersion: version,
-      priceSource: isCodexAutoReview(model.name)
+      priceSource: isCodexAutoReview(model.canonicalName)
         ? "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan"
         : "",
       serviceTier,
@@ -1264,7 +1268,7 @@ function estimateEventCostForModel(event, model) {
   // Claude Fast capability is model-specific; unknown Claude IDs also keep
   // an explicit Standard scenario instead of inheriting the generic 2x rule.
   const useFastRates = serviceTier === "fast" && Boolean(entry?.fast);
-  const claude = entry?.cacheWriteTtl === "5m" || /^(?:anthropic[/.])?claude-/i.test(model.name);
+  const claude = entry?.cacheWriteTtl === "5m" || /^(?:anthropic[/.])?claude-/i.test(model.canonicalName);
   const claudeCacheWrite = entry?.cacheWriteTtl === "5m";
   const multiplier = serviceTier === "fast" && !useFastRates && !claude ? 2 : 1;
   const rateEntry = useFastRates

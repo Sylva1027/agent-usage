@@ -110,7 +110,11 @@ export function createPricingPolicyFixture() {
   const logDirectory = path.join(root, ".codex-usage");
   mkdirSync(logDirectory, { recursive: true });
   const rows = ["2026-07-11", "2026-07-12"].flatMap((day) =>
-    ["opencode-go/gemini-4-argon-contributor", "gemini-4-argon-contributor", "hy4free"].map((model, index) => ({
+    [
+      "opencode-go/gemini-4-argon-contributor",
+      "gemini-4-argon-contributor",
+      day === "2026-07-11" ? "workbuddy-ai/hy4free" : "hy4free",
+    ].map((model, index) => ({
       schema_version: "codex-usage.project-log.v1",
       timestamp: `${day}T02:00:00.000Z`,
       source: "test",

@@ -660,7 +660,7 @@ test("codex-auto-review is free despite stale rates, missing details, and Fast m
       unknownCost,
       "exempt stale rates cannot lower paid-model fallback costs",
     );
-    for (const model of ["codex-auto-review", " CODEX-AUTO-REVIEW "]) {
+    for (const model of ["codex-auto-review", " CODEX-AUTO-REVIEW ", "gateway/vendor/CODEX-AUTO-REVIEW"]) {
       for (const details of [{}, { detailMask: 15, cacheWriteKnown: true, cacheWriteTokens: 0, serviceTier: "fast" }]) {
         const event = { model, total: { total: 110, input: 100, cached: 20, output: 10 }, ...details };
         const estimate = estimateEventCost(event);
@@ -726,8 +726,31 @@ test("hy4free overrides stale paid rates without changing other models' minimum 
             assert.equal(estimateEventCost(event).totalUsd, unknownCosts[index].totalUsd);
           }
         });
+        runWithPricingCatalog(
+          {
+            ...stale,
+            version: `routed-policy-models-${currency}`,
+            models: {
+              ...stale.models,
+              "workbuddy-ai/hy4free": models.hy4free,
+              "vendor/codex-auto-review": models.hy4free,
+            },
+          },
+          () => {
+            for (const [index, event] of unknownEvents.entries()) {
+              assert.equal(estimateEventCost(event).totalUsd, unknownCosts[index].totalUsd);
+            }
+            for (const model of ["workbuddy-ai/hy4free", "vendor/codex-auto-review"]) {
+              const estimate = estimateEventCost({ model, total: { total: 100 }, serviceTier: "fast" });
+              assert.equal(estimate.totalUsd, 0);
+              assert.equal(estimate.unpricedTokens, 0);
+              assert.equal(estimate.minimumEstimatedTokens, 0);
+              assert.equal(estimate.cacheWriteUnknownTokens, 0);
+            }
+          },
+        );
       }
-      for (const model of ["hy4free", " HY4FREE "]) {
+      for (const model of ["hy4free", " HY4FREE ", "workbuddy-ai/hy4free", "gateway/workbuddy-ai/HY4FREE"]) {
         for (const details of [
           { total: { total: 100 } },
           { total: { total: 100 }, serviceTier: "fast", contextLevel: "unknown" },
@@ -766,6 +789,27 @@ test("hy4free overrides stale paid rates without changing other models' minimum 
     }
   } finally {
     setPricingCatalog(catalog);
+  }
+});
+
+test("routing keeps unknown-model currencies and unsupported Claude Fast policy tied to the event and canonical model", () => {
+  const details = {
+    detailMask: 15,
+    cacheWriteKnown: true,
+    cacheWriteTokens: 0,
+    contextLevel: "short",
+    serviceTier: "fast",
+    total: { total: 110, input: 100, cached: 20, output: 10 },
+  };
+  for (const channel of ["OpenCode", "DSH"]) {
+    for (const model of ["unknown-billable", "claude-future-unknown"]) {
+      const plain = estimateEventCost({ model, channel, ...details });
+      const routed = estimateEventCost({ model: `gateway/vendor/${model}`, channel, ...details });
+      assert.equal(routed.totalUsd, plain.totalUsd);
+      assert.equal(routed.currency, channel === "DSH" ? "CNY" : "USD");
+      assert.deepEqual(routed.unpricedReasons, plain.unpricedReasons);
+      assert.equal(routed.model, `gateway/vendor/${model}`, "quote diagnostics keep the original ID");
+    }
   }
 });
 
