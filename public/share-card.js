@@ -130,12 +130,13 @@ export async function renderShareCard({
     artwork = `<div class="p-ornament"><img class="p-character" alt="" src="${escapeHtml(art)}" style="height:${height}px;left:${812.2 - width * face.face.faceX}px"/></div>`;
   }
   const cost = data.cost;
-  const heading = english ? `Model Usage <span class="p-period">· ${period.en}</span>` : period.zh;
+  const heading = english ? "Model Usage" : period.zh;
+  const periodLabel = english ? `<span class="p-period">${period.en}</span>` : "";
   const fee =
     showCost && Number.isFinite(cost?.amount)
       ? `<div class="p-fee">${english ? "API estimate" : "API 估算"}<span>${cost.currency === "CNY" ? "¥" : "$"}${cost.amount.toFixed(0)}</span></div>`
       : "";
-  const html = `<div xmlns="http://www.w3.org/1999/xhtml"><style>${productionCss}${CARD_CSS}</style><article class="p-card skin-preview-scope${character ? "" : " no-character classic-hybrid"}" data-preview-theme="${theme}" style="${escapeHtml(colours)}" lang="${english ? "en" : "zh-CN"}">${artwork}<section class="p-hero p-panel v05"><div class="p-heading">${heading}</div><div class="p-hero-display"><div class="p-number"><strong>${total[0]}</strong><span>${total[1]}</span></div></div>${fee}</section><div class="p-lower"><div class="p-data"><section class="p-models p-panel"><div class="p-model-tray">${bars}</div></section>${metrics.map((id) => metricHtml(id, english, data)).join("")}</div></div></article></div>`;
+  const html = `<div xmlns="http://www.w3.org/1999/xhtml"><style>${productionCss}${CARD_CSS}</style><article class="p-card skin-preview-scope${character ? "" : " no-character classic-hybrid"}" data-preview-theme="${theme}" style="${escapeHtml(colours)}" lang="${english ? "en" : "zh-CN"}">${artwork}<section class="p-hero p-panel v05"><div class="p-heading">${heading}</div>${periodLabel}<div class="p-hero-display"><div class="p-number"><strong>${total[0]}</strong><span>${total[1]}</span></div></div>${fee}</section><div class="p-lower"><div class="p-data"><section class="p-models p-panel"><div class="p-model-tray">${bars}</div></section>${metrics.map((id) => metricHtml(id, english, data)).join("")}</div></div></article></div>`;
   const wrapper = new DOMParser().parseFromString(html, "text/html").body.firstElementChild;
   const xml = new XMLSerializer().serializeToString(wrapper);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1440"><foreignObject x="0" y="0" width="1080" height="1440">${xml}</foreignObject></svg>`;
@@ -153,7 +154,7 @@ export async function renderShareCard({
 
 const CARD_CSS = `
 *{box-sizing:border-box}
-.p-period{font-weight:450}
+.p-period{position:absolute;top:34px;right:36px;font-size:28px;line-height:34px;font-weight:400;color:var(--muted);white-space:nowrap}
 .p-card{position:relative;isolation:isolate;overflow:hidden;width:1080px;height:1440px;padding:72px;background:var(--bg);color:var(--ink);font-family:var(--ui-font-sans);font-variant-numeric:lining-nums tabular-nums;display:grid;grid-template-rows:290px 1fr;gap:36px}
 .p-ornament{position:absolute;inset:0;overflow:visible;pointer-events:none;z-index:0}.p-character{position:absolute;left:510px;top:355px;height:1180px;width:auto;max-width:none;opacity:.66}
 .p-panel{position:relative;z-index:1;border-radius:36px;background:linear-gradient(135deg,var(--ceramic-top),var(--neo-surface) 45%,var(--ceramic-bottom));box-shadow:14px 18px 36px var(--ceramic-shade),-8px -10px 28px var(--ceramic-light),inset 2px 2px 2px var(--ceramic-rim)}

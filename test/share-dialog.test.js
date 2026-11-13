@@ -33,6 +33,7 @@ async function imageReady(page) {
       theme: card.getAttribute("data-preview-theme"),
       palette: card.getAttribute("style"),
       title: card.querySelector(".p-heading").textContent,
+      period: card.querySelector(".p-period")?.textContent ?? null,
       total: card.querySelector(".p-number").textContent,
       metrics: [...card.querySelectorAll(".p-label")].map((label) => label.textContent),
       fee: card.querySelector(".p-fee")?.textContent ?? null,
@@ -59,6 +60,37 @@ const geometry = (page) =>
     const { x, y, width, height } = dialog.getBoundingClientRect();
     return { x, y, width, height };
   });
+
+async function checkOriginalHint(page, text, screenshot) {
+  const dialog = page.locator("#shareOriginalDialog");
+  const hint = page.locator("#shareOriginalHint");
+  const bounds = () =>
+    dialog.evaluate((node) =>
+      [node, node.querySelector("img")].map((element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+    );
+  await page.locator("#openShareImage").click();
+  await dialog.waitFor({ state: "visible" });
+  await dialog.locator("img").evaluate((image) => image.decode());
+  assert.ok(await hint.isVisible());
+  assert.equal(await hint.textContent(), text);
+  const initial = await bounds();
+  if (screenshot) await page.screenshot({ path: screenshot });
+  await hint.waitFor({ state: "hidden", timeout: 5000 });
+  assert.deepEqual(await bounds(), initial, "The temporary hint does not move or resize the image viewer");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  assert.ok(await page.locator("#shareDialog").isVisible(), "Escape only closes the original image viewer");
+  assert.ok(await page.locator("#openShareImage").evaluate((button) => button === document.activeElement));
+  await page.locator("#openShareImage").click();
+  await dialog.waitFor({ state: "visible" });
+  assert.ok(await hint.isVisible(), "Reopening the image shows the hint again");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  assert.ok(await hint.isHidden());
+}
 
 test("production share dialog preserves the PNG, layout, snapshot and skin across its controls", async (t) => {
   const runtime = await resolveBrowserRuntime();
@@ -140,6 +172,7 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
     assert.ok(await page.locator("#shareToggle").isEnabled());
     const image = await openShare(page);
     assert.equal(image.title, title);
+    assert.equal(image.period, null, "Chinese keeps its original combined label");
     assert.deepEqual(image.dimensions, [1080, 1440]);
     assert.equal(image.classic, true);
     assert.equal(image.artwork, null);
@@ -171,6 +204,7 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
 
   await selectPreset("week");
   const baseline = await openShare(page);
+  await checkOriginalHint(page, "按 Esc 退出");
   const bounds = await geometry(page);
   assert.equal(await page.locator(".customize-label").evaluate((label) => getComputedStyle(label).fontSize), "13px");
   assert.equal(await page.locator("#shareDialog .share-footer button").count(), 2);
@@ -253,7 +287,9 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
     ["month", "This Month"],
   ]) {
     await selectPreset(preset);
-    assert.equal((await openShare(page)).title, `Model Usage · ${period}`);
+    const image = await openShare(page);
+    assert.equal(image.title, "Model Usage");
+    assert.equal(image.period, period);
     await closeShare(page);
   }
   await selectPreset("week");
@@ -261,6 +297,7 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
   await page.locator("#shareShowCost").check();
   assert.equal((await imageReady(page)).fee, `API estimate¥${expectedCny}`);
   await page.locator("#shareDialog").screenshot({ path: fileURLToPath(new URL("classic-light-en.png", screenshots)) });
+  await checkOriginalHint(page, "Press Esc to exit", fileURLToPath(new URL("original-hint-en.png", screenshots)));
   await closeShare(page);
   const expectedUsd = await appState.evaluate((state) => {
     state.costScaleTarget = "USD";

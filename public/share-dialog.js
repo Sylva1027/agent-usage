@@ -11,6 +11,7 @@ let showCost = false;
 let sequence = 0;
 let previewUrl;
 let imageBlob;
+let originalHintTimer;
 const t = (zh, en) => (snapshot.locale === "en-US" ? en : zh);
 
 function setMenu(id, open, focus = false) {
@@ -163,8 +164,17 @@ function bind() {
   $("#openShareImage").addEventListener("click", () => {
     $("#shareOriginalDialog img").src = previewUrl;
     $("#shareOriginalDialog").showModal();
+    const hint = $("#shareOriginalHint");
+    hint.textContent = t("按 Esc 退出", "Press Esc to exit");
+    hint.hidden = false;
+    clearTimeout(originalHintTimer);
+    originalHintTimer = setTimeout(() => {
+      hint.hidden = true;
+    }, 3000);
   });
   $("#shareOriginalDialog").addEventListener("close", () => {
+    clearTimeout(originalHintTimer);
+    $("#shareOriginalHint").hidden = true;
     $("#shareOriginalDialog img").removeAttribute("src");
     $("#openShareImage").focus({ preventScroll: true });
   });

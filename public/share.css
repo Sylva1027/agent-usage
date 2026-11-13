@@ -194,6 +194,24 @@
   object-fit: contain;
   border-radius: 8px;
 }
+.original-image-hint {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--neo-surface);
+  box-shadow: 0 4px 16px var(--ceramic-shade);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  pointer-events: none;
+}
 #openShareImage img {
   display: block;
   width: 100%;
