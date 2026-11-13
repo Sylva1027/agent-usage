@@ -351,6 +351,13 @@ test("a raced cache miss binds its actual result and uncertain publications retu
 });
 
 test("SSE, API and status name the same completed publication", async (t) => {
+  const argv = [...process.execArgv];
+  t.after(() => process.execArgv.splice(0, process.execArgv.length, ...argv));
+  // Unrelated disk activity can checkpoint the Windows journal cursor between publication assertions.
+  const loader = `import {registerHooks} from 'node:module';registerHooks({load(url,ctx,next){
+    const value=next(url,ctx);return url.endsWith('/src/usage-source-proof.js')
+    ? {...value,source:value.source+'\\nUsageSourceProof.prototype.provider=async()=>null;'}:value;}});`;
+  process.execArgv.push("--import", `data:text/javascript,${encodeURIComponent(loader)}`);
   const callbacks = [];
   t.mock.method(fs, "watch", (_root, _options, callback) => {
     callbacks.push(callback);
@@ -393,7 +400,6 @@ test("SSE, API and status name the same completed publication", async (t) => {
     }
     callbacks[0]("change", "rollout.jsonl");
     const correction = await next("usage-synced");
-    // A certified journal identity can switch to a full-scan identity after an external commit.
     assert.equal(
       (await buildUsageFingerprint(input.serverOptions)).fingerprint,
       rawBeforeCorrection.fingerprint,
