@@ -42,7 +42,7 @@ Some character designs in Waifu come from [ZipZipPipe](https://space.bilibili.co
 - **Source management:** Automatically scan local logs and confirm before importing, with stages and elapsed time shown. Import other directories, refresh automatically, or pause.
 - **Language and appearance:** Switch between Chinese and English or light and dark themes. Waifu adds ten character skins with visibility and opacity controls.
 
-<img src="docs/images/share-card-deepseek-light.png" alt="Weekly model usage share card with the DeepSeek light theme and sample data" width="360" />
+<img src="docs/images/share-card-deepseek-light-en.png" alt="Weekly model usage share card with the DeepSeek light theme and sample data" width="360" />
 
 ![Skin picker with ten skins and light/dark previews](docs/images/skin-picker.png)
 
