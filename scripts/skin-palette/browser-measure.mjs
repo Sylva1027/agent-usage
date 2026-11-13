@@ -3285,6 +3285,8 @@ export function buildProbeSource(tag, ...args) {
       return buildSpotlightStabilitySource(...args);
     case "spotlight-language-guard":
       return buildSpotlightLanguageGuardSource(...args);
+    case "spotlight-metric-guard":
+      return buildSpotlightMetricGuardSource(...args);
     case "canvas-stash":
       return buildCanvasStashSource(...args);
     case "canvas-clear":
@@ -6014,8 +6016,14 @@ ${IDENTITY_SOURCE}
     totalTokens[0] === target &&
     target.parentElement === host &&
     target.tagName.toLowerCase() === "strong" &&
-    target.childElementCount === 0 &&
-    Array.from(target.childNodes).every((child) => child.nodeType === 3) &&
+    target.childElementCount <= 1 &&
+    Array.from(target.childNodes).every((child) =>
+      child.nodeType === 3 ||
+      (child.nodeType === 1 &&
+        child.matches("small.metric-unit") &&
+        Array.from(child.childNodes).every((unitChild) => unitChild.nodeType === 3) &&
+        /^[MBT]$/.test(child.textContent)),
+    ) &&
     String(target.textContent ?? "").trim() !== "";
   const metricTargetKind = leafIsMetricLabel ? "label" : leafIsMetricValue ? "value" : null;
   const targetRangeRects = leafIsMetricValue

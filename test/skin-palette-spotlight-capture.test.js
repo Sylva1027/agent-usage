@@ -4,9 +4,46 @@ import test from "node:test";
 
 import {
   buildStateReadyWaitSource,
+  resolveBrowserRuntime,
   settleStateEvidenceViewport,
   STATE_MATRIX_GROUPS,
 } from "../scripts/skin-palette/capture.mjs";
+import { buildProbeSource } from "../scripts/skin-palette/browser-measure.mjs";
+
+test("metric spotlight guard accepts token units and rejects unrelated child markup", async (t) => {
+  const runtime = await resolveBrowserRuntime();
+  if (!runtime) {
+    assert.ok(!process.env.CI, "CI requires a browser runtime");
+    return t.skip("No local browser runtime");
+  }
+  const browser = await runtime.chromium.launch({ executablePath: runtime.executablePath, headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const selector = ".metric:has(> #totalTokens) > #totalTokens";
+  for (const [value, valid] of [
+    ["123.45M", true],
+    ...["M", "B", "T"].map((unit) => [`123.45<small class="metric-unit">${unit}</small>`, true]),
+    ['123.45<span class="metric-unit">M</span>', false],
+    ["123.45<small>M</small>", false],
+    ['123.45<small class="metric-unit"><b>M</b></small>', false],
+    ['123.45<small class="metric-unit">M</small><small class="metric-unit">B</small>', false],
+  ]) {
+    await page.setContent(`<div class="metric"><span>Tokens</span><strong id="totalTokens">${value}</strong></div>`);
+    await page.evaluate(buildProbeSource("scroll-begin"));
+    const probe = await page.evaluate(buildProbeSource("node-probe", selector, null, null, true));
+    const guard = await page.evaluate(buildProbeSource("spotlight-metric-guard", probe.attemptToken));
+    assert.equal(guard.identityValid, true, value);
+    assert.equal(guard.leafIsMetricValue, valid, value);
+    if (valid) assert.deepEqual(guard.targetRangeRects, probe.nodes[0].rawTextRects);
+    if (value.includes('<small class="metric-unit">M</small>') && valid) {
+      await page.locator(".metric-unit").evaluate((unit) => unit.replaceWith(unit.cloneNode(true)));
+      const replaced = await page.evaluate(buildProbeSource("spotlight-metric-guard", probe.attemptToken));
+      assert.equal(replaced.identityValid, false, "Replacing the unit still invalidates the measurement");
+    }
+    await page.evaluate(buildProbeSource("release-attempt", probe.attemptToken));
+    await page.evaluate(buildProbeSource("scroll-restore"));
+  }
+});
 
 const HOST_SELECTOR = ".shell .metric[data-spotlight-active]:has(.metric-label:not(:empty))";
 const ACTIVE_HOST_SELECTOR = ".shell [data-spotlight-active]";
