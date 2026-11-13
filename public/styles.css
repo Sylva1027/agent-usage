@@ -2609,6 +2609,19 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
+.metric .metric-unit,
+.comparison-item .metric-unit {
+  margin-left: 0.2em;
+  color: var(--muted);
+  font-size: 0.55em;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.comparison-item .metric-unit {
+  color: inherit;
+}
+
 .metric .metric-new {
   top: 7px;
   right: 10px;

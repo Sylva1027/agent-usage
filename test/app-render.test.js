@@ -1069,9 +1069,9 @@ test("renderComparisonHtml renders trend, average trend, and previous totals", (
   assert.match(html, /较上周/);
   assert.match(html, /同比流速/);
   assert.match(html, /上周 tokens/);
-  assert.match(html, /<strong title="-25,518,704">-25\.52M<\/strong>/);
-  assert.match(html, /<strong title="\+8,581,809">\+8\.58M<\/strong>/);
-  assert.match(html, /<strong title="62,617,267">62\.62M<\/strong>/);
+  assert.match(html, /<strong title="-25,518,704">-25\.52<small class="metric-unit">M<\/small><\/strong>/);
+  assert.match(html, /<strong title="\+8,581,809">\+8\.58<small class="metric-unit">M<\/small><\/strong>/);
+  assert.match(html, /<strong title="62,617,267">62\.62<small class="metric-unit">M<\/small><\/strong>/);
   assert.doesNotMatch(html, /个会话/);
   assert.equal((html.match(/<small>/g) || []).length, 2);
 });

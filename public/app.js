@@ -271,8 +271,13 @@ function setMetric(selector, value) {
 function setTokenMetric(selector, value) {
   const element = $(selector);
   if (!element) return;
-  element.textContent = formatTokenMillions(value);
+  element.innerHTML = renderTokenMetricHtml(value);
   element.title = formatTokens(value);
+}
+
+function renderTokenMetricHtml(value) {
+  const formatted = formatTokenMillions(value);
+  return `${escapeHtml(formatted.slice(0, -1))}<small class="metric-unit">${formatted.at(-1)}</small>`;
 }
 
 function setCurrencyMetric(selector, usd, cny = null) {
@@ -1484,11 +1489,6 @@ export function timelineAxisLabels(rows, options = {}) {
   return picked.reverse().map((index) => ({ index, label: labels[index] }));
 }
 
-function formatDelta(value) {
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${formatTokenMillions(value)}`;
-}
-
 function formatExactDelta(value) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatTokens(value)}`;
@@ -1528,11 +1528,11 @@ function finiteComparisonNumber(value) {
 }
 
 function comparisonDelta(value) {
-  return value === null ? "—" : value === 0 ? "0" : formatDelta(value);
+  return value === null ? "—" : value === 0 ? "0" : `${value > 0 ? "+" : ""}${renderTokenMetricHtml(value)}`;
 }
 
 function comparisonTotal(value) {
-  return value === null ? "—" : value === 0 ? "0" : formatTokenMillions(value);
+  return value === null ? "—" : value === 0 ? "0" : renderTokenMetricHtml(value);
 }
 
 function renderUnavailableComparison(label) {

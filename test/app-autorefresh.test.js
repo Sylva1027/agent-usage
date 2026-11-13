@@ -1986,7 +1986,7 @@ if (!HARNESS_ONLY) {
           await harness.settle();
           const spinner = harness.dom.byId.get("autoRefreshSpinner");
           const total = harness.dom.byId.get("totalTokens");
-          const before = total.textContent;
+          const before = total.innerHTML;
           const rendered = [];
           const render = harness.context.render;
           harness.context.render = (...args) => {
@@ -1994,7 +1994,7 @@ if (!HARNESS_ONLY) {
             rendered.push({
               preset: harness.state.summary.range.preset,
               busy: spinner.classList.contains("is-loading"),
-              tokens: total.textContent,
+              tokens: total.innerHTML,
             });
             return result;
           };
@@ -2012,7 +2012,7 @@ if (!HARNESS_ONLY) {
           assert.equal(completed, false, "the check must await the corrected request");
           assert.equal(spinner.classList.contains("is-loading"), true);
           assert.equal(harness.counts.renders, 0, "the mismatched quota payload must not render");
-          assert.equal(total.textContent, before);
+          assert.equal(total.innerHTML, before);
 
           if (supersede === "reload") {
             harness.state.preset = "month";
@@ -2032,7 +2032,7 @@ if (!HARNESS_ONLY) {
             assert.equal(harness.counts.renders, 0, "stale success must not render");
             assert.equal(harness.counts.statusErrors, 0, "stale failure must not replace the current status");
             assert.equal(spinner.classList.contains("is-loading"), supersede === "reload");
-            assert.equal(total.textContent, before);
+            assert.equal(total.innerHTML, before);
             releaseReplacement({ payload: replacement });
             await harness.settle();
           } else if (fail) {
@@ -2040,7 +2040,7 @@ if (!HARNESS_ONLY) {
             assert.equal(harness.counts.statusErrors, 1);
             assert.match(harness.dom.byId.get("autoRefreshErrorText").value, /corrected request failed/);
             assert.equal(harness.counts.renders, 0);
-            assert.equal(total.textContent, before);
+            assert.equal(total.innerHTML, before);
           }
           assert.equal(spinner.classList.contains("is-loading"), false);
           if (supersede || !fail) {
@@ -2048,10 +2048,10 @@ if (!HARNESS_ONLY) {
               {
                 preset: supersede === "reload" ? "month" : "today",
                 busy: supersede !== "pause",
-                tokens: total.textContent,
+                tokens: total.innerHTML,
               },
             ]);
-            assert.notEqual(total.textContent, before, "the corrected tokens must be visible");
+            assert.notEqual(total.innerHTML, before, "the corrected tokens must be visible");
             assert.equal(harness.state.summary.totals.total, today.summary.totals.total);
             assert.equal(harness.counts.statusErrors, 0);
           }
