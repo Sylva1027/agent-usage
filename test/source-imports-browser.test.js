@@ -59,17 +59,20 @@ test("source dialog scans without importing and only completes after the dashboa
   await mkdir("output/import-validation", { recursive: true });
   await page.locator("#importDialog .dialog").screenshot({ path: "output/import-validation/discovery-light.png" });
 
-  let held = false;
   await page.route("**/api/usage?**", async (route) => {
     if (!new URL(route.request().url()).searchParams.has("freeze")) {
-      held = true;
       await renderGate.promise;
     }
     await route.continue();
   });
+  const usageRequested = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/usage" && !url.searchParams.has("freeze");
+  });
   await page.locator("#submitImportButton").click();
   await page.waitForFunction(() => document.querySelector("#importMessage").textContent.includes("更新看板"));
-  assert.equal(held, true);
+  // The progress label updates before Playwright receives the request.
+  await usageRequested;
   assert.equal(await page.locator("#submitImportButton").isDisabled(), true);
   assert.match(await page.locator("#importMessage").textContent(), /已用 \d+ 秒/);
   await page.locator("#cancelImportButton").click();
