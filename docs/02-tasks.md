@@ -34,7 +34,7 @@
 
 弹窗提供两个辅助指标、默认关闭的费用开关、低调 GitHub 链接和复制／保存 PNG；无社交平台或系统分享入口、右上角关闭按钮、成功提示行。图片跟随主页深浅模式，标准版使用简洁卡，waifu 隐藏人物后保留主题色。
 
-两版实际 ZIP、中英文与三周期出图、42 种配色/人物组合、数据快照、费用几何、复制/保存一致性及主页回归已完成验证。分享功能已纳入本地提交，未推送或发布 GitHub Release。现行规则以[融合计划](plans/2026-10-03-mobile-share-card-consolidated-plan.md)为准，持续回归入口为 `test/share-card-data.test.js` 与 `test/share-dialog.test.js`；历轮样板、截图、日志与候选包已按要求清理。
+两版实际 ZIP、中英文与三周期出图、42 种配色/人物组合、数据快照、费用几何、复制/保存一致性及主页回归已完成验证。分享功能纳入 v0.95 的标准版与 waifu 版发布范围。现行规则以[融合计划](plans/2026-10-03-mobile-share-card-consolidated-plan.md)为准，持续回归入口为 `test/share-card-data.test.js` 与 `test/share-dialog.test.js`；历轮样板、截图、日志与候选包已按要求清理。
 
 ## 本轮已完成与验证入口
 

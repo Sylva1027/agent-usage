@@ -19,7 +19,7 @@ Agent Usage 在本机读取 Codex、ZCode、DSH、OpenCode、Claude Code、WorkB
 
 ## 后续方向
 
-当前待实施的是[追加需求](plans/2026-11-11-post-refactor-additions-plan.md)；[分享图片](plans/2026-10-03-mobile-share-card-consolidated-plan.md)已接入标准版与 waifu 版主页。技术栈替换、性能大矩阵与 TPS 实装没有因文档整理重新启动。
+当前待实施的是[追加需求](plans/2026-11-11-post-refactor-additions-plan.md)；[分享图片](plans/2026-10-03-mobile-share-card-consolidated-plan.md)已接入标准版与 waifu 版主页。技术栈替换与性能大矩阵没有因文档整理重新启动。
 
 TPS 与旧独立 HTML 导出已经退出产品。TPS 离线研究保留在[研究盒子](archive/2026-11-01-tps-research.md)，研究代码存在不代表产品功能可用。
 

@@ -28,7 +28,7 @@
 
 ### 3.1 "四路"里有一路已在 2026-10-03 被删除
 
-§5 要求"浏览器报告的输入需要单独带性能观测及方法元数据""旧报告缺 `perfSamples` 时视为未提供性能数据，不填零"；§8 与 §10 P1.4 要求"覆盖四路"。但旧 HTML 导出器、包脚本与前端离线分支已在同日移除（`docs/02-tasks.md` 已交付段、[旧 HTML 导出与历史验证](../../03-development.md#旧-html-导出与历史验证)；`test-support/report-projection.js:6` 注释即 "without generating or loading an HTML export"）。
+§5 要求"浏览器报告的输入需要单独带性能观测及方法元数据""旧报告缺 `perfSamples` 时视为未提供性能数据，不填零"；§8 与 §10 P1.4 要求"覆盖四路"。但旧 HTML 导出器、包脚本与前端离线分支已在同日移除（`docs/02-tasks.md` 已交付段、`docs/validation/2026-10-03-export-removal/README.md`；`test-support/report-projection.js:6` 注释即 "without generating or loading an HTML export"）。
 
 现存四个汇总实现的实际状态：
 
