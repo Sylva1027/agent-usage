@@ -163,16 +163,16 @@ test("production share dialog preserves the PNG, layout, snapshot and skin acros
     });
   };
 
-  for (const [preset, title] of [
-    ["today", "今日模型用量"],
-    ["week", "本周模型用量"],
-    ["month", "本月模型用量"],
+  for (const [preset, period] of [
+    ["today", "今日"],
+    ["week", "本周"],
+    ["month", "本月"],
   ]) {
     await selectPreset(preset);
     assert.ok(await page.locator("#shareToggle").isEnabled());
     const image = await openShare(page);
-    assert.equal(image.title, title);
-    assert.equal(image.period, null, "Chinese keeps its original combined label");
+    assert.equal(image.title, "模型用量");
+    assert.equal(image.period, period);
     assert.deepEqual(image.dimensions, [1080, 1440]);
     assert.equal(image.classic, true);
     assert.equal(image.artwork, null);

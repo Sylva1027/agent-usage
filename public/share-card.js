@@ -12,9 +12,9 @@ export const SHARE_METRICS = Object.freeze([
 ]);
 
 const PERIOD_LABELS = {
-  today: { zh: "今日模型用量", en: "Today" },
-  week: { zh: "本周模型用量", en: "This Week" },
-  month: { zh: "本月模型用量", en: "This Month" },
+  today: { zh: "今日", en: "Today" },
+  week: { zh: "本周", en: "This Week" },
+  month: { zh: "本月", en: "This Month" },
 };
 const resources = new Map();
 const stylesUrl = new URL("./styles.css", import.meta.url).href;
@@ -130,8 +130,8 @@ export async function renderShareCard({
     artwork = `<div class="p-ornament"><img class="p-character" alt="" src="${escapeHtml(art)}" style="height:${height}px;left:${812.2 - width * face.face.faceX}px"/></div>`;
   }
   const cost = data.cost;
-  const heading = english ? "Model Usage" : period.zh;
-  const periodLabel = english ? `<span class="p-period">${period.en}</span>` : "";
+  const heading = english ? "Model Usage" : "模型用量";
+  const periodLabel = `<span class="p-period">${english ? period.en : period.zh}</span>`;
   const fee =
     showCost && Number.isFinite(cost?.amount)
       ? `<div class="p-fee">${english ? "API estimate" : "API 估算"}<span>${cost.currency === "CNY" ? "¥" : "$"}${cost.amount.toFixed(0)}</span></div>`
