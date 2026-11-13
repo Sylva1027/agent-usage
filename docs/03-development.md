@@ -81,7 +81,7 @@ Git 保留运行所需的 WebP，作者 PNG 仅在本地保存。源码 ZIP 另�
 
 ### 旧 HTML 导出与历史验证
 
-独立 HTML 导出已退出，在线冻结、CLI `summary --json` 和导入继续保留；[分享图片](plans/2026-10-03-mobile-share-card-consolidated-plan.md)未实施。旧脚本依赖旧模块时，在对应版本或外部归档中复现。
+独立 HTML 导出已退出，在线冻结、CLI `summary --json` 和导入继续保留；[分享图片](plans/2026-10-03-mobile-share-card-consolidated-plan.md)已接入两种发行版，正式测试与当前规范见该计划。旧脚本依赖旧模块时，在对应版本或外部归档中复现。
 
 ### 日常维护
 
