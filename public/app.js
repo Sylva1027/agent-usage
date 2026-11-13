@@ -2252,6 +2252,50 @@ function currentSummary() {
   return state.summary;
 }
 
+let shareSummary = null;
+let openingShare = false;
+
+function updateShareAvailability() {
+  const button = $("#shareToggle");
+  if (button)
+    button.disabled =
+      !shareSummary ||
+      shareSummary !== state.summary ||
+      !["today", "week", "month"].includes(state.preset) ||
+      shareSummary.range?.preset !== state.preset;
+}
+
+async function openShareImageDialog() {
+  if (openingShare || $("#shareToggle").disabled) return;
+  openingShare = true;
+  try {
+    const { openShareDialog } = await import("./share-dialog.js");
+    const skins = state.skinRuntime ? await import("./skins.js") : null;
+    updateShareAvailability();
+    if ($("#shareToggle").disabled) return;
+    const preference = state.skinRuntime?.getPreference();
+    const theme = state.theme;
+    const characterUrl = preference?.showCharacters && skins?.skinAssetUrl(preference.skinId, theme, "front");
+    openShareDialog({
+      summary: shareSummary,
+      preset: state.preset,
+      currency: state.costScaleTarget,
+      usdToCnyRate: state.usdToCnyRate,
+      periodComparison: state.periodComparison,
+      locale: getLocale(),
+      theme,
+      palette: skins?.paletteDeclarations(preference.skinId, theme) || [],
+      character: characterUrl
+        ? { url: characterUrl, displayParams: skins.skinDisplayParams(preference.skinId, theme, "front") }
+        : null,
+    });
+  } catch (error) {
+    setAutoRefreshStatus(`加载失败：${error.message}`, { error: true });
+  } finally {
+    openingShare = false;
+  }
+}
+
 function currentMetadata() {
   return state.metadata;
 }
@@ -2333,6 +2377,7 @@ function renderEmptySummaryState() {
 }
 
 function render() {
+  updateShareAvailability();
   const summary = currentSummary();
   const metadata = currentMetadata();
   if (!summary || !metadata) {
@@ -3862,6 +3907,8 @@ function finishUsageLoad(loadId) {
 }
 
 async function loadUsage({ skipCheck = false, freeze = false, live = false, requiredSourceVersion = null } = {}) {
+  shareSummary = null;
+  updateShareAvailability();
   cancelUsageRetry?.();
   const loadId = ++state.usageLoadId;
   activeUsageLoadId = loadId;
@@ -3911,6 +3958,7 @@ async function loadUsage({ skipCheck = false, freeze = false, live = false, requ
     if (loadId !== state.usageLoadId) return;
     state.metadata = data.metadata;
     state.summary = data.summary;
+    shareSummary = data.summary;
     state.emptySummaryMessage = null;
     state.emptySummaryRange = null;
     state.quotaSnapshot = data.summary?.quota || data.quota || null;
@@ -3954,6 +4002,8 @@ async function loadUsage({ skipCheck = false, freeze = false, live = false, requ
       return;
     }
     if (loadId === state.usageLoadId) {
+      shareSummary = null;
+      updateShareAvailability();
       appliedUsageVersion = null;
       appliedUsageScope = null;
       if (isQuotaPreset(state.preset) && [409, 413].includes(error.status)) {
@@ -4395,6 +4445,8 @@ async function bootDashboard() {
   $("#languageToggle").addEventListener("click", () => {
     setLanguage(getLocale() === "en-US" ? "zh-CN" : "en-US");
   });
+
+  $("#shareToggle").addEventListener("click", () => void openShareImageDialog());
 
   $("#quotaPresetToggle").addEventListener("click", toggleQuotaPreset);
   $("#dateRangeButton").addEventListener("click", () => setDatePickerOpen(!state.datePickerField));

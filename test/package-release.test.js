@@ -17,8 +17,13 @@ test("standard HTML removes all five marked islands and preserves the shared pag
   const standard = standardHtml(html);
   assert.match(standard, /<html[^>]*data-edition="standard"/);
   assert.match(standard, /href="\/styles.css"/);
+  assert.match(standard, /href="\/share.css"/);
   assert.match(standard, /src="\/app.js"/);
   assert.match(standard, /id="themeToggle"/);
+  assert.match(standard, /id="shareToggle"/);
+  assert.match(standard, /id="shareDialog"/);
+  assert.match(standard, /id="copyShareImage"/);
+  assert.match(standard, /id="saveShareImage"/);
   assert.match(standard, /id="importDialog"/);
   assert.doesNotMatch(standard, /waifu:|skinToggle|skinDialog|skinCharacters|skin-bootstrap|skins.css/);
   assert.throws(() => standardHtml(html.replace("<!-- waifu:end -->", "")), /five waifu block endings/);
@@ -46,6 +51,9 @@ test("release allowlist retains runtime/helper inputs and excludes development a
   assert.equal(files.filter((file) => file.endsWith(".webp")).length, 40);
   assert.doesNotMatch(files.join("\n"), /target\/|node_modules\/|\.git|\.png$|^test|^docs|^scripts|^output/m);
   const standard = files.filter((file) => !isWaifuFile(file));
+  for (const name of ["share-card.js", "share-card-data.js", "share-dialog.js", "share.css"]) {
+    assert.ok(standard.includes(`public/${name}`), `Shared release file missing: ${name}`);
+  }
   assert.doesNotMatch(standard.join("\n"), /public\/(?:skin|assets\/skins)/);
   assert.ok(files.includes("public/skin-palette-studio.js"));
 });

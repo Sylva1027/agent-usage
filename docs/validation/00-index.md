@@ -1,9 +1,18 @@
 # 验证记录索引
 
-更新：2026-11-11。结果绑定其日期、源码版本、输入与环境；历史失败和跳过不由后来的局部通过覆盖。截图、JSON、日志、源码哈希与测试夹具保持原路径。当前任务见[02](../02-tasks.md)，实验结论见[归档](../archive/2026-11-11-experiments/README.md)。
+更新：2026-11-13。结果绑定其日期、源码版本、输入与环境；历史失败和跳过不由后来的局部通过覆盖。截图、JSON、日志、源码哈希与测试夹具保持原路径。当前任务见[02](../02-tasks.md)，实验结论见[归档](../archive/2026-11-11-experiments/README.md)。
 
 ## 最近完成
 
+- [分享图片正式接入：标准／waifu 双包与 42 种组合](2026-11-13-share-production/README.md)
+
+- [分享卡：A＋B 简洁组合与中英文长模型名截断](2026-11-13-share-card-hybrid/README.md)
+- [分享卡：辅助单位层级、三种简洁布局与人物稿同步](2026-11-13-share-card-classic/README.md)
+- [分享卡选定组合：十一张全皮肤预览与随机英文版](2026-11-13-share-card-selected/README.md)
+- [六种分享卡内部材质方案与主页设计语法](2026-11-13-share-card-materials/README.md)
+- [分享卡第三轮：人物出血与四模型用量](2026-11-13-share-card-bleed/README.md)
+- [分享卡第二轮：同宽数据列、扩大人物与信息精简](2026-11-13-share-card-refinement/README.md)
+- [六张分享卡视觉样板与现行数据/配色复核](2026-11-13-share-card-samples/README.md)
 - [工作区清理与文档整理](2026-11-11-workspace-cleanup.md)
 - [精简、测试修复、格式与 lint 清理](2026-11-11-simplification.md)
 - [Windows 实际启用](2026-11-11-activation/README.md)

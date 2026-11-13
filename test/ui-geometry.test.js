@@ -250,7 +250,7 @@ function assertMainGeometry(g) {
   }
   near(s.topbar.height, 72, "topbar height");
   near(s.toolbar.height, 107, "toolbar height");
-  assert.deepEqual(g.actionOrder, ["languageToggle", "skinToggle", "themeToggle"]);
+  assert.deepEqual(g.actionOrder, ["languageToggle", "skinToggle", "themeToggle", "shareToggle"]);
   assert.equal(g.archivePanels, 0, "maintenance archive panel is absent from dashboard");
   for (const [before, after] of [
     ["topbar", "toolbar"],

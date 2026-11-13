@@ -38,6 +38,7 @@ Some character designs in Waifu come from [ZipZipPipe](https://space.bilibili.co
 - **Codex limits:** See usage in the current and previous five-hour and weekly allowance windows.
 - **Usage details:** Inspect input, output, and cache hits; search and sort by model, source, or repository.
 - **Period comparisons:** Compare with the preceding period to spot changes and new records.
+- **Share images:** Select today, this week, or this month, then use the rightmost header button to create a 3:4 card. Choose two extra metrics, optionally show cost, and copy or save the PNG. Available in both Standard and Waifu, following the current theme.
 - **Source management:** Automatically scan local logs and confirm before importing, with stages and elapsed time shown. Import other directories, refresh automatically, or pause.
 - **Language and appearance:** Switch between Chinese and English or light and dark themes. Waifu adds ten character skins with visibility and opacity controls.
 

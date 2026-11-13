@@ -60,6 +60,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
   const page = await context.newPage();
   const errors = [];
   const skinRequests = [];
+  const shareImages = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(`${message.text()} ${message.location().url}`);
@@ -114,6 +115,42 @@ async function checkPage(browser, url, edition, locale, viewport) {
       preference,
     );
   }
+  async function shareImage(preset, theme) {
+    await page.locator(`[data-preset="${preset}"]`).click();
+    await page.evaluate(async () => await (await import("/app.js")).activeUsageLoadDone);
+    const toggle = page.locator("#shareToggle");
+    await toggle.click();
+    const dialog = page.locator("#shareDialog");
+    await dialog.waitFor({ state: "visible" });
+    const save = dialog.locator("#saveShareImage");
+    await page.waitForFunction((button) => !button.disabled, await save.elementHandle());
+    const preview = dialog.locator("#shareImage");
+    await preview.evaluate(async (image) => await image.decode());
+    const imageData = await preview.evaluate(async (image) => ({
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      sha256: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await fetch(image.src).then((response) => response.arrayBuffer()))))
+        .map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+    }));
+    assert.equal(imageData.width, 1080);
+    assert.equal(imageData.height, 1440);
+    assert.equal(await dialog.locator(".dialog-actions button").count(), 2, "Share actions must remain copy/save only");
+    const downloadStarted = page.waitForEvent("download");
+    await save.click();
+    const download = await downloadStarted;
+    const filename = download.suggestedFilename();
+    assert.match(filename, /^usage_\d{8}(?:-\d{8})?\.png$/);
+    const bytes = await readFile(await download.path());
+    assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(bytes.readUInt32BE(16), 1080);
+    assert.equal(bytes.readUInt32BE(20), 1440);
+    assert.equal(sha256(bytes), imageData.sha256, "Saved image differs from preview");
+    shareImages.push({ preset, theme, filename, bytes: bytes.length, ...imageData });
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    assert.ok(await toggle.evaluate((button) => button === document.activeElement), "Share close must restore focus");
+    await appearance(theme);
+  }
   try {
     await page.goto(url, { waitUntil: "networkidle" });
     await page.locator('[data-preset="all"]').click();
@@ -127,6 +164,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
     assert.ok(await page.locator("#importDialog").evaluate((dialog) => dialog.contains(document.activeElement)));
     await page.keyboard.press("Escape");
     await page.locator("#importDialog").waitFor({ state: "hidden" });
+    await shareImage("week", "light");
     for (const theme of ["dark", "light"]) {
       await page.locator("#themeToggle").click();
       await page.waitForFunction(
@@ -137,6 +175,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
         theme,
       );
       await appearance(theme);
+      await shareImage(theme === "dark" ? "month" : "today", theme);
     }
     if (edition === "waifu") {
       await page.locator("#skinToggle").click();
@@ -158,7 +197,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
     assert.equal(await page.locator("html").getAttribute("lang"), switchedLocale);
     await appearance("light");
     assert.deepEqual(errors, [], `Unexpected browser errors: ${JSON.stringify(errors)}`);
-    return { locale, viewport, skinRequests: skinRequests.length, errors: errors.length };
+    return { locale, viewport, skinRequests: skinRequests.length, errors: errors.length, shareImages };
   } finally {
     await context.close();
   }
@@ -200,6 +239,13 @@ try {
       const styles = await fetch(`${url}styles.css`);
       assert.equal(styles.status, 200);
       assert.equal(sha256(Buffer.from(await styles.arrayBuffer())), manifest.core["public/styles.css"]);
+      assert.match(html, /id="shareToggle"/);
+      assert.match(html, /id="shareDialog"/);
+      for (const name of ["share-card.js", "share-card-data.js", "share-dialog.js", "share.css"]) {
+        const resource = await fetch(`${url}${name}`);
+        assert.equal(resource.status, 200, `${edition} share resource missing: ${name}`);
+        assert.equal(sha256(Buffer.from(await resource.arrayBuffer())), manifest.core[`public/${name}`]);
+      }
       const studio = await fetch(`${url}skin-palette-studio.html`);
       assert.equal(studio.status, edition === "waifu" ? 200 : 404);
       report.editions[edition] = {
