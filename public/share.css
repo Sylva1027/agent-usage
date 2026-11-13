@@ -4,6 +4,10 @@
   stroke-width: 2.04;
   stroke: var(--toggle-muted);
 }
+.share-toggle .share-arrow-head {
+  stroke: var(--toggle-selected);
+  filter: var(--button-icon-glow);
+}
 .share-dialog {
   width: min(620px, calc(100vw - 40px));
   max-height: calc(100dvh - 40px);
@@ -195,10 +199,6 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-.share-toggle[aria-expanded="true"] svg {
-  stroke: var(--toggle-selected);
-  filter: var(--button-icon-glow);
 }
 body:has(dialog[open]),
 body:has(#skinDialog:not([hidden])) {
