@@ -6,7 +6,7 @@ A local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy. T
 
 Current release: [0.95](https://github.com/Sylva1027/agent-usage/releases/tag/0.95).
 
-![DeepSeek light dashboard with sample data](docs/images/dashboard-deepseek-light.png)
+![DeepSeek light dashboard with sample data](docs/images/dashboard-deepseek-light-en.png)
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ Some character designs in Waifu come from [ZipZipPipe](https://space.bilibili.co
 
 <img src="docs/images/share-card-deepseek-light-en.png" alt="Weekly model usage share card with the DeepSeek light theme and sample data" width="360" />
 
-![Skin picker with ten skins and light/dark previews](docs/images/skin-picker.png)
+![Skin picker with ten skins and light/dark previews](docs/images/skin-picker-en.png)
 
 ## Cost Estimates
 
