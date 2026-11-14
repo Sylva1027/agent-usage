@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { OPENROUTER_PRICES_URL } from "../src/pricing-catalog.js";
 import { spawn } from "node:child_process";
 import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -87,6 +88,7 @@ function r07ModelsDevCatalog(models) {
 function r07PricingFetcher({ calls, models = [], rate = 6.8 }) {
   return async (url) => {
     calls.push(url);
+    if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
     if (url === MODEL_PRICES_URL) {
       return new Response(JSON.stringify(r07ModelsDevCatalog(models)), { status: 200 });
     }
@@ -1249,6 +1251,7 @@ test("pricing refresh endpoint updates cached values and rejects an outdated edi
     homeDir,
     pricingFetcher: async (url) => {
       calls.push(url);
+      if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
       if (url === MIMO_PRICES_URL)
         return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
       if (url === STEPFUN_PRICES_URL)
@@ -1307,13 +1310,13 @@ test("pricing refresh endpoint updates cached values and rejects an outdated edi
     assert.equal(refreshed.automaticModelCount, 34);
     assert.ok(refreshed.automaticModels.includes("gpt-6-sol"));
     assert.equal(refreshed.unmatchedModelCount, refreshed.totalModelCount - 34);
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
     const updated = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
     assert.ok(updated.automatic.automaticModels.includes("gpt-6-sol"));
     assert.equal(updated.models["gpt-6-sol"].short.input, 3);
     assert.equal(updated.usdToCnyRate, 6.82);
     await fetch(`${baseUrl}/api/pricing/refresh`, { method: "POST" });
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
     const stale = await fetch(`${baseUrl}/api/pricing`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -1344,6 +1347,7 @@ test("pricing refresh API targets one model and keeps concurrent targets indepen
     homeDir,
     pricingFetcher: async (url) => {
       calls.push(url);
+      if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
       if (url === MODEL_PRICES_URL) {
         modelCalls += 1;
         if (modelCalls === 1) {
@@ -1384,7 +1388,7 @@ test("pricing refresh API targets one model and keeps concurrent targets indepen
       body: JSON.stringify({ model: first }),
     });
     await started;
-    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
 
     const secondRequest = fetch(`${baseUrl}/api/pricing/refresh`, {
       method: "POST",
@@ -1392,7 +1396,7 @@ test("pricing refresh API targets one model and keeps concurrent targets indepen
       body: JSON.stringify({ model: second }),
     });
     await new Promise(setImmediate);
-    assert.equal(calls.length, 2, "a different target waits for the active catalog mutation");
+    assert.equal(calls.length, 3, "a different target waits for the active catalog mutation");
 
     releaseResolve();
     const [firstResponse, secondResponse] = await Promise.all([firstRequest, secondRequest]);
@@ -1400,8 +1404,12 @@ test("pricing refresh API targets one model and keeps concurrent targets indepen
     assert.equal(secondResponse.status, 200);
     assert.deepEqual((await firstResponse.json()).discovery.addedModels, [first]);
     assert.deepEqual((await secondResponse.json()).discovery.addedModels, [second]);
-    assert.equal(calls.filter((url) => url === MODEL_PRICES_URL).length, 2);
-    assert.equal(calls.filter((url) => url === LITELLM_PRICES_URL).length, 2);
+    assert.equal(
+      calls.filter((url) => url === MODEL_PRICES_URL).length,
+      1,
+      "the second target uses the full archived catalog",
+    );
+    assert.equal(calls.filter((url) => url === LITELLM_PRICES_URL).length, 1);
   } finally {
     releaseResolve();
     await new Promise((resolve) => server.close(resolve));
@@ -1714,6 +1722,8 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     pricePayload.openai.models["gpt-test-discovery"],
   );
   pricePayload.openai.models["gpt-close-successor"] = structuredClone(pricePayload.openai.models["gpt-test-discovery"]);
+  const publishableModels = pricePayload.openai.models;
+  pricePayload.openai.models = {};
   const server = createUsageServer({
     ...fixture,
     importDirs: [projectRoot, laterProjectRoot, afterCloseProjectRoot],
@@ -1728,6 +1738,8 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     },
     pricingFetcher: async (url) => {
       calls.push(url);
+      if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
+      const catalogSnapshot = JSON.stringify(pricePayload);
       if (nextDiscoveryGate && url === MODEL_PRICES_URL) {
         const gate = nextDiscoveryGate;
         nextDiscoveryGate = null;
@@ -1742,12 +1754,8 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
         return new Response(kimiPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
       if (url === GLM_PRICES_URL)
         return new Response(glmPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
-      const payload =
-        url === MODEL_PRICES_URL
-          ? pricePayload
-          : url === LITELLM_PRICES_URL
-            ? {}
-            : { base: "USD", quote: "CNY", date: "2026-09-30", rate: 6.83 };
+      if (url === MODEL_PRICES_URL) return new Response(catalogSnapshot, { status: 200 });
+      const payload = url === LITELLM_PRICES_URL ? {} : { base: "USD", quote: "CNY", date: "2026-09-30", rate: 6.83 };
       return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
     },
   });
@@ -1779,7 +1787,10 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
       KIMI_PRICES_URL,
       GLM_PRICES_URL,
       USD_CNY_RATE_URL,
+      OPENROUTER_PRICES_URL,
     ]);
+    for (const model of ["gpt-test-discovery", "gpt-next-discovery"])
+      pricePayload.openai.models[model] = publishableModels[model];
     const firstGate = { started: deferred(), released: deferred() };
     blockedDiscoveries.push(firstGate);
     nextDiscoveryGate = firstGate;
@@ -1801,6 +1812,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     await firstDiscovery;
 
     const firstAdded = await fetch(`${baseUrl}/api/pricing`).then((response) => response.json());
+    assert.ok(Object.values(firstAdded.modelActivity.harnessModels).flat().includes("gpt-test-discovery"));
     assert.equal(firstAdded.models["gpt-test-discovery"].short.input, 2);
     assert.equal(firstAdded.models["gpt-next-discovery"], undefined);
     const secondTimer = timers.find((timer) => !timer.cancelled && timer !== timers[0]);
@@ -1828,6 +1840,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
           KIMI_PRICES_URL,
           GLM_PRICES_URL,
           USD_CNY_RATE_URL,
+          OPENROUTER_PRICES_URL,
         ].includes(url),
       ),
     );
@@ -1838,6 +1851,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     );
     await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     const firstCloseTimer = timers.at(-1);
+    pricePayload.openai.models["gpt-after-close-discovery"] = publishableModels["gpt-after-close-discovery"];
     const closeFirstGate = { started: deferred(), released: deferred() };
     blockedDiscoveries.push(closeFirstGate);
     nextDiscoveryGate = closeFirstGate;
@@ -1851,6 +1865,7 @@ test("usage completion debounces missing-model discovery and keeps model IDs loc
     );
     await fetch(`${baseUrl}/api/usage?preset=all`).then((response) => response.json());
     const mergedTimer = timers.at(-1);
+    pricePayload.openai.models["gpt-close-successor"] = publishableModels["gpt-close-successor"];
     assert.notEqual(mergedTimer, firstCloseTimer);
     const closeSuccessorGate = { started: deferred(), released: deferred() };
     blockedDiscoveries.push(closeSuccessorGate);

@@ -1,3 +1,4 @@
+import { OPENROUTER_PRICES_URL } from "../src/pricing-catalog.js";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -80,6 +81,7 @@ function mimoPricingPage() {
 function stubFetch(prices, rate, calls) {
   return async (url) => {
     calls.push(url);
+    if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
     if (url === MIMO_PRICES_URL)
       return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
     if (url === STEPFUN_PRICES_URL)
@@ -390,6 +392,7 @@ test("new OpenAI discovery rejects uncertain, incomplete, conflicting, and non-t
 function discoveryFetch(modelsDevPayload, liteLLMPayload = {}, calls = [], rate = 6.83) {
   return async (url) => {
     calls.push(url);
+    if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
     if (url === MIMO_PRICES_URL)
       return new Response(mimoPricingPage(), { status: 200, headers: { "content-type": "text/html" } });
     if (url === STEPFUN_PRICES_URL)
@@ -607,7 +610,7 @@ test("discovery accepts one complete source, respects cooldown, and force bypass
     });
     assert.equal(
       calls.length,
-      requestCount + 2,
+      requestCount + 3,
       "discovery fetches only the two catalog sources without forcing maintenance or FX",
     );
     assert.deepEqual(cooldown.discovery.results, [
@@ -621,7 +624,7 @@ test("discovery accepts one complete source, respects cooldown, and force bypass
       usedModels: ["gpt-test-pending"],
       pricingFetcher: discoveryFetch(discoveryModelsDev({ model: "gpt-test-pending", tiers: false }), {}, calls),
     });
-    assert.equal(calls.length, requestCount + 2);
+    assert.equal(calls.length, requestCount + 3);
     assert.deepEqual(repeated.discovery.results, [
       { model: "gpt-test-pending", status: "deferred", reason: "context-policy-unknown" },
     ]);
@@ -644,6 +647,7 @@ test("discovery accepts one complete source, respects cooldown, and force bypass
       KIMI_PRICES_URL,
       GLM_PRICES_URL,
       USD_CNY_RATE_URL,
+      OPENROUTER_PRICES_URL,
     ]);
   } finally {
     resetPricingCatalog();
@@ -742,6 +746,7 @@ test("automatic updates are cached and leave edited rates and exchange rate inta
       KIMI_PRICES_URL,
       GLM_PRICES_URL,
       USD_CNY_RATE_URL,
+      OPENROUTER_PRICES_URL,
     ]);
     assert.equal(getPricingCatalog().models["gpt-6-sol"].short.input, 3);
     assert.equal(getPricingCatalog().models["gpt-6-sol"].fast.short.input, 4);
@@ -751,7 +756,7 @@ test("automatic updates are cached and leave edited rates and exchange rate inta
     assert.equal(first.modelMetadata["glm-5.1"].long.sourceUrl, GLM_PRICES_URL);
     assert.equal(getPricingCatalog().usdToCnyRate, 6.8);
     await refreshAutomaticPricing({ homeDir, now: new Date("2026-09-28T09:00:00Z"), pricingFetcher: fetcher });
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
 
     const edited = getPricingCatalog();
     edited.checkedAt = "2026-09-28";
@@ -849,6 +854,7 @@ test("price-source timeout keeps successful matches and retries the partial upda
   const calls = [];
   const fetcher = async (url) => {
     calls.push(url);
+    if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
     if (url === LITELLM_PRICES_URL) {
       const error = new Error("Timed out after 30s.");
       error.code = "PRICING_TIMEOUT";
@@ -878,9 +884,9 @@ test("price-source timeout keeps successful matches and retries the partial upda
     assert.match(result.errors[0], /LiteLLM.*Timed out/);
     assert.ok(result.automaticModels.includes("gpt-6-sol"));
     await refreshAutomaticPricing({ homeDir, now: new Date("2026-09-28T08:30:00Z"), pricingFetcher: fetcher });
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
     await refreshAutomaticPricing({ homeDir, now: new Date("2026-09-28T09:01:00Z"), pricingFetcher: fetcher });
-    assert.equal(calls.length, 13);
+    assert.equal(calls.length, 15);
   } finally {
     resetPricingCatalog();
     await rm(homeDir, { recursive: true, force: true });
@@ -940,12 +946,12 @@ test("failed online updates retain local prices and retry after an hour", async 
       pricingFetcher: failingFetch,
     });
     assert.equal(result.changed, false);
-    assert.equal(result.errors.length, 7);
+    assert.equal(result.errors.length, 8);
     assert.equal(getPricingCatalog().usdToCnyRate, initial.usdToCnyRate);
     await refreshAutomaticPricing({ homeDir, now: new Date("2026-09-28T08:30:00Z"), pricingFetcher: failingFetch });
-    assert.equal(calls, 7);
+    assert.equal(calls, 8);
     await refreshAutomaticPricing({ homeDir, now: new Date("2026-09-28T09:01:00Z"), pricingFetcher: failingFetch });
-    assert.equal(calls, 14);
+    assert.equal(calls, 16);
   } finally {
     resetPricingCatalog();
     await rm(homeDir, { recursive: true, force: true });
@@ -997,13 +1003,13 @@ test("a failed refresh retries after an hour even when an older cache exists", a
       now: new Date("2026-09-29T08:30:00Z"),
       pricingFetcher: failingFetch,
     });
-    assert.equal(calls, 7);
+    assert.equal(calls, 8);
     await refreshAutomaticPricing({
       homeDir,
       now: new Date("2026-09-29T09:02:00Z"),
       pricingFetcher: failingFetch,
     });
-    assert.equal(calls, 14);
+    assert.equal(calls, 16);
     assert.equal(getPricingCatalog().usdToCnyRate, 6.8);
   } finally {
     resetPricingCatalog();

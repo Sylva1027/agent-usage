@@ -38,7 +38,8 @@ export const state = {
   usdToCnyRate: 6.72,
   costScaleTarget: "USD",
   pricingSearch: "",
-  pricingScope: "used",
+  pricingProvider: null,
+  pricingSeenModels: new Set(),
   restoreAutomaticExchangeRate: false,
   modelPricingDraft: null,
 };

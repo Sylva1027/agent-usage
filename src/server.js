@@ -1063,6 +1063,7 @@ export function createUsageServer(options = {}) {
             usageCoverage: usagePricingCoverage(metadata, catalog),
             modelActivity: metadata
               ? {
+                  harnessModels: metadata.harnessModels,
                   activeHarnessModels: metadata.activeHarnessModels,
                   modelLastSeen: metadata.modelLastSeen,
                   modelUsageAsOf: metadata.modelUsageAsOf,

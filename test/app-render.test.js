@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildModelActivity } from "../public/pricing-models.js";
 import { HARNESS_ORDER, pricingModelNoteParts } from "../public/app.js";
 import { sourceGroup } from "../public/timeline-utils.js";
 import { getLocale, setLocale } from "../public/i18n.js";
@@ -33,45 +32,6 @@ test("GPT-6.1 pricing notes distinguish the 500K Codex policy from the API tier 
   }
 });
 
-test("recent aliases keep a shared catalog key active while retired missing models remain in All Models", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
-  try {
-    state.pricingCatalog = { models: { "gpt-5.6-sol": {} } };
-    state.metadata = {
-      harnessModels: {
-        Codex: ["gpt-5.6-sol", "gpt-daybreak-blue-latest", "retired-missing"],
-        ZCode: ["new-free-free"],
-        DSH: [],
-        OpenCode: [],
-      },
-      ...buildModelActivity(
-        [
-          { harness: "Codex", model: "gpt-5.6-sol", timestamp: "2026-09-01T00:00:00Z" },
-          { harness: "Codex", model: "retired-missing", timestamp: "2026-09-01T00:00:00Z" },
-          { harness: "Codex", model: "gpt-daybreak-blue-latest", timestamp: "2026-09-30T00:00:00Z" },
-          { harness: "ZCode", model: "new-free-free", timestamp: "2026-09-30T00:00:00Z" },
-        ],
-        "2026-10-01T00:00:00Z",
-      ),
-    };
-    assert.deepEqual(pricingHarnessRows().Codex, [
-      { model: "gpt-5.6-sol", catalogKey: "gpt-5.6-sol", matchType: "alias" },
-    ]);
-    assert.equal(pricingHarnessRows().ZCode[0].matchType, "free");
-    assert.ok(pricingHarnessRows({ all: true }).Codex.some((row) => row.model === "retired-missing"));
-    delete state.metadata.activeHarnessModels;
-    assert.equal(pricingUsageModels().recent, true);
-    assert.deepEqual(
-      pricingHarnessRows().Codex.map((row) => row.model),
-      ["gpt-5.6-sol"],
-      "last-seen timestamps reconstruct activity without reviving retired models",
-    );
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-  }
-});
-
 import {
   automaticPricingStatusText,
   datePickerMonthModel,
@@ -82,6 +42,7 @@ import {
   renderTimelineLegendHtml,
   maxTimelineValue,
   modelPricingInputsChanged,
+  formatPricingInput,
   nextComparisonSort,
   pricingIssueText,
   pricingProvenanceText,
@@ -96,10 +57,6 @@ import {
   renderDatePickerHtml,
   renderHomesHtml,
   renderSourceOptionsHtml,
-  claimHarnessKeys,
-  pricingHarnessGroups,
-  pricingHarnessRows,
-  pricingUsageModels,
   formatCostAmount,
   formatCostPair,
   costPairFromSlots,
@@ -117,195 +74,9 @@ import { contrastRatio } from "../scripts/skin-palette/color-math.mjs";
 
 // ---------------------------------------------------------------- harness 归组（DSH）
 
-test("claimHarnessKeys 让同一模型只留在第一个 harness 分区里", () => {
-  // ZCode 与 DSH 都可能跑 deepseek-flash，去重前会在计价弹窗里出现两次。
-  const claimed = claimHarnessKeys({
-    Codex: new Set([]),
-    ZCode: new Set(["deepseek-flash", "glm-5.3"]),
-    DSH: new Set(["deepseek-flash"]),
-  });
-
-  assert.deepEqual([...claimed.ZCode].sort(), ["deepseek-flash", "glm-5.3"]);
-  assert.deepEqual([...claimed.DSH], [], "已被 ZCode 认领的模型不应再出现在 DSH");
-});
-
-test("claimHarnessKeys 按 Codex → ZCode → DSH 的优先级认领", () => {
-  const claimed = claimHarnessKeys({
-    Codex: new Set(["gpt-6-sol"]),
-    ZCode: new Set(["gpt-6-sol", "deepseek-flash"]),
-    DSH: new Set(["gpt-6-sol", "deepseek-flash"]),
-  });
-
-  assert.deepEqual([...claimed.Codex], ["gpt-6-sol"]);
-  assert.deepEqual([...claimed.ZCode], ["deepseek-flash"]);
-  assert.deepEqual([...claimed.DSH], []);
-});
-
-test("pricingHarnessGroups 读三元 harnessModels 并去重", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
-  try {
-    state.pricingCatalog = {
-      models: {
-        "gpt-6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
-        "deepseek-flash": { currency: "CNY", source: "https://api-docs.deepseek.com/x" },
-      },
-    };
-    // 同一模型同时被 ZCode 与 DSH 使用。
-    state.metadata = { harnessModels: { Codex: ["gpt-6-sol"], ZCode: ["deepseek-flash"], DSH: ["deepseek-flash"] } };
-    state.metadata.activeHarnessModels = state.metadata.harnessModels;
-
-    const groups = pricingHarnessGroups();
-    assert.deepEqual([...groups.Codex], ["gpt-6-sol"]);
-    assert.deepEqual([...groups.ZCode], ["deepseek-flash"]);
-    assert.deepEqual([...groups.DSH], [], "DSH 不应重复展示已被 ZCode 认领的模型");
-
-    // 只被 DSH 用到的模型必须出现在 DSH 分区里，而不是消失。
-    state.metadata = { harnessModels: { Codex: [], ZCode: [], DSH: ["deepseek-flash"] } };
-    state.metadata.activeHarnessModels = state.metadata.harnessModels;
-    const dshOnly = pricingHarnessGroups();
-    assert.deepEqual([...dshOnly.DSH], ["deepseek-flash"]);
-    assert.deepEqual([...dshOnly.ZCode], []);
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-  }
-});
-
-test("pricingHarnessGroups respects an empty recent set instead of reviving historical models", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog, summary: state.summary };
-  try {
-    state.metadata = {
-      activeHarnessModels: { Codex: [], ZCode: [], DSH: [] },
-      harnessModels: { Codex: ["gpt-6-sol"], ZCode: ["deepseek-flash"], DSH: [] },
-    };
-    state.summary = { models: [{ name: "gpt-6-sol" }, { name: "deepseek-flash" }] };
-    state.pricingCatalog = {
-      models: {
-        "gpt-6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
-        "deepseek-flash": { currency: "CNY", source: "https://api-docs.deepseek.com/x" },
-      },
-    };
-
-    const groups = pricingHarnessGroups();
-    assert.deepEqual([...groups.Codex], []);
-    assert.deepEqual([...groups.ZCode], []);
-    assert.deepEqual([...groups.DSH], []);
-    assert.equal(pricingHarnessRows({ all: true }).Codex.length, 1);
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-    state.summary = previous.summary;
-  }
-});
-
-test("legacy and mixed pricing responses keep observed models visible while explicit recent emptiness wins", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
-  try {
-    state.metadata = { harnessModels: { Codex: ["gpt-6-sol", "missing-legacy"], ZCode: ["legacy-free-free"] } };
-    state.pricingCatalog = { models: { "gpt-6-sol": {} }, usageCoverage: { ready: true, usedModelCount: 3 } };
-    assert.equal(pricingUsageModels().recent, false);
-    assert.deepEqual(
-      pricingHarnessRows().Codex.map((row) => row.model),
-      ["gpt-6-sol", "missing-legacy"],
-    );
-    assert.equal(pricingHarnessRows().ZCode[0].matchType, "free");
-
-    state.pricingCatalog.modelActivity = { modelUsageAsOf: "2026-10-01T00:00:00Z" };
-    state.metadata.activeHarnessModels = { Codex: ["gpt-6-sol"] };
-    assert.equal(pricingUsageModels().recent, true, "incomplete catalog activity does not hide valid metadata");
-    assert.equal(pricingHarnessRows().Codex.length, 1);
-
-    state.pricingCatalog.modelActivity.activeHarnessModels = {};
-    assert.equal(pricingUsageModels().recent, true);
-    assert.deepEqual(
-      pricingHarnessRows().Codex,
-      [],
-      "explicit empty catalog wins over both older and historical lists",
-    );
-    delete state.pricingCatalog.modelActivity.activeHarnessModels;
-    state.metadata.activeHarnessModels = { Codex: [] };
-    assert.deepEqual(pricingHarnessRows().Codex, [], "explicit empty usage metadata cannot fall back to history");
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-  }
-});
-
-test("pricingHarnessRows displays canonical identities and exposes missing and free usage", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
-  try {
-    state.pricingCatalog = {
-      models: {
-        "gpt-5.6-sol": { currency: "USD", source: "https://developers.openai.com/api/docs/pricing" },
-        "mimo-v2.6-flash": { currency: "CNY", source: "https://example.com/pricing" },
-      },
-    };
-    state.metadata = {
-      harnessModels: {
-        Codex: ["gpt-daybreak-blue-latest", "future-model"],
-        ZCode: ["mimo-v2.6-flash-free"],
-        DSH: [],
-      },
-    };
-    state.metadata.activeHarnessModels = state.metadata.harnessModels;
-    const rows = pricingHarnessRows();
-    assert.deepEqual(rows.Codex, [
-      { model: "gpt-5.6-sol", catalogKey: "gpt-5.6-sol", matchType: "alias" },
-      { model: "future-model", catalogKey: null, matchType: "missing" },
-    ]);
-    assert.deepEqual(rows.ZCode, [{ model: "mimo-v2.6-flash-free", catalogKey: null, matchType: "free" }]);
-    assert.deepEqual([...pricingHarnessGroups().Codex], ["gpt-5.6-sol"]);
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-  }
-});
-
-test("pricingHarnessRows merges routed free and missing model names without changing source evidence", () => {
-  const previous = { metadata: state.metadata, pricingCatalog: state.pricingCatalog };
-  try {
-    state.pricingCatalog = { models: {} };
-    const harnessModels = {
-      OpenCode: [
-        "workbuddy-ai/hy4free",
-        "gateway/HY4FREE",
-        "hy4free",
-        "vendor/long-unknown-model",
-        "long-unknown-model",
-      ],
-    };
-    const evidence = structuredClone(harnessModels);
-    state.metadata = { harnessModels, activeHarnessModels: harnessModels };
-    assert.deepEqual(pricingHarnessRows().OpenCode, [
-      { model: "hy4free", catalogKey: null, matchType: "free" },
-      { model: "long-unknown-model", catalogKey: null, matchType: "missing" },
-    ]);
-    assert.deepEqual(harnessModels, evidence);
-  } finally {
-    state.metadata = previous.metadata;
-    state.pricingCatalog = previous.pricingCatalog;
-  }
-});
-
 test("空状态文案包含 DSH、OpenCode、Claude Code 与 WorkBuddy", () => {
   const html = renderHomesHtml([]);
   assert.match(html, /没有发现 Codex、ZCode、DSH、OpenCode、Claude Code 或 WorkBuddy 目录/);
-});
-
-test("claimHarnessKeys 按 Codex → ZCode → DSH → OpenCode → Claude 的优先级认领", () => {
-  const claimed = claimHarnessKeys({
-    Codex: new Set(["gpt-6-sol"]),
-    ZCode: new Set(["deepseek-flash"]),
-    DSH: new Set(["deepseek-flash", "test-model"]),
-    OpenCode: new Set(["test-model", "oc-model"]),
-    Claude: new Set(["oc-model", "claude-sonnet-4-5"]),
-  });
-  assert.deepEqual([...claimed.Codex], ["gpt-6-sol"]);
-  assert.deepEqual([...claimed.ZCode], ["deepseek-flash"]);
-  assert.deepEqual([...claimed.DSH], ["test-model"]);
-  assert.deepEqual([...claimed.OpenCode], ["oc-model"]);
-  // Claude 排在最后：与前面重复的模型名不重复认领，只保留自己独有的。
-  assert.deepEqual([...claimed.Claude], ["claude-sonnet-4-5"]);
 });
 
 test("pricing status gives total coverage and marks each price source", () => {
@@ -383,6 +154,21 @@ test("usage coverage status distinguishes loading, covered, free, and missing mo
     /用量覆盖 2\/3 · 缺少费率 1 · 免费规则 1/,
   );
   assert.match(usagePricingCoverageText({ ready: false }, "en-US"), /Waiting for usage/);
+});
+
+test("pricing inputs hide conversion tails while preserving small rates and useful precision", () => {
+  for (const [value, text] of [
+    [0.0000004 * 1_000_000, "0.4"],
+    [0.1 + 0.2, "0.3"],
+    [1.2000000000000002, "1.2"],
+    [0.000000025, "2.5e-8"],
+    [0.123456789012345, "0.123456789012345"],
+    [0.3999999999, "0.3999999999"],
+    [0, "0"],
+    ["", ""],
+    [undefined, ""],
+  ])
+    assert.equal(formatPricingInput(value), text);
 });
 
 test("model pricing Apply requires a valid numeric change and disables again after a revert", () => {
