@@ -8,6 +8,19 @@
 
 ![DeepSeek 浅色皮肤看板，示例数据](docs/images/dashboard-deepseek-light.png)
 
+## 让 Agent 帮你安装
+
+复制以下提示词给 Agent：
+
+```text
+请在我的电脑上安装并启动 Agent Usage：https://github.com/Sylva1027/agent-usage
+
+1. 先询问我是否需要角色皮肤：需要则选择 waifu 版，不需要则选择标准版。
+2. 从仓库 Releases 下载最新发布的所选版本 ZIP 附件，解压到固定目录。
+3. 检查 Node.js 是否满足包内 package.json 的 engines.node 要求；若未安装或版本不满足，从 https://nodejs.org/ 安装符合要求的 LTS 版本，并用 node -v 确认。本项目运行无需 npm install 或编译。
+4. 在解压后的项目根目录运行 node src/cli.js run，确认 http://127.0.0.1:3765/ 可访问。完成后告知安装目录、访问地址，以及之后的启动和停止方法。
+```
+
 ## 快速开始
 
 推荐安装 **Node.js 26 LTS**（最低要求 23.8）。打开 [官方下载页](https://nodejs.org/en/download)，选择 26 LTS 和你的系统：Windows 下载 `.msi`、macOS 下载 `.pkg`，按默认选项安装；Linux 按页面命令安装。重新打开终端，运行 `node -v` 确认版本。

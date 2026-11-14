@@ -8,6 +8,19 @@ Current release: [0.95a](https://github.com/Sylva1027/agent-usage/releases/tag/0
 
 ![DeepSeek light dashboard with sample data](docs/images/dashboard-deepseek-light-en.png)
 
+## Let an Agent Install It
+
+Copy this prompt to your agent:
+
+```text
+Install and start Agent Usage on my computer: https://github.com/Sylva1027/agent-usage
+
+1. First ask whether I want character skins: choose Waifu if yes, or Standard if no.
+2. Download the selected edition's ZIP asset from the repository's most recent release and extract it to a permanent directory.
+3. Check that Node.js meets engines.node in the extracted package.json. If it is missing or incompatible, install a compatible LTS version from https://nodejs.org/ and confirm with node -v. Running this project requires neither npm install nor compilation.
+4. Run node src/cli.js run from the extracted project root and verify that http://127.0.0.1:3765/ is accessible. Report the installation directory, access URL, and how to start and stop it later.
+```
+
 ## Quick Start
 
 We recommend **Node.js 26 LTS** (minimum 23.8). Visit the [official download page](https://nodejs.org/en/download), choose 26 LTS and your system: install the `.msi` on Windows or `.pkg` on macOS with the default options; on Linux, follow the commands on that page. Reopen your terminal and run `node -v` to check the version.
