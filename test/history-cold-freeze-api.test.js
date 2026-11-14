@@ -202,7 +202,7 @@ test("freeze and snapshot reads retain authorized cold history after the segment
 test("cold history freezes and replays when the temporary directory has a long path", async () => {
   const fixture = await createArchivedFixture();
   const temporary = mkdtempSync(path.join(os.tmpdir(), "cold-freeze-long-"));
-  const longDirectory = path.join(temporary, "long-directory-".repeat(7));
+  const longDirectory = path.join(temporary, "long-directory-".repeat(16));
   mkdirSync(longDirectory);
   const previous = Object.fromEntries(["TEMP", "TMP", "TMPDIR"].map((key) => [key, process.env[key]]));
   let server;
