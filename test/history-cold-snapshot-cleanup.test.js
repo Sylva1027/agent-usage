@@ -193,8 +193,8 @@ if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1") {
     const flagFile = ${JSON.stringify(flagFile)};
     if (!existsSync(flagFile)) return result;
     const { snapshotDirectory, firstDatabase } = JSON.parse(readFileSync(flagFile, "utf8"));
-    const databaseFile = path.resolve(this.databaseFile);
-    if (path.dirname(databaseFile) === path.resolve(snapshotDirectory) && databaseFile !== path.resolve(firstDatabase) && existsSync(databaseFile + ".segments")) {
+    const databaseFile = path.toNamespacedPath(path.resolve(this.databaseFile));
+    if (path.dirname(databaseFile) === path.toNamespacedPath(path.resolve(snapshotDirectory)) && databaseFile !== path.toNamespacedPath(path.resolve(firstDatabase)) && existsSync(databaseFile + ".segments")) {
       writeFileSync(${JSON.stringify(resultFile)}, JSON.stringify({ databaseFile, databaseExists: existsSync(databaseFile), segmentsExist: true }));
       unlinkSync(flagFile);
       throw new Error("INJECTED_SNAPSHOT_POST_CREATE_FAILURE");
@@ -219,8 +219,8 @@ if (process.env.CODEX_USAGE_EXECUTOR_CHILD === "1") {
     assert.ok(injected);
     assert.equal(injected.databaseExists, true);
     assert.equal(injected.segmentsExist, true);
-    assert.equal(path.dirname(injected.databaseFile), path.resolve(snapshotDirectory));
-    assert.notEqual(injected.databaseFile, path.resolve(firstDatabase));
+    assert.equal(path.dirname(injected.databaseFile), path.toNamespacedPath(path.resolve(snapshotDirectory)));
+    assert.notEqual(injected.databaseFile, path.toNamespacedPath(path.resolve(firstDatabase)));
     for (const artifact of [
       injected.databaseFile,
       `${injected.databaseFile}-wal`,
