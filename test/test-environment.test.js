@@ -11,9 +11,11 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const redirected = path.join(root, "redirected-temp");
   mkdirSync(redirected);
-  const expectedParent = realpathSync(
-    process.platform === "win32" ? path.join(process.env.LOCALAPPDATA, "Temp") : redirected,
-  );
+  const expectedParent = realpathSync(redirected);
+  const expectedLocalParent =
+    process.platform === "win32" && process.env.LOCALAPPDATA
+      ? realpathSync(path.join(process.env.LOCALAPPDATA, "Temp"))
+      : "";
   const file = path.join(root, "isolated.test.js");
   writeFileSync(
     file,
@@ -27,6 +29,9 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
     import { discoverHermesHomes } from ${JSON.stringify(new URL("../src/usage-core.js", import.meta.url).href)};
     test('isolated discovery', async () => {
       console.log('TEST_ENV_ROOT=' + tmpdir());
+      console.log('TEST_ENV_LOCAL=' + process.env.LOCALAPPDATA);
+      if (process.env.TEST_EXPECTED_APPDATA_PARENT)
+        assert.equal(path.dirname(process.env.LOCALAPPDATA), process.env.TEST_EXPECTED_APPDATA_PARENT);
       assert.equal(path.dirname(tmpdir()), process.env.TEST_EXPECTED_TEMP_PARENT);
       for (const key of ['HERMES_HOME','HERMES_DATA_DIR_SUFFIX','CODEX_USAGE_HERMES_HOMES','CODEX_USAGE_HERMES'])
         assert.equal(process.env[key], undefined);
@@ -54,6 +59,7 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
       TEMP: redirected,
       TMP: redirected,
       TEST_EXPECTED_TEMP_PARENT: expectedParent,
+      TEST_EXPECTED_APPDATA_PARENT: expectedLocalParent,
     };
     delete env.NODE_TEST_CONTEXT;
     const child = spawnSync(
@@ -70,5 +76,8 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
     const isolated = /TEST_ENV_ROOT=([^\r\n]+)/.exec(child.stdout)?.[1];
     assert.ok(isolated, child.stdout + child.stderr);
     assert.equal(existsSync(isolated), false, "runner must remove its entire temporary environment");
+    const local = /TEST_ENV_LOCAL=([^\r\n]+)/.exec(child.stdout)?.[1];
+    assert.ok(local, child.stdout + child.stderr);
+    assert.equal(existsSync(local), false, "runner must also remove its isolated AppData directory");
   }
 });

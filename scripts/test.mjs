@@ -4,13 +4,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 // Keep automatic Hermes discovery enabled inside a disposable test environment.
-// Native NTFS proofs need the AppData volume even when CI redirects TEMP to its work drive.
-const temporary = process.platform === "win32" && process.env.LOCALAPPDATA
-  ? path.join(process.env.LOCALAPPDATA, "Temp") : tmpdir();
-const parent = await realpath(temporary);
+const parent = await realpath(tmpdir());
 const root = await mkdtemp(path.join(parent, "codex-usage-tests-"));
+const directories = [{ directory: root, parent }];
 try {
-  const local = path.join(root, "local");
+  // Native NTFS proofs need AppData's volume; ordinary fixtures keep the runner's temp drive.
+  const localParent = process.platform === "win32" && process.env.LOCALAPPDATA
+    ? await realpath(path.join(process.env.LOCALAPPDATA, "Temp")) : root;
+  const local = localParent === root ? path.join(root, "local")
+    : await mkdtemp(path.join(localParent, "codex-usage-appdata-"));
+  if (localParent !== root) directories.push({ directory: local, parent: localParent });
   await mkdir(path.join(local, "Temp"), { recursive: true });
   const env = { ...process.env, LOCALAPPDATA: local, TEMP: root, TMP: root };
   for (const name of ["HERMES_HOME", "HERMES_DATA_DIR_SUFFIX", "CODEX_USAGE_HERMES_HOMES", "CODEX_USAGE_HERMES"])
@@ -23,6 +26,8 @@ try {
     child.once("exit", (code) => resolve(code ?? 1));
   });
 } finally {
-  if (path.dirname(await realpath(root)) !== parent) throw new Error("Test cleanup escaped its temporary directory");
-  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await Promise.all(directories.map(async ({ directory, parent }) => {
+    if (path.dirname(await realpath(directory)) !== parent) throw new Error("Test cleanup escaped its temporary directory");
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }));
 }
