@@ -30,7 +30,7 @@ test("native build, portable receipt checks and failed upgrades preserve the pre
   const source = path.join(box, "native source"),
     destination = path.join(box, "build output"),
     target = path.join(box, "cargo cache");
-  for (const file of ["Cargo.toml", "Cargo.lock", "build.ps1", "src/main.rs", "src/usn.rs"]) {
+  for (const file of ["Cargo.toml", "Cargo.lock", "build.ps1", "src/main.rs", "src/picker.rs", "src/usn.rs"]) {
     await mkdir(path.dirname(path.join(source, file)), { recursive: true });
     await copyFile(path.join(root, "native/windows-source-proof", file), path.join(source, file));
   }
@@ -68,7 +68,7 @@ test("native build, portable receipt checks and failed upgrades preserve the pre
   assert.equal(receipt.sha256, digest(bytes));
   assert.equal(receipt.format, 1);
   assert.match(receipt.target, /-windows-/);
-  assert.equal(Object.keys(receipt.sourceSha256).length, 5);
+  assert.equal(Object.keys(receipt.sourceSha256).length, 6);
   assert.equal(run(true).status, 0);
 
   await writeFile(executable, Buffer.concat([bytes, Buffer.from("tampered")]));

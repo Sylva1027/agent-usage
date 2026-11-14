@@ -425,7 +425,7 @@ export class HistoryProjectionStore {
           if (current) return read(current, key);
           const file = readPointer(this.directory, "current.json");
           if (!file) return false;
-          owned = new DatabaseSync(path.join(this.directory, file), { readOnly: true });
+          owned = new DatabaseSync(path.toNamespacedPath(path.join(this.directory, file)), { readOnly: true });
           return read(owned, key);
         } catch {
           // An unavailable derived receipt requires full verification of the authoritative package.
@@ -455,7 +455,7 @@ export class HistoryProjectionStore {
   /** SQLite releases this cross-process maintenance lock even after forced termination. */
   async lock() {
     mkdirSync(this.directory, { recursive: true });
-    const database = new DatabaseSync(path.join(this.directory, "maintenance.lock"));
+    const database = new DatabaseSync(path.toNamespacedPath(path.join(this.directory, "maintenance.lock")));
     try {
       database.exec("PRAGMA busy_timeout=0");
       for (;;) {
@@ -505,7 +505,7 @@ export class HistoryProjectionStore {
     if (!file) return null;
     let database;
     try {
-      database = new DatabaseSync(path.join(this.directory, file), { readOnly: true });
+      database = new DatabaseSync(path.toNamespacedPath(path.join(this.directory, file)), { readOnly: true });
       database.exec("PRAGMA cache_size=-2048; PRAGMA temp_store=FILE; BEGIN");
       const state = header({ database });
       const stamp = readHistoryProjectionStamp(source);

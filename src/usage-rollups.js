@@ -10,7 +10,7 @@ const PROGRESS_TABLE = "usage_rollup_progress";
 const PROGRESS_DAY_TABLE = "usage_rollup_progress_days";
 const COMPLETE_EVENT_TABLE = "usage_rollup_complete_events";
 const COMPLETE_EVENT_SOURCE = `temp.${COMPLETE_EVENT_TABLE}`;
-const FORMAT_VERSION = 8;
+const FORMAT_VERSION = 9;
 const PROGRESS_FORMAT_VERSION = 1;
 const DAY_MS = 86_400_000;
 const INSERT_TRIGGER = "usage_rollup_invalidate_insert";
@@ -1432,7 +1432,7 @@ export function queryUsageRollups(db, { day, calendarZone: zone = "utc" }) {
       .all(zone, day);
     const { session_count: sessionCount } = db
       .prepare(`
-        SELECT COUNT(DISTINCT session_id) AS session_count
+        SELECT COUNT(DISTINCT json_array(home_id,session_id)) AS session_count
         FROM ${SESSION_TABLE}
         WHERE calendar_zone = ? AND day_key = ?
       `)
@@ -1753,7 +1753,7 @@ export function queryUsageRollupsRange(
       .all(zone, startDay, endDay, ...excludeHomes);
     const { session_count: sessionCount } = db
       .prepare(`
-        SELECT COUNT(DISTINCT session_id) AS session_count
+        SELECT COUNT(DISTINCT json_array(home_id,session_id)) AS session_count
         FROM ${SESSION_TABLE}
         WHERE calendar_zone = ? AND day_key >= ? AND day_key <= ?
           ${homeFilter}

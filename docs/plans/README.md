@@ -4,6 +4,7 @@
 
 | 计划 | 当前状态 |
 | --- | --- |
+| [Hermes Harness 功能对等实施计划](2026-11-14-hermes-harness-implementation-plan.md) | 当前源码已实施；本机自动化验收及跳过项见[记录](2026-11-14-hermes-acceptance.md)，尚未发布 |
 | [重构后追加需求](2026-11-11-post-refactor-additions-plan.md) | 已发布 0.85a；两包与发布内容已核对，完整回归偶发失败见实施记录 |
 | [数据来源自动扫描与确认导入](2026-11-11-source-import-plan.md) | 纳入 0.9；本地服务与普通／waifu 两包验收完成 |
 | [主页计价币种与汇率输入](2026-11-12-display-currency-plan.md) | 纳入 0.9；包含本轮发布验收及既有浏览器测量失败对照 |

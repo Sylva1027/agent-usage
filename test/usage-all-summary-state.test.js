@@ -871,7 +871,7 @@ test("checkpoint retention keeps 32 blocks and replays early revisions from STAR
       Number(
         fixture.database
           .prepare("SELECT first_id FROM usage_all_summary_members WHERE scope=? AND member=?")
-          .get('["all","sessions"]', "early-revision").first_id,
+          .get('["all","sessions"]', JSON.stringify(["home-main", "early-revision"])).first_id,
       ),
       10,
     );

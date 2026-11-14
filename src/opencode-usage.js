@@ -6,7 +6,7 @@
 //   input = tokens.input + tokens.cache.read + tokens.cache.write（总输入）
 //   output = tokens.output + tokens.reasoning（总输出，折叠）
 // 上游历史上 output 的含义变过（旧语义已含 reasoning），只支持 v2 会话，见版本守护。
-import { readdir, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -100,23 +100,7 @@ export async function opencodeHomeLooksUsable(homePath) {
   return (await opencodeDatabaseFiles(homePath)).length > 0;
 }
 
-export async function opencodeSourceStat(dbFile) {
-  // OpenCode 运行时新写入先落在 WAL 文件里，增量检测必须把 -wal 也算进指纹。
-  const main = await stat(dbFile);
-  let size = main.size;
-  let mtimeMs = main.mtimeMs;
-  try {
-    const wal = await stat(`${dbFile}-wal`);
-    // Readers can create an empty WAL; only a nonempty WAL can contain source changes.
-    if (wal.size > 0) {
-      size += wal.size;
-      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
-    }
-  } catch {
-    // 没有 WAL 文件时主库就是最新状态。
-  }
-  return { size, mtimeMs };
-}
+export { sqliteSourceStat as opencodeSourceStat } from "./sqlite-source-stat.js";
 
 function openOpencodeDatabase(dbFile) {
   try {

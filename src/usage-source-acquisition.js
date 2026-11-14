@@ -388,13 +388,16 @@ export class UsageSourceAcquisition {
       const dataVersion = Number(this.store.database.prepare("PRAGMA data_version").get().data_version);
       const state = this.state(options);
       if (state?.warnings.length) throw unavailable("source warnings require full verification");
+      // shortcut: Hermes needs a full SQLite snapshot until WAL change proofs are available.
+      if (this.store.database.prepare("SELECT 1 FROM source_files WHERE kind='hermes' LIMIT 1").get())
+        throw unavailable("Hermes source requires a full snapshot");
       const native = state && (await this.provider());
       if (!native) return null;
       const inputs = await readUsageSourceInputs(options, state.homes, "");
       if (inputs.inputs !== state.auxiliary) throw unavailable("auxiliary input changed");
       // An open SQLite writer can change its WAL without another main-file journal record.
       const sqliteFiles = this.store.database
-        .prepare("SELECT path FROM source_files WHERE kind IN ('zcode','opencode')")
+        .prepare("SELECT path FROM source_files WHERE kind IN ('zcode','opencode','hermes')")
         .all()
         .map((row) => ({ filePath: String(row.path) }));
       const fingerprints = await this.store.usageFileFingerprints(sqliteFiles);

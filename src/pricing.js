@@ -5,7 +5,7 @@ import { canonicalModelName, isCodexAutoReview, resolvePricingModel } from "../p
 // This catalog revision includes a fresh Claude check on 2026-10-01;
 // the date does not claim that every provider entry was rechecked that day.
 export const API_PRICING_CHECKED_AT = "2026-10-01";
-export const API_PRICING_VERSION = "2026-11-13";
+export const API_PRICING_VERSION = "2026-11-14";
 export const MAX_PRICING_MODELS = 256;
 export const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
 export const API_PRICING_MODE = "minimum-fallback-scenario";
@@ -1166,7 +1166,7 @@ function peakLocalTuple(timeZone, timestampMs) {
 
 function contextTierFor(entry, event, usage, modelKey) {
   if (Number.isInteger(entry?.longContextThreshold)) {
-    if (modelKey === "gpt-6.1-sol") {
+    if (modelKey === "gpt-6.1-sol" || event.sourceKind === "hermes") {
       const requestInput = finiteNonNegative(event.requestInputTokens);
       if (requestInput !== null && requestInput > 0)
         return requestInput > entry.longContextThreshold ? "long" : "short";
@@ -1179,10 +1179,15 @@ function contextTierFor(entry, event, usage, modelKey) {
   return event.contextLevel === "long" ? "long" : event.contextLevel === "short" ? "short" : "unknown";
 }
 
-function rateSetsFor(entry, contextTier, usage) {
+function rateSetsFor(entry, contextTier, usage, aggregate = false) {
   const outputSplit = Number.isInteger(entry.outputThreshold) && entry.shortLongOutput;
   const longOutput = outputSplit && usage.output !== null && usage.output >= entry.outputThreshold;
   if (contextTier === "long") return [entry.long || entry.short];
+  if (aggregate && outputSplit) {
+    return contextTier === "short"
+      ? [entry.short, entry.shortLongOutput]
+      : [entry.short, entry.shortLongOutput, entry.long || entry.short];
+  }
   if (contextTier === "short") return [longOutput ? entry.shortLongOutput : entry.short];
   return longOutput ? [entry.shortLongOutput, entry.long || entry.short] : [entry.short, entry.long || entry.short];
 }
@@ -1279,11 +1284,12 @@ function estimateEventCostForModel(event, model) {
         long: entry.fast.long || entry.long || entry.short,
       }
     : entry;
+  const aggregate = event.sourceKind === "hermes";
   const timestampMs = eventTimestampMs(event);
   const peak = entry ? isPeakPricingTime(entry, timestampMs) : true;
-  const offPeakMultiplier = entry && !peak ? entry.offPeakMultiplier : 1;
+  const offPeakMultiplier = entry && (aggregate || !peak) ? entry.offPeakMultiplier || 1 : 1;
   let rates = entry
-    ? minimumRateSets(rateSetsFor(rateEntry, codexShortContext ? "short" : contextLevel, usage))
+    ? minimumRateSets(rateSetsFor(rateEntry, codexShortContext ? "short" : contextLevel, usage, aggregate))
     : minimumRatesFor("", contextLevel, currency);
   // 免费模型不参与最低费率兜底：费率全零，金额恒为 0。
   if (model.free) rates = ZERO_RATES;
@@ -1319,6 +1325,7 @@ function estimateEventCostForModel(event, model) {
   }
   if (claude && serviceTier === "fast" && !useFastRates) reasons.push("fast-pricing-unavailable-standard-scenario");
   if (
+    !aggregate &&
     entry?.standardContextLimit &&
     (finiteNonNegative(event.requestInputTokens) || usage.input || 0) > entry.standardContextLimit
   )
@@ -1422,7 +1429,13 @@ function estimateEventCostForModel(event, model) {
   const contextUnknownTokens = contextLevel === "unknown" && !codexShortContext ? pricedTokens : 0;
   if (serviceTier === "unknown") reasons.push("service-tier-unknown-standard-scenario");
   if (contextLevel === "unknown" && !codexShortContext) reasons.push("request-context-unknown-minimum-scenario");
-  if (entry && !peak) reasons.push("off-peak-pricing-applied");
+  if (aggregate) {
+    reasons.push("aggregate-usage-coverage-unknown");
+    if (entry?.outputThreshold) reasons.push("request-output-unknown-minimum-scenario");
+    if (entry?.offPeakMultiplier) reasons.push("request-time-unknown-minimum-scenario");
+    if (!model.free && (contextLevel === "unknown" || entry?.outputThreshold || entry?.offPeakMultiplier))
+      minimumEstimatedTokens = pricedTokens;
+  } else if (entry && !peak) reasons.push("off-peak-pricing-applied");
   const totalUsd = inputUsd + cachedInputUsd + cacheWriteInputUsd + outputUsd;
   return {
     model: model.name,

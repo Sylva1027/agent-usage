@@ -60,7 +60,7 @@ function expectedMetadata(database, asOfMs) {
   const models = new Map();
   const observations = new Map();
   for (const event of events) {
-    sessions.add(event.session_id);
+    sessions.add(JSON.stringify([event.home_id, event.session_id]));
     let home = homes.get(event.home_id);
     if (!home) {
       home = { eventCount: 0, sessions: new Set() };
@@ -285,7 +285,7 @@ test("default builds use five bounded SQL writes per batch and preserve exact ap
         (10003, 80, 's-1', 'home-new', 'cli', ' M-1 ');
     `);
     assert.deepEqual(prepareStoredMetadata(database), { readEvents: 4, rebuilt: false, reused: false });
-    assert.equal(readStoredMetadata(database, 1_000).sessionCount, 115);
+    assert.equal(readStoredMetadata(database, 1_000).sessionCount, 573);
     assert.deepEqual(readStoredMetadata(database, 1_000).homeRows.get("home-new"), {
       event_count: 2,
       session_count: 2,

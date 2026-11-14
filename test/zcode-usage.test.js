@@ -267,7 +267,7 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
       }),
     ],
   });
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
 
   try {
     await store.sync();
@@ -296,6 +296,7 @@ test("UsageStore 索引 ZCode 用量并按会话目录归组仓库", async () =>
       OpenCode: [],
       Claude: [],
       WorkBuddy: [],
+      Hermes: [],
     });
   } finally {
     store.close();
@@ -312,7 +313,7 @@ test("ZCode UTC 账单日按原始请求时间分日，不改写计价时间", a
       usageRow({ id: "utc-day-25", model_id: "mimo-v2.6-pro", started_at: second - 1000, completed_at: second }),
     ],
   });
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {
     await store.sync();
     const day24 = store.summarize({
@@ -350,7 +351,7 @@ test("UsageStore 只在 ZCode 数据库变化后重建", async () => {
     sessions: [{ id: "sess_main", directory: "/work/zproj", path: "/work/zproj", title: "重构看板" }],
     usageRows: [usageRow()],
   });
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
 
   try {
     const first = await store.sync();
@@ -435,7 +436,7 @@ test("ZCode 数据库异常时仅记录警告，不影响 Codex 用量", async (
       .map((row) => JSON.stringify(row))
       .join("\n")}\n`,
   );
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
 
   try {
     await store.sync();

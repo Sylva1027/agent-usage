@@ -763,7 +763,7 @@ test("upgrades an old rollup format transactionally without reimporting facts", 
 
     createUsageRollups(db);
 
-    assert.equal(db.prepare("SELECT format_version FROM usage_rollup_format").get().format_version, 8);
+    assert.equal(db.prepare("SELECT format_version FROM usage_rollup_format").get().format_version, 9);
     assert.deepEqual(listDirtyUsageRollupDays(db), ["2026-07-12"]);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM usage_rollup_repositories").get().count, 0);
     assert.deepEqual(db.prepare("SELECT * FROM events").all(), facts);

@@ -1614,9 +1614,10 @@ test("drawTimeline measures the canvas box once, before writing the backing stor
   }
 });
 
-test("WorkBuddy 归组：HARNESS_ORDER 六项，sourceGroup 归 WorkBuddy", () => {
-  assert.equal(HARNESS_ORDER.length, 6);
-  assert.equal(HARNESS_ORDER.at(-1), "WorkBuddy");
+test("WorkBuddy 和 Hermes 使用各自的 Harness 分组", () => {
+  assert.equal(HARNESS_ORDER.length, 7);
+  assert.equal(HARNESS_ORDER.at(-1), "Hermes");
+  assert.equal(sourceGroup("Hermes Subagent", "hermes"), "Hermes");
   assert.equal(sourceGroup("WorkBuddy", "workbuddy"), "WorkBuddy");
   // channel 归一化兜底：home kind 缺失时也要归到 WorkBuddy。
   assert.equal(sourceGroup("WorkBuddy", ""), "WorkBuddy");

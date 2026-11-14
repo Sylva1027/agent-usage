@@ -1,4 +1,5 @@
 import { canonicalModelName } from "./pricing-models.js";
+import { sessionIdentity } from "./usage-fields.js";
 
 const USAGE_FIELDS = ["total", "input", "cached", "output", "reasoning"];
 
@@ -11,6 +12,7 @@ export function sourceGroup(channel, kind = "") {
   if (homeKind === "opencode") return "OpenCode";
   if (homeKind === "claude") return "Claude";
   if (homeKind === "workbuddy") return "WorkBuddy";
+  if (homeKind === "hermes") return "Hermes";
   const name = String(channel || "Unknown");
   const normalized = name.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (["zcode", "zcode subagent"].includes(normalized)) return "ZCode";
@@ -18,6 +20,7 @@ export function sourceGroup(channel, kind = "") {
   if (normalized === "opencode") return "OpenCode";
   if (["claude", "claude code", "claude code subagent"].includes(normalized)) return "Claude";
   if (normalized === "workbuddy") return "WorkBuddy";
+  if (["hermes", "hermes subagent"].includes(normalized)) return "Hermes";
   if (
     [
       "codex",
@@ -292,7 +295,16 @@ export function resolveNamedRecentRange(value, now, quota, calendarZone = "local
 
 // 限额窗口只衡量 Codex 用量：ZCode / DSH / 项目日志来源没有 Codex 限额数据，
 // 选中它们不应点亮限额按钮。
-const NON_CODEX_SOURCE_KINDS = Object.freeze(["zcode", "dsh", "opencode", "claude", "project-log", "unsupported"]);
+const NON_CODEX_SOURCE_KINDS = Object.freeze([
+  "zcode",
+  "dsh",
+  "opencode",
+  "claude",
+  "workbuddy",
+  "hermes",
+  "project-log",
+  "unsupported",
+]);
 
 export function hasSelectedCodexSource(homes = [], excludedIds = []) {
   const excluded = new Set(excludedIds.map(String));
@@ -527,7 +539,7 @@ function addUsage(target, usage = {}) {
 
 function addSegment(group, event) {
   group.count += 1;
-  group.sessions.add(event.sessionId || "");
+  group.sessions.add(sessionIdentity(event.homeId, event.sessionId));
   addUsage(group.total, event.total || event.usage);
 }
 
@@ -820,7 +832,7 @@ export function createTimelineAccumulator(range = {}, bucket = "day", options = 
     // Unchanged fact rows survive repricing; only money and pricing coverage are rebuilt.
     if (!row.fact) {
       row.count += 1;
-      row.sessionsSet.add(event.sessionId || "");
+      row.sessionsSet.add(sessionIdentity(event.homeId, event.sessionId));
       addUsage(row.total, event.total || event.usage);
       const channelName = channelForRange(event.channel, range, options.sourceKinds?.get(String(event.homeId)));
       const channel = row.channelGroups.get(channelName) || {

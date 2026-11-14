@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
@@ -35,7 +36,8 @@ test("fetch port retries an occupied port and serves HTTP without leaking listen
 
 for (const { name, code, synchronous, attempts } of [
   { name: "synchronous failure", code: "ERR_INVALID_ARG_VALUE", synchronous: true, attempts: 1 },
-  { name: "asynchronous failure", code: "EACCES", synchronous: false, attempts: 1 },
+  { name: "asynchronous failure", code: "EIO", synchronous: false, attempts: 1 },
+  { name: "exhausted reserved ports", code: "EACCES", synchronous: false, attempts: 21 },
   { name: "exhausted port conflicts", code: "EADDRINUSE", synchronous: false, attempts: 21 },
 ]) {
   test(`fetch port cleans listeners and permits closing after ${name}`, async (t) => {
@@ -65,3 +67,17 @@ for (const { name, code, synchronous, attempts } of [
     assert.equal(server.address(), null);
   });
 }
+
+test("a reserved port is retried before a server starts listening", async () => {
+  const server = new EventEmitter();
+  let attempts = 0;
+  server.listen = () => {
+    attempts++;
+    queueMicrotask(() => {
+      if (attempts === 1) server.emit("error", Object.assign(new Error("reserved port"), { code: "EACCES" }));
+      else server.emit("listening");
+    });
+  };
+  await listenOnFetchPort(server);
+  assert.equal(attempts, 2);
+});

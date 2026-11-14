@@ -174,7 +174,7 @@ function oracle(value, input) {
       state.input_cost += priced.inputUsd * rate;
       state.cached_cost += priced.cachedInputUsd * rate;
       state.output_cost += priced.outputUsd * rate;
-      state.sessions.add(item.session_id);
+      state.sessions.add(JSON.stringify([item.home_id, item.session_id]));
       state.models.add(item.model);
     }
   }
@@ -357,7 +357,7 @@ test("history merges source contributions before ranking, lowers old winners, an
         "SELECT session_count FROM usage_history_record_cache_periods WHERE unit='day' AND period_key='2026-07-03'",
       )
       .get().session_count,
-    1,
+    2,
   );
   change(value, [row(7, BASE + 2 * DAY, 0, { total: 10, session_id: "修订" })]);
   assert.equal(assertOracle(value).day.totalTokens, undefined);
@@ -462,7 +462,7 @@ test("history supports a separate frozen source and destination without events",
   }
 });
 
-test("hot FORMAT=9 and cached reuse retain their schema, physical id order and writes", () => {
+test("hot FORMAT=10 and cached reuse retain their schema, physical id order and writes", () => {
   const db = new DatabaseSync(":memory:");
   try {
     createEvents(db);
@@ -495,7 +495,7 @@ test("hot FORMAT=9 and cached reuse retain their schema, physical id order and w
     assert.deepEqual(readStoredRecordChampions(input), first);
     assert.deepEqual(db.prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").all(), schema);
     assert.equal(db.prepare("SELECT total_changes() n").get().n, writes);
-    assert.equal(db.prepare("SELECT format_version FROM usage_record_cache_format").get().format_version, 9);
+    assert.equal(db.prepare("SELECT format_version FROM usage_record_cache_format").get().format_version, 10);
     assert.equal(
       db
         .prepare("PRAGMA table_info(usage_record_cache)")

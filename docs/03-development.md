@@ -29,7 +29,7 @@ node src/cli.js run
 | `src/cli.js`、`src/server.js` | 命令、服务与 HTTP API、导入、刷新和价格调度 |
 | `src/usage-executor.js`、`src/usage-store.js` | 独立计算进程、SQLite 写入、迁移与查询 |
 | `src/usage-summary-cache.js` | 持久摘要、读侧发布版本核对与重开复用 |
-| `src/usage-core.js`、各 `*-usage.js` | 来源发现、标准事件、内存报告及六来源解析 |
+| `src/usage-core.js`、各 `*-usage.js` | 来源发现、标准事件、内存报告及各 Harness 解析 |
 | `src/usage-source-*.js`、`native/windows-source-proof/` | 来源指纹、增量证明、读取稳定性与 Windows 助手 |
 | `src/usage-*-store.js`、`src/usage-history*.js` | 持久派生视图、历史查询与归档维护 |
 | `src/pricing*.js`、`public/pricing-models.js` | 价目、费用、来源更新与共享模型映射 |
@@ -67,7 +67,7 @@ node --test --test-name-pattern="skins:check" test/skins.test.js
 node --test --test-reporter=spec --test-concurrency=4 --test-timeout=720000 "test/**/*.test.js"
 ```
 
-`--test-name-pattern` 不阻止文件级 import。完整运行以退出码和 `pass / fail / skipped / cancelled` 汇总判断，不把旧文档中的固定测试数当成门槛。CI 当前配置为 Windows、Node 22/24；运行要求仍以 package engines 和实际依赖能力为准。
+`--test-name-pattern` 不阻止文件级 import。完整运行以退出码和 `pass / fail / skipped / cancelled` 汇总判断，不把旧文档中的固定测试数当成门槛。CI 当前配置为 Windows、Node 24/26；运行要求仍以 package engines 和实际依赖能力为准。
 
 多数测试在系统临时目录构造并清理数据；皮肤工具的集成夹具可能创建于 `docs/validation/`，因为被测接口会核对输出位置。沙箱 EPERM、符号链接权限和路径限制需与代码失败区分，不能因此放宽断言。
 

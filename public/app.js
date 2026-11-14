@@ -894,6 +894,15 @@ export function renderPricingSourceLinksHtml(values = [], currencies = []) {
 export function pricingScenarioNotes(reasons = [], locale = getLocale()) {
   const english = locale === "en-US";
   const notes = {
+    "aggregate-usage-coverage-unknown": english
+      ? "Aggregated usage may not include every provider-reported detail"
+      : "聚合用量的提供方明细可能不完整",
+    "request-output-unknown-minimum-scenario": english
+      ? "Per-request output length is unknown; the estimate uses the lowest applicable rate"
+      : "单次请求输出长度未知，按适用的最低费率估算",
+    "request-time-unknown-minimum-scenario": english
+      ? "Request times are unknown; the estimate uses the lowest applicable time-based rate"
+      : "请求时间未知，按适用时段的最低费率估算",
     "cache-write-ttl-unknown-5m-scenario": english
       ? "Claude cache-write TTL is unknown; the estimate uses 5-minute pricing"
       : "Claude 缓存写入 TTL 未确认，按 5 分钟价格场景估算",
@@ -2224,7 +2233,7 @@ function renderHomes(homes, options = {}) {
 }
 
 // harness 归组顺序。Codex 优先，便于 gpt 系模型归到最相关一侧。
-export const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy"];
+export const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"];
 
 function currentSummary() {
   return state.summary;
@@ -3318,11 +3327,12 @@ function renderImportHelp(data) {
     ["ZCode", ".zcode"],
     ["WorkBuddy", ".workbuddy-ai"],
     ["OpenCode", ".local/share/opencode"],
+    ["Hermes", windows ? "hermes" : ".hermes", windows ? "%LOCALAPPDATA%" : root],
   ];
   $("#importLocations").innerHTML = locations
     .map(
-      ([name, directory]) =>
-        `<li>${name} · <code>${escapeHtml(root + separator + directory.replaceAll("/", separator))}</code></li>`,
+      ([name, directory, directoryRoot = root]) =>
+        `<li>${name} · <code>${escapeHtml(directoryRoot + separator + directory.replaceAll("/", separator))}</code></li>`,
     )
     .join("");
   $("#importPath").placeholder = windows ? "%USERPROFILE%\\.codex" : "~/.codex";

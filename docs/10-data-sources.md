@@ -8,7 +8,7 @@
 
 导入使用“读取记录／建立统计／校验记录／更新看板”阶段及已用秒数，关闭弹窗不会取消后台导入。刷新页面会重新接入当前任务；服务重启后按已确认目录恢复增量读取。目标版本成功显示到看板后才报告完成。失败保留已读取事实，重试不会重复累计事件。
 
-Web 的刷新、快照与后台监听只读取已确认来源。新安装初始为空；升级时保留旧手动目录和索引中的来源身份，热、冷历史及统计排除偏好不变。`imports.json` 自动迁为 v2，旧清单保留 `.v1-backup`。CLI 汇总仍自动发现默认来源。显式的 `CODEX_USAGE_*_HOMES` / `CODEX_USAGE_IMPORT_DIRS` 配置视为已确认；`CODEX_HOME`、`CLAUDE_CONFIG_DIR` 和 `XDG_DATA_HOME` 只补充扫描候选。
+Web 的刷新、快照与后台监听只读取已确认来源。新安装初始为空；升级时保留旧手动目录和索引中的来源身份，热、冷历史及统计排除偏好不变。`imports.json` 自动迁为 v2，旧清单保留 `.v1-backup`。CLI 汇总仍自动发现默认来源。显式的 `CODEX_USAGE_*_HOMES` / `CODEX_USAGE_IMPORT_DIRS` 配置视为已确认；`CODEX_HOME`、`CLAUDE_CONFIG_DIR`、`XDG_DATA_HOME` 和 `HERMES_HOME` 只补充扫描候选。
 
 - [Codex](data-sources/codex.md)：默认 `~/.codex`，读取会话 `.jsonl` 和 `.jsonl.zst`，并探测本机 JetBrains 集成目录；`CODEX_USAGE_HOMES` 可追加 Codex home。
 - [ZCode](data-sources/zcode.md)：默认 `~/.zcode`，依次探测 `cli/db/db.sqlite`、`db/db.sqlite`。
@@ -16,6 +16,7 @@ Web 的刷新、快照与后台监听只读取已确认来源。新安装初始�
 - [OpenCode](data-sources/opencode.md)：探测 `~/.local/share/opencode`、Windows APPDATA/LOCALAPPDATA 和 macOS Application Support 下的目录，再展开目录中的 `opencode*.db`。
 - [Claude Code](data-sources/claude-code.md)：默认 `~/.claude`（并发现 `CLAUDE_CONFIG_DIR`），读取 `projects/<cwd>/<sessionId>.jsonl` 与 `projects/<cwd>/<sessionId>/subagents/agent-*.jsonl`，按 `message.id` 去重。
 - [WorkBuddy](data-sources/workbuddy.md)：默认 `~/.workbuddy-ai`，读取 `projects/<cwd-slug>/<sessionId>.jsonl`，按 `providerData.messageId` 去重；Auto（`model=default-model`）记录整体排除。
+- [Hermes](data-sources/hermes.md)：发现默认 home、`HERMES_HOME` 和 profiles，只读 `state.db` 中的累计用量；`CODEX_USAGE_HERMES_HOMES` 追加目录，`CODEX_USAGE_HERMES=0` 关闭自动发现。
 - [项目日志](14-project-log.md)：导入包含 `.codex-usage/usage.jsonl` 的项目目录。
 
 看板导入的是 home、数据目录或项目目录，不直接导入单个数据库文件。显式导入目录先按 ZCode、DSH、OpenCode、Claude Code 的具体结构判定，再检查 Codex 和项目日志，避免同名 `sessions` 目录误判（`~/.claude/sessions/` 与 Codex 的 `sessions/` 同名，Claude 必须先判）。
@@ -42,19 +43,19 @@ DSH 的非零缓存写入已核实，见[DSH 专题](data-sources/dsh.md#非零�
 
 普通今日、本周、本月、全部、自定义日期和普通最近范围统计所有已选来源。`5h / week` 限额按钮以及“上一个 5h”“上周”只统计 Codex 来源；边界来自实际限额观察值，缺失时不猜测。
 
-限额能力依据来源 kind 判断，不依据渠道显示名称。项目日志即使把 `channel` 写成 Codex，也不会因此获得 Codex 限额资格。ZCode、DSH、OpenCode、Claude Code 和 WorkBuddy 不参与 Codex 限额窗口。
+限额能力依据来源 kind 判断，不依据渠道显示名称。项目日志即使把 `channel` 写成 Codex，也不会因此获得 Codex 限额资格。ZCode、DSH、OpenCode、Claude Code、WorkBuddy 和 Hermes 不参与 Codex 限额窗口。
 
 ## 渠道展示与归组
 
-普通范围将 Codex Desktop、Editor Integration、CLI、Codex Exec、codex_work_desktop 归入 Codex，ZCode Subagent 归入 ZCode，DSH Subagent 归入 DSH，OpenCode 保持独立，Claude Code 与 Claude Code Subagent 归入 Claude，WorkBuddy 归入 WorkBuddy。来源 kind/homeId 的证据优先，明确旧标签作兼容回退；未知自定义渠道没有来源证据时保留原名。当前和上一完整 Codex 5h/7d 限额范围保留原渠道。
+普通范围将 Codex Desktop、Editor Integration、CLI、Codex Exec、codex_work_desktop 归入 Codex，ZCode Subagent 归入 ZCode，DSH Subagent 归入 DSH，OpenCode 保持独立，Claude Code 与 Claude Code Subagent 归入 Claude，WorkBuddy 归入 WorkBuddy，Hermes 与 Hermes Subagent 归入 Hermes。来源 kind/homeId 的证据优先，明确旧标签作兼容回退；未知自定义渠道没有来源证据时保留原名。当前和上一完整 Codex 5h/7d 限额范围保留原渠道。
 
-归组在汇总与时间线展示时完成，不改写事件 channel；计价继续使用原始标签。合并会话按唯一 ID 去重，不直接相加分渠道会话数。内存报告、SQLite 与浏览器纯统计共用 timeline-utils 中的归组规则。
+归组在汇总与时间线展示时完成，不改写事件 channel；计价继续使用原始标签。合并会话按 home 和会话 ID 的组合去重，不直接相加分渠道会话数。内存报告、SQLite 与浏览器纯统计共用 timeline-utils 中的归组规则。
 
 ## 增量索引与版本
 
 默认索引位于 `~/.codex-usage/usage-index.sqlite`。JSONL/zstd 的文件元数据参与变化检测，复用还依赖来源凭据与稳定性校验；ZCode/OpenCode 的指纹包含主库和 `-wal`。DSH 按日志文件展开，OpenCode 按数据目录下的多个数据库展开，Claude Code 按 `projects/**/*.jsonl`（含 subagents）展开，WorkBuddy 按 `projects/**/*.jsonl`（跳过 `tool-results/`）展开。
 
-变化来源按已验证的增量条件追加或替换对应事实，未变化来源保留索引；六来源的实际复用范围见[交付说明](15-delivery-upgrade.md#本轮已有改造)。模型元数据按 Codex、ZCode、DSH、OpenCode、Claude、WorkBuddy 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
+变化来源按已验证的增量条件追加或替换对应事实，未变化来源保留索引；实际复用范围见[交付说明](15-delivery-upgrade.md#本轮已有改造)。Hermes 的累计行按稳定身份完整快照更新，冷历史使用共用修订覆盖。模型元数据按各 Harness 分组；项目日志的渠道名称按现有分组规则处理，不改变其限额资格。
 
 应用版本以 `package.json` 为准，索引版本与迁移以 `src/usage-store.js` 的 `STORE_SCHEMA_VERSION` 为准。普通索引升级保留事件、价目、限额、来源状态和历史事实；TPS 表不再被产品维护或查询。来源判定结合现行指纹、WAL、增量凭据和前后稳定性校验，不能仅凭大小／修改时间断言内容未变。升级与恢复操作见[交付说明](15-delivery-upgrade.md)。
 
