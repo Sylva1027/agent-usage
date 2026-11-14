@@ -18,6 +18,8 @@ const CORE_PUBLIC = [
   "index.html",
   "period-comparison.js",
   "pricing-models.js",
+  "pricing-directory.js",
+  "pricing-release-dates.js",
   "quota-usage.js",
   "share-card.js",
   "share-card-data.js",

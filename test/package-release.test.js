@@ -51,7 +51,14 @@ test("release allowlist retains runtime/helper inputs and excludes development a
   assert.equal(files.filter((file) => file.endsWith(".webp")).length, 40);
   assert.doesNotMatch(files.join("\n"), /target\/|node_modules\/|\.git|\.png$|^test|^docs|^scripts|^output/m);
   const standard = files.filter((file) => !isWaifuFile(file));
-  for (const name of ["share-card.js", "share-card-data.js", "share-dialog.js", "share.css"]) {
+  for (const name of [
+    "share-card.js",
+    "share-card-data.js",
+    "share-dialog.js",
+    "share.css",
+    "pricing-directory.js",
+    "pricing-release-dates.js",
+  ]) {
     assert.ok(standard.includes(`public/${name}`), `Shared release file missing: ${name}`);
   }
   assert.doesNotMatch(standard.join("\n"), /public\/(?:skin|assets\/skins)/);

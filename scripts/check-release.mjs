@@ -164,6 +164,23 @@ async function checkPage(browser, url, edition, locale, viewport) {
     assert.ok(await page.locator("#importDialog").evaluate((dialog) => dialog.contains(document.activeElement)));
     await page.keyboard.press("Escape");
     await page.locator("#importDialog").waitFor({ state: "hidden" });
+    await page.locator("#updatePricingButton").click();
+    const provider = page.locator("#pricingProviderList [data-pricing-provider]").first();
+    await provider.waitFor({ state: "visible" });
+    const providerId = await provider.getAttribute("data-pricing-provider");
+    await provider.click();
+    await page.locator("#providerPricingDialog").waitFor({ state: "visible" });
+    await page.locator("#pricingModelList [data-pricing-model]").first().click();
+    await page.locator("#modelPricingDialog").waitFor({ state: "visible" });
+    assert.ok(await page.locator("#modelPricingFields input[data-model]").count());
+    await page.keyboard.press("Escape");
+    await page.locator("#modelPricingDialog").waitFor({ state: "hidden" });
+    await page.keyboard.press("Escape");
+    await page.locator("#providerPricingDialog").waitFor({ state: "hidden" });
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.pricingProvider), providerId);
+    await page.keyboard.press("Escape");
+    await page.locator("#pricingDialog").waitFor({ state: "hidden" });
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "updatePricingButton");
     await shareImage("week", "light");
     for (const theme of ["dark", "light"]) {
       await page.locator("#themeToggle").click();
@@ -197,7 +214,7 @@ async function checkPage(browser, url, edition, locale, viewport) {
     assert.equal(await page.locator("html").getAttribute("lang"), switchedLocale);
     await appearance("light");
     assert.deepEqual(errors, [], `Unexpected browser errors: ${JSON.stringify(errors)}`);
-    return { locale, viewport, skinRequests: skinRequests.length, errors: errors.length, shareImages };
+    return { locale, viewport, pricing: "passed", skinRequests: skinRequests.length, errors: errors.length, shareImages };
   } finally {
     await context.close();
   }
@@ -241,9 +258,12 @@ try {
       assert.equal(sha256(Buffer.from(await styles.arrayBuffer())), manifest.core["public/styles.css"]);
       assert.match(html, /id="shareToggle"/);
       assert.match(html, /id="shareDialog"/);
-      for (const name of ["share-card.js", "share-card-data.js", "share-dialog.js", "share.css"]) {
+      for (const name of [
+        "share-card.js", "share-card-data.js", "share-dialog.js", "share.css",
+        "pricing-directory.js", "pricing-release-dates.js",
+      ]) {
         const resource = await fetch(`${url}${name}`);
-        assert.equal(resource.status, 200, `${edition} share resource missing: ${name}`);
+        assert.equal(resource.status, 200, `${edition} shared resource missing: ${name}`);
         assert.equal(sha256(Buffer.from(await resource.arrayBuffer())), manifest.core[`public/${name}`]);
       }
       const studio = await fetch(`${url}skin-palette-studio.html`);

@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 
 export function readPricingSourceCatalogs(file) {
   if (!existsSync(file)) return {};
-  const database = new DatabaseSync(file, { readOnly: true });
+  const database = new DatabaseSync(path.toNamespacedPath(file), { readOnly: true });
   try {
     return Object.fromEntries(
       database
@@ -21,7 +21,7 @@ export function readPricingSourceCatalogs(file) {
 export async function savePricingSourceCatalogs(file, catalogs) {
   if (!Object.keys(catalogs).length) return;
   await mkdir(path.dirname(file), { recursive: true });
-  const database = new DatabaseSync(file);
+  const database = new DatabaseSync(path.toNamespacedPath(file));
   try {
     database.exec("PRAGMA busy_timeout = 5000");
     database.exec(

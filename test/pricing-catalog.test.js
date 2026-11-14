@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { OPENROUTER_PRICES_URL, parseCatalogModelPricing } from "../src/pricing-catalog.js";
-import { readPricingSourceCatalogs } from "../src/pricing-catalog-store.js";
+import { readPricingSourceCatalogs, savePricingSourceCatalogs } from "../src/pricing-catalog-store.js";
 import { MODEL_PRICES_URL, LITELLM_PRICES_URL, USD_CNY_RATE_URL } from "../src/pricing-auto.js";
 import { getPricingCatalog, resetPricingCatalog } from "../src/pricing.js";
 import {
@@ -84,6 +84,20 @@ test("first-party Fast tiers stay separate and malformed context tiers are defer
       "unsupported-context-policy",
     );
   }
+});
+
+test("source catalogs round-trip through long Windows paths", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "pricing-catalog-long-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "long-directory-".repeat(16), "pricing-sources.sqlite");
+  const catalogs = {
+    [MODEL_PRICES_URL]: { payload: { google: { models: {} } }, fetchedAt: "2026-11-14T00:00:00Z" },
+  };
+  await savePricingSourceCatalogs(file, catalogs);
+  assert.deepEqual(readPricingSourceCatalogs(file), catalogs);
+  catalogs[MODEL_PRICES_URL].fetchedAt = "2026-11-15T00:00:00Z";
+  await savePricingSourceCatalogs(file, catalogs);
+  assert.deepEqual(readPricingSourceCatalogs(file), catalogs);
 });
 
 test("full catalogs persist only in SQLite until local usage matches, work offline and preserve manual prices", async (t) => {
