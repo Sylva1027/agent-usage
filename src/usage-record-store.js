@@ -1,3 +1,5 @@
+import { sessionIdentity } from "../public/usage-fields.js";
+
 const CACHE_TABLE = "usage_record_cache";
 const PERIOD_TABLE = "usage_record_cache_periods";
 const MEMBER_TABLE = "usage_record_cache_members";
@@ -7,7 +9,7 @@ const WORK_TABLE = "usage_record_cache_work";
 const OPERATION_TABLE = "usage_record_cache_operations";
 const FORMAT_TABLE = "usage_record_cache_format";
 const BUILD_SAVEPOINT = "usage_record_store_build";
-const FORMAT_VERSION = 9;
+const FORMAT_VERSION = 10;
 const DEFAULT_BATCH_SIZE = 1024;
 
 const DIRTY_TRIGGER_NAMES = Object.freeze([
@@ -629,10 +631,10 @@ export function markStoredHistoryRecordsDirty(database, { ms, id }) {
 function memberSelectSql(where, predicateSql) {
   return `
     WITH scoped AS (
-      SELECT session_id, model FROM events
+      SELECT home_id, session_id, model FROM events
       ${where} ${where ? "AND" : "WHERE"} (${predicateSql})
     )
-    SELECT 'session' AS kind, session_id AS member FROM scoped
+    SELECT 'session' AS kind, json_array(home_id,session_id) AS member FROM scoped
     UNION
     SELECT 'model', model FROM scoped
   `;
@@ -1005,7 +1007,7 @@ function buildAppendWork(input, options, rate, batchSize, expectedDataVersion) {
             accumulateEvent(row, rate, estimate, state);
             state.minimum_ms = Math.min(state.minimum_ms, Number(row.timestamp_ms));
             state.maximum_ms = Math.max(state.maximum_ms, Number(row.timestamp_ms));
-            stageMember.run(unit, periodKey, "session", String(row.session_id));
+            stageMember.run(unit, periodKey, "session", sessionIdentity(row.home_id, row.session_id));
             stageMember.run(unit, periodKey, "model", String(row.model));
           }
         }

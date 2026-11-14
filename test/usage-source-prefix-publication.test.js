@@ -183,8 +183,8 @@ async function fixture(t, kind, count = 3) {
   await publish(pair.actual, file);
   await publish(pair.legacy, file);
   assertParity(pair, count);
-  assert.equal(STORE_SCHEMA_VERSION, 24);
-  assert.equal(pair.actual.database.prepare("PRAGMA user_version").get().user_version, 24);
+  assert.equal(STORE_SCHEMA_VERSION, 25);
+  assert.equal(pair.actual.database.prepare("PRAGMA user_version").get().user_version, 25);
   assert.match(
     pair.actual.database.prepare("SELECT sql FROM sqlite_master WHERE name='events'").get().sql,
     /id INTEGER PRIMARY KEY,/,

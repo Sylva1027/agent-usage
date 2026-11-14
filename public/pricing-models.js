@@ -50,7 +50,7 @@ export function buildModelActivity(observations = [], asOf = Date.now()) {
   const now = activityTime(asOf);
   const cutoff = modelActivityCutoff(now);
   const modelLastSeen = Object.fromEntries(
-    ["Codex", "ZCode", "DSH", "OpenCode", "Claude"].map((harness) => [harness, {}]),
+    ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"].map((harness) => [harness, {}]),
   );
   for (const observation of observations) {
     const model = String(observation.model || "")

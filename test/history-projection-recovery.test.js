@@ -387,7 +387,10 @@ test("lease binds retained F1 facts and input after one catch-up when F0 exists 
     assert.equal(attempts[0].delta, false);
     assert.equal(attempts[1].rebuilding, true);
     assert.equal(attempts[1].delta, true);
-    assert.equal(path.resolve(lease.databaseFile), path.resolve(attempts[1].file));
+    assert.equal(
+      path.toNamespacedPath(path.resolve(lease.databaseFile)),
+      path.toNamespacedPath(path.resolve(attempts[1].file)),
+    );
     assert.equal(path.resolve(cacheFile(f)), path.resolve(lease.databaseFile));
     assert.equal(f.store.lastHistoryQueryWork.projection.resumed, true);
     assert.equal(f.store.lastHistoryQueryWork.projection.coldCopied, 0);

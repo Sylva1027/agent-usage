@@ -32,6 +32,8 @@ test("model activity expires at one UTC calendar month and clamps month ends", (
     DSH: [],
     OpenCode: [],
     Claude: ["claude-sonnet-4-5"],
+    WorkBuddy: [],
+    Hermes: [],
   });
   assert.equal(activity.modelLastSeen.Codex.recent, cutoff + 1);
   const returned = buildModelActivity([...observations, { harness: "ZCode", model: "old", timestamp: now }], now);

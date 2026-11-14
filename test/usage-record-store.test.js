@@ -222,7 +222,7 @@ function originalChampions(rows, zone, rate, estimate) {
       slot.cached += row.cached;
       slot.output += row.output;
       slot.reasoning += row.reasoning;
-      slot.sessions.add(row.session_id);
+      slot.sessions.add(JSON.stringify([row.home_id, row.session_id]));
       slot.models.add(row.model);
       slot.cost.total += priced.totalUsd * scale;
       slot.cost.input += priced.inputUsd * scale;
@@ -391,7 +391,7 @@ test("a format-7 derived schema is replaced without touching retained event or a
       Number(
         database.prepare("SELECT format_version FROM usage_record_cache_format WHERE slot = 1").get().format_version,
       ),
-      9,
+      10,
     );
     assert.ok(
       database

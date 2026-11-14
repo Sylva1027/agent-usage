@@ -6,6 +6,8 @@ A local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy. T
 
 Current release: [0.95](https://github.com/Sylva1027/agent-usage/releases/tag/0.95).
 
+The current source also supports [Hermes](docs/data-sources/hermes.md); this support is not included in the release above.
+
 ![DeepSeek light dashboard with sample data](docs/images/dashboard-deepseek-light-en.png)
 
 ## Quick Start

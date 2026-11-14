@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,8 +32,16 @@ import {
   emptyUsage,
   isZeroUsage,
   validateUsageDetails,
+  sessionIdentity,
 } from "../public/usage-fields.js";
-import { streamZcodeDbEvents, parseZcodeDb, zcodeDatabaseFile, zcodeSourceStat } from "./zcode-usage.js";
+import {
+  streamZcodeDbEvents,
+  parseZcodeDb,
+  parseSqliteUsageDb,
+  zcodeDatabaseFile,
+  zcodeSourceStat,
+} from "./zcode-usage.js";
+import { hermesDatabaseFile, hermesHomeLooksUsable, hermesSourceStat, streamHermesDbEvents } from "./hermes-usage.js";
 import { dshSessionFiles, dshHomeLooksUsable, parseDshSessions, streamDshSessionEvents } from "./dsh-usage.js";
 import {
   claudeHomeLooksUsable,
@@ -293,6 +301,16 @@ export function sourceId(kind, sourcePath) {
   return `${kind}-${digest}`;
 }
 
+export async function importPathIdentity(directory) {
+  let resolved = path.resolve(directory);
+  try {
+    resolved = await realpath(resolved);
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+  }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 async function codexHomeLooksUsable(homePath) {
   const checks = await Promise.all([
     exists(path.join(homePath, "sessions")),
@@ -332,6 +350,9 @@ function optionImportDirs(options = {}) {
 
 export async function classifyImportDirectory(importPath) {
   const resolved = path.resolve(importPath);
+  if (await hermesHomeLooksUsable(resolved)) {
+    return { type: "hermes-home", path: resolved, dbFile: await hermesDatabaseFile(resolved) };
+  }
   // ZCode、DSH、OpenCode 与 Claude Code 的判据更具体，必须先于 Codex 判断。
   // codexHomeLooksUsable 只看「有没有 sessions 目录」，而 ~/.dsh/sessions 与 ~/.claude/sessions
   // 恰好同名，若先判 Codex，DSH/Claude home 会被误判成 codex-home。
@@ -476,6 +497,71 @@ export async function discoverCodexHomes(options = {}) {
     await addHome(`Extra ${path.basename(extraHome)}`, extraHome, "extra");
   }
 
+  return homes;
+}
+
+export async function discoverHermesHomes(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const env = options.env || process.env;
+  const platform = options.platform || process.platform;
+  const suffix = env.HERMES_DATA_DIR_SUFFIX || "";
+  const root =
+    platform === "win32"
+      ? path.join(env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local"), `hermes${suffix}`)
+      : path.join(homeDir, `.hermes${suffix}`);
+  const homes = [];
+  const seen = new Set();
+  const expandHome = (candidate) =>
+    candidate
+      .replace(/^~(?=$|[\\/])/, homeDir)
+      .replace(
+        /\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)|%([^%]+)%/g,
+        (match, braced, plain, windows) => env[braced || plain || windows] ?? match,
+      );
+  const discoveryError = (error, candidate) => {
+    const sourcePath = error.path || candidate;
+    options.discoveryErrors?.push({ path: sourcePath, code: error.code || "IMPORT_SCAN_FAILED" });
+    options.onWarning?.(`无法读取 ${sourcePath}: ${error.message}`);
+  };
+  async function addHome(candidate) {
+    const resolved = path.resolve(expandHome(candidate));
+    options.sourceCandidates?.push(resolved);
+    try {
+      if (!(await hermesHomeLooksUsable(resolved, { onError: (error) => discoveryError(error, resolved) }))) return;
+      const identity = await importPathIdentity(resolved);
+      if (seen.has(identity)) return;
+      const usageLogPath = await hermesDatabaseFile(resolved);
+      seen.add(identity);
+      homes.push({
+        id: sourceId("hermes", resolved),
+        label: `Hermes ${path.basename(resolved)}`,
+        path: resolved,
+        kind: "hermes",
+        usageLogPath,
+      });
+    } catch (error) {
+      discoveryError(error, resolved);
+    }
+  }
+  if (!options.onlyConfiguredSources && env.CODEX_USAGE_HERMES !== "0") {
+    await addHome(root);
+    if (env.HERMES_HOME) await addHome(env.HERMES_HOME);
+    for (const profileRoot of new Set([root, env.HERMES_HOME].filter(Boolean))) {
+      const directory = path.join(expandHome(profileRoot), "profiles");
+      try {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          if (entry.isDirectory() || entry.isSymbolicLink()) await addHome(path.join(directory, entry.name));
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ENOTDIR") discoveryError(error, directory);
+      }
+    }
+  }
+  for (const candidate of (options.extraHermesHomes || env.CODEX_USAGE_HERMES_HOMES || "")
+    .split(path.delimiter)
+    .filter(Boolean)) {
+    await addHome(candidate);
+  }
   return homes;
 }
 
@@ -695,6 +781,10 @@ export async function discoverUsageSources(options = {}) {
       options.sourceCandidates?.push(source.path);
       // Keep the persisted identity, including unavailable homes and historical aliases.
       // A known Codex home needs only its own probe, not every other parser's directory walk.
+      if (source.kind === "hermes") {
+        sources.push({ ...source, usageLogPath: path.join(source.path, "state.db") });
+        continue;
+      }
       if (source.kind === "zcode") {
         const usageLogPath = await zcodeDatabaseFile(source.path);
         if (usageLogPath) sources.push({ ...source, usageLogPath });
@@ -721,7 +811,15 @@ export async function discoverUsageSources(options = {}) {
   }
   const sources = await discoverCodexHomes(options);
   const seenPaths = new Set(sources.map((source) => source.path));
+  const seenHermesPaths = new Set();
   const seenProjectLogs = new Set();
+
+  for (const home of await discoverHermesHomes(options)) {
+    if (seenPaths.has(home.path)) continue;
+    seenPaths.add(home.path);
+    seenHermesPaths.add(await importPathIdentity(home.path));
+    sources.push(home);
+  }
 
   for (const zcodeHome of await discoverZcodeHomes(options)) {
     if (seenPaths.has(zcodeHome.path)) {
@@ -776,6 +874,23 @@ export async function discoverUsageSources(options = {}) {
         label: `Imported ${path.basename(classified.path) || classified.path}`,
         path: classified.path,
         kind: "extra",
+        imported: true,
+      });
+      continue;
+    }
+
+    if (classified.type === "hermes-home") {
+      if (seenPaths.has(classified.path)) continue;
+      const identity = await importPathIdentity(classified.path);
+      if (seenHermesPaths.has(identity)) continue;
+      seenPaths.add(classified.path);
+      seenHermesPaths.add(identity);
+      sources.push({
+        id: sourceId("hermes", classified.path),
+        label: `Hermes ${path.basename(classified.path) || classified.path}`,
+        path: classified.path,
+        kind: "hermes",
+        usageLogPath: classified.dbFile,
         imported: true,
       });
       continue;
@@ -927,6 +1042,8 @@ export async function buildUsageFingerprint(options = {}) {
       hash.update(
         `${details.dev ?? ""}\t${details.ino ?? ""}\t${details.birthtimeMs ?? ""}\t${details.ctimeMs ?? ""}\n`,
       );
+      if (details.sqliteObservation) hash.update(`${details.sqliteObservation}\n`);
+      if (details.contentDigest) hash.update(`${details.contentDigest}\n`);
     } catch (error) {
       hash.update(`${filePath}\t!${error.code || "unreadable"}\n`);
     }
@@ -943,9 +1060,12 @@ export async function buildUsageFingerprint(options = {}) {
       await addFile(home.usageLogPath);
       continue;
     }
-    if (home.kind === "zcode" && home.usageLogPath) {
+    if (["zcode", "hermes"].includes(home.kind) && home.usageLogPath) {
       try {
-        await addFile(home.usageLogPath, await zcodeSourceStat(home.usageLogPath));
+        await addFile(
+          home.usageLogPath,
+          await (home.kind === "hermes" ? hermesSourceStat : zcodeSourceStat)(home.usageLogPath),
+        );
       } catch (error) {
         hash.update(`!discover-failed:${error.code || "unreadable"}\n`);
       }
@@ -1995,6 +2115,10 @@ async function streamProjectUsageFileEvents(filePath, source, onEvent, options =
 }
 
 export async function streamUsageFileEvents(filePath, source, onEvent, options = {}) {
+  if (source.kind === "hermes") {
+    await streamHermesDbEvents(filePath, source, onEvent, options);
+    return;
+  }
   if (source.kind === "project-log") {
     await streamProjectUsageFileEvents(filePath, source, onEvent, options);
     return;
@@ -2181,9 +2305,9 @@ async function parseWorkbuddyForIndex(filePath, source, intern, resolveRepositor
   return events;
 }
 
-async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
+async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository, onWarning) {
   const events = [];
-  await streamZcodeDbEvents(
+  await (source.kind === "hermes" ? streamHermesDbEvents : streamZcodeDbEvents)(
     dbFile,
     source,
     (event) => {
@@ -2213,7 +2337,7 @@ async function parseZcodeDbForIndex(dbFile, source, intern, resolveRepository) {
         priceVersion: intern(event.priceVersion),
       });
     },
-    { repositoryResolver: resolveRepository },
+    { repositoryResolver: resolveRepository, onWarning },
   );
   return events;
 }
@@ -2325,13 +2449,14 @@ export function toPublicUsageReport(report) {
 
 /** @returns {Promise<import("./usage-types.js").UsageReport>} */
 export async function buildUsageReport(options = {}) {
-  const homes = options.homes || (await discoverUsageSources(options));
+  const warnings = [];
+  const homes =
+    options.homes || (await discoverUsageSources({ ...options, onWarning: (warning) => warnings.push(warning) }));
   const repositoryResolver = createRepositoryResolver();
   const sessions = [];
   const events = [];
   const rateLimitObservations = [];
   const quotaSourceObservations = [];
-  const warnings = [];
 
   for (const home of homes) {
     if (home.kind === "project-log" && home.usageLogPath) {
@@ -2345,9 +2470,15 @@ export async function buildUsageReport(options = {}) {
       continue;
     }
 
-    if (home.kind === "zcode" && home.usageLogPath) {
+    if ((home.kind === "zcode" || home.kind === "hermes") && home.usageLogPath) {
       try {
-        const parsed = await parseZcodeDb(home.usageLogPath, home, { repositoryResolver });
+        const parsed =
+          home.kind === "hermes"
+            ? await parseSqliteUsageDb(streamHermesDbEvents, home.usageLogPath, home, {
+                repositoryResolver,
+                onWarning: (warning) => warnings.push(warning),
+              })
+            : await parseZcodeDb(home.usageLogPath, home, { repositoryResolver });
         sessions.push(...parsed.sessions);
         events.push(...parsed.events);
       } catch (error) {
@@ -2463,7 +2594,8 @@ export async function buildUsageReport(options = {}) {
   const quotaEvidence = loadQuotaSourceEvidence(homes, options.quotaSourceEvidenceSnapshot);
   const resolveQuotaSource = quotaSourceResolver([...events, ...quotaSourceObservations], quotaEvidence);
   for (const event of events) {
-    event.serviceTier = tierEvidence.resolve(event.sessionId, Date.parse(event.timestamp), event.serviceTier);
+    if (event.sourceKind !== "hermes")
+      event.serviceTier = tierEvidence.resolve(event.sessionId, Date.parse(event.timestamp), event.serviceTier);
     event.quotaSource = resolveQuotaSource(
       event.homeId,
       event.sessionId,
@@ -2485,9 +2617,10 @@ export async function buildUsageReport(options = {}) {
 }
 
 export async function buildUsageIndex(options = {}) {
-  const homes = options.homes || (await discoverUsageSources(options));
-  const repositoryResolver = createRepositoryResolver();
   const warnings = [];
+  const homes =
+    options.homes || (await discoverUsageSources({ ...options, onWarning: (warning) => warnings.push(warning) }));
+  const repositoryResolver = createRepositoryResolver();
   const events = [];
   const rateLimitObservations = [];
   const quotaSourceObservations = [];
@@ -2505,9 +2638,13 @@ export async function buildUsageIndex(options = {}) {
       continue;
     }
 
-    if (home.kind === "zcode" && home.usageLogPath) {
+    if ((home.kind === "zcode" || home.kind === "hermes") && home.usageLogPath) {
       try {
-        events.push(...(await parseZcodeDbForIndex(home.usageLogPath, home, interner.intern, repositoryResolver)));
+        events.push(
+          ...(await parseZcodeDbForIndex(home.usageLogPath, home, interner.intern, repositoryResolver, (warning) =>
+            warnings.push(warning),
+          )),
+        );
       } catch (error) {
         warnings.push(`无法解析 ${home.usageLogPath}: ${error.message}`);
       }
@@ -2622,8 +2759,12 @@ export async function buildUsageIndex(options = {}) {
     ],
     quotaEvidence,
   );
+  const kindsByHome = homeSourceKinds(homes);
   for (const event of events) {
-    const tier = tierEvidence.resolve(interner.values[event.s], event.t, interner.values[event.serviceTier]);
+    const tier =
+      kindsByHome.get(String(interner.values[event.h])) === "hermes"
+        ? interner.values[event.serviceTier]
+        : tierEvidence.resolve(interner.values[event.s], event.t, interner.values[event.serviceTier]);
     event.serviceTier = interner.intern(tier);
     event.quotaSource = resolveQuotaSource(
       interner.values[event.h],
@@ -2641,7 +2782,7 @@ export async function buildUsageIndex(options = {}) {
     strings: interner.values,
     events,
     rateLimitObservations,
-    sessionCount: new Set(events.map((event) => event.s)).size,
+    sessionCount: new Set(events.map((event) => JSON.stringify([event.h, event.s]))).size,
   };
 }
 
@@ -2848,7 +2989,7 @@ function groupByUsage(events, keyFn, options = {}) {
       channelGroups: options.includeChannels ? new Map() : null,
     };
     current.count += 1;
-    current.sessions.add(event.sessionId);
+    current.sessions.add(sessionIdentity(event.homeId, event.sessionId));
     addUsage(current.total, event.total);
     if (current.channelGroups) {
       const channelKey = event.channel || "Unknown";
@@ -2860,7 +3001,7 @@ function groupByUsage(events, keyFn, options = {}) {
         total: emptyUsage(),
       };
       channel.count += 1;
-      channel.sessions.add(event.sessionId);
+      channel.sessions.add(sessionIdentity(event.homeId, event.sessionId));
       addUsage(channel.total, event.total);
       current.channelGroups.set(channelKey, channel);
     }
@@ -2907,7 +3048,7 @@ function groupRepositories(events) {
     const repositoryPath = event.repositoryPath || event.cwd || "Unknown cwd";
     if (repositoryPath < group.name) group.name = repositoryPath;
     group.count += 1;
-    group.sessions.add(event.sessionId);
+    group.sessions.add(sessionIdentity(event.homeId, event.sessionId));
     if (event.cwd) {
       group.pathSet.add(event.cwd);
     }
@@ -2920,7 +3061,7 @@ function groupRepositories(events) {
       return {
         ...row,
         sessions: sessions.size,
-        sessionIds: [...sessions],
+        sessionIds: [...sessions].map((value) => JSON.parse(value)[1]),
         pathCount: pathSet.size,
       };
     })
@@ -2952,7 +3093,7 @@ function groupIndexedEvents(index, events, keyFn, options = {}) {
       channelGroups: options.includeChannels ? new Map() : null,
     };
     current.count += 1;
-    current.sessions.add(event.s);
+    current.sessions.add(sessionIdentity(event.h, event.s));
     addIndexedUsage(current.total, event);
     if (current.channelGroups) {
       const channelKey = index.strings[event.c] || "Unknown";
@@ -2964,7 +3105,7 @@ function groupIndexedEvents(index, events, keyFn, options = {}) {
         total: emptyUsage(),
       };
       channel.count += 1;
-      channel.sessions.add(event.s);
+      channel.sessions.add(sessionIdentity(event.h, event.s));
       addIndexedUsage(channel.total, event);
       current.channelGroups.set(channelKey, channel);
     }
@@ -3011,7 +3152,7 @@ function groupIndexedRepositories(index, events) {
     const repositoryPath = strings[event.rp] || strings[event.p] || "Unknown cwd";
     if (repositoryPath < group.name) group.name = repositoryPath;
     group.count += 1;
-    group.sessions.add(event.s);
+    group.sessions.add(sessionIdentity(event.h, event.s));
     const cwd = strings[event.p];
     if (cwd) {
       group.pathSet.add(cwd);
@@ -3025,7 +3166,7 @@ function groupIndexedRepositories(index, events) {
       return {
         ...row,
         sessions: sessions.size,
-        sessionIds: [...sessions].map((sessionId) => index.strings[sessionId] || String(sessionId)),
+        sessionIds: [...sessions].map((value) => index.strings[Number(JSON.parse(value)[1])] || JSON.parse(value)[1]),
         pathCount: pathSet.size,
       };
     })
@@ -3317,13 +3458,13 @@ export function summarizeUsageIndex(index, filters = {}) {
     return true;
   });
 
-  const sessionIds = new Set(events.map((event) => event.s));
+  const sessionIds = new Set(events.map((event) => sessionIdentity(event.h, event.s)));
   const totals = events.reduce((sum, event) => addIndexedUsage(sum, event), emptyUsage());
   const comparison = usageComparison({
     range,
     allEvents,
     eventTime: (event) => event.t,
-    eventSession: (event) => event.s,
+    eventSession: (event) => sessionIdentity(event.h, event.s),
     addEventUsage: addIndexedUsage,
     currentTotals: totals,
     now,
@@ -3423,13 +3564,13 @@ export function summarizeUsage(report, filters = {}) {
     return true;
   });
 
-  const sessionIds = new Set(events.map((event) => event.sessionId));
+  const sessionIds = new Set(events.map((event) => sessionIdentity(event.homeId, event.sessionId)));
   const totals = events.reduce((sum, event) => addUsage(sum, event.total), emptyUsage());
   const comparison = usageComparison({
     range,
     allEvents,
     eventTime: (event) => Date.parse(event.timestamp),
-    eventSession: (event) => event.sessionId,
+    eventSession: (event) => sessionIdentity(event.homeId, event.sessionId),
     addEventUsage: (sum, event) => addUsage(sum, event.total),
     currentTotals: totals,
     now,

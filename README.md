@@ -6,6 +6,8 @@
 
 当前版本：[0.95](https://github.com/Sylva1027/agent-usage/releases/tag/0.95)。
 
+当前源码还支持 [Hermes](docs/data-sources/hermes.md)；该支持尚未包含在上述已发布版本中。
+
 ![DeepSeek 浅色皮肤看板，示例数据](docs/images/dashboard-deepseek-light.png)
 
 ## 快速开始

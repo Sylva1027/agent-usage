@@ -10,7 +10,7 @@
     "cud": "./src/cli.js"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "node scripts/test.mjs",
     "typecheck": "tsc -p tsconfig.checkjs.json",
     "lint": "biome check --formatter-enabled=false .",
     "format:check": "biome format .",

@@ -20,14 +20,14 @@ function tableNames(database) {
     .map((row) => String(row.name));
 }
 
-test("fresh schema 24 creates ordinary usage tables without TPS tables", async (t) => {
+test("fresh schema 25 creates ordinary usage tables without TPS tables", async (t) => {
   const homeDir = await temporaryDirectory(t);
   const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage.sqlite") });
 
   try {
     await store.open();
-    assert.equal(STORE_SCHEMA_VERSION, 24);
-    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 24);
+    assert.equal(STORE_SCHEMA_VERSION, 25);
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 25);
 
     const tables = tableNames(store.database);
     assert.equal(
@@ -59,7 +59,7 @@ test("fresh schema 24 creates ordinary usage tables without TPS tables", async (
   }
 });
 
-test("schema 23 migrates to 24 without reading or rewriting legacy TPS tables", async (t) => {
+test("schema 23 migrates to 25 without reading or rewriting legacy TPS tables", async (t) => {
   const homeDir = await temporaryDirectory(t);
   const databaseFile = path.join(homeDir, "usage.sqlite");
   const legacy = new DatabaseSync(databaseFile);
@@ -79,7 +79,7 @@ test("schema 23 migrates to 24 without reading or rewriting legacy TPS tables", 
   const store = new UsageStore({ homeDir, databaseFile });
   try {
     await store.open();
-    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 24);
+    assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 25);
     assert.deepEqual(store.readPublishedFileWarnings(), {
       "project.jsonl": [{ sourceKind: "project-log", homeId: "p1", code: "PROJECT_LOG_TRUNCATED", count: 2 }],
     });

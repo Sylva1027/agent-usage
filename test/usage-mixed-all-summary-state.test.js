@@ -159,7 +159,7 @@ function assertOracle(value, input = options(value)) {
   );
   assert.deepEqual(result.aggregate, {
     event_count: rows.length,
-    session_count: new Set(rows.map((x) => x.sessionId)).size,
+    session_count: new Set(rows.map((x) => JSON.stringify([x.homeId, x.sessionId]))).size,
     home_count: new Set(rows.map((x) => x.homeId)).size,
     ...Object.fromEntries(FIELDS.map((field) => [field, rows.reduce((sum, x) => sum + x.total[field], 0)])),
   });
@@ -171,7 +171,7 @@ function assertOracle(value, input = options(value)) {
     for (const group of groups) {
       const members = rows.filter((event) => nameOf(event) === group.name);
       assert.equal(group.count, members.length);
-      assert.equal(group.sessions, new Set(members.map((x) => x.sessionId)).size);
+      assert.equal(group.sessions, new Set(members.map((x) => JSON.stringify([x.homeId, x.sessionId]))).size);
       assert.deepEqual(
         group.total,
         Object.fromEntries(FIELDS.map((field) => [field, members.reduce((sum, x) => sum + x.total[field], 0)])),
@@ -215,7 +215,7 @@ test("history append and reopen reuse logical ties, Unicode members and exact fl
   assert.equal(work.rewinds, 1);
   assert.deepEqual(reads[0], { ms: BASE + DAY, id: 0 });
   const result = assertOracle(value, input);
-  assert.equal(result.aggregate.session_count, 1);
+  assert.equal(result.aggregate.session_count, 2);
   assert.equal(result.aggregate.home_count, 2);
 
   reopen(value);
@@ -278,7 +278,7 @@ test("history checkpoints allow repeated ids and rewind only the timestamp suffi
   assert.equal(assertOracle(value, input).aggregate.session_count, 3);
   const first = value.database
     .prepare("SELECT first_ms,first_id FROM usage_history_all_summary_members WHERE scope=? AND member=?")
-    .get('["all","sessions"]', "suffix");
+    .get('["all","sessions"]', JSON.stringify(["home-中文", "suffix"]));
   assert.deepEqual({ ...first }, { first_ms: BASE + 1024, first_id: 0 });
 
   // Moving a fact must withdraw its old position even when its tie decreases.
@@ -458,7 +458,7 @@ test("history damaged checkpoints self-heal without changing the fact revision",
   }
 });
 
-test("FORMAT=3 hot cache retains its schema and ready reuse performs no writes", async () => {
+test("FORMAT=4 hot cache retains its schema and ready reuse performs no writes", async () => {
   const db = new DatabaseSync(":memory:");
   try {
     db.exec(`CREATE TABLE events(id INTEGER PRIMARY KEY,timestamp_ms INTEGER NOT NULL);
@@ -489,7 +489,7 @@ test("FORMAT=3 hot cache retains its schema and ready reuse performs no writes",
     assert.deepEqual(readStoredAllSummary(reused), result);
     assert.deepEqual(snapshot(), schema);
     assert.equal(changes(db), writes);
-    assert.equal(db.prepare("SELECT version FROM usage_all_summary_format").get().version, 3);
+    assert.equal(db.prepare("SELECT version FROM usage_all_summary_format").get().version, 4);
     assert.deepEqual(
       db
         .prepare("PRAGMA table_info(usage_all_summary_checkpoints)")

@@ -69,7 +69,7 @@ test("usageFiles expands session files and excludes tool results", async () => {
   });
 });
 
-test("missing WorkBuddy source is harmless and new stores use schema 24", async () => {
+test("missing WorkBuddy source is harmless and new stores use schema 25", async () => {
   await withWorkspace(async ({ options, storeFile }) => {
     const store = new UsageStore({ homeDir: options.homeDir, databaseFile: storeFile });
     try {
@@ -79,8 +79,8 @@ test("missing WorkBuddy source is harmless and new stores use schema 24", async 
       ]);
       assert.equal(files.length, 0);
       assert.equal(failedHomes.length, 0);
-      assert.equal(STORE_SCHEMA_VERSION, 24);
-      assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 24);
+      assert.equal(STORE_SCHEMA_VERSION, 25);
+      assert.equal(Number(store.database.prepare("PRAGMA user_version").get().user_version), 25);
     } finally {
       store.close();
     }

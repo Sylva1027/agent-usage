@@ -114,7 +114,7 @@ function rawMetadata(database, asOfMs) {
       .all(...params)
       .map((row) => ({ ...row }));
   const counts = database
-    .prepare("SELECT COUNT(*) eventCount, COUNT(DISTINCT session_id) sessionCount FROM events")
+    .prepare("SELECT COUNT(*) eventCount, COUNT(DISTINCT json_array(home_id,session_id)) sessionCount FROM events")
     .get();
   return {
     ...counts,
@@ -144,7 +144,7 @@ test("an existing ordinary metadata seed keeps its exact legacy trigger and ensu
     const schema = () => database.prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").all();
     const beforeSchema = schema();
     const beforeFormat = database.prepare("SELECT * FROM usage_metadata_format").get();
-    assert.equal(beforeFormat.version, 2);
+    assert.equal(beforeFormat.version, 3);
     assert.deepEqual(readStoredMetadata(database, 1_000), rawMetadata(database, 1_000));
     const beforeChanges = database.prepare("SELECT total_changes() n").get().n;
 
@@ -285,7 +285,7 @@ test("metadata projection resumes bounded builds, appends one event, and reopens
 
     const built = readStoredMetadata(database, 1_000);
     assert.equal(built.eventCount, 3);
-    assert.equal(built.sessionCount, 2);
+    assert.equal(built.sessionCount, 3);
     assert.deepEqual(Object.fromEntries(built.homeRows), {
       "home-a": { event_count: 2, session_count: 2 },
       "home-b": { event_count: 1, session_count: 1 },
@@ -315,7 +315,7 @@ test("metadata projection resumes bounded builds, appends one event, and reopens
     });
     const appended = readStoredMetadata(database, 1_000);
     assert.equal(appended.eventCount, 4);
-    assert.equal(appended.sessionCount, 3);
+    assert.equal(appended.sessionCount, 4);
     assert.deepEqual(appended.homeRows.get("home-a"), { event_count: 3, session_count: 3 });
   } finally {
     database?.close();

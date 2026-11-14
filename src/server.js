@@ -152,17 +152,19 @@ export async function describeImportEntry(importPath) {
   const label =
     classified.type === "project-log"
       ? `Project ${name}`
-      : classified.type === "zcode-home"
-        ? `ZCode ${name}`
-        : classified.type === "dsh-home"
-          ? `DSH ${name}`
-          : classified.type === "opencode-home"
-            ? `OpenCode ${name}`
-            : classified.type === "claude-home"
-              ? `Claude Code ${name}`
-              : classified.type === "workbuddy-home"
-                ? `WorkBuddy ${name}`
-                : `Imported ${name}`;
+      : classified.type === "hermes-home"
+        ? `Hermes ${name}`
+        : classified.type === "zcode-home"
+          ? `ZCode ${name}`
+          : classified.type === "dsh-home"
+            ? `DSH ${name}`
+            : classified.type === "opencode-home"
+              ? `OpenCode ${name}`
+              : classified.type === "claude-home"
+                ? `Claude Code ${name}`
+                : classified.type === "workbuddy-home"
+                  ? `WorkBuddy ${name}`
+                  : `Imported ${name}`;
   return {
     type: classified.type,
     path: classified.path,
@@ -637,7 +639,7 @@ export function createUsageServer(options = {}) {
       ? (importContext.automaticPricingStatus ?? null)
       : runWithPricingCatalog(pricingCatalog, getAutomaticPricingStatus);
     const status = await loadUsageStore({ check });
-    snapshotDirectoryPromise ||= mkdtemp(path.join(os.tmpdir(), "codex-usage-snapshot-"));
+    snapshotDirectoryPromise ||= mkdtemp(path.toNamespacedPath(path.join(os.tmpdir(), "codex-usage-snapshot-")));
     const snapshotDirectory = await snapshotDirectoryPromise;
     const id = randomUUID();
     const databaseFile = path.join(snapshotDirectory, `${id}.sqlite`);

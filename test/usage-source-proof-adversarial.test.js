@@ -441,7 +441,7 @@ test("identical recovery after a missing sync preserves facts and indexed_at", a
     const originalProgress = progressRow(store, fixture.sourcePath);
     assert.ok(originalProgress);
 
-    await rm(fixture.sourcePath);
+    await rename(fixture.sourcePath, `${fixture.sourcePath}.away`);
     await store.sync();
     assert.deepEqual(factSnapshot(store), originalFacts);
     assert.deepEqual(

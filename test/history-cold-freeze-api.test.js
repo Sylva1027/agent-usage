@@ -199,6 +199,34 @@ test("freeze and snapshot reads retain authorized cold history after the segment
   }
 });
 
+test("cold history freezes and replays when the temporary directory has a long path", async () => {
+  const fixture = await createArchivedFixture();
+  const temporary = mkdtempSync(path.join(os.tmpdir(), "cold-freeze-long-"));
+  const longDirectory = path.join(temporary, "long-directory-".repeat(16));
+  mkdirSync(longDirectory);
+  const previous = Object.fromEntries(["TEMP", "TMP", "TMPDIR"].map((key) => [key, process.env[key]]));
+  let server;
+  try {
+    for (const key of Object.keys(previous)) process.env[key] = longDirectory;
+    server = createUsageServer(fixture.serverOptions);
+    const baseUrl = await listen(server);
+    const frozenResponse = await fetch(`${baseUrl}/api/summary?preset=all&calendarZone=utc&freeze=1`);
+    assert.equal(frozenResponse.status, 200, await frozenResponse.clone().text());
+    const frozen = await frozenResponse.json();
+    const replay = await fetch(`${baseUrl}/api/summary?preset=all&calendarZone=utc&snapshot=${frozen.snapshotId}`);
+    assert.equal(replay.status, 200, await replay.clone().text());
+    assert.deepEqual(keyFields(await replay.json()), fixture.oracleKeys);
+  } finally {
+    if (server) await server.close();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fixture.close();
+    rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("cold HTTP freeze keeps catalog A costs after live pricing changes to B", async () => {
   const fixture = await createArchivedFixture();
   const originalCatalog = getPricingCatalog();

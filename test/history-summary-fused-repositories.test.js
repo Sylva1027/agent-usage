@@ -76,7 +76,7 @@ test("cold repository facts share the timeline scan and preserve SQL totals, Uni
       const reader = store.historySqlDashboardCache.store;
       const sqlRepositories = reader.repositoriesRange.bind(reader);
       if (!scope.excludeHomes) {
-        assert.deepEqual(expected.summary.repositories[0].sessionIds, ["shared", "tie-a", "tie-b", "last"]);
+        assert.deepEqual(expected.summary.repositories[0].sessionIds, ["shared", "tie-a", "tie-b", "shared", "last"]);
         assert.equal(expected.summary.repositories[0].pathCount, 2);
         assert.equal(expected.summary.repositories[0].kind, "unknown");
         assert.equal(expected.periodComparison.repositories.find((row) => row.key === "repo-main").kind, "git");

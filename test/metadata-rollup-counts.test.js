@@ -59,7 +59,9 @@ function insertEvent(database, { homeId, timestampMs, sessionId }) {
 
 function rawCounts(database) {
   const totals = database
-    .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
+    .prepare(
+      "SELECT COUNT(*) AS event_count, COUNT(DISTINCT json_array(home_id,session_id)) AS session_count FROM events",
+    )
     .get();
   const homes = database
     .prepare(`

@@ -13,7 +13,7 @@ export async function listenOnFetchPort(server) {
       });
       return;
     } catch (error) {
-      if (error.code !== "EADDRINUSE" || attempt >= 20) throw error;
+      if (!["EADDRINUSE", "EACCES"].includes(error.code) || attempt >= 20) throw error;
     } finally {
       server.off("error", onError);
       server.off("listening", onListening);

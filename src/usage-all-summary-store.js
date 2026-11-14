@@ -1,7 +1,8 @@
 import { createCostEstimateAccumulator } from "./pricing.js";
 import { createTimelineAccumulator, sourceGroup } from "../public/timeline-utils.js";
+import { sessionIdentity } from "../public/usage-fields.js";
 
-const FORMAT = 3;
+const FORMAT = 4;
 const CHECKPOINT_INTERVAL = 1024;
 const CHECKPOINT_LIMIT = 32;
 const START = { ms: Number.MIN_SAFE_INTEGER, id: Number.MIN_SAFE_INTEGER };
@@ -217,7 +218,7 @@ function accumulator(options, saved = null) {
       groups.set(name, group);
     }
     group.count++;
-    group.sessionsSet.add(event.sessionId);
+    group.sessionsSet.add(sessionIdentity(event.homeId, event.sessionId));
     for (const field of FIELDS) group.total[field] += event.total[field];
   };
   const groupState = (groups) =>
@@ -236,7 +237,7 @@ function accumulator(options, saved = null) {
     add(event) {
       current = { ms: event.timestamp, id: event.id };
       aggregate.event_count++;
-      sessions.add(event.sessionId);
+      sessions.add(sessionIdentity(event.homeId, event.sessionId));
       homes.add(event.homeId);
       for (const field of FIELDS) {
         aggregate[field] += event.total[field];
