@@ -8446,6 +8446,14 @@ test("M3.2：真实浏览器集成——纯色/渐变/placeholder/聚光/Canvas 
 
   const fixture = await createPaletteFixture();
   const server = createUsageServer(createPaletteServerOptions(fixture));
+  // Both DPR pages query the same fixture day, including when the test crosses midnight.
+  const requestFixtureDay = (route) => {
+    const url = new URL(route.request().url());
+    url.searchParams.set("preset", "custom");
+    url.searchParams.set("startDate", "2026-10-03");
+    url.searchParams.set("endDate", "2026-10-03");
+    return route.continue({ url: url.href });
+  };
   let context = null;
   try {
     const port = await listenOnFreePort(server);
@@ -8453,6 +8461,7 @@ test("M3.2：真实浏览器集成——纯色/渐变/placeholder/聚光/Canvas 
     const browser = await chromium.launch({ executablePath, headless: true });
     try {
       context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await context.route("**/api/usage?**", requestFixtureDay);
       const page = await context.newPage();
       // 观察器必须装在导航之前（addInitScript 只在真实导航时执行）
       installBrowserColorObserver(page);
@@ -8822,6 +8831,7 @@ test("M3.2：真实浏览器集成——纯色/渐变/placeholder/聚光/Canvas 
           viewport: { width: 1280, height: 900 },
           deviceScaleFactor: 2,
         });
+        await scaled.route("**/api/usage?**", requestFixtureDay);
         let scaledPage = null;
         try {
           scaledPage = await scaled.newPage();
