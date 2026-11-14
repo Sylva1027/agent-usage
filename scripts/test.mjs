@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 // Keep automatic Hermes discovery enabled inside a disposable test environment.
-const parent = await realpath(tmpdir());
+// Native NTFS proofs need the AppData volume even when CI redirects TEMP to its work drive.
+const temporary = process.platform === "win32" && process.env.LOCALAPPDATA
+  ? path.join(process.env.LOCALAPPDATA, "Temp") : tmpdir();
+const parent = await realpath(temporary);
 const root = await mkdtemp(path.join(parent, "codex-usage-tests-"));
 try {
   const local = path.join(root, "local");

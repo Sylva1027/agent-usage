@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,11 @@ import test from "node:test";
 test("test runner isolates ambient Hermes paths, keeps discovery enabled and cleans success and failure", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "test-environment-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
+  const redirected = path.join(root, "redirected-temp");
+  mkdirSync(redirected);
+  const expectedParent = realpathSync(
+    process.platform === "win32" ? path.join(process.env.LOCALAPPDATA, "Temp") : redirected,
+  );
   const file = path.join(root, "isolated.test.js");
   writeFileSync(
     file,
@@ -22,6 +27,7 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
     import { discoverHermesHomes } from ${JSON.stringify(new URL("../src/usage-core.js", import.meta.url).href)};
     test('isolated discovery', async () => {
       console.log('TEST_ENV_ROOT=' + tmpdir());
+      assert.equal(path.dirname(tmpdir()), process.env.TEST_EXPECTED_TEMP_PARENT);
       for (const key of ['HERMES_HOME','HERMES_DATA_DIR_SUFFIX','CODEX_USAGE_HERMES_HOMES','CODEX_USAGE_HERMES'])
         assert.equal(process.env[key], undefined);
       assert.ok(existsSync(path.join(process.env.LOCALAPPDATA, 'Temp')));
@@ -45,6 +51,9 @@ test("test runner isolates ambient Hermes paths, keeps discovery enabled and cle
       HERMES_DATA_DIR_SUFFIX: "sentinel",
       CODEX_USAGE_HERMES: "0",
       TEST_FORCE_FAILURE: forceFailure,
+      TEMP: redirected,
+      TMP: redirected,
+      TEST_EXPECTED_TEMP_PARENT: expectedParent,
     };
     delete env.NODE_TEST_CONTEXT;
     const child = spawnSync(

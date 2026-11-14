@@ -4,7 +4,7 @@
 
 Hermes 已从混合工作区整理至 `codex/hermes-adapter`，基于远端 main 的 `d818b6c`，不包含本地计价提交 `c7a1b33`、设计预览、TPS 封存文档或计价目录扩展。聚合用量的共用计价语义及其回归属于 Hermes 必要范围。下文保留混合工作区的历史验收记录；独立分支另行执行完整 Windows 套件和 Node 24/26 CI，两包也由该分支重新构建验收。
 
-独立分支的 typecheck、lint、format:check 已通过。CI 增加串行原生来源、租约、恢复及隔离构建验收；在本机 C 盘 worktree 中，先前因目录权限跳过的大小写敏感目录用例已原生运行通过，文件符号链接用例仍因 EPERM 跳过。最终提交与 CI 结果以关联 PR 为准。
+独立分支的 typecheck、lint、format:check 已通过。CI 增加串行原生来源、租约、恢复及隔离构建验收；在本机 C 盘 worktree 中，先前因目录权限跳过的大小写敏感目录用例已原生运行通过，文件符号链接用例仍因 EPERM 跳过。首次 CI 的 Node 26 原生来源证明在 D 盘隔离目录中无法取得 NTFS 日志基线；已修复测试入口：Windows 的隔离根目录使用原 LOCALAPPDATA/Temp 所在卷，仍隔离 Hermes 环境并自动清理。新增重定向 TEMP 回归先失败后通过，原生来源证明和类型、lint、格式检查重新通过；未跳过或放宽原生断言。最终提交与 CI 结果以关联 PR 为准。
 
 ## Windows 原生 Node 24、双包及两小时长稳补验
 
