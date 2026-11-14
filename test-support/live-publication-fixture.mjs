@@ -276,7 +276,7 @@ async function fixture(t, target, { hotOnly = HOT_ONLY, publication = false } = 
         control = createServer((socket) => {
           sockets.add(socket);
           socket.on("error", (error) => {
-            if (error.code !== "ECONNRESET") hookError ||= error;
+            if (error.code !== "ECONNRESET" && !(error.code === "EPIPE" && socket.readableEnded)) hookError ||= error;
           });
           socket.once("close", () => sockets.delete(socket));
           socket.setEncoding("utf8");
@@ -288,7 +288,8 @@ async function fixture(t, target, { hotOnly = HOT_ONLY, publication = false } = 
               const event = JSON.parse(buffer.slice(0, end));
               buffer = buffer.slice(end + 1);
               void point(event).then((action) => {
-                if (!socket.destroyed) socket.write(`${JSON.stringify({ id: event.id, action })}\n`);
+                if (!socket.destroyed && !socket.writableEnded)
+                  socket.write(`${JSON.stringify({ id: event.id, action })}\n`);
               });
             }
           });

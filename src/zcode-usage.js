@@ -41,23 +41,7 @@ export async function zcodeDatabaseFile(homePath) {
   return "";
 }
 
-export async function zcodeSourceStat(dbFile) {
-  // ZCode 运行时新写入先落在 WAL 文件里，增量检测必须把 -wal 也算进指纹。
-  const main = await stat(dbFile);
-  let size = main.size;
-  let mtimeMs = main.mtimeMs;
-  try {
-    const wal = await stat(`${dbFile}-wal`);
-    // Readers can create an empty WAL; only a nonempty WAL can contain source changes.
-    if (wal.size > 0) {
-      size += wal.size;
-      mtimeMs = Math.max(mtimeMs, wal.mtimeMs);
-    }
-  } catch {
-    // 没有 WAL 文件时主库就是最新状态。
-  }
-  return { size, mtimeMs };
-}
+export { sqliteSourceStat as zcodeSourceStat } from "./sqlite-source-stat.js";
 
 function openZcodeDatabase(dbFile) {
   try {
@@ -198,16 +182,18 @@ export async function streamZcodeDbEvents(dbFile, source, onEvent, options = {})
   }
 }
 
-export async function parseZcodeDb(dbFile, source, options = {}) {
+export async function parseSqliteUsageDb(stream, dbFile, source, options = {}) {
   const sessions = new Map();
   const events = [];
 
-  await streamZcodeDbEvents(
+  await stream(
     dbFile,
     source,
     (event) => {
       events.push({
         id: event.eventId,
+        ...(event.sourceEventId ? { sourceEventId: event.sourceEventId } : {}),
+        ...(event.sourceKind ? { sourceKind: event.sourceKind } : {}),
         sessionId: event.sessionId,
         timestamp: event.timestamp,
         homeId: event.homeId,
@@ -275,4 +261,8 @@ export async function parseZcodeDb(dbFile, source, options = {}) {
     sessions: [...sessions.values()],
     events,
   };
+}
+
+export async function parseZcodeDb(dbFile, source, options = {}) {
+  return parseSqliteUsageDb(streamZcodeDbEvents, dbFile, source, options);
 }

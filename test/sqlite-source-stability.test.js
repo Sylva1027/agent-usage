@@ -140,9 +140,14 @@ for (const [kind, adapter] of Object.entries(adapters)) {
     // These bytes exercise stat only; actual parser tests below always use SQLite's own WAL.
     writeFileSync(wal, "wal");
     utimesSync(wal, later, later);
-    assert.deepEqual(await adapter.stat(file), { size: baseline.size + 3, mtimeMs: statSync(wal).mtimeMs });
+    let observed = await adapter.stat(file);
+    assert.equal(observed.size, baseline.size + 3);
+    assert.equal(observed.mtimeMs, statSync(wal).mtimeMs);
+    assert.notEqual(observed.sqliteObservation, baseline.sqliteObservation);
     utimesSync(wal, early, early);
-    assert.deepEqual(await adapter.stat(file), { size: baseline.size + 3, mtimeMs: baseline.mtimeMs });
+    observed = await adapter.stat(file);
+    assert.equal(observed.size, baseline.size + 3);
+    assert.equal(observed.mtimeMs, baseline.mtimeMs);
   });
 
   test(`${kind}: readonly-created empty WAL stays stable through touch, deletion, recreation and restart`, async (t) => {

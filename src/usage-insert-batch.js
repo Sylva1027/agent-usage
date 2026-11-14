@@ -38,7 +38,8 @@ export function createUsageInsertBatch(database, { sqlPrefix, columns, maxRows =
   for (const [name, value] of Object.entries({ columns, maxRows, maxBytes })) {
     if (!Number.isSafeInteger(value) || value < 1) throw new RangeError(`${name} must be a positive safe integer`);
   }
-  const rowLimit = Math.min(maxRows, Math.floor(variableLimit(database) / columns));
+  // SQLite may accept more parameters than a JavaScript spread call can safely pass.
+  const rowLimit = Math.min(maxRows, Math.floor(Math.min(variableLimit(database), 16_384) / columns));
   if (rowLimit < 1) throw new RangeError("columns exceed SQLite's bind parameter limit");
   const tuple = `(${Array(columns).fill("?").join(",")})`;
   /** @type {SQLInputValue[]} */

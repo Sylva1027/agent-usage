@@ -1,4 +1,4 @@
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 const DEFAULT_BATCH_SIZE = 1024;
 const MAX_BATCH_SIZE = 10_000;
 const FORMAT_TABLE = "usage_metadata_format";
@@ -430,7 +430,9 @@ function applyBatch(database, state, rows) {
     )
     .run(firstEventId, lastEventId);
   const newSessions = database
-    .prepare(`INSERT OR IGNORE INTO ${SESSIONS_TABLE}(session_id) SELECT session_id ${batch} GROUP BY session_id`)
+    .prepare(
+      `INSERT OR IGNORE INTO ${SESSIONS_TABLE}(session_id) SELECT json_array(home_id,session_id) ${batch} GROUP BY home_id,session_id`,
+    )
     .run(firstEventId, lastEventId).changes;
   // Count missing home members above before inserting them here.
   database

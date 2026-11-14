@@ -152,17 +152,19 @@ export async function describeImportEntry(importPath) {
   const label =
     classified.type === "project-log"
       ? `Project ${name}`
-      : classified.type === "zcode-home"
-        ? `ZCode ${name}`
-        : classified.type === "dsh-home"
-          ? `DSH ${name}`
-          : classified.type === "opencode-home"
-            ? `OpenCode ${name}`
-            : classified.type === "claude-home"
-              ? `Claude Code ${name}`
-              : classified.type === "workbuddy-home"
-                ? `WorkBuddy ${name}`
-                : `Imported ${name}`;
+      : classified.type === "hermes-home"
+        ? `Hermes ${name}`
+        : classified.type === "zcode-home"
+          ? `ZCode ${name}`
+          : classified.type === "dsh-home"
+            ? `DSH ${name}`
+            : classified.type === "opencode-home"
+              ? `OpenCode ${name}`
+              : classified.type === "claude-home"
+                ? `Claude Code ${name}`
+                : classified.type === "workbuddy-home"
+                  ? `WorkBuddy ${name}`
+                  : `Imported ${name}`;
   return {
     type: classified.type,
     path: classified.path,

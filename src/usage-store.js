@@ -98,8 +98,10 @@ import {
   USAGE_RECORD_TABLE_NAMES,
 } from "./usage-record-store.js";
 import { buildModelActivity, canonicalModelName } from "../public/pricing-models.js";
+import { sessionIdentity } from "../public/usage-fields.js";
 import { addPeriodEvent, emptyPeriodMetrics, summarizePeriodComparison } from "../public/period-comparison.js";
 import { zcodeSourceStat } from "./zcode-usage.js";
+import { hermesSourceStat } from "./hermes-usage.js";
 import { dshSessionFiles } from "./dsh-usage.js";
 import { opencodeDatabaseFiles, opencodeSourceStat } from "./opencode-usage.js";
 import { claudeSessionFiles } from "./claude-code-usage.js";
@@ -115,7 +117,7 @@ import {
   previousQuotaRange,
 } from "../public/timeline-utils.js";
 
-export const STORE_SCHEMA_VERSION = 24;
+export const STORE_SCHEMA_VERSION = 25;
 
 const QUOTA_SOURCES_DDL = `CREATE TABLE IF NOT EXISTS quota_usage_sources (
   source_path TEXT NOT NULL, home_id TEXT NOT NULL, session_id TEXT NOT NULL,
@@ -181,7 +183,7 @@ function assertHistoryArchiveRecordMatches(record, verified) {
   return segmentId;
 }
 
-const HARNESS_MODEL_NAMES = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy"];
+const HARNESS_MODEL_NAMES = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"];
 
 function harnessModelName(channel) {
   const value = String(channel || "").toLowerCase();
@@ -193,9 +195,11 @@ function harnessModelName(channel) {
         ? "OpenCode"
         : value.startsWith("claude")
           ? "Claude"
-          : value.startsWith("workbuddy")
-            ? "WorkBuddy"
-            : "Codex";
+          : value.startsWith("hermes")
+            ? "Hermes"
+            : value.startsWith("workbuddy")
+              ? "WorkBuddy"
+              : "Codex";
 }
 
 /**
@@ -340,6 +344,13 @@ function assertHistoryReplacedFactsSchema(database) {
 
 function canonicalFactPayload(row, excludedColumns = []) {
   const excluded = new Set(excludedColumns);
+  if (
+    Object.hasOwn(row, "timestamp_ms") &&
+    Object.hasOwn(row, "session_id") &&
+    !Object.hasOwn(row, "source_event_id")
+  ) {
+    row = { ...row, source_event_id: "" };
+  }
   return Object.fromEntries(
     Object.keys(row)
       .filter((key) => !excluded.has(key))
@@ -421,7 +432,15 @@ function hasExactObjectKeys(value, keys) {
 
 const HISTORY_SOURCE_IDENTITY_COLUMNS = Object.freeze(["path", "kind", "home_id", "home_label", "home_path"]);
 
-function historyArchiveRevisionPayload(payload, sourceIdentity) {
+function historyArchiveRevisionPayload(payload, sourceIdentity, legacy = false) {
+  if (
+    legacy &&
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    !Object.hasOwn(payload, "source_event_id")
+  )
+    payload = { ...payload, source_event_id: "" };
   if (!hasExactObjectKeys(payload, EVENT_INSERT_COLUMNS)) {
     throw historyArchiveRevisionError("archive revision payload must contain exactly the event columns without id");
   }
@@ -449,7 +468,7 @@ function historyArchiveRevisionPayload(payload, sourceIdentity) {
 }
 
 function historyArchiveRevisionPayloadKey(payload) {
-  return JSON.stringify(canonicalFactPayload(payload, ["id"]));
+  return JSON.stringify(canonicalFactPayload({ source_event_id: "", ...payload }, ["id"]));
 }
 
 function sameHistoryArchiveSourceIdentity(left, right) {
@@ -468,6 +487,7 @@ function canonicalHistoryArchiveRevisionDeltas(deltas) {
 
 function canonicalHistoryArchiveRevisionEntry(entry) {
   return {
+    ...(entry.binding ? { binding: entry.binding } : {}),
     sourceIdentity: Object.fromEntries(
       HISTORY_SOURCE_IDENTITY_COLUMNS.map((column) => [column, entry.sourceIdentity[column]]),
     ),
@@ -486,7 +506,9 @@ function historyRows(rows) {
 
 function historyArchiveRowsByNativeIdentity(rows, segmentId, byIdentity) {
   for (const row of historyRows(rows)) {
-    const key = JSON.stringify([Number(row.timestamp_ms), String(row.session_id)]);
+    const key = row.source_event_id
+      ? JSON.stringify(["source", row.source_event_id])
+      : JSON.stringify([Number(row.timestamp_ms), String(row.session_id)]);
     if (byIdentity.has(key)) {
       throw historyArchiveError(
         "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
@@ -538,9 +560,10 @@ function historyArchiveColdRevisionForRows(prefix) {
     for (const identity of effectiveByIdentity.keys()) if (!observedByIdentity.has(identity)) removedColdEventCount++;
     for (const identity of observedByIdentity.keys()) if (!effectiveByIdentity.has(identity)) addedCount++;
     if (
-      observedByIdentity.size === 0 ||
-      (removedColdEventCount > 0 && addedCount > 0) ||
-      (removedColdEventCount > 0 && prefix.sourceIdentity.kind !== "project-log")
+      prefix.sourceIdentity.kind !== "hermes" &&
+      (observedByIdentity.size === 0 ||
+        (removedColdEventCount > 0 && addedCount > 0) ||
+        (removedColdEventCount > 0 && prefix.sourceIdentity.kind !== "project-log"))
     ) {
       throw historyArchiveError(
         "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
@@ -582,6 +605,7 @@ function historyArchiveColdRevisionForRows(prefix) {
     // Keep the effective payload for recovery; the stored delta remains cumulative from the immutable candidate.
     return {
       entry: {
+        ...(prefix.binding ? { binding: prefix.binding } : {}),
         sourceIdentity: { ...prefix.sourceIdentity },
         removed: canonicalHistoryArchiveRevisionDeltas(removed),
         added: canonicalHistoryArchiveRevisionDeltas(added),
@@ -617,7 +641,9 @@ function writeHistoryArchiveEventRevisionState(database, revisionState) {
   if (revisions.length === 0) {
     database.prepare("DELETE FROM store_meta WHERE key = ?").run(HISTORY_ARCHIVE_EVENT_REVISIONS_META);
   } else {
-    statement.run(HISTORY_ARCHIVE_EVENT_REVISIONS_META, JSON.stringify({ formatVersion: 1, revisions }));
+    const formatVersion = revisions.some((entry) => entry.binding) ? 2 : 1;
+    if (formatVersion === 2) for (const entry of revisions) entry.binding ||= "base";
+    statement.run(HISTORY_ARCHIVE_EVENT_REVISIONS_META, JSON.stringify({ formatVersion, revisions }));
   }
 }
 
@@ -640,7 +666,7 @@ function historyArchiveEventRevisions(rawValue, segmentsById) {
   } catch {
     throw historyArchiveRevisionError("history archive event revisions are not valid JSON");
   }
-  if (!hasExactObjectKeys(root, ["formatVersion", "revisions"]) || root.formatVersion !== 1) {
+  if (!hasExactObjectKeys(root, ["formatVersion", "revisions"]) || ![1, 2].includes(root.formatVersion)) {
     throw historyArchiveRevisionError("history archive event revisions must be a version-1 revisions list");
   }
   if (!Array.isArray(root.revisions)) {
@@ -651,7 +677,13 @@ function historyArchiveEventRevisions(rawValue, segmentsById) {
   const bindings = new Set();
   for (const revision of root.revisions) {
     if (
-      !hasExactObjectKeys(revision, ["segmentId", "databaseSha256", "sourceIdentity", "removed", "added"]) ||
+      !hasExactObjectKeys(
+        revision,
+        root.formatVersion === 2
+          ? ["segmentId", "databaseSha256", "sourceIdentity", "removed", "added", "binding"]
+          : ["segmentId", "databaseSha256", "sourceIdentity", "removed", "added"],
+      ) ||
+      (root.formatVersion === 2 && !["base", "introduced"].includes(revision.binding)) ||
       typeof revision.segmentId !== "string" ||
       typeof revision.databaseSha256 !== "string"
     ) {
@@ -694,7 +726,7 @@ function historyArchiveEventRevisions(rawValue, segmentsById) {
         ) {
           throw historyArchiveRevisionError(`archive revision ${label} entries require a positive integer count`);
         }
-        const payload = historyArchiveRevisionPayload(delta.payload, sourceIdentity);
+        const payload = historyArchiveRevisionPayload(delta.payload, sourceIdentity, root.formatVersion === 1);
         if (payload.source_path !== sourceIdentity.path) {
           throw historyArchiveRevisionError(
             `archive revision ${label} payload source does not match its source binding`,
@@ -709,10 +741,17 @@ function historyArchiveEventRevisions(rawValue, segmentsById) {
       });
     };
     const entry = {
+      ...(root.formatVersion === 2 ? { binding: revision.binding } : {}),
       sourceIdentity: { ...sourceIdentity },
       removed: normalizeDeltas(revision.removed, "removed"),
       added: normalizeDeltas(revision.added, "added"),
     };
+    if (
+      entry.binding === "introduced" &&
+      (entry.removed.length || entry.added.some((delta) => !delta.payload.source_event_id))
+    ) {
+      throw historyArchiveRevisionError("introduced source requires stable identities and cannot remove base events");
+    }
     const entries = revisionsBySegment.get(revision.segmentId) || [];
     entries.push(entry);
     revisionsBySegment.set(revision.segmentId, entries);
@@ -727,7 +766,7 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
     const sourceIdentity = cold.sourceIdentities.find((identity) =>
       sameHistoryArchiveSourceIdentity(identity, revision.sourceIdentity),
     );
-    if (!sourceIdentity) {
+    if (!sourceIdentity && revision.binding !== "introduced") {
       throw historyArchiveRevisionError(`archive revision source binding does not match segment ${segment.segment_id}`);
     }
     const removedCounts = new Map();
@@ -740,7 +779,7 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
     const remainingRemovals = new Map(removedCounts);
     const revised = [];
     for (const row of rows) {
-      if (String(row.source_path) !== sourceIdentity.path) {
+      if (String(row.source_path) !== revision.sourceIdentity.path) {
         revised.push(row);
         continue;
       }
@@ -769,11 +808,23 @@ function applyHistoryArchiveEventRevisions(segment, cold, revisions) {
 
 function validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdentities, revisions) {
   if (!revisions?.length) return;
+  const eventColumns = new Set(
+    database
+      .prepare("PRAGMA table_info(events)")
+      .all()
+      .map((column) => column.name),
+  );
+  const matchColumns = EVENT_INSERT_COLUMNS.filter((column) => eventColumns.has(column));
   const matches = database.prepare(
-    `SELECT * FROM events WHERE ${EVENT_INSERT_COLUMNS.map((column) => `${column} = ?`).join(" AND ")}`,
+    `SELECT * FROM events WHERE ${matchColumns.map((column) => `${column} = ?`).join(" AND ")}`,
   );
   for (const revision of revisions) {
-    if (!sourceIdentities.some((identity) => sameHistoryArchiveSourceIdentity(identity, revision.sourceIdentity))) {
+    const source = sourceIdentities.find((identity) => identity.path === revision.sourceIdentity.path);
+    if (
+      (revision.binding === "introduced" && source) ||
+      (revision.binding !== "introduced" &&
+        (!source || !sameHistoryArchiveSourceIdentity(source, revision.sourceIdentity)))
+    ) {
       throw historyArchiveRevisionError(`archive revision source binding does not match segment ${segmentId}`);
     }
     const removals = new Map();
@@ -782,7 +833,7 @@ function validateHistoryArchiveSourceRevisions(database, segmentId, sourceIdenti
       let count = removals.get(key);
       if (!count) {
         count = { needed: 0, available: 0 };
-        for (const row of matches.iterate(...EVENT_INSERT_COLUMNS.map((column) => removed.payload[column]))) {
+        for (const row of matches.iterate(...matchColumns.map((column) => removed.payload[column]))) {
           // Preserve the original JS payload equality across SQLite string binding.
           if (historyArchiveRevisionPayloadKey(row) === key) count.available++;
         }
@@ -844,7 +895,8 @@ function publishedUsageEventFromRow(row, sourceKind, serviceTierEvidence, resolv
     requestInputTokens: Number(row.request_input_tokens || 0),
     contextLevel: String(row.context_level),
     serviceTier:
-      serviceTierEvidence?.resolve(sessionId, timestampMs, String(row.service_tier)) || String(row.service_tier),
+      (sourceKind !== "hermes" && serviceTierEvidence?.resolve(sessionId, timestampMs, String(row.service_tier))) ||
+      String(row.service_tier),
     priceVersion: String(row.price_version),
     total: usageFromRow(row),
   };
@@ -858,7 +910,7 @@ function metadataFromHistoryEvents(events, carrier, asOf) {
   const observationRows = new Map();
   for (const event of events) {
     const sessionId = String(event.sessionId);
-    sessions.add(sessionId);
+    sessions.add(sessionIdentity(event.homeId, sessionId));
     const homeId = String(event.homeId);
     const homeRow = homeRows.get(homeId) || { eventCount: 0, sessions: new Set() };
     homeRow.eventCount += 1;
@@ -884,7 +936,7 @@ function metadataFromHistoryEvents(events, carrier, asOf) {
     return {
       model: row.model,
       timestamp: row.lastSeen,
-      harness: ["ZCode", "DSH", "OpenCode", "Claude"].includes(group) ? group : "Codex",
+      harness: ["ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"].includes(group) ? group : "Codex",
     };
   });
   return {
@@ -1116,6 +1168,7 @@ const EVENT_INSERT_COLUMNS = Object.freeze([
   "cached",
   "output",
   "reasoning",
+  "source_event_id",
 ]);
 
 const EVENT_INTEGER_COLUMNS = Object.freeze([
@@ -1342,6 +1395,7 @@ function sourceEventRow(filePath, event) {
     cached: event.usage.cached,
     output: event.usage.output,
     reasoning: event.usage.reasoning,
+    source_event_id: event.sourceEventId || "",
   };
 }
 
@@ -1414,7 +1468,9 @@ function costEventFromRow(row, tierEvidence, sourceKind) {
     cacheWriteKnown: Boolean(row.cache_write_known),
     requestInputTokens: Number(row.request_input_tokens || 0),
     contextLevel: String(row.context_level),
-    serviceTier: tierEvidence?.resolve(sessionId, timestamp, String(row.service_tier)) || String(row.service_tier),
+    serviceTier:
+      (sourceKind !== "hermes" && tierEvidence?.resolve(sessionId, timestamp, String(row.service_tier))) ||
+      String(row.service_tier),
     priceVersion: String(row.price_version),
     total: usageFromRow(row),
   };
@@ -1439,7 +1495,8 @@ function costEventFromRowArray(row, tierEvidence, sourceKind) {
     cacheWriteKnown: Boolean(row[10]),
     requestInputTokens: Number(row[11] || 0),
     contextLevel: String(row[12]),
-    serviceTier: tierEvidence?.resolve(sessionId, timestamp, String(row[13])) || String(row[13]),
+    serviceTier:
+      (sourceKind !== "hermes" && tierEvidence?.resolve(sessionId, timestamp, String(row[13]))) || String(row[13]),
     priceVersion: String(row[14]),
     total: {
       total: Number(row[15] || 0),
@@ -1471,14 +1528,15 @@ function createFusedSummaryGroups(sourceKindsByPath, modelNameFor) {
       total: { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 },
     };
     group.count += 1;
-    if (!group.sessions.has(event.sessionId)) {
+    const member = sessionIdentity(event.homeId, event.sessionId);
+    if (!group.sessions.has(member)) {
       memberBytes += 160 + String(event.sessionId).length * 2;
       if (memberBytes > 1024 * 1024) {
         active = false;
         for (const dimension of Object.values(groupsByDimension)) dimension.clear();
         return;
       }
-      group.sessions.add(event.sessionId);
+      group.sessions.add(member);
     }
     group.total.total += event.total.total;
     group.total.input += event.total.input;
@@ -1584,8 +1642,9 @@ function createFusedSummaryRepositories(periodRanges) {
       if (compareSqliteText(event.repositoryKind, group.kind) > 0) group.kind = event.repositoryKind;
       if (compareSqliteText(event.repositoryKind, group.minimumKind) < 0) group.minimumKind = event.repositoryKind;
       if (event.cwd) group.paths.add(event.cwd);
-      const first = group.firsts.get(event.sessionId);
-      if (first === undefined || event.timestamp < first) group.firsts.set(event.sessionId, event.timestamp);
+      const member = sessionIdentity(event.homeId, event.sessionId);
+      const first = group.firsts.get(member);
+      if (first === undefined || event.timestamp < first) group.firsts.set(member, event.timestamp);
       group.count += 1;
       group.total.total += event.total.total;
       group.total.input += event.total.input;
@@ -1614,7 +1673,10 @@ function createFusedSummaryRepositories(periodRanges) {
       const firsts = [];
       for (const { key, name, kind, paths, firsts: sessions, count, total } of groups.values()) {
         rows.push({ key, name, kind, pathCount: paths.size, count, sessions: sessions.size, total });
-        for (const [session_id, first_ms] of sessions) firsts.push({ repository_key: key, session_id, first_ms });
+        for (const [member, first_ms] of sessions) {
+          const [home_id, session_id] = JSON.parse(member);
+          firsts.push({ repository_key: key, home_id, session_id, first_ms });
+        }
       }
       rows.sort(
         (a, b) => b.total.total - a.total.total || compareSqliteText(a.name, b.name) || compareSqliteText(a.key, b.key),
@@ -1713,7 +1775,9 @@ function readMetadataUsageCounts(database, completeBounds = null) {
       }
     }
     const totals = database
-      .prepare("SELECT COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count FROM events")
+      .prepare(
+        "SELECT COUNT(*) AS event_count, COUNT(DISTINCT json_array(home_id,session_id)) AS session_count FROM events",
+      )
       .get();
     const homeRows = new Map(
       database
@@ -1830,7 +1894,7 @@ function recordPeriodKeys(timestampMs, zone, storedKeys = null) {
 
 function accumulateRecordEstimate(
   periods,
-  { timestampMs, sessionId, model, total, estimate, storedKeys = null },
+  { timestampMs, sessionId, homeId, model, total, estimate, storedKeys = null },
   zone,
   rate,
 ) {
@@ -1858,7 +1922,7 @@ function accumulateRecordEstimate(
     slot.cached += Number(total.cached || 0);
     slot.output += Number(total.output || 0);
     slot.reasoning += Number(total.reasoning || 0);
-    slot.sessions.add(sessionId);
+    slot.sessions.add(sessionIdentity(homeId, sessionId));
     slot.models.add(model);
     slot.cost.total += Number(estimate.totalUsd || 0) * scale;
     slot.cost.input += Number(estimate.inputUsd || 0) * scale;
@@ -1932,7 +1996,7 @@ function canonicalizeKind(kindRaw) {
   if (typeof kindRaw !== "string") return "unsupported";
   const kind = kindRaw.trim().toLowerCase();
   if (["main", "jetbrains", "extra", "codex"].includes(kind)) return "codex";
-  return ["zcode", "dsh", "opencode", "claude", "workbuddy"].includes(kind) ? kind : "unsupported";
+  return ["zcode", "dsh", "opencode", "claude", "workbuddy", "hermes"].includes(kind) ? kind : "unsupported";
 }
 
 // Bound the probe as before; use it for usage-file stability and rename identity.
@@ -2305,7 +2369,9 @@ export class UsageStore {
     // D3：quota 观测映射同为连接级状态（键含实例修订，但连接/库可能已换）⇒ 重开时一并复位。
     this.quotaObservationCache = null;
     await mkdir(path.dirname(this.databaseFile), { recursive: true });
-    this.database = new DatabaseSync(this.databaseFile);
+    this.database = new DatabaseSync(
+      this.databaseFile === ":memory:" ? this.databaseFile : path.toNamespacedPath(this.databaseFile),
+    );
     this.registerReadFunctions();
     this.database.exec(`
       PRAGMA foreign_keys = ON;
@@ -2356,7 +2422,8 @@ export class UsageStore {
         input INTEGER NOT NULL,
         cached INTEGER NOT NULL,
         output INTEGER NOT NULL,
-        reasoning INTEGER NOT NULL
+        reasoning INTEGER NOT NULL,
+        source_event_id TEXT NOT NULL DEFAULT ''
       ) STRICT;
       CREATE TABLE IF NOT EXISTS rate_limit_observations (
         source_path TEXT NOT NULL REFERENCES source_files(path) ON DELETE CASCADE,
@@ -2549,6 +2616,19 @@ export class UsageStore {
       migrate("SELECT 1;", 24);
       version = 24;
     }
+    if (version === 24) {
+      const hasIdentity = this.database
+        .prepare("PRAGMA table_info(events)")
+        .all()
+        .some((row) => row.name === "source_event_id");
+      migrate(
+        `${hasIdentity ? "" : "ALTER TABLE events ADD COLUMN source_event_id TEXT NOT NULL DEFAULT '';"}
+        CREATE INDEX IF NOT EXISTS events_source_event_id ON events(source_path, source_event_id)
+        WHERE source_event_id <> '';`,
+        25,
+      );
+      version = 25;
+    }
     if (version !== 0 && version !== STORE_SCHEMA_VERSION) {
       this.database.close();
       this.database = null;
@@ -2560,6 +2640,19 @@ export class UsageStore {
       assertArchiveSegmentsSchema(this.database);
       this.database.exec(`PRAGMA user_version = ${STORE_SCHEMA_VERSION}`);
     }
+    const identityIndex = this.database
+      .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='events_source_event_id'")
+      .get();
+    if (/\bUNIQUE\b/i.test(String(identityIndex?.sql || ""))) this.database.exec("DROP INDEX events_source_event_id");
+    this.database.exec(`CREATE INDEX IF NOT EXISTS events_source_event_id ON events(source_path, source_event_id) WHERE source_event_id <> '';
+      CREATE TRIGGER IF NOT EXISTS events_source_event_id_insert BEFORE INSERT ON events
+      WHEN NEW.source_event_id <> '' AND EXISTS(SELECT 1 FROM events WHERE source_path=NEW.source_path
+        AND source_event_id=NEW.source_event_id AND (NEW.id=-1 OR id<>NEW.id))
+      BEGIN SELECT RAISE(ABORT,'duplicate source event identity'); END;
+      CREATE TRIGGER IF NOT EXISTS events_source_event_id_update BEFORE UPDATE OF source_path,source_event_id ON events
+      WHEN NEW.source_event_id <> '' AND EXISTS(SELECT 1 FROM events WHERE source_path=NEW.source_path
+        AND source_event_id=NEW.source_event_id AND id<>OLD.id)
+      BEGIN SELECT RAISE(ABORT,'duplicate source event identity'); END;`);
     this.database.exec(`${QUOTA_SOURCES_DDL}\n${HISTORY_REPLACED_FACTS_DDL}\n${ARCHIVE_SEGMENTS_DDL}`);
     assertHistoryReplacedFactsSchema(this.database);
     assertArchiveSegmentsSchema(this.database);
@@ -2643,7 +2736,7 @@ export class UsageStore {
         .find((row) => row.name === "main")?.file;
       if (!file) return null;
       const physical = realpathSync(String(file));
-      if (physical !== realpathSync(this.databaseFile)) return null;
+      if (physical !== realpathSync(path.toNamespacedPath(this.databaseFile))) return null;
       const info = statSync(physical, { bigint: true });
       return `${physical}\u0000${info.dev}\u0000${info.ino}`;
     } catch {
@@ -3535,7 +3628,9 @@ export class UsageStore {
     const owned = new Set();
     let published = null;
     const projectionIdentity =
-      reuseProjection && this.historyProjectionModule ? this.usageProjectionDatabaseIdentity() : null;
+      reuseProjection && this.historyProjectionModule && source.kind !== "hermes"
+        ? this.usageProjectionDatabaseIdentity()
+        : null;
     if (
       projectionIdentity &&
       ![...revisionsBySegment.values()].some((rows) => rows.some((row) => row.sourceIdentity.path === filePath))
@@ -3581,7 +3676,7 @@ export class UsageStore {
             onRow,
           });
         const coldSource = snapshot.sourceIdentities.find((source) => String(source.path) === filePath);
-        if (!coldSource) {
+        if (!coldSource && source.kind !== "hermes") {
           originalRows.close();
           owned.delete(originalRows);
           continue;
@@ -3593,13 +3688,16 @@ export class UsageStore {
           home_label: String(source.label ?? ""),
           home_path: String(source.path ?? ""),
         };
-        if (!sameHistoryArchiveSourceIdentity(liveIdentity, coldSource)) {
+        if (coldSource && !sameHistoryArchiveSourceIdentity(liveIdentity, coldSource)) {
           throw historyArchiveError(
             "HISTORY_ARCHIVE_COLD_REPARSE_CHANGED",
             `live source identity no longer matches authorized archive segment ${String(record.segment_id)}`,
           );
         }
         const revision = revisions.find((entry) => entry.sourceIdentity.path === filePath);
+        if (revision && !sameHistoryArchiveSourceIdentity(liveIdentity, revision.sourceIdentity)) {
+          throw historyArchiveError("HISTORY_ARCHIVE_COLD_REPARSE_CHANGED", "archive revision source identity changed");
+        }
         let effectiveRows = originalRows;
         if (revision) {
           effectiveRows = new UsageSourceRows(0);
@@ -3633,7 +3731,8 @@ export class UsageStore {
           segmentId: String(record.segment_id),
           startMs,
           endMs,
-          sourceIdentity: { ...coldSource },
+          sourceIdentity: { ...(coldSource || liveIdentity) },
+          ...(source.kind === "hermes" ? { binding: coldSource ? "base" : "introduced" } : {}),
           originalRows,
           effectiveRows,
           observedRows,
@@ -3830,6 +3929,16 @@ export class UsageStore {
             );
           }
         }
+        for (const revision of snapshot.eventRevisions.get(segment.segmentId) || []) {
+          if (revision.binding !== "introduced") continue;
+          const live = snapshot.liveSourceIdentities.get(revision.sourceIdentity.path);
+          if (
+            !live ||
+            !sameHistoryArchiveSourceIdentity(live, revision.sourceIdentity) ||
+            coldSourceByPath.has(revision.sourceIdentity.path)
+          )
+            throw historyArchiveRevisionError("introduced archive source identity does not match");
+        }
         const revisedColdRows = applyHistoryArchiveEventRevisions(
           segment.record,
           cold,
@@ -3905,8 +4014,12 @@ export class UsageStore {
           files.push({ filePath: home.usageLogPath, source: home, info: await stat(home.usageLogPath) });
           continue;
         }
-        if (home.kind === "zcode" && home.usageLogPath) {
-          files.push({ filePath: home.usageLogPath, source: home, info: await zcodeSourceStat(home.usageLogPath) });
+        if ((home.kind === "zcode" || home.kind === "hermes") && home.usageLogPath) {
+          files.push({
+            filePath: home.usageLogPath,
+            source: home,
+            info: await (home.kind === "hermes" ? hermesSourceStat : zcodeSourceStat)(home.usageLogPath),
+          });
           continue;
         }
         if (home.kind === "dsh") {
@@ -4335,6 +4448,15 @@ export class UsageStore {
       );
       insertEvent.flush();
       insertRateLimitObservation.flush();
+      if (source.kind === "hermes" && info.contentDigest) {
+        const after = await hermesSourceStat(filePath);
+        if (after.contentDigest !== info.contentDigest || after.sqliteObservation !== info.sqliteObservation) {
+          throw Object.assign(new Error("Hermes source changed while indexing"), {
+            code: "LIVE_SOURCE_CHANGED",
+            retryable: true,
+          });
+        }
+      }
       if (
         relocatedFrom &&
         (!previousSiblingSource ||
@@ -4360,7 +4482,7 @@ export class UsageStore {
         if (existing && historyArchiveRevisionEntryKey(existing) === historyArchiveRevisionEntryKey(revision.entry)) {
           continue;
         }
-        if (existing) {
+        if (existing || prefix.sourceIdentity.kind === "hermes") {
           saveMissingHistoryFacts(insertReplacedFact, {
             factTable: "events",
             source: prefix.sourceIdentity,
@@ -4900,7 +5022,10 @@ export class UsageStore {
     const syncOptions = options || this.options;
     this.options = syncOptions;
     syncOptions.onImportStage?.("reading");
-    const homes = plan?.homes || (await discoverUsageSources(syncOptions));
+    const discoveryWarnings = [];
+    const homes =
+      plan?.homes ||
+      (await discoverUsageSources({ ...syncOptions, onWarning: (warning) => discoveryWarnings.push(warning) }));
     const quotaObservations = readCodexQuotaObservations({ ...syncOptions, homes });
     if (quotaObservations.length) {
       const saved = JSON.stringify(quotaObservations);
@@ -4915,6 +5040,7 @@ export class UsageStore {
       warnings,
       failedHomes = [],
     } = plan ? { files: plan.files, warnings: [...plan.warnings] } : await this.usageFiles(homes);
+    warnings.push(...discoveryWarnings);
     this.acquisitionFiles = files;
     const status = plan
       ? {
@@ -5062,7 +5188,7 @@ export class UsageStore {
           warnings.length = warningCount;
           if (attempt === 2) throw pendingSource();
           // A failed source transaction has rolled back; other committed sources keep their cursors.
-          file.info = await stat(file.filePath);
+          file.info = file.source.kind === "hermes" ? await hermesSourceStat(file.filePath) : await stat(file.filePath);
           file.force = true;
           file.reobserved = true;
           currentFingerprints.set(file.filePath, usageSourceFingerprint(file.filePath));
@@ -5080,7 +5206,9 @@ export class UsageStore {
       await retrySource(file, async () => {
         const existing = readSource.get(file.filePath);
         const savedProgress = existing ? readUsageSourceProgress(this.database, file.filePath) : null;
+        // shortcut: mutable Hermes snapshots require full reads until SQLite change proofs cover WAL updates.
         const unchanged =
+          file.source.kind !== "hermes" &&
           existing &&
           Number(existing.size) === file.info.size &&
           Number(existing.mtime_ms) === file.info.mtimeMs &&
@@ -5648,6 +5776,7 @@ export class UsageStore {
         OpenCode: new Set(),
         Claude: new Set(),
         WorkBuddy: new Set(),
+        Hermes: new Set(),
       };
       const modelRows =
         persistedMetadata?.modelRows ??
@@ -5671,6 +5800,7 @@ export class UsageStore {
           OpenCode: [...harnessModels.OpenCode].sort((a, b) => a.localeCompare(b)),
           Claude: [...harnessModels.Claude].sort((a, b) => a.localeCompare(b)),
           WorkBuddy: [...harnessModels.WorkBuddy].sort((a, b) => a.localeCompare(b)),
+          Hermes: [...harnessModels.Hermes].sort((a, b) => a.localeCompare(b)),
         },
         homes: this.homes.map((home) => {
           const row = counts.homeRows.get(home.id);
@@ -5729,7 +5859,7 @@ export class UsageStore {
       return {
         model: row.model,
         timestamp: Number(row.last_seen),
-        harness: ["ZCode", "DSH", "OpenCode", "Claude"].includes(group) ? group : "Codex",
+        harness: ["ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"].includes(group) ? group : "Codex",
       };
     });
     // D1：可缓存时用实例级缓存（同一对象、可被 C5 用例按引用断言）；写事务内用本次快照。
@@ -5830,7 +5960,7 @@ export class UsageStore {
       .prepare(`
         SELECT
           COUNT(*) AS event_count,
-          COUNT(DISTINCT session_id) AS session_count,
+          COUNT(DISTINCT json_array(home_id,session_id)) AS session_count,
           COUNT(DISTINCT home_id) AS home_count,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
@@ -6059,7 +6189,7 @@ export class UsageStore {
         SELECT
           ${dimension} AS key,
           COUNT(*) AS count,
-          COUNT(DISTINCT session_id) AS sessions,
+          COUNT(DISTINCT json_array(home_id,session_id)) AS sessions,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
@@ -6196,8 +6326,8 @@ export class UsageStore {
           MAX(repository_kind) AS kind,
           COUNT(DISTINCT NULLIF(cwd, '')) AS path_count,
           COUNT(*) AS count,
-          COUNT(DISTINCT session_id) AS sessions,
-          json_group_array(DISTINCT session_id) AS session_ids,
+          COUNT(DISTINCT json_array(home_id,session_id)) AS sessions,
+          json_group_array(DISTINCT json_array(home_id,session_id)) AS session_ids,
           COALESCE(SUM(total), 0) AS total,
           COALESCE(SUM(input), 0) AS input,
           COALESCE(SUM(cached), 0) AS cached,
@@ -6217,7 +6347,11 @@ export class UsageStore {
       pathCount: Number(row.path_count || 0),
       count: Number(row.count || 0),
       sessions: Number(row.sessions || 0),
-      sessionIds: orderedSessions?.get(row.key) ?? JSON.parse(String(row.session_ids || "[]")),
+      sessionIds:
+        orderedSessions?.get(row.key) ??
+        JSON.parse(String(row.session_ids || "[]")).map(
+          (value) => (Array.isArray(value) ? value : JSON.parse(value))[1],
+        ),
       total: usageFromRow(row),
     }));
   }
@@ -6227,11 +6361,11 @@ export class UsageStore {
       const sessions = new Map();
       const sql = this.historyPersistentRead
         ? `SELECT repository_key,session_id FROM (
-        SELECT repository_key,session_id,timestamp_ms,history_ordinal,
-          ROW_NUMBER() OVER(PARTITION BY repository_key,session_id ORDER BY timestamp_ms,history_ordinal) AS position
+        SELECT repository_key,home_id,session_id,timestamp_ms,history_ordinal,
+          ROW_NUMBER() OVER(PARTITION BY repository_key,home_id,session_id ORDER BY timestamp_ms,history_ordinal) AS position
         FROM events WHERE ${where.sql}) WHERE position=1 ORDER BY repository_key,timestamp_ms,history_ordinal`
         : `SELECT repository_key,session_id,MIN(id) AS first_id
-          FROM events WHERE ${where.sql} GROUP BY repository_key,session_id ORDER BY repository_key,first_id`;
+          FROM events WHERE ${where.sql} GROUP BY repository_key,home_id,session_id ORDER BY repository_key,first_id`;
       for (const row of this.database.prepare(sql).iterate(...where.params)) {
         const values = sessions.get(row.repository_key) ?? [];
         values.push(row.session_id);
@@ -6241,8 +6375,8 @@ export class UsageStore {
     }
     firsts ??= this.database
       .prepare(`
-      SELECT repository_key, session_id, MIN(timestamp_ms) AS first_ms FROM events
-      WHERE ${where.sql} GROUP BY repository_key, session_id ORDER BY repository_key, first_ms
+      SELECT repository_key, home_id, session_id, MIN(timestamp_ms) AS first_ms FROM events
+      WHERE ${where.sql} GROUP BY repository_key, home_id, session_id ORDER BY repository_key, first_ms
     `)
       .all(...where.params);
     const tieRows = this.database.prepare(`
@@ -6264,12 +6398,12 @@ export class UsageStore {
         const payloads = new Map();
         for (const event of tieRows.iterate(row.repository_key, row.first_ms, ...where.params)) {
           const payload = JSON.stringify(canonicalFactPayload(event, ["id"]));
-          if (!payloads.has(event.session_id) || payload < payloads.get(event.session_id))
-            payloads.set(event.session_id, payload);
+          const member = sessionIdentity(event.home_id, event.session_id);
+          if (!payloads.has(member) || payload < payloads.get(member)) payloads.set(member, payload);
         }
         group.sort((left, right) => {
-          const a = payloads.get(left.session_id),
-            b = payloads.get(right.session_id);
+          const a = payloads.get(sessionIdentity(left.home_id, left.session_id)),
+            b = payloads.get(sessionIdentity(right.home_id, right.session_id));
           return a < b ? -1 : a > b ? 1 : 0;
         });
       }
@@ -6926,11 +7060,13 @@ export class UsageStore {
         requestInputTokens: Number(row.request_input_tokens || 0),
         contextLevel: row.context_level,
         serviceTier:
-          this.serviceTierEvidence?.resolve(
-            String(row.session_id),
-            Number(row.timestamp_ms),
-            String(row.service_tier),
-          ) || String(row.service_tier),
+          (sourceKinds.get(String(row.home_id)) !== "hermes" &&
+            this.serviceTierEvidence?.resolve(
+              String(row.session_id),
+              Number(row.timestamp_ms),
+              String(row.service_tier),
+            )) ||
+          String(row.service_tier),
         total: {
           total: Number(row.total || 0),
           input: Number(row.input || 0),
@@ -6944,6 +7080,7 @@ export class UsageStore {
         {
           timestampMs: Number(row.timestamp_ms),
           sessionId: row.session_id,
+          homeId: row.home_id,
           model: row.model,
           total: usageFromRow(row),
           estimate,
@@ -6972,6 +7109,7 @@ export class UsageStore {
         {
           timestampMs,
           sessionId: event.sessionId,
+          homeId: event.homeId,
           model: event.model,
           total: event.total,
           estimate: this.eventCostMemo.estimate(event),
@@ -7244,7 +7382,13 @@ export class UsageStore {
           const liveSource = this.database.prepare(
             "SELECT path,kind,home_id,home_label,home_path FROM source_files WHERE path=?",
           );
-          for (const source of sources) {
+          const effectiveSources = [
+            ...sources,
+            ...(revisions.get(id) || [])
+              .filter((revision) => revision.binding === "introduced")
+              .map((revision) => revision.sourceIdentity),
+          ];
+          for (const source of effectiveSources) {
             const live = liveSource.get(source.path);
             if (!live || !sameHistoryArchiveSourceIdentity(live, source))
               throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
@@ -7383,7 +7527,13 @@ export class UsageStore {
                 "HISTORY_ARCHIVE_HOT_COLD_CONFLICT",
                 "archive source identities are incomplete",
               );
-            for (const source of sources) {
+            const effectiveSources = [
+              ...sources,
+              ...(revisions.get(id) || [])
+                .filter((revision) => revision.binding === "introduced")
+                .map((revision) => revision.sourceIdentity),
+            ];
+            for (const source of effectiveSources) {
               const live = liveSource.get(source.path);
               if (!live || !sameHistoryArchiveSourceIdentity(live, source))
                 throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "live archive source identity changed");
@@ -7394,7 +7544,12 @@ export class UsageStore {
               previous = previousRevisions.get(id) || [];
             validateHistoryArchiveSourceRevisions(cold, id, sources, current);
             if (!previousSegments.has(id) && isAuthority) {
-              for (const source of sources)
+              for (const source of [
+                ...sources,
+                ...current
+                  .filter((revision) => revision.binding === "introduced")
+                  .map((revision) => revision.sourceIdentity),
+              ])
                 projection.captureColdSource(
                   preparedProjection,
                   id,
@@ -7454,7 +7609,10 @@ export class UsageStore {
               database.prepare("DELETE FROM history_query_rows WHERE segment_id=?").run(id);
             } else {
               for (const revision of revisions.get(id) ?? []) {
-                if (!sources.some((source) => sameHistoryArchiveSourceIdentity(source, revision.sourceIdentity)))
+                if (
+                  revision.binding !== "introduced" &&
+                  !sources.some((source) => sameHistoryArchiveSourceIdentity(source, revision.sourceIdentity))
+                )
                   throw historyArchiveRevisionError("archive revision source binding does not match segment");
                 // Remove originals before replacements, so duplicate removals cannot consume additions.
                 for (const removed of revision.removed) {
@@ -7624,7 +7782,13 @@ export class UsageStore {
       if (sourceCount !== coldSources.length) {
         throw historyArchiveError("HISTORY_ARCHIVE_HOT_COLD_CONFLICT", "archive source identities are incomplete");
       }
-      database.prepare("ATTACH DATABASE ? AS history_hot").run(`${pathToFileURL(this.databaseFile).href}?mode=ro`);
+      let uri = pathToFileURL(this.databaseFile).href;
+      if (process.platform === "win32") {
+        uri = uri.startsWith("file:///")
+          ? uri.replace("file:///", "file:////%3F/")
+          : uri.replace("file://", "file:////%3F/UNC/");
+      }
+      database.prepare("ATTACH DATABASE ? AS history_hot").run(`${uri}?mode=ro`);
       // Pin the hot revision only for the synchronous SQL consumer, never across file-hash awaits.
       database.prepare("SELECT value FROM history_hot.store_meta LIMIT 1").get();
       if (this.database !== hot) {

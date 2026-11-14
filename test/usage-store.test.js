@@ -469,7 +469,7 @@ test("UsageStore upgrades schema v2 and reindexes old source files with unknown 
   }
 });
 
-test("UsageStore upgrades v23 to schema 24 without replacing usage or quota facts", async () => {
+test("UsageStore upgrades v23 to schema 25 without replacing usage or quota facts", async () => {
   const { homeDir, sessionFile, databaseFile } = await makeStoreFixture();
   const projectRoot = path.join(homeDir, "migration-project");
   const projectLog = path.join(projectRoot, ".codex-usage", "usage.jsonl");
@@ -524,8 +524,8 @@ test("UsageStore upgrades v23 to schema 24 without replacing usage or quota fact
     const migrated = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
     try {
       await migrated.open();
-      assert.equal(STORE_SCHEMA_VERSION, 24);
-      assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 24);
+      assert.equal(STORE_SCHEMA_VERSION, 25);
+      assert.equal(Number(migrated.database.prepare("PRAGMA user_version").get().user_version), 25);
       assert.equal(
         Number(
           migrated.database
@@ -562,7 +562,7 @@ test("UsageStore upgrades v23 to schema 24 without replacing usage or quota fact
     const reopened = new UsageStore({ homeDir, databaseFile, importDirs: [projectRoot] });
     try {
       await reopened.open();
-      assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 24);
+      assert.equal(Number(reopened.database.prepare("PRAGMA user_version").get().user_version), 25);
       assert.equal((await reopened.sync()).updatedFileCount, 0);
       assert.ok(
         reopened.database
@@ -2794,7 +2794,7 @@ test("D3 · frozen 快照不被 live 新观测改写；同一 asOf 的读数在�
 const D4_UNFILTERED_SIGNATURE = "FROM events GROUP BY channel, model, home_id";
 const D4_FILTERED_SIGNATURE = "FROM events WHERE timestamp_ms <= ? GROUP BY channel, model, home_id";
 const D4_RAW_COUNT_SIGNATURES = [
-  "COUNT(DISTINCT session_id) AS session_count FROM events",
+  "COUNT(DISTINCT json_array(home_id,session_id)) AS session_count FROM events",
   "SELECT home_id, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS session_count",
 ];
 const D4_ROLLUP_COUNT_SIGNATURES = ["FROM usage_rollup_daily", "FROM usage_rollup_sessions"];

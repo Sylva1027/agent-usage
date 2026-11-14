@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -7,12 +7,16 @@ import {
   discoverClaudeHomes,
   discoverCodexHomes,
   discoverDshHomes,
+  discoverHermesHomes,
   discoverOpencodeHomes,
   discoverUsageSources,
   discoverWorkbuddyHomes,
   discoverZcodeHomes,
+  importPathIdentity,
   sourceId,
 } from "./usage-core.js";
+
+export { importPathIdentity } from "./usage-core.js";
 
 function importError(code, message, sourcePath = "") {
   return Object.assign(new Error(message), { code, path: sourcePath, statusCode: 400 });
@@ -35,16 +39,6 @@ export function normalizeImportPath(value, options = {}) {
   return path.normalize(directory);
 }
 
-export async function importPathIdentity(directory) {
-  let resolved = path.resolve(directory);
-  try {
-    resolved = await realpath(resolved);
-  } catch (error) {
-    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
-  }
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
-
 export async function scanImportSources(options = {}, confirmed = []) {
   const candidates = [];
   const errors = [];
@@ -54,6 +48,7 @@ export async function scanImportSources(options = {}, confirmed = []) {
     discoverCodexHomes,
     discoverZcodeHomes,
     discoverDshHomes,
+    discoverHermesHomes,
     discoverOpencodeHomes,
     discoverWorkbuddyHomes,
     discoverClaudeHomes,

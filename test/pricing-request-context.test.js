@@ -119,3 +119,25 @@ test("excess or long model names use complete streaming quotes after the small d
   }
   assert.deepEqual(accumulator.result(), estimateCostForEvents(events));
 });
+
+test("Hermes aggregates do not use cumulative usage or last activity as request pricing evidence", () => {
+  const aggregate = event("glm-4.7", {
+    sourceKind: "hermes",
+    requestInputTokens: 0,
+    contextLevel: "unknown",
+    total: { total: 600_500, input: 600_000, cached: 2_000, output: 500, reasoning: 100 },
+  });
+  const quote = estimateEventCost(aggregate);
+  assert.equal(quote.contextLevel, "unknown");
+  assert.equal(quote.minimumEstimatedTokens, quote.pricedTokens);
+  assert.ok(quote.unpricedReasons.includes("request-output-unknown-minimum-scenario"));
+  assert.ok(quote.unpricedReasons.includes("aggregate-usage-coverage-unknown"));
+  assert.equal(estimateEventCost({ ...aggregate, sourceKind: "zcode" }).contextLevel, "long");
+
+  const deepseek = { ...aggregate, model: "deepseek-flash" };
+  const first = estimateEventCost({ ...deepseek, timestamp: Date.parse("2026-07-12T02:00:00Z") });
+  const second = estimateEventCost({ ...deepseek, timestamp: Date.parse("2026-07-12T18:00:00Z") });
+  assert.equal(first.totalUsd, second.totalUsd);
+  assert.ok(first.unpricedReasons.includes("request-time-unknown-minimum-scenario"));
+  assert.ok(!first.unpricedReasons.includes("off-peak-pricing-applied"));
+});

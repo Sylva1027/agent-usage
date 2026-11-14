@@ -26,6 +26,7 @@ const CORE_TABLES_BY_SCHEMA_VERSION = Object.freeze({
   22: CORE_TABLES_21,
   23: CORE_TABLES_23,
   24: CORE_TABLES_23,
+  25: CORE_TABLES_23,
 });
 
 const verifiedTableEvidence = new Set();
@@ -368,7 +369,7 @@ function databaseEvidence(database, tables, eventPrefix = null) {
 }
 
 async function normalizeBackup(databaseFile) {
-  const database = new DatabaseSync(databaseFile);
+  const database = new DatabaseSync(path.toNamespacedPath(databaseFile));
   try {
     database.exec("PRAGMA journal_mode = DELETE");
   } finally {
@@ -433,9 +434,9 @@ export async function createHistoryBackup(database, destinationFile, options = {
   let publishedDatabase = false;
   let publishedManifest = false;
   try {
-    await backup(database, temporaryDatabase);
+    await backup(database, path.toNamespacedPath(temporaryDatabase));
     await normalizeBackup(temporaryDatabase);
-    const inspection = new DatabaseSync(temporaryDatabase, { readOnly: true });
+    const inspection = new DatabaseSync(path.toNamespacedPath(temporaryDatabase), { readOnly: true });
     let evidence;
     let schemaVersion;
     try {
@@ -691,7 +692,7 @@ async function verifyHistoryBackupInScope(databaseFile, manifestFile, reader, ev
       if (entry.lease) entry.guard = archiveGuard(databasePath, manifestPath, entry.manifestDigest);
       assertDatabaseHash(await hashFile(databasePath), manifest.database);
       assertScopeOpen(scope);
-      entry.database = new DatabaseSync(databasePath, { readOnly: true });
+      entry.database = new DatabaseSync(path.toNamespacedPath(databasePath), { readOnly: true });
       entry.database.exec("BEGIN");
       entry.schema = assertSupportedSchema(entry.database);
       if (manifest.schemaVersion !== entry.schema.version) {
@@ -887,7 +888,7 @@ export async function restoreHistoryBackup(backupFile, destinationFile, manifest
     ) {
       throw backupError("HISTORY_BACKUP_DIGEST_MISMATCH", "restored copy digest changed during copy");
     }
-    const inspection = new DatabaseSync(temporary, { readOnly: true });
+    const inspection = new DatabaseSync(path.toNamespacedPath(temporary), { readOnly: true });
     try {
       const schema = assertSupportedSchema(inspection);
       if (schema.version !== restoredManifest.schemaVersion) {

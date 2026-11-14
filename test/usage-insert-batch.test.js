@@ -235,13 +235,35 @@ test("batches also respect the real connection's compiled variable limit", (t) =
   });
   for (let index = 0; index <= rows; index += 1) batch.add(Array(columns.length).fill(index));
   batch.flush();
-  assert.deepEqual(observed.batches, [rows * columns.length, columns.length]);
+  assert.equal(
+    observed.batches.reduce((sum, count) => sum + count, 0),
+    (rows + 1) * columns.length,
+  );
+  assert.ok(observed.batches.length > 1 && observed.batches.every((count) => count <= limit));
   assert.deepEqual(
     database
       .prepare("SELECT column_0 FROM events ORDER BY rowid")
       .all()
       .map((row) => row.column_0),
     Array.from({ length: rows + 1 }, (_, index) => index),
+  );
+});
+
+test("large SQLite limits do not exceed JavaScript's argument capacity", (t) => {
+  const database = openDatabase(t);
+  const observed = observeInserts(database, () => [{ compile_options: "MAX_VARIABLE_NUMBER=250000" }]);
+  const batch = createUsageInsertBatch(database, {
+    sqlPrefix: "INSERT INTO events VALUES",
+    columns: 1,
+    maxRows: 100_000,
+    maxBytes: 1_000_000,
+  });
+  for (let index = 0; index < 100_000; index += 1) batch.add([index]);
+  batch.flush();
+  assert.ok(observed.batches.length > 1);
+  assert.deepEqual(
+    { ...database.prepare("SELECT COUNT(*) AS count, SUM(value) AS total FROM events").get() },
+    { count: 100_000, total: 4_999_950_000 },
   );
 });
 

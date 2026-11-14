@@ -759,7 +759,7 @@ async function runExecutorProcess() {
         let snapshotStore = null;
         let staged = false;
         try {
-          await backup(store.database, message.databaseFile);
+          await backup(store.database, path.toNamespacedPath(message.databaseFile));
           snapshotStore = new UsageStore({ databaseFile: message.databaseFile });
           await snapshotStore.open();
           const hasSegments =

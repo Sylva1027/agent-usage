@@ -12,6 +12,10 @@ export const USAGE_DETAIL_MASK = Object.freeze({
 });
 export const USAGE_DETAIL_INCONSISTENT = 16;
 
+export function sessionIdentity(homeId, sessionId) {
+  return JSON.stringify([String(homeId ?? ""), String(sessionId ?? "")]);
+}
+
 export function emptyUsage() {
   return { total: 0, input: 0, cached: 0, output: 0, reasoning: 0 };
 }

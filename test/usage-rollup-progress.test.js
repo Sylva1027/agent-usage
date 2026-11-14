@@ -734,7 +734,17 @@ test("DST append child", { skip: process.env.TZ !== "America/New_York" }, () => 
     ]);
     insertEvent(db, seedDetailEvent("2026-03-09T03:59:59.999Z", { sessionId: "dst-last" }));
     insertEvent(db, seedDetailEvent("2026-03-09T04:00:00.000Z", { sessionId: "dst-next" }));
-    assert.equal(tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).applied, true);
+    const append = tryAppendUsageRollups(db, { zoneIdentity: CURRENT_ZONE });
+    if (!append.applied) {
+      const sqliteDay = db.prepare("SELECT date(? / 1000.0, 'unixepoch', 'localtime') AS day");
+      const dates = ["2026-03-09T03:59:59.999Z", "2026-03-09T04:00:00.000Z"];
+      assert.ok(
+        dates.some((date, index) => sqliteDay.get(Date.parse(date)).day !== ["2026-03-08", "2026-03-09"][index]),
+      );
+      assert.equal(append.reason, "ROLLUP_EVENT_DAY");
+      repairDirty(db);
+      assert.equal(checkpointUsageRollups(db, { zoneIdentity: CURRENT_ZONE }).certified, true);
+    }
     const marker = db
       .prepare(
         "SELECT start_ms, end_ms FROM usage_rollup_days WHERE calendar_zone = 'local' AND day_key = '2026-03-08'",

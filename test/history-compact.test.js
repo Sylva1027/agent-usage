@@ -221,7 +221,7 @@ test("future archive candidates remove freelist space, preserve quota identities
     assertHistoryArchiveSourceMatches(source, verified);
     assert.equal(verified.candidate.events.rows, 2);
     assert.equal(verified.candidate.sources.rows, 1);
-    assert.equal(verified.manifest.schemaVersion, 24);
+    assert.equal(verified.manifest.schemaVersion, 25);
     assert.deepEqual(verified.manifest.pricing.catalog, pricing);
     assert.deepEqual(verified.manifest.serviceTierEvidence.snapshot, snapshot);
     const candidate = new DatabaseSync(candidateFile, { readOnly: true });

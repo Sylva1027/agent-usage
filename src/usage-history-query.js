@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { UsageSourceRows } from "./usage-source-rows.js";
 import { createUsageRollups, USAGE_ROLLUP_PROGRESS_TABLES } from "./usage-rollups.js";
@@ -32,7 +33,7 @@ export class UsageHistoryQuery {
     this.persistent = Boolean(options.databaseFile);
     if (options.existing && (!this.persistent || !existsSync(options.databaseFile)))
       throw new Error("Existing history query file is missing");
-    this.database = new DatabaseSync(options.databaseFile || "");
+    this.database = new DatabaseSync(options.databaseFile ? path.toNamespacedPath(options.databaseFile) : "");
     this.canonicalPayload = canonicalPayload;
     this.rows = 0;
     try {

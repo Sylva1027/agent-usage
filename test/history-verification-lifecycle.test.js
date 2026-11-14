@@ -20,6 +20,7 @@ const FILTERS = { preset: "all", calendarZone: "utc", now: new Date("2026-10-06T
 const QUERY = "/api/usage?preset=all&view=dashboard&calendarZone=utc";
 const LOCK_ERRORS = new Set(["EACCES", "EPERM", "EBUSY"]);
 const FACT_COLUMNS = "source_path,timestamp_ms,session_id,home_id,total,input,cached,output,reasoning";
+const sameFile = (a, b) => path.toNamespacedPath(path.resolve(a)) === path.toNamespacedPath(path.resolve(b));
 
 async function fixture(t) {
   const input = createUsageIntegrationFixture();
@@ -301,11 +302,13 @@ test(
       );
       const rows = f.rows(),
         blocked = rows.find((row) => row.kind === "verification-blocked");
-      assert.equal(f.hashes().filter((row) => row.file === blocked.file).length, 2);
+      assert.equal(f.hashes().filter((row) => sameFile(row.file, blocked.file)).length, 2);
       assert.ok(rows.some((row) => row.kind === "receipt-has" && row.hit === false));
       assert.equal(rows.filter((row) => row.kind === "receipt-add").length, 0);
       assert.equal(rows.filter((row) => row.kind === "semantic-complete").length, 0);
-      const lease = rows.find((row) => row.kind === "lease-open" && row.files.includes(blocked.file));
+      const lease = rows.find(
+        (row) => row.kind === "lease-open" && row.files.some((file) => sameFile(file, blocked.file)),
+      );
       assert.ok(lease);
       assertHeld(f, lease.files);
     } finally {
@@ -327,7 +330,7 @@ test(
     assert.equal(f.rows().filter((row) => row.kind === "candidate-semantic-complete").length, 2);
     for (const file of f.archives) {
       assert.equal(f.hashes().filter((row) => row.file === file).length, 2);
-      assert.equal(f.rows().filter((row) => row.kind === "semantic-complete" && row.file === file).length, 1);
+      assert.equal(f.rows().filter((row) => row.kind === "semantic-complete" && sameFile(row.file, file)).length, 1);
     }
     const physical = [];
     for (const file of [f.options.databaseFile, ...f.archives]) {

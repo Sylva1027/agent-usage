@@ -80,7 +80,7 @@ test("Codex partial and whole-home loss retains usage history", async () => {
   try {
     await store.sync({ options: fixture.reportOptions });
     const summaryBefore = summaryPayload(store);
-    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 24);
+    assert.equal(store.database.prepare("PRAGMA user_version").get().user_version, 25);
 
     const [movedFrom] = fixture.rolloutFiles;
     const movedTo = movedFrom.replace(`${path.sep}sessions${path.sep}`, `${path.sep}archived_sessions${path.sep}`);
@@ -662,7 +662,7 @@ test("Reparse stores one recoverable old event fact for an old10-to-new20 replac
     const migrated = new UsageStore({ ...options, databaseFile });
     try {
       await migrated.open();
-      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 24);
+      assert.equal(migrated.database.prepare("PRAGMA user_version").get().user_version, 25);
       assert.equal(
         migrated.database.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('history_replaced_facts')").get().n,
         12,

@@ -48,7 +48,20 @@ jobs:
           npm.cmd run native:check
       - name: Run full Windows suite
         timeout-minutes: 20
-        run: node --test --test-reporter=spec --test-concurrency=4 --test-timeout=720000 "test/**/*.test.js"
+        run: npm test -- --test-reporter=spec --test-concurrency=4 --test-timeout=720000
+      - name: Run explicit Windows native acceptance
+        timeout-minutes: 10
+        env:
+          Q6_TEST_HELPER: ${{ github.workspace }}/native/windows-source-proof/bin/windows-source-proof.exe
+          ARCHIVE_NATIVE_TEST_HELPER: ${{ github.workspace }}/native/windows-source-proof/bin/windows-source-proof.exe
+          Q6_TEST_TRACE: ${{ runner.temp }}/hermes-native-trace
+          AGENT_USAGE_TEST_NATIVE_BUILD: "1"
+        run: |
+          New-Item -ItemType Directory -Path "$env:Q6_TEST_TRACE" -Force | Out-Null
+          $env:TEMP = Join-Path $env:LOCALAPPDATA "Temp"
+          $env:TMP = $env:TEMP
+          New-Item -ItemType Directory -Path "$env:TEMP" -Force | Out-Null
+          npm.cmd test -- --test-reporter=spec --test-concurrency=1 test/usage-source-acquisition.test.js test/usage-source-additions.test.js test/usage-source-coalescing.test.js test/usage-source-directory.test.js test/final-status-version.test.js test/usage-source-acquisition-server.test.js test/history-archive-native-lock.test.js test/windows-source-build.test.js
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check

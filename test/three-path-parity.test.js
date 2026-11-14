@@ -27,7 +27,7 @@ const AS_OF = "2026-07-12T12:00:00.000Z";
 test("local quota sources, finite cycles and trends agree across memory, SQLite and the reference calculator", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-local-quota-"));
   const databaseFile = path.join(homeDir, "usage-index.sqlite");
-  let store = new UsageStore({ homeDir, databaseFile });
+  let store = new UsageStore({ homeDir, env: {}, databaseFile });
   const asOf = "2026-10-08T04:00:00Z";
   try {
     const entries = [
@@ -108,14 +108,14 @@ test("local quota sources, finite cycles and trends agree across memory, SQLite 
     ])
       insertLog.run(Date.parse(time) / 1000, thread, target, message);
     logs.close();
-    await store.sync({ env: {} });
+    await store.sync();
     const report = await buildUsageReport({ homeDir, env: {} });
     const index = await buildUsageIndex({ homes: report.homes });
     const snapshot = pricedReport(report, asOf);
     // Reopening proves source classification survives the SQLite connection.
     store.close();
     await rm(logPath);
-    store = new UsageStore({ homeDir, databaseFile });
+    store = new UsageStore({ homeDir, env: {}, databaseFile });
     await store.open();
     store.homes = report.homes;
     const restored = JSON.parse(
@@ -206,7 +206,7 @@ test("replacing a rollout with its compressed sibling removes obsolete source st
       exhausted,
       tokenRow("2026-10-08T03:05:00Z", 100, 90, 0, 10, 0),
     ]);
-    await store.sync({ env: {} });
+    await store.sync();
     assert.equal(store.summarize(filters).totals.total, 0);
     const plain = path.join(homeDir, ".codex", "sessions", "2026", "10", "08", "rollout-switch-source.jsonl");
     const rows = [
@@ -219,7 +219,7 @@ test("replacing a rollout with its compressed sibling removes obsolete source st
       zstdCompressSync(Buffer.from(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`)),
     );
     await rm(plain);
-    await store.sync({ env: {} });
+    await store.sync();
     const report = await buildUsageReport({ homeDir, env: {} });
     assert.equal(summarizeUsage(report, filters).totals.total, 100);
     assert.equal(store.summarize(filters).totals.total, 100);
@@ -231,7 +231,7 @@ test("replacing a rollout with its compressed sibling removes obsolete source st
 
 test("auto-review stays in activity but is excluded from current and previous quota statistics", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-auto-review-policy-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   const asOf = "2026-10-08T04:00:00.000Z";
   try {
     for (const [name, time, total, review] of [
@@ -297,7 +297,7 @@ test("auto-review stays in activity but is excluded from current and previous qu
       quotaRow("2026-10-07T23:55:00Z", "2026-10-08T01:00:00Z"),
       current,
     ]);
-    await store.sync({ env: {} });
+    await store.sync();
     const report = await buildUsageReport({ homeDir, env: {} });
     const index = await buildUsageIndex({ homes: report.homes });
     const snapshot = pricedReport(report, asOf);
@@ -551,7 +551,7 @@ function comparisonFields(comparison) {
 
 test("memory, SQLite, and independent reference statistics agree for local and UTC usage", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-parity-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {
     await writeSession(homeDir, "alpha", "gpt-6-sol", "/work/alpha", [
       tokenRow("2026-07-11T23:30:00.000Z", 120, 100, 20, 20, 4),
@@ -563,7 +563,7 @@ test("memory, SQLite, and independent reference statistics agree for local and U
     ]);
 
     await store.sync();
-    const report = await buildUsageReport({ homeDir });
+    const report = await buildUsageReport({ homeDir, env: {} });
     assert.equal(report.events.length, 3);
     assert.equal(report.rateLimitObservations.length, 1);
     const snapshot = pricedReport(report, AS_OF);
@@ -624,7 +624,7 @@ test("memory, SQLite, and independent reference statistics agree for local and U
 
 test("three paths agree across week/month boundaries, ZCode, source exclusion, and custom pricing", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-boundaries-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   const asOf = "2026-09-01T12:00:00.000Z";
   try {
     const catalog = getPricingCatalog();
@@ -756,7 +756,7 @@ test("three paths agree across week/month boundaries, ZCode, source exclusion, a
 
 test("three paths agree on DSH usage, including the input/cache split and quota exclusion", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-dsh-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   const asOf = "2026-07-12T12:00:00.000Z";
   try {
     // 一个 Codex 会话提供限额窗口（DSH 没有限额数据）。
@@ -1229,7 +1229,7 @@ test("three paths agree on Claude Code usage, including message.id dedup and sub
 
 test("three paths agree on week-bucket escalation for a half-year all-time range", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-halfyear-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   const asOf = "2026-09-01T12:00:00.000Z";
   try {
     await writeSession(homeDir, "march", "gpt-6-sol", "/work/halfyear", [
@@ -1240,7 +1240,7 @@ test("three paths agree on week-bucket escalation for a half-year all-time range
     ]);
 
     await store.sync();
-    const report = await buildUsageReport({ homeDir });
+    const report = await buildUsageReport({ homeDir, env: {} });
     assert.equal(report.events.length, 2);
     const snapshot = pricedReport(report, asOf);
     assert.equal(snapshot.events.length, 2);
@@ -1353,14 +1353,14 @@ test("Gemini identity and hy4free costs agree across memory, SQLite, and referen
 test("three paths use the independent GPT-6.1 Sol catalog entry", async () => {
   resetPricingCatalog();
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-three-path-gpt-61-sol-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   const asOf = "2026-09-01T12:00:00.000Z";
   try {
     await writeSession(homeDir, "sol", "gpt-6.1-sol", "/work/sol", [
       tokenRow("2026-09-01T10:00:00.000Z", 11_000, 10_000, 5_000, 1_000, 0),
     ]);
     await store.sync();
-    const report = await buildUsageReport({ homeDir });
+    const report = await buildUsageReport({ homeDir, env: {} });
     const snapshot = pricedReport(report, asOf);
     const filters = { preset: "all", bucket: "day", now: asOf, calendarZone: "utc" };
     const memorySummary = summarizeUsage(report, filters);
@@ -1478,7 +1478,7 @@ test("long GPT-6.1 requests agree across Codex, Work, external imports, compact 
 
 test("D2 · 非限额 New Record 只在 SQLite 路径产生（有意差异不得被抹平）+ 历史冠军 memo 不改变日/周/月包含判定", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "codex-d2-parity-"));
-  const store = new UsageStore({ homeDir, databaseFile: path.join(homeDir, "usage-index.sqlite") });
+  const store = new UsageStore({ homeDir, env: {}, databaseFile: path.join(homeDir, "usage-index.sqlite") });
   try {
     // 日冠军 07-12（900）与周冠军 07-13 起的那一周（7×200=1400）**不同周** ⇒ 三个单位都能被观察到。
     const days = [
@@ -1487,10 +1487,10 @@ test("D2 · 非限额 New Record 只在 SQLite 路径产生（有意差异不得
     ];
     for (const [date, total] of days) {
       await writeSession(homeDir, `d2-${date}`, "gpt-6-sol", "/work", [
-        tokenRow(`${date}T02:00:00.000Z`, total, total - 1, 0, 1, 0),
+        tokenRow(new Date(`${date}T12:00:00`).toISOString(), total, total - 1, 0, 1, 0),
       ]);
     }
-    await store.sync({ env: {} });
+    await store.sync();
     const report = await buildUsageReport({ homeDir, env: {} });
     const index = await buildUsageIndex({ homes: report.homes });
     const snapshot = pricedReport(report, AS_OF);
