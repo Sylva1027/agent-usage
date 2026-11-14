@@ -70,7 +70,10 @@ test("manufacturer gallery keeps equal gutters and naturally scrolls without scr
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(() => localStorage.setItem("codexUsageAutoRefresh", "off"));
+  await page.addInitScript(() => {
+    localStorage.setItem("codexUsageAutoRefresh", "off");
+    localStorage.setItem("codexUsageLocale", "zh-CN");
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.locator("#homeList .home-row").first().waitFor();
   const pageFrame = () =>
@@ -84,12 +87,34 @@ test("manufacturer gallery keeps equal gutters and naturally scrolls without scr
         width: shell.width,
       };
     });
-  for (const [width, height, theme, visibleCards] of [
-    [1440, 1000, "dark", 12],
-    [620, 900, "light", 6],
-    [1440, 680, "dark", 8],
+  await page.locator("#updatePricingButton").click();
+  await page.locator('[data-pricing-provider="other"]').click();
+  await page.locator("#providerPricingDialog").waitFor({ state: "visible" });
+  const focusAtClose = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const dialog = document.querySelector("#providerPricingDialog");
+        const observer = new MutationObserver(() => {
+          if (dialog.open) return;
+          observer.disconnect();
+          resolve(document.activeElement?.dataset.pricingProvider);
+        });
+        observer.observe(dialog, { attributes: true, attributeFilter: ["open"] });
+        document.querySelector("#closeProviderPricingButton").click();
+      }),
+  );
+  assert.equal(focusAtClose, "other", "closing the native dialog restores focus before queued close events");
+  await page.locator("#cancelPricingButton").click();
+
+  for (const [width, height, theme, visibleCards, locale] of [
+    [1440, 1000, "dark", 12, "zh-CN"],
+    [620, 900, "light", 6, "zh-CN"],
+    [1440, 680, "dark", 8, "zh-CN"],
+    [620, 900, "light", 6, "en-US"],
   ]) {
     await page.setViewportSize({ width, height });
+    if ((await page.locator("html").getAttribute("lang")) !== locale) await page.locator("#languageToggle").click();
+    await page.evaluate(() => document.fonts.ready);
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme;
     }, theme);
@@ -105,12 +130,20 @@ test("manufacturer gallery keeps equal gutters and naturally scrolls without scr
       .evaluateAll((nodes) =>
         nodes.map((node) => {
           const rect = node.getBoundingClientRect();
-          return { height: rect.height, top: rect.top, raised: node.classList.contains("panel-action") };
+          return {
+            height: rect.height,
+            top: rect.top,
+            left: rect.left,
+            right: rect.right,
+            raised: node.classList.contains("panel-action"),
+          };
         }),
       );
+    const toolbar = await page.locator(".pricing-toolbar").boundingBox();
     for (const box of boxes) {
       assert.equal(box.height + (box.raised ? 2 : 0), 36);
       assert.ok(Math.abs(box.top - boxes[0].top) < 1, JSON.stringify(boxes));
+      assert.ok(box.left >= toolbar.x - 1 && box.right <= toolbar.x + toolbar.width + 1, JSON.stringify(boxes));
     }
     assert.equal(
       await page.locator("#refreshPricingButton").evaluate((node) => getComputedStyle(node).boxShadow),
@@ -221,6 +254,7 @@ test("manufacturer gallery keeps equal gutters and naturally scrolls without scr
     assert.deepEqual(await pageFrame(), background, "closing pricing keeps the page in place");
   }
 
+  if ((await page.locator("html").getAttribute("lang")) !== "zh-CN") await page.locator("#languageToggle").click();
   const openGallery = async () => {
     await page.locator("#updatePricingButton").click();
     await page.waitForFunction(() => document.activeElement?.id === "pricingSearch");

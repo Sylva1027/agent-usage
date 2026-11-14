@@ -3759,14 +3759,14 @@ main.shell .period-comparison-table > .empty {
 }
 #pricingForm .pricing-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
 }
 #pricingForm #pricingSearch {
   flex: 0 1 170px;
   width: 170px;
-  min-width: 100px;
+  min-width: 0;
 }
 #pricingForm .pricing-rate-label {
   gap: 6px;
@@ -4114,6 +4114,9 @@ main.shell .period-comparison-table > .empty {
   }
 }
 @media (max-width: 550px) {
+  #pricingForm .pricing-toolbar {
+    flex-wrap: wrap;
+  }
   #providerPricingDialog[open] {
     --pricing-model-columns: minmax(0, 1.7fr) repeat(3, minmax(32px, 0.65fr));
     padding: 16px;

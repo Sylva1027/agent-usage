@@ -3056,10 +3056,19 @@ function openProviderPricing(provider) {
 function closeProviderPricing(immediate = false) {
   closeModelPricing();
   const dialog = $("#providerPricingDialog");
-  if (!dialog.open) return;
+  if (!dialog.open && state.pricingProvider === null) return;
   $("#pricingDialog").classList.remove("is-provider-open");
-  if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) dialog.close();
-  else dialog.classList.add("is-leaving");
+  if (dialog.open && !immediate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    dialog.classList.add("is-leaving");
+    return;
+  }
+  const provider = state.pricingProvider;
+  state.pricingProvider = null;
+  dialog.close();
+  dialog.classList.remove("is-leaving");
+  [...$("#pricingProviderList").querySelectorAll("[data-pricing-provider]")]
+    .find((button) => button.dataset.pricingProvider === provider)
+    ?.focus({ preventScroll: true });
 }
 
 function updateDisplayCurrencyButtons() {
@@ -4606,18 +4615,13 @@ async function bootDashboard() {
     closeProviderPricing();
   });
   $("#providerPricingDialog").addEventListener("animationend", (event) => {
-    if (event.animationName === "provider-pricing-leave") $("#providerPricingDialog").close();
+    if (event.animationName === "provider-pricing-leave") closeProviderPricing(true);
   });
   $("#providerPricingDialog").addEventListener("click", (event) => {
     if (event.target.id === "providerPricingDialog") closeProviderPricing();
   });
   $("#providerPricingDialog").addEventListener("close", () => {
-    $("#pricingDialog").classList.remove("is-provider-open");
-    $("#providerPricingDialog").classList.remove("is-leaving");
-    [...$("#pricingProviderList").querySelectorAll("[data-pricing-provider]")]
-      .find((button) => button.dataset.pricingProvider === state.pricingProvider)
-      ?.focus({ preventScroll: true });
-    state.pricingProvider = null;
+    if (!$("#providerPricingDialog").open) closeProviderPricing(true);
   });
   $("#pricingCurrency").addEventListener("click", (event) => {
     const currency = event.target.closest("[data-display-currency]")?.dataset.displayCurrency;
