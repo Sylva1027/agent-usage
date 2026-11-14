@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import {
   createPaletteFixture,
   createPaletteServerOptions,
@@ -242,10 +243,7 @@ try {
     try {
       const { createUsageServer } = await import(pathToFileURL(path.join(work, edition, "src/server.js")).href);
       server = createUsageServer(createPaletteServerOptions(fixture));
-      await new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(0, "127.0.0.1", resolve);
-      });
+      await listenOnFetchPort(server);
       const url = `http://127.0.0.1:${server.address().port}/`;
       const response = await fetch(`${url}api/usage?preset=all&view=dashboard`);
       assert.equal(response.status, 200);

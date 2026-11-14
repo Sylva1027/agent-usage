@@ -2,11 +2,9 @@
 
 简体中文 · [English](README.en.md)
 
-把 Codex、ZCode、DSH、OpenCode、Claude Code 和 WorkBuddy 的用量汇总到一个本地看板，查看 Token、缓存命中、模型使用与费用趋势。
+把 Codex、ZCode、DSH、OpenCode、Claude Code、WorkBuddy 和 [Hermes](docs/data-sources/hermes.md) 的用量汇总到一个本地看板，查看 Token、缓存命中、模型使用与费用趋势。
 
-当前版本：[0.95](https://github.com/Sylva1027/agent-usage/releases/tag/0.95)。
-
-当前源码还支持 [Hermes](docs/data-sources/hermes.md)；该支持尚未包含在上述已发布版本中。
+当前版本：[0.95a](https://github.com/Sylva1027/agent-usage/releases/tag/0.95a)。
 
 ![DeepSeek 浅色皮肤看板，示例数据](docs/images/dashboard-deepseek-light.png)
 
@@ -14,7 +12,7 @@
 
 推荐安装 **Node.js 26 LTS**（最低要求 23.8）。打开 [官方下载页](https://nodejs.org/en/download)，选择 26 LTS 和你的系统：Windows 下载 `.msi`、macOS 下载 `.pkg`，按默认选项安装；Linux 按页面命令安装。重新打开终端，运行 `node -v` 确认版本。
 
-下载 [标准版](https://github.com/Sylva1027/agent-usage/releases/download/0.95/0.95.zip) 或 [waifu 版](https://github.com/Sylva1027/agent-usage/releases/download/0.95/0.95-waifu.zip)，解压后在该目录打开终端，运行：
+下载 [标准版](https://github.com/Sylva1027/agent-usage/releases/download/0.95a/0.95a.zip) 或 [waifu 版](https://github.com/Sylva1027/agent-usage/releases/download/0.95a/0.95a-waifu.zip)，解压后在该目录打开终端，运行：
 
 ```bash
 node src/cli.js run
@@ -52,7 +50,7 @@ waifu 版部分角色形象来自 [ZipZipPipe](https://space.bilibili.com/416859
 
 按模型的 API 单价估算输入、输出和缓存费用，可选择以美元或人民币查看。价目与汇率自动更新，也可手动调整。
 
-模型名称自动去除路由来源前缀，统计、排行和计价使用同一模型身份。在计价窗口中，缺少费率的模型也可直接点击填写单价，再保存并重新计算。
+计价窗口按厂商汇总用过的模型，支持厂商和模型搜索，模型按发布时间排序。选择模型即可查看或修改费率，保存后重新计算。模型名称自动去除路由来源前缀。
 
 ## 命令
 

@@ -2,11 +2,9 @@
 
 [简体中文](README.md) · English
 
-A local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, and WorkBuddy. Track tokens, cache hits, model usage, and cost trends in one place.
+A local dashboard for Codex, ZCode, DSH, OpenCode, Claude Code, WorkBuddy, and [Hermes](docs/data-sources/hermes.md). Track tokens, cache hits, model usage, and cost trends in one place.
 
-Current release: [0.95](https://github.com/Sylva1027/agent-usage/releases/tag/0.95).
-
-The current source also supports [Hermes](docs/data-sources/hermes.md); this support is not included in the release above.
+Current release: [0.95a](https://github.com/Sylva1027/agent-usage/releases/tag/0.95a).
 
 ![DeepSeek light dashboard with sample data](docs/images/dashboard-deepseek-light-en.png)
 
@@ -14,7 +12,7 @@ The current source also supports [Hermes](docs/data-sources/hermes.md); this sup
 
 We recommend **Node.js 26 LTS** (minimum 23.8). Visit the [official download page](https://nodejs.org/en/download), choose 26 LTS and your system: install the `.msi` on Windows or `.pkg` on macOS with the default options; on Linux, follow the commands on that page. Reopen your terminal and run `node -v` to check the version.
 
-Download [Standard](https://github.com/Sylva1027/agent-usage/releases/download/0.95/0.95.zip) or [Waifu](https://github.com/Sylva1027/agent-usage/releases/download/0.95/0.95-waifu.zip), extract it, open a terminal in that directory, and run:
+Download [Standard](https://github.com/Sylva1027/agent-usage/releases/download/0.95a/0.95a.zip) or [Waifu](https://github.com/Sylva1027/agent-usage/releases/download/0.95a/0.95a-waifu.zip), extract it, open a terminal in that directory, and run:
 
 ```bash
 node src/cli.js run
@@ -52,7 +50,7 @@ Some character designs in Waifu come from [ZipZipPipe](https://space.bilibili.co
 
 Estimate input, output, and cache costs using each model's API rates, displayed in USD or CNY. Prices and exchange rates update automatically and can also be edited manually.
 
-Model names omit routing prefixes so statistics, rankings, and pricing use the same model identity. In the pricing dialog, models with missing rates can also be clicked to enter prices, then saved to recalculate costs.
+The pricing dialog groups models you have used by manufacturer, with search for manufacturers and models. Models are ordered by release date. Select a model to view or edit its rates, then save to recalculate costs. Model names omit routing prefixes.
 
 ## Commands
 
