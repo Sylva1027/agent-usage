@@ -1,3 +1,4 @@
+import { OPENROUTER_PRICES_URL } from "../src/pricing-catalog.js";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -61,6 +62,7 @@ function pricingFetcher({
   return async (url) => {
     calls?.push(url);
     if (Array.isArray(failSource) ? failSource.includes(url) : url === failSource) throw new Error(`${url} offline`);
+    if (url === OPENROUTER_PRICES_URL) return jsonResponse({ data: [] });
     if (url === MODEL_PRICES_URL) return jsonResponse(modelsDev);
     if (url === LITELLM_PRICES_URL) return jsonResponse(liteLLM);
     if (url === USD_CNY_RATE_URL) return jsonResponse({ base: "USD", quote: "CNY", date: "2026-09-28", rate });
@@ -304,7 +306,7 @@ test("only the exchange rate is fetched when its retry is due", async () => {
   }
 });
 
-test("missing model discovery fetches only its two sources and preserves maintenance state", async () => {
+test("missing model discovery fetches only its three catalog sources and preserves maintenance state", async () => {
   const homeDir = await temporaryHome();
   const calls = [];
   const now = new Date("2026-09-28T08:00:00.000Z");
@@ -323,7 +325,7 @@ test("missing model discovery fetches only its two sources and preserves mainten
       }),
     });
 
-    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.deepEqual(result.discovery.addedModels, ["gpt-test-discovery"]);
     assert.equal(getPricingCatalog().models["gpt-test-discovery"].short.input, 2);
     assert.equal(Object.keys(getPricingCatalog().models).length, beforeModelCount + 1);
@@ -374,11 +376,11 @@ test("failed discovery fetches record no parsing and preserve unattempted source
       usedModels: ["gpt-test-discovery"],
       pricingFetcher: pricingFetcher({
         calls,
-        failSource: [MODEL_PRICES_URL, LITELLM_PRICES_URL],
+        failSource: [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL],
       }),
     });
 
-    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.deepEqual(result.discovery.results, [
       { model: "gpt-test-discovery", status: "error", reason: "source-error" },
     ]);
@@ -402,7 +404,11 @@ test("failed discovery fetches record no parsing and preserve unattempted source
     assert.equal(result.priceUpdateSummary.attemptedModelCount, beforeStatus.priceUpdateSummary.attemptedModelCount);
     assert.equal(result.priceAttemptedAt, beforeStatus.priceAttemptedAt);
     assert.equal(result.priceUpdatedAt, beforeStatus.priceUpdatedAt);
-    assert.deepEqual(result.issues, beforeStatus.issues);
+    assert.deepEqual(
+      result.issues.filter((issue) => issue.source !== "OpenRouter"),
+      beforeStatus.issues,
+    );
+    assert.ok(result.issues.some((issue) => issue.source === "OpenRouter"));
   } finally {
     resetPricingCatalog();
     await rm(homeDir, { recursive: true, force: true });
@@ -434,7 +440,7 @@ test("target refresh ignores due maintenance, FX, and unrelated missing models",
       pricingFetcher: pricingFetcher({ calls, modelsDev }),
     });
 
-    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.deepEqual(result.discovery.addedModels, ["gpt-test-discovery"]);
     assert.equal(getPricingCatalog().models["gpt-test-discovery"].short.input, 2);
     assert.equal(getPricingCatalog().models["gpt-other-missing"], undefined);
@@ -492,7 +498,10 @@ test("target network errors retry after one hour and then add only the target", 
       homeDir,
       model,
       now: new Date("2026-09-28T08:00:00.000Z"),
-      pricingFetcher: pricingFetcher({ calls, failSource: [MODEL_PRICES_URL, LITELLM_PRICES_URL] }),
+      pricingFetcher: pricingFetcher({
+        calls,
+        failSource: [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL],
+      }),
     });
     assert.deepEqual(getAutomaticPricingStatus().discoveryResults, [
       {
@@ -520,7 +529,7 @@ test("target network errors retry after one hour and then add only the target", 
       now: new Date("2026-09-28T09:00:00.000Z"),
       pricingFetcher: pricingFetcher({ calls, modelsDev: discoverableModelCatalog(model) }),
     });
-    assert.deepEqual(calls.slice(callCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls.slice(callCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.deepEqual(retried.discovery.addedModels, [model]);
     assert.deepEqual(getAutomaticPricingStatus().discoveryResults, [
       { model, status: "added", reason: null, retryable: false, nextRetryAt: null },
@@ -671,6 +680,7 @@ test("successful full maintenance rechecks not-found with the same downloads", a
       STEPFUN_PRICES_URL,
       KIMI_PRICES_URL,
       GLM_PRICES_URL,
+      OPENROUTER_PRICES_URL,
     ]);
     assert.equal(calls.filter((url) => url === MODEL_PRICES_URL).length, 2);
     assert.equal(calls.filter((url) => url === LITELLM_PRICES_URL).length, 2);
@@ -687,7 +697,7 @@ test("successful full maintenance rechecks not-found with the same downloads", a
 test("terminal discovery results wait for a capability or mapping revision", async () => {
   const homeDir = await temporaryHome();
   const calls = [];
-  const model = "vendor/non-openai-model";
+  const model = "unsupported:model";
   try {
     await loadAutomaticCache(homeDir, recentAutomaticState());
     await refreshAutomaticPricing({
@@ -723,7 +733,7 @@ test("terminal discovery results wait for a capability or mapping revision", asy
       now: new Date("2026-09-28T10:00:00.000Z"),
       pricingFetcher: pricingFetcher({ calls }),
     });
-    assert.deepEqual(calls.slice(callCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls.slice(callCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.equal(getAutomaticPricingStatus().discoveryAttemptedAt[model], "2026-09-28T10:00:00.000Z");
     const capabilityCallCount = calls.length;
 
@@ -734,7 +744,7 @@ test("terminal discovery results wait for a capability or mapping revision", asy
       now: new Date("2026-09-28T11:00:00.000Z"),
       pricingFetcher: pricingFetcher({ calls }),
     });
-    assert.deepEqual(calls.slice(capabilityCallCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls.slice(capabilityCallCount), [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
     assert.equal(getAutomaticPricingStatus().discoveryAttemptedAt[model], "2026-09-28T11:00:00.000Z");
   } finally {
     resetPricingCatalog();
@@ -742,7 +752,7 @@ test("terminal discovery results wait for a capability or mapping revision", asy
   }
 });
 
-test("full maintenance fetches all six price sources without refreshing a recent exchange rate", async () => {
+test("full maintenance fetches all seven price sources without refreshing a recent exchange rate", async () => {
   const homeDir = await temporaryHome();
   const calls = [];
   const now = new Date("2026-09-29T08:00:00.000Z");
@@ -769,6 +779,7 @@ test("full maintenance fetches all six price sources without refreshing a recent
       STEPFUN_PRICES_URL,
       KIMI_PRICES_URL,
       GLM_PRICES_URL,
+      OPENROUTER_PRICES_URL,
     ]);
     assert.equal(result.priceAttemptedAt, now.toISOString());
     assert.equal(result.priceUpdatedAt, now.toISOString());

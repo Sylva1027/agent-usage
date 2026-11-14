@@ -82,6 +82,7 @@ import {
   STEPFUN_PRICES_URL,
   USD_CNY_RATE_URL,
 } from "../src/pricing-auto.js";
+import { OPENROUTER_PRICES_URL } from "../src/pricing-catalog.js";
 import { createUsageServer } from "../src/server.js";
 import { createPaletteFixture, createPaletteServerOptions } from "../test-support/skin-palette-fixture.mjs";
 
@@ -9030,7 +9031,7 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
         const backdrop = document.querySelector("#pricingDialog");
         const dialog = backdrop?.querySelector(".pricing-dialog");
         const dialogStyle = dialog ? getComputedStyle(dialog) : null;
-        const list = document.querySelector("#pricingModelList");
+        const list = document.querySelector("#pricingProviderList");
         const rate = document.querySelector("#usdToCnyRate");
         const form = document.querySelector("#pricingForm");
         const hovered = Array.from(document.querySelectorAll(":hover")).map((element) => ({
@@ -9101,14 +9102,9 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
             rateHasValue: rate ? rate.value.length > 0 : null,
             rateRequired: rate?.required ?? null,
             rateValid: rate?.validity.valid ?? null,
-            pricingScope: Array.from(document.querySelectorAll("#pricingScope [data-pricing-scope]")).map((button) => ({
-              pressed: button.getAttribute("aria-pressed"),
-              active: button.classList.contains("active"),
-            })),
             list: list
               ? {
-                  rowCount: list.querySelectorAll(".pricing-model-row").length,
-                  groupCount: list.querySelectorAll(".pricing-harness-group").length,
+                  rowCount: list.querySelectorAll("[data-pricing-provider]").length,
                   emptyCount: list.querySelectorAll(".empty").length,
                   scrollTop: list.scrollTop,
                   scrollHeight: list.scrollHeight,
@@ -9272,8 +9268,6 @@ test("M5.2.C-D2b3：真实 Edge 两种装饰隔离、低对比仍失败，异常
       await page.waitForFunction(() => document.activeElement?.id === "pricingSearch");
       await page.locator("#usdToCnyRate").fill("");
       const searchInput = page.locator("#pricingSearch");
-      // The fixed historical fixture belongs to all models, independent of today's recent-usage window.
-      await page.locator('[data-pricing-scope="all"]').click();
       await searchInput.fill("x");
       await searchInput.scrollIntoViewIfNeeded();
       const { snapshot: searchFilledState, stableFrames } = await waitForStablePricingLayout();
@@ -9731,6 +9725,7 @@ test("M5.2.C-E1c：真实Edge验证五状态浅深输入目标、适用性与恢
     STEPFUN_PRICES_URL,
     KIMI_PRICES_URL,
     GLM_PRICES_URL,
+    OPENROUTER_PRICES_URL,
     USD_CNY_RATE_URL,
   ];
   const pricingFetcherRequests = [];

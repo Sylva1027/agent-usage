@@ -1,3 +1,4 @@
+import { OPENROUTER_PRICES_URL } from "../src/pricing-catalog.js";
 import assert from "node:assert/strict";
 import { listenOnFetchPort } from "../test-support/fetch-port.mjs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -46,6 +47,7 @@ function modelsDevCatalog() {
 function pricingFetcher({ calls, failGlm = false, beforeFetch = null } = {}) {
   return async (url) => {
     calls.push(url);
+    if (url === OPENROUTER_PRICES_URL) return new Response('{"data":[]}', { status: 200 });
     await beforeFetch?.(url);
     if (failGlm && url === GLM_PRICES_URL) throw new Error("GLM offline");
     if (url === MODEL_PRICES_URL) {
@@ -174,7 +176,7 @@ test("scheduler checks after pricing is ready, honors 24h success, and exits req
     now = new Date(now.getTime() + 23 * HOUR_MS);
     await runWithPricingCatalog(catalogA, scheduler.timers[1].callback);
     await waitUntil(() => scheduler.timers.length === 3, "the 24h check did not reschedule");
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
     assert.ok(observedVersions.length > 0);
     assert.ok(observedVersions.every((version) => version === liveCatalog.version));
   } finally {
@@ -204,7 +206,7 @@ test("scheduler retries a partial price failure after one hour", async () => {
     now = new Date(now.getTime() + HOUR_MS);
     scheduler.timers[0].callback();
     await waitUntil(() => scheduler.timers.length === 2, "the retry did not reschedule");
-    assert.equal(calls.length, 6, "a failed price check must retry after one hour without refetching FX");
+    assert.equal(calls.length, 7, "a failed price check must retry after one hour without refetching FX");
   } finally {
     await closeFixture(fixture);
     setPricingCatalog(originalPricing);
@@ -256,17 +258,17 @@ test("scheduler coalesces with an in-flight manual refresh", async () => {
       body: JSON.stringify({ force: true }),
     });
     await started;
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
 
     now = new Date(now.getTime() + HOUR_MS);
     scheduler.timers[0].callback();
     await new Promise(setImmediate);
-    assert.equal(calls.length, 7, "a scheduler check must not duplicate an active global refresh");
+    assert.equal(calls.length, 8, "a scheduler check must not duplicate an active global refresh");
 
     releaseResolve();
     assert.equal((await manual).status, 200);
     await waitUntil(() => scheduler.timers.length === 2, "the scheduler did not resume after the shared refresh");
-    assert.equal(calls.length, 7);
+    assert.equal(calls.length, 8);
   } finally {
     gate = null;
     await closeFixture(fixture);
@@ -326,7 +328,7 @@ test("hourly metadata discovery uses the ready usage scope without forcing six-s
     now = new Date(now.getTime() + HOUR_MS);
     scheduler.timers[0].callback();
     await waitUntil(() => scheduler.timers.length === 2, "metadata discovery did not reschedule");
-    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL]);
+    assert.deepEqual(calls, [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL]);
   } finally {
     await server.close();
     await rm(homeDir, { recursive: true, force: true });
@@ -372,7 +374,7 @@ test("close cancels scheduling, waits for the active check, and never reschedule
   await closing;
   await new Promise(setImmediate);
   assert.equal(scheduler.timers.length, 0);
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, 8);
   setPricingCatalog(originalPricing);
   await rm(fixture.homeDir, { recursive: true, force: true });
 });

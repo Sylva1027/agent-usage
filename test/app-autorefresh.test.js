@@ -381,7 +381,6 @@ export function parseDomContract(html) {
     dataRecentOption: [...new Set(attributeValues("recent-option"))],
     dataTimelineMode: [...new Set(attributeValues("timeline-mode"))],
     dataCalendarZone: [...new Set(attributeValues("calendar-zone"))],
-    dataPricingScope: [...new Set(attributeValues("pricing-scope"))],
   };
 }
 
@@ -481,9 +480,6 @@ export function createDomStub(html, contract) {
     }
     if (selector === "[data-calendar-zone]") {
       return contract.dataCalendarZone.map((zone) => makeElement("button", { dataset: { calendarZone: zone } }));
-    }
-    if (selector === "[data-pricing-scope]") {
-      return contract.dataPricingScope.map((scope) => makeElement("button", { dataset: { pricingScope: scope } }));
     }
     if (selector.startsWith("#")) return byId.has(selector.slice(1)) ? [byId.get(selector.slice(1))] : [];
     if (selector.startsWith("[")) {

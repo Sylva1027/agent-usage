@@ -388,13 +388,13 @@ async function dialogGeometry(page, selector) {
   });
 }
 
-function assertDialogGeometry(g, label) {
+function assertDialogGeometry(g, label, { headingLine = "21px", gap = 12 } = {}) {
   assert.ok(g.shell.width > 100 && g.shell.height > 100, `${label} visible shell`);
   assert.ok(g.shell.x >= 0 && g.shell.y >= 0, `${label} top/left reachable`);
   assert.ok(g.shell.right <= g.viewport.width && g.shell.bottom <= g.viewport.height, `${label} fits viewport`);
-  assert.equal(g.title.lineHeight, "21px", `${label} heading line`);
+  assert.equal(g.title.lineHeight, headingLine, `${label} heading line`);
   assert.equal(g.horizontalOverflow, false, `${label} horizontal overflow`);
-  for (const gap of g.gaps) near(gap, 12, `${label} group gap`);
+  for (const actual of g.gaps) near(actual, gap, `${label} group gap`);
 }
 
 async function verifyImportAndSkin(page, fixture) {
@@ -517,82 +517,72 @@ async function verifyImportAndSkin(page, fixture) {
 
 async function verifyPricing(page) {
   await page.locator("#updatePricingButton").click();
-  assert.equal(await page.locator('[data-pricing-scope="used"]').getAttribute("aria-pressed"), "true");
-  await page.locator('[data-pricing-scope="all"]').click();
-  const longRow = page.locator(`[data-pricing-model="${LONG_PRICING_MODEL}"]`);
-  await longRow.waitFor({ state: "visible" });
+  await page.locator("#pricingDialog").waitFor({ state: "visible" });
   const normal = await dialogGeometry(page, "#pricingDialog .dialog");
   assertDialogGeometry(normal, "pricing");
-  assert.equal(await page.locator(".pricing-update-details").getAttribute("open"), null);
-  const rows = await page.locator("#pricingModelList").evaluate((list) => ({
-    height: list.getBoundingClientRect().height,
-    rowHeights: [...list.querySelectorAll(".pricing-model-row")].map((node) => node.getBoundingClientRect().height),
-    missing: list.querySelectorAll(".pricing-state-badge.missing").length,
-    free: list.querySelectorAll(".pricing-state-badge.free").length,
-    hints: [...list.querySelectorAll(".pricing-model-hint")].map((node) => ({
-      height: node.getBoundingClientRect().height,
-      clientWidth: node.clientWidth,
-      scrollWidth: node.scrollWidth,
-    })),
-  }));
-  near(rows.height, 240, "pricing list slot");
-  assert.ok(rows.rowHeights.length > 2 && rows.missing > 0 && rows.free > 0, "real matched, missing and free rows");
-  for (const height of rows.rowHeights) near(height, 52, "pricing row height");
-  for (const hint of rows.hints) {
-    near(hint.height, 19, "pricing rates stay on one line");
-    assert.ok(hint.scrollWidth <= hint.clientWidth, "essential model rates remain fully readable");
+  assert.equal(await page.locator("#pricingScope, .pricing-update-details, .pricing-controls").count(), 0);
+  const toolbar = await page.locator(".pricing-toolbar").evaluate((node) =>
+    [...node.children]
+      .filter((child) => !child.hidden)
+      .map((child) => {
+        const box = child.getBoundingClientRect();
+        const contactShadow = child.classList.contains("panel-action") ? 2 : 0;
+        return { center: box.y + (box.height + contactShadow) / 2, width: box.width };
+      }),
+  );
+  for (const control of toolbar) near(control.center, toolbar[0].center, "pricing toolbar stays on one row");
+  const controlBoxes = await page
+    .locator("#pricingSearch, #pricingCurrency, #usdToCnyRate, #refreshPricingButton")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.getBoundingClientRect();
+        const contactShadow = node.classList.contains("panel-action") ? 2 : 0;
+        return { top: rect.top, height: rect.height + contactShadow };
+      }),
+    );
+  for (const box of controlBoxes) {
+    near(box.height, 36, "pricing controls align including the raised button's contact shadow");
+    near(box.top, controlBoxes[0].top, "pricing control top edges align");
   }
-  const name = await longRow.locator(".pricing-model-id").evaluate((node) => ({
-    ellipsis: getComputedStyle(node).textOverflow,
-    clipped: node.scrollWidth > node.clientWidth,
-  }));
-  assert.deepEqual(name, { ellipsis: "ellipsis", clipped: true });
-  for (const selector of ["#pricingSearch", "#usdToCnyRate", "#refreshPricingButton", "#savePricingButton"]) {
-    near((await page.locator(selector).boundingBox()).height, 36, "pricing control");
-  }
+  assert.ok(toolbar[0].width <= 170, "search gives the gallery more room");
+  const stamp = await page.locator("#pricingUpdatedAt").boundingBox();
+  const save = await page.locator("#savePricingButton").boundingBox();
+  near(stamp.y + stamp.height, save.y + save.height, "timestamp aligns with action bottoms");
+  assert.match(await page.locator("#pricingUpdatedAt").innerText(), /\d{4}-\d{2}-\d{2}-\d{2}:\d{2}/);
+  const galleryHeight = (await page.locator("#pricingProviderList").boundingBox()).height;
+  assert.ok(galleryHeight > 240, "reclaimed vertical space belongs to manufacturers");
+  await page.locator('[data-pricing-provider="other"]').click();
+  const longRow = page.locator(`[data-pricing-model="${LONG_PRICING_MODEL}"]`);
+  await longRow.waitFor({ state: "visible" });
+  assert.equal(await page.locator("#providerPricingDialog").evaluate((node) => node.matches(":modal")), true);
   await longRow.click();
   const native = await dialogGeometry(page, "#modelPricingDialog");
-  assertDialogGeometry(native, "native model pricing");
+  assertDialogGeometry(native, "native model pricing", { headingLine: "24px", gap: 18 });
   assert.equal(await page.locator("#modelPricingDialog").evaluate((node) => node.matches(":modal")), true);
   assert.equal(await page.locator(".pricing-model-details").getAttribute("open"), null);
-  for (const height of await page
-    .locator("#modelPricingFields input")
-    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height))) {
-    near(height, 36, "model rate control");
-  }
   assert.equal(await page.locator("#applyModelPricingButton").isDisabled(), true);
-  await page.locator("#cancelModelPricingButton").click();
-  assert.equal(await page.locator("#modelPricingDialog").isVisible(), false);
-  near(
-    await page.locator("#modelPricingDialog").evaluate((node) => node.getBoundingClientRect().height),
-    0,
-    "closed native dialog excluded",
-  );
+  await page.keyboard.press("Escape");
+  await page.locator("#modelPricingDialog").waitFor({ state: "hidden" });
+  assert.equal(await page.locator("#providerPricingDialog").isVisible(), true);
+  await page.keyboard.press("Escape");
+  await page.locator("#providerPricingDialog").waitFor({ state: "hidden" });
+  assert.equal(await page.locator("#pricingDialog").isVisible(), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.pricingProvider), "other");
   await page.locator("#pricingSearch").fill("__no_pricing_geometry_match__");
-  await page.locator("#pricingModelList > .empty").waitFor({ state: "visible" });
+  await page.locator("#pricingProviderList > .empty").waitFor({ state: "visible" });
   const noMatch = await dialogGeometry(page, "#pricingDialog .dialog");
   for (const key of ["x", "y", "width", "height"]) near(noMatch.shell[key], normal.shell[key], `pricing empty ${key}`);
-  near((await page.locator("#pricingModelList").boundingBox()).height, 240, "empty pricing slot");
-  await page.locator("#pricingSearch").fill("");
-  await page.locator('[data-pricing-scope="used"]').click();
-  assert.equal(await page.locator('[data-pricing-scope="used"]').getAttribute("aria-pressed"), "true");
   near(
-    (await dialogGeometry(page, "#pricingDialog .dialog")).shell.height,
-    normal.shell.height,
-    "used models preserve shell",
+    (await page.locator("#pricingProviderList").boundingBox()).height,
+    galleryHeight,
+    "empty gallery preserves height",
   );
-  await page.locator('[data-pricing-scope="all"]').click();
-  assert.equal(await page.locator('[data-pricing-scope="all"]').getAttribute("aria-pressed"), "true");
-  const all = await dialogGeometry(page, "#pricingDialog .dialog");
-  near(all.shell.height, normal.shell.height, "all models preserve shell");
   await page.locator("#pricingSearch").fill(LONG_PRICING_MODEL);
+  assert.equal(await page.locator("[data-pricing-provider]").count(), 1);
+  await page.locator('[data-pricing-provider="other"]').click();
   assert.equal(await page.locator("#pricingModelList .pricing-model-row").count(), 1);
-  await page.locator(".pricing-update-details > summary").click();
-  assert.ok(
-    (await dialogGeometry(page, "#pricingDialog .dialog")).shell.height > normal.shell.height,
-    "requested update details can grow",
-  );
-  await page.locator(".pricing-update-details > summary").click();
+  await page.locator("#closeProviderPricingButton").click();
+  await page.locator("#providerPricingDialog").waitFor({ state: "hidden" });
   await page.locator("#cancelPricingButton").click();
   assert.equal(await page.evaluate(() => document.activeElement?.id), "updatePricingButton");
 }
@@ -1220,7 +1210,7 @@ test("UI geometry uses the production app and isolated source fixtures", async (
       try {
         const { page } = session;
         await page.locator("#updatePricingButton").click();
-        await page.locator('[data-pricing-scope="all"]').click();
+        await page.locator('[data-pricing-provider="other"]').click();
         const row = page.locator(`[data-pricing-model="${LONG_PRICING_MODEL}"]`);
         await row.click();
         const input = page.locator('#modelPricingFields input[data-context="short"][data-field="input"]');
@@ -1231,7 +1221,9 @@ test("UI geometry uses the production app and isolated source fixtures", async (
         assert.equal(await page.locator("#applyModelPricingButton").isDisabled(), false);
         await page.locator("#applyModelPricingButton").click();
         assert.equal(await page.locator("#modelPricingDialog").isVisible(), false);
-        assert.ok((await row.locator(".pricing-model-hint").textContent()).includes(String(nextInput)));
+        assert.ok((await row.locator('[data-pricing-rate="input"]').textContent()).includes(String(nextInput)));
+        await page.locator("#closeProviderPricingButton").click();
+        await page.locator("#providerPricingDialog").waitFor({ state: "hidden" });
         const rate = page.locator("#usdToCnyRate");
         const nextRate = Number((Number(await rate.inputValue()) + 0.01).toFixed(2));
         await rate.fill(String(nextRate));
@@ -1265,11 +1257,13 @@ test("UI geometry uses the production app and isolated source fixtures", async (
         assert.equal(current.usdToCnyRate, nextRate);
         await page.locator("#updatePricingButton").click();
         assert.equal(Number(await rate.inputValue()), nextRate, "reopening uses the newly saved catalog");
-        await page.locator('[data-pricing-scope="all"]').click();
+        await page.locator('[data-pricing-provider="other"]').click();
         await row.click();
         assert.equal(Number(await input.inputValue()), nextInput, "reopening uses the newly saved model rate");
         assert.equal(await page.locator("#applyModelPricingButton").isDisabled(), true);
         await page.locator("#cancelModelPricingButton").click();
+        await page.locator("#closeProviderPricingButton").click();
+        await page.locator("#providerPricingDialog").waitFor({ state: "hidden" });
         await page.locator("#cancelPricingButton").click();
         await page.locator("#languageToggle").click();
         assert.equal(await page.locator("html").getAttribute("lang"), locale === "zh-CN" ? "en-US" : "zh-CN");

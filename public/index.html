@@ -369,32 +369,8 @@
           <div class="dialog-heading">
             <h2 id="pricingDialogTitle">更新计价标准</h2>
           </div>
-          <p class="dialog-copy">点击模型调整单价，单位为每百万 tokens。</p>
-          <div class="pricing-auto-row">
-            <details class="pricing-update-details">
-              <summary>更新详情</summary>
-              <div class="pricing-status-stack">
-                <span id="pricingAutomaticStatus" class="pricing-model-note">正在读取更新状态…</span>
-                <span id="pricingUsageCoverage" class="pricing-model-note" aria-live="polite"></span>
-                <span id="pricingUpdateDetails" class="pricing-model-note"></span>
-              </div>
-            </details>
-            <button id="refreshPricingButton" class="panel-action" type="button">立即更新</button>
-          </div>
           <div class="pricing-toolbar">
             <input id="pricingSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型" />
-            <label class="pricing-rate-label">1 美元 =
-              <input id="usdToCnyRate" type="text" inputmode="decimal" required />
-              人民币
-            </label>
-            <button id="restoreAutomaticRateButton" class="panel-action pricing-restore-rate" type="button" data-i18n-en="Restore automatic rate" aria-pressed="false" hidden>恢复自动汇率</button>
-          </div>
-          <div class="pricing-controls">
-            <!-- biome-ignore lint/a11y/useSemanticElements: 计价范围按键组同样依赖 div 布局，fieldset 默认样式需整组重置 -->
-            <div class="segmented segmented-well pricing-scope" id="pricingScope" role="group" aria-label="模型范围">
-              <button type="button" data-pricing-scope="used" aria-pressed="true">在用模型</button>
-              <button type="button" data-pricing-scope="all" aria-pressed="false">全部模型</button>
-            </div>
             <div class="pricing-currency-control">
               <span>计价</span>
               <!-- biome-ignore lint/a11y/useSemanticElements: 币种按键组复用分段控件的 div 布局，fieldset 默认样式需整组重置 -->
@@ -403,21 +379,43 @@
                 <button type="button" data-display-currency="CNY" aria-pressed="false" title="人民币" aria-label="人民币">¥</button>
               </div>
             </div>
+            <label class="pricing-rate-label">1 美元 =
+              <input id="usdToCnyRate" type="text" inputmode="decimal" required />
+              人民币
+            </label>
+            <button id="restoreAutomaticRateButton" class="panel-action pricing-restore-rate" type="button" aria-label="恢复自动汇率" title="恢复自动汇率" aria-pressed="false" hidden>↺</button>
+            <button id="refreshPricingButton" class="panel-action" type="button">立即更新</button>
           </div>
-          <div id="pricingModelList" class="pricing-model-list"></div>
+          <div class="pricing-provider-well">
+            <div id="pricingProviderList" class="pricing-provider-grid"></div>
+          </div>
           <p id="pricingMessage" class="dialog-message" role="status"></p>
-          <div class="dialog-actions">
+          <div class="dialog-actions pricing-footer">
+            <span id="pricingUpdatedAt" class="pricing-updated-at"></span>
             <button id="cancelPricingButton" type="button">取消</button>
             <button id="savePricingButton" type="submit">保存并重算</button>
           </div>
         </form>
       </section>
     </div>
+    <dialog id="providerPricingDialog" class="dialog provider-pricing-dialog" aria-labelledby="providerPricingTitle">
+      <div class="dialog-heading">
+        <h2 id="providerPricingTitle">模型计价</h2>
+      </div>
+      <div class="provider-pricing-well">
+        <div id="providerPricingColumns" class="provider-pricing-columns" aria-hidden="true"></div>
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: 无滚动条的列表需要支持键盘滚动 -->
+        <section id="pricingModelList" class="pricing-model-list" tabindex="0" aria-label="模型计价"></section>
+      </div>
+      <div class="dialog-actions">
+        <button id="closeProviderPricingButton" type="button">返回</button>
+      </div>
+    </dialog>
     <dialog id="modelPricingDialog" class="dialog model-pricing-dialog" aria-labelledby="modelPricingTitle">
       <div class="dialog-heading">
         <h2 id="modelPricingTitle">模型计价</h2>
       </div>
-      <div id="modelPricingFields" class="pricing-contexts"></div>
+      <div id="modelPricingFields"></div>
       <details class="pricing-model-details">
         <summary>计价详情</summary>
         <p id="modelPricingNote" class="pricing-model-note"></p>

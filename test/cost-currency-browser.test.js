@@ -209,17 +209,17 @@ test("currency choice controls costs, survives refresh, and keeps typed FX separ
   await openPricing();
   const layout = await page.evaluate(() => {
     const dialog = document.querySelector("#pricingDialog .dialog");
-    const controls = document.querySelector(".pricing-controls");
+    const controls = document.querySelector(".pricing-toolbar");
     return {
       overflow: dialog.scrollWidth - dialog.clientWidth,
       controlOverflow: controls.scrollWidth - controls.clientWidth,
       currencyHeight: document.querySelector("#pricingCurrency").getBoundingClientRect().height,
-      scopeHeight: document.querySelector("#pricingScope").getBoundingClientRect().height,
+      searchHeight: document.querySelector("#pricingSearch").getBoundingClientRect().height,
     };
   });
   assert.equal(layout.overflow, 0);
   assert.equal(layout.controlOverflow, 0);
-  assert.ok(layout.currencyHeight < layout.scopeHeight);
+  assert.ok(layout.currencyHeight <= layout.searchHeight + 2);
   await page.route(
     /\/api\/pricing(?:\?|$)/,
     async (route) => {

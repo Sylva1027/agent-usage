@@ -17,12 +17,8 @@ import {
   setLocale,
   translatePage,
 } from "./i18n.js";
-import {
-  buildModelActivity,
-  buildUsagePricingCoverage,
-  CODEX_GPT_61_CONTEXT_WINDOW,
-  resolvePricingModel,
-} from "./pricing-models.js";
+import { CODEX_GPT_61_CONTEXT_WINDOW, resolvePricingModel } from "./pricing-models.js";
+import { PRICING_PROVIDERS, pricingProvider, pricingReleaseDate } from "./pricing-directory.js";
 import { state } from "./app-state.js";
 import { escapeHtml, externalHttpUrl, safeChartColor } from "./html-utils.js";
 import {
@@ -66,6 +62,7 @@ const THEME_STORAGE_KEY = "codexUsageTheme";
 const AUTO_REFRESH_STORAGE_KEY = "codexUsageAutoRefresh";
 const EXCLUDED_HOMES_STORAGE_KEY = "codexUsageExcludedHomes";
 const DISPLAY_CURRENCY_STORAGE_KEY = "codexUsageDisplayCurrency";
+const PRICING_SEEN_MODELS_STORAGE_KEY = "codexUsagePricingSeenModelsV1";
 const formatter = new Intl.NumberFormat("en-US");
 const millionTokenFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -2238,25 +2235,6 @@ function renderHomes(homes, options = {}) {
 // harness 归组顺序。Codex 优先，便于 gpt 系模型归到最相关一侧。
 export const HARNESS_ORDER = ["Codex", "ZCode", "DSH", "OpenCode", "Claude", "WorkBuddy", "Hermes"];
 
-/**
- * 同一个模型可能被多个 harness 用到（例如 ZCode 与 DSH 都跑 deepseek-flash）。
- * 计价弹窗按 harness 分区展示，若不去重，同一个模型会在多个分区里重复出现。
- * 这里按 HARNESS_ORDER 先到先得：一个模型只留在它遇到的第一个分区里。
- * @param {Record<string, Set<string>>} groups
- */
-export function claimHarnessKeys(groups) {
-  const claimed = new Set();
-  const ordered = Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, new Set()]));
-  for (const harness of HARNESS_ORDER) {
-    for (const key of groups[harness] || []) {
-      if (claimed.has(key)) continue;
-      claimed.add(key);
-      ordered[harness].add(key);
-    }
-  }
-  return ordered;
-}
-
 function currentSummary() {
   return state.summary;
 }
@@ -2637,23 +2615,19 @@ function renderAutomaticRateRestoreControl() {
   button.setAttribute("aria-pressed", String(state.restoreAutomaticExchangeRate === true));
 }
 
-function renderAutomaticPricingStatus(status = {}, coverage = undefined) {
-  const node = $("#pricingAutomaticStatus");
+export function pricingUpdateTimestamp(value) {
+  if (!value) return "—";
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function renderAutomaticPricingStatus(status = {}) {
+  const node = $("#pricingUpdatedAt");
   if (!node) return;
-  node.textContent = automaticPricingStatusText(
-    status,
-    getLocale(),
-    Object.keys(state.pricingCatalog?.models || {}).length,
-  );
-  const coverageNode = $("#pricingUsageCoverage");
-  if (coverageNode) {
-    let resolvedCoverage = coverage ?? state.pricingCatalog?.usageCoverage;
-    const activity = pricingUsageModels();
-    if (activity.harnessModels) {
-      resolvedCoverage = buildUsagePricingCoverage(activity.harnessModels, state.pricingCatalog?.models || {}, true);
-    }
-    coverageNode.textContent = usagePricingCoverageText(resolvedCoverage || {}, getLocale());
-  }
+  const timestamp = pricingUpdateTimestamp(status.priceUpdatedAt || state.pricingCatalog?.checkedAt);
+  node.textContent = `${getLocale() === "en-US" ? "Prices updated" : "价目表更新"} ${timestamp}`;
 }
 
 export function pricingIssueText(issue, english) {
@@ -2709,8 +2683,20 @@ export function pricingProvenanceText(metadata = {}, locale = "zh-CN") {
     "fast.long": english ? "Fast long" : "快速长上下文",
   };
   const origins = english
-    ? { remote: "remote", "built-in": "built-in", derived: "derived from Standard ×2", mixed: "mixed" }
-    : { remote: "远端来源", "built-in": "内置价目", derived: "由标准费率推算 ×2", mixed: "混合来源" };
+    ? {
+        remote: "remote",
+        reference: "OpenRouter reference",
+        "built-in": "built-in",
+        derived: "derived from Standard ×2",
+        mixed: "mixed",
+      }
+    : {
+        remote: "远端来源",
+        reference: "OpenRouter 参考价",
+        "built-in": "内置价目",
+        derived: "由标准费率推算 ×2",
+        mixed: "混合来源",
+      };
   const fieldLabels = english
     ? { input: "input", cachedInput: "cache read", cacheWrite: "cache write", output: "output" }
     : { input: "输入", cachedInput: "缓存读取", cacheWrite: "缓存写入", output: "输出" };
@@ -2750,6 +2736,10 @@ export function pricingProvenanceText(metadata = {}, locale = "zh-CN") {
           .filter(Boolean) || [];
       if (inheritedSources.length) details.push(inheritedSources.join(", "));
       if (item.checkedAt) details.push(item.checkedAt.slice(0, 10));
+      if (item.inputFallbackFields?.length)
+        details.push(
+          `${item.inputFallbackFields.map((field) => fieldLabels[field] || field).join(", ")}${english ? " use input rates where no cache rate is quoted" : "未单独报价，按普通输入价计"}`,
+        );
       if (item.conflicts?.length) details.push(english ? "conflict retained previous rate" : "冲突时保留原费率");
       return `${label}: ${details.join(" · ")}`;
     })
@@ -2791,33 +2781,10 @@ async function refreshPricingAutomatically(force = false) {
       const issueMessages = result.issues?.length
         ? result.issues.map((issue) => pricingIssueText(issue, english)).join(english ? "; " : "；")
         : result.errors?.join(english ? "; " : "；");
-      const discoveryResults = result.discovery?.results || [];
-      const discoveryAdded = result.discovery?.addedModels?.length || 0;
-      const discoveryDetails = discoveryResults
-        .filter((item) => ["deferred", "rejected", "error"].includes(item.status))
-        .map((item) => `${item.model}: ${discoveryReasonText(item.reason, english)}`)
-        .join(english ? "; " : "；");
-      const discoveryMessage = [
-        discoveryAdded
-          ? english
-            ? `Added ${discoveryAdded} model rate(s)`
-            : `已新增 ${discoveryAdded} 个模型费率`
-          : "",
-        discoveryDetails,
-      ]
-        .filter(Boolean)
-        .join(english ? "; " : "；");
-      const details = [issueMessages, discoveryMessage].filter(Boolean).join(english ? "; " : "；");
-      $("#pricingUpdateDetails").textContent = [
-        details,
-        force ? pricingUpdateSummaryText(result.priceUpdateSummary, getLocale()) : "",
-      ]
-        .filter(Boolean)
-        .join(english ? " · " : "；");
       const message = issueMessages
         ? english
-          ? "Some prices could not be updated. See update details."
-          : "部分价格未能更新，可展开更新详情查看。"
+          ? "Some prices could not be updated. Previous rates were kept."
+          : "部分价格未能更新，已保留原费率。"
         : force
           ? result.changed || result.statusChanged
             ? getLocale() === "en-US"
@@ -2833,9 +2800,8 @@ async function refreshPricingAutomatically(force = false) {
           : "";
       setPricingMessage(force ? message : "", Boolean(issueMessages));
     }
-  } catch (error) {
+  } catch {
     if (state.pricingCatalog) {
-      $("#pricingUpdateDetails").textContent = error.message;
       if (force) setPricingMessage(getLocale() === "en-US" ? "Update failed. Try again." : "更新失败，请重试。", true);
     }
   } finally {
@@ -2889,60 +2855,45 @@ export function pricingModelNoteParts(contexts, model) {
   return parts;
 }
 
-function pricingModelHint(contexts) {
-  const short = contexts.short || {};
-  const rates = `${short.input ?? "?"}/${short.cachedInput ?? "?"}/${short.output ?? "?"}`;
-  return getLocale() === "en-US" ? `${rates} (in/cache/out)` : `${rates}（入/缓/出）`;
+export function formatPricingInput(value) {
+  // Hide binary conversion tails without fixing the number of decimal places for small rates.
+  return typeof value === "number" ? String(Number(value.toPrecision(15))) : (value ?? "");
 }
 
 function pricingContextsHtml(model, contexts) {
   const contextBlock = (context, label, source) => `
-      <div class="pricing-context">
+      <div class="pricing-context" role="group" aria-label="${label}">
         <strong>${label}</strong>
         ${PRICING_FIELDS.map(
           ([field, fieldLabel]) => `
           <label>${fieldLabel}<input type="number" min="0" step="any" required
             data-model="${escapeHtml(model)}" data-context="${context}" data-field="${field}"
-            value="${escapeHtml(source[field])}" /></label>
+            value="${escapeHtml(formatPricingInput(source[field]))}" /></label>
         `,
         ).join("")}
       </div>
     `;
-  const standard = ["short", "shortLongOutput", "long"]
-    .filter((context) => contexts[context])
-    .map((context) =>
-      contextBlock(
-        context,
-        context === "long" && model === "gpt-6.1-sol"
-          ? getLocale() === "en-US"
-            ? "Other sources / API · Long Context"
-            : "其他来源 / API·长上下文"
-          : { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context],
-        contexts[context],
-      ),
+  return [
+    ["", "标准模式", contexts],
+    ["fast.", "快速模式", contexts.fast],
+  ]
+    .filter(([, , source]) => source)
+    .map(
+      ([prefix, label, source]) => `<section class="pricing-mode-group" aria-label="${label}">
+        <h3 class="pricing-mode-heading"><span>${label}</span></h3>
+        <div class="pricing-contexts">${["short", "shortLongOutput", "long"]
+          .filter((context) => source[context])
+          .map((context) =>
+            contextBlock(
+              `${prefix}${context}`,
+              { short: "短上下文", shortLongOutput: "短上下文·长输出", long: "长上下文" }[context],
+              source[context],
+            ),
+          )
+          .join("")}</div>
+      </section>`,
     )
     .join("");
-  const fast = contexts.fast
-    ? `<div class="pricing-fast-block"><strong>快速模式</strong><div class="pricing-contexts">${[
-        "short",
-        "shortLongOutput",
-        "long",
-      ]
-        .filter((context) => contexts.fast[context])
-        .map((context) =>
-          contextBlock(
-            `fast.${context}`,
-            context === "long" && model === "gpt-6.1-sol"
-              ? getLocale() === "en-US"
-                ? "Other sources / API · Fast Long Context"
-                : "其他来源 / API·快速长上下文"
-              : { short: "快速·短上下文", shortLongOutput: "快速·短上下文·长输出", long: "快速·长上下文" }[context],
-            contexts.fast[context],
-          ),
-        )
-        .join("")}</div></div>`
-    : "";
-  return standard + fast;
 }
 
 // 计价字段写回工作副本；fast.* 指向官方声明的快速模式费率。
@@ -2975,8 +2926,7 @@ function pricingRowsForNames(names, catalog) {
   for (const raw of names) {
     const resolved = resolvePricingModel(raw, catalog);
     if (resolved.matchType === "missing" && !resolved.rawModel) continue;
-    const normalized = resolved.canonicalModel.toLowerCase();
-    const identity = resolved.catalogKey ? `catalog:${resolved.catalogKey}` : `${resolved.matchType}:${normalized}`;
+    const identity = resolved.canonicalModel.toLowerCase();
     if (seen.has(identity)) continue;
     seen.add(identity);
     rows.push({ model: resolved.canonicalModel, catalogKey: resolved.catalogKey, matchType: resolved.matchType });
@@ -2984,126 +2934,141 @@ function pricingRowsForNames(names, catalog) {
   return rows;
 }
 
-export function pricingUsageModels() {
-  const candidates = [state.pricingCatalog?.modelActivity, state.metadata];
-  const isMap = (value) => value && typeof value === "object" && !Array.isArray(value);
-  for (const candidate of candidates) {
-    if (isMap(candidate?.activeHarnessModels)) {
-      return { harnessModels: candidate.activeHarnessModels, recent: true };
-    }
-  }
-  for (const candidate of candidates) {
-    if (!isMap(candidate?.modelLastSeen)) continue;
-    const observations = Object.entries(candidate.modelLastSeen).flatMap(([harness, models]) =>
-      isMap(models) ? Object.entries(models).map(([model, timestamp]) => ({ harness, model, timestamp })) : [],
-    );
-    const asOf = candidate.modelUsageAsOf || state.summary?.range?.asOf || state.now || Date.now();
-    const activity = buildModelActivity(observations, asOf);
-    return { harnessModels: activity.activeHarnessModels, recent: true };
-  }
-  // Older running servers serve current assets but have no activity projection.
-  // Keep observed models visible until their time-aware metadata becomes available.
-  return { harnessModels: state.metadata?.harnessModels || null, recent: false };
-}
-
-export function pricingHarnessRows({ all = false } = {}) {
+export function pricingProviderGroups() {
   const catalog = state.pricingCatalog?.models || {};
-  const groups = Object.fromEntries(HARNESS_ORDER.map((harness) => [harness, []]));
-  const harnessModels = all ? state.metadata?.harnessModels : pricingUsageModels().harnessModels;
-  const hasHarnessData = harnessModels && typeof harnessModels === "object";
-
-  if (hasHarnessData) {
-    const claimedCatalogKeys = new Set();
-    for (const harness of HARNESS_ORDER) {
-      const rows = pricingRowsForNames(harnessModels[harness] || [], catalog);
-      groups[harness] = rows.filter((row) => {
-        if (!row.catalogKey) return true;
-        if (claimedCatalogKeys.has(row.catalogKey)) return false;
-        claimedCatalogKeys.add(row.catalogKey);
-        return true;
-      });
-    }
-    return groups;
+  const harnessModels = state.pricingCatalog?.modelActivity?.harnessModels ?? state.metadata?.harnessModels ?? {};
+  const rows = pricingRowsForNames(Object.values(harnessModels).flat(), catalog);
+  const dates = state.pricingCatalog?.automatic?.modelReleaseDates;
+  const search = state.pricingSearch.trim().toLocaleLowerCase();
+  const providers = new Map(PRICING_PROVIDERS.map((provider) => [provider.id, provider]));
+  for (const row of rows) {
+    const known = pricingProvider(row.model);
+    const metadata = state.pricingCatalog?.automatic?.modelMetadata?.[row.catalogKey || row.model]?.short;
+    const id = known.id === "other" && /^[a-z0-9-]+$/.test(metadata?.providerId || "") ? metadata.providerId : known.id;
+    row.providerId = id;
+    if (!providers.has(id)) providers.set(id, { id, name: metadata.providerName || id });
   }
-
-  // An explicit empty recent set is authoritative.
-  return groups;
-}
-
-// 一级：在用 / 全部；在用模型下再按 Codex / ZCode / DSH 分组。
-// 在用模型使用已评估的近期名单；全历史名单仅用于全部模型。
-export function pricingHarnessGroups() {
-  const rows = pricingHarnessRows();
-  return Object.fromEntries(
-    HARNESS_ORDER.map((harness) => [harness, new Set(rows[harness].map((row) => row.catalogKey).filter(Boolean))]),
-  );
+  return [...providers.values()]
+    .map((provider) => {
+      const providerMatches = `${provider.id} ${provider.name} ${localizeText(provider.name)}`
+        .toLocaleLowerCase()
+        .includes(search);
+      const models = rows
+        .filter((row) => row.providerId === provider.id)
+        .filter((row) => providerMatches || `${row.model} ${row.catalogKey || ""}`.toLocaleLowerCase().includes(search))
+        .map((row) => ({ ...row, releaseDate: pricingReleaseDate(row.model, dates) }))
+        .sort(
+          (left, right) =>
+            right.releaseDate.localeCompare(left.releaseDate) ||
+            right.model.localeCompare(left.model, undefined, { numeric: true }),
+        );
+      const hasUnread = models.some((row) => !state.pricingSeenModels.has(row.model.toLowerCase()));
+      return { ...provider, models, hasUnread };
+    })
+    .filter((provider) => provider.models.length)
+    .sort(
+      (left, right) =>
+        Number(right.hasUnread) - Number(left.hasUnread) ||
+        Number(left.id === "other") - Number(right.id === "other") ||
+        right.models.length - left.models.length,
+    );
 }
 
 function renderPricingModelList() {
-  const container = $("#pricingModelList");
+  const container = $("#pricingProviderList");
   const catalog = state.pricingCatalog;
   if (!container || !catalog) return;
-  const search = state.pricingSearch.trim().toLocaleLowerCase();
-  const matches = (row) => !search || `${row.model} ${row.catalogKey || ""}`.toLocaleLowerCase().includes(search);
   const english = getLocale() === "en-US";
+  const groups = pricingProviderGroups();
+  const empty = `<div class="empty">${localizeText(state.pricingSearch.trim() ? "没有匹配的模型" : "暂无已用到的模型")}</div>`;
+  container.innerHTML =
+    groups
+      .map(
+        (
+          provider,
+        ) => `<button type="button" class="pricing-provider-card" data-pricing-provider="${provider.id}" aria-haspopup="dialog">
+    <span class="pricing-provider-name">${escapeHtml(localizeText(provider.name))}</span>
+    <span class="metric-new" role="img" aria-label="${english ? "Newly used models" : "有新使用的模型"}"${provider.hasUnread ? "" : " hidden"}></span>
+    <span class="pricing-provider-readout"><span class="pricing-provider-count">${provider.models.length}<small class="metric-unit">${english ? "models" : "个模型"}</small></span></span>
+  </button>`,
+      )
+      .join("") || empty;
+  const provider = groups.find((group) => group.id === state.pricingProvider);
+  if (!provider) return;
+  $("#providerPricingTitle").textContent = localizeText(provider.name);
+  const columns = [
+    ["input", english ? "Input" : "输入"],
+    ["cachedInput", english ? "Cache" : "缓存"],
+    ["output", english ? "Output" : "输出"],
+  ];
+  const rateFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 5 });
+  $("#providerPricingColumns").innerHTML =
+    `<span>${english ? "Model" : "模型"}</span>${columns.map(([, label]) => `<span>${label}</span>`).join("")}`;
   const rowHtml = (row) => {
     if (row.matchType === "missing") {
-      return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.model.toLowerCase())}" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
-        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge missing">${english ? "Missing rate" : "缺少费率"}</span></span>
+      return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.model.toLowerCase())}" aria-haspopup="dialog" title="${english ? "Edit this model's rates" : "点击编辑该模型费率"}">
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span></span>
+        <span class="pricing-state-badge missing">${english ? "Set rates" : "待设置单价"}</span>
       </button>`;
     }
     if (row.matchType === "free") {
       return `<div class="pricing-model-row pricing-model-unpriced" role="group" aria-label="${escapeHtml(row.model)}">
-        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="pricing-state-badge free">${english ? "Free" : "免费"}</span></span>
+        <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span></span>
+        <span class="pricing-state-badge free">${english ? "Free" : "免费"}</span>
       </div>`;
     }
     const contexts = catalog.models[row.catalogKey];
+    const currency = contexts.currency === "CNY" ? "¥" : "$";
+    const rates = columns.map(([field, label]) => ({
+      field,
+      label,
+      value: typeof contexts.short?.[field] === "number" ? rateFormatter.format(contexts.short[field]) : "—",
+    }));
+    const accessibleName = `${row.model}, ${rates.map((rate) => `${rate.label} ${currency}${rate.value}`).join(", ")}`;
     const alias =
       row.model.toLowerCase() === row.catalogKey.toLowerCase()
         ? ""
         : ` · ${english ? "Priced as" : "计价名称"} ${row.catalogKey}`;
-    return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" title="${escapeHtml((english ? "Edit this model's rates" : "点击编辑该模型费率") + alias)}">
-      <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span><span class="currency-badge">${contexts.currency === "CNY" ? "CNY" : "USD"}</span></span>
-      <span class="pricing-model-hint">${escapeHtml(pricingModelHint(contexts))}</span>
+    return `<button type="button" class="pricing-model-row" data-pricing-model="${escapeHtml(row.catalogKey)}" aria-haspopup="dialog" aria-label="${escapeHtml(accessibleName)}" title="${escapeHtml((english ? "Edit this model's rates" : "点击编辑该模型费率") + alias)}">
+      <span class="pricing-model-name"><span class="pricing-model-id">${escapeHtml(row.model)}</span></span>
+      ${rates.map((rate) => `<span class="pricing-model-rate" data-pricing-rate="${rate.field}"><span class="pricing-rate-currency">${currency}</span>${escapeHtml(rate.value)}</span>`).join("")}
     </button>`;
   };
 
-  if (state.pricingScope === "all") {
-    const rowsByName = new Map(
-      pricingRowsForNames(Object.keys(catalog.models), catalog.models).map((row) => [row.model.toLowerCase(), row]),
-    );
-    for (const rows of Object.values(pricingHarnessRows({ all: true }))) {
-      for (const row of rows) {
-        if (!row.catalogKey) rowsByName.set(row.model.toLowerCase(), row);
-      }
-    }
-    const rows = [...rowsByName.values()]
-      .sort((left, right) => left.model.localeCompare(right.model))
-      .filter(matches)
-      .map(rowHtml)
-      .join("");
-    container.innerHTML = rows || `<div class="empty">${search ? "没有匹配的模型" : "暂无模型"}</div>`;
-    return;
-  }
-
-  const displayGroups = pricingHarnessRows();
-  const sections = HARNESS_ORDER.map((harness) => {
-    const rows = displayGroups[harness]
-      .sort((left, right) => left.model.localeCompare(right.model))
-      .filter(matches)
-      .map(rowHtml)
-      .join("");
-    return rows ? `<div class="pricing-harness-group"><h3>${harness}</h3>${rows}</div>` : "";
-  }).join("");
-  container.innerHTML = sections || `<div class="empty">${search ? "没有匹配的模型" : "暂无已用到的模型"}</div>`;
+  $("#pricingModelList").innerHTML = provider.models.map(rowHtml).join("") || empty;
 }
 
-function updatePricingScopeButtons() {
-  for (const button of document.querySelectorAll("[data-pricing-scope]")) {
-    const selected = button.dataset.pricingScope === state.pricingScope;
-    button.classList.toggle("active", selected);
-    button.setAttribute("aria-pressed", String(selected));
+function openProviderPricing(provider) {
+  state.pricingProvider = provider;
+  const group = pricingProviderGroups().find((item) => item.id === provider);
+  if (!group) return;
+  for (const row of group.models) state.pricingSeenModels.add(row.model.toLowerCase());
+  try {
+    localStorage.setItem(PRICING_SEEN_MODELS_STORAGE_KEY, JSON.stringify([...state.pricingSeenModels]));
+  } catch {
+    // Keep acknowledgement for this session when browser storage is unavailable.
   }
+  renderPricingModelList();
+  $("#pricingDialog").classList.add("is-provider-open");
+  $("#providerPricingDialog").showModal();
+}
+
+function closeProviderPricing(immediate = false) {
+  closeModelPricing();
+  const dialog = $("#providerPricingDialog");
+  if (!dialog.open && state.pricingProvider === null) return;
+  $("#pricingDialog").classList.remove("is-provider-open");
+  if (dialog.open && !immediate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    dialog.classList.add("is-leaving");
+    return;
+  }
+  const provider = state.pricingProvider;
+  state.pricingProvider = null;
+  dialog.close();
+  dialog.classList.remove("is-leaving");
+  [...$("#pricingProviderList").querySelectorAll("[data-pricing-provider]")]
+    .find((button) => button.dataset.pricingProvider === provider)
+    ?.focus({ preventScroll: true });
 }
 
 function updateDisplayCurrencyButtons() {
@@ -3143,11 +3108,16 @@ function applyModelPricing() {
   if (!model || !state.pricingCatalog || !modelPricingInputsChanged(inputs)) return;
   const entry = state.pricingCatalog.models[model] || { currency: "USD", short: {} };
   for (const input of inputs) {
+    // A formatted default is presentation only; preserve untouched source precision.
+    if (input.defaultValue !== "" && Number(input.value) === Number(input.defaultValue)) continue;
     writePricingField(entry, input.dataset.context, input.dataset.field, Number(input.value));
   }
   state.pricingCatalog.models = { ...state.pricingCatalog.models, [model]: entry };
   closeModelPricing();
   renderPricingModelList();
+  [...$("#pricingModelList").querySelectorAll("[data-pricing-model]")]
+    .find((row) => row.dataset.pricingModel === model)
+    ?.focus();
 }
 
 function pricingActivityUrl() {
@@ -3162,18 +3132,26 @@ async function openPricingDialog() {
     const catalog = await response.json();
     if (!response.ok) throw new Error(localizeServerError(catalog, response.status));
     state.pricingCatalog = catalog;
+    try {
+      const seen = JSON.parse(localStorage.getItem(PRICING_SEEN_MODELS_STORAGE_KEY));
+      if (Array.isArray(seen) && seen.every((model) => typeof model === "string")) {
+        state.pricingSeenModels = new Set(seen);
+      }
+    } catch {
+      // Retain in-memory acknowledgement if browser storage is unavailable or invalid.
+    }
     state.restoreAutomaticExchangeRate = false;
     renderAutomaticRateRestoreControl();
-    renderAutomaticPricingStatus(catalog.automatic, catalog.usageCoverage);
+    renderAutomaticPricingStatus(catalog.automatic);
     state.pricingSearch = "";
-    state.pricingScope = "used";
+    state.pricingProvider = null;
     $("#pricingSearch").value = "";
     $("#usdToCnyRate").value = String(catalog.usdToCnyRate ?? 6.72);
-    updatePricingScopeButtons();
     updateDisplayCurrencyButtons();
     renderPricingModelList();
     setPricingMessage("");
     $("#pricingDialog").hidden = false;
+    $("#pricingProviderList").scrollTop = 0;
     window.requestAnimationFrame(() => $("#pricingSearch").focus());
   } catch (error) {
     setAutoRefreshStatus(`读取计价标准失败：${error.message}`, { error: true });
@@ -3183,7 +3161,7 @@ async function openPricingDialog() {
 }
 
 function closePricingDialog() {
-  closeModelPricing();
+  closeProviderPricing(true);
   $("#pricingDialog").hidden = true;
   state.pricingCatalog = null;
   state.restoreAutomaticExchangeRate = false;
@@ -4625,13 +4603,25 @@ async function bootDashboard() {
   $("#pricingSearch").addEventListener("input", (event) => {
     state.pricingSearch = event.target.value;
     renderPricingModelList();
+    $("#pricingProviderList").scrollTop = 0;
   });
-  $("#pricingScope").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-pricing-scope]");
-    if (!button) return;
-    state.pricingScope = button.dataset.pricingScope;
-    updatePricingScopeButtons();
-    renderPricingModelList();
+  $("#pricingProviderList").addEventListener("click", (event) => {
+    const provider = event.target.closest("[data-pricing-provider]");
+    if (provider) openProviderPricing(provider.dataset.pricingProvider);
+  });
+  $("#closeProviderPricingButton").addEventListener("click", () => closeProviderPricing());
+  $("#providerPricingDialog").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeProviderPricing();
+  });
+  $("#providerPricingDialog").addEventListener("animationend", (event) => {
+    if (event.animationName === "provider-pricing-leave") closeProviderPricing(true);
+  });
+  $("#providerPricingDialog").addEventListener("click", (event) => {
+    if (event.target.id === "providerPricingDialog") closeProviderPricing();
+  });
+  $("#providerPricingDialog").addEventListener("close", () => {
+    if (!$("#providerPricingDialog").open) closeProviderPricing(true);
   });
   $("#pricingCurrency").addEventListener("click", (event) => {
     const currency = event.target.closest("[data-display-currency]")?.dataset.displayCurrency;
@@ -4736,7 +4726,7 @@ async function bootDashboard() {
     }
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Tab" && !$("#modelPricingDialog").open) {
+    if (event.key === "Tab" && !$("#modelPricingDialog").open && !$("#providerPricingDialog").open) {
       const dialog = [$("#pricingDialog"), $("#importDialog"), $("#skinDialog")].find(
         (candidate) => candidate && !candidate.hidden,
       );
@@ -4746,7 +4736,13 @@ async function bootDashboard() {
       setRecentMenuOpen(false);
     }
     // 子弹窗已改原生 <dialog>，Esc 由平台关闭顶层弹窗；这里只在子弹窗未打开时关父弹窗。
-    if (event.key === "Escape" && !$("#pricingDialog").hidden && !$("#modelPricingDialog").open) closePricingDialog();
+    if (
+      event.key === "Escape" &&
+      !$("#pricingDialog").hidden &&
+      !$("#modelPricingDialog").open &&
+      !$("#providerPricingDialog").open
+    )
+      closePricingDialog();
     if (event.key === "Escape" && !$("#importDialog").hidden) {
       closeImportDialog();
     }

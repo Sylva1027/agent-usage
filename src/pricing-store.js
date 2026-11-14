@@ -17,7 +17,6 @@ import {
   mimoPricePatches,
   MODEL_PRICES_URL,
   modelsDevPricePatches,
-  parseOpenAIModelPricing,
   KIMI_PRICES_URL,
   kimiPricePatches,
   STEPFUN_PRICES_URL,
@@ -35,9 +34,12 @@ import {
   MAX_PRICING_MODELS,
 } from "./pricing.js";
 import { resolvePricingModel } from "../public/pricing-models.js";
+import { modelReleaseDatesFromCatalog } from "../public/pricing-directory.js";
+import { OPENROUTER_PRICES_URL, parseCatalogModelPricing } from "./pricing-catalog.js";
+import { readPricingSourceCatalogs, savePricingSourceCatalogs } from "./pricing-catalog-store.js";
 
 const RATE_FIELDS = ["input", "cachedInput", "cacheWrite", "output"];
-const DISCOVERY_CAPABILITY_REVISION = "official-openai-discovery-v1";
+const DISCOVERY_CAPABILITY_REVISION = "used-model-catalogs-v2";
 const DISCOVERY_TERMINAL_REASONS = new Set(["unsupported-provider", "unsupported-context-policy"]);
 export { MAX_PRICING_MODELS };
 const PRICE_CONFLICT_TOLERANCE = 1e-7;
@@ -51,6 +53,10 @@ export function pricingFile(options = {}) {
 
 export function automaticPricingFile(options = {}) {
   return options.automaticPricingFile || path.join(path.dirname(pricingFile(options)), "pricing-auto.json");
+}
+
+export function pricingSourceCatalogFile(options = {}) {
+  return path.join(path.dirname(pricingFile(options)), "pricing-sources.sqlite");
 }
 
 async function readJson(file) {
@@ -278,12 +284,13 @@ function autoProvenanceForModel(metadata = {}) {
     MIMO_PRICES_URL,
     KIMI_PRICES_URL,
     GLM_PRICES_URL,
+    OPENROUTER_PRICES_URL,
   ]);
   return Object.entries(metadata).filter(
     ([tier, item]) =>
       ["short", "long", "fast.short", "fast.long"].includes(tier) &&
       sourceUrls.has(item?.sourceUrl) &&
-      ["remote", "mixed"].includes(item?.origin),
+      ["remote", "mixed", "reference"].includes(item?.origin),
   );
 }
 
@@ -361,6 +368,8 @@ export function getAutomaticPricingStatus() {
     manualModels,
     manualExchangeRate: manual.usdToCnyRate !== undefined,
     modelMetadata: structuredClone(automatic.modelMetadata || {}),
+    modelReleaseDates: { ...automatic.modelReleaseDates },
+    catalogSources: structuredClone(automatic.catalogSources || {}),
     discoveryResults: discoveryResultsWithPolicy(),
     discoveryAttemptedAt: structuredClone(automatic.discoveryAttemptedAt || {}),
     priceUpdateSummary,
@@ -596,7 +605,7 @@ function missingObservedModels(usedModels, models) {
   for (const name of observedModelNames(usedModels)) {
     const resolved = resolvePricingModel(name, models);
     if (resolved.matchType !== "missing") continue;
-    const model = resolved.rawModel.toLowerCase();
+    const model = resolved.canonicalModel.toLowerCase();
     if (seen.has(model)) continue;
     seen.add(model);
     missing.push(model);
@@ -696,18 +705,65 @@ export async function refreshAutomaticPricing(options = {}) {
 
   const previousPriceVersion = effectivePriceVersion(currentCatalog);
   const previousStatusVersion = getAutomaticPricingStatus().statusVersion;
+  const catalogFile = pricingSourceCatalogFile(options);
+  const cachedCatalogs = maintainPrices || discoverPrices ? readPricingSourceCatalogs(catalogFile) : {};
+  const sourceUrls = [MODEL_PRICES_URL, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL];
+  const cachedPayloads = sourceUrls.map((url) => cachedCatalogs[url]?.payload);
+  const parsePayloads = (model, payloads, checkedAt = timestamp) =>
+    parseCatalogModelPricing(model, {
+      modelsDevPayload: payloads[0],
+      liteLLMPayload: payloads[1],
+      openRouterPayload: payloads[2],
+      checkedAt,
+    });
+  const useCatalogCache =
+    !maintainPrices && !force && discoveryDue.every((model) => parsePayloads(model, cachedPayloads).status === "added");
+  const fetchCatalog = (url) =>
+    useCatalogCache ? Promise.resolve(cachedCatalogs[url]?.payload || null) : fetchPricingJson(fetcher, url);
   const results = await Promise.allSettled([
-    maintainPrices || discoverPrices ? fetchPricingJson(fetcher, MODEL_PRICES_URL) : Promise.resolve(null),
-    maintainPrices || discoverPrices ? fetchPricingJson(fetcher, LITELLM_PRICES_URL) : Promise.resolve(null),
+    maintainPrices || discoverPrices ? fetchCatalog(MODEL_PRICES_URL) : Promise.resolve(null),
+    maintainPrices || discoverPrices ? fetchCatalog(LITELLM_PRICES_URL) : Promise.resolve(null),
     maintainPrices ? fetchPricingText(fetcher, MIMO_PRICES_URL) : Promise.resolve(null),
     maintainPrices ? fetchPricingText(fetcher, STEPFUN_PRICES_URL) : Promise.resolve(null),
     maintainPrices ? fetchPricingText(fetcher, KIMI_PRICES_URL) : Promise.resolve(null),
     maintainPrices ? fetchPricingText(fetcher, GLM_PRICES_URL) : Promise.resolve(null),
     updateRate ? fetchPricingJson(fetcher, USD_CNY_RATE_URL) : Promise.resolve(null),
+    maintainPrices || discoverPrices ? fetchCatalog(OPENROUTER_PRICES_URL) : Promise.resolve(null),
   ]);
   const next = structuredClone(automatic);
+  const catalogResults = [results[0], results[1], results[7]];
+  const downloadedCatalogs = {};
+  const payloads = catalogResults.map((result, index) => {
+    const payload = result.status === "fulfilled" ? result.value : null;
+    const valid = index === 2 ? Array.isArray(payload?.data) : isObject(payload);
+    if (valid && !useCatalogCache) downloadedCatalogs[sourceUrls[index]] = { payload, fetchedAt: timestamp };
+    return valid ? payload : cachedPayloads[index];
+  });
+  await savePricingSourceCatalogs(catalogFile, downloadedCatalogs);
+  const catalogs = { ...cachedCatalogs, ...downloadedCatalogs };
+  if (maintainPrices || discoverPrices)
+    next.catalogSources = Object.fromEntries(Object.entries(catalogs).map(([url, entry]) => [url, entry.fetchedAt]));
+  if (payloads[0])
+    next.modelReleaseDates = { ...automatic.modelReleaseDates, ...modelReleaseDatesFromCatalog(payloads[0]) };
+  const parseUsedModel = (model) => {
+    const parsed = parsePayloads(model, payloads);
+    if (parsed.status === "added") {
+      const checkedAt = catalogs[parsed.pricing.source]?.fetchedAt || timestamp;
+      for (const tier of Object.values(parsed.modelMetadata)) tier.checkedAt = checkedAt;
+    }
+    return parsed;
+  };
   const previousIssues = Array.isArray(automatic.issues) ? automatic.issues : [];
   const issues = [];
+  if ((maintainPrices || discoverPrices) && !useCatalogCache && !downloadedCatalogs[OPENROUTER_PRICES_URL]) {
+    issues.push(
+      pricingIssue(
+        "prices",
+        "OpenRouter",
+        results[7].status === "rejected" ? results[7].reason : new Error("Invalid OpenRouter model catalog."),
+      ),
+    );
+  }
   let pricesUpdated = false;
   let exchangeRateUpdated = false;
   const discoveryResults = [...matchedResults, ...cooldownResults];
@@ -750,8 +806,18 @@ export async function refreshAutomaticPricing(options = {}) {
       }
     }
 
-    const allUpdatedModels = [...new Set(sourcePatches.flatMap((patch) => Object.keys(patch || {})))].sort();
+    const catalogModels = new Set(Array.isArray(automatic.catalogModels) ? automatic.catalogModels : []);
+    const allUpdatedModels = [...new Set(sourcePatches.flatMap((patch) => Object.keys(patch || {})))]
+      .filter((model) => !catalogModels.has(model))
+      .sort();
     const sourceCoverage = pricingSourceCoverage(candidateCatalog.models, providerByModel);
+    const attemptedModelCount =
+      sourceCoverage.supportedModelCount +
+      [...catalogModels].filter(
+        (model) =>
+          candidateCatalog.models[model] &&
+          !pricingSourceCoverage({ [model]: candidateCatalog.models[model] }, providerByModel).supportedModelCount,
+      ).length;
     const verifiedModels = new Set();
     const changedModels = new Set();
     const partialModels = new Set();
@@ -875,6 +941,24 @@ export async function refreshAutomaticPricing(options = {}) {
       }
     }
 
+    for (const model of catalogModels) {
+      if (!next.models?.[model]) continue;
+      const parsed = parseUsedModel(model);
+      if (parsed.status !== "added" || !downloadedCatalogs[parsed.pricing.source]) continue;
+      allUpdatedModels.push(model);
+      verifiedModels.add(model);
+      if (differences(next.models[model], parsed.pricing) !== undefined) changedModels.add(model);
+      if (Object.hasOwn(manual.modelOverrides || {}, model)) manualOverrideModels.add(model);
+      if (Object.values(parsed.modelMetadata).some((tier) => tier.inputFallbackFields?.length))
+        partialModels.add(model);
+      const sourceIndex =
+        parsed.pricing.source === MODEL_PRICES_URL ? 0 : parsed.pricing.source === LITELLM_PRICES_URL ? 1 : -1;
+      if (sourceIndex >= 0) sourceUpdatedModels[sourceIndex].add(model);
+      next.models[model] = parsed.pricing;
+      next.modelMetadata ||= {};
+      next.modelMetadata[model] = parsed.modelMetadata;
+      pricesUpdated = true;
+    }
     const sourceResultsBySource = new Map(
       (Array.isArray(next.priceUpdateSummary?.sourceResults) ? next.priceUpdateSummary.sourceResults : [])
         .filter((result) => isObject(result) && typeof result.source === "string")
@@ -891,14 +975,14 @@ export async function refreshAutomaticPricing(options = {}) {
     }
     next.priceUpdateSummary = {
       checkedAt: timestamp,
-      attemptedModelCount: sourceCoverage.supportedModelCount,
+      attemptedModelCount,
       sourceMatchedModelCount: allUpdatedModels.length,
       verifiedModelCount: verifiedModels.size,
       changedModelCount: changedModels.size,
       partialModelCount: partialModels.size,
       conflictModelCount: conflictedModels.size,
       manualOverrideModelCount: manualOverrideModels.size,
-      noValidMatchModelCount: Math.max(0, sourceCoverage.supportedModelCount - allUpdatedModels.length),
+      noValidMatchModelCount: Math.max(0, attemptedModelCount - allUpdatedModels.length),
       unsupportedCurrencyModelCount: sourceCoverage.unsupportedCurrencyModelCount,
       providers: sourceCoverage.providers,
       fetchedSourceCount: results.slice(0, 6).filter((result) => result.status === "fulfilled").length,
@@ -934,23 +1018,21 @@ export async function refreshAutomaticPricing(options = {}) {
       storedDiscoveryResults.push(stored);
     };
     for (const model of discoveryDue) {
-      if (maintenanceOnlyDiscovery.has(model) && results[0].status === "rejected" && results[1].status === "rejected") {
+      if (maintenanceOnlyDiscovery.has(model) && payloads.every((payload) => !payload)) {
         continue;
       }
       next.discoveryAttemptedAt[model] = timestamp;
       try {
-        if (results[0].status === "rejected" && results[1].status === "rejected") {
-          const reason = [results[0].reason, results[1].reason].some((error) => error?.code === "PRICING_TIMEOUT")
+        if (payloads.every((payload) => !payload)) {
+          const reason = catalogResults.some(
+            (result) => result.status === "rejected" && result.reason?.code === "PRICING_TIMEOUT",
+          )
             ? "timeout"
             : "source-error";
           recordDiscoveryResult(model, "error", reason);
           continue;
         }
-        const parsed = parseOpenAIModelPricing(model, {
-          modelsDevPayload: results[0].status === "fulfilled" ? results[0].value : undefined,
-          liteLLMPayload: results[1].status === "fulfilled" ? results[1].value : undefined,
-          checkedAt: timestamp,
-        });
+        const parsed = parseUsedModel(model);
         if (parsed.status !== "added") {
           recordDiscoveryResult(model, parsed.status, parsed.reason);
           continue;
@@ -963,6 +1045,9 @@ export async function refreshAutomaticPricing(options = {}) {
         next.models = overlay(next.models || {}, { [model]: parsed.pricing });
         next.modelMetadata ||= {};
         next.modelMetadata[model] = parsed.modelMetadata;
+        if (parsed.pricing.source === OPENROUTER_PRICES_URL || parsed.modelMetadata.short?.providerId !== undefined) {
+          next.catalogModels = [...new Set([...(next.catalogModels || []), model])];
+        }
         const sourceIndex =
           parsed.pricing.source === MODEL_PRICES_URL ? 0 : parsed.pricing.source === LITELLM_PRICES_URL ? 1 : -1;
         if (sourceIndex >= 0) sourceUpdatedModels[sourceIndex].add(model);
@@ -982,7 +1067,7 @@ export async function refreshAutomaticPricing(options = {}) {
           .map((result) => [result.source, result]),
       );
       for (const [index, source] of ["Models.dev", "LiteLLM"].entries()) {
-        const fetched = results[index].status === "fulfilled";
+        const fetched = !useCatalogCache && results[index].status === "fulfilled";
         sourceResultsBySource.set(source, {
           source,
           attemptedAt: timestamp,
@@ -1015,7 +1100,11 @@ export async function refreshAutomaticPricing(options = {}) {
   }
   next.issues = [
     ...previousIssues.filter((issue) =>
-      issue?.category === "prices" ? !maintainPrices : issue?.category === "exchangeRate" ? !updateRate : true,
+      issue?.category === "prices"
+        ? !maintainPrices && !(discoverPrices && !useCatalogCache && issue.source === "OpenRouter")
+        : issue?.category === "exchangeRate"
+          ? !updateRate
+          : true,
     ),
     ...issues,
   ];
